@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CleanCart</string>
+    <string name="accessibility_label">CleanCart Store Screen Reader</string>
+    <string name="accessibility_description">Reads only the product title and ingredient text shown in Walmart, Instacart, Sam\'s Club and BJ\'s so CleanCart can grade ingredients. No other apps are read and nothing is sold or stored.</string>
+</resources>

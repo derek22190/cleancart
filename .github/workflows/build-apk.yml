@@ -1,0 +1,48 @@
+name: Build CleanCart APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-34 build-tools;34.0.0"
+
+      - name: Set up Gradle (with caching)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          chmod +x ./gradlew
+          # Optional: set repo variable CLEANCART_API_BASE to your deployed API URL.
+          API_BASE="${{ vars.CLEANCART_API_BASE }}"
+          if [ -n "$API_BASE" ]; then
+            ./gradlew assembleDebug --stacktrace -PcleancartApiBase="$API_BASE"
+          else
+            ./gradlew assembleDebug --stacktrace
+          fi
+          cp app/build/outputs/apk/debug/app-debug.apk cleancart-debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleancart-debug.apk
+          path: android-app/cleancart-debug.apk
+          if-no-files-found: error

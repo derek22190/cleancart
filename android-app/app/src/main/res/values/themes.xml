@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CleanCart" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#0F7A4A</item>
+        <item name="android:colorAccent">#0F7A4A</item>
+        <item name="android:statusBarColor">#F4F3EE</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

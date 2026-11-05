@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CleanCart settings</title>
+  <style>
+    body { width: 300px; margin: 0; padding: 16px; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #15201b; background: #f4f3ee; }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    p { margin: 0 0 12px; color: #4a5550; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 10px; border: 1px solid #d8d9d3; font: inherit; }
+    button { margin-top: 10px; width: 100%; padding: 10px; border: 0; border-radius: 999px; background: #0f7a4a; color: #fff; font-weight: 700; cursor: pointer; }
+    #status { margin-top: 8px; min-height: 18px; color: #0f7a4a; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>CleanCart PureOverlay</h1>
+  <p>Point the extension at your CleanCart API (local dev server or your deployed URL).</p>
+  <label for="api">API base URL</label>
+  <input id="api" placeholder="http://localhost:3000" />
+  <button id="save">Save &amp; test</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "CleanCart PureOverlay",
+  "short_name": "CleanCart",
+  "version": "1.0.0",
+  "description": "Ingredient-only grocery grader with 1-tap clean swaps on Walmart, Instacart, Sam's Club and BJ's.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://*/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "CleanCart settings", "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.walmart.com/ip/*",
+        "*://*.instacart.com/*",
+        "*://*.samsclub.com/*",
+        "*://*.bjs.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["overlay.css"],
+      "matches": ["*://*.walmart.com/*", "*://*.instacart.com/*", "*://*.samsclub.com/*", "*://*.bjs.com/*"]
+    }
+  ]
+}
