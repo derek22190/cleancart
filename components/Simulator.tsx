@@ -167,6 +167,110 @@ function ScoreChip({ score, color }: { score: number; color: string }) {
   return <span className={`score-chip tone-${color}`}>{score}</span>;
 }
 
+const POSITIVE_CHECKS: Record<Category, { title: string; subtitle: string; badge: string }> = {
+  dyes: {
+    title: "No Artificial Dyes",
+    subtitle: "Free of Red 40, Yellow 5 & synthetic colorings",
+    badge: "0 dyes",
+  },
+  seedOils: {
+    title: "Seed-Oil Free",
+    subtitle: "No industrial soybean, canola, or corn oil",
+    badge: "0 seed oils",
+  },
+  hfcs: {
+    title: "No High-Fructose Corn Syrup",
+    subtitle: "Free of refined corn syrup sweeteners",
+    badge: "0g HFCS",
+  },
+  preservatives: {
+    title: "No Synthetic Preservatives",
+    subtitle: "Free of BHA, BHT, TBHQ & benzoates",
+    badge: "Clean",
+  },
+  nitrates: {
+    title: "Nitrite & Nitrate Free",
+    subtitle: "No curing nitrates or sodium nitrite",
+    badge: "0 nitrites",
+  },
+  sweeteners: {
+    title: "No Artificial Sweeteners",
+    subtitle: "Free of aspartame, sucralose & acesulfame K",
+    badge: "0 artificial",
+  },
+  emulsifiers: {
+    title: "No Synthetic Emulsifiers",
+    subtitle: "Free of polysorbate 80 & carrageenan",
+    badge: "Clean",
+  },
+  gums: {
+    title: "No Industrial Gums",
+    subtitle: "Free of synthetic thickening gums",
+    badge: "Clean",
+  },
+  flavors: {
+    title: "Real Food Flavoring",
+    subtitle: "No synthetic artificial flavor chemicals",
+    badge: "Real",
+  },
+};
+
+function YukaLineIcon({ kind }: { kind: Category | "additives" }) {
+  switch (kind) {
+    case "additives":
+      return (
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 3 19.5 7.3 19.5 16.7 12 21 4.5 16.7 4.5 7.3" />
+          <line x1="12" y1="6.3" x2="16.6" y2="9" />
+          <line x1="16.6" y1="15" x2="12" y2="17.7" />
+          <line x1="7.4" y1="15" x2="7.4" y2="9" />
+          <line x1="19.5" y1="7.3" x2="22.5" y2="5.5" />
+        </svg>
+      );
+    case "seedOils":
+      return (
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2.8C12 2.8 6 10 6 14.5a6 6 0 0 0 12 0C18 10 12 2.8 12 2.8Z" />
+          <path d="M9.5 15.5a2.5 2.5 0 0 0 2.5 2.5" />
+        </svg>
+      );
+    case "dyes":
+    case "flavors":
+      return (
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 3h6M10 3v5.4L5.2 17a2.5 2.5 0 0 0 2.2 3.7h9.2a2.5 2.5 0 0 0 2.2-3.7L14 8.4V3" />
+          <path d="M7.5 14h9" />
+        </svg>
+      );
+    case "hfcs":
+    case "sweeteners":
+      return (
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Z" />
+          <path d="M4 7.5 12 12l8-4.5M12 12v9" />
+        </svg>
+      );
+    case "preservatives":
+    case "nitrates":
+      return (
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3 5 6v6c0 5 3.4 8.3 7 9.8 3.6-1.5 7-4.8 7-9.8V6l-7-3Z" />
+          <path d="m9.5 12 1.8 1.8 3.5-3.6" />
+        </svg>
+      );
+    case "emulsifiers":
+    case "gums":
+    default:
+      return (
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="9" r="4" />
+          <circle cx="15.5" cy="15.5" r="4" />
+          <line x1="11.8" y1="11.8" x2="12.7" y2="12.7" />
+        </svg>
+      );
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Main simulator                                                      */
 /* ------------------------------------------------------------------ */
@@ -212,6 +316,22 @@ export default function Simulator() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditBusy, setAuditBusy] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+
+  // Yuka-style drawer tabs & favorites/history state
+  const [yukaTab, setYukaTab] = useState<"inspect" | "history" | "recs" | "top" | "search">("inspect");
+  const [favOnly, setFavOnly] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [scanHistory, setScanHistory] = useState<{ product: Product; timeLabel: string }[]>(() => [
+    { product: presetToProduct(PRESETS[0]), timeLabel: "Just now" },
+    { product: cleanToProduct("Butter/Dairy"), timeLabel: "12 mins ago" },
+    { product: presetToProduct(PRESETS[1]), timeLabel: "2 hrs ago" },
+    { product: cleanToProduct("Yogurt"), timeLabel: "Yesterday" },
+    { product: presetToProduct(PRESETS[3]), timeLabel: "3 days ago" },
+  ]);
+
+  const toggleFavorite = useCallback((key: string) => {
+    setFavorites((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }, []);
 
   const screenRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -305,8 +425,14 @@ export default function Simulator() {
       setActive(p);
       setPreviousDirtyItem(null);
       setViewMode("product");
+      setYukaTab("inspect");
+      setFavOnly(false);
       setOverlay(openCardImmediately ? "card" : "pill");
       setOpenFlag(null);
+      setScanHistory((prev) => [
+        { product: p, timeLabel: "Just now" },
+        ...prev.filter((h) => h.product.key !== p.key),
+      ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       if (countAsScan) registerScan();
     },
@@ -322,8 +448,13 @@ export default function Simulator() {
       }
       setActive(clean);
       setViewMode("product");
+      setYukaTab("inspect");
       setOverlay("card");
       setOpenFlag(null);
+      setScanHistory((prev) => [
+        { product: clean, timeLabel: "Just now" },
+        ...prev.filter((h) => h.product.key !== clean.key),
+      ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     },
     [active],
@@ -564,11 +695,10 @@ export default function Simulator() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/broc-mascot.jpg" alt="Broc mascot" className="brand-mascot" />
           <div>
-            <h1>CleanCart <span>PureOverlay</span></h1>
+            <h1>HeyBroc <span>CleanCart Overlay</span></h1>
             <p>Ingredient-only grader &amp; 1-tap clean swaps — live simulator</p>
           </div>
         </div>
@@ -901,6 +1031,8 @@ export default function Simulator() {
                     }
                   }}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/broc-mascot.jpg" alt="" className="pill-mascot" />
                   <span className="pill-dot" />
                   {overlay === "min" ? (
                     <b>{isCartBubbleMode ? `🛒 ${animatedCartAvg}` : score.score}</b>
@@ -944,112 +1076,467 @@ export default function Simulator() {
                 </div>
               )}
 
-              {/* ---------- OVERLAY: Health Insights card ---------- */}
+              {/* ---------- OVERLAY: Yuka-Style HeyBroc Drawer ---------- */}
               {overlay === "card" && (
                 <div className="backdrop" onClick={() => setOverlay("pill")}>
-                  <div className="insights" role="dialog" aria-label="Health Insights" onClick={(e) => e.stopPropagation()}>
-                    <div className="insights-head">
-                      <div>
-                        <span className="eyebrow">CleanCart · Cart Avg {animatedCartAvg}/100</span>
-                        <h3>Health Insights</h3>
+                  <div className="insights yuka-sheet" role="dialog" aria-label="Health Insights" onClick={(e) => e.stopPropagation()}>
+                    {/* Top Header */}
+                    <div className="insights-head yuka-topbar">
+                      <div className="yuka-topbar-left">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+                        <div>
+                          <span className="eyebrow">HeyBroc · Cart Avg {animatedCartAvg}/100</span>
+                          <h3>
+                            {yukaTab === "inspect"
+                              ? "Product Analysis"
+                              : yukaTab === "history"
+                                ? favOnly
+                                  ? "Favorites"
+                                  : "History"
+                                : yukaTab === "recs"
+                                  ? "Recommendations"
+                                  : yukaTab === "top"
+                                    ? "Top Products"
+                                    : "Search"}
+                          </h3>
+                        </div>
                       </div>
-                      <button className="close" onClick={() => setOverlay("pill")} aria-label="Close">×</button>
-                    </div>
-
-                    {/* Clickable Product Header inside Health Insights */}
-                    <button
-                      type="button"
-                      className="insights-product-bar"
-                      onClick={() => setOverlay("pill")}
-                      title="View full product page underneath"
-                    >
-                      <ProductArt product={active} className="insights-thumb" />
-                      <div className="insights-product-text">
-                        <b>{active.brand} · {active.title}</b>
-                        <small>Tap to view full product page &amp; photo →</small>
-                      </div>
-                    </button>
-
-                    <div className="insights-body">
-                      <Gauge score={score.score} rating={score.rating} color={score.color} />
-                      <div className="flags">
-                        {score.flagged.length === 0 ? (
-                          <p className="clean-note">✓ No watchlist additives found. 100% clean ingredient list.</p>
-                        ) : (
-                          score.flagged.map((f: FlaggedAdditive) => (
-                            <button
-                              key={f.id}
-                              className={`flag risk-${f.risk} ${openFlag === f.id ? "is-open" : ""}`}
-                              onClick={() => setOpenFlag((o) => (o === f.id ? null : f.id))}
-                              aria-expanded={openFlag === f.id}
-                            >
-                              {f.name}{"\u00a0"}⚠️
-                            </button>
-                          ))
+                      <div className="yuka-topbar-actions">
+                        {yukaTab === "inspect" && (
+                          <button
+                            type="button"
+                            className={`yuka-fav-btn ${favorites.includes(active.key) ? "is-fav" : ""}`}
+                            onClick={() => toggleFavorite(active.key)}
+                            aria-label="Toggle favorite"
+                            title="Save to Favorites"
+                          >
+                            {favorites.includes(active.key) ? "★" : "☆"}
+                          </button>
                         )}
+                        {yukaTab === "history" && (
+                          <button
+                            type="button"
+                            className={`yuka-fav-btn ${favOnly ? "is-fav" : ""}`}
+                            onClick={() => setFavOnly((f) => !f)}
+                            aria-label="Filter favorites"
+                            title="Show Favorites"
+                          >
+                            ★
+                          </button>
+                        )}
+                        <button className="close" onClick={() => setOverlay("pill")} aria-label="Close">×</button>
                       </div>
                     </div>
 
-                    {openFlag && (() => {
-                      const f = score.flagged.find((x) => x.id === openFlag);
-                      return f ? (
-                        <div className={`explain risk-${f.risk}`}>
-                          <b>{f.name}</b> <span>{RISK_LABEL[f.risk]} · −{f.penalty} pts · {CATEGORY_LABELS[f.category]}</span>
-                          <p>{f.explanation}</p>
-                        </div>
-                      ) : null;
-                    })()}
+                    <div className="yuka-scroll-area">
+                      {/* ==================== TAB 1: YUKA PRODUCT DETAIL (Negatives + Positives) ==================== */}
+                      {yukaTab === "inspect" && (
+                        <>
+                          {/* Yuka Product Hero Header (Photo Left, Title/Brand/Dot/Score Right) */}
+                          <button
+                            type="button"
+                            className="yuka-hero"
+                            onClick={() => setOverlay("pill")}
+                            title="Tap to view full store page underneath"
+                          >
+                            <ProductArt product={active} className="yuka-hero-img" />
+                            <div className="yuka-hero-info">
+                              <b className="yuka-hero-title">{active.title}</b>
+                              <span className="yuka-hero-brand">{active.brand}</span>
+                              <div className="yuka-hero-score">
+                                <span className={`yuka-dot tone-${score.color}`} />
+                                <div>
+                                  <strong>{score.score}/100</strong>
+                                  <em>{score.score < 25 ? "Bad" : score.rating}</em>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
 
-                    {/* Full Ingredient List directly inside the inspection card */}
-                    <div className="insights-ingredients-box">
-                      <span>Ingredients Inspected:</span>
-                      <p>{active.ingredients}</p>
-                    </div>
+                          {/* 1-Tap Clean Swap Banner right at top when dirty */}
+                          {swap ? (
+                            <div className="swap">
+                              <button
+                                id="inspect-clean-swap"
+                                type="button"
+                                className="swap-info swap-info--btn"
+                                onClick={() => inspectCleanSwap(swap.category)}
+                              >
+                                <ProductArt product={cleanToProduct(swap.category)} className="swap-art" />
+                                <div className="swap-info-copy">
+                                  <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}</span>
+                                  <b>{swap.title}</b>
+                                  <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
+                                </div>
+                              </button>
+                              <button id="swap-item" className="swap-btn" onClick={doSwap}>Swap Item</button>
+                            </div>
+                          ) : previousDirtyItem ? (
+                            <div className="swap">
+                              <div className="swap-preview-note">
+                                <b>Inspecting Clean Swap ({score.score}/100)</b>
+                                <p>Replacing: {previousDirtyItem.brand} {previousDirtyItem.title}</p>
+                              </div>
+                              <button id="swap-item" className="swap-btn" onClick={doSwap}>
+                                Swap Item in Cart → 100/100
+                              </button>
+                              <button
+                                type="button"
+                                className="link-btn center"
+                                onClick={() => {
+                                  setActive(previousDirtyItem);
+                                  setPreviousDirtyItem(null);
+                                }}
+                              >
+                                ← Back to {previousDirtyItem.title}
+                              </button>
+                            </div>
+                          ) : null}
 
-                    {score.ignored.length > 0 && (
-                      <p className="ignored">Ignored by your watchlist: {score.ignored.map((i) => i.name).join(", ")}</p>
-                    )}
+                          {/* Yuka NEGATIVES Section */}
+                          {score.flagged.length > 0 && (
+                            <div className="yuka-section">
+                              <h4 className="yuka-section-title">Negatives</h4>
+                              <div className="yuka-list">
+                                {/* Top Summary Row: Additives (with Benzene ring icon like Yuka) */}
+                                <div className="yuka-row yuka-row--summary">
+                                  <span className="yuka-row-icon"><YukaLineIcon kind="additives" /></span>
+                                  <div className="yuka-row-text">
+                                    <b>Additives</b>
+                                    <small>Contains {score.flagged.length} additive{score.flagged.length === 1 ? "" : "s"} to avoid</small>
+                                  </div>
+                                  <div className="yuka-row-right">
+                                    <span className="yuka-row-val">{score.flagged.length}</span>
+                                    <span className="yuka-dot tone-red" />
+                                  </div>
+                                </div>
 
-                    {swap ? (
-                      <div className="swap">
-                        <button
-                          id="inspect-clean-swap"
-                          type="button"
-                          className="swap-info swap-info--btn"
-                          onClick={() => inspectCleanSwap(swap.category)}
-                        >
-                          <ProductArt product={cleanToProduct(swap.category)} className="swap-art" />
-                          <div className="swap-info-copy">
-                            <span className="eyebrow eyebrow--green">Clean Swap · {STORE_META[store].label}</span>
-                            <b>{swap.title}</b>
-                            <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
+                                {/* Each Flagged Additive Row (Tappable for plain-English explanation) */}
+                                {score.flagged.map((f: FlaggedAdditive) => {
+                                  const isOpen = openFlag === f.id;
+                                  const dotTone = f.risk === "high" ? "red" : "yellow";
+                                  return (
+                                    <div key={f.id} className="yuka-row-wrap">
+                                      <button
+                                        type="button"
+                                        className={`yuka-row yuka-row--btn ${isOpen ? "is-open" : ""}`}
+                                        onClick={() => setOpenFlag((o) => (o === f.id ? null : f.id))}
+                                        aria-expanded={isOpen}
+                                      >
+                                        <span className="yuka-row-icon"><YukaLineIcon kind={f.category} /></span>
+                                        <div className="yuka-row-text">
+                                          <b>{f.name}</b>
+                                          <small>{CATEGORY_LABELS[f.category]} · {RISK_LABEL[f.risk]}</small>
+                                        </div>
+                                        <div className="yuka-row-right">
+                                          <span className="yuka-row-val">−{f.penalty} pts</span>
+                                          <span className={`yuka-dot tone-${dotTone}`} />
+                                          <span className="yuka-chevron">{isOpen ? "▴" : "▾"}</span>
+                                        </div>
+                                      </button>
+                                      {isOpen && (
+                                        <div className={`explain risk-${f.risk}`}>
+                                          <b>{f.name}</b> <span>{RISK_LABEL[f.risk]} · −{f.penalty} pts</span>
+                                          <p>{f.explanation}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Yuka POSITIVES Section */}
+                          <div className="yuka-section">
+                            <h4 className="yuka-section-title">Positives</h4>
+                            <div className="yuka-list">
+                              {ALL_CATEGORIES.filter(
+                                (cat) => !score.flagged.some((f) => f.category === cat),
+                              ).map((cat) => {
+                                const meta = POSITIVE_CHECKS[cat];
+                                return (
+                                  <div key={cat} className="yuka-row">
+                                    <span className="yuka-row-icon"><YukaLineIcon kind={cat} /></span>
+                                    <div className="yuka-row-text">
+                                      <b>{meta.title}</b>
+                                      <small>{meta.subtitle}</small>
+                                    </div>
+                                    <div className="yuka-row-right">
+                                      <span className="yuka-row-val">{meta.badge}</span>
+                                      <span className="yuka-dot tone-green" />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </button>
-                        <button id="swap-item" className="swap-btn" onClick={doSwap}>Swap Item</button>
-                      </div>
-                    ) : previousDirtyItem ? (
-                      <div className="swap">
-                        <div className="swap-preview-note">
-                          <b>Inspecting Clean Swap ({score.score}/100)</b>
-                          <p>Replacing: {previousDirtyItem.brand} {previousDirtyItem.title}</p>
+
+                          {/* Full Ingredient List */}
+                          <div className="insights-ingredients-box">
+                            <span>Ingredients Inspected:</span>
+                            <p>{active.ingredients}</p>
+                          </div>
+                        </>
+                      )}
+
+                      {/* ==================== TAB 2: YUKA HISTORY & FAVORITES ==================== */}
+                      {yukaTab === "history" && (
+                        <div className="yuka-history">
+                          {favOnly && favorites.length === 0 ? (
+                            <div className="yuka-empty-fav">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src="/broc-mascot.jpg" alt="Broc" className="yuka-empty-mascot" />
+                              <span className="yuka-empty-star">★</span>
+                              <h4>NO FAVORITES</h4>
+                              <p>Add a favorite by tapping the ☆ star in the top corner of any product.</p>
+                            </div>
+                          ) : (
+                            <ul className="yuka-history-list">
+                              {(favOnly
+                                ? scanHistory.filter((h) => favorites.includes(h.product.key))
+                                : scanHistory
+                              ).map(({ product: hp, timeLabel }) => {
+                                const hs = scoreIngredients(hp.ingredients, watch);
+                                return (
+                                  <li key={hp.key}>
+                                    <button
+                                      type="button"
+                                      className="yuka-history-row"
+                                      onClick={() => showProduct(hp, false, true)}
+                                    >
+                                      <ProductArt product={hp} className="yuka-history-img" />
+                                      <div className="yuka-history-info">
+                                        <b>{hp.title}</b>
+                                        <span className="yuka-history-brand">{hp.brand}</span>
+                                        <span className="yuka-history-rating">
+                                          <i className={`yuka-dot tone-${hs.color}`} />
+                                          {hs.score < 25 ? "Bad" : hs.rating} · {hs.score}/100
+                                        </span>
+                                        <small className="yuka-history-time">🕒 {timeLabel}</small>
+                                      </div>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
                         </div>
-                        <button id="swap-item" className="swap-btn" onClick={doSwap}>
-                          Swap Item in Cart → 100/100
-                        </button>
-                        <button
-                          type="button"
-                          className="link-btn center"
-                          onClick={() => {
-                            setActive(previousDirtyItem);
-                            setPreviousDirtyItem(null);
-                          }}
-                        >
-                          ← Back to {previousDirtyItem.title}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="swap swap--ok"><b>Great pick.</b> This item already scores {score.score}/100 — no swap needed.</div>
-                    )}
+                      )}
+
+                      {/* ==================== TAB 3: YUKA SIDE-BY-SIDE RECOMMENDATIONS (Recs) ==================== */}
+                      {yukaTab === "recs" && (
+                        <div className="yuka-recs">
+                          <p className="yuka-recs-sub">
+                            Tap any product to inspect its ingredients, or tap <b>Swap</b> to replace it in your {STORE_META[store].label} cart.
+                          </p>
+                          <div className="yuka-recs-grid">
+                            {PRESETS.map((p) => {
+                              const dirtyProd = presetToProduct(p);
+                              const dirtyScore = scoreIngredients(p.ingredients, watch);
+                              const cleanProd = cleanToProduct(p.category);
+                              return (
+                                <div key={p.id} className="yuka-rec-pair">
+                                  {/* Left Dirty Card */}
+                                  <button
+                                    type="button"
+                                    className="yuka-rec-card"
+                                    onClick={() => showProduct(dirtyProd, false, true)}
+                                  >
+                                    <span className="yuka-rec-badge is-bad">✕</span>
+                                    <ProductArt product={dirtyProd} className="yuka-rec-img" />
+                                    <b className="yuka-rec-title">{dirtyProd.title}</b>
+                                    <small className="yuka-rec-brand">{dirtyProd.brand}</small>
+                                    <span className="yuka-rec-status">
+                                      <i className={`yuka-dot tone-${dirtyScore.color}`} />
+                                      {dirtyScore.score < 25 ? "Bad" : dirtyScore.rating} ({dirtyScore.score})
+                                    </span>
+                                  </button>
+
+                                  {/* Center Overlapping Swap Circle */}
+                                  <span className="yuka-rec-arrows" aria-hidden>⇄</span>
+
+                                  {/* Right Clean Card */}
+                                  <div className="yuka-rec-card is-clean-card">
+                                    <button
+                                      type="button"
+                                      className="yuka-rec-card-inner"
+                                      onClick={() => inspectCleanSwap(p.category)}
+                                    >
+                                      <span className="yuka-rec-badge is-good">✓</span>
+                                      <ProductArt product={cleanProd} className="yuka-rec-img" />
+                                      <b className="yuka-rec-title">{cleanProd.title}</b>
+                                      <small className="yuka-rec-brand">{cleanProd.brand}</small>
+                                      <span className="yuka-rec-status">
+                                        <i className="yuka-dot tone-green" />
+                                        Excellent (100)
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="yuka-rec-swap-btn"
+                                      onClick={() => swapCartItem(dirtyProd)}
+                                    >
+                                      ⚡ 1-Tap Swap
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ==================== TAB 4: YUKA TOP PRODUCTS BY CATEGORY ==================== */}
+                      {yukaTab === "top" && (
+                        <div className="yuka-top">
+                          <div className="yuka-invite-card">
+                            <span className="yuka-invite-icon">👥</span>
+                            <div>
+                              <b>Share HeyBroc with a friend &amp; unlock all #1 Clean Picks</b>
+                              <button
+                                type="button"
+                                className="yuka-invite-link"
+                                onClick={() => {
+                                  setOverlay("pill");
+                                  setScorecardOpen(true);
+                                }}
+                              >
+                                Share 9:16 Clean Haul Scorecard →
+                              </button>
+                            </div>
+                          </div>
+                          <ul className="yuka-cat-list">
+                            {(
+                              [
+                                { cat: "Yogurt" as SwapCategory, label: "Yogurt & Dairy", icon: "🥣", bg: "#fef3c7", free: true },
+                                { cat: "Crackers" as SwapCategory, label: "Crackers & Cheddars", icon: "🧀", bg: "#ffedd5", free: true },
+                                { cat: "Dressings" as SwapCategory, label: "Ranch & Dressings", icon: "🥗", bg: "#dcfce7", free: true },
+                                { cat: "Deli Meat" as SwapCategory, label: "Deli Turkey & Meats", icon: "🥪", bg: "#fee2e2", free: true },
+                                { cat: "Butter/Dairy" as SwapCategory, label: "Grass-Fed Butter", icon: "🧈", bg: "#fef9c3", free: true },
+                                { cat: "Cereal" as SwapCategory, label: "Kids Cereals", icon: "🥣", bg: "#e0e7ff", free: false },
+                                { cat: "Chips" as SwapCategory, label: "Tortilla & Potato Chips", icon: "🌮", bg: "#fae8ff", free: false },
+                                { cat: "Bread" as SwapCategory, label: "Sprouted Breads", icon: "🍞", bg: "#f3e8ff", free: false },
+                                { cat: "Snacks" as SwapCategory, label: "Cookies & Fruit Snacks", icon: "🍪", bg: "#ffe4e6", free: false },
+                              ]
+                            ).map((row) => {
+                              const locked = !row.free && !isPro;
+                              return (
+                                <li key={row.cat}>
+                                  <button
+                                    type="button"
+                                    className={`yuka-cat-row ${locked ? "is-locked" : ""}`}
+                                    onClick={() => {
+                                      if (locked) {
+                                        setPaywallOpen(true);
+                                      } else {
+                                        inspectCleanSwap(row.cat);
+                                      }
+                                    }}
+                                  >
+                                    <span className="yuka-cat-tile" style={{ background: locked ? "#f1f5f9" : row.bg }}>
+                                      {row.icon}
+                                    </span>
+                                    <span className="yuka-cat-label">{row.label}</span>
+                                    <span className="yuka-cat-right">{locked ? "🔒" : "›"}</span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* ==================== TAB 5: YUKA SEARCH / MEMBER ACCESS ==================== */}
+                      {yukaTab === "search" && (
+                        <div className="yuka-search-tab">
+                          <form
+                            className="search"
+                            onSubmit={(e) => {
+                              runLive(e);
+                              setYukaTab("inspect");
+                            }}
+                          >
+                            <input
+                              value={query}
+                              onChange={(e) => setQuery(e.target.value)}
+                              placeholder="Search 3M+ foods (e.g. Doritos, Oreos, Chobani)…"
+                              aria-label="Search any grocery product"
+                            />
+                            <button type="submit" disabled={liveState === "loading" || !query.trim()}>
+                              {liveState === "loading" ? "…" : "Scan"}
+                            </button>
+                          </form>
+                          <div className="yuka-member-card">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-member-mascot" />
+                            <span className="yuka-member-eyebrow">MEMBER ACCESS</span>
+                            <h4>Search for any product</h4>
+                            <p>3 million+ grocery products scored 100% on ingredient quality via Open Food Facts &amp; USDA.</p>
+                            {!isPro && (
+                              <button
+                                type="button"
+                                className="yuka-member-btn"
+                                onClick={() => setPaywallOpen(true)}
+                              >
+                                Become a member
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ==================== YUKA 5-TAB BOTTOM NAVIGATION BAR ==================== */}
+                    <nav className="yuka-bottom-nav" aria-label="HeyBroc tabs">
+                      <button
+                        type="button"
+                        className={`yuka-nav-item ${yukaTab === "inspect" ? "is-active" : ""}`}
+                        onClick={() => setYukaTab("inspect")}
+                      >
+                        <span className="yuka-nav-pill">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="/broc-mascot.jpg" alt="" className="yuka-nav-mascot" />
+                        </span>
+                        <small>Inspect</small>
+                      </button>
+                      <button
+                        type="button"
+                        className={`yuka-nav-item ${yukaTab === "history" ? "is-active" : ""}`}
+                        onClick={() => {
+                          setFavOnly(false);
+                          setYukaTab("history");
+                        }}
+                      >
+                        <span className="yuka-nav-pill">🕒</span>
+                        <small>History</small>
+                      </button>
+                      <button
+                        type="button"
+                        className={`yuka-nav-item ${yukaTab === "recs" ? "is-active" : ""}`}
+                        onClick={() => setYukaTab("recs")}
+                      >
+                        <span className="yuka-nav-pill">⇄</span>
+                        <small>Recs</small>
+                      </button>
+                      <button
+                        type="button"
+                        className={`yuka-nav-item ${yukaTab === "top" ? "is-active" : ""}`}
+                        onClick={() => setYukaTab("top")}
+                      >
+                        <span className="yuka-nav-pill">☰</span>
+                        <small>Top</small>
+                      </button>
+                      <button
+                        type="button"
+                        className={`yuka-nav-item ${yukaTab === "search" ? "is-active" : ""}`}
+                        onClick={() => setYukaTab("search")}
+                      >
+                        <span className="yuka-nav-pill">🔍</span>
+                        <small>Search</small>
+                      </button>
+                    </nav>
                   </div>
                 </div>
               )}
