@@ -433,11 +433,32 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/ranch.jpg",
   },
   {
-    match: /\b(wonder bread|sara lee|white bread)\b/i,
+    match: /\b(wonder bread|sara lee|white bread|bread|buns|rolls|bagels?|english muffins?)\b/i,
     brand: "Sara Lee",
     title: "Classic Soft White Bread",
     ingredients: "Enriched Wheat Flour, Water, Sugar, Yeast, Vegetable Oil (Soybean), Salt, Calcium Propionate (to Preserve Freshness), Monoglycerides, DATEM, Calcium Sulfate, Soy Lecithin.",
     imageUrl: "/swaps/bread.jpg",
+  },
+  {
+    match: /\b(eggnog|egg nog|hood)\b/i,
+    brand: "Hood",
+    title: "Golden Vanilla Eggnog",
+    ingredients: "Milk, Cream, Sugar, Nonfat Milk, Egg Yolks, Corn Syrup, High Fructose Corn Syrup, Whey, Natural and Artificial Flavor, Nutmeg, Carrageenan, Guar Gum, Mono and Diglycerides, Annatto and Turmeric (Color).",
+    imageUrl: "/presets/yogurt.jpg",
+  },
+  {
+    match: /\b(whole milk|2% milk|skim milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk)\b/i,
+    brand: "Dairy Pure",
+    title: "Grade A Pasteurized Milk",
+    ingredients: "Grade A Milk, Vitamin D3.",
+    imageUrl: "/swaps/yogurt.jpg",
+  },
+  {
+    match: /\b(coffee[- ]?mate|international delight|creamer)\b/i,
+    brand: "Coffee mate",
+    title: "French Vanilla Liquid Coffee Creamer",
+    ingredients: "Water, Sugar, Vegetable Oil (High Oleic Soybean and/or High Oleic Canola), and Less than 2% of Micellar Casein (a Milk Derivative), Mono- and Diglycerides, Dipotassium Phosphate, Natural and Artificial Flavor, Cellulose Gel, Cellulose Gum, Carrageenan.",
+    imageUrl: "/presets/yogurt.jpg",
   },
   {
     match: /\b(banana|bananas|apple|apples|avocado|strawberr|blueberr|spinach|broccoli|kale|carrots?|potatoes?|tomatoes?|oranges?|grapes?|lemons?|eggs?|pasture[- ]raised eggs|salmon|ribeye|steak|ground beef|chicken breast|olive oil|honey|maple syrup)\b/i,
@@ -448,12 +469,14 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
 ];
 
+const UI_NOISE_QUERY = /\b(gas savings|walmart\+|new notification|scan barcodes|qr code|pickup or delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items)\b/i;
+
 function catalogFallback(query: string): Omit<LookupResult, "ms"> {
   const cleanTitle = query.trim().replace(/\b\w/g, (c) => c.toUpperCase());
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (entry.match.test(query)) {
       return {
-        productTitle: entry.title,
+        productTitle: cleanTitle,
         brand: entry.brand,
         ingredients: entry.ingredients,
         imageUrl: entry.imageUrl,
@@ -465,7 +488,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> {
   if (/\b(organic|grass[- ]?fed|sprouted|pure|raw|fresh|avocado oil)\b/i.test(query)) {
     return {
       productTitle: cleanTitle,
-      brand: "Clean Grocery Verified",
+      brand: "",
       ingredients: `Organic ${query.toLowerCase()}, sea salt.`,
       imageUrl: "/presets/butter.jpg",
       source: "catalog",
@@ -473,7 +496,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> {
   }
   return {
     productTitle: cleanTitle,
-    brand: "Conventional Grocery",
+    brand: "",
     ingredients: `Enriched flour, sugar, soybean oil, natural and artificial flavors, high fructose corn syrup, soy lecithin, salt, potassium sorbate.`,
     imageUrl: "/swaps/snacks.jpg",
     source: "catalog",
@@ -489,6 +512,10 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
   const title = (input.productTitle || "").trim();
 
+  if (title && UI_NOISE_QUERY.test(title)) {
+    return null;
+  }
+
   if (input.rawIngredients?.trim()) {
     return {
       productTitle: title || "Scanned product",
@@ -503,7 +530,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
   const cache = await loadCache();
   const hit = cache.get(key);
-  if (hit && hit.imageUrl) {
+  if (hit && hit.imageUrl && !hit.productTitle.startsWith("Conventional Grocery")) {
     const { cachedAt: _c, source, ...rest } = hit;
     return { ...rest, source: "cache", origin: source, ms: ms() };
   }

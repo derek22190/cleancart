@@ -158,17 +158,20 @@ class OverlayWindowService : Service() {
     }
 
     private fun recordScannedItem(d: JSONObject?) {
-        val result = d?.optJSONObject("result") ?: return
+        if (d?.optBoolean("ok") != true) return
+        val result = d.optJSONObject("result") ?: return
         val prod = d.optJSONObject("product") ?: return
-        val title = prod.optString("title").takeIf { it.isNotBlank() } ?: return
+        val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
+        if (rawTitle.isBlank()) return
+        if (Regex("(?i)(gas savings|walmart\\+|notification|scan barcodes|qr code|account|sparky)").containsMatchIn(rawTitle)) return
         val score = result.optInt("score", 50)
         val swap = d.optJSONObject("swap")
-        val existing = tripCart.firstOrNull { it.key == title }
+        val existing = tripCart.firstOrNull { it.key.equals(rawTitle, ignoreCase = true) }
         if (existing != null) {
             existing.score = score
             existing.swapObj = swap
         } else {
-            tripCart.add(0, TripCartItem(title, title, score, swap))
+            tripCart.add(0, TripCartItem(rawTitle, rawTitle, score, swap))
             if (tripCart.size > 10) tripCart.removeLast()
         }
         displayedCartAvg = calcCartAvg()
@@ -378,7 +381,7 @@ class OverlayWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("HEYBROC · WHOLE-CART AUDITOR", 11f, BRAND, bold = true))
+                addView(text("HEYBROC · WHOLE-CART HEALTH CHECK", 11f, BRAND, bold = true))
                 addView(text("Cart Average: $avg/100", 20f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })

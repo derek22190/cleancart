@@ -59,7 +59,12 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     };
   }
   const result = scoreIngredients(found.ingredients, req.watchlist);
-  const title = [found.brand, found.productTitle].filter(Boolean).join(" ").trim() || found.productTitle;
+  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food)$/i;
+  const shouldPrependBrand =
+    found.brand &&
+    !genericBrand.test(found.brand) &&
+    !found.productTitle.toLowerCase().includes(found.brand.toLowerCase());
+  const title = (shouldPrependBrand ? `${found.brand} ${found.productTitle}` : found.productTitle).trim();
   const swap = resolveSwap({
     score: result.score,
     productTitle: `${req.productTitle || ""} ${title}`,
