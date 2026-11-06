@@ -630,16 +630,26 @@ export default function Simulator() {
 
   /* ---------------- 2D Pill drag + Drag-to-Hide drop zone ---------------- */
   const drag = useRef<{ startX: number; startY: number; startPill: number; moved: boolean } | null>(null);
+  const cardOpenedAtRef = useRef<number>(0);
+
   const onPillDown = (e: React.PointerEvent) => {
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     drag.current = { startX: e.clientX, startY: e.clientY, startPill: pillY, moved: false };
-    setPillDragOffset({ x: 0, y: 0 });
   };
   const onPillMove = (e: React.PointerEvent) => {
     if (!drag.current || !screenRef.current) return;
     const dx = e.clientX - drag.current.startX;
     const dy = e.clientY - drag.current.startY;
-    if (Math.hypot(dx, dy) > 5) drag.current.moved = true;
+    // Ignore natural thumb wiggle (< 14px) on mobile touchscreens so taps always register
+    if (!drag.current.moved && Math.hypot(dx, dy) < 14) return;
+    if (!drag.current.moved) {
+      drag.current.moved = true;
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture is unsupported on synthetic touch
+      }
+    }
+
     const rect = screenRef.current.getBoundingClientRect();
     const pct = drag.current.startPill + (dy / rect.height) * 100;
     setPillY(Math.max(14, Math.min(88, pct)));
@@ -649,7 +659,18 @@ export default function Simulator() {
     const relX = (e.clientX - rect.left) / rect.width;
     setOverHideZone(relY > 0.80 && relX > 0.2 && relX < 0.8);
   };
-  const onPillUp = (isCartBubble: boolean, expand: boolean) => {
+  const triggerPillTap = (isCartBubble: boolean, expand: boolean) => {
+    if (Date.now() - cardOpenedAtRef.current < 350) return;
+    cardOpenedAtRef.current = Date.now();
+    if (isCartBubble) {
+      openAudit();
+    } else if (expand) {
+      setOverlay("card");
+    } else {
+      setOverlay("pill");
+    }
+  };
+  const onPillUp = (e: React.PointerEvent, isCartBubble: boolean, expand: boolean) => {
     const moved = drag.current?.moved;
     const dropHide = overHideZone;
     drag.current = null;
@@ -659,19 +680,15 @@ export default function Simulator() {
     if (dropHide) {
       setHiddenForTrip(true);
       setToast({
-        title: "CleanCart hidden for this trip",
+        title: "HeyBroc hidden for this trip",
         body: `Dismissed until the next time you open ${STORE_META[store].label}.`,
       });
       return;
     }
     if (!moved) {
-      if (isCartBubble) {
-        openAudit();
-      } else if (expand) {
-        setOverlay("card");
-      } else {
-        setOverlay("pill");
-      }
+      e.preventDefault();
+      e.stopPropagation();
+      triggerPillTap(isCartBubble, expand);
     }
   };
 
@@ -1016,7 +1033,11 @@ export default function Simulator() {
                   }}
                   onPointerDown={onPillDown}
                   onPointerMove={onPillMove}
-                  onPointerUp={() => onPillUp(isCartBubbleMode, overlay === "pill")}
+                  onPointerUp={(e) => onPillUp(e, isCartBubbleMode, overlay === "pill")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerPillTap(isCartBubbleMode, overlay === "pill");
+                  }}
                   role="button"
                   aria-label={
                     isCartBubbleMode
@@ -1078,7 +1099,13 @@ export default function Simulator() {
 
               {/* ---------- OVERLAY: Yuka-Style HeyBroc Drawer ---------- */}
               {overlay === "card" && (
-                <div className="backdrop" onClick={() => setOverlay("pill")}>
+                <div
+                  className="backdrop"
+                  onClick={() => {
+                    if (Date.now() - cardOpenedAtRef.current < 450) return;
+                    setOverlay("pill");
+                  }}
+                >
                   <div className="insights yuka-sheet" role="dialog" aria-label="Health Insights" onClick={(e) => e.stopPropagation()}>
                     {/* Top Header */}
                     <div className="insights-head yuka-topbar">
@@ -1543,7 +1570,14 @@ export default function Simulator() {
 
               {/* ---------- Whole-Cart Auditor & Cart Sheet ---------- */}
               {(cartOpen || auditOpen) && (
-                <div className="backdrop" onClick={() => { setCartOpen(false); setAuditOpen(false); }}>
+                <div
+                  className="backdrop"
+                  onClick={() => {
+                    if (Date.now() - cardOpenedAtRef.current < 450) return;
+                    setCartOpen(false);
+                    setAuditOpen(false);
+                  }}
+                >
                   <div className="sheet" onClick={(e) => e.stopPropagation()}>
                     <div className="sheet-grip" />
                     <div className="insights-head">
