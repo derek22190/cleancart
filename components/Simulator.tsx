@@ -372,6 +372,8 @@ export default function Simulator() {
   const [inspectTab, setInspectTab] = useState<"json" | "ios">("json");
 
   const [panel, setPanel] = useState<"none" | "watchlist">("none");
+  const [pillTheme, setPillTheme] = useState<"dark" | "green" | "score" | "white">("dark");
+  const [pillSize, setPillSize] = useState<"standard" | "compact">("standard");
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditBusy, setAuditBusy] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -1157,7 +1159,7 @@ export default function Simulator() {
                     </div>
                     <div className="pdp-section"><h4>About this item</h4><p>Popular pick in {active.category ?? "Grocery"}. Customers frequently buy this together with other pantry staples.</p></div>
                     <div className="pdp-section"><h4>Specifications</h4><p>Brand: {active.brand}<br />Category: {active.category ?? "Grocery"}</p></div>
-                    <div className="pdp-section"><h4>Ingredients</h4><p className="pdp-ingredients">{active.ingredients}</p><small className="no-scroll-note">CleanCart already read this — no scrolling needed.</small></div>
+                    <div className="pdp-section"><h4>Ingredients</h4><p className="pdp-ingredients">{active.ingredients}</p><small className="no-scroll-note">HeyBroc already read this — no scrolling needed.</small></div>
                   </div>
                 )}
               </div>
@@ -1166,7 +1168,7 @@ export default function Simulator() {
               {!hiddenForTrip && overlay !== "card" && (
                 <div
                   id="floating-overlay-pill"
-                  className={`pill tone-${isCartBubbleMode ? cartAvgTone : score.color} ${overlay === "min" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
+                  className={`pill pill--${pillTheme} tone-${isCartBubbleMode ? cartAvgTone : score.color} ${overlay === "min" || pillSize === "compact" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
                   style={{
                     top: `${pillY}%`,
                     transform: pillDragOffset
@@ -1183,8 +1185,8 @@ export default function Simulator() {
                   role="button"
                   aria-label={
                     isCartBubbleMode
-                      ? `Cart Average ${animatedCartAvg} of 100. Tap to open Whole-Cart Auditor.`
-                      : `CleanCart score ${score.score} of 100. Tap to inspect.`
+                      ? `Cart Average ${animatedCartAvg} of 100. Tap to open Whole-Cart Health Check.`
+                      : `HeyBroc score ${score.score} of 100. Tap to inspect.`
                   }
                   tabIndex={0}
                   onKeyDown={(e) => {
@@ -1197,8 +1199,8 @@ export default function Simulator() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/broc-mascot.jpg" alt="" className="pill-mascot" />
                   <span className="pill-dot" />
-                  {overlay === "min" ? (
-                    <b>{isCartBubbleMode ? `🛒 ${animatedCartAvg}` : score.score}</b>
+                  {overlay === "min" || pillSize === "compact" ? (
+                    <b>{isCartBubbleMode ? `🛒 ${animatedCartAvg}/100` : `${score.score}/100`}</b>
                   ) : isCartBubbleMode ? (
                     <>
                       <span>🛒 Cart Avg:</span>
