@@ -346,6 +346,24 @@ export default function Simulator() {
 
   const [toast, setToast] = useState<{ title: string; body: string; href?: string } | null>(null);
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("pro") === "1") {
+        setIsPro(true);
+        window.localStorage.setItem("heybroc_pro", "1");
+        setToast({
+          title: "✓ HeyBroc Family Pro Unlocked",
+          body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
+        });
+      } else if (window.localStorage.getItem("heybroc_pro") === "1") {
+        setIsPro(true);
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }, []);
+
   const [query, setQuery] = useState("");
   const [liveState, setLiveState] = useState<"idle" | "loading" | "error">("idle");
   const [liveError, setLiveError] = useState("");

@@ -100,6 +100,10 @@ export default function Paywall({
   };
 
   const handleCheckout = async () => {
+    if (receipt) {
+      onClose();
+      return;
+    }
     setCheckoutBusy(true);
     try {
       const gross = selectedPlan === "annual" ? PRICING.annual : PRICING.monthly;
@@ -113,6 +117,23 @@ export default function Paywall({
           body: JSON.stringify({ action: "track", code: appliedCreator.code, event }),
         });
       }
+
+      // Call Stripe Checkout endpoint (falls back to instant preview unlock if STRIPE_SECRET_KEY is not set yet)
+      const checkoutRes = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: selectedPlan,
+          creatorCode: appliedCreator?.code,
+          origin: typeof window !== "undefined" ? window.location.origin : "https://heybroc.com",
+        }),
+      });
+      const checkoutData = await checkoutRes.json().catch(() => ({}));
+      if (checkoutData?.mode === "stripe" && checkoutData?.url) {
+        window.location.href = checkoutData.url;
+        return;
+      }
+
       const net = Math.round((gross - commission) * 100) / 100;
       setReceipt({
         plan: selectedPlan,
@@ -127,6 +148,9 @@ export default function Paywall({
         trialDays: selectedPlan === "annual" ? trialDays : 0,
         commissionOwed: commission,
       });
+      setTimeout(() => {
+        onClose();
+      }, 950);
     } finally {
       setCheckoutBusy(false);
     }
@@ -250,11 +274,13 @@ export default function Paywall({
         >
           {checkoutBusy
             ? "Activating HeyBroc Family Pro…"
-            : selectedPlan === "annual"
-              ? appliedCreator
-                ? "Start 7-Day Free Trial ($0 Today)"
-                : "Start 3-Day Free Trial ($0 Today)"
-              : `Subscribe Monthly ($${PRICING.monthly.toFixed(2)} Today)`}
+            : receipt
+              ? "✓ Family Pro Active! Start Scanning →"
+              : selectedPlan === "annual"
+                ? appliedCreator
+                  ? "Start 7-Day Free Trial ($0 Today)"
+                  : "Start 3-Day Free Trial ($0 Today)"
+                : `Subscribe Monthly ($${PRICING.monthly.toFixed(2)} Today)`}
         </button>
         <p className="paywall-sub">
           {selectedPlan === "annual"
