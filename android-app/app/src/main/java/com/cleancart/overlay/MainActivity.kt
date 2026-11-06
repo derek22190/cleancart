@@ -13,6 +13,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -40,9 +41,19 @@ class MainActivity : Activity() {
             setBackgroundColor(0xFFF4F3EE.toInt())
         }
 
-        col.addView(label("🥦 HeyBroc", 28f, 0xFF15201B.toInt(), bold = true))
+        // Top-left header with custom Broc mascot avatar + HeyBroc title
+        col.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.broc_mascot)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(12) }
+            })
+            addView(label("HeyBroc", 28f, 0xFF15201B.toInt(), bold = true))
+        })
         col.addView(label("Ingredient-only grades and 1-tap clean swaps floating over Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt.", 15f, 0xFF4A5550.toInt()).apply {
-            setPadding(0, dp(6), 0, dp(20))
+            setPadding(0, dp(8), 0, dp(20))
         })
 
         // Step 1 — overlay permission

@@ -248,6 +248,11 @@ class OverlayWindowService : Service() {
             else -> data?.optString("error")?.take(48) ?: "HeyBroc"
         }
 
+        val mascotView = android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.broc_mascot)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(8) }
+        }
         val dotView = View(this).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tone) }
             layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(8) }
@@ -257,12 +262,13 @@ class OverlayWindowService : Service() {
         val view = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(11), dp(14), dp(11))
+            setPadding(dp(10), dp(9), dp(14), dp(9))
             background = GradientDrawable().apply {
                 setColor(0xEE141A17.toInt())
                 cornerRadii = floatArrayOf(999f, 999f, 0f, 0f, 0f, 0f, 999f, 999f)
             }
             elevation = dp(8).toFloat()
+            addView(mascotView)
             addView(dotView)
             addView(labelView)
         }
