@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PRICING, type PlanId } from "@/lib/pricing";
 
+const ALLOWED_ORIGINS = new Set([
+  "https://heybroc.com",
+  "https://www.heybroc.com",
+  "https://cleancart-teal.vercel.app",
+  "http://localhost:3000",
+]);
+
 /**
  * POST /api/checkout
  * Body: { plan: "annual" | "monthly", creatorCode?: string, origin?: string }
@@ -13,22 +20,30 @@ import { PRICING, type PlanId } from "@/lib/pricing";
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400 });
+    }
+    const body = parsed as Record<string, unknown>;
     const plan: PlanId = body.plan === "monthly" ? "monthly" : "annual";
     const creatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
-    const origin =
-      (typeof body.origin === "string" && body.origin.startsWith("http") ? body.origin : null) ||
-      req.headers.get("origin") ||
-      "https://heybroc.com";
+    const candidateOrigin = (typeof body.origin === "string" ? body.origin : req.headers.get("origin"))?.replace(/\/+$/, "") || "";
+    const origin = ALLOWED_ORIGINS.has(candidateOrigin) ? candidateOrigin : "https://heybroc.com";
 
     const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
     if (!stripeKey) {
-      return NextResponse.json({
-        ok: true,
-        mode: "preview",
-        plan,
-        trialDays: plan === "annual" ? (creatorCode ? PRICING.creatorTrialDays : PRICING.trialDays) : 0,
-      });
+      if (process.env.ALLOW_PREVIEW_CHECKOUT === "true") {
+        return NextResponse.json({
+          ok: true,
+          mode: "preview",
+          plan,
+          trialDays: plan === "annual" ? (creatorCode ? PRICING.creatorTrialDays : PRICING.trialDays) : 0,
+        });
+      }
+      return NextResponse.json(
+        { ok: false, mode: "unconfigured", error: "Stripe checkout is not configured on this server." },
+        { status: 503 },
+      );
     }
 
     const trialDays = plan === "annual" ? (creatorCode ? PRICING.creatorTrialDays : PRICING.trialDays) : 0;
@@ -37,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     const params = new URLSearchParams();
     params.set("mode", "subscription");
-    params.set("success_url", `${origin}/?pro=1&plan=${plan}${creatorCode ? `&code=${encodeURIComponent(creatorCode)}` : ""}`);
+    params.set("success_url", `${origin}/?pro=1&session_id={CHECKOUT_SESSION_ID}&plan=${plan}${creatorCode ? `&code=${encodeURIComponent(creatorCode)}` : ""}`);
     params.set("cancel_url", `${origin}/?checkout=cancelled`);
     params.set("line_items[0][price_data][currency]", "usd");
     params.set("line_items[0][price_data][unit_amount]", String(unitAmountCents));

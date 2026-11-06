@@ -123,10 +123,19 @@
   }
 
   function isProductPage() {
-    if (STORE === "walmart") return /\/ip\//.test(location.pathname);
-    if (STORE === "instacart") return /\/products?\//.test(location.pathname) || !!document.querySelector('[data-testid*="item-details" i]');
-    if (STORE === "sams") return /\/p\/|\/product\//.test(location.pathname);
-    if (STORE === "bjs") return /\/product\//.test(location.pathname);
+    const p = location.pathname;
+    if (STORE === "walmart") return /\/ip\//.test(p);
+    if (STORE === "instacart") return /\/products?\//.test(p) || !!document.querySelector('[data-testid*="item-details" i]');
+    if (STORE === "target") return /\/p\//.test(p);
+    if (STORE === "kroger") return /\/p\//.test(p);
+    if (STORE === "aldi") return /\/products?\//.test(p);
+    if (STORE === "doordash") return /\/products?\//.test(p) || /item-details/i.test(location.search);
+    if (STORE === "ubereats") return /\/product\//.test(p) || /mod=quickView/i.test(location.search);
+    if (STORE === "amazon") return /\/(dp|gp\/product)\//.test(p);
+    if (STORE === "sams") return /\/(p|product|ip)\//.test(p);
+    if (STORE === "bjs") return /\/product\//.test(p);
+    if (STORE === "costco") return /\/p\/|\.product\./i.test(p);
+    if (STORE === "shipt") return /\/products?\//.test(p);
     return !!readTitle();
   }
 

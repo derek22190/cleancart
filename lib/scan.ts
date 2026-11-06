@@ -2,8 +2,8 @@
  * Shared scan pipeline used by /api/scan and /api/audit.
  */
 import "server-only";
-import { lookupIngredients, type LookupResult } from "./lookup";
-import { scoreIngredients, type ScoreResult, type Watchlist } from "./rubric";
+import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
+import { ALL_CATEGORIES, scoreIngredients, type Category, type ScoreResult, type Watchlist } from "./rubric";
 import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
 
 export interface ScanRequest {
@@ -12,6 +12,7 @@ export interface ScanRequest {
   barcode?: string;
   store?: string;
   watchlist?: Watchlist;
+  familyWatchlist?: Category[];
   format?: "json" | "ios_text";
 }
 
@@ -37,39 +38,99 @@ export interface ScanError {
   status: number;
 }
 
-export function parseStore(s?: string): Store {
-  return (STORES as string[]).includes(s || "") ? (s as Store) : "walmart";
+export function parseStore(s?: unknown): Store {
+  return typeof s === "string" && (STORES as string[]).includes(s) ? (s as Store) : "walmart";
+}
+
+const ipHits = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(ip: string, limitPerMin = 90): boolean {
+  const now = Date.now();
+  const entry = ipHits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    if (ipHits.size > 5000) ipHits.clear();
+    ipHits.set(ip, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= limitPerMin;
 }
 
 export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanError> {
-  if (!req.productTitle?.trim() && !req.rawIngredients?.trim() && !req.barcode?.trim()) {
+  if (!req || typeof req !== "object" || Array.isArray(req)) {
+    return { ok: false, status: 400, error: "Request body must be a JSON object." };
+  }
+  if (
+    (req.productTitle !== undefined && typeof req.productTitle !== "string") ||
+    (req.rawIngredients !== undefined && typeof req.rawIngredients !== "string") ||
+    (req.barcode !== undefined && typeof req.barcode !== "string" && typeof req.barcode !== "number")
+  ) {
+    return { ok: false, status: 400, error: "productTitle, rawIngredients, and barcode must be strings." };
+  }
+
+  const rawTitleInput = typeof req.productTitle === "string" ? req.productTitle.trim().slice(0, 300) : "";
+  const productTitle = rawTitleInput
+    .replace(/^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*/i, "")
+    .replace(/^(best seller|overall pick|popular pick|rollback|sponsored|save for later)\s*[,•|\-]?\s*/i, "")
+    .trim();
+  const rawIngredients = typeof req.rawIngredients === "string" ? req.rawIngredients.trim().slice(0, 12_000) : "";
+  const barcode =
+    typeof req.barcode === "string" || typeof req.barcode === "number" ? String(req.barcode).trim().slice(0, 32) : "";
+
+  if (!productTitle && !rawIngredients && !barcode) {
     return { ok: false, status: 400, error: "Provide productTitle, barcode, or rawIngredients." };
   }
+  if (rawIngredients && !isEnglishIngredientText(rawIngredients)) {
+    return {
+      ok: false,
+      status: 422,
+      error: "Only English ingredient lists are supported by the deterministic rubric.",
+    };
+  }
+
   const store = parseStore(req.store);
+  const watchlist =
+    req.watchlist && typeof req.watchlist === "object" && !Array.isArray(req.watchlist) ? req.watchlist : undefined;
+  const familyWatchlist = Array.isArray(req.familyWatchlist)
+    ? req.familyWatchlist.filter((c): c is Category => typeof c === "string" && (ALL_CATEGORIES as string[]).includes(c))
+    : undefined;
+
   const found = await lookupIngredients({
-    productTitle: req.productTitle,
-    barcode: req.barcode,
-    rawIngredients: req.rawIngredients,
+    productTitle,
+    barcode,
+    rawIngredients,
   });
   if (!found) {
     return {
       ok: false,
       status: 404,
-      error: `No ingredient list found for "${req.productTitle || req.barcode}" on Open Food Facts or USDA. Try adding the brand name.`,
+      error: `No ingredient list found for "${productTitle || barcode}" on Open Food Facts or USDA. Try adding the brand name.`,
     };
   }
-  const result = scoreIngredients(found.ingredients, req.watchlist);
+  const result = scoreIngredients(found.ingredients, watchlist, familyWatchlist);
   const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food)$/i;
+  const callerWords = productTitle.split(/\s+/).filter(Boolean);
+  // If the caller/screen-reader provided a full store product title (3+ words), preserve it
+  // so a store brand (e.g. "Great Value", "Wellsley Farms") is never overwritten by a different brand ("Dairy Pure").
   const shouldPrependBrand =
+    callerWords.length < 3 &&
     found.brand &&
     !genericBrand.test(found.brand) &&
     !found.productTitle.toLowerCase().includes(found.brand.toLowerCase());
-  const title = (shouldPrependBrand ? `${found.brand} ${found.productTitle}` : found.productTitle).trim();
+  const title = (
+    callerWords.length >= 3
+      ? productTitle
+      : shouldPrependBrand
+        ? `${found.brand} ${found.productTitle}`
+        : found.productTitle
+  ).trim();
   const swap = resolveSwap({
     score: result.score,
-    productTitle: `${req.productTitle || ""} ${title}`,
+    productTitle: `${productTitle} ${title}`,
     ingredients: found.ingredients,
     store,
+    watchlist,
+    familyWatchlist,
   });
   return {
     ok: true,

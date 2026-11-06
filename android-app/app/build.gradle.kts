@@ -7,12 +7,12 @@ val apiBase: String = (project.findProperty("cleancartApiBase") as String?) ?: "
 
 android {
     namespace = "com.cleancart.overlay"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.cleancart.overlay"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 2
         versionName = "1.1.0"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")

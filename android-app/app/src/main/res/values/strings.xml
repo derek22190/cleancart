@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">HeyBroc</string>
     <string name="accessibility_label">HeyBroc</string>
-    <string name="accessibility_description">Reads only the product title and ingredient text shown in Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam\'s Club, BJ\'s, Costco, and Shipt so HeyBroc can grade ingredients. No other apps are read and nothing is sold or stored.</string>
+    <string name="accessibility_description">HeyBroc uses the AccessibilityService API only to read the visible product title and ingredient text shown in Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam\'s Club, BJ\'s, Costco, and Shipt and send it over HTTPS to heybroc.com to compute your 0–100 ingredient score. No other apps or personal data are read, stored, or sold.</string>
 </resources>

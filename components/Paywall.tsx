@@ -105,20 +105,11 @@ export default function Paywall({
       return;
     }
     setCheckoutBusy(true);
+    setCodeError("");
     try {
       const gross = selectedPlan === "annual" ? PRICING.annual : PRICING.monthly;
       let commission = 0;
-      if (appliedCreator) {
-        commission = commissionFor(selectedPlan, appliedCreator.commissionPct);
-        const event = selectedPlan === "annual" ? "checkout_annual" : "paid_monthly";
-        await fetch("/api/influencers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "track", code: appliedCreator.code, event }),
-        });
-      }
 
-      // Call Stripe Checkout endpoint (falls back to instant preview unlock if STRIPE_SECRET_KEY is not set yet)
       const checkoutRes = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,9 +120,32 @@ export default function Paywall({
         }),
       });
       const checkoutData = await checkoutRes.json().catch(() => ({}));
-      if (checkoutData?.mode === "stripe" && checkoutData?.url) {
+      if (checkoutData?.ok && checkoutData?.mode === "stripe" && checkoutData?.url) {
+        if (appliedCreator) {
+          await fetch("/api/influencers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "track", code: appliedCreator.code, event: "trial" }),
+          });
+        }
         window.location.href = checkoutData.url;
         return;
+      }
+
+      // Fail closed unless server explicitly authorized preview mode (ALLOW_PREVIEW_CHECKOUT=true)
+      if (!checkoutRes.ok || !checkoutData?.ok || checkoutData?.mode !== "preview") {
+        setCodeError(checkoutData?.error || "Checkout is currently unavailable. Please try again.");
+        return;
+      }
+
+      if (appliedCreator) {
+        commission = commissionFor(selectedPlan, appliedCreator.commissionPct);
+        const event = selectedPlan === "annual" ? "checkout_annual" : "paid_monthly";
+        await fetch("/api/influencers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "track", code: appliedCreator.code, event }),
+        });
       }
 
       const net = Math.round((gross - commission) * 100) / 100;
@@ -151,6 +165,8 @@ export default function Paywall({
       setTimeout(() => {
         onClose();
       }, 950);
+    } catch {
+      setCodeError("Network error starting checkout. Please try again.");
     } finally {
       setCheckoutBusy(false);
     }

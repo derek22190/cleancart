@@ -1,18 +1,20 @@
 package com.cleancart.overlay
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
 import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
 
 /**
- * Reads ONLY the product title (and visible ingredient text, if on screen) from the four
- * supported grocery apps, debounced by 1.2s, then posts to /api/scan and hands the result
+ * Reads ONLY the product title (and visible ingredient text, if on screen) from the 12
+ * supported grocery apps, debounced by 750ms, then posts to /api/scan and hands the result
  * to [OverlayWindowService]. Automatically detects when the user navigates back to a
  * search / aisle scroll view and switches the corner bubble to Mode B (`🛒 Cart Avg`).
  */
@@ -28,45 +30,89 @@ class GroceryScreenReaderService : AccessibilityService() {
             "com.dd.doordash",
             "com.ubercab.eats",
             "com.amazon.mShop.android.shopping",
+            "com.wholefoods.wholefoodsmarket",
+            "com.rfi.sams.android",
             "com.samsclub.app",
+            "com.brandingbrand.reactnative.and.bjs",
             "com.bjs.mobile",
             "com.costco.app.android",
             "com.shipt.groceries"
         )
+        private val IGNORED_TRANSIENT_PACKAGES = setOf(
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.samsung.android.honeyboard",
+            "com.touchtype.swiftkey",
+            "com.android.permissioncontroller",
+            "com.google.android.permissioncontroller"
+        )
         private const val DEBOUNCE_MS = 750L
+        private const val MAX_DEBOUNCE_WAIT_MS = 2200L
         private const val FOREGROUND_CHECK_MS = 1500L
-        private const val MAX_NODES = 1800
+        private const val MAX_NODES = 900
         private val TITLE_ID_HINTS = listOf(
             "pdp_title",
+            "pdp_product_title",
+            "product_detail_title",
+            "item_detail_title",
             "product_title",
             "producttitle",
+            "product_header_title",
             "product_name",
-            "productname",
-            "item_name",
-            "itemname",
-            "item_title"
+            "item_name"
         )
         private val HOME_OR_AISLE_BANNERS = Regex(
-            """shop all food|rollbacks\s*&\s*more|your favorites,\s*for less|the holiday shop|use walmart\+?\s*gas savings|hosting,\s*decor\s*&\s*more|search results for|department|featured categories""",
+            """shop all food|rollbacks\s*&\s*more|your favorites,\s*for less|the holiday shop|use walmart\+?\s*gas savings|hosting,\s*decor\s*&\s*more|search results for|\b\d+\s+results?\b|featured categories|shop categories|trending in\b|shop by category|shop by department|weekly ad|reorder\b|buy again""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CART_CHECKOUT_SIGNALS = Regex(
+            """\b(continue to checkout|proceed to checkout|go to checkout|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|cart \(\d+\))\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CART_ITEM_CONTROLS = Regex(
+            """^(remove|save for later)$""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CART_END_BOUNDARY = Regex(
+            """^(saved for later.*|recommended for you.*|customers also.*|similar items.*|frequently bought.*|people also bought.*|don't forget.*)$""",
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_PDP_CTA = Regex(
-            """\b(add to cart|add to order|buy now|add \d+ to cart|choose options)\b""",
+            """\b(add to cart|add to bag|add to basket|add to order|add to box|add item|buy now|add \d+ to (cart|order|bag|basket)|add \(\$\d+(\.\d{2})?\)|choose options|select options|\d+\s+in\s+cart|added to cart)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val IN_CART_PDP_BADGE = Regex(
+            """\b(\d+\s+in\s+cart|added to cart)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_PDP_DETAILS = Regex(
-            """^(about this item|product details|ingredients|nutrition facts|specifications|at a glance|product description|details)$""",
+            """^(about this item|product details|ingredients|nutrition facts|nutrition information|specifications|at a glance|product description|dietary\s*&\s*lifestyle|disclaimer|warnings|directions)$""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CAROUSEL_BOUNDARY = Regex(
+            """^(similar items|customers also (bought|viewed|considered)|frequently bought together|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar)$""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val BRAND_OR_UNIT_ONLY = Regex(
+            """^(great value|marketside|sam'?s choice|bettergoods|kirkland( signature)?|wellsley farms|berkley jensen|member'?s mark|good\s*&\s*gather|favorite day|market pantry|simple truth|private selection|simply nature|millville|clancy'?s|365( by whole foods market)?|chobani|yoplait|dannon|stonyfield|horizon|fairlife|hood|lactaid|coffee-mate|kraft|sargento|tillamook|philadelphia|velveeta|heinz|hellmann'?s|hidden valley|primal kitchen|kellogg'?s?|general mills|post|quaker|nature'?s own|sara lee|wonder|dave'?s killer( bread)?|canyon bakehouse|thomas'?|applegate|boar'?s head|oscar mayer|hillshire( farm)?|hormel|jimmy dean|tyson|perdue|foster farms|kerrygold|land o'?lakes|country crock|blue bonnet|dairypure|dairy pure|\d+(\.\d+)?\s*(fl\s*oz|oz|lb|lbs|ct|count|pack|gal|gallon|qt|pt|ml|g|kg|ea)|half gallon|dairy\s*&\s*eggs|bread\s*&\s*bakery|meat\s*&\s*seafood|fresh produce|snacks\s*&\s*candy|beverages|frozen foods?|pantry)$""",
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+\s*(ct|count|pack|oz|lb|reviews?|ratings?)|^\+?\s*add$|add to cart|add to order|buy now|choose options|sign in|search|reviews?$|ratings?$|stars?\b|pickup|delivery|shipping|see all|view all|sponsored|bought \d|stay stocked|last purchased|try a subscription|overall pick|best seller|popular pick|rollback|free shipping|arrives|preparing|out of stock|in stock|aisle\s+[a-z0-9]|shop now|learn more|terms apply|holiday denim|levi strauss|subscribe|add to list|share|similar items|frequently bought|customers also|you might also|nutrition facts|serving size|calories|about this item|product details|specifications|at a glance|gas savings|walmart\+|scan barcodes|qr code|notification|account|sparky|my items|services|poplar hill|how do you want your items|grocery|household|fashion|beauty|pharmacy|electronics|auto|home\b|back\b|close\b|filter|sort by""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*\d+$|^(add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|express|temporarily unavailable|not available.*|available|ready in \d+.*|check nearby clubs|out of stock.*|in stock|ebt eligible|snap ebt.*|tomorrow|today|\d{1,2}(:\d{2})?\s*(am|pm)\s*-\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+.*|change|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+ times|stay stocked|last purchased|gas savings|walmart\+|scan barcodes|qr code|aisle\s+[a-z0-9]+|\d+\s+[a-z0-9.\s]+\b(rd|road|st|street|ave|avenue|blvd|dr|drive|ln|lane|way|ct|court|pkwy|hwy))\b""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|eggnog|egg nog|yogurt|cheese|butter|cream|creamer|sour cream|cottage cheese|eggs?|bread|bagel|buns|rolls|tortilla|muffin|chips|crackers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|marinara|salsa|ketchup|mustard|mayo|mayonnaise|oil|olive oil|avocado oil|vinegar|turkey|chicken|beef|steak|pork|bacon|sausage|ham|deli|salami|pepperoni|hot dog|salmon|tuna|shrimp|fish|juice|lemonade|soda|cola|pop|water|sparkling|energy|sports drink|gatorade|tea|coffee|espresso|cookie|cookies|brownie|cake|candy|chocolate|gummies|fruit|snacks|apple|banana|strawberry|blueberry|raspberry|berry|avocado|spinach|broccoli|kale|salad|lettuce|tomato|potato|onion|garlic|carrot|orange|grape|lemon|lime|beans|rice|pasta|noodles|soup|broth|pizza|burrito|nuggets|fries|waffles|ice cream|popsicle|organic|grass-fed|pasture|great value|marketside|sam's choice|bettergoods|kirkland|good & gather|favorite day|market pantry|simple truth|private selection|kroger|aldi|simply nature|millville|clancy's|chobani|yoplait|danon|stonyfield|horizon|fairlife|hood|lactaid|coffee-mate|kraft|sargento|tillamook|philadelphia|velveeta|heinz|hellmann|hidden valley|primal kitchen|doritos|cheetos|takis|lay's|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|kellogg|general mills|post|quaker|nature's own|sara lee|wonder|dave's killer|canyon bakehouse|thomas'|applegate|boar's head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|foster farms|impossible|beyond|kerrygold|land o'lakes|country crock|blue bonnet|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix|whole|lowfat|nonfat|skim|vitamin d|gallon|half gallon|quart|pint|fl oz|oz|lb\b)""",
+            """\b(milk|eggnog|egg nog|yogurt|cheese|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|buns|rolls|tortilla|muffin|chips|crackers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|lemonade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|cookie|cookies|brownie|cake|candy|chocolate|gummies|fruit|snacks|apple|banana|strawberry|blueberry|raspberry|berry|avocado|spinach|broccoli|kale|salad|lettuce|tomato|potato|onion|garlic|carrot|orange|grape|lemon|lime|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|pizza|burrito|nuggets|tenders|fries|waffles|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix)\b""",
             RegexOption.IGNORE_CASE,
         )
-        private val PRICE_PATTERN = Regex("""\$\d+\.\d{2}""")
+        private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2})?|\b\d+\s*dollars?\s*and\s*\d+\s*cents?\b)""", RegexOption.IGNORE_CASE)
+        private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add|quick add|add item|choose options)$""", RegexOption.IGNORE_CASE)
+        private val NON_INGREDIENT_TEXT = Regex(
+            """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val WHITESPACE = Regex("""\s+""")
+        private val SPONSORED_BADGE = Regex("""^(sponsored|ad|advertisement)$""", RegexOption.IGNORE_CASE)
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -74,24 +120,81 @@ class GroceryScreenReaderService : AccessibilityService() {
     private var currentPackage = ""
     private var lastKey = ""
     private var overlayVisible = false
+    private var pendingSinceMs = 0L
+    private var wasOnCartScreen = false
+    private var pendingAddToCartClick = false
 
-    private val scanRunnable = Runnable { readAndScan() }
+    private val scanRunnable = Runnable {
+        pendingSinceMs = 0L
+        readAndScan()
+    }
     private val foregroundCheck = object : Runnable {
         override fun run() {
-            val pkg = rootInActiveWindow?.packageName?.toString()
-            if (overlayVisible && (pkg == null || (pkg !in STORE_PACKAGES && pkg != packageName))) {
+            if (!AccessibilityConsent.granted(this@GroceryScreenReaderService) || !isDeviceInteractiveAndUnlocked()) {
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
+                return
+            }
+            val root = rootInActiveWindow
+            val pkg = root?.packageName?.toString()
+            recycleNode(root)
+            val isTransient = pkg == null || pkg in IGNORED_TRANSIENT_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")
+            if (overlayVisible && !isTransient && pkg !in STORE_PACKAGES && pkg != packageName) {
+                sendToOverlay(OverlayWindowService.ACTION_HIDE)
+                overlayVisible = false
+                lastKey = ""
+                wasOnCartScreen = false
             }
             if (overlayVisible) handler.postDelayed(this, FOREGROUND_CHECK_MS)
         }
     }
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        if (!AccessibilityConsent.granted(this)) {
+            sendToOverlay(OverlayWindowService.ACTION_HIDE)
+            overlayVisible = false
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!AccessibilityConsent.granted(this) || !isDeviceInteractiveAndUnlocked()) {
+            if (overlayVisible) {
+                sendToOverlay(OverlayWindowService.ACTION_HIDE)
+                overlayVisible = false
+                lastKey = ""
+            }
+            return
+        }
         val pkg = event?.packageName?.toString() ?: return
         if (pkg !in STORE_PACKAGES) return
         currentPackage = pkg
+
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val clickedText = buildString {
+                event.text?.forEach { append(it).append(' ') }
+                event.contentDescription?.let { append(it) }
+            }.trim()
+            if (SINGLE_PDP_CTA.containsMatchIn(clickedText) || ADD_TILE_BUTTON.matches(clickedText)) {
+                pendingAddToCartClick = true
+                lastKey = "" // Force re-evaluation so the clicked product is recorded in cart
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            pendingSinceMs = now
+            handler.removeCallbacks(scanRunnable)
+            handler.postDelayed(scanRunnable, 350L)
+            return
+        }
+        if (pendingSinceMs == 0L) pendingSinceMs = now
+        if (now - pendingSinceMs >= MAX_DEBOUNCE_WAIT_MS) {
+            handler.removeCallbacks(scanRunnable)
+            scanRunnable.run()
+            return
+        }
         handler.removeCallbacks(scanRunnable)
         handler.postDelayed(scanRunnable, DEBOUNCE_MS)
     }
@@ -104,65 +207,155 @@ class GroceryScreenReaderService : AccessibilityService() {
         super.onDestroy()
     }
 
-    /* ---------------- Screen reading ---------------- */
+    private fun isDeviceInteractiveAndUnlocked(): Boolean {
+        val power = getSystemService(PowerManager::class.java)
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        val interactive = power?.isInteractive ?: true
+        val locked = keyguard?.isKeyguardLocked ?: false
+        return interactive && !locked
+    }
 
-    private fun readAndScan() {
-        val root = rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString() ?: return
-        if (pkg !in STORE_PACKAGES) return
-
-        val nodes = collectTextNodes(root)
-        val priceCount = nodes.count { PRICE_PATTERN.containsMatchIn(it.text) }
-        val plusAddCount = nodes.count {
-            it.text.equals("+ Add", ignoreCase = true) || it.text.equals("Add", ignoreCase = true)
-        }
-        val ingredients = findIngredients(nodes)
-
-        val hasHomeOrAisleBanners = nodes.any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text) }
-        val hasSinglePdpCta = nodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
-        val hasSinglePdpDetails = ingredients != null || nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
-        val hasExplicitPdpViewId = nodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
-
-        // Only grade a single product when the user has opened an actual Product Detail Page (PDP).
-        // When browsing the Home Screen, Category tabs, or Search Aisle grids, stay in Mode B (`🛒 Cart Avg`).
-        val isSingleProductPage =
-            (hasSinglePdpCta || hasSinglePdpDetails || hasExplicitPdpViewId) &&
-                !hasHomeOrAisleBanners &&
-                plusAddCount < 3 &&
-                !(priceCount >= 5 && ingredients == null)
-
-        val title = if (isSingleProductPage) findTitle(nodes) else null
-
-        if (!isSingleProductPage || title == null) {
-            val idleKey = "$pkg|IDLE_CART_AVG"
-            if (lastKey != idleKey) {
-                lastKey = idleKey
-                sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
-                markVisible()
-            }
-            return
-        }
-
-        val key = "$pkg|$title|${ingredients?.length ?: 0}"
-        if (key == lastKey) return
-        lastKey = key
-
-        sendToOverlay(OverlayWindowService.ACTION_LOADING) { putExtra(OverlayWindowService.EXTRA_TITLE, title) }
-        markVisible()
-        val store = ScanApi.storeForPackage(pkg)
-        io.execute {
-            val json = try {
-                ScanApi.scan(this, title, ingredients, store)
-            } catch (e: Exception) {
-                """{"ok":false,"error":"HeyBroc connection error (${e.javaClass.simpleName})"}"""
-            }
-            handler.post {
-                sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) { putExtra(OverlayWindowService.EXTRA_JSON, json) }
-            }
+    private fun recycleNode(node: AccessibilityNodeInfo?) {
+        if (node == null) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            @Suppress("DEPRECATION")
+            runCatching { node.recycle() }
         }
     }
 
-    private data class TextNode(val text: String, val viewId: String, val isHeading: Boolean, val index: Int, val next: String?)
+    /* ---------------- Screen reading ---------------- */
+
+    private fun readAndScan() {
+        if (!AccessibilityConsent.granted(this) || !isDeviceInteractiveAndUnlocked()) return
+        val root = rootInActiveWindow ?: return
+        try {
+            val pkg = root.packageName?.toString() ?: return
+            if (pkg !in STORE_PACKAGES) return
+
+            val rawNodes = collectTextNodes(root)
+            val nodes = stripSponsoredAdNodes(rawNodes)
+            val ingredients = findIngredients(nodes)
+
+            // 1. Check if the user is viewing their actual Cart screen (e.g., Walmart Cart with "Continue to checkout" / "Estimated total")
+            val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text) }
+            val hasCartItemControls = nodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
+            val isCartScreen = hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
+                it.text.contains("continue to checkout", ignoreCase = true) ||
+                    it.text.contains("proceed to checkout", ignoreCase = true) ||
+                    it.text.contains("estimated total", ignoreCase = true)
+            })
+
+            if (isCartScreen) {
+                val replaceCart = !wasOnCartScreen
+                wasOnCartScreen = true
+                val cartTitles = extractCartScreenTitles(nodes)
+                if (cartTitles.isNotEmpty()) {
+                    val cartKey = "$pkg|CART|${cartTitles.joinToString("|")}"
+                    if (lastKey != cartKey) {
+                        lastKey = cartKey
+                        markVisible()
+                        val store = ScanApi.storeForPackage(pkg)
+                        val appContext = applicationContext
+                        io.execute {
+                            val arr = org.json.JSONArray()
+                            for (itemTitle in cartTitles) {
+                                val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
+                                if (json != null) {
+                                    arr.put(json)
+                                }
+                            }
+                            handler.post {
+                                if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
+                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                        putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                        putExtra(OverlayWindowService.EXTRA_REPLACE_CART, replaceCart)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                        markVisible()
+                    }
+                } else {
+                    sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                    markVisible()
+                }
+                return
+            }
+            wasOnCartScreen = false
+
+            // 2. Slice off "Similar items / Customers also bought" bottom carousels when evaluating PDP vs. Aisle
+            val carouselIdx = nodes.indexOfFirst { it.index >= 4 && CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
+            val primaryNodes = if (carouselIdx >= 4) nodes.subList(0, carouselIdx) else nodes
+            val visiblePrimary = primaryNodes.filter { it.isVisible }
+
+            val tileAddCount = visiblePrimary.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
+            val singlePdpCtaCount = visiblePrimary.count { SINGLE_PDP_CTA.containsMatchIn(it.text) }
+
+            val hasHomeOrAisleBanners = visiblePrimary.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
+            val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
+            val hasSinglePdpDetails = ingredients != null || nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
+            val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
+
+            // Grade a single product whenever the user is on a Product Detail Page (PDP), even if it has
+            // multiple flavor/pack-size variant prices or its title sits just behind the sticky Add to cart footer.
+            val isSingleProductPage =
+                !hasHomeOrAisleBanners &&
+                    (hasExplicitPdpViewId ||
+                        hasSinglePdpDetails ||
+                        (hasSinglePdpCta && singlePdpCtaCount <= 2 && tileAddCount < 3))
+
+            val title = if (isSingleProductPage) findTitle(primaryNodes) else null
+
+            if (!isSingleProductPage || title == null) {
+                val idleKey = "$pkg|IDLE_CART_AVG"
+                if (lastKey != idleKey) {
+                    lastKey = idleKey
+                    sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                    markVisible()
+                }
+                return
+            }
+
+            val inCartOnPdp = pendingAddToCartClick || primaryNodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) }
+            pendingAddToCartClick = false
+
+            val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
+            if (key == lastKey) return
+            lastKey = key
+
+            sendToOverlay(OverlayWindowService.ACTION_LOADING) { putExtra(OverlayWindowService.EXTRA_TITLE, title) }
+            markVisible()
+            val store = ScanApi.storeForPackage(pkg)
+            val appContext = applicationContext
+            io.execute {
+                val json = try {
+                    ScanApi.scan(appContext, title, ingredients, store)
+                } catch (e: Exception) {
+                    """{"ok":false,"error":"HeyBroc connection error (${e.javaClass.simpleName})"}"""
+                }
+                handler.post {
+                    if (overlayVisible && lastKey == key && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
+                        sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
+                            putExtra(OverlayWindowService.EXTRA_JSON, json)
+                            putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                        }
+                    }
+                }
+            }
+        } finally {
+            recycleNode(root)
+        }
+    }
+
+    private data class TextNode(
+        val text: String,
+        val viewId: String,
+        val isHeading: Boolean,
+        val isVisible: Boolean,
+        val index: Int,
+    )
 
     private fun collectTextNodes(root: AccessibilityNodeInfo): List<TextNode> {
         val out = ArrayList<TextNode>()
@@ -172,60 +365,168 @@ class GroceryScreenReaderService : AccessibilityService() {
         while (queue.isNotEmpty() && seen < MAX_NODES) {
             val node = queue.removeFirst()
             seen++
-            val t1 = node.text?.toString()?.trim().orEmpty()
-            val t2 = node.contentDescription?.toString()?.trim().orEmpty()
-            val viewId = node.viewIdResourceName?.lowercase().orEmpty()
-            val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
-            val sibling = siblingText(node)
-            if (t1.isNotEmpty()) {
-                out.add(TextNode(t1, viewId, heading, out.size, sibling))
+            try {
+                if (node.isPassword) continue
+                val viewId = node.viewIdResourceName?.lowercase().orEmpty()
+                val isSearchInput = node.isEditable ||
+                    viewId.contains("search_src_text") ||
+                    viewId.contains("search_bar_text") ||
+                    viewId.endsWith("search_box") ||
+                    viewId.endsWith("search_edit_text")
+                if (!isSearchInput) {
+                    val t1 = node.text?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
+                    val t2 = node.contentDescription?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
+                    val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
+                    val visible = node.isVisibleToUser
+                    if (t1.isNotEmpty()) {
+                        out.add(TextNode(t1, viewId, heading, visible, out.size))
+                    }
+                    if (t2.isNotEmpty() && t2 != t1) {
+                        out.add(TextNode(t2, viewId, heading, visible, out.size))
+                    }
+                }
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let(queue::add)
+                }
+            } finally {
+                if (node !== root) recycleNode(node)
             }
-            if (t2.isNotEmpty() && t2 != t1) {
-                out.add(TextNode(t2, viewId, heading, out.size, sibling))
-            }
-            for (i in 0 until node.childCount) node.getChild(i)?.let(queue::add)
+        }
+        while (queue.isNotEmpty()) {
+            val leftover = queue.removeFirst()
+            if (leftover !== root) recycleNode(leftover)
         }
         return out
     }
 
-    private fun siblingText(node: AccessibilityNodeInfo): String? {
-        val parent = node.parent ?: return null
-        for (i in 0 until parent.childCount - 1) {
-            if (parent.getChild(i) == node) {
-                return parent.getChild(i + 1)?.text?.toString()?.trim()
+    /**
+     * Strips top Sponsored banner ad text (e.g., "Cheerios" / "Tasty Os made with care" / "Sponsored"
+     * or "Dairy Pure" / "Sponsored" right below the search bar on Walmart PDPs) so banner ads are
+     * never mistaken for the product being viewed.
+     */
+    private fun stripSponsoredAdNodes(nodes: List<TextNode>): List<TextNode> {
+        val dropIndices = HashSet<Int>()
+        for (i in nodes.indices) {
+            val txt = nodes[i].text.trim()
+            if (SPONSORED_BADGE.matches(txt) && i <= 20) {
+                dropIndices.add(i)
+                for (back in 1..3) {
+                    val prevIdx = i - back
+                    if (prevIdx < 0) break
+                    val prev = nodes[prevIdx].text.trim()
+                    if (prev.startsWith("Search", ignoreCase = true) || PRICE_PATTERN.matches(prev)) break
+                    if (! SINGLE_PDP_CTA.containsMatchIn(prev)) {
+                        dropIndices.add(prevIdx)
+                    }
+                }
             }
         }
-        return null
+        if (dropIndices.isEmpty()) return nodes
+        val filtered = ArrayList<TextNode>(nodes.size)
+        for (i in nodes.indices) {
+            if (i !in dropIndices) {
+                val n = nodes[i]
+                filtered.add(n.copy(index = filtered.size))
+            }
+        }
+        return filtered
     }
 
+    private fun cleanTitleCandidate(raw: String): String {
+        var s = raw.replace(WHITESPACE, " ").trim()
+        // Strip leading/embedded favorite/badge prefixes from compound container contentDescriptions
+        s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*"""), "")
+        s = s.replace(Regex("""(?i)^(best seller|overall pick|popular pick|rollback|sponsored|save for later)\s*[,•|\-]?\s*"""), "")
+        // Strip trailing ratings, review counts, image carousel counters, and prices
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(rated\s+)?\d+(\.\d+)?\s*out of\s*5(\s*stars?)?.*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d[\d,]*\s*(reviews?|ratings?).*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(product\s+)?image\s+\d+\s+of\s+\d+.*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(current\s+price\s*|price\s*)?\$\s*\d+(\.\d{2})?.*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct).*$"""), "")
+        return s.trim(' ', ',', '•', '|', '-')
+    }
+
+    private fun isCandidateProductTitle(t: String): Boolean =
+        t.length in 6..180 &&
+            !NOISE.containsMatchIn(t) &&
+            !HOME_OR_AISLE_BANNERS.containsMatchIn(t) &&
+            !CART_CHECKOUT_SIGNALS.containsMatchIn(t) &&
+            !BRAND_OR_UNIT_ONLY.matches(t.trim()) &&
+            !PRICE_PATTERN.containsMatchIn(t)
+
     private fun findTitle(nodes: List<TextNode>): String? {
-        fun ok(t: String) =
-            t.length in 6..180 &&
-                !NOISE.containsMatchIn(t) &&
-                !HOME_OR_AISLE_BANNERS.containsMatchIn(t) &&
-                !PRICE_PATTERN.containsMatchIn(t)
         // 1. Explicit product title viewId on the product page
-        nodes.firstOrNull { n -> ok(n.text) && TITLE_ID_HINTS.any { n.viewId.contains(it) } }?.let { return it.text }
+        nodes.firstOrNull { n ->
+            val c = cleanTitleCandidate(n.text)
+            isCandidateProductTitle(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }
+        }?.let { return cleanTitleCandidate(it.text) }
+
         // 2. Accessibility heading on the page that matches food/product hints
-        nodes.firstOrNull { it.isHeading && ok(it.text) && FOOD_HINTS.containsMatchIn(it.text) }?.let { return it.text }
-        // 3. Any node on the page containing recognizable food/grocery keywords or brand/size
-        nodes.firstOrNull { ok(it.text) && it.text.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(it.text) }?.let { return it.text }
-        // 4. Accessibility heading on a confirmed single-product page
-        nodes.firstOrNull { it.isHeading && ok(it.text) && it.text.split(' ').size >= 2 }?.let { return it.text }
+        nodes.firstOrNull { n ->
+            val c = cleanTitleCandidate(n.text)
+            n.isHeading && isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
+        }?.let { return cleanTitleCandidate(it.text) }
+
+        // 3. Accessibility heading on a confirmed single-product page
+        nodes.firstOrNull { n ->
+            val c = cleanTitleCandidate(n.text)
+            n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
+        }?.let { return cleanTitleCandidate(it.text) }
+
+        // 4. Any node in the primary PDP nodes containing recognizable food/grocery keywords
+        nodes.take(65).firstOrNull { n ->
+            val c = cleanTitleCandidate(n.text)
+            isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
+        }?.let { return cleanTitleCandidate(it.text) }
+
         // 5. Fallback on a confirmed single-product page to the first descriptive product title
-        return nodes.take(60).filter { ok(it.text) && it.text.length in 12..120 && it.text.split(' ').size >= 3 }
-            .firstOrNull()?.text
+        return nodes.take(75).map { cleanTitleCandidate(it.text) }
+            .firstOrNull { isCandidateProductTitle(it) && it.length in 12..140 && it.split(' ').size >= 3 }
+    }
+
+    /**
+     * Extracts the actual product titles listed in the user's Cart screen (e.g. Walmart Cart)
+     * so `🛒 Cart Avg` and the Whole-Cart Health Check drawer match the real items in their cart.
+     */
+    private fun extractCartScreenTitles(nodes: List<TextNode>): List<String> {
+        val endIdx = nodes.indexOfFirst { CART_END_BOUNDARY.matches(it.text.trim()) }
+        val cartNodes = if (endIdx >= 2) nodes.subList(0, endIdx) else nodes
+        val seen = LinkedHashSet<String>()
+        for (n in cartNodes) {
+            val c = cleanTitleCandidate(n.text)
+            if (!isCandidateProductTitle(c)) continue
+            val words = c.split(' ').filter { it.isNotBlank() }
+            if (words.size >= 2 && (FOOD_HINTS.containsMatchIn(c) || (words.size >= 3 && c.length in 12..140))) {
+                val normKey = c.lowercase()
+                if (seen.none { it.lowercase() == normKey }) {
+                    seen.add(c)
+                }
+            }
+            if (seen.size >= 15) break
+        }
+        return seen.toList()
     }
 
     private fun findIngredients(nodes: List<TextNode>): String? {
+        fun validIngredientList(raw: String): String? {
+            val cleaned = raw.trim()
+            if (cleaned.length < 12) return null
+            if (NON_INGREDIENT_TEXT.containsMatchIn(cleaned)) return null
+            if (SINGLE_PDP_DETAILS.matches(cleaned)) return null
+            if (!cleaned.contains(",") && !cleaned.contains(" ") && cleaned.length < 18) return null
+            return cleaned
+        }
         for (n in nodes) {
             val t = n.text
             if (t.matches(Regex("""(?i)^ingredients\s*:?$"""))) {
-                n.next?.takeIf { it.length > 12 }?.let { return it }
-                nodes.getOrNull(n.index + 1)?.text?.takeIf { it.length > 12 }?.let { return it }
+                for (offset in 1..3) {
+                    val candidate = nodes.getOrNull(n.index + offset)?.text ?: continue
+                    validIngredientList(candidate)?.let { return it }
+                }
             }
             if (t.startsWith("Ingredients", ignoreCase = true) && t.length > 24) {
-                return t.replaceFirst(Regex("""(?i)^ingredients\s*:?\s*"""), "")
+                val stripped = t.replaceFirst(Regex("""(?i)^ingredients\s*:?\s*"""), "")
+                validIngredientList(stripped)?.let { return it }
             }
         }
         return null

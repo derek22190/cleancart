@@ -1,6 +1,7 @@
 package com.cleancart.overlay
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.net.HttpURLConnection
@@ -13,26 +14,36 @@ object ScanApi {
         "https://heybroc.com/api/scan",
         "https://cleancart-teal.vercel.app/api/scan",
     )
+    private val TRUSTED_HOSTS = setOf(
+        "www.heybroc.com",
+        "heybroc.com",
+        "cleancart-teal.vercel.app",
+    )
 
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
+        val prefs = ctx.getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
         val body = JSONObject().apply {
             put("productTitle", productTitle)
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
             put("store", store)
+            if (familyWatchlist.isNotEmpty()) {
+                put("familyWatchlist", JSONArray(familyWatchlist.toList()))
+            }
             put("format", "json")
         }.toString()
 
-        var lastErr = "Unable to reach HeyBroc server"
+        var lastErr = """{"ok":false,"error":"Unable to reach HeyBroc server"}"""
         for (endpoint in ENDPOINTS) {
             try {
                 val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
-                if (res.contains("\"ok\":true") || res.contains("\"result\"")) {
+                if (res.startsWith("{") && (res.contains("\"ok\":true") || res.contains("\"ok\":false") || res.contains("\"result\""))) {
                     return res
                 }
                 lastErr = res
             } catch (e: Exception) {
-                lastErr = "${e.javaClass.simpleName}: ${e.message ?: "network error"}"
+                lastErr = JSONObject().put("ok", false).put("error", "${e.javaClass.simpleName}: ${e.message ?: "network error"}").toString()
             }
         }
         return lastErr
@@ -42,11 +53,15 @@ object ScanApi {
         var currentUrl = urlStr
         var remaining = maxRedirects
         while (true) {
-            val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+            val parsed = URL(currentUrl)
+            require(parsed.protocol.equals("https", ignoreCase = true) && parsed.host.lowercase() in TRUSTED_HOSTS) {
+                "Untrusted scan endpoint host: ${parsed.host}"
+            }
+            val conn = (parsed.openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false
                 requestMethod = "POST"
-                connectTimeout = 8000
-                readTimeout = 15000
+                connectTimeout = 5000
+                readTimeout = 8000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")
@@ -57,7 +72,11 @@ object ScanApi {
                 if (code in listOf(301, 302, 303, 307, 308) && remaining > 0) {
                     val loc = conn.getHeaderField("Location")
                     if (!loc.isNullOrBlank()) {
-                        currentUrl = URL(URL(currentUrl), loc).toString()
+                        val nextUrl = URL(parsed, loc)
+                        require(nextUrl.protocol.equals("https", ignoreCase = true) && nextUrl.host.lowercase() in TRUSTED_HOSTS) {
+                            "Refusing redirect to untrusted host: ${nextUrl.host}"
+                        }
+                        currentUrl = nextUrl.toString()
                         remaining--
                         continue
                     }
@@ -80,9 +99,9 @@ object ScanApi {
         "de.apptiv.business.android.aldi_us" -> "aldi"
         "com.dd.doordash" -> "doordash"
         "com.ubercab.eats" -> "ubereats"
-        "com.amazon.mShop.android.shopping" -> "amazon"
-        "com.samsclub.app" -> "sams"
-        "com.bjs.mobile" -> "bjs"
+        "com.amazon.mShop.android.shopping", "com.wholefoods.wholefoodsmarket" -> "amazon"
+        "com.rfi.sams.android", "com.samsclub.app" -> "sams"
+        "com.brandingbrand.reactnative.and.bjs", "com.bjs.mobile" -> "bjs"
         "com.costco.app.android" -> "costco"
         "com.shipt.groceries" -> "shipt"
         else -> "walmart"

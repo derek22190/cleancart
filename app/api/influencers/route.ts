@@ -18,8 +18,14 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
+
+function isAdminAuthorized(req: Request): boolean {
+  const secret = process.env.HEYBROC_ADMIN_SECRET?.trim();
+  if (!secret) return true;
+  return req.headers.get("authorization") === `Bearer ${secret}`;
+}
 
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
@@ -61,11 +67,22 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let body: { action?: string; code?: string; name?: string; commissionPct?: number; event?: CreatorEvent };
   try {
-    body = await request.json();
+    const parsed = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400, headers: CORS });
+    }
+    body = parsed;
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
   }
   try {
+    const isProtectedTrack =
+      body.action === "track" &&
+      body.event &&
+      ["paid_annual", "paid_monthly", "checkout_annual"].includes(body.event);
+    if (((body.action && body.action !== "track") || isProtectedTrack) && !isAdminAuthorized(request)) {
+      return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401, headers: CORS });
+    }
     let activeCreator = null;
     switch (body.action) {
       case "create":

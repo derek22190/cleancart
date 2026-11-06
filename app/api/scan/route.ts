@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runScan, toIosText, type ScanRequest } from "@/lib/scan";
+import { checkRateLimit, runScan, toIosText, type ScanRequest } from "@/lib/scan";
 import { ADDITIVE_RULES, CATEGORY_LABELS, RUBRIC_VERSION } from "@/lib/rubric";
 
 export const runtime = "nodejs";
@@ -31,10 +31,21 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+  if (!checkRateLimit(`scan:${ip}`, 90)) {
+    return NextResponse.json({ ok: false, error: "Too many scan requests. Please wait a moment." }, { status: 429, headers: CORS });
+  }
   let body: ScanRequest;
   try {
     const text = await request.text();
-    body = text ? (JSON.parse(text) as ScanRequest) : {};
+    if (text.length > 24_000) {
+      return NextResponse.json({ ok: false, error: "Request payload too large." }, { status: 413, headers: CORS });
+    }
+    const parsed = text ? JSON.parse(text) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400, headers: CORS });
+    }
+    body = parsed as ScanRequest;
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
   }

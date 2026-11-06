@@ -23,7 +23,7 @@ export type Category =
   | "gums"
   | "flavors";
 
-export type Watchlist = Partial<Record<Category, boolean>>;
+export type Watchlist = Partial<Record<Category, boolean | "2x" | number>>;
 
 export type Rating = "Excellent" | "Mediocre" | "Poor";
 export type RatingColor = "green" | "yellow" | "red";
@@ -60,6 +60,8 @@ export interface ScoreResult {
   normalizedIngredients: string;
   rubricVersion: string;
 }
+
+export const HIGH_RISK_SCORE_CAP = 49;
 
 export const PENALTIES: Record<RiskLevel, number> = {
   high: 35,
@@ -150,22 +152,37 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "kbromate", name: "Potassium Bromate", risk: "high", category: "preservatives",
-    patterns: ["potassium bromate", "bromated"],
+    patterns: ["potassium bromate", "(?<!un|non|never )bromated( wheat| flour)?"],
     explanation: "A flour improver classified as a possible human carcinogen and banned in the EU, UK, Canada and California.",
   },
   {
-    id: "propylparaben", name: "Propylparaben", risk: "high", category: "preservatives",
-    patterns: ["propyl ?paraben", "e ?216"],
+    id: "propylparaben", name: "Parabens (Propyl/Methyl/Butyl)", risk: "high", category: "preservatives",
+    patterns: ["(propyl|methyl|ethyl|butyl|heptyl) ?paraben", "e ?21[456789]"],
     explanation: "A paraben preservative that can mimic estrogen and has been linked to reproductive effects in animals.",
   },
   {
+    id: "propylgallate", name: "Propyl Gallate", risk: "high", category: "preservatives",
+    patterns: ["propyl gallate", "e ?310"],
+    explanation: "A synthetic antioxidant preservative with suspected endocrine-disrupting properties.",
+  },
+  {
+    id: "bvo", name: "Brominated Vegetable Oil (BVO)", risk: "high", category: "emulsifiers",
+    patterns: ["brominated vegetable oil", "bvo", "e ?443"],
+    explanation: "A brominated emulsifier banned by the FDA in 2024 due to bromine accumulation and thyroid/nervous system toxicity.",
+  },
+  {
+    id: "ada", name: "Azodicarbonamide", risk: "high", category: "preservatives",
+    patterns: ["azodicarbonamide", "e ?927a?"],
+    explanation: "A synthetic foaming agent and dough conditioner banned in Europe and Australia.",
+  },
+  {
     id: "nanitrite", name: "Sodium Nitrite", risk: "high", category: "nitrates",
-    patterns: ["sodium nitrite", "e ?250"],
+    patterns: ["(sodium|potassium) nitrite", "e ?249", "e ?250"],
     explanation: "A curing agent that can form carcinogenic nitrosamines, especially when processed meat is cooked at high heat.",
   },
   {
     id: "nanitrate", name: "Sodium Nitrate", risk: "high", category: "nitrates",
-    patterns: ["sodium nitrate", "e ?251"],
+    patterns: ["(sodium|potassium) nitrate", "e ?251", "e ?252"],
     explanation: "A curing salt that converts to nitrite and can form nitrosamines linked to colorectal cancer risk.",
   },
 
@@ -188,7 +205,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "canolaoil", name: "Canola Oil", risk: "moderate", category: "seedOils",
-    patterns: ["canola( oil)?", "rapeseed oil"],
+    patterns: ["canola oil", "rapeseed oil"],
     explanation: "A refined, bleached and deodorized seed oil typically extracted with hexane solvent.",
   },
   {
@@ -198,7 +215,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "cottonseedoil", name: "Cottonseed Oil", risk: "moderate", category: "seedOils",
-    patterns: ["cottonseed( oil)?"],
+    patterns: ["cottonseed oil"],
     explanation: "A refined oil from a non-food crop that is heavily sprayed and high in omega-6 fats.",
   },
   {
@@ -208,18 +225,38 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "saffloweroil", name: "Safflower Oil", risk: "moderate", category: "seedOils",
-    patterns: ["safflower( oil)?"],
+    patterns: ["safflower( seed)? oil"],
     explanation: "A refined seed oil rich in omega-6 fats that are prone to oxidation during frying.",
   },
   {
     id: "grapeseedoil", name: "Grapeseed Oil", risk: "moderate", category: "seedOils",
-    patterns: ["grape ?seed( oil)?"],
+    patterns: ["grape ?seed oil"],
     explanation: "A by-product seed oil that is usually chemically extracted and very high in omega-6.",
   },
   {
     id: "phoil", name: "Partially Hydrogenated Oil", risk: "moderate", category: "seedOils",
     patterns: ["partially hydrogenated"],
     explanation: "The primary source of artificial trans fat, which raises LDL cholesterol and heart-disease risk.",
+  },
+  {
+    id: "hydrogoil", name: "Hydrogenated Oil", risk: "moderate", category: "seedOils",
+    patterns: ["(?<!partially )hydrogenated (vegetable|soybean|canola|cottonseed|rapeseed|palm|coconut) oils?"],
+    explanation: "Chemically hardened industrial fat used to make ultra-processed spreads and snacks shelf-stable.",
+  },
+  {
+    id: "caramelcolor", name: "Caramel Color", risk: "moderate", category: "dyes",
+    patterns: ["caramel colou?r(ing)?", "e ?150[abcd]?"],
+    explanation: "Industrial ammonia-sulfite caramel coloring that can contain 4-MEI, a California Prop 65 listed carcinogen.",
+  },
+  {
+    id: "edta", name: "Calcium Disodium EDTA", risk: "moderate", category: "preservatives",
+    patterns: ["(calcium )?disodium edta", "e ?385"],
+    explanation: "A synthetic chelating chemical used to lock colour and flavour in shelf-stable dressings and mayonnaise.",
+  },
+  {
+    id: "datem", name: "DATEM / Dough Conditioners", risk: "moderate", category: "emulsifiers",
+    patterns: ["datem", "diacetyl tartaric acid esters?", "(sodium|calcium) stearoyl lactylate", "polyglycerol polyricinoleate", "pgpr"],
+    explanation: "Synthetic industrial dough emulsifiers used in ultra-processed commercial breads.",
   },
   {
     id: "carrageenan", name: "Carrageenan", risk: "moderate", category: "emulsifiers",
@@ -262,6 +299,11 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "An artificial sweetener with limited long-term safety data and possible metabolic effects.",
   },
   {
+    id: "saccharin", name: "Saccharin / Neotame", risk: "moderate", category: "sweeteners",
+    patterns: ["saccharin", "e ?954", "neotame", "e ?961", "advantame", "e ?969"],
+    explanation: "High-intensity synthetic artificial sweeteners linked to gut microbiome disruption.",
+  },
+  {
     id: "artificialflavor", name: "Artificial Flavor", risk: "moderate", category: "flavors",
     patterns: ["artificial(ly)? flavou?r(s|ed|ing|ings)?"],
     explanation: "Lab-synthesized flavor chemicals whose individual components are not disclosed on the label.",
@@ -285,8 +327,13 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "naphosphate", name: "Sodium Phosphate", risk: "low", category: "preservatives",
-    patterns: ["(mono|di|tri)?sodium (phosphates?|tripolyphosphate|pyrophosphate|hexametaphosphate)"],
+    patterns: ["(mono|di|tri)?(sodium|potassium|calcium) (acid )?(phosphates?|tripolyphosphate|pyrophosphate|hexametaphosphate)"],
     explanation: "An added inorganic phosphate that is absorbed far more readily than natural phosphorus and may stress the kidneys.",
+  },
+  {
+    id: "msg", name: "MSG / Synthetic Flavor Enhancers", risk: "low", category: "flavors",
+    patterns: ["monosodium glutamate", "msg", "disodium inosinate", "disodium guanylate"],
+    explanation: "Isolated glutamate and nucleotide flavor enhancers engineered to trigger hyper-palatability.",
   },
   {
     id: "xanthan", name: "Xanthan Gum", risk: "low", category: "gums",
@@ -306,7 +353,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   {
     id: "citricacid", name: "Citric Acid (manufactured)", risk: "low", category: "flavors",
     patterns: ["citric acid", "e ?330"],
-    explanation: "Industrial citric acid is made by fermenting black mold, not squeezed from citrus fruit.",
+    explanation: "Manufactured citric acid is commonly produced by fermentation and is used to add tartness or preserve shelf life.",
   },
 ];
 
@@ -326,11 +373,19 @@ export function normalizeIngredients(raw: string): string {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\b(un|non)\s*-\s*([a-z]+)/g, "$1$2")
     .replace(/&/g, " and ")
     .replace(/\band\s*\/\s*or\b/g, " or ");
 
-  // 1) "oil (soybean, canola or sunflower)" -> "oil (soybean oil, canola oil or sunflower oil)"
-  s = s.replace(/oils?\s*[([]([^)\]]*)[)\]]/g, (whole, inner: string) => {
+  // Strip negated label marketing claims ("no sodium nitrite", "no artificial flavors", "free of bha/bht")
+  s = s.replace(
+    /\b(no|without|free of|never any|zero)\s+(added\s+)?(nitrates?( or nitrites?)?|nitrites?( or nitrates?)?|sodium nitrite|artificial (flavou?rs?|colou?rs?|dyes?|sweeteners?|preservatives?)|high fructose corn syrup|hfcs|bha( or bht)?|bht|tbhq|msg|monosodium glutamate|seed oils?|bromated\s+flour)\b(\s+added)?/g,
+    " ",
+  );
+
+  // 1) "oil/shortening/fat (soybean, canola or sunflower)" -> "... (soybean oil, canola oil or sunflower oil)"
+  s = s.replace(/(?:oils?|shortening|fats?)\s*[([]([^)\]]*)[)\]]/g, (whole, inner: string) => {
+    if (/\b(facility|equipment|processed|allergen|traces|may contain)\b/.test(inner)) return whole;
     const expanded = inner.replace(
       new RegExp(`\\b(${SEED_WORDS})\\b(?!\\s+(oil|lecithin))`, "g"),
       "$1 oil",
@@ -338,21 +393,28 @@ export function normalizeIngredients(raw: string): string {
     return whole.replace(inner, expanded);
   });
 
-  // 2) "soybean, canola or sunflower oil" -> "soybean oil, canola oil or sunflower oil".
-  //    Only explicit "... or X oil" lists are expanded, so "corn, sunflower oil" (tortilla
+  // 2) "soybean, canola or/and sunflower oil" -> "soybean oil, canola oil or/and sunflower oil".
+  //    Only explicit "... or/and X oil(s)" lists are expanded, so "corn, sunflower oil" (tortilla
   //    chips) is NOT misread as corn oil. "corn" is only expanded when directly joined by
-  //    "or" (e.g. "corn or canola oil"), never as a comma-list item ("corn, safflower or ...").
+  //    "or"/"and" (e.g. "corn or canola oil"), never as a comma-list item ("corn, safflower or ...").
   const NON_GRAIN = SEED_WORDS.replace("|corn", "");
   const seq = new RegExp(
-    `\\b((?:(?:${NON_GRAIN})\\s*,\\s*)*(?:${SEED_WORDS})\\s+or\\s+(?:${SEED_WORDS}))\\s+oil\\b`,
+    `\\b((?:(?:${NON_GRAIN})\\s*,\\s*)*(?:${SEED_WORDS})\\s+(?:or|and)\\s+(?:${SEED_WORDS}))\\s+oils?\\b`,
     "g",
   );
   s = s.replace(seq, (_whole, list: string) =>
     list.replace(new RegExp(`\\b(${SEED_WORDS})\\b`, "g"), "$1 oil"),
   );
 
+  // 3) Expand shared dye prefixes: "Yellow 5 & 6", "FD&C Red No. 40 and 3", "Blue 1, 2"
+  s = s.replace(
+    /\b((?:fd\s+and\s+c\s+)?)(red|yellow|blue|green)(?:\s+no\.?)?\s+(\d+)\s*(?:,|or|and)\s*(?:no\.?\s*)?(\d+)\b/g,
+    "$1$2 $3 $1$2 $4",
+  );
+
   return s
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[,;]+/g, " , ")
+    .replace(/[^a-z0-9,]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -376,29 +438,44 @@ export function ratingFor(score: number): { rating: Rating; color: RatingColor }
  * Score an ingredient list. Each additive is deducted at most once, in watchlist order,
  * so results are stable regardless of how many times an additive repeats on the label.
  */
-export function scoreIngredients(rawIngredients: string, watchlist: Watchlist = {}): ScoreResult {
+export function scoreIngredients(
+  rawIngredients: string,
+  watchlist: Watchlist = {},
+  familyWatchlist: Category[] = [],
+): ScoreResult {
   const normalized = normalizeIngredients(rawIngredients);
   const flagged: FlaggedAdditive[] = [];
   const ignored: FlaggedAdditive[] = [];
+  const familySet = new Set(familyWatchlist);
 
   for (const { rule, regex } of COMPILED) {
     const m = normalized.match(regex);
     if (!m) continue;
+    const pref = watchlist[rule.category];
+    const mult =
+      pref === "2x" || (typeof pref === "number" && pref === 2) || familySet.has(rule.category)
+        ? 2
+        : typeof pref === "number" && pref > 0
+          ? pref
+          : 1;
     const hit: FlaggedAdditive = {
       id: rule.id,
       name: rule.name,
       risk: rule.risk,
       category: rule.category,
-      penalty: PENALTIES[rule.risk],
+      penalty: Math.round(PENALTIES[rule.risk] * mult),
       explanation: rule.explanation,
       matched: m[0],
     };
-    if (watchlist[rule.category] === false) ignored.push(hit);
+    if (pref === false) ignored.push(hit);
     else flagged.push(hit);
   }
 
   const totalPenalty = flagged.reduce((sum, f) => sum + f.penalty, 0);
-  const score = Math.max(0, Math.min(100, 100 - totalPenalty));
+  const hasHighRisk = flagged.some((f) => f.risk === "high");
+  const rawScore = Math.max(0, Math.min(100, 100 - totalPenalty));
+  // Core Product Rule #1: Any high-risk additive caps the maximum score at 49/100 (Poor).
+  const score = hasHighRisk ? Math.min(HIGH_RISK_SCORE_CAP, rawScore) : rawScore;
   return {
     score,
     ...ratingFor(score),
@@ -408,4 +485,21 @@ export function scoreIngredients(rawIngredients: string, watchlist: Watchlist = 
     normalizedIngredients: normalized,
     rubricVersion: RUBRIC_VERSION,
   };
+}
+
+export const NON_ENGLISH_INGREDIENTS =
+  /\b(eau\b|sucre\b|huile\b|farine\b|lait\b|sirop\b|lécithine|acide\b|arômes?|colorants?|amidon|émulsifiants?|conservateurs?|noisettes|poudre\b|zutaten|wasser\b|zucker\b|pflanzliches|weizenmehl|speisesalz|säuerungsmittel|magermilchpulver|ingredientes|agua\b|azúcar|aceite\b|harina\b|leche\b|jarabe\b)/i;
+
+const ENGLISH_INGREDIENT_ANCHORS =
+  /\b(water|sugar|salt|flour|milk|oil|cream|butter|cheese|eggs?|corn|wheat|rice|oats?|soy|acid|flavor|flavors|starch|syrup|extract|vinegar|yeast|cocoa|beef|chicken|pork|turkey|apple|strawberry)\b/i;
+
+export function isEnglishIngredientText(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return false;
+  if (NON_ENGLISH_INGREDIENTS.test(s) && !ENGLISH_INGREDIENT_ANCHORS.test(s)) {
+    return false;
+  }
+  const foreignHits = s.match(new RegExp(NON_ENGLISH_INGREDIENTS.source, "gi")) || [];
+  if (foreignHits.length >= 2) return false;
+  return true;
 }

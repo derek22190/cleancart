@@ -1,18 +1,22 @@
 package com.cleancart.overlay
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -69,33 +73,48 @@ class MainActivity : Activity() {
 
         // Step 2 — accessibility service
         a11yStatus = label("", 13f, 0xFF85908A.toInt())
-        val samsungTip = label(
-            "Samsung Galaxy / Android 13+ tip: if the switch is greyed out (\"Restricted setting\"), go to " +
-                "Settings → Apps → HeyBroc → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
-            12.5f, 0xFF7A5B00.toInt(),
-        ).apply {
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
+        val step2Extras = mutableListOf<android.view.View>(
+            primaryButton("Review & Enable Screen Reader") {
+                showProminentAccessibilityDisclosure()
+            },
+            primaryButton("Turn off HeyBroc reading", filled = false) {
+                AccessibilityConsent.revoke(this)
+                runCatching {
+                    startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE))
+                }
+                Toast.makeText(this, "HeyBroc screen reading paused. You can also turn off the service in Settings.", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            },
+        )
+        if (!isInstalledFromPlayStore()) {
+            step2Extras.add(
+                primaryButton("Unlock Restricted Setting (1-Tap App Info)", filled = false) {
+                    Toast.makeText(this, "Tap ⋮ (top-right 3 dots) → Allow restricted settings", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                }
+            )
+            step2Extras.add(
+                label(
+                    "Direct APK / Android 13+ tip: if the switch is greyed out (\"Restricted setting\"), go to " +
+                        "Settings → Apps → HeyBroc → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
+                    12.5f, 0xFF7A5B00.toInt(),
+                ).apply {
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
+                }
+            )
         }
         col.addView(stepCard(
             "Step 2", "Enable Store Screen Reader",
             "Go to: Accessibility → Installed apps → HeyBroc and turn it ON.\nReads only the product title & ingredients in all 12 store apps.",
             a11yStatus,
-            primaryButton("Open Accessibility settings") {
-                Toast.makeText(this, "Tap: Installed apps → HeyBroc → Turn ON", Toast.LENGTH_LONG).show()
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            },
-            primaryButton("Unlock Restricted Setting (1-Tap App Info)", filled = false) {
-                Toast.makeText(this, "Tap ⋮ (top-right 3 dots) → Allow restricted settings", Toast.LENGTH_LONG).show()
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-            },
-            samsungTip,
+            *step2Extras.toTypedArray(),
         ))
 
         // Step 3 — test overlay
         col.addView(stepCard(
-            "Step 3", "Preview the overlay",
-            "Shows a sample floating pill right here so you can test tapping it, or drag it down to \"✕ Hide\" at the bottom of your screen.",
+            "Step 3", "Automatic in Store Apps (or Preview Here)",
+            "You do NOT need to open HeyBroc before shopping! Once Steps 1 & 2 are enabled, the pill pops up automatically as soon as you open Walmart, BJ's, Target, or any supported grocery app. Use the button below only to preview a sample pill right here.",
             null,
             primaryButton("Launch Test Overlay Pill") { launchTestPill() },
             primaryButton("Hide Overlay Pill", filled = false) {
@@ -103,7 +122,86 @@ class MainActivity : Activity() {
             },
         ))
 
+        // Family Watchlist (2x penalty multiplier)
+        col.addView(stepCard(
+            "Family Watchlist", "2x Penalty Multiplier",
+            "Double the deduction for additive categories your household avoids most.",
+            null,
+            watchlistControls(),
+        ))
+
+        // Mandatory Play Store Privacy Policy link
+        col.addView(label("Privacy Policy & Accessibility Data Disclosure ↗", 13f, 0xFF0F7A4A.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(8))
+            setOnClickListener {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+            }
+        })
+
         setContentView(ScrollView(this).apply { addView(col); setBackgroundColor(0xFFF4F3EE.toInt()) })
+    }
+
+    /** Google Play Accessibility API Policy: Mandatory Prominent Disclosure before redirecting to Settings. */
+    private fun showProminentAccessibilityDisclosure() {
+        AlertDialog.Builder(this)
+            .setTitle("Accessibility Service Disclosure")
+            .setMessage(
+                "HeyBroc uses the Android AccessibilityService API solely to detect when you view a single grocery product " +
+                    "and read the visible product title and ingredient list inside 12 supported grocery apps " +
+                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt).\n\n" +
+                    "• What is transmitted: Only the product title and ingredient text are sent over HTTPS to heybroc.com/api/scan to compute your 0–100 ingredient score.\n" +
+                    "• What is NEVER read: HeyBroc never reads passwords, payment fields, messages, or any other apps on your device, and never sells or shares personal data."
+            )
+            .setCancelable(false)
+            .setPositiveButton("I Agree & Continue") { _, _ ->
+                AccessibilityConsent.grant(this)
+                Toast.makeText(this, "Tap: Installed apps → HeyBroc → Turn ON", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setNegativeButton("No Thanks", null)
+            .show()
+    }
+
+    private fun watchlistControls(): LinearLayout {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val selected = prefs.getStringSet("familyWatchlist", emptySet())?.toMutableSet() ?: mutableSetOf()
+        val categories = listOf(
+            "dyes" to "Artificial Dyes (2x)",
+            "seedOils" to "Seed Oils (2x)",
+            "hfcs" to "High-Fructose Corn Syrup (2x)",
+            "preservatives" to "Synthetic Preservatives & Nitrites (2x)",
+            "sweeteners" to "Artificial Sweeteners (2x)",
+            "emulsifiers" to "Synthetic Emulsifiers (2x)",
+            "gums" to "Thickening Gums (2x)",
+            "flavors" to "Artificial Flavors & MSG (2x)",
+        )
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            categories.forEach { (key, title) ->
+                addView(CheckBox(this@MainActivity).apply {
+                    text = title
+                    textSize = 13.5f
+                    setTextColor(0xFF15201B.toInt())
+                    isChecked = key in selected
+                    setOnCheckedChangeListener { _, checked ->
+                        val next = (prefs.getStringSet("familyWatchlist", emptySet()) ?: emptySet()).toMutableSet()
+                        if (checked) next.add(key) else next.remove(key)
+                        prefs.edit().putStringSet("familyWatchlist", next).apply()
+                    }
+                })
+            }
+        }
+    }
+
+    private fun isInstalledFromPlayStore(): Boolean {
+        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching { packageManager.getInstallSourceInfo(packageName).installingPackageName }.getOrNull()
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { packageManager.getInstallerPackageName(packageName) }.getOrNull()
+        }
+        return installer == "com.android.vending"
     }
 
     override fun onResume() {
@@ -111,9 +209,25 @@ class MainActivity : Activity() {
         val overlayOk = Settings.canDrawOverlays(this)
         overlayStatus.text = if (overlayOk) "✓ Allowed" else "Not allowed yet"
         overlayStatus.setTextColor(if (overlayOk) 0xFF16A34A.toInt() else 0xFF85908A.toInt())
-        val a11yOk = isAccessibilityEnabled()
-        a11yStatus.text = if (a11yOk) "✓ Enabled" else "Not enabled yet"
+        val a11yServiceEnabled = isAccessibilityEnabled()
+        val consentOk = AccessibilityConsent.granted(this)
+        val a11yOk = a11yServiceEnabled && consentOk
+        a11yStatus.text = when {
+            a11yOk -> "✓ Enabled"
+            a11yServiceEnabled && !consentOk -> "Enabled in system, consent needed"
+            consentOk -> "Consent saved — turn ON in system settings"
+            else -> "Not enabled yet"
+        }
         a11yStatus.setTextColor(if (a11yOk) 0xFF16A34A.toInt() else 0xFF85908A.toInt())
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (Settings.canDrawOverlays(this)) {
+            runCatching {
+                startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE_IF_TEST))
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -126,19 +240,23 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Complete Step 1 first", Toast.LENGTH_LONG).show()
             return
         }
+        val appContext = applicationContext
         // Try the live API with sample ingredients; fall back to the built-in sample offline.
         io.execute {
             val json = runCatching {
                 ScanApi.scan(
-                    this, "Berry Swirl Strawberry Lowfat Yogurt",
+                    appContext, "Berry Swirl Strawberry Lowfat Yogurt",
                     "Cultured Pasteurized Grade A Lowfat Milk, Sugar, Strawberries, High Fructose Corn Syrup, Modified Corn Starch, Kosher Gelatin, Red 40, Potassium Sorbate, Vitamin A Acetate, Vitamin D3.",
                     "walmart",
                 )
             }.getOrNull()?.takeIf { it.contains("\"ok\":true") } ?: ScanApi.SAMPLE_JSON
             runOnUiThread {
-                startService(Intent(this, OverlayWindowService::class.java)
-                    .setAction(OverlayWindowService.ACTION_SHOW_TEST)
-                    .putExtra(OverlayWindowService.EXTRA_JSON, json))
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                runCatching {
+                    startService(Intent(this, OverlayWindowService::class.java)
+                        .setAction(OverlayWindowService.ACTION_SHOW_TEST)
+                        .putExtra(OverlayWindowService.EXTRA_JSON, json))
+                }
             }
         }
     }

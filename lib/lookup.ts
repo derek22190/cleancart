@@ -40,10 +40,20 @@ const CACHE_DIR =
   process.env.CLEANCART_CACHE_DIR ||
   (process.env.VERCEL ? "/tmp/cleancart-cache" : path.join(process.cwd(), ".cache"));
 const CACHE_FILE = path.join(CACHE_DIR, "lookup-cache.json");
-const TIMEOUT_MS = 6500;
+const TIMEOUT_MS = 3200;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 1000;
 
 let memory: Map<string, CacheEntry> | null = null;
 let loading: Promise<Map<string, CacheEntry>> | null = null;
+
+function isFreshCacheEntry(entry?: CacheEntry): entry is CacheEntry {
+  if (!entry || entry.source === "catalog" || !entry.ingredients?.trim()) return false;
+  if (!isEnglishIngredientText(entry.ingredients)) return false;
+  const ts = Date.parse(entry.cachedAt || "");
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts <= CACHE_TTL_MS;
+}
 
 async function loadCache(): Promise<Map<string, CacheEntry>> {
   if (memory) return memory;
@@ -51,7 +61,8 @@ async function loadCache(): Promise<Map<string, CacheEntry>> {
     loading = (async () => {
       try {
         const json = JSON.parse(await fs.readFile(CACHE_FILE, "utf8")) as Record<string, CacheEntry>;
-        memory = new Map(Object.entries(json));
+        const valid = Object.entries(json).filter(([, entry]) => isFreshCacheEntry(entry));
+        memory = new Map(valid.slice(-MAX_CACHE_ENTRIES));
       } catch {
         memory = new Map();
       }
@@ -70,6 +81,16 @@ async function persistCache(cache: Map<string, CacheEntry>) {
   }
 }
 
+function setCacheEntry(cache: Map<string, CacheEntry>, key: string, entry: CacheEntry) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, entry);
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (!oldest) break;
+    cache.delete(oldest);
+  }
+}
+
 export function cacheKey(input: LookupInput): string | null {
   if (input.barcode?.trim()) return `upc:${input.barcode.replace(/\D/g, "")}`;
   const t = (input.productTitle || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -80,7 +101,7 @@ export function cacheKey(input: LookupInput): string | null {
 /* Relevance helpers                                                   */
 /* ------------------------------------------------------------------ */
 
-const STOP = new Set(["the", "and", "with", "for", "oz", "fl", "lb", "pack", "count", "ct", "of", "great", "value", "size", "family"]);
+const STOP = new Set(["the", "and", "with", "for", "oz", "fl", "lb", "lbs", "gal", "gallon", "half", "quart", "pint", "pack", "count", "ct", "of", "size", "family", "pkg", "tray"]);
 /** Descriptors that appear on thousands of products and must not carry a match on their own. */
 const GENERIC = new Set(["original", "classic", "organic", "natural", "flavored", "flavor", "plain", "whole", "lowfat", "nonfat", "reduced", "fat", "free", "low", "made", "sea", "salt", "style", "brand", "real"]);
 
@@ -88,9 +109,22 @@ function tokens(s: string): string[] {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length >= 3 && !STOP.has(t) && !/^\d+$/.test(t));
 }
 
+const FLAVOR_TOKENS = new Set([
+  "strawberry", "strawberries", "vanilla", "chocolate", "blueberry", "blueberries",
+  "raspberry", "peach", "mango", "banana", "cherry", "apple", "cinnamon", "honey",
+  "caramel", "frosted", "peanut", "almond", "hazelnut", "coconut", "lemon", "lime",
+  "orange", "grape", "watermelon", "mint", "coffee", "mocha", "maple", "brown",
+  "bbq", "barbecue", "sour", "cheddar", "nacho", "ranch", "spicy", "flamin",
+  "hot", "buffalo", "jalapeno", "garlic", "onion", "teriyaki", "salsa", "flip",
+]);
+
+const PLAIN_TOKENS = new Set(["plain", "unsweetened", "unflavored"]);
+
 /**
  * 0–1 relevance of a candidate product name to the user's query. Only distinctive tokens
  * count; short queries (≤2 distinctive tokens) must match all of them.
+ * Enforces flavor consistency so "Plain Greek Yogurt" never matches "Strawberry Greek Yogurt"
+ * and "Original Cheerios" never matches "Honey Nut Cheerios".
  */
 function relevance(query: string, candidate: string): number {
   const all = tokens(query);
@@ -98,10 +132,34 @@ function relevance(query: string, candidate: string): number {
   const pool = q.length ? q : all;
   if (!pool.length) return 0;
   const c = tokens(candidate);
-  const has = (t: string) => c.some((x) => x === t || (t.length >= 4 && (x.startsWith(t) || t.startsWith(x)) && x.length >= 4));
-  const ratio = pool.filter(has).length / pool.length;
-  if (pool.length <= 2) return ratio === 1 ? 1 : ratio >= 0.5 ? ratio : 0;
-  return ratio >= 0.5 ? ratio : 0;
+  const hasIn = (list: string[], t: string) =>
+    list.some(
+      (x) =>
+        x === t || x === `${t}s` || x === `${t}es` || t === `${x}s` || t === `${x}es`,
+    );
+
+  // If the query explicitly asks for "plain"/"unsweetened", reject candidates with added flavor tokens
+  const queryWantsPlain = all.some((t) => PLAIN_TOKENS.has(t));
+  const queryFlavors = all.filter((t) => FLAVOR_TOKENS.has(t));
+  const candidateFlavors = c.filter((t) => FLAVOR_TOKENS.has(t));
+
+  if (queryWantsPlain && candidateFlavors.some((f) => !hasIn(all, f))) {
+    return 0;
+  }
+  // If the query specifies a flavor (e.g. "strawberry", "honey"), candidate must include it
+  if (queryFlavors.length > 0 && !queryFlavors.every((f) => hasIn(c, f))) {
+    return 0;
+  }
+  // If the query does NOT specify a flavor (e.g. "Cheerios"), penalize candidates that add flavors ("Honey Nut Cheerios")
+  const extraFlavorPenalty =
+    queryFlavors.length === 0 && candidateFlavors.length > 0 ? Math.min(0.25, candidateFlavors.length * 0.12) : 0;
+
+  const ratio = pool.filter((t) => hasIn(c, t)).length / pool.length;
+  if (pool.length <= 2 && ratio < 1 && ratio < 0.5) return 0;
+  if (ratio < 0.5) return 0;
+  const base = pool.length <= 2 && ratio === 1 ? 1 : ratio;
+  const extraTokensPenalty = Math.max(0, c.length - all.length) * 0.015;
+  return Math.max(0, base - extraFlavorPenalty - extraTokensPenalty);
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
@@ -140,9 +198,29 @@ interface OffProduct {
 const OFF_FIELDS =
   "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url";
 
+export const NON_ENGLISH_INGREDIENTS =
+  /\b(eau\b|sucre\b|huile\b|farine\b|lait\b|sirop\b|lécithine|acide\b|arômes?|colorants?|amidon|émulsifiants?|conservateurs?|noisettes|poudre\b|zutaten|wasser\b|zucker\b|pflanzliches|weizenmehl|speisesalz|säuerungsmittel|magermilchpulver|ingredientes|agua\b|azúcar|aceite\b|harina\b|leche\b|jarabe\b)/i;
+
+const ENGLISH_INGREDIENT_ANCHORS =
+  /\b(water|sugar|salt|flour|milk|oil|cream|butter|cheese|eggs?|corn|wheat|rice|oats?|soy|acid|flavor|flavors|starch|syrup|extract|vinegar|yeast|cocoa|beef|chicken|pork|turkey|apple|strawberry)\b/i;
+
+export function isEnglishIngredientText(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return false;
+  if (NON_ENGLISH_INGREDIENTS.test(s) && !ENGLISH_INGREDIENT_ANCHORS.test(s)) {
+    return false;
+  }
+  // If multiple French/German/Spanish tokens appear even alongside a cognate, reject
+  const foreignHits = s.match(new RegExp(NON_ENGLISH_INGREDIENTS.source, "gi")) || [];
+  if (foreignHits.length >= 2) return false;
+  return true;
+}
+
 function englishIngredients(p: OffProduct): string {
-  if (p.ingredients_text_en?.trim()) return p.ingredients_text_en.trim();
-  if (p.ingredients_text?.trim()) return p.ingredients_text.trim();
+  const en = p.ingredients_text_en?.trim() || "";
+  if (en && isEnglishIngredientText(en)) return en;
+  const raw = p.ingredients_text?.trim() || "";
+  if (raw && (!p.lang || p.lang === "en") && isEnglishIngredientText(raw)) return raw;
   return "";
 }
 
@@ -158,8 +236,9 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
     if (!englishIngredients(p)) continue;
     const name = `${p.brands || ""} ${p.product_name_en || p.product_name || ""}`;
     const r = relevance(query, name);
-    const bonus = bestOffImage(p) ? 0.05 : 0;
-    if (r + bonus > bestScore && r >= 0.45) {
+    if (r < 0.45) continue;
+    const bonus = bestOffImage(p) ? 0.03 : 0;
+    if (r + bonus > bestScore) {
       best = p;
       bestScore = r + bonus;
     }
@@ -249,17 +328,26 @@ interface UsdaFood {
 
 async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | null> {
   const key = process.env.USDA_API_KEY || "DEMO_KEY";
-  // Search across ALL USDA food types (Branded, Foundation, SR Legacy, Survey FNDDS)
+  const numericBarcode = query.replace(/\D/g, "");
+  const isBarcodeQuery = numericBarcode.length >= 8 && numericBarcode === query.trim().replace(/[-\s]/g, "");
+  // Search across USDA food types
   const data = await getJson<{ foods?: UsdaFood[] }>(
     `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=25&api_key=${key}`,
   );
   let best: UsdaFood | null = null;
   let bestScore = 0;
   for (const f of data?.foods || []) {
-    // Whole foods in Foundation / SR Legacy may not have a multi-ingredient label because they are a single whole ingredient!
-    const ing = f.ingredients?.trim() || (f.dataType && f.dataType !== "Branded" && f.description ? f.description : "");
-    if (!ing) continue;
-    const r = relevance(query, `${f.brandName || f.brandOwner || ""} ${f.description || ""}`);
+    const ing = f.ingredients?.trim() || "";
+    if (!ing || !isEnglishIngredientText(ing)) continue;
+    let r = 0;
+    if (isBarcodeQuery) {
+      const fCode = (f.gtinUpc || "").replace(/\D/g, "");
+      if (fCode && (fCode === numericBarcode || fCode.padStart(13, "0") === numericBarcode.padStart(13, "0"))) {
+        r = 1;
+      }
+    } else {
+      r = relevance(query, `${f.brandName || f.brandOwner || ""} ${f.description || ""}`);
+    }
     if (r > bestScore) {
       best = { ...f, ingredients: ing };
       bestScore = r;
@@ -349,28 +437,35 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/cereal.jpg",
   },
   {
-    match: /\b(cheerios)\b/i,
+    match: /\bhoney nut cheerios\b/i,
     brand: "General Mills",
     title: "Honey Nut Cheerios Oats Cereal",
     ingredients: "Whole Grain Oats, Sugar, Corn Starch, Honey, Brown Sugar Syrup, Salt, Tripotassium Phosphate, Canola and/or Sunflower Oil, Natural Almond Flavor. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
     imageUrl: "/swaps/cereal.jpg",
   },
   {
-    match: /\b(chobani)\b/i,
+    match: /^(?=.*\bcheerios\b)(?!.*\b(honey|frosted|chocolate|strawberry|berry|apple|cinnamon|multigrain|oat\s*crunch)\b).*$/i,
+    brand: "General Mills",
+    title: "Original Cheerios Toasted Whole Grain Oat Cereal",
+    ingredients: "Whole Grain Oats, Corn Starch, Sugar, Salt, Tripotassium Phosphate. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
+    imageUrl: "/swaps/cereal.jpg",
+  },
+  {
+    match: /^(?=.*\bchobani\b)(?=.*\bplain\b)(?!.*\b(flip|strawberry|vanilla|blueberry|peach|mango|berry|creamer|oat)\b).*$/i,
     brand: "Chobani",
     title: "Non-Fat Greek Yogurt Plain",
     ingredients: "Cultured Nonfat Milk. Live and Active Cultures: S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei, and L. Rhamnosus.",
     imageUrl: "/swaps/yogurt.jpg",
   },
   {
-    match: /\b(yoplait|gogurt)\b/i,
+    match: /\b(yoplait|gogurt)\b(?!.*\bplain\b)/i,
     brand: "Yoplait",
     title: "Original Strawberry Lowfat Yogurt",
     ingredients: "Cultured Grade A Reduced Fat Milk, Sugar, Strawberries, Modified Corn Starch, High Fructose Corn Syrup, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
     imageUrl: "/presets/yogurt.jpg",
   },
   {
-    match: /\b(hidden valley|ranch)\b/i,
+    match: /\b(hidden valley)\b|(?<!primal kitchen |avocado oil |organic )\branch dressing\b/i,
     brand: "Hidden Valley",
     title: "Original Ranch Salad Dressing & Topping",
     ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
@@ -391,7 +486,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/snacks.jpg",
   },
   {
-    match: /\b(coca[- ]?cola|coke|pepsi|dr pepper|mountain dew|mt dew|sprite|soda)\b/i,
+    match: /\b(coca[- ]?cola|coke|pepsi|dr pepper|mountain dew|mt dew|sprite)\b/i,
     brand: "Coca-Cola",
     title: "Classic Cola Soft Drink",
     ingredients: "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
@@ -412,43 +507,64 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/snacks.jpg",
   },
   {
-    match: /\b(jif|skippy|peanut butter)\b/i,
+    match: /\b(jif|skippy)\b|(?<!organic |natural |smucker'?s |kirkland |just )\bpeanut butter\b/i,
     brand: "Jif",
     title: "Creamy Peanut Butter",
     ingredients: "Made From Roasted Peanuts And Sugar, Contains 2% Or Less Of: Molasses, Fully Hydrogenated Vegetable Oils (Rapeseed And Soybean), Mono And Diglycerides, Salt.",
     imageUrl: "/swaps/snacks.jpg",
   },
   {
-    match: /\b(heinz|ketchup)\b/i,
+    match: /\b(heinz)\b|(?<!organic |primal kitchen |unsweetened )\bketchup\b/i,
     brand: "Heinz",
     title: "Tomato Ketchup",
     ingredients: "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
     imageUrl: "/swaps/ranch.jpg",
   },
   {
-    match: /\b(hellmann'?s|best foods|mayo|mayonnaise)\b/i,
+    match: /\b(hellmann'?s|best foods)\b|(?<!avocado oil |primal kitchen |chosen foods |organic )\bmayonnaise\b/i,
     brand: "Hellmann's",
     title: "Real Mayonnaise",
     ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors.",
     imageUrl: "/swaps/ranch.jpg",
   },
   {
-    match: /\b(wonder bread|sara lee|white bread|bread|buns|rolls|bagels?|english muffins?)\b/i,
+    match: /\b(wonder bread|sara lee|white bread)\b|(?<!ezekiel |sprouted |dave'?s killer |organic |sourdough )\b(hamburger buns|hot dog buns)\b/i,
     brand: "Sara Lee",
     title: "Classic Soft White Bread",
     ingredients: "Enriched Wheat Flour, Water, Sugar, Yeast, Vegetable Oil (Soybean), Salt, Calcium Propionate (to Preserve Freshness), Monoglycerides, DATEM, Calcium Sulfate, Soy Lecithin.",
     imageUrl: "/swaps/bread.jpg",
   },
   {
-    match: /\b(eggnog|egg nog|hood)\b/i,
+    match: /\b(annie'?s|organic|goodles)\b.*\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|shells\s*(and|&)\s*(white\s*)?cheddar)\b/i,
+    brand: "Annie's Homegrown",
+    title: "Organic Macaroni & Cheese",
+    ingredients: "Organic Pasta (Organic Wheat Flour), Organic Cheddar Cheese (Cultured Pasteurized Organic Milk, Salt, Non-Animal Enzymes), Organic Whey, Organic Nonfat Milk, Salt, Sodium Citrate, Organic Annatto Extract (For Color).",
+    imageUrl: "/swaps/snacks.jpg",
+  },
+  {
+    match: /\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|kraft\s+mac|velveeta\s+shells)\b/i,
+    brand: "Clean Grocery Verified",
+    title: "Original Macaroni & Cheese Dinner",
+    ingredients: "Enriched Macaroni Product (Wheat Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Milk Protein Concentrate, Salt, Sodium Tripolyphosphate, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, Yellow 5, Yellow 6, Enzymes, Cheese Culture).",
+    imageUrl: "/swaps/snacks.jpg",
+  },
+  {
+    match: /\b(organic|alexandre|kalona|maple hill)\b.*\b(eggnog|egg nog)\b/i,
+    brand: "Organic Valley",
+    title: "Organic Eggnog",
+    ingredients: "Organic Grade A Milk, Organic Grade A Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Nutmeg.",
+    imageUrl: "/presets/yogurt.jpg",
+  },
+  {
+    match: /\b(eggnog|egg nog)\b/i,
     brand: "Hood",
     title: "Golden Vanilla Eggnog",
     ingredients: "Milk, Cream, Sugar, Nonfat Milk, Egg Yolks, Corn Syrup, High Fructose Corn Syrup, Whey, Natural and Artificial Flavor, Nutmeg, Carrageenan, Guar Gum, Mono and Diglycerides, Annatto and Turmeric (Color).",
     imageUrl: "/presets/yogurt.jpg",
   },
   {
-    match: /\b(whole milk|2% milk|skim milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk)\b/i,
-    brand: "Dairy Pure",
+    match: /\b(whole milk|milk whole|2% milk|milk 2%|1% milk|skim milk|nonfat milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk|organic whole milk)\b/i,
+    brand: "Clean Grocery Verified",
     title: "Grade A Pasteurized Milk",
     ingredients: "Grade A Milk, Vitamin D3.",
     imageUrl: "/swaps/yogurt.jpg",
@@ -461,7 +577,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/presets/yogurt.jpg",
   },
   {
-    match: /\b(banana|bananas|apple|apples|avocado|strawberr|blueberr|spinach|broccoli|kale|carrots?|potatoes?|tomatoes?|oranges?|grapes?|lemons?|eggs?|pasture[- ]raised eggs|salmon|ribeye|steak|ground beef|chicken breast|olive oil|honey|maple syrup)\b/i,
+    match: /^(?!.*\b(macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|cookies?|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|nuggets?|fries|ice cream|popsicle|yogurt|creamer|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|kiwi|oranges?|clementines?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|butter|salted butter|unsalted butter|kerrygold|ghee|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|honey|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
     brand: "Fresh Whole Food",
     title: "100% Whole Unprocessed Food",
     ingredients: "100% pure whole food ingredient. No additives, no preservatives, no seed oils, no artificial dyes.",
@@ -471,7 +587,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
 
 const UI_NOISE_QUERY = /\b(gas savings|walmart\+|new notification|scan barcodes|qr code|pickup or delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items)\b/i;
 
-function catalogFallback(query: string): Omit<LookupResult, "ms"> {
+function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query.trim().replace(/\b\w/g, (c) => c.toUpperCase());
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (entry.match.test(query)) {
@@ -484,23 +600,8 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> {
       };
     }
   }
-  // Universal grocery fallback so no query ever errors out
-  if (/\b(organic|grass[- ]?fed|sprouted|pure|raw|fresh|avocado oil)\b/i.test(query)) {
-    return {
-      productTitle: cleanTitle,
-      brand: "",
-      ingredients: `Organic ${query.toLowerCase()}, sea salt.`,
-      imageUrl: "/presets/butter.jpg",
-      source: "catalog",
-    };
-  }
-  return {
-    productTitle: cleanTitle,
-    brand: "",
-    ingredients: `Enriched flour, sugar, soybean oil, natural and artificial flavors, high fructose corn syrup, soy lecithin, salt, potassium sorbate.`,
-    imageUrl: "/swaps/snacks.jpg",
-    source: "catalog",
-  };
+  // Never invent fake ingredient lists for unknown products when OFF/USDA return no match.
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -530,7 +631,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
   const cache = await loadCache();
   const hit = cache.get(key);
-  if (hit && hit.imageUrl && !hit.productTitle.startsWith("Conventional Grocery")) {
+  if (isFreshCacheEntry(hit) && hit.imageUrl && !hit.productTitle.startsWith("Conventional Grocery")) {
     const { cachedAt: _c, source, ...rest } = hit;
     return { ...rest, source: "cache", origin: source, ms: ms() };
   }
@@ -545,7 +646,9 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!found && title) found = catalogFallback(title);
   if (!found) return null;
 
-  cache.set(key, { ...found, cachedAt: new Date().toISOString() });
-  void persistCache(cache);
+  if (found.source !== "catalog") {
+    setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString() });
+    void persistCache(cache);
+  }
   return { ...found, ms: ms() };
 }

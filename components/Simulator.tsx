@@ -41,6 +41,7 @@ interface Product {
   ingredients: string;
   category?: SwapCategory;
   origin: Origin;
+  replacedItem?: Product;
   lookup?: { source: string; origin?: string; ms: number };
 }
 
@@ -71,10 +72,10 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   origin: "preset",
 });
 
-const cleanToProduct = (cat: SwapCategory): Product => {
+const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
   const alt = CLEAN_ALTERNATIVES[cat];
   return {
-    key: `clean-${cat}`,
+    key: replacedItem ? `clean-${cat}-${replacedItem.key}` : `clean-${cat}`,
     title: alt.name,
     brand: alt.brand,
     size: alt.size,
@@ -83,6 +84,7 @@ const cleanToProduct = (cat: SwapCategory): Product => {
     ingredients: alt.ingredients,
     category: cat,
     origin: "swap",
+    replacedItem,
   };
 };
 
@@ -349,7 +351,8 @@ export default function Simulator() {
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("pro") === "1") {
+      const sessionId = params.get("session_id") || "";
+      if (params.get("pro") === "1" && /^cs_(test|live)_[A-Za-z0-9]+$/.test(sessionId)) {
         setIsPro(true);
         window.localStorage.setItem("heybroc_pro", "1");
         setToast({
@@ -544,9 +547,10 @@ export default function Simulator() {
         ingredients: targetItem.ingredients,
         category: targetItem.category,
         store,
+        watchlist: watch,
       });
       if (!targetSwap) return;
-      const clean = cleanToProduct(targetSwap.category);
+      const clean = cleanToProduct(targetSwap.category, targetItem);
       setCart((c) => {
         const idx = c.findIndex((i) => i.key === targetItem.key);
         if (idx === -1) return [...c, clean];
@@ -587,6 +591,7 @@ export default function Simulator() {
   const getRevertTarget = useCallback(
     (item: Product): Product | null => {
       if (item.origin !== "swap") return null;
+      if (item.replacedItem) return item.replacedItem;
       if (previousDirtyItem && previousDirtyItem.category === item.category) {
         return previousDirtyItem;
       }
@@ -712,11 +717,11 @@ export default function Simulator() {
     setCart((c) =>
       c.map((item) => {
         const hit = dirty.find((d) => d.item.key === item.key);
-        return hit?.sw ? cleanToProduct(hit.sw.category) : item;
+        return hit?.sw ? cleanToProduct(hit.sw.category, item) : item;
       }),
     );
     const replaced = dirty.find((d) => d.item.key === active.key);
-    if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category));
+    if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category, replaced.item));
     triggerClimbFlash();
     setToast({
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg 100/100!`,
@@ -1425,7 +1430,9 @@ export default function Simulator() {
                             <h4 className="yuka-section-title">Positives</h4>
                             <div className="yuka-list">
                               {ALL_CATEGORIES.filter(
-                                (cat) => !score.flagged.some((f) => f.category === cat),
+                                (cat) =>
+                                  !score.flagged.some((f) => f.category === cat) &&
+                                  !score.ignored.some((f) => f.category === cat),
                               ).map((cat) => {
                                 const meta = POSITIVE_CHECKS[cat];
                                 return (

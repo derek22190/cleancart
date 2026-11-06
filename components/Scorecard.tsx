@@ -45,15 +45,19 @@ export default function Scorecard({
     new Set(
       (swaps.length > 0 ? swaps.flatMap((s) => s.dodged) : fallbackDodged).filter(Boolean),
     ),
-  ).slice(0, 8);
+  ).slice(0, 6);
 
-  const displayedSwaps = (swaps.length > 0 ? swaps : fallbackSwaps).slice(0, 4);
+  const displayedSwaps = (swaps.length > 0 ? swaps : fallbackSwaps).slice(0, 3);
   const gradeLabel =
     cartAvg >= 75
       ? "Clean Cart Approved"
       : cartAvg >= 50
         ? "In Progress · Getting Cleaner"
         : "Before HeyBroc Swap";
+  const gradeSubtitle =
+    dirtyCount === 0
+      ? "0 seed oils · 0 synthetic dyes · 0 HFCS"
+      : `${dirtyCount} item${dirtyCount === 1 ? "" : "s"} ready for 1-tap clean swap`;
 
   const downloadPng = () => {
     const canvas = canvasRef.current;
@@ -200,7 +204,7 @@ export default function Scorecard({
               </div>
               <div className="story-grade-meta">
                 <b>{gradeLabel}</b>
-                <small>0 seed oils · 0 synthetic dyes · 0 HFCS</small>
+                <small>{gradeSubtitle}</small>
               </div>
             </div>
 
