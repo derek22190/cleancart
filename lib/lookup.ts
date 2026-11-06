@@ -560,11 +560,11 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(eggnog|egg nog)\b/i,
     brand: "Hood",
     title: "Golden Vanilla Eggnog",
-    ingredients: "Milk, Cream, Sugar, Nonfat Milk, Egg Yolks, Corn Syrup, High Fructose Corn Syrup, Whey, Natural and Artificial Flavor, Nutmeg, Carrageenan, Guar Gum, Mono and Diglycerides, Annatto and Turmeric (Color).",
+    ingredients: "Milk, Cream, Sugar, Nonfat Milk, Egg Yolks, High Fructose Corn Syrup, Whey, Natural and Artificial Flavor, Nutmeg, Carrageenan, Guar Gum, Mono and Diglycerides, Annatto and Turmeric (Color).",
     imageUrl: "/presets/yogurt.jpg",
   },
   {
-    match: /\b(whole milk|milk whole|2% milk|milk 2%|1% milk|skim milk|nonfat milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk|organic whole milk)\b/i,
+    match: /^(?!.*\b(soy|soymilk|almond|almondmilk|oat|oatmilk|coconut|cashew|chocolate|strawberry|condensed|evaporated|buttermilk|milkshake|creamer)\b).*\b(whole milk|milk whole|2% milk|milk 2%|1% milk|skim milk|nonfat milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk|organic whole milk)\b/i,
     brand: "Clean Grocery Verified",
     title: "Grade A Pasteurized Milk",
     ingredients: "Grade A Milk, Vitamin D3.",
@@ -628,6 +628,14 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     };
   }
 
+  // Deterministic instant resolution for verified catalog staples & whole foods when no barcode is specified
+  if (!input.barcode && title) {
+    const instant = catalogFallback(title);
+    if (instant) {
+      return { ...instant, ms: ms() };
+    }
+  }
+
   const key = cacheKey(input);
   if (!key) return null;
   const cache = await loadCache();
@@ -643,17 +651,6 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     if (!found) found = await usdaSearch(input.barcode);
   }
   if (!found && title) found = await offSearch(title);
-  if (!found && title) found = await usdaSearch(title);
-  if (!found && title) found = catalogFallback(title);
-  if (!found) return null;
-
-  if (found.source !== "catalog") {
-    setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString() });
-    void persistCache(cache);
-  }
-  return { ...found, ms: ms() };
-}
-tle);
   if (!found && title) found = await usdaSearch(title);
   if (!found && title) found = catalogFallback(title);
   if (!found) return null;

@@ -51,8 +51,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         working-directory: ${{ github.workspace }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "derek22190"
+          git config user.email "53961265+derek22190@users.noreply.github.com"
           cp android-app/cleancart-debug.apk public/heybroc.apk
           if ! git diff --quiet public/heybroc.apk; then
             git add public/heybroc.apk
