@@ -6,6 +6,7 @@
   "description": "Ingredient-only grocery grader with 1-tap clean swaps and live Cart Avg bubble on Walmart, Instacart, Sam's Club and BJ's.",
   "permissions": ["storage"],
   "host_permissions": [
+    "https://heybroc.com/*",
     "https://cleancart-teal.vercel.app/*",
     "http://localhost:3000/*",
     "https://*/*"

@@ -149,7 +149,7 @@ export default function Scorecard({
 
     ctx.fillStyle = "#ffffff";
     ctx.font = `900 36px ${font}`;
-    ctx.fillText("CleanCart PureOverlay", 120, H - 150);
+    ctx.fillText("HeyBroc · heybroc.com", 120, H - 150);
 
     ctx.fillStyle = "#86efac";
     ctx.font = `700 28px ${font}`;
@@ -231,7 +231,7 @@ export default function Scorecard({
 
             <div className="story-watermark">
               <div>
-                <strong>CleanCart PureOverlay</strong>
+                <strong>HeyBroc · heybroc.com</strong>
                 <span>Scan &amp; swap dirty groceries in 1 tap</span>
               </div>
               <div className="story-code-badge">

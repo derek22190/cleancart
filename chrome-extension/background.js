@@ -2,7 +2,7 @@
 // Content scripts can't reliably call our API from store pages (page CORS + mixed content),
 // so they message this worker, which has host_permissions to reach the API.
 
-const DEFAULT_API = "https://cleancart-teal.vercel.app";
+const DEFAULT_API = "https://heybroc.com";
 
 async function getSettings() {
   const { apiBase, watchlist } = await chrome.storage.sync.get(["apiBase", "watchlist"]);

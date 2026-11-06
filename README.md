@@ -1,6 +1,6 @@
-# CleanCart (PureOverlay)
+# HeyBroc (CleanCart PureOverlay)
 
-**Live Production App & API:** [https://cleancart-teal.vercel.app](https://cleancart-teal.vercel.app)
+**Live Production App & API:** [https://heybroc.com](https://heybroc.com) (fallback: `https://cleancart-teal.vercel.app`)
 
 Zero-friction grocery ingredient grader and 1-tap affiliate swap engine that floats over **Walmart**, **Instacart**, **Sam's Club**, and **BJ's Wholesale** (native Android apps + desktop web stores + iOS Share Sheet / Back Tap / Action Button).
 

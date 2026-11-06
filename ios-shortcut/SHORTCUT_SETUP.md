@@ -2,7 +2,7 @@
 
 iOS doesn't allow apps to float over other apps, so CleanCart on iPhone runs as a **Shortcut** that calls the same deterministic `POST /api/scan` endpoint used by Android and Chrome.
 
-> **Live Production API URL:** `https://cleancart-teal.vercel.app`
+> **Live Production API URL:** `https://heybroc.com` (fallback: `https://cleancart-teal.vercel.app`)
 
 ---
 
@@ -14,7 +14,7 @@ Open the **Shortcuts** app → **+** → name it **CleanCart Scan**, then add th
 |---|--------|---------|
 | 1 | **Receive** *Text, URLs, Safari web pages* input from **Share Sheet** | If there's no input: **Get Clipboard** |
 | 2 | **Text** | `Shortcut Input` (the shared product title / page title) |
-| 3 | **Get Contents of URL** | URL: `https://cleancart-teal.vercel.app/api/scan` · Method: **POST** · Request Body: **JSON** |
+| 3 | **Get Contents of URL** | URL: `https://heybroc.com/api/scan` · Method: **POST** · Request Body: **JSON** |
 |   |   | `productTitle` → *Text* (from step 2) |
 |   |   | `store` → `walmart` *(or instacart / sams / bjs)* |
 |   |   | `format` → `ios_text` |
@@ -35,7 +35,7 @@ https://www.walmart.com/search?q=Stonyfield…&irgwc=1&clickid=YOUR_IMPACT_ID
 
 **Optional — 1-tap Swap:** add a second **Get Contents of URL** (same as step 3 but `format` = `json`) → **Get Dictionary Value** for key `swap.webUrl` → **Choose from Menu** with "Swap Item" / "Close" → under *Swap Item* add **Open URLs**. The affiliate link only opens when you tap "Swap Item".
 
-**Optional — rich card:** replace step 4 with **Quick Look** on `https://cleancart-teal.vercel.app`, or **Show Web View**, for the full Health Insights card.
+**Optional — rich card:** replace step 4 with **Quick Look** on `https://heybroc.com`, or **Show Web View**, for the full Health Insights card.
 
 ---
 
@@ -62,7 +62,7 @@ Copy a product title, then press and hold the Action Button.
 ### API reference
 
 ```http
-POST https://cleancart-teal.vercel.app/api/scan
+POST https://heybroc.com/api/scan
 Content-Type: application/json
 
 {

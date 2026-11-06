@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val apiBase: String = (project.findProperty("cleancartApiBase") as String?) ?: "https://cleancart-teal.vercel.app"
+val apiBase: String = (project.findProperty("cleancartApiBase") as String?) ?: "https://heybroc.com"
 
 android {
     namespace = "com.cleancart.overlay"
