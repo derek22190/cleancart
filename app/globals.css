@@ -252,7 +252,7 @@ h1, h2, h3, h4, p { margin: 0; }
 .pdp-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid #eee; }
 .pdp-section h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
 .pdp-section p { font-size: 13.5px; color: #4b5563; line-height: 1.55; }
-.pdp-ingredients { margin-top: 220px !important; }
+.pdp-ingredients { margin-top: 4px; }
 .no-scroll-note { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--brand); font-weight: 600; }
 
 /* ---------------- Floating pill ---------------- */
