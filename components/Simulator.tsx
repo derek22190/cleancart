@@ -1690,10 +1690,111 @@ export default function Simulator() {
             </div>
           </div>
           <p className="stage-caption">
-            Drag the pill to move or drop on <b>✕ Hide for this trip</b> · Toggle <b>Scrolling Search Results</b> for live <b>🛒 Cart Avg</b>
+            Drag the pill to move or drop on <b>✕ Hide for this trip</b> · Toggle <b>Store Aisle</b> for live <b>🛒 Cart Avg</b>
           </p>
         </section>
       </main>
+
+      {/* ============ WHY HEYBROC COMPARISON SECTION ============ */}
+      <section className="compare-section" aria-label="Why HeyBroc comparison">
+        <div className="compare-card">
+          <div className="compare-head">
+            <span className="eyebrow eyebrow--green">THE MISSING LINK IN CLEAN GROCERIES</span>
+            <h2>Why Parents Switch to HeyBroc</h2>
+            <p>Combine the effortless floating bubble of coupon apps with deep, 100% ingredient-only food grading.</p>
+          </div>
+
+          <div className="compare-grid" role="table" aria-label="HeyBroc vs Honey vs Yuka">
+            {/* Header Row */}
+            <div className="compare-row compare-row--head" role="row">
+              <div className="compare-cell compare-cell--feature" role="columnheader">Feature</div>
+              <div className="compare-cell" role="columnheader">Honey / Rakuten</div>
+              <div className="compare-cell" role="columnheader">Yuka</div>
+              <div className="compare-cell compare-cell--broc" role="columnheader">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/broc-mascot.jpg" alt="" className="compare-mascot" />
+                <span>HeyBroc</span>
+              </div>
+            </div>
+
+            {/* Row 1 */}
+            <div className="compare-row" role="row">
+              <div className="compare-cell compare-cell--feature" role="cell">
+                <b>Floats directly on Walmart &amp; Instacart</b>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-yes">✓</span>
+                <small>Yes</small>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>No</small>
+              </div>
+              <div className="compare-cell compare-cell--broc" role="cell">
+                <span className="cmp-yes cmp-yes--bright">✓</span>
+                <small><b>Yes</b></small>
+              </div>
+            </div>
+
+            {/* Row 2 */}
+            <div className="compare-row" role="row">
+              <div className="compare-cell compare-cell--feature" role="cell">
+                <b>Grades ingredients (0–100) without a barcode camera</b>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>No</small>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>Barcode only</small>
+              </div>
+              <div className="compare-cell compare-cell--broc" role="cell">
+                <span className="cmp-yes cmp-yes--bright">✓</span>
+                <small><b>Reads screen automatically</b></small>
+              </div>
+            </div>
+
+            {/* Row 3 */}
+            <div className="compare-row" role="row">
+              <div className="compare-cell compare-cell--feature" role="cell">
+                <b>1-Tap Clean Food Swaps in your store app</b>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>Coupons only</small>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>No store links</small>
+              </div>
+              <div className="compare-cell compare-cell--broc" role="cell">
+                <span className="cmp-yes cmp-yes--bright">✓</span>
+                <small><b>Instant 1-Tap Swap</b></small>
+              </div>
+            </div>
+
+            {/* Row 4 */}
+            <div className="compare-row" role="row">
+              <div className="compare-cell compare-cell--feature" role="cell">
+                <b>Whole-Cart Health Audit (Cart Avg 0–100)</b>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>No</small>
+              </div>
+              <div className="compare-cell" role="cell">
+                <span className="cmp-no">✕</span>
+                <small>No</small>
+              </div>
+              <div className="compare-cell compare-cell--broc" role="cell">
+                <span className="cmp-yes cmp-yes--bright">✓</span>
+                <small><b>Full Cart Audit</b></small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ============ PHASE 6 MODALS ============ */}
       <Paywall
