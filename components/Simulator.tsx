@@ -21,9 +21,12 @@ import {
   type SwapCategory,
   type SwapResult,
 } from "@/lib/swaps";
+import Paywall, { type AppliedCreator } from "./Paywall";
+import InfluencerEngine from "./InfluencerEngine";
+import Scorecard, { type SwapRecord } from "./Scorecard";
 
 /* ------------------------------------------------------------------ */
-/* Types                                                               */
+/* Types & helpers                                                     */
 /* ------------------------------------------------------------------ */
 
 type Origin = "preset" | "live" | "swap";
@@ -52,6 +55,9 @@ interface ApiScan {
 
 type Watch = Record<Category, boolean>;
 type OverlayState = "pill" | "card" | "min";
+type ViewMode = "product" | "search";
+
+const FREE_SCAN_LIMIT = 5;
 
 const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   key: p.id,
@@ -71,6 +77,7 @@ const cleanToProduct = (cat: SwapCategory): Product => {
     key: `clean-${cat}`,
     title: alt.name,
     brand: alt.brand,
+    price: 4.99,
     ingredients: alt.ingredients,
     category: cat,
     origin: "swap",
@@ -85,6 +92,32 @@ const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accen
 };
 
 const RISK_LABEL = { high: "High risk", moderate: "Moderate", low: "Low risk" } as const;
+
+/** Smoothly tweens a number (e.g. Cart Avg climbing 48 -> 71 -> 95). */
+function useAnimatedNumber(target: number, durationMs = 720): number {
+  const [display, setDisplay] = useState(target);
+  const currentRef = useRef(target);
+
+  useEffect(() => {
+    const start = currentRef.current;
+    const diff = target - start;
+    if (diff === 0) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / durationMs);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const val = Math.round(start + diff * eased);
+      currentRef.current = val;
+      setDisplay(val);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, durationMs]);
+
+  return display;
+}
 
 /* ------------------------------------------------------------------ */
 /* Small presentational pieces                                         */
@@ -144,6 +177,25 @@ export default function Simulator() {
   const [overlay, setOverlay] = useState<OverlayState>("pill");
   const [openFlag, setOpenFlag] = useState<string | null>(null);
   const [pillY, setPillY] = useState(56);
+  const [pillDragOffset, setPillDragOffset] = useState<{ x: number; y: number } | null>(null);
+  const [overHideZone, setOverHideZone] = useState(false);
+  const [hiddenForTrip, setHiddenForTrip] = useState(false);
+
+  // Dual-mode bubble state: "product" (single item score) vs "search" (idle/scrolling Cart Avg)
+  const [viewMode, setViewMode] = useState<ViewMode>("product");
+  const [cartClimbFlash, setCartClimbFlash] = useState(false);
+  const [swapHistory, setSwapHistory] = useState<SwapRecord[]>([]);
+
+  // Paywall & Influencer Engine state
+  const [scanCount, setScanCount] = useState(1);
+  const [isPro, setIsPro] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallAutoShown, setPaywallAutoShown] = useState(false);
+  const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
+  const [influencerOpen, setInfluencerOpen] = useState(false);
+  const [influencerRefresh, setInfluencerRefresh] = useState(0);
+  const [scorecardOpen, setScorecardOpen] = useState(false);
+
   const [toast, setToast] = useState<{ title: string; body: string; href?: string } | null>(null);
 
   const [query, setQuery] = useState("");
@@ -168,93 +220,206 @@ export default function Simulator() {
   );
   const theme = STORE_THEME[store];
 
+  /* ---------------- Cart scoring & animated Cart Avg ---------------- */
+  const cartScored = useMemo(
+    () =>
+      cart.map((item) => {
+        const s = scoreIngredients(item.ingredients, watch);
+        const sw = resolveSwap({
+          score: s.score,
+          productTitle: `${item.brand} ${item.title}`,
+          ingredients: item.ingredients,
+          category: item.category,
+          store,
+        });
+        return { item, s, sw };
+      }),
+    [cart, watch, store],
+  );
+  const cartAvg = cartScored.length
+    ? Math.round(cartScored.reduce((a, r) => a + r.s.score, 0) / cartScored.length)
+    : 0;
+  const animatedCartAvg = useAnimatedNumber(cartAvg, 750);
+  const cartAvgTone = animatedCartAvg >= 75 ? "green" : animatedCartAvg >= 50 ? "yellow" : "red";
+  const dirty = cartScored.filter((r) => r.sw);
+
+  const fallbackDodged = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          PRESETS.flatMap((p) => scoreIngredients(p.ingredients, watch).flagged.map((f) => f.name)),
+        ),
+      ),
+    [watch],
+  );
+
+  const fallbackSwaps = useMemo<SwapRecord[]>(
+    () =>
+      PRESETS.map((p) => {
+        const s = scoreIngredients(p.ingredients, watch);
+        const sw = resolveSwap({
+          score: s.score,
+          productTitle: `${p.brand} ${p.title}`,
+          ingredients: p.ingredients,
+          category: p.category,
+          store,
+        });
+        if (!sw) return null;
+        return {
+          fromTitle: `${p.brand} ${p.title}`,
+          toTitle: sw.title,
+          store,
+          dodged: s.flagged.map((f) => f.name),
+        };
+      }).filter((x): x is SwapRecord => Boolean(x)),
+    [watch, store],
+  );
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 6500);
     return () => clearTimeout(t);
   }, [toast]);
 
-  const showProduct = useCallback((p: Product) => {
-    setActive(p);
-    setOverlay("pill");
-    setOpenFlag(null);
-    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
-
-  /* ---------------- Swap ---------------- */
-  const doSwap = useCallback(() => {
-    if (!swap) return;
-    const clean = cleanToProduct(swap.category);
-    setCart((c) => {
-      const idx = c.findIndex((i) => i.key === active.key);
-      if (idx === -1) return [...c, clean];
-      const next = [...c];
-      next[idx] = clean;
+  const registerScan = useCallback(() => {
+    setScanCount((prev) => {
+      const next = prev + 1;
+      if (next >= FREE_SCAN_LIMIT && !isPro && !paywallAutoShown) {
+        setPaywallAutoShown(true);
+        setPaywallOpen(true);
+      }
       return next;
     });
-    setActive(clean);
-    setOverlay("pill");
-    setOpenFlag(null);
-    setToast({
-      title: `Swapped to ${swap.title}`,
-      body: `Affiliate click fired on your tap → ${swap.deepLink}`,
-      href: swap.webUrl,
-    });
-  }, [swap, active.key]);
+  }, [isPro, paywallAutoShown]);
+
+  const switchStore = useCallback((s: Store) => {
+    setStore(s);
+    // Re-opening a store app automatically restores a hidden-for-trip bubble.
+    setHiddenForTrip(false);
+  }, []);
+
+  const showProduct = useCallback(
+    (p: Product, countAsScan = true) => {
+      setActive(p);
+      setViewMode("product");
+      setOverlay("pill");
+      setOpenFlag(null);
+      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      if (countAsScan) registerScan();
+    },
+    [registerScan],
+  );
+
+  const triggerClimbFlash = useCallback(() => {
+    setCartClimbFlash(true);
+    const t = setTimeout(() => setCartClimbFlash(false), 2600);
+    return () => clearTimeout(t);
+  }, []);
+
+  /* ---------------- Swap (single item or from auditor) ---------------- */
+  const swapCartItem = useCallback(
+    (targetItem: Product) => {
+      const itemScore = scoreIngredients(targetItem.ingredients, watch);
+      const targetSwap = resolveSwap({
+        score: itemScore.score,
+        productTitle: `${targetItem.brand} ${targetItem.title}`,
+        ingredients: targetItem.ingredients,
+        category: targetItem.category,
+        store,
+      });
+      if (!targetSwap) return;
+      const clean = cleanToProduct(targetSwap.category);
+      setCart((c) => {
+        const idx = c.findIndex((i) => i.key === targetItem.key);
+        if (idx === -1) return [...c, clean];
+        const next = [...c];
+        next[idx] = clean;
+        return next;
+      });
+      setSwapHistory((prev) => [
+        {
+          fromTitle: `${targetItem.brand} ${targetItem.title}`,
+          toTitle: targetSwap.title,
+          store,
+          dodged: itemScore.flagged.map((f) => f.name),
+        },
+        ...prev,
+      ]);
+      if (active.key === targetItem.key) {
+        setActive(clean);
+      }
+      setOverlay("pill");
+      setOpenFlag(null);
+      triggerClimbFlash();
+      setToast({
+        title: `Swapped to ${targetSwap.title} · Cart Avg climbing ↑`,
+        body: `Affiliate click fired on your tap → ${targetSwap.deepLink}`,
+        href: targetSwap.webUrl,
+      });
+    },
+    [watch, store, active.key, triggerClimbFlash],
+  );
+
+  const doSwap = useCallback(() => {
+    swapCartItem(active);
+  }, [swapCartItem, active]);
 
   /* ---------------- Live search ---------------- */
-  const runLive = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const q = query.trim();
-    if (!q) return;
-    setLiveState("loading");
-    setLiveError("");
-    try {
-      const payload = { productTitle: q, store, watchlist: watch };
-      const res = await fetch("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const data = (await res.json()) as ApiScan;
-      setApiJson(data);
-      if (!data.ok || !data.product) {
+  const runLive = useCallback(
+    async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const q = query.trim();
+      if (!q) return;
+      setLiveState("loading");
+      setLiveError("");
+      try {
+        const payload = { productTitle: q, store, watchlist: watch };
+        const res = await fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json()) as ApiScan;
+        setApiJson(data);
+        if (!data.ok || !data.product) {
+          setLiveState("error");
+          setLiveError(data.error || "Lookup failed.");
+          setIosText("");
+          return;
+        }
+        const p: Product = {
+          key: `live-${data.product.barcode || q}`,
+          title:
+            data.product.title.replace(
+              new RegExp(`^${(data.product.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
+              "",
+            ) || data.product.title,
+          brand: data.product.brand || "Open data",
+          image: data.product.imageUrl,
+          ingredients: data.product.ingredients,
+          category: detectCategory(`${q} ${data.product.title}`, data.product.ingredients),
+          origin: "live",
+          lookup: data.lookup,
+        };
+        showProduct(p, true);
+        setLiveState("idle");
+        fetch("/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, format: "ios_text" }),
+        })
+          .then((r) => r.text())
+          .then(setIosText)
+          .catch(() => setIosText(""));
+      } catch {
         setLiveState("error");
-        setLiveError(data.error || "Lookup failed.");
-        setIosText("");
-        return;
+        setLiveError("Network error — is the server reachable?");
       }
-      const p: Product = {
-        key: `live-${data.product.barcode || q}`,
-        title: data.product.title.replace(new RegExp(`^${(data.product.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"), "") || data.product.title,
-        brand: data.product.brand || "Open data",
-        image: data.product.imageUrl,
-        ingredients: data.product.ingredients,
-        category: detectCategory(`${q} ${data.product.title}`, data.product.ingredients),
-        origin: "live",
-        lookup: data.lookup,
-      };
-      showProduct(p);
-      setLiveState("idle");
-      // Fetch the concise iOS payload too (served from cache on the 2nd call).
-      fetch("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, format: "ios_text" }) })
-        .then((r) => r.text())
-        .then(setIosText)
-        .catch(() => setIosText(""));
-    } catch {
-      setLiveState("error");
-      setLiveError("Network error — is the dev server running?");
-    }
-  }, [query, store, watch, showProduct]);
-
-  /* ---------------- Cart audit ---------------- */
-  const cartScored = useMemo(
-    () => cart.map((item) => {
-      const s = scoreIngredients(item.ingredients, watch);
-      const sw = resolveSwap({ score: s.score, productTitle: `${item.brand} ${item.title}`, ingredients: item.ingredients, category: item.category, store });
-      return { item, s, sw };
-    }),
-    [cart, watch, store],
+    },
+    [query, store, watch, showProduct],
   );
-  const cartAvg = cartScored.length ? Math.round(cartScored.reduce((a, r) => a + r.s.score, 0) / cartScored.length) : 0;
-  const dirty = cartScored.filter((r) => r.sw);
 
+  /* ---------------- Whole-Cart Audit ---------------- */
   const openAudit = useCallback(async () => {
     setAuditOpen(true);
     setCartOpen(false);
@@ -263,13 +428,17 @@ export default function Simulator() {
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ store, watchlist: watch, items: cart.map((i) => ({ productTitle: `${i.brand} ${i.title}`, rawIngredients: i.ingredients })) }),
+        body: JSON.stringify({
+          store,
+          watchlist: watch,
+          items: cart.map((i) => ({ productTitle: `${i.brand} ${i.title}`, rawIngredients: i.ingredients })),
+        }),
       });
       setApiJson(await res.json());
       setIosText("");
       setInspectTab("json");
     } catch {
-      /* client-side scores are identical; API call is informational */
+      /* client-side scores are identical */
     } finally {
       setAuditBusy(false);
     }
@@ -277,38 +446,99 @@ export default function Simulator() {
 
   const swapAll = useCallback(() => {
     const n = dirty.length;
-    setCart((c) => c.map((item) => {
-      const hit = dirty.find((d) => d.item.key === item.key);
-      return hit?.sw ? cleanToProduct(hit.sw.category) : item;
+    if (n === 0) return;
+    const records: SwapRecord[] = dirty.map((d) => ({
+      fromTitle: `${d.item.brand} ${d.item.title}`,
+      toTitle: d.sw!.title,
+      store,
+      dodged: d.s.flagged.map((f) => f.name),
     }));
+    setSwapHistory((prev) => [...records, ...prev]);
+    setCart((c) =>
+      c.map((item) => {
+        const hit = dirty.find((d) => d.item.key === item.key);
+        return hit?.sw ? cleanToProduct(hit.sw.category) : item;
+      }),
+    );
     const replaced = dirty.find((d) => d.item.key === active.key);
     if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category));
-    setToast({ title: `Swapped ${n} item${n === 1 ? "" : "s"} in 1 tap`, body: `${n} affiliate deep link${n === 1 ? "" : "s"} attributed to your tap at ${STORE_META[store].label}.` });
-  }, [dirty, active.key, store]);
+    triggerClimbFlash();
+    setToast({
+      title: `Swapped ${n} item${n === 1 ? "" : "s"} in 1 tap → Cart Avg 100/100!`,
+      body: `${n} affiliate deep link${n === 1 ? "" : "s"} attributed to your tap at ${STORE_META[store].label}.`,
+    });
+  }, [dirty, active.key, store, triggerClimbFlash]);
 
-  /* ---------------- Pill drag ---------------- */
-  const drag = useRef<{ startY: number; startPill: number; moved: boolean } | null>(null);
+  const resetCartPresets = useCallback(() => {
+    setCart(PRESETS.map(presetToProduct));
+    setSwapHistory([]);
+    setActive(presetToProduct(PRESETS[0]));
+  }, []);
+
+  /* ---------------- 2D Pill drag + Drag-to-Hide drop zone ---------------- */
+  const drag = useRef<{ startX: number; startY: number; startPill: number; moved: boolean } | null>(null);
   const onPillDown = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { startY: e.clientY, startPill: pillY, moved: false };
+    drag.current = { startX: e.clientX, startY: e.clientY, startPill: pillY, moved: false };
+    setPillDragOffset({ x: 0, y: 0 });
   };
   const onPillMove = (e: React.PointerEvent) => {
     if (!drag.current || !screenRef.current) return;
+    const dx = e.clientX - drag.current.startX;
     const dy = e.clientY - drag.current.startY;
-    if (Math.abs(dy) > 4) drag.current.moved = true;
-    const h = screenRef.current.clientHeight;
-    const pct = drag.current.startPill + (dy / h) * 100;
+    if (Math.hypot(dx, dy) > 5) drag.current.moved = true;
+    const rect = screenRef.current.getBoundingClientRect();
+    const pct = drag.current.startPill + (dy / rect.height) * 100;
     setPillY(Math.max(14, Math.min(88, pct)));
+    setPillDragOffset({ x: Math.min(0, dx), y: 0 });
+
+    // Check if pointer is inside bottom-center "✕ Hide for this trip" drop target
+    const relY = (e.clientY - rect.top) / rect.height;
+    const relX = (e.clientX - rect.left) / rect.width;
+    setOverHideZone(relY > 0.80 && relX > 0.2 && relX < 0.8);
   };
-  const onPillUp = (expand: boolean) => {
+  const onPillUp = (isCartBubble: boolean, expand: boolean) => {
     const moved = drag.current?.moved;
+    const dropHide = overHideZone;
     drag.current = null;
-    if (!moved && expand) setOverlay("card");
-    if (!moved && !expand) setOverlay("pill");
+    setPillDragOffset(null);
+    setOverHideZone(false);
+
+    if (dropHide) {
+      setHiddenForTrip(true);
+      setToast({
+        title: "CleanCart hidden for this trip",
+        body: `Dismissed until the next time you open ${STORE_META[store].label}.`,
+      });
+      return;
+    }
+    if (!moved) {
+      if (isCartBubble) {
+        openAudit();
+      } else if (expand) {
+        setOverlay("card");
+      } else {
+        setOverlay("pill");
+      }
+    }
   };
 
   const toggleWatch = (c: Category) => setWatch((w) => ({ ...w, [c]: !w[c] }));
   const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
+
+  // Is the floating pill currently in Cart Avg mode?
+  const isCartBubbleMode = viewMode === "search" || cartClimbFlash;
+
+  // Search aisle items (all 5 presets + 3 clean alternatives)
+  const aisleItems = useMemo<Product[]>(
+    () => [
+      ...PRESETS.map(presetToProduct),
+      cleanToProduct("Yogurt"),
+      cleanToProduct("Crackers"),
+      cleanToProduct("Dressings"),
+    ],
+    [],
+  );
 
   /* ---------------- Render ---------------- */
   return (
@@ -323,7 +553,37 @@ export default function Simulator() {
             <p>Ingredient-only grader &amp; 1-tap clean swaps — live simulator</p>
           </div>
         </div>
-        <a className="topbar-link" href="/api/scan" target="_blank" rel="noreferrer">View rubric API ↗</a>
+
+        <div className="topbar-actions">
+          <button
+            id="toggle-search-mode"
+            type="button"
+            className={`topbar-btn ${viewMode === "search" ? "is-active" : ""}`}
+            onClick={() => setViewMode((m) => (m === "product" ? "search" : "product"))}
+          >
+            {viewMode === "search" ? `🛒 Scrolling Search (${animatedCartAvg}/100)` : "🔍 Scrolling Search Results"}
+          </button>
+
+          <button
+            id="open-paywall"
+            type="button"
+            className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
+            onClick={() => setPaywallOpen(true)}
+          >
+            {isPro ? "★ PRO Unlocked" : `💎 Paywall / Pro (${Math.min(scanCount, FREE_SCAN_LIMIT)}/${FREE_SCAN_LIMIT})`}
+          </button>
+
+          <button
+            id="open-influencers"
+            type="button"
+            className="topbar-btn"
+            onClick={() => setInfluencerOpen(true)}
+          >
+            📈 Influencer Engine
+          </button>
+
+          <a className="topbar-link" href="/api/scan" target="_blank" rel="noreferrer">View rubric API ↗</a>
+        </div>
       </header>
 
       <main className="layout">
@@ -333,10 +593,67 @@ export default function Simulator() {
             <div className="card-head"><h2>Store</h2><span className="hint">Themes the app underneath</span></div>
             <div className="segmented" role="tablist">
               {STORES.map((s) => (
-                <button key={s} id={`store-${s}`} role="tab" aria-selected={store === s} className={store === s ? "is-on" : ""} onClick={() => setStore(s)}>
+                <button key={s} id={`store-${s}`} role="tab" aria-selected={store === s} className={store === s ? "is-on" : ""} onClick={() => switchStore(s)}>
                   {STORE_META[s].label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h2>Dual-Mode Floating Bubble</h2>
+              <span className="hint">Cart Avg: {animatedCartAvg}/100</span>
+            </div>
+            <div className="segmented segmented--two">
+              <button
+                id="mode-product-btn"
+                type="button"
+                className={viewMode === "product" ? "is-on" : ""}
+                onClick={() => setViewMode("product")}
+              >
+                📦 Product View ({score.score}/100)
+              </button>
+              <button
+                id="mode-search-btn"
+                type="button"
+                className={viewMode === "search" ? "is-on" : ""}
+                onClick={() => setViewMode("search")}
+              >
+                🛒 Scrolling Search ({animatedCartAvg}/100)
+              </button>
+            </div>
+            <div className="bubble-trip-bar">
+              {hiddenForTrip ? (
+                <button
+                  id="restore-bubble-btn"
+                  type="button"
+                  className="trip-pill trip-pill--restore"
+                  onClick={() => setHiddenForTrip(false)}
+                >
+                  ↺ Overlay hidden for this trip · Tap to Restore
+                </button>
+              ) : (
+                <button
+                  id="snooze-bubble-btn"
+                  type="button"
+                  className="trip-pill"
+                  onClick={() => {
+                    setHiddenForTrip(true);
+                    setToast({
+                      title: "CleanCart hidden for this trip",
+                      body: `Dismissed until you next open ${STORE_META[store].label}.`,
+                    });
+                  }}
+                >
+                  ✕ Hide for this trip (or drag bubble to bottom)
+                </button>
+              )}
+              {cart.some((c) => c.origin === "swap") && (
+                <button type="button" className="link-btn" onClick={resetCartPresets}>
+                  Reset cart to 48/100
+                </button>
+              )}
             </div>
           </div>
 
@@ -368,7 +685,7 @@ export default function Simulator() {
             <ul className="preset-list">
               {PRESETS.map((p) => {
                 const s = scoreIngredients(p.ingredients, watch);
-                const on = active.key === p.id;
+                const on = active.key === p.id && viewMode === "product";
                 return (
                   <li key={p.id}>
                     <button id={`preset-${p.id}`} className={`preset ${on ? "is-on" : ""}`} onClick={() => showProduct(presetToProduct(p))}>
@@ -386,7 +703,7 @@ export default function Simulator() {
           <div className="tool-row">
             <button id="open-auditor" className="tool" onClick={openAudit}>
               <span className="tool-icon">🛒</span>
-              <span><b>Whole-Cart MCP Auditor</b><small>{dirty.length} dirty of {cart.length} • swap all in 1 tap</small></span>
+              <span><b>Whole-Cart MCP Auditor</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
             </button>
             <button id="open-watchlist" className={`tool ${panel === "watchlist" ? "is-on" : ""}`} onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}>
               <span className="tool-icon">⚙︎</span>
@@ -446,52 +763,141 @@ export default function Simulator() {
                     <span className="cart-count">{cart.length}</span>
                   </button>
                 </div>
-                <div className="store-search">⌕ Search {STORE_META[store].label}</div>
+                <button
+                  type="button"
+                  className="store-search"
+                  onClick={() => setViewMode((m) => (m === "product" ? "search" : "product"))}
+                >
+                  <span>⌕ {viewMode === "search" ? `Scrolling "${STORE_META[store].label} Popular Grocery"` : `Search ${STORE_META[store].label}`}</span>
+                  <em className="store-search-Action">{viewMode === "search" ? "Product view →" : "Browse aisle →"}</em>
+                </button>
               </div>
 
               <div className="store-scroll" ref={scrollRef}>
-                <div className="pdp">
-                  <div className="pdp-art"><ProductArt product={active} /></div>
-                  <p className="pdp-brand">{active.brand}</p>
-                  <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
-                  <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
-                  <div className="pdp-price">{active.price ? `$${active.price.toFixed(2)}` : "See price in app"}</div>
-                  <button
-                    className="pdp-add"
-                    onClick={() => {
-                      if (!cart.some((c) => c.key === active.key)) setCart((c) => [...c, active]);
-                      setToast({ title: "Added to cart", body: `${active.brand} ${active.title}` });
-                    }}
-                  >
-                    {cart.some((c) => c.key === active.key) ? "In cart ✓" : "Add to cart"}
-                  </button>
-                  <div className="pdp-fulfil">
-                    <div><b>Pickup</b><span>Today</span></div>
-                    <div><b>Delivery</b><span>As soon as 1 hr</span></div>
-                    <div><b>Shipping</b><span>Not available</span></div>
+                {viewMode === "search" ? (
+                  <div className="aisle">
+                    <div className="aisle-banner">
+                      <b>Scrolling Search Results · Idle Mode</b>
+                      <p>Bubble automatically switches to your live Cart Average ({animatedCartAvg}/100). Tap any product to inspect, or tap the bubble to audit &amp; swap all dirty items.</p>
+                    </div>
+                    <div className="aisle-grid">
+                      {aisleItems.map((item) => {
+                        const itemScore = scoreIngredients(item.ingredients, watch);
+                        const inCart = cart.some((c) => c.key === item.key);
+                        return (
+                          <div key={item.key} className="aisle-card">
+                            <button
+                              type="button"
+                              className="aisle-card-main"
+                              onClick={() => showProduct(item)}
+                            >
+                              <div className="aisle-art">
+                                <ProductArt product={item} />
+                                <span className={`aisle-score tone-${itemScore.color}`}>{itemScore.score}/100</span>
+                              </div>
+                              <small className="aisle-brand">{item.brand}</small>
+                              <b className="aisle-title">{item.title}</b>
+                              <span className="aisle-price">${(item.price ?? 4.49).toFixed(2)}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className={`aisle-add ${inCart ? "is-in" : ""}`}
+                              onClick={() => {
+                                if (!inCart) setCart((c) => [...c, item]);
+                                setToast({ title: inCart ? "Already in cart" : "Added to cart", body: `${item.brand} ${item.title}` });
+                              }}
+                            >
+                              {inCart ? "In Cart ✓" : "+ Add"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="pdp-section"><h4>About this item</h4><p>Popular pick in {active.category ?? "Grocery"}. Customers frequently buy this together with other pantry staples.</p></div>
-                  <div className="pdp-section"><h4>Specifications</h4><p>Brand: {active.brand}<br />Category: {active.category ?? "Grocery"}</p></div>
-                  <div className="pdp-section"><h4>Ingredients</h4><p className="pdp-ingredients">{active.ingredients}</p><small className="no-scroll-note">CleanCart already read this — no scrolling needed.</small></div>
-                </div>
+                ) : (
+                  <div className="pdp">
+                    <div className="pdp-art"><ProductArt product={active} /></div>
+                    <p className="pdp-brand">{active.brand}</p>
+                    <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
+                    <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
+                    <div className="pdp-price">{active.price ? `$${active.price.toFixed(2)}` : "See price in app"}</div>
+                    <div className="pdp-cta-row">
+                      <button
+                        className="pdp-add"
+                        onClick={() => {
+                          if (!cart.some((c) => c.key === active.key)) setCart((c) => [...c, active]);
+                          setToast({ title: "Added to cart", body: `${active.brand} ${active.title}` });
+                        }}
+                      >
+                        {cart.some((c) => c.key === active.key) ? "In cart ✓" : "Add to cart"}
+                      </button>
+                      {swap && (
+                        <button
+                          id="pdp-quick-swap"
+                          type="button"
+                          className="pdp-swap-inline"
+                          onClick={doSwap}
+                        >
+                          ⚡ 1-Tap Clean Swap ({swap.score}/100)
+                        </button>
+                      )}
+                    </div>
+                    <div className="pdp-fulfil">
+                      <div><b>Pickup</b><span>Today</span></div>
+                      <div><b>Delivery</b><span>As soon as 1 hr</span></div>
+                      <div><b>Shipping</b><span>Not available</span></div>
+                    </div>
+                    <div className="pdp-section"><h4>About this item</h4><p>Popular pick in {active.category ?? "Grocery"}. Customers frequently buy this together with other pantry staples.</p></div>
+                    <div className="pdp-section"><h4>Specifications</h4><p>Brand: {active.brand}<br />Category: {active.category ?? "Grocery"}</p></div>
+                    <div className="pdp-section"><h4>Ingredients</h4><p className="pdp-ingredients">{active.ingredients}</p><small className="no-scroll-note">CleanCart already read this — no scrolling needed.</small></div>
+                  </div>
+                )}
               </div>
 
-              {/* ---------- OVERLAY: pill ---------- */}
-              {overlay !== "card" && (
+              {/* ---------- OVERLAY: Dual-Mode Floating Pill ---------- */}
+              {!hiddenForTrip && overlay !== "card" && (
                 <div
-                  className={`pill tone-${score.color} ${overlay === "min" ? "is-min" : ""}`}
-                  style={{ top: `${pillY}%` }}
+                  id="floating-overlay-pill"
+                  className={`pill tone-${isCartBubbleMode ? cartAvgTone : score.color} ${overlay === "min" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
+                  style={{
+                    top: `${pillY}%`,
+                    transform: pillDragOffset
+                      ? `translate(${pillDragOffset.x}px, -50%)`
+                      : "translateY(-50%)",
+                  }}
                   onPointerDown={onPillDown}
                   onPointerMove={onPillMove}
-                  onPointerUp={() => onPillUp(overlay === "pill")}
+                  onPointerUp={() => onPillUp(isCartBubbleMode, overlay === "pill")}
                   role="button"
-                  aria-label={`CleanCart score ${score.score} of 100. Tap to inspect.`}
+                  aria-label={
+                    isCartBubbleMode
+                      ? `Cart Average ${animatedCartAvg} of 100. Tap to open Whole-Cart Auditor.`
+                      : `CleanCart score ${score.score} of 100. Tap to inspect.`
+                  }
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && setOverlay("card")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (isCartBubbleMode) openAudit();
+                      else setOverlay("card");
+                    }
+                  }}
                 >
                   <span className="pill-dot" />
                   {overlay === "min" ? (
-                    <b>{score.score}</b>
+                    <b>{isCartBubbleMode ? `🛒 ${animatedCartAvg}` : score.score}</b>
+                  ) : isCartBubbleMode ? (
+                    <>
+                      <span>🛒 Cart Avg:</span>
+                      <b>{animatedCartAvg}/100</b>
+                      {cartClimbFlash && <span className="climb-arrow">↑</span>}
+                      <button
+                        className="pill-collapse"
+                        aria-label="Minimize"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setOverlay("min"); }}
+                      >›</button>
+                    </>
                   ) : (
                     <>
                       <b>{score.score}/100</b>
@@ -509,13 +915,23 @@ export default function Simulator() {
                 </div>
               )}
 
+              {/* ---------- Bottom-Center Drag-to-Hide Drop Target ---------- */}
+              {pillDragOffset && (
+                <div
+                  id="hide-drop-target"
+                  className={`hide-drop-zone ${overHideZone ? "is-hot" : ""}`}
+                >
+                  ✕ Hide for this trip
+                </div>
+              )}
+
               {/* ---------- OVERLAY: Health Insights card ---------- */}
               {overlay === "card" && (
                 <div className="backdrop" onClick={() => setOverlay("pill")}>
                   <div className="insights" role="dialog" aria-label="Health Insights" onClick={(e) => e.stopPropagation()}>
                     <div className="insights-head">
                       <div>
-                        <span className="eyebrow">CleanCart</span>
+                        <span className="eyebrow">CleanCart · Cart Avg {animatedCartAvg}/100</span>
                         <h3>Health Insights</h3>
                       </div>
                       <button className="close" onClick={() => setOverlay("pill")} aria-label="Close">×</button>
@@ -575,7 +991,7 @@ export default function Simulator() {
                 </div>
               )}
 
-              {/* ---------- Cart sheet ---------- */}
+              {/* ---------- Whole-Cart Auditor & Cart Sheet ---------- */}
               {(cartOpen || auditOpen) && (
                 <div className="backdrop" onClick={() => { setCartOpen(false); setAuditOpen(false); }}>
                   <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -589,23 +1005,50 @@ export default function Simulator() {
                     </div>
                     {auditOpen && (
                       <div className="audit-summary">
-                        <Gauge score={cartAvg} rating="Cart avg" color={cartAvg >= 75 ? "green" : cartAvg >= 50 ? "yellow" : "red"} size={78} />
-                        <p>{auditBusy ? "Auditing via /api/audit…" : dirty.length ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Swap them all for verified 90+ alternatives.</> : "Every item in your cart scores 75+. Nice."}</p>
+                        <Gauge score={animatedCartAvg} rating="Cart avg" color={cartAvgTone} size={78} />
+                        <p>
+                          {auditBusy
+                            ? "Auditing via /api/audit…"
+                            : dirty.length
+                              ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap <b>Swap</b> on each item to watch your Cart Avg climb live!</>
+                              : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
+                        </p>
                       </div>
                     )}
                     <ul className="cart-list">
                       {cartScored.map(({ item, s, sw }) => (
-                        <li key={item.key}>
+                        <li key={item.key} className="cart-row">
                           <button className="cart-item" onClick={() => { setCartOpen(false); setAuditOpen(false); showProduct(item); }}>
                             <ProductArt product={item} className="cart-art" />
                             <span className="cart-text"><b>{item.title}</b><small>{item.brand}{sw ? ` → ${sw.brand}` : ""}</small></span>
                             <ScoreChip score={s.score} color={s.color} />
                           </button>
+                          {sw && (
+                            <button
+                              type="button"
+                              className="cart-row-swap"
+                              onClick={() => swapCartItem(item)}
+                            >
+                              Swap
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>
                     {auditOpen && dirty.length > 0 && (
-                      <button id="swap-all" className="swap-btn swap-btn--wide" onClick={swapAll}>Swap all {dirty.length} dirty items</button>
+                      <button id="swap-all" className="swap-btn swap-btn--wide" onClick={swapAll}>
+                        Swap all {dirty.length} dirty items
+                      </button>
+                    )}
+                    {auditOpen && (
+                      <button
+                        id="open-scorecard"
+                        type="button"
+                        className="scorecard-trigger-btn"
+                        onClick={() => setScorecardOpen(true)}
+                      >
+                        📱 Generate 9:16 TikTok/IG Scorecard
+                      </button>
                     )}
                     {cartOpen && <button className="link-btn center" onClick={openAudit}>Run Whole-Cart Audit →</button>}
                   </div>
@@ -621,9 +1064,64 @@ export default function Simulator() {
               )}
             </div>
           </div>
-          <p className="stage-caption">Drag the pill up/down · tap it to inspect · tap a warning for the plain-English why</p>
+          <p className="stage-caption">
+            Drag the pill to move or drop on <b>✕ Hide for this trip</b> · Toggle <b>Scrolling Search Results</b> for live <b>🛒 Cart Avg</b>
+          </p>
         </section>
       </main>
+
+      {/* ============ PHASE 6 MODALS ============ */}
+      <Paywall
+        open={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        scanCount={scanCount}
+        freeScanLimit={FREE_SCAN_LIMIT}
+        appliedCreator={appliedCreator}
+        onCreatorApplied={(c) => {
+          setAppliedCreator(c);
+          setInfluencerRefresh((n) => n + 1);
+        }}
+        onConversionComplete={({ plan, creator, trialDays, commissionOwed }) => {
+          setIsPro(true);
+          setInfluencerRefresh((n) => n + 1);
+          setToast({
+            title: creator
+              ? `Pro Unlocked via ${creator.code} (${trialDays}-Day Trial)`
+              : `CleanCart Pro Unlocked (${plan})`,
+            body: creator
+              ? `Creator ${creator.code} credited +$${(commissionOwed ?? 17.5).toFixed(2)} commission in Influencer Engine.`
+              : "Unlimited store overlays, 1-tap clean swaps & cart audits active.",
+          });
+        }}
+        onOpenInfluencerEngine={() => {
+          setPaywallOpen(false);
+          setInfluencerOpen(true);
+        }}
+      />
+
+      <InfluencerEngine
+        open={influencerOpen}
+        onClose={() => setInfluencerOpen(false)}
+        refreshKey={influencerRefresh}
+        onSelectCodeForPaywall={(code) => {
+          setAppliedCreator({ code, name: code, commissionPct: 35 });
+          setInfluencerOpen(false);
+          setPaywallOpen(true);
+        }}
+      />
+
+      <Scorecard
+        open={scorecardOpen}
+        onClose={() => setScorecardOpen(false)}
+        store={store}
+        cartAvg={animatedCartAvg}
+        swaps={swapHistory}
+        fallbackDodged={fallbackDodged}
+        fallbackSwaps={fallbackSwaps}
+        defaultReferralCode={appliedCreator?.code || "PARENTMAXX"}
+        dirtyCount={dirty.length}
+        onSwapAllAndMax={swapAll}
+      />
     </div>
   );
 }

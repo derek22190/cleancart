@@ -1,5 +1,6 @@
 package com.cleancart.overlay
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Service
 import android.content.ActivityNotFoundException
@@ -30,9 +31,11 @@ import org.json.JSONObject
 import kotlin.math.abs
 
 /**
- * Renders the CleanCart floating score pill (collapsed) and the Health Insights card (expanded)
- * as TYPE_APPLICATION_OVERLAY windows above the store app. "Swap Item" fires ACTION_VIEW with
- * the affiliate deep link — only on that explicit tap.
+ * Renders the CleanCart Dual-Mode Floating Bubble:
+ * - Mode A (Product View): `{score}/100 • Tap to Inspect`
+ * - Mode B (Idle / Search Scroll View): `🛒 Cart Avg: {avgScore}/100` (Red <50, Yellow 50-74, Green 75+)
+ * Includes ValueAnimator climb on Swap Item tap, Whole-Cart Auditor drawer, and a bottom-center
+ * `✕ Hide for this trip` drop target while dragging.
  */
 class OverlayWindowService : Service() {
 
@@ -40,6 +43,7 @@ class OverlayWindowService : Service() {
         const val ACTION_SHOW_RESULT = "com.cleancart.overlay.SHOW_RESULT"
         const val ACTION_LOADING = "com.cleancart.overlay.LOADING"
         const val ACTION_SHOW_TEST = "com.cleancart.overlay.SHOW_TEST"
+        const val ACTION_IDLE_CART_AVG = "com.cleancart.overlay.IDLE_CART_AVG"
         const val ACTION_HIDE = "com.cleancart.overlay.HIDE"
         const val EXTRA_JSON = "json"
         const val EXTRA_TITLE = "title"
@@ -50,13 +54,32 @@ class OverlayWindowService : Service() {
         private const val BRAND = 0xFF0F7A4A.toInt()
     }
 
+    private data class TripCartItem(
+        val key: String,
+        var title: String,
+        var score: Int,
+        var swapObj: JSONObject? = null,
+    )
+
     private lateinit var wm: WindowManager
     private var pill: View? = null
+    private var pillTextView: TextView? = null
+    private var pillDotView: View? = null
+    private var hideTarget: View? = null
     private var card: View? = null
     private var pillParams: WindowManager.LayoutParams? = null
     private var pillY = 0
     private var data: JSONObject? = null
     private var openFlag: String? = null
+
+    private var isCartAvgMode = false
+    private var hiddenForTrip = false
+    private val tripCart = mutableListOf(
+        TripCartItem("seed-yogurt", "Strawberry Lowfat Yogurt", 35),
+        TripCartItem("seed-crackers", "Baked Cheddar Crackers", 40),
+        TripCartItem("seed-butter", "Grass-Fed Salted Butter", 100),
+    )
+    private var displayedCartAvg = 58
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,6 +87,7 @@ class OverlayWindowService : Service() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         pillY = dp(220)
+        displayedCartAvg = calcCartAvg()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -72,28 +96,97 @@ class OverlayWindowService : Service() {
             return START_NOT_STICKY
         }
         when (intent?.action) {
-            ACTION_LOADING -> showPill(loadingText = "Scanning…")
+            ACTION_LOADING -> {
+                if (!hiddenForTrip) {
+                    isCartAvgMode = false
+                    showPill(loadingText = "Scanning…")
+                }
+            }
             ACTION_SHOW_RESULT -> {
-                data = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
-                openFlag = null
-                removeCard()
-                showPill()
+                if (!hiddenForTrip) {
+                    isCartAvgMode = false
+                    data = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
+                    recordScannedItem(data)
+                    openFlag = null
+                    removeCard()
+                    showPill()
+                }
+            }
+            ACTION_IDLE_CART_AVG -> {
+                if (!hiddenForTrip) {
+                    isCartAvgMode = true
+                    removeCard()
+                    showPill()
+                }
             }
             ACTION_SHOW_TEST -> {
+                hiddenForTrip = false
+                isCartAvgMode = false
                 data = JSONObject(intent.getStringExtra(EXTRA_JSON) ?: ScanApi.SAMPLE_JSON)
+                recordScannedItem(data)
                 openFlag = null
                 removeCard()
                 showPill()
             }
-            ACTION_HIDE -> { removeCard(); removePill(); stopSelf() }
+            ACTION_HIDE -> {
+                // Reset hiddenForTrip when the user exits the store app so next trip shows the bubble again
+                hiddenForTrip = false
+                removeCard()
+                removeHideTarget()
+                removePill()
+            }
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         removeCard()
+        removeHideTarget()
         removePill()
         super.onDestroy()
+    }
+
+    private fun calcCartAvg(): Int {
+        if (tripCart.isEmpty()) return 100
+        return tripCart.sumOf { it.score } / tripCart.size
+    }
+
+    private fun colorNameForScore(score: Int): String = when {
+        score >= 75 -> "green"
+        score >= 50 -> "yellow"
+        else -> "red"
+    }
+
+    private fun recordScannedItem(d: JSONObject?) {
+        val result = d?.optJSONObject("result") ?: return
+        val prod = d.optJSONObject("product") ?: return
+        val title = prod.optString("title").takeIf { it.isNotBlank() } ?: return
+        val score = result.optInt("score", 50)
+        val swap = d.optJSONObject("swap")
+        val existing = tripCart.firstOrNull { it.key == title }
+        if (existing != null) {
+            existing.score = score
+            existing.swapObj = swap
+        } else {
+            tripCart.add(0, TripCartItem(title, title, score, swap))
+            if (tripCart.size > 10) tripCart.removeLast()
+        }
+        displayedCartAvg = calcCartAvg()
+    }
+
+    private fun animateCartAvgClimb(from: Int, to: Int) {
+        isCartAvgMode = true
+        showPill()
+        ValueAnimator.ofInt(from, to).apply {
+            duration = 750L
+            addUpdateListener { anim ->
+                val v = anim.animatedValue as Int
+                displayedCartAvg = v
+                pillTextView?.text = "🛒 Cart Avg: $v/100"
+                (pillDotView?.background as? GradientDrawable)?.setColor(toneColor(colorNameForScore(v)))
+            }
+            start()
+        }
     }
 
     /* ---------------- Window params ---------------- */
@@ -106,18 +199,60 @@ class OverlayWindowService : Service() {
         PixelFormat.TRANSLUCENT,
     )
 
-    /* ---------------- Pill ---------------- */
+    /* ---------------- Bottom-Center Drag-to-Hide Target ---------------- */
+
+    private fun showHideTarget(hot: Boolean = false) {
+        if (hideTarget == null) {
+            val tv = text("✕ Hide for this trip", 13f, Color.WHITE, bold = true).apply {
+                setPadding(dp(18), dp(10), dp(18), dp(10))
+                background = GradientDrawable().apply {
+                    setColor(if (hot) 0xFFDC2626.toInt() else 0xDD141A17.toInt())
+                    cornerRadius = dp(999).toFloat()
+                    setStroke(dp(1), 0xFFF87171.toInt())
+                }
+            }
+            val p = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                y = dp(32)
+            }
+            runCatching { wm.addView(tv, p) }
+            hideTarget = tv
+        } else {
+            (hideTarget?.background as? GradientDrawable)?.setColor(if (hot) 0xFFDC2626.toInt() else 0xDD141A17.toInt())
+        }
+    }
+
+    private fun removeHideTarget() {
+        hideTarget?.let { runCatching { wm.removeView(it) } }
+        hideTarget = null
+    }
+
+    /* ---------------- Dual-Mode Pill ---------------- */
 
     @SuppressLint("ClickableViewAccessibility")
     private fun showPill(loadingText: String? = null) {
+        if (hiddenForTrip) return
         val result = data?.optJSONObject("result")
         val ok = data?.optBoolean("ok") == true && result != null
-        val tone = if (loadingText != null || !ok) Color.GRAY else toneColor(result!!.optString("color"))
+        val avg = displayedCartAvg
+        val tone = when {
+            loadingText != null -> Color.GRAY
+            isCartAvgMode -> toneColor(colorNameForScore(avg))
+            !ok -> Color.GRAY
+            else -> toneColor(result!!.optString("color"))
+        }
         val label = when {
             loadingText != null -> loadingText
+            isCartAvgMode -> "🛒 Cart Avg: $avg/100"
             ok -> "${result!!.optInt("score")}/100  •  Tap to Inspect"
             else -> data?.optString("error")?.take(48) ?: "CleanCart"
         }
+
+        val dotView = View(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tone) }
+            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(8) }
+        }
+        val labelView = text(label, 14f, Color.WHITE, bold = true)
 
         val view = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -128,11 +263,8 @@ class OverlayWindowService : Service() {
                 cornerRadii = floatArrayOf(999f, 999f, 0f, 0f, 0f, 0f, 999f, 999f)
             }
             elevation = dp(8).toFloat()
-            addView(View(context).apply {
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tone) }
-                layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(8) }
-            })
-            addView(text(label, 14f, Color.WHITE, bold = true))
+            addView(dotView)
+            addView(labelView)
         }
 
         removePill()
@@ -142,23 +274,50 @@ class OverlayWindowService : Service() {
             y = pillY
         }
 
-        // Vertical drag along the right edge; tap (no movement) expands the card.
+        val screenH = resources.displayMetrics.heightPixels
+        val screenW = resources.displayMetrics.widthPixels
+        var downRawX = 0f
         var downRawY = 0f
         var startY = 0
         var moved = false
+        var overHide = false
+
         view.setOnTouchListener { v, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downRawY = e.rawY; startY = params.y; moved = false; true }
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = e.rawX
+                    downRawY = e.rawY
+                    startY = params.y
+                    moved = false
+                    overHide = false
+                    showHideTarget(false)
+                    true
+                }
                 MotionEvent.ACTION_MOVE -> {
+                    val dx = (downRawX - e.rawX).toInt()
                     val dy = (e.rawY - downRawY).toInt()
-                    if (abs(dy) > dp(4)) moved = true
+                    if (abs(dx) > dp(4) || abs(dy) > dp(4)) moved = true
+                    params.x = dx.coerceAtLeast(0)
                     params.y = (startY + dy).coerceAtLeast(0)
                     pillY = params.y
+                    overHide = e.rawY > screenH * 0.80f && e.rawX > screenW * 0.2f && e.rawX < screenW * 0.8f
+                    showHideTarget(overHide)
                     runCatching { wm.updateViewLayout(v, params) }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!moved && ok) showCard()
+                    removeHideTarget()
+                    if (overHide) {
+                        hiddenForTrip = true
+                        removePill()
+                    } else {
+                        params.x = 0
+                        runCatching { wm.updateViewLayout(v, params) }
+                        if (!moved) {
+                            if (isCartAvgMode) showAuditorDrawer()
+                            else if (ok) showCard()
+                        }
+                    }
                     true
                 }
                 else -> false
@@ -167,15 +326,106 @@ class OverlayWindowService : Service() {
 
         wm.addView(view, params)
         pill = view
+        pillDotView = dotView
+        pillTextView = labelView
         pillParams = params
     }
 
     private fun removePill() {
         pill?.let { runCatching { wm.removeView(it) } }
         pill = null
+        pillDotView = null
+        pillTextView = null
     }
 
-    /* ---------------- Health Insights card ---------------- */
+    /* ---------------- Whole-Cart Auditor Drawer (Mode B tap) ---------------- */
+
+    private fun showAuditorDrawer() {
+        removeCard()
+        removePill()
+        val avg = calcCartAvg()
+        val tone = toneColor(colorNameForScore(avg))
+
+        val backdrop = FrameLayout(this).apply {
+            setBackgroundColor(0x660C100E)
+            setOnClickListener { removeCard(); showPill() }
+        }
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(26).toFloat() }
+            elevation = dp(16).toFloat()
+            isClickable = true
+        }
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(text("CLEANCART · WHOLE-CART MCP AUDITOR", 11f, BRAND, bold = true))
+                addView(text("Cart Average: $avg/100", 20f, INK, bold = true))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(text("×", 22f, INK_2).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
+                layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+                setOnClickListener { removeCard(); showPill() }
+            })
+        })
+
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(12), 0, dp(8))
+            addView(GaugeView(context, avg, "Cart Avg", tone), LinearLayout.LayoutParams(dp(84), dp(84)).apply { marginEnd = dp(14) })
+            addView(text("Tap Swap on any dirty item below to jump to a 90–100 Clean Alternative and boost your Cart Avg.", 13f, INK_2), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        })
+
+        for (item in tripCart) {
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(12).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+                addView(text(item.title, 13f, INK, bold = true).apply {
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(text("${item.score}/100", 12.5f, toneColor(colorNameForScore(item.score)), bold = true).apply {
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                })
+            })
+        }
+
+        val dirtyItems = tripCart.filter { it.score < 75 }
+        if (dirtyItems.isNotEmpty()) {
+            sheet.addView(text("Swap All ${dirtyItems.size} Dirty Items → 100/100", 14f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(13), dp(16), dp(13))
+                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
+                setOnClickListener {
+                    val prevAvg = calcCartAvg()
+                    for (d in dirtyItems) d.score = 100
+                    val nextAvg = calcCartAvg()
+                    removeCard()
+                    animateCartAvgClimb(prevAvg, nextAvg)
+                }
+            })
+        }
+
+        val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
+        backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+            setMargins(dp(10), dp(10), dp(10), dp(24))
+        })
+        wm.addView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT))
+        card = backdrop
+    }
+
+    /* ---------------- Health Insights card (Mode A tap) ---------------- */
 
     private fun showCard() {
         val d = data ?: return
@@ -197,7 +447,7 @@ class OverlayWindowService : Service() {
             setPadding(dp(18), dp(18), dp(18), dp(18))
             background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(26).toFloat() }
             elevation = dp(16).toFloat()
-            isClickable = true // swallow taps so they don't close the card
+            isClickable = true
         }
 
         // Header
@@ -206,7 +456,7 @@ class OverlayWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("CLEANCART", 11f, INK_3, bold = true).apply { letterSpacing = 0.08f })
+                addView(text("CLEANCART · CART AVG ${calcCartAvg()}/100", 11f, INK_3, bold = true).apply { letterSpacing = 0.08f })
                 addView(text("Health Insights", 20f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -300,8 +550,17 @@ class OverlayWindowService : Service() {
         card = null
     }
 
-    /** Fires the affiliate deep link inside the store's native app (falls back to browser). */
+    /** Fires the affiliate deep link inside the store's native app (falls back to browser) and animates Cart Avg climbing. */
     private fun openSwap(swap: JSONObject) {
+        val prevAvg = calcCartAvg()
+        val prodTitle = data?.optJSONObject("product")?.optString("title").orEmpty()
+        val target = tripCart.firstOrNull { it.key == prodTitle } ?: tripCart.firstOrNull { it.score < 75 }
+        if (target != null) {
+            target.title = swap.optString("title", target.title)
+            target.score = swap.optInt("score", 100)
+        }
+        val nextAvg = calcCartAvg()
+
         val link = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
         val pkg = swap.optString("androidPackage")
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -311,7 +570,7 @@ class OverlayWindowService : Service() {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(swap.optString("webUrl"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
         removeCard()
-        showPill()
+        animateCartAvgClimb(prevAvg, nextAvg)
     }
 
     /* ---------------- Helpers ---------------- */

@@ -1,12 +1,13 @@
+const DEFAULT_API = "https://cleancart-teal.vercel.app";
 const input = document.getElementById("api");
 const status = document.getElementById("status");
 
 chrome.storage.sync.get("apiBase").then(({ apiBase }) => {
-  input.value = apiBase || "http://localhost:3000";
+  input.value = apiBase || DEFAULT_API;
 });
 
 document.getElementById("save").addEventListener("click", async () => {
-  const apiBase = input.value.trim().replace(/\/+$/, "") || "http://localhost:3000";
+  const apiBase = input.value.trim().replace(/\/+$/, "") || DEFAULT_API;
   await chrome.storage.sync.set({ apiBase });
   status.textContent = "Testing…";
   try {

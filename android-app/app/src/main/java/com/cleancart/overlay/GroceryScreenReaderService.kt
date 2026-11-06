@@ -13,7 +13,8 @@ import java.util.concurrent.Executors
 /**
  * Reads ONLY the product title (and visible ingredient text, if on screen) from the four
  * supported grocery apps, debounced by 1.2s, then posts to /api/scan and hands the result
- * to [OverlayWindowService]. Package filtering is enforced both in XML config and here.
+ * to [OverlayWindowService]. Automatically detects when the user navigates back to a
+ * search / aisle scroll view and switches the corner bubble to Mode B (`🛒 Cart Avg`).
  */
 class GroceryScreenReaderService : AccessibilityService() {
 
@@ -24,6 +25,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         private const val MAX_NODES = 1500
         private val TITLE_ID_HINTS = listOf("product_title", "producttitle", "product_name", "productname", "item_name", "itemname", "item_title", "pdp_title", "title")
         private val NOISE = Regex("""^\$|^\d|add to cart|sign in|search|reviews?$|ratings?$|pickup|delivery|shipping|see all""", RegexOption.IGNORE_CASE)
+        private val PRICE_PATTERN = Regex("""\$\d+\.\d{2}""")
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -69,8 +71,23 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (pkg !in STORE_PACKAGES) return
 
         val nodes = collectTextNodes(root)
-        val title = findTitle(nodes) ?: return
+        val priceCount = nodes.count { PRICE_PATTERN.containsMatchIn(it.text) }
+        val title = findTitle(nodes)
         val ingredients = findIngredients(nodes)
+
+        // Automatic detection: if the user navigated back to a search/aisle view (multiple price cards
+        // and no ingredients block, or no product title), switch bubble to Mode B (`🛒 Cart Avg`).
+        val isSearchAisleView = title == null || (priceCount >= 4 && ingredients == null)
+        if (isSearchAisleView) {
+            val idleKey = "$pkg|IDLE_CART_AVG"
+            if (lastKey != idleKey) {
+                lastKey = idleKey
+                sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                markVisible()
+            }
+            return
+        }
+
         val key = "$pkg|$title|${ingredients?.length ?: 0}"
         if (key == lastKey) return
         lastKey = key
@@ -80,7 +97,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         val store = ScanApi.storeForPackage(pkg)
         io.execute {
             val json = try {
-                ScanApi.scan(this, title, ingredients, store)
+                ScanApi.scan(this, title!!, ingredients, store)
             } catch (e: Exception) {
                 """{"ok":false,"error":"CleanCart API unreachable (${e.javaClass.simpleName}). Check the API URL in the app."}"""
             }
@@ -125,7 +142,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         fun ok(t: String) = t.length in 8..200 && !NOISE.containsMatchIn(t)
         nodes.firstOrNull { n -> ok(n.text) && TITLE_ID_HINTS.any { n.viewId.contains(it) } }?.let { return it.text }
         nodes.firstOrNull { it.isHeading && ok(it.text) }?.let { return it.text }
-        // Fallback: the longest plausible product-name text near the top of the screen.
         return nodes.take(40).filter { ok(it.text) && it.text.length >= 15 && it.text.split(' ').size >= 3 }
             .maxByOrNull { it.text.length }?.text
     }

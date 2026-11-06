@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val apiBase: String = (project.findProperty("cleancartApiBase") as String?) ?: "http://10.0.2.2:3000"
+val apiBase: String = (project.findProperty("cleancartApiBase") as String?) ?: "https://cleancart-teal.vercel.app"
 
 android {
     namespace = "com.cleancart.overlay"
@@ -13,8 +13,8 @@ android {
         applicationId = "com.cleancart.overlay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
     }
 

@@ -2,10 +2,11 @@
   "manifest_version": 3,
   "name": "CleanCart PureOverlay",
   "short_name": "CleanCart",
-  "version": "1.0.0",
-  "description": "Ingredient-only grocery grader with 1-tap clean swaps on Walmart, Instacart, Sam's Club and BJ's.",
+  "version": "1.1.0",
+  "description": "Ingredient-only grocery grader with 1-tap clean swaps and live Cart Avg bubble on Walmart, Instacart, Sam's Club and BJ's.",
   "permissions": ["storage"],
   "host_permissions": [
+    "https://cleancart-teal.vercel.app/*",
     "http://localhost:3000/*",
     "https://*/*"
   ],
@@ -14,7 +15,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.walmart.com/ip/*",
+        "*://*.walmart.com/*",
         "*://*.instacart.com/*",
         "*://*.samsclub.com/*",
         "*://*.bjs.com/*"

@@ -1,46 +1,45 @@
 # CleanCart (PureOverlay)
 
-Zero-friction grocery **ingredient grader** + **1-tap clean swap** engine that floats over Walmart, Instacart, Sam's Club and BJ's — on the web (Chrome extension), Android (native overlay) and iPhone (Shortcuts).
+**Live Production App & API:** [https://cleancart-teal.vercel.app](https://cleancart-teal.vercel.app)
 
-## Product rules baked into the code
+Zero-friction grocery ingredient grader and 1-tap affiliate swap engine that floats over **Walmart**, **Instacart**, **Sam's Club**, and **BJ's Wholesale** (native Android apps + desktop web stores + iOS Share Sheet / Back Tap / Action Button).
 
-| Rule | Where |
-|---|---|
-| Ingredient-only scoring — calories, carbs, natural fat and sodium are never scored | `lib/rubric.ts` |
-| Deterministic 0–100 rubric (start at 100; −35 high / −20 moderate / −10 low; each additive counted once; clamped) | `lib/rubric.ts` |
-| No server scraping of stores — titles/ingredients are read client-side; lookups use Open Food Facts v2 → USDA FDC; local JSON cache | `lib/lookup.ts` |
-| Affiliate params (`?irgwc=1&clickid=…`) only on URLs opened by an explicit **Swap Item** tap | `lib/swaps.ts`, overlay clients |
+---
 
-## Run the simulator
+## Core Product Rules
+
+1. **100% Ingredient-Only Scoring** (`lib/rubric.ts`): Grades strictly on chemical additives, synthetic dyes, industrial seed oils, HFCS, emulsifiers, nitrates, and preservatives. Never penalizes calories, carbs, natural fat, or sodium.
+2. **Deterministic Rubric (`lib/rubric.ts`)**: Starts at `100`, deducts `-35` (High Risk), `-20` (Moderate Risk), `-10` (Low Risk), clamps `0..100`, and supports user-customizable watchlist category toggles.
+3. **Zero-Scraping / $0 Infrastructure (`lib/lookup.ts`)**: Reads product titles/ingredients client-side from the user's screen, resolves ingredients via Open Food Facts v2 + USDA FoodData Central with local caching (`<5ms` repeat lookups).
+4. **Legitimate Affiliate Attribution (`lib/swaps.ts`)**: Impact.com affiliate links (`?irgwc=1&clickid=YOUR_IMPACT_ID`) fire **only** when the user explicitly taps **"Swap Item"**.
+
+---
+
+## Phase 6 Upgrades Included
+
+1. **Dual-Mode Floating Bubble (`Product Score` ↔ `🛒 Cart Avg`)**:
+   - **Mode A (Product View)**: Shows `{score}/100 • Tap to Inspect`.
+   - **Mode B (Scrolling Search / Aisle View)**: Automatically switches to `🛒 Cart Avg: {avgScore}/100` (Red `<50`, Yellow `50–74`, Green `75+`).
+   - **Live Gamification**: Every 1-tap swap animates `🛒 Cart Avg` climbing in real time (`48/100` → `71/100` → `100/100`).
+   - **Tapping in Cart Avg mode**: Opens the **Whole-Cart MCP Auditor** drawer directly.
+   - **Drag-to-Hide Dismiss Target**: Drag the bubble onto the bottom-center `✕ Hide for this trip` target (or tap the quick-snooze button) to hide until the next store trip.
+2. **9:16 Viral "Clean Haul Scorecard" Generator** (`components/Scorecard.tsx`):
+   - Inside the Whole-Cart Auditor modal, click **"Generate 9:16 TikTok/IG Scorecard"** to preview and download a `1080×1920` story card with store badge, final cart grade, **Toxic Additives Dodged Today** (`🚫 Red 40`, `🚫 High Fructose Corn Syrup`, etc.), top clean swaps, and custom creator referral watermark.
+3. **High-Converting Paywall Modal** (`components/Paywall.tsx`):
+   - Pre-selected **$49.99/year** anchor card (`$4.16/month` billed annually, **BEST VALUE — SAVE 58%**, **3-Day Free Trial**) vs. **$9.99/month** decoy card.
+   - Creator / Influencer Promo Code box (`CLEANMOM`, `WALMARTHAUL`, `SARAHHAULS`, `PARENTMAXX`) that unlocks an **Extended 7-Day Free Trial** and attributes conversions in real time.
+   - Accessible from the top simulator bar (`Paywall / Pro`) and triggered automatically after 5 free scans.
+4. **Influencer Affiliate Tracker & 1,000-Creator Math Engine** (`app/api/influencers/route.ts` + `components/InfluencerEngine.tsx`):
+   - Create custom creator codes with configurable commission splits (default **35% = $17.50 payout per $49.99 annual conversion**).
+   - Tracks Clicks, Free Trials Started, Paid Annual Conversions, Creator Commission Owed, and Net Revenue live, plus an interactive **1,000-Influencer Outreach ARR Calculator**.
+
+---
+
+## Running Locally
 
 ```bash
 npm install
-npm run dev            # http://localhost:3000
-npm run typecheck      # zero TypeScript errors
-npm run test:rubric    # deterministic rubric checks
+npm run dev
+npm run typecheck
+npm run test:rubric
 ```
-
-### Environment (optional)
-
-| Var | Purpose | Default |
-|---|---|---|
-| `IMPACT_CLICK_ID` | Your Impact.com click/partner id appended to swap links | `YOUR_IMPACT_ID` |
-| `USDA_API_KEY` | USDA FoodData Central key (DEMO_KEY is rate-limited) | `DEMO_KEY` |
-| `CLEANCART_CACHE_DIR` | Where the JSON lookup cache is written | `./.cache` |
-
-## API
-
-`POST /api/scan` — `{ productTitle?, rawIngredients?, barcode?, store?, watchlist?, format?: "json" | "ios_text" }`
-`POST /api/audit` — `{ items: [{ productTitle?, rawIngredients? }], store?, watchlist? }` (Whole-Cart Auditor)
-`GET  /api/scan` — returns the full rubric for transparency.
-
-## Clients
-
-- **Chrome extension** — `chrome-extension/` (load unpacked; set API URL in the popup)
-- **Android** — `android-app/` (Kotlin, minSdk 26 / targetSdk 34). CI builds `cleancart-debug.apk` via `.github/workflows/build-apk.yml`
-- **iPhone** — `ios-shortcut/SHORTCUT_SETUP.md`
-
-## Notes
-
-- Clean-swap links currently point to an exact-match store search (always valid, opens in the native app via App Links). Add verified store item IDs to `CLEAN_ALTERNATIVES[*].itemIds` in `lib/swaps.ts` to generate direct product deep links like `walmart://ip/{id}`.
-- Walmart's Impact program officially uses `goto.walmart.com/c/{id}/{ad}/9383?u=<url>` wrapping; swap `withAffiliate()` in `lib/swaps.ts` if your Impact account requires that format.
