@@ -245,7 +245,7 @@ class OverlayWindowService : Service() {
             loadingText != null -> loadingText
             isCartAvgMode -> "🛒 Cart Avg: $avg/100"
             ok -> "${result!!.optInt("score")}/100  •  Tap to Inspect"
-            else -> data?.optString("error")?.take(48) ?: "CleanCart"
+            else -> data?.optString("error")?.take(48) ?: "HeyBroc"
         }
 
         val dotView = View(this).apply {
@@ -362,7 +362,7 @@ class OverlayWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("CLEANCART · WHOLE-CART MCP AUDITOR", 11f, BRAND, bold = true))
+                addView(text("HEYBROC · WHOLE-CART AUDITOR", 11f, BRAND, bold = true))
                 addView(text("Cart Average: $avg/100", 20f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -456,8 +456,8 @@ class OverlayWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("CLEANCART · CART AVG ${calcCartAvg()}/100", 11f, INK_3, bold = true).apply { letterSpacing = 0.08f })
-                addView(text("Health Insights", 20f, INK, bold = true))
+                addView(text("HEYBROC · CART AVG ${calcCartAvg()}/100", 11f, INK_3, bold = true).apply { letterSpacing = 0.08f })
+                addView(text("Product Analysis", 20f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(text("×", 22f, INK_2).apply {

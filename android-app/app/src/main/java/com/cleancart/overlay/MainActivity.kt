@@ -42,8 +42,8 @@ class MainActivity : Activity() {
             setBackgroundColor(0xFFF4F3EE.toInt())
         }
 
-        col.addView(label("CleanCart", 28f, 0xFF15201B.toInt(), bold = true))
-        col.addView(label("Ingredient-only grades and 1-tap clean swaps, floating over Walmart, Instacart, Sam's Club and BJ's.", 15f, 0xFF4A5550.toInt()).apply {
+        col.addView(label("🥦 HeyBroc", 28f, 0xFF15201B.toInt(), bold = true))
+        col.addView(label("Ingredient-only grades and 1-tap clean swaps floating over Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt.", 15f, 0xFF4A5550.toInt()).apply {
             setPadding(0, dp(6), 0, dp(20))
         })
 
@@ -51,7 +51,7 @@ class MainActivity : Activity() {
         overlayStatus = label("", 13f, 0xFF85908A.toInt())
         col.addView(stepCard(
             "Step 1", "Allow \"Appear on top\"",
-            "Lets CleanCart float its score pill over your grocery app.",
+            "Lets HeyBroc float its score pill over your grocery app.",
             overlayStatus,
             primaryButton("Open \"Appear on top\" settings") {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -62,7 +62,7 @@ class MainActivity : Activity() {
         a11yStatus = label("", 13f, 0xFF85908A.toInt())
         val samsungTip = label(
             "Samsung Galaxy / Android 13+ tip: if the switch is greyed out (\"Restricted setting\"), go to " +
-                "Settings → Apps → CleanCart → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
+                "Settings → Apps → HeyBroc → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
             12.5f, 0xFF7A5B00.toInt(),
         ).apply {
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -70,7 +70,7 @@ class MainActivity : Activity() {
         }
         col.addView(stepCard(
             "Step 2", "Enable Store Screen Reader",
-            "Reads only the product title & ingredients in the 4 store apps. Find \"CleanCart Store Screen Reader\" under Installed apps / Downloaded services.",
+            "Reads only the product title & ingredients in all 12 store apps. Find \"HeyBroc Store Screen Reader\" under Installed apps / Downloaded services.",
             a11yStatus,
             primaryButton("Open Accessibility settings") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
             samsungTip,
@@ -79,7 +79,7 @@ class MainActivity : Activity() {
         // Step 3 — test overlay
         col.addView(stepCard(
             "Step 3", "Preview the overlay",
-            "Shows the floating pill now. Tap it to open Health Insights.",
+            "Shows the floating pill now. Tap it to open Product Analysis.",
             null,
             primaryButton("Launch Test Overlay Pill") { launchTestPill() },
         ))
@@ -92,8 +92,8 @@ class MainActivity : Activity() {
             textSize = 14f
         }
         col.addView(stepCard(
-            "Settings", "CleanCart API URL",
-            "Use your deployed URL (e.g. https://your-app.vercel.app). 10.0.2.2 = your computer from the emulator.",
+            "Settings", "HeyBroc API URL",
+            "Connected to https://heybroc.com by default.",
             null,
             apiInput,
             primaryButton("Save API URL", filled = false) {

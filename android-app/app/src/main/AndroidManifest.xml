@@ -8,8 +8,16 @@
     <queries>
         <package android:name="com.walmart.android" />
         <package android:name="com.instacart.client" />
+        <package android:name="com.target.ui" />
+        <package android:name="com.kroger.mobile" />
+        <package android:name="de.apptiv.business.android.aldi_us" />
+        <package android:name="com.dd.doordash" />
+        <package android:name="com.ubercab.eats" />
+        <package android:name="com.amazon.mShop.android.shopping" />
         <package android:name="com.samsclub.app" />
         <package android:name="com.bjs.mobile" />
+        <package android:name="com.costco.app.android" />
+        <package android:name="com.shipt.groceries" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

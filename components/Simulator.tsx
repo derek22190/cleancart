@@ -822,6 +822,15 @@ export default function Simulator() {
             {isPro ? "★ PRO Member" : "★ Family Pro"}
           </button>
 
+          <a
+            id="download-android-apk"
+            href="/heybroc.apk"
+            download="heybroc.apk"
+            className="topbar-btn"
+          >
+            📲 Android App (.apk)
+          </a>
+
           <button
             id="open-influencers"
             type="button"
