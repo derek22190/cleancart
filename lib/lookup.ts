@@ -112,7 +112,8 @@ function tokens(s: string): string[] {
 const FLAVOR_TOKENS = new Set([
   "strawberry", "strawberries", "vanilla", "chocolate", "blueberry", "blueberries",
   "raspberry", "peach", "mango", "banana", "cherry", "apple", "cinnamon", "honey",
-  "caramel", "frosted", "peanut", "almond", "hazelnut", "coconut", "lemon", "lime",
+  "caramel", "frosted", "peanut", "almond", "almondmilk", "soy", "soymilk", "oatmilk",
+  "cashew", "hazelnut", "coconut", "lemon", "lime",
   "orange", "grape", "watermelon", "mint", "coffee", "mocha", "maple", "brown",
   "bbq", "barbecue", "sour", "cheddar", "nacho", "ranch", "spicy", "flamin",
   "hot", "buffalo", "jalapeno", "garlic", "onion", "teriyaki", "salsa", "flip",
@@ -642,6 +643,17 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     if (!found) found = await usdaSearch(input.barcode);
   }
   if (!found && title) found = await offSearch(title);
+  if (!found && title) found = await usdaSearch(title);
+  if (!found && title) found = catalogFallback(title);
+  if (!found) return null;
+
+  if (found.source !== "catalog") {
+    setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString() });
+    void persistCache(cache);
+  }
+  return { ...found, ms: ms() };
+}
+tle);
   if (!found && title) found = await usdaSearch(title);
   if (!found && title) found = catalogFallback(title);
   if (!found) return null;

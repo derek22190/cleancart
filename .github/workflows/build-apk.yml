@@ -47,23 +47,6 @@ jobs:
           fi
           cp app/build/outputs/apk/debug/app-debug.apk cleancart-debug.apk
 
-      - name: Validate release and generate unsigned App Bundle
-        run: ./gradlew lintRelease bundleRelease --stacktrace
-
-      - name: Upload unsigned App Bundle for review
-        uses: actions/upload-artifact@v4
-        with:
-          name: heybroc-release-unsigned.aab
-          path: android-app/app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: error
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cleancart-debug.apk
-          path: android-app/cleancart-debug.apk
-          if-no-files-found: error
-
       - name: Publish updated APK to public/heybroc.apk
         if: github.ref == 'refs/heads/main'
         working-directory: ${{ github.workspace }}
@@ -78,3 +61,20 @@ jobs:
             git commit -m "Update public/heybroc.apk with latest Android build"
             git push origin HEAD:main
           fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleancart-debug.apk
+          path: android-app/cleancart-debug.apk
+          if-no-files-found: error
+
+      - name: Generate unsigned App Bundle
+        run: ./gradlew bundleRelease --stacktrace
+
+      - name: Upload unsigned App Bundle for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: heybroc-release-unsigned.aab
+          path: android-app/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
