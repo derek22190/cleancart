@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">HeyBroc</string>
-    <string name="accessibility_label">HeyBroc Store Screen Reader</string>
+    <string name="accessibility_label">HeyBroc</string>
     <string name="accessibility_description">Reads only the product title and ingredient text shown in Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam\'s Club, BJ\'s, Costco, and Shipt so HeyBroc can grade ingredients. No other apps are read and nothing is sold or stored.</string>
 </resources>

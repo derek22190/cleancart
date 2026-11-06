@@ -70,21 +70,19 @@ class MainActivity : Activity() {
         // Step 2 — accessibility service
         a11yStatus = label("", 13f, 0xFF85908A.toInt())
         val samsungTip = label(
-            "If Samsung says \"Restricted setting\" (only happens for direct APK downloads outside Google Play):\n" +
-                "1. Tap \"Unlock Restricted Setting (1-Tap)\" below\n" +
-                "2. Tap ⋮ (top-right 3 dots) → Allow restricted settings\n" +
-                "3. Come back here and tap \"Open Accessibility settings\" → Installed apps → HeyBroc Store Screen Reader → ON.",
+            "Samsung Galaxy / Android 13+ tip: if the switch is greyed out (\"Restricted setting\"), go to " +
+                "Settings → Apps → HeyBroc → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
             12.5f, 0xFF7A5B00.toInt(),
         ).apply {
             setPadding(dp(12), dp(10), dp(12), dp(10))
             background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
         }
         col.addView(stepCard(
-            "Step 2", "Turn on HeyBroc Screen Reader",
-            "On the Accessibility screen, tap \"Installed apps\" (near the bottom) → tap \"HeyBroc Store Screen Reader\" → flip ON.",
+            "Step 2", "Enable Store Screen Reader",
+            "Go to: Accessibility → Installed apps → HeyBroc and turn it ON.\nReads only the product title & ingredients in all 12 store apps.",
             a11yStatus,
-            primaryButton("Open Accessibility → Installed apps") {
-                Toast.makeText(this, "Tap 'Installed apps' at the bottom → HeyBroc Store Screen Reader → ON", Toast.LENGTH_LONG).show()
+            primaryButton("Open Accessibility settings") {
+                Toast.makeText(this, "Tap: Installed apps → HeyBroc → Turn ON", Toast.LENGTH_LONG).show()
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             },
             primaryButton("Unlock Restricted Setting (1-Tap App Info)", filled = false) {
