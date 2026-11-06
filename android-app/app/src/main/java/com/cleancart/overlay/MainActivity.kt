@@ -9,12 +9,10 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -51,7 +49,7 @@ class MainActivity : Activity() {
         overlayStatus = label("", 13f, 0xFF85908A.toInt())
         col.addView(stepCard(
             "Step 1", "Allow \"Appear on top\"",
-            "Lets HeyBroc float its score pill over your grocery app.",
+            "Lets HeyBroc float its score bubble over your grocery app.",
             overlayStatus,
             primaryButton("Open \"Appear on top\" settings") {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -61,45 +59,36 @@ class MainActivity : Activity() {
         // Step 2 — accessibility service
         a11yStatus = label("", 13f, 0xFF85908A.toInt())
         val samsungTip = label(
-            "Samsung Galaxy / Android 13+ tip: if the switch is greyed out (\"Restricted setting\"), go to " +
-                "Settings → Apps → HeyBroc → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
+            "If Samsung says \"Restricted setting\" (only happens for direct APK downloads outside Google Play):\n" +
+                "1. Tap \"Unlock Restricted Setting (1-Tap)\" below\n" +
+                "2. Tap ⋮ (top-right 3 dots) → Allow restricted settings\n" +
+                "3. Come back here and tap \"Open Accessibility settings\" → Installed apps → HeyBroc Store Screen Reader → ON.",
             12.5f, 0xFF7A5B00.toInt(),
         ).apply {
             setPadding(dp(12), dp(10), dp(12), dp(10))
             background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
         }
         col.addView(stepCard(
-            "Step 2", "Enable Store Screen Reader",
-            "Reads only the product title & ingredients in all 12 store apps. Find \"HeyBroc Store Screen Reader\" under Installed apps / Downloaded services.",
+            "Step 2", "Turn on HeyBroc Screen Reader",
+            "On the Accessibility screen, tap \"Installed apps\" (near the bottom) → tap \"HeyBroc Store Screen Reader\" → flip ON.",
             a11yStatus,
-            primaryButton("Open Accessibility settings") { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+            primaryButton("Open Accessibility → Installed apps") {
+                Toast.makeText(this, "Tap 'Installed apps' at the bottom → HeyBroc Store Screen Reader → ON", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            },
+            primaryButton("Unlock Restricted Setting (1-Tap App Info)", filled = false) {
+                Toast.makeText(this, "Tap ⋮ (top-right 3 dots) → Allow restricted settings", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            },
             samsungTip,
         ))
 
         // Step 3 — test overlay
         col.addView(stepCard(
             "Step 3", "Preview the overlay",
-            "Shows the floating pill now. Tap it to open Product Analysis.",
+            "Shows the floating pill right now on your phone. Tap it to open Product Analysis.",
             null,
             primaryButton("Launch Test Overlay Pill") { launchTestPill() },
-        ))
-
-        // API base URL
-        val apiInput = EditText(this).apply {
-            setText(ScanApi.baseUrl(this@MainActivity))
-            inputType = InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine()
-            textSize = 14f
-        }
-        col.addView(stepCard(
-            "Settings", "HeyBroc API URL",
-            "Connected to https://heybroc.com by default.",
-            null,
-            apiInput,
-            primaryButton("Save API URL", filled = false) {
-                ScanApi.saveBaseUrl(this, apiInput.text.toString())
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
-            },
         ))
 
         setContentView(ScrollView(this).apply { addView(col); setBackgroundColor(0xFFF4F3EE.toInt()) })
