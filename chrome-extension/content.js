@@ -9,8 +9,16 @@
   const HOST = location.hostname;
   const STORE = HOST.includes("walmart") ? "walmart"
     : HOST.includes("instacart") ? "instacart"
+    : HOST.includes("target") ? "target"
+    : HOST.includes("kroger") ? "kroger"
+    : HOST.includes("aldi") ? "aldi"
+    : HOST.includes("doordash") ? "doordash"
+    : HOST.includes("ubereats") ? "ubereats"
+    : HOST.includes("amazon") ? "amazon"
     : HOST.includes("samsclub") ? "sams"
-    : HOST.includes("bjs") ? "bjs" : "walmart";
+    : HOST.includes("bjs") ? "bjs"
+    : HOST.includes("costco") ? "costco"
+    : HOST.includes("shipt") ? "shipt" : "walmart";
 
   const HIDE_SESSION_KEY = `cleancart_hide_trip_${STORE}`;
   const CART_STORAGE_KEY = `cleancart_trip_cart_${STORE}`;

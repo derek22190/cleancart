@@ -1081,3 +1081,51 @@ h1, h2, h3, h4, p { margin: 0; }
   .compare-cell--feature b { font-size: 11.5px; }
   .compare-cell small { font-size: 10px; }
 }
+
+/* ---------------- 12-Store Swipeable Rail & Expandable Grid ---------------- */
+.store-view-toggle {
+  font-size: 12px; font-weight: 700; color: var(--brand);
+  padding: 4px 10px; border-radius: 999px; background: var(--brand-tint);
+  border: 1px solid rgba(15, 122, 74, 0.22);
+}
+.store-view-toggle:hover { background: #d5f0e0; }
+
+.store-rail-wrap {
+  display: flex; align-items: center; gap: 6px;
+}
+.store-rail {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
+  overflow-x: auto; scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+  padding: 5px 4px; background: var(--bg-2); border-radius: 13px;
+  scrollbar-width: none;
+}
+.store-rail::-webkit-scrollbar { display: none; }
+
+.store-rail-arrow {
+  width: 30px; height: 36px; border-radius: 10px; flex: none;
+  background: var(--bg-2); border: 1px solid var(--line);
+  font-size: 18px; font-weight: 800; color: var(--ink-2);
+  display: grid; place-items: center; line-height: 1;
+  transition: background .15s, color .15s;
+}
+.store-rail-arrow:hover { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+.store-grid-all {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 7px; padding: 6px; background: var(--bg-2); border-radius: 14px;
+}
+
+.store-chip-btn {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 13px; border-radius: 10px; font-size: 13px; font-weight: 700;
+  color: var(--ink-2); background: rgba(255, 255, 255, 0.45);
+  border: 1px solid transparent; white-space: nowrap;
+  transition: background .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease), transform .15s;
+}
+.store-chip-btn:hover { background: #ffffff; color: var(--ink); }
+.store-chip-btn.is-on {
+  background: #ffffff; color: var(--ink);
+  border-color: rgba(15, 122, 74, 0.35);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+.store-chip-mark { font-size: 13.5px; line-height: 1; }

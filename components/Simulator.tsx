@@ -89,8 +89,16 @@ const cleanToProduct = (cat: SwapCategory): Product => {
 const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accentFg: string; mark: string }> = {
   walmart: { bg: "#0071dc", fg: "#ffffff", accent: "#0071dc", accentFg: "#fff", mark: "✳" },
   instacart: { bg: "#003d29", fg: "#ffffff", accent: "#0aad0a", accentFg: "#fff", mark: "🥕" },
+  target: { bg: "#cc0000", fg: "#ffffff", accent: "#cc0000", accentFg: "#fff", mark: "🎯" },
+  kroger: { bg: "#0f2d7f", fg: "#ffffff", accent: "#0f2d7f", accentFg: "#fff", mark: "🛒" },
+  aldi: { bg: "#001e78", fg: "#ffffff", accent: "#e85d00", accentFg: "#fff", mark: "🏪" },
+  doordash: { bg: "#eb1700", fg: "#ffffff", accent: "#eb1700", accentFg: "#fff", mark: "🚗" },
+  ubereats: { bg: "#06c167", fg: "#0b1410", accent: "#06c167", accentFg: "#0b1410", mark: "🛍️" },
+  amazon: { bg: "#131921", fg: "#ffffff", accent: "#568000", accentFg: "#fff", mark: "📦" },
   sams: { bg: "#0067a0", fg: "#ffffff", accent: "#0067a0", accentFg: "#fff", mark: "◆" },
   bjs: { bg: "#c8102e", fg: "#ffffff", accent: "#c8102e", accentFg: "#fff", mark: "★" },
+  costco: { bg: "#005dab", fg: "#ffffff", accent: "#e31837", accentFg: "#fff", mark: "🏷️" },
+  shipt: { bg: "#2b0c3d", fg: "#ffffff", accent: "#008248", accentFg: "#fff", mark: "⚡" },
 };
 
 const RISK_LABEL = { high: "High risk", moderate: "Moderate", low: "Low risk" } as const;
@@ -414,6 +422,13 @@ export default function Simulator() {
       return next;
     });
   }, [isPro, paywallAutoShown]);
+
+  const [storeExpanded, setStoreExpanded] = useState(false);
+  const storeRailRef = useRef<HTMLDivElement>(null);
+
+  const scrollStoreRail = useCallback((dir: -1 | 1) => {
+    storeRailRef.current?.scrollBy({ left: dir * 210, behavior: "smooth" });
+  }, []);
 
   const switchStore = useCallback((s: Store) => {
     setStore(s);
@@ -789,14 +804,67 @@ export default function Simulator() {
         {/* ============ CONTROL PANEL ============ */}
         <section className="controls" aria-label="Store and product controls">
           <div className="card">
-            <div className="card-head"><h2>Choose Your Store</h2></div>
-            <div className="segmented" role="tablist">
-              {STORES.map((s) => (
-                <button key={s} id={`store-${s}`} role="tab" aria-selected={store === s} className={store === s ? "is-on" : ""} onClick={() => switchStore(s)}>
-                  {STORE_META[s].label}
-                </button>
-              ))}
+            <div className="card-head">
+              <h2>Choose Your Store</h2>
+              <button
+                type="button"
+                className="store-view-toggle"
+                onClick={() => setStoreExpanded((v) => !v)}
+              >
+                {storeExpanded ? "Slide view ▴" : `All ${STORES.length} stores ▾`}
+              </button>
             </div>
+            {storeExpanded ? (
+              <div className="store-grid-all" role="tablist" aria-label="All supported grocery stores">
+                {STORES.map((s) => (
+                  <button
+                    key={s}
+                    id={`store-${s}`}
+                    role="tab"
+                    aria-selected={store === s}
+                    className={`store-chip-btn ${store === s ? "is-on" : ""}`}
+                    onClick={() => switchStore(s)}
+                  >
+                    <span className="store-chip-mark">{STORE_THEME[s].mark}</span>
+                    <span>{STORE_META[s].label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="store-rail-wrap">
+                <button
+                  type="button"
+                  className="store-rail-arrow"
+                  onClick={() => scrollStoreRail(-1)}
+                  aria-label="Scroll stores left"
+                >
+                  ‹
+                </button>
+                <div className="store-rail" ref={storeRailRef} role="tablist" aria-label="Supported grocery stores">
+                  {STORES.map((s) => (
+                    <button
+                      key={s}
+                      id={`store-${s}`}
+                      role="tab"
+                      aria-selected={store === s}
+                      className={`store-chip-btn ${store === s ? "is-on" : ""}`}
+                      onClick={() => switchStore(s)}
+                    >
+                      <span className="store-chip-mark">{STORE_THEME[s].mark}</span>
+                      <span>{STORE_META[s].label}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="store-rail-arrow"
+                  onClick={() => scrollStoreRail(1)}
+                  aria-label="Scroll stores right"
+                >
+                  ›
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="card">

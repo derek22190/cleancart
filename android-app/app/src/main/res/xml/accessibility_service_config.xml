@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only observes the four grocery store apps; never other apps. -->
+<!-- Only observes the 12 supported grocery & delivery store apps; never other apps. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
@@ -7,4 +7,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_description"
     android:notificationTimeout="300"
-    android:packageNames="com.walmart.android,com.instacart.client,com.samsclub.app,com.bjs.mobile" />
+    android:packageNames="com.walmart.android,com.instacart.client,com.target.ui,com.kroger.mobile,de.apptiv.business.android.aldi_us,com.dd.doordash,com.ubercab.eats,com.amazon.mShop.android.shopping,com.samsclub.app,com.bjs.mobile,com.costco.app.android,com.shipt.groceries" />

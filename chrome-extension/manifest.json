@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "CleanCart PureOverlay",
-  "short_name": "CleanCart",
-  "version": "1.1.0",
-  "description": "Ingredient-only grocery grader with 1-tap clean swaps and live Cart Avg bubble on Walmart, Instacart, Sam's Club and BJ's.",
+  "name": "HeyBroc — CleanCart PureOverlay",
+  "short_name": "HeyBroc",
+  "version": "1.2.0",
+  "description": "Ingredient-only grocery grader with 1-tap clean swaps on Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco & Shipt.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://heybroc.com/*",
@@ -12,14 +12,22 @@
     "https://*/*"
   ],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "CleanCart settings", "default_popup": "popup.html" },
+  "action": { "default_title": "HeyBroc settings", "default_popup": "popup.html" },
   "content_scripts": [
     {
       "matches": [
         "*://*.walmart.com/*",
         "*://*.instacart.com/*",
+        "*://*.target.com/*",
+        "*://*.kroger.com/*",
+        "*://*.aldi.us/*",
+        "*://*.doordash.com/*",
+        "*://*.ubereats.com/*",
+        "*://*.amazon.com/*",
         "*://*.samsclub.com/*",
-        "*://*.bjs.com/*"
+        "*://*.bjs.com/*",
+        "*://*.costco.com/*",
+        "*://*.shipt.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -28,7 +36,20 @@
   "web_accessible_resources": [
     {
       "resources": ["overlay.css"],
-      "matches": ["*://*.walmart.com/*", "*://*.instacart.com/*", "*://*.samsclub.com/*", "*://*.bjs.com/*"]
+      "matches": [
+        "*://*.walmart.com/*",
+        "*://*.instacart.com/*",
+        "*://*.target.com/*",
+        "*://*.kroger.com/*",
+        "*://*.aldi.us/*",
+        "*://*.doordash.com/*",
+        "*://*.ubereats.com/*",
+        "*://*.amazon.com/*",
+        "*://*.samsclub.com/*",
+        "*://*.bjs.com/*",
+        "*://*.costco.com/*",
+        "*://*.shipt.com/*"
+      ]
     }
   ]
 }

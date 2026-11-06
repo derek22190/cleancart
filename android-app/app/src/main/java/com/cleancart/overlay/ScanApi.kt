@@ -49,8 +49,16 @@ object ScanApi {
     fun storeForPackage(pkg: String): String = when (pkg) {
         "com.walmart.android" -> "walmart"
         "com.instacart.client" -> "instacart"
+        "com.target.ui" -> "target"
+        "com.kroger.mobile" -> "kroger"
+        "de.apptiv.business.android.aldi_us" -> "aldi"
+        "com.dd.doordash" -> "doordash"
+        "com.ubercab.eats" -> "ubereats"
+        "com.amazon.mShop.android.shopping" -> "amazon"
         "com.samsclub.app" -> "sams"
         "com.bjs.mobile" -> "bjs"
+        "com.costco.app.android" -> "costco"
+        "com.shipt.groceries" -> "shipt"
         else -> "walmart"
     }
 

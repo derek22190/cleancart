@@ -19,7 +19,20 @@ import java.util.concurrent.Executors
 class GroceryScreenReaderService : AccessibilityService() {
 
     companion object {
-        val STORE_PACKAGES = setOf("com.walmart.android", "com.instacart.client", "com.samsclub.app", "com.bjs.mobile")
+        val STORE_PACKAGES = setOf(
+            "com.walmart.android",
+            "com.instacart.client",
+            "com.target.ui",
+            "com.kroger.mobile",
+            "de.apptiv.business.android.aldi_us",
+            "com.dd.doordash",
+            "com.ubercab.eats",
+            "com.amazon.mShop.android.shopping",
+            "com.samsclub.app",
+            "com.bjs.mobile",
+            "com.costco.app.android",
+            "com.shipt.groceries"
+        )
         private const val DEBOUNCE_MS = 1200L
         private const val FOREGROUND_CHECK_MS = 2000L
         private const val MAX_NODES = 1500

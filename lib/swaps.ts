@@ -1,13 +1,43 @@
 /**
- * CleanCart — 1-Tap Clean Swap & Affiliate Deep-Link Resolver
- * ------------------------------------------------------------
+ * CleanCart / HeyBroc — 1-Tap Clean Swap & Affiliate Deep-Link Resolver
+ * ---------------------------------------------------------------------
+ * Supports all 12 major US grocery & delivery apps:
+ * Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats,
+ * Amazon Fresh / Whole Foods, Sam's Club, BJ's Wholesale, Costco, and Shipt.
+ *
  * Affiliate tracking is ONLY attached to URLs returned here, and those URLs are only
  * opened when the user actively taps "Swap Item". Nothing is fired passively.
  */
 import { scoreIngredients, type Watchlist } from "./rubric";
 
-export type Store = "walmart" | "instacart" | "sams" | "bjs";
-export const STORES: Store[] = ["walmart", "instacart", "sams", "bjs"];
+export type Store =
+  | "walmart"
+  | "instacart"
+  | "target"
+  | "kroger"
+  | "aldi"
+  | "doordash"
+  | "ubereats"
+  | "amazon"
+  | "sams"
+  | "bjs"
+  | "costco"
+  | "shipt";
+
+export const STORES: Store[] = [
+  "walmart",
+  "instacart",
+  "target",
+  "kroger",
+  "aldi",
+  "doordash",
+  "ubereats",
+  "amazon",
+  "sams",
+  "bjs",
+  "costco",
+  "shipt",
+];
 
 export type SwapCategory =
   | "Yogurt"
@@ -55,8 +85,16 @@ export interface SwapResult {
 export const STORE_META: Record<Store, { label: string; host: string; androidPackage: string; scheme: string }> = {
   walmart: { label: "Walmart", host: "www.walmart.com", androidPackage: "com.walmart.android", scheme: "walmart" },
   instacart: { label: "Instacart", host: "www.instacart.com", androidPackage: "com.instacart.client", scheme: "instacart" },
+  target: { label: "Target", host: "www.target.com", androidPackage: "com.target.ui", scheme: "target" },
+  kroger: { label: "Kroger", host: "www.kroger.com", androidPackage: "com.kroger.mobile", scheme: "kroger" },
+  aldi: { label: "ALDI", host: "new.aldi.us", androidPackage: "de.apptiv.business.android.aldi_us", scheme: "aldi" },
+  doordash: { label: "DoorDash", host: "www.doordash.com", androidPackage: "com.dd.doordash", scheme: "doordash" },
+  ubereats: { label: "Uber Eats", host: "www.ubereats.com", androidPackage: "com.ubercab.eats", scheme: "ubereats" },
+  amazon: { label: "Amazon Fresh", host: "www.amazon.com", androidPackage: "com.amazon.mShop.android.shopping", scheme: "amazon" },
   sams: { label: "Sam's Club", host: "www.samsclub.com", androidPackage: "com.samsclub.app", scheme: "samsclub" },
   bjs: { label: "BJ's Wholesale", host: "www.bjs.com", androidPackage: "com.bjs.mobile", scheme: "bjs" },
+  costco: { label: "Costco", host: "www.costco.com", androidPackage: "com.costco.app.android", scheme: "costco" },
+  shipt: { label: "Shipt", host: "www.shipt.com", androidPackage: "com.shipt.groceries", scheme: "shipt" },
 };
 
 export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
@@ -144,15 +182,15 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
 };
 
 const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
-  ["Yogurt", /\b(yogh?urt|skyr|kefir)\b/i],
-  ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?)\b/i],
-  ["Cereal", /\b(cereal|flakes|granola|loops|o's|puffs|muesli|oatmeal)\b/i],
-  ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|lunch ?meat|roast beef)\b/i],
-  ["Chips", /\b(chips|crisps|tortilla|doritos|pringles|cheetos|puffs)\b/i],
-  ["Dressings", /\b(dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli)\b/i],
-  ["Butter/Dairy", /\b(butter|margarine|spread|milk|cheese|cream|creamer)\b/i],
-  ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?)\b/i],
-  ["Snacks", /\b(bars?|cookies?|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?)\b/i],
+  ["Yogurt", /\b(yogh?urt|skyr|kefir|chobani|yoplait|dannon|fage|siggi)\b/i],
+  ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat thins|graham)\b/i],
+  ["Cereal", /\b(cereal|flakes|granola|loops|o's|puffs|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran)\b/i],
+  ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|lunch ?meat|roast beef|chicken breast|nuggets|beef|steak|pork)\b/i],
+  ["Chips", /\b(chips|crisps|tortilla|doritos|pringles|cheetos|puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
+  ["Dressings", /\b(dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|bbq|barbecue|sauce|salsa|marinara|syrup)\b/i],
+  ["Butter/Dairy", /\b(butter|margarine|spread|milk|cheese|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
+  ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza)\b/i],
+  ["Snacks", /\b(bars?|cookies?|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|water|tea|coffee)\b/i],
 ];
 
 export function detectCategory(productTitle = "", ingredients = ""): SwapCategory {
@@ -175,8 +213,16 @@ function searchPath(store: Store, q: string): string {
   switch (store) {
     case "walmart": return `/search?q=${e}`;
     case "instacart": return `/store/s?k=${e}`;
+    case "target": return `/s?searchTerm=${e}`;
+    case "kroger": return `/search?query=${e}`;
+    case "aldi": return `/results?q=${e}`;
+    case "doordash": return `/search/store/${e}`;
+    case "ubereats": return `/search?q=${e}`;
+    case "amazon": return `/s?k=${e}&i=amazonfresh`;
     case "sams": return `/s/${e}`;
     case "bjs": return `/search/${e}`;
+    case "costco": return `/s?keyword=${e}`;
+    case "shipt": return `/shop/search?query=${e}`;
   }
 }
 
@@ -184,8 +230,16 @@ function productPath(store: Store, id: string): string {
   switch (store) {
     case "walmart": return `/ip/${id}`;
     case "instacart": return `/products/${id}`;
+    case "target": return `/p/${id}`;
+    case "kroger": return `/p/item/${id}`;
+    case "aldi": return `/product/${id}`;
+    case "doordash": return `/products/${id}`;
+    case "ubereats": return `/product/${id}`;
+    case "amazon": return `/dp/${id}`;
     case "sams": return `/p/${id}`;
     case "bjs": return `/product/${id}`;
+    case "costco": return `/p/${id}`;
+    case "shipt": return `/shop/products/${id}`;
   }
 }
 
