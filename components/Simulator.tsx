@@ -95,11 +95,44 @@ const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accen
   doordash: { bg: "#eb1700", fg: "#ffffff", accent: "#eb1700", accentFg: "#fff", mark: "🚗" },
   ubereats: { bg: "#06c167", fg: "#0b1410", accent: "#06c167", accentFg: "#0b1410", mark: "🛍️" },
   amazon: { bg: "#131921", fg: "#ffffff", accent: "#568000", accentFg: "#fff", mark: "📦" },
-  sams: { bg: "#0067a0", fg: "#ffffff", accent: "#0067a0", accentFg: "#fff", mark: "◆" },
-  bjs: { bg: "#c8102e", fg: "#ffffff", accent: "#c8102e", accentFg: "#fff", mark: "★" },
+  sams: { bg: "#0067a0", fg: "#ffffff", accent: "#0067a0", accentFg: "#fff", mark: "💎" },
+  bjs: { bg: "#c8102e", fg: "#ffffff", accent: "#c8102e", accentFg: "#fff", mark: "🔴" },
   costco: { bg: "#005dab", fg: "#ffffff", accent: "#e31837", accentFg: "#fff", mark: "🏷️" },
   shipt: { bg: "#2b0c3d", fg: "#ffffff", accent: "#008248", accentFg: "#fff", mark: "⚡" },
 };
+
+/** Renders the signature blue-and-yellow Walmart Spark icon (or colorful store mark). */
+function StoreBadge({ store, inHeader = false }: { store: Store; inHeader?: boolean }) {
+  if (store === "walmart") {
+    return (
+      <span
+        className="walmart-spark-badge"
+        style={{
+          display: "inline-grid",
+          placeItems: "center",
+          width: inHeader ? 24 : 20,
+          height: inHeader ? 24 : 20,
+          borderRadius: 6,
+          background: inHeader ? "rgba(255,255,255,0.16)" : "#0071dc",
+          flex: "none",
+        }}
+        aria-hidden
+      >
+        <svg viewBox="0 0 24 24" width={inHeader ? 17 : 14} height={inHeader ? 17 : 14}>
+          <g stroke="#ffc220" strokeWidth="2.8" strokeLinecap="round">
+            <line x1="12" y1="2.5" x2="12" y2="7.2" />
+            <line x1="12" y1="16.8" x2="12" y2="21.5" />
+            <line x1="3.8" y1="7.2" x2="7.8" y2="9.6" />
+            <line x1="16.2" y1="14.4" x2="20.2" y2="16.8" />
+            <line x1="20.2" y1="7.2" x2="16.2" y2="9.6" />
+            <line x1="7.8" y1="14.4" x2="3.8" y2="16.8" />
+          </g>
+        </svg>
+      </span>
+    );
+  }
+  return <span className="store-chip-mark">{STORE_THEME[store].mark}</span>;
+}
 
 const RISK_LABEL = { high: "High risk", moderate: "Moderate", low: "Low risk" } as const;
 
@@ -709,8 +742,13 @@ export default function Simulator() {
     const relX = (e.clientX - rect.left) / rect.width;
     setOverHideZone(relY > 0.80 && relX > 0.2 && relX < 0.8);
   };
+  const lastDragMovedRef = useRef<boolean>(false);
+
   const triggerPillTap = (isCartBubble: boolean, expand: boolean) => {
-    if (Date.now() - cardOpenedAtRef.current < 350) return;
+    if (lastDragMovedRef.current) {
+      lastDragMovedRef.current = false;
+      return;
+    }
     cardOpenedAtRef.current = Date.now();
     if (isCartBubble) {
       openAudit();
@@ -720,12 +758,13 @@ export default function Simulator() {
       setOverlay("pill");
     }
   };
-  const onPillUp = (e: React.PointerEvent, isCartBubble: boolean, expand: boolean) => {
-    const moved = drag.current?.moved;
+  const onPillUp = () => {
+    const moved = Boolean(drag.current?.moved);
     const dropHide = overHideZone;
     drag.current = null;
     setPillDragOffset(null);
     setOverHideZone(false);
+    lastDragMovedRef.current = moved || dropHide;
 
     if (dropHide) {
       setHiddenForTrip(true);
@@ -733,12 +772,6 @@ export default function Simulator() {
         title: "HeyBroc hidden for this trip",
         body: `Dismissed until the next time you open ${STORE_META[store].label}.`,
       });
-      return;
-    }
-    if (!moved) {
-      e.preventDefault();
-      e.stopPropagation();
-      triggerPillTap(isCartBubble, expand);
     }
   };
 
@@ -825,7 +858,7 @@ export default function Simulator() {
                     className={`store-chip-btn ${store === s ? "is-on" : ""}`}
                     onClick={() => switchStore(s)}
                   >
-                    <span className="store-chip-mark">{STORE_THEME[s].mark}</span>
+                    <StoreBadge store={s} />
                     <span>{STORE_META[s].label}</span>
                   </button>
                 ))}
@@ -850,7 +883,7 @@ export default function Simulator() {
                       className={`store-chip-btn ${store === s ? "is-on" : ""}`}
                       onClick={() => switchStore(s)}
                     >
-                      <span className="store-chip-mark">{STORE_THEME[s].mark}</span>
+                      <StoreBadge store={s} />
                       <span>{STORE_META[s].label}</span>
                     </button>
                   ))}
@@ -1007,7 +1040,7 @@ export default function Simulator() {
 
               <div className="store-header">
                 <div className="store-row">
-                  <span className="store-logo"><i>{theme.mark}</i>{STORE_META[store].label}</span>
+                  <span className="store-logo"><StoreBadge store={store} inHeader />{STORE_META[store].label}</span>
                   <button className="cart-btn" onClick={() => setCartOpen(true)} aria-label="Open cart">
                     <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 4h2l2.4 11.2a2 2 0 002 1.6h7.7a2 2 0 002-1.5L21 8H6.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="10" cy="20" r="1.4" fill="currentColor" /><circle cx="17" cy="20" r="1.4" fill="currentColor" /></svg>
                     <span className="cart-count">{cart.length}</span>
@@ -1124,7 +1157,7 @@ export default function Simulator() {
                   }}
                   onPointerDown={onPillDown}
                   onPointerMove={onPillMove}
-                  onPointerUp={(e) => onPillUp(e, isCartBubbleMode, overlay === "pill")}
+                  onPointerUp={onPillUp}
                   onClick={(e) => {
                     e.stopPropagation();
                     triggerPillTap(isCartBubbleMode, overlay === "pill");
@@ -1193,7 +1226,7 @@ export default function Simulator() {
                 <div
                   className="backdrop"
                   onClick={() => {
-                    if (Date.now() - cardOpenedAtRef.current < 450) return;
+                    if (Date.now() - cardOpenedAtRef.current < 500) return;
                     setOverlay("pill");
                   }}
                 >
@@ -1243,7 +1276,14 @@ export default function Simulator() {
                             ★
                           </button>
                         )}
-                        <button className="close" onClick={() => setOverlay("pill")} aria-label="Close">×</button>
+                        <button
+                          className="close"
+                          onClick={() => {
+                            if (Date.now() - cardOpenedAtRef.current < 500) return;
+                            setOverlay("pill");
+                          }}
+                          aria-label="Close"
+                        >×</button>
                       </div>
                     </div>
 
@@ -1252,12 +1292,7 @@ export default function Simulator() {
                       {yukaTab === "inspect" && (
                         <>
                           {/* Yuka Product Hero Header (Photo Left, Title/Brand/Dot/Score Right) */}
-                          <button
-                            type="button"
-                            className="yuka-hero"
-                            onClick={() => setOverlay("pill")}
-                            title="Tap to view full store page underneath"
-                          >
+                          <div className="yuka-hero">
                             <ProductArt product={active} className="yuka-hero-img" />
                             <div className="yuka-hero-info">
                               <b className="yuka-hero-title">{active.title}</b>
@@ -1270,7 +1305,7 @@ export default function Simulator() {
                                 </div>
                               </div>
                             </div>
-                          </button>
+                          </div>
 
                           {/* 1-Tap Clean Swap Banner right at top when dirty */}
                           {swap ? (
