@@ -789,7 +789,7 @@ export default function Simulator() {
         {/* ============ CONTROL PANEL ============ */}
         <section className="controls" aria-label="Store and product controls">
           <div className="card">
-            <div className="card-head"><h2>Choose Your Store</h2><span className="hint">Switch supported grocery apps</span></div>
+            <div className="card-head"><h2>Choose Your Store</h2></div>
             <div className="segmented" role="tablist">
               {STORES.map((s) => (
                 <button key={s} id={`store-${s}`} role="tab" aria-selected={store === s} className={store === s ? "is-on" : ""} onClick={() => switchStore(s)}>
@@ -802,7 +802,6 @@ export default function Simulator() {
           <div className="card">
             <div className="card-head">
               <h2>Shopping View</h2>
-              <span className="hint">Cart Avg: {animatedCartAvg}/100</span>
             </div>
             <div className="segmented segmented--two">
               <button
@@ -857,7 +856,7 @@ export default function Simulator() {
           </div>
 
           <div className="card">
-            <div className="card-head"><h2>Search Any Grocery Item</h2><span className="hint">3M+ Verified Foods</span></div>
+            <div className="card-head"><h2>Search Any Grocery Item</h2></div>
             <form className="search" onSubmit={runLive}>
               <input
                 id="live-search-input"
@@ -879,7 +878,7 @@ export default function Simulator() {
           </div>
 
           <div className="card">
-            <div className="card-head"><h2>Popular Grocery Items</h2><span className="hint">Tap any item to inspect &amp; swap</span></div>
+            <div className="card-head"><h2>Popular Grocery Items</h2></div>
             <ul className="preset-list">
               {PRESETS.map((p) => {
                 const s = scoreIngredients(p.ingredients, watch);
