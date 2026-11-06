@@ -1073,23 +1073,14 @@ export default function Simulator() {
                     <span className="cart-count">{cart.length}</span>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="store-search"
-                  onClick={() => setViewMode((m) => (m === "product" ? "search" : "product"))}
-                >
-                  <span>⌕ {viewMode === "search" ? `Scrolling "${STORE_META[store].label} Popular Grocery"` : `Search ${STORE_META[store].label}`}</span>
-                  <em className="store-search-Action">{viewMode === "search" ? "Product view →" : "Browse aisle →"}</em>
-                </button>
+                <div className="store-search" aria-hidden>
+                  <span>⌕ Search {STORE_META[store].label}</span>
+                </div>
               </div>
 
               <div className="store-scroll" ref={scrollRef}>
                 {viewMode === "search" ? (
                   <div className="aisle">
-                    <div className="aisle-banner">
-                      <b>Scrolling Search Results · Idle Mode</b>
-                      <p>Bubble automatically switches to your live Cart Average ({animatedCartAvg}/100). Tap any product to inspect, or tap the bubble to audit &amp; swap all dirty items.</p>
-                    </div>
                     <div className="aisle-grid">
                       {aisleItems.map((item) => {
                         const inCart = cart.some((c) => c.key === item.key);
@@ -1818,9 +1809,6 @@ export default function Simulator() {
               )}
             </div>
           </div>
-          <p className="stage-caption">
-            Drag the pill to move or drop on <b>✕ Hide for this trip</b> · Toggle <b>Store Aisle</b> for live <b>🛒 Cart Avg</b>
-          </p>
         </section>
       </main>
 
