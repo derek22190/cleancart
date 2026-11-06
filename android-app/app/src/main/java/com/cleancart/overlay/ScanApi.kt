@@ -8,17 +8,11 @@ import java.net.URL
 
 /** Minimal HTTP client for POST /api/scan (no third-party dependencies). */
 object ScanApi {
-    private const val PREFS = "cleancart"
-    private const val KEY_API = "api_base"
-
-    fun baseUrl(ctx: Context): String =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_API, null)
-            ?.takeIf { it.isNotBlank() } ?: BuildConfig.API_BASE
-
-    fun saveBaseUrl(ctx: Context, url: String) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(KEY_API, url.trim().trimEnd('/')).apply()
-    }
+    private val ENDPOINTS = listOf(
+        "https://www.heybroc.com/api/scan",
+        "https://heybroc.com/api/scan",
+        "https://cleancart-teal.vercel.app/api/scan",
+    )
 
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
@@ -29,20 +23,52 @@ object ScanApi {
             put("format", "json")
         }.toString()
 
-        val conn = (URL("${baseUrl(ctx).trimEnd('/')}/api/scan").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 8000
-            readTimeout = 15000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json")
+        var lastErr = "Unable to reach HeyBroc server"
+        for (endpoint in ENDPOINTS) {
+            try {
+                val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
+                if (res.contains("\"ok\":true") || res.contains("\"result\"")) {
+                    return res
+                }
+                lastErr = res
+            } catch (e: Exception) {
+                lastErr = "${e.javaClass.simpleName}: ${e.message ?: "network error"}"
+            }
         }
-        try {
-            conn.outputStream.use { it.write(body.toByteArray()) }
-            val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
-            return stream?.bufferedReader()?.use(BufferedReader::readText)
-                ?: """{"ok":false,"error":"Empty response (${conn.responseCode})"}"""
-        } finally {
-            conn.disconnect()
+        return lastErr
+    }
+
+    private fun postFollowingRedirects(urlStr: String, jsonBody: String, maxRedirects: Int): String {
+        var currentUrl = urlStr
+        var remaining = maxRedirects
+        while (true) {
+            val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                requestMethod = "POST"
+                connectTimeout = 8000
+                readTimeout = 15000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+            }
+            try {
+                conn.outputStream.use { it.write(jsonBody.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                if (code in listOf(301, 302, 303, 307, 308) && remaining > 0) {
+                    val loc = conn.getHeaderField("Location")
+                    if (!loc.isNullOrBlank()) {
+                        currentUrl = URL(URL(currentUrl), loc).toString()
+                        remaining--
+                        continue
+                    }
+                }
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val text = stream?.bufferedReader()?.use(BufferedReader::readText)?.trim().orEmpty()
+                if (text.isNotEmpty()) return text
+                return """{"ok":false,"error":"HTTP $code from $currentUrl"}"""
+            } finally {
+                conn.disconnect()
+            }
         }
     }
 
@@ -70,8 +96,8 @@ object ScanApi {
        {"id":"hfcs","name":"High Fructose Corn Syrup","risk":"moderate","penalty":20,"explanation":"A highly refined industrial sweetener tied to fatty-liver and metabolic issues when consumed regularly."},
        {"id":"ksorbate","name":"Potassium Sorbate","risk":"low","penalty":10,"explanation":"A common mold inhibitor that is generally low risk but signals a highly shelf-stabilized product."}]},
      "swap":{"title":"Stonyfield Organic Whole Milk Plain Yogurt","score":100,
-       "webUrl":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt&irgwc=1&clickid=YOUR_IMPACT_ID",
-       "deepLink":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt&irgwc=1&clickid=YOUR_IMPACT_ID",
+       "webUrl":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt",
+       "deepLink":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt",
        "androidPackage":"com.walmart.android"}}
     """
 }

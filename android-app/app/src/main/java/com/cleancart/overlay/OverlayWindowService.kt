@@ -287,6 +287,7 @@ class OverlayWindowService : Service() {
         var startY = 0
         var moved = false
         var overHide = false
+        val touchSlop = dp(16)
 
         view.setOnTouchListener { v, e ->
             when (e.actionMasked) {
@@ -296,32 +297,41 @@ class OverlayWindowService : Service() {
                     startY = params.y
                     moved = false
                     overHide = false
-                    showHideTarget(false)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (downRawX - e.rawX).toInt()
                     val dy = (e.rawY - downRawY).toInt()
-                    if (abs(dx) > dp(4) || abs(dy) > dp(4)) moved = true
-                    params.x = dx.coerceAtLeast(0)
-                    params.y = (startY + dy).coerceAtLeast(0)
-                    pillY = params.y
-                    overHide = e.rawY > screenH * 0.80f && e.rawX > screenW * 0.2f && e.rawX < screenW * 0.8f
-                    showHideTarget(overHide)
-                    runCatching { wm.updateViewLayout(v, params) }
+                    if (!moved && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                        moved = true
+                    }
+                    if (moved) {
+                        params.x = dx.coerceAtLeast(0)
+                        params.y = (startY + dy).coerceAtLeast(0)
+                        pillY = params.y
+                        overHide = e.rawY > screenH * 0.80f && e.rawX > screenW * 0.2f && e.rawX < screenW * 0.8f
+                        showHideTarget(overHide)
+                        runCatching { wm.updateViewLayout(v, params) }
+                    }
                     true
                 }
-                MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     removeHideTarget()
-                    if (overHide) {
+                    if (moved && overHide) {
                         hiddenForTrip = true
                         removePill()
                     } else {
                         params.x = 0
                         runCatching { wm.updateViewLayout(v, params) }
                         if (!moved) {
-                            if (isCartAvgMode) showAuditorDrawer()
-                            else if (ok) showCard()
+                            if (isCartAvgMode) {
+                                showAuditorDrawer()
+                            } else if (ok) {
+                                showCard()
+                            } else {
+                                // If scan hadn't finished or had an error, open sample/auditor drawer so tap always responds
+                                showAuditorDrawer()
+                            }
                         }
                     }
                     true

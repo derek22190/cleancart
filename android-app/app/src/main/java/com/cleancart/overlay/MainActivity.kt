@@ -95,9 +95,12 @@ class MainActivity : Activity() {
         // Step 3 — test overlay
         col.addView(stepCard(
             "Step 3", "Preview the overlay",
-            "Shows the floating pill right now on your phone. Tap it to open Product Analysis.",
+            "Shows a sample floating pill right here so you can test tapping it, or drag it down to \"✕ Hide\" at the bottom of your screen.",
             null,
             primaryButton("Launch Test Overlay Pill") { launchTestPill() },
+            primaryButton("Hide Overlay Pill", filled = false) {
+                startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE))
+            },
         ))
 
         setContentView(ScrollView(this).apply { addView(col); setBackgroundColor(0xFFF4F3EE.toInt()) })
@@ -136,7 +139,6 @@ class MainActivity : Activity() {
                 startService(Intent(this, OverlayWindowService::class.java)
                     .setAction(OverlayWindowService.ACTION_SHOW_TEST)
                     .putExtra(OverlayWindowService.EXTRA_JSON, json))
-                moveTaskToBack(true)
             }
         }
     }

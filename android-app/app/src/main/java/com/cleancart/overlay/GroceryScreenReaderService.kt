@@ -33,11 +33,18 @@ class GroceryScreenReaderService : AccessibilityService() {
             "com.costco.app.android",
             "com.shipt.groceries"
         )
-        private const val DEBOUNCE_MS = 1200L
-        private const val FOREGROUND_CHECK_MS = 2000L
-        private const val MAX_NODES = 1500
+        private const val DEBOUNCE_MS = 900L
+        private const val FOREGROUND_CHECK_MS = 1500L
+        private const val MAX_NODES = 1800
         private val TITLE_ID_HINTS = listOf("product_title", "producttitle", "product_name", "productname", "item_name", "itemname", "item_title", "pdp_title", "title")
-        private val NOISE = Regex("""^\$|^\d|add to cart|sign in|search|reviews?$|ratings?$|pickup|delivery|shipping|see all""", RegexOption.IGNORE_CASE)
+        private val NOISE = Regex(
+            """^\$|^\d+\s*(ct|count|pack|oz|lb|reviews?|ratings?)|add to cart|sign in|search|reviews?$|ratings?$|pickup|delivery|shipping|see all|sponsored|bought \d|stay stocked|last purchased|try a subscription|overall pick|best seller|popular pick|rollback|free shipping|arrives by|out of stock|in stock|shop now|learn more|terms apply|holiday denim|levi strauss|subscribe|add to list|share|similar items|frequently bought|customers also|you might also|nutrition facts|serving size|calories""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val FOOD_HINTS = Regex(
+            """\b(milk|yogurt|cheese|butter|cream|eggs?|bread|bagel|tortilla|chips|crackers|pretzels|popcorn|cereal|granola|oats|oatmeal|ranch|dressing|sauce|ketchup|mustard|mayo|mayonnaise|turkey|chicken|beef|bacon|sausage|ham|deli|salami|pepperoni|juice|soda|water|tea|coffee|cookie|cookies|brownie|cake|fruit|apple|banana|strawberry|berry|organic|great value|kirkland|good & gather|simple truth|kroger|aldi|chobani|stonyfield|horizon|fairlife|kraft|heinz|doritos|cheez-it|goldfish|oreo|cheerios|nature's own|dave's killer|siete|hidden valley|primal kitchen|applegate|boar's head|oscar mayer|kerrygold|land o'lakes| whole |lowfat|nonfat|skim|vitamin d|gallon|fl oz|oz\b)""",
+            RegexOption.IGNORE_CASE,
+        )
         private val PRICE_PATTERN = Regex("""\$\d+\.\d{2}""")
     }
 
@@ -90,7 +97,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
         // Automatic detection: if the user navigated back to a search/aisle view (multiple price cards
         // and no ingredients block, or no product title), switch bubble to Mode B (`🛒 Cart Avg`).
-        val isSearchAisleView = title == null || (priceCount >= 4 && ingredients == null)
+        val isSearchAisleView = title == null || (priceCount >= 5 && ingredients == null)
         if (isSearchAisleView) {
             val idleKey = "$pkg|IDLE_CART_AVG"
             if (lastKey != idleKey) {
@@ -112,7 +119,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             val json = try {
                 ScanApi.scan(this, title!!, ingredients, store)
             } catch (e: Exception) {
-                """{"ok":false,"error":"CleanCart API unreachable (${e.javaClass.simpleName}). Check the API URL in the app."}"""
+                """{"ok":false,"error":"HeyBroc connection error (${e.javaClass.simpleName})"}"""
             }
             handler.post {
                 sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) { putExtra(OverlayWindowService.EXTRA_JSON, json) }
@@ -130,11 +137,16 @@ class GroceryScreenReaderService : AccessibilityService() {
         while (queue.isNotEmpty() && seen < MAX_NODES) {
             val node = queue.removeFirst()
             seen++
-            val text = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
-            if (text.isNotEmpty()) {
-                val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
-                val sibling = siblingText(node)
-                out.add(TextNode(text, node.viewIdResourceName?.lowercase().orEmpty(), heading, out.size, sibling))
+            val t1 = node.text?.toString()?.trim().orEmpty()
+            val t2 = node.contentDescription?.toString()?.trim().orEmpty()
+            val viewId = node.viewIdResourceName?.lowercase().orEmpty()
+            val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
+            val sibling = siblingText(node)
+            if (t1.isNotEmpty()) {
+                out.add(TextNode(t1, viewId, heading, out.size, sibling))
+            }
+            if (t2.isNotEmpty() && t2 != t1) {
+                out.add(TextNode(t2, viewId, heading, out.size, sibling))
             }
             for (i in 0 until node.childCount) node.getChild(i)?.let(queue::add)
         }
@@ -152,11 +164,17 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun findTitle(nodes: List<TextNode>): String? {
-        fun ok(t: String) = t.length in 8..200 && !NOISE.containsMatchIn(t)
+        fun ok(t: String) = t.length in 6..180 && !NOISE.containsMatchIn(t) && !PRICE_PATTERN.containsMatchIn(t)
+        // 1. Explicit title viewId anywhere on the product page
         nodes.firstOrNull { n -> ok(n.text) && TITLE_ID_HINTS.any { n.viewId.contains(it) } }?.let { return it.text }
+        // 2. Accessibility heading anywhere on the page that matches food/product hints
+        nodes.firstOrNull { it.isHeading && ok(it.text) && FOOD_HINTS.containsMatchIn(it.text) }?.let { return it.text }
         nodes.firstOrNull { it.isHeading && ok(it.text) }?.let { return it.text }
-        return nodes.take(40).filter { ok(it.text) && it.text.length >= 15 && it.text.split(' ').size >= 3 }
-            .maxByOrNull { it.text.length }?.text
+        // 3. Any node on the page containing recognizable food/grocery keywords or brand/size
+        nodes.firstOrNull { ok(it.text) && it.text.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(it.text) }?.let { return it.text }
+        // 4. Fallback to first descriptive multi-word text node
+        return nodes.take(80).filter { ok(it.text) && it.text.length in 12..120 && it.text.split(' ').size >= 3 }
+            .firstOrNull()?.text
     }
 
     private fun findIngredients(nodes: List<TextNode>): String? {
