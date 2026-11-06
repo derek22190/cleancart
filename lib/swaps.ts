@@ -24,6 +24,9 @@ export interface CleanAlternative {
   category: SwapCategory;
   brand: string;
   name: string;
+  size?: string;
+  price?: number;
+  image: string;
   /** Reference ingredient list used to verify the alternative scores 90–100 with the same rubric. */
   ingredients: string;
   /**
@@ -39,6 +42,7 @@ export interface SwapResult {
   brand: string;
   name: string;
   title: string;
+  image: string;
   score: number;
   store: Store;
   webUrl: string;
@@ -57,39 +61,84 @@ export const STORE_META: Record<Store, { label: string; host: string; androidPac
 
 export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
   Yogurt: {
-    category: "Yogurt", brand: "Stonyfield Organic", name: "Whole Milk Plain Yogurt",
+    category: "Yogurt",
+    brand: "Stonyfield Organic",
+    name: "Whole Milk Plain Yogurt",
+    size: "32 oz tub",
+    price: 4.98,
+    image: "/swaps/yogurt.jpg",
     ingredients: "Cultured pasteurized organic whole milk, pectin, vitamin D3. Live active cultures.",
   },
   Crackers: {
-    category: "Crackers", brand: "Mary's Gone Crackers", name: "Original Seed Crackers",
+    category: "Crackers",
+    brand: "Mary's Gone Crackers",
+    name: "Original Seed Crackers",
+    size: "6.5 oz box",
+    price: 4.79,
+    image: "/swaps/crackers.jpg",
     ingredients: "Organic whole grain brown rice, organic whole grain quinoa, organic brown flax seeds, organic brown sesame seeds, filtered water, sea salt, organic wheat-free tamari (water, organic soybeans, salt, organic alcohol).",
   },
   Cereal: {
-    category: "Cereal", brand: "Nature's Path", name: "Organic Heritage Flakes",
+    category: "Cereal",
+    brand: "Nature's Path",
+    name: "Organic Heritage Flakes",
+    size: "13.25 oz box",
+    price: 4.49,
+    image: "/swaps/cereal.jpg",
     ingredients: "Organic whole wheat meal, organic oat flour, organic khorasan wheat, organic barley flour, organic spelt flour, organic millet, organic quinoa, organic cane sugar, sea salt.",
   },
   "Deli Meat": {
-    category: "Deli Meat", brand: "Applegate Organics", name: "Oven Roasted Turkey Breast",
+    category: "Deli Meat",
+    brand: "Applegate Organics",
+    name: "Oven Roasted Turkey Breast",
+    size: "7 oz pack",
+    price: 6.48,
+    image: "/swaps/turkey.jpg",
     ingredients: "Organic turkey breast, water, sea salt, organic vinegar, organic cane sugar, organic onion powder, organic paprika.",
   },
   Chips: {
-    category: "Chips", brand: "Boulder Canyon", name: "Avocado Oil Kettle Chips",
+    category: "Chips",
+    brand: "Boulder Canyon",
+    name: "Avocado Oil Kettle Chips",
+    size: "5.25 oz bag",
+    price: 3.98,
+    image: "/swaps/chips.jpg",
     ingredients: "Potatoes, avocado oil, sea salt.",
   },
   "Butter/Dairy": {
-    category: "Butter/Dairy", brand: "Kerrygold", name: "Pure Irish Grass-Fed Butter",
+    category: "Butter/Dairy",
+    brand: "Kerrygold",
+    name: "Pure Irish Grass-Fed Butter",
+    size: "8 oz foil",
+    price: 4.28,
+    image: "/presets/butter.jpg",
     ingredients: "Pasteurized cream, salt.",
   },
   Bread: {
-    category: "Bread", brand: "Food For Life", name: "Ezekiel 4:9 Sprouted Whole Grain Bread",
+    category: "Bread",
+    brand: "Food For Life",
+    name: "Ezekiel 4:9 Sprouted Whole Grain Bread",
+    size: "24 oz loaf",
+    price: 6.29,
+    image: "/swaps/bread.jpg",
     ingredients: "Organic sprouted wheat, filtered water, organic sprouted barley, organic sprouted millet, organic malted barley, organic sprouted lentils, organic sprouted soybeans, organic sprouted spelt, fresh yeast, organic wheat gluten, sea salt.",
   },
   Dressings: {
-    category: "Dressings", brand: "Primal Kitchen", name: "Ranch Dressing with Avocado Oil",
+    category: "Dressings",
+    brand: "Primal Kitchen",
+    name: "Ranch Dressing with Avocado Oil",
+    size: "8 fl oz bottle",
+    price: 6.98,
+    image: "/swaps/ranch.jpg",
     ingredients: "Avocado oil, water, organic eggs, organic distilled vinegar, organic egg yolks, sea salt, organic garlic, organic onion, organic lemon juice concentrate, organic dried parsley, organic dill, black pepper, organic chives, rosemary extract.",
   },
   Snacks: {
-    category: "Snacks", brand: "LÄRABAR", name: "Cashew Cookie Fruit & Nut Bar",
+    category: "Snacks",
+    brand: "LÄRABAR",
+    name: "Cashew Cookie Fruit & Nut Bar",
+    size: "1.7 oz bar",
+    price: 1.79,
+    image: "/swaps/snacks.jpg",
     ingredients: "Cashews, dates.",
   },
 };
@@ -180,6 +229,7 @@ export function resolveSwap(params: {
     brand: alt.brand,
     name: alt.name,
     title: `${alt.brand} ${alt.name}`,
+    image: alt.image,
     score: altScore,
     store,
     ...buildLinks(alt, store),

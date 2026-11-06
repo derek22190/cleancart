@@ -77,7 +77,9 @@ const cleanToProduct = (cat: SwapCategory): Product => {
     key: `clean-${cat}`,
     title: alt.name,
     brand: alt.brand,
-    price: 4.99,
+    size: alt.size,
+    price: alt.price ?? 4.99,
+    image: alt.image,
     ingredients: alt.ingredients,
     category: cat,
     origin: "swap",
@@ -173,6 +175,7 @@ export default function Simulator() {
   const [store, setStore] = useState<Store>("walmart");
   const [watch, setWatch] = useState<Watch>(DEFAULT_WATCHLIST);
   const [active, setActive] = useState<Product>(presetToProduct(PRESETS[0]));
+  const [previousDirtyItem, setPreviousDirtyItem] = useState<Product | null>(null);
   const [cart, setCart] = useState<Product[]>(() => PRESETS.map(presetToProduct));
   const [overlay, setOverlay] = useState<OverlayState>("pill");
   const [openFlag, setOpenFlag] = useState<string | null>(null);
@@ -294,20 +297,36 @@ export default function Simulator() {
 
   const switchStore = useCallback((s: Store) => {
     setStore(s);
-    // Re-opening a store app automatically restores a hidden-for-trip bubble.
     setHiddenForTrip(false);
   }, []);
 
   const showProduct = useCallback(
-    (p: Product, countAsScan = true) => {
+    (p: Product, countAsScan = true, openCardImmediately = false) => {
       setActive(p);
+      setPreviousDirtyItem(null);
       setViewMode("product");
-      setOverlay("pill");
+      setOverlay(openCardImmediately ? "card" : "pill");
       setOpenFlag(null);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       if (countAsScan) registerScan();
     },
     [registerScan],
+  );
+
+  /** Inspects the Clean Swap item when the user clicks its photo or title inside Health Insights. */
+  const inspectCleanSwap = useCallback(
+    (cat: SwapCategory) => {
+      const clean = cleanToProduct(cat);
+      if (active.origin !== "swap") {
+        setPreviousDirtyItem(active);
+      }
+      setActive(clean);
+      setViewMode("product");
+      setOverlay("card");
+      setOpenFlag(null);
+      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [active],
   );
 
   const triggerClimbFlash = useCallback(() => {
@@ -345,8 +364,9 @@ export default function Simulator() {
         },
         ...prev,
       ]);
-      if (active.key === targetItem.key) {
+      if (active.key === targetItem.key || previousDirtyItem?.key === targetItem.key) {
         setActive(clean);
+        setPreviousDirtyItem(null);
       }
       setOverlay("pill");
       setOpenFlag(null);
@@ -357,12 +377,12 @@ export default function Simulator() {
         href: targetSwap.webUrl,
       });
     },
-    [watch, store, active.key, triggerClimbFlash],
+    [watch, store, active.key, previousDirtyItem, triggerClimbFlash],
   );
 
   const doSwap = useCallback(() => {
-    swapCartItem(active);
-  }, [swapCartItem, active]);
+    swapCartItem(previousDirtyItem ?? active);
+  }, [swapCartItem, previousDirtyItem, active]);
 
   /* ---------------- Live search ---------------- */
   const runLive = useCallback(
@@ -387,6 +407,7 @@ export default function Simulator() {
           setIosText("");
           return;
         }
+        const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
         const p: Product = {
           key: `live-${data.product.barcode || q}`,
           title:
@@ -395,9 +416,9 @@ export default function Simulator() {
               "",
             ) || data.product.title,
           brand: data.product.brand || "Open data",
-          image: data.product.imageUrl,
+          image: data.product.imageUrl || CLEAN_ALTERNATIVES[cat]?.image,
           ingredients: data.product.ingredients,
-          category: detectCategory(`${q} ${data.product.title}`, data.product.ingredients),
+          category: cat,
           origin: "live",
           lookup: data.lookup,
         };
@@ -472,6 +493,7 @@ export default function Simulator() {
   const resetCartPresets = useCallback(() => {
     setCart(PRESETS.map(presetToProduct));
     setSwapHistory([]);
+    setPreviousDirtyItem(null);
     setActive(presetToProduct(PRESETS[0]));
   }, []);
 
@@ -492,7 +514,6 @@ export default function Simulator() {
     setPillY(Math.max(14, Math.min(88, pct)));
     setPillDragOffset({ x: Math.min(0, dx), y: 0 });
 
-    // Check if pointer is inside bottom-center "✕ Hide for this trip" drop target
     const relY = (e.clientY - rect.top) / rect.height;
     const relX = (e.clientX - rect.left) / rect.width;
     setOverHideZone(relY > 0.80 && relX > 0.2 && relX < 0.8);
@@ -526,10 +547,8 @@ export default function Simulator() {
   const toggleWatch = (c: Category) => setWatch((w) => ({ ...w, [c]: !w[c] }));
   const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
 
-  // Is the floating pill currently in Cart Avg mode?
   const isCartBubbleMode = viewMode === "search" || cartClimbFlash;
 
-  // Search aisle items (all 5 presets + 3 clean alternatives)
   const aisleItems = useMemo<Product[]>(
     () => [
       ...PRESETS.map(presetToProduct),
@@ -789,7 +808,7 @@ export default function Simulator() {
                             <button
                               type="button"
                               className="aisle-card-main"
-                              onClick={() => showProduct(item)}
+                              onClick={() => showProduct(item, true, true)}
                             >
                               <div className="aisle-art">
                                 <ProductArt product={item} />
@@ -936,13 +955,26 @@ export default function Simulator() {
                       </div>
                       <button className="close" onClick={() => setOverlay("pill")} aria-label="Close">×</button>
                     </div>
-                    <p className="insights-product">{active.brand} · {active.title}</p>
+
+                    {/* Clickable Product Header inside Health Insights */}
+                    <button
+                      type="button"
+                      className="insights-product-bar"
+                      onClick={() => setOverlay("pill")}
+                      title="View full product page underneath"
+                    >
+                      <ProductArt product={active} className="insights-thumb" />
+                      <div className="insights-product-text">
+                        <b>{active.brand} · {active.title}</b>
+                        <small>Tap to view full product page &amp; photo →</small>
+                      </div>
+                    </button>
 
                     <div className="insights-body">
                       <Gauge score={score.score} rating={score.rating} color={score.color} />
                       <div className="flags">
                         {score.flagged.length === 0 ? (
-                          <p className="clean-note">✓ No watchlist additives found. Ingredients look clean.</p>
+                          <p className="clean-note">✓ No watchlist additives found. 100% clean ingredient list.</p>
                         ) : (
                           score.flagged.map((f: FlaggedAdditive) => (
                             <button
@@ -968,21 +1000,52 @@ export default function Simulator() {
                       ) : null;
                     })()}
 
+                    {/* Full Ingredient List directly inside the inspection card */}
+                    <div className="insights-ingredients-box">
+                      <span>Ingredients Inspected:</span>
+                      <p>{active.ingredients}</p>
+                    </div>
+
                     {score.ignored.length > 0 && (
                       <p className="ignored">Ignored by your watchlist: {score.ignored.map((i) => i.name).join(", ")}</p>
                     )}
 
                     {swap ? (
                       <div className="swap">
-                        <div className="swap-info">
+                        <button
+                          id="inspect-clean-swap"
+                          type="button"
+                          className="swap-info swap-info--btn"
+                          onClick={() => inspectCleanSwap(swap.category)}
+                        >
                           <ProductArt product={cleanToProduct(swap.category)} className="swap-art" />
-                          <div>
+                          <div className="swap-info-copy">
                             <span className="eyebrow eyebrow--green">Clean Swap · {STORE_META[store].label}</span>
                             <b>{swap.title}</b>
-                            <span className="swap-score">{swap.score}/100 Excellent</span>
+                            <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
                           </div>
-                        </div>
+                        </button>
                         <button id="swap-item" className="swap-btn" onClick={doSwap}>Swap Item</button>
+                      </div>
+                    ) : previousDirtyItem ? (
+                      <div className="swap">
+                        <div className="swap-preview-note">
+                          <b>Inspecting Clean Swap ({score.score}/100)</b>
+                          <p>Replacing: {previousDirtyItem.brand} {previousDirtyItem.title}</p>
+                        </div>
+                        <button id="swap-item" className="swap-btn" onClick={doSwap}>
+                          Swap Item in Cart → 100/100
+                        </button>
+                        <button
+                          type="button"
+                          className="link-btn center"
+                          onClick={() => {
+                            setActive(previousDirtyItem);
+                            setPreviousDirtyItem(null);
+                          }}
+                        >
+                          ← Back to {previousDirtyItem.title}
+                        </button>
                       </div>
                     ) : (
                       <div className="swap swap--ok"><b>Great pick.</b> This item already scores {score.score}/100 — no swap needed.</div>
@@ -1010,7 +1073,7 @@ export default function Simulator() {
                           {auditBusy
                             ? "Auditing via /api/audit…"
                             : dirty.length
-                              ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap <b>Swap</b> on each item to watch your Cart Avg climb live!</>
+                              ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap any item to inspect, or tap <b>Swap</b> to watch your Cart Avg climb!</>
                               : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
                         </p>
                       </div>
@@ -1018,9 +1081,19 @@ export default function Simulator() {
                     <ul className="cart-list">
                       {cartScored.map(({ item, s, sw }) => (
                         <li key={item.key} className="cart-row">
-                          <button className="cart-item" onClick={() => { setCartOpen(false); setAuditOpen(false); showProduct(item); }}>
+                          <button
+                            className="cart-item"
+                            onClick={() => {
+                              setCartOpen(false);
+                              setAuditOpen(false);
+                              showProduct(item, true, true);
+                            }}
+                          >
                             <ProductArt product={item} className="cart-art" />
-                            <span className="cart-text"><b>{item.title}</b><small>{item.brand}{sw ? ` → ${sw.brand}` : ""}</small></span>
+                            <span className="cart-text">
+                              <b>{item.title}</b>
+                              <small>{item.brand}{sw ? ` · Tap to inspect or swap → ${sw.brand}` : " · Tap to inspect"}</small>
+                            </span>
                             <ScoreChip score={s.score} color={s.color} />
                           </button>
                           {sw && (

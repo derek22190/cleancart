@@ -4,8 +4,8 @@
  * Resolution order:
  *   1. rawIngredients read from the user's screen  -> score immediately (no network)
  *   2. Local cache (in-memory Map + JSON file)      -> <5ms, $0
- *   3. Open Food Facts API v2 (barcode or search)   -> free, open data
- *   4. USDA FoodData Central (Branded foods)        -> free, DEMO_KEY or USDA_API_KEY
+ *   3. Open Food Facts API v2 (barcode or search)   -> free, open data + high-res front image
+ *   4. USDA FoodData Central (Branded foods)        -> free + automatic UPC barcode photo lookup
  * We never scrape Walmart / Instacart / Sam's / BJ's from the server.
  */
 import "server-only";
@@ -131,15 +131,23 @@ interface OffProduct {
   ingredients_text?: string;
   ingredients_text_en?: string;
   lang?: string;
+  image_front_url?: string;
+  image_url?: string;
   image_front_small_url?: string;
 }
 
-const OFF_FIELDS = "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_small_url";
+const OFF_FIELDS =
+  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url";
 
 function englishIngredients(p: OffProduct): string {
   if (p.ingredients_text_en?.trim()) return p.ingredients_text_en.trim();
   if ((p.lang === "en" || !p.lang) && p.ingredients_text?.trim()) return p.ingredients_text.trim();
   return "";
+}
+
+function bestOffImage(p?: OffProduct): string | undefined {
+  if (!p) return undefined;
+  return p.image_front_url || p.image_url || p.image_front_small_url || undefined;
 }
 
 function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | null {
@@ -149,9 +157,14 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
     if (!englishIngredients(p)) continue;
     const name = `${p.brands || ""} ${p.product_name_en || p.product_name || ""}`;
     const r = relevance(query, name);
-    if (r > bestScore) { best = p; bestScore = r; }
+    // Prefer candidates that also include a real product image when relevance ties.
+    const bonus = bestOffImage(p) ? 0.02 : 0;
+    if (r + bonus > bestScore && r >= 0.5) {
+      best = p;
+      bestScore = r + bonus;
+    }
   }
-  return bestScore >= 0.5 ? best : null;
+  return best;
 }
 
 function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "ms"> {
@@ -160,7 +173,7 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
     brand: p.brands?.split(",")[0]?.trim() || undefined,
     barcode: p.code,
     ingredients: englishIngredients(p),
-    imageUrl: p.image_front_small_url,
+    imageUrl: bestOffImage(p),
     source: "openfoodfacts",
   };
 }
@@ -168,11 +181,31 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
 async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> | null> {
   const code = barcode.replace(/\D/g, "");
   if (!code) return null;
-  const data = await getJson<{ status?: number; product?: OffProduct }>(
-    `https://world.openfoodfacts.org/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-  );
-  if (!data?.product || !englishIngredients(data.product)) return null;
-  return offToResult(data.product, data.product.product_name || code);
+  const candidates = Array.from(new Set([code, code.padStart(13, "0"), code.slice(-12).padStart(13, "0")]));
+  for (const c of candidates) {
+    const data = await getJson<{ status?: number; product?: OffProduct }>(
+      `https://world.openfoodfacts.org/api/v2/product/${c}?fields=${OFF_FIELDS}`,
+    );
+    if (data?.product && englishIngredients(data.product)) {
+      return offToResult(data.product, data.product.product_name || c);
+    }
+  }
+  return null;
+}
+
+/** Resolves a high-res product photo from Open Food Facts using a USDA GTIN/UPC barcode. */
+async function offImageByBarcode(barcode?: string): Promise<string | undefined> {
+  const code = (barcode || "").replace(/\D/g, "");
+  if (!code) return undefined;
+  const candidates = Array.from(new Set([code, code.padStart(13, "0"), code.slice(-12).padStart(13, "0")]));
+  for (const c of candidates) {
+    const data = await getJson<{ status?: number; product?: OffProduct }>(
+      `https://world.openfoodfacts.org/api/v2/product/${c}?fields=image_front_url,image_url,image_front_small_url`,
+    );
+    const img = bestOffImage(data?.product);
+    if (img) return img;
+  }
+  return undefined;
 }
 
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
@@ -182,7 +215,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     `https://world.openfoodfacts.org/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=24&countries_tags_en=united-states`,
   );
   let best = pickBestOff(title, v2?.products);
-  // Fallback: classic full-text search endpoint (v2 search can be rate-limited / non-full-text).
+  // Fallback: classic full-text search endpoint.
   if (!best) {
     const v1 = await getJson<{ products?: OffProduct[] }>(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=24&fields=${OFF_FIELDS}` +
@@ -219,11 +252,13 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   }
   if (!best || bestScore < 0.5) return null;
   const titleCase = (s = "") => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  const imageUrl = await offImageByBarcode(best.gtinUpc);
   return {
     productTitle: titleCase(best.description) || query,
     brand: titleCase(best.brandName || best.brandOwner) || undefined,
     barcode: best.gtinUpc,
     ingredients: best.ingredients!.trim(),
+    imageUrl,
     source: "usda",
   };
 }
@@ -245,7 +280,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
   const cache = await loadCache();
   const hit = cache.get(key);
-  if (hit) {
+  if (hit && hit.imageUrl) {
     const { cachedAt: _c, source, ...rest } = hit;
     return { ...rest, source: "cache", origin: source, ms: ms() };
   }
