@@ -35,7 +35,9 @@ export interface LookupResult {
 type CacheEntry = Omit<LookupResult, "ms" | "origin" | "source"> & { source: LookupSource; cachedAt: string };
 
 const USER_AGENT = "CleanCart/1.0 (ingredient grader; https://github.com/cleancart)";
-const CACHE_DIR = process.env.CLEANCART_CACHE_DIR || path.join(process.cwd(), ".cache");
+const CACHE_DIR =
+  process.env.CLEANCART_CACHE_DIR ||
+  (process.env.VERCEL ? "/tmp/cleancart-cache" : path.join(process.cwd(), ".cache"));
 const CACHE_FILE = path.join(CACHE_DIR, "lookup-cache.json");
 const TIMEOUT_MS = 7000;
 
