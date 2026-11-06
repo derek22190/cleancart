@@ -996,3 +996,88 @@ h1, h2, h3, h4, p { margin: 0; }
 .yuka-nav-item.is-active .yuka-nav-pill { background: #dcfce7; color: #15803d; }
 .yuka-nav-mascot { width: 20px; height: 20px; border-radius: 6px; object-fit: cover; }
 
+/* ---------------- Bottom Comparison Matrix (HeyBroc vs Honey vs Yuka) ---------------- */
+.compare-section {
+  max-width: 1180px; margin: 8px auto 48px; padding: 0 28px;
+}
+.compare-card {
+  border-radius: 26px; padding: 28px 24px;
+  background: linear-gradient(165deg, #0c1f17 0%, #102a1f 55%, #091711 100%);
+  color: #ffffff;
+  box-shadow: 0 24px 60px -20px rgba(9, 23, 17, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(134, 239, 172, 0.2);
+}
+.compare-head {
+  text-align: center; max-width: 620px; margin: 0 auto 22px;
+}
+.compare-head .eyebrow--green {
+  color: #4ade80; font-size: 11.5px; letter-spacing: 0.1em;
+}
+.compare-head h2 {
+  font-size: 24px; font-weight: 900; letter-spacing: -0.02em; margin: 6px 0 6px; color: #ffffff;
+}
+.compare-head p {
+  font-size: 13.5px; color: rgba(255, 255, 255, 0.72); line-height: 1.45; margin: 0;
+}
+
+.compare-grid {
+  display: flex; flex-direction: column; border-radius: 18px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.03);
+}
+.compare-row {
+  display: grid; grid-template-columns: 1.35fr 0.85fr 0.85fr 1.05fr;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+.compare-row:last-child { border-bottom: none; }
+.compare-row--head {
+  background: rgba(255, 255, 255, 0.07); font-weight: 800; font-size: 12.5px;
+}
+.compare-cell {
+  padding: 13px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 4px; font-size: 12.5px; color: rgba(255, 255, 255, 0.85);
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+.compare-cell--feature {
+  align-items: flex-start; text-align: left; border-left: none; padding-left: 14px;
+}
+.compare-cell--feature b {
+  font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.3;
+}
+.compare-cell small {
+  font-size: 11.5px; line-height: 1.25; color: rgba(255, 255, 255, 0.7);
+}
+.compare-cell--broc {
+  background: rgba(34, 197, 94, 0.14);
+  border-left: 1px solid rgba(74, 222, 128, 0.35);
+  color: #ffffff;
+}
+.compare-cell--broc small { color: #dcfce7; }
+.compare-mascot {
+  width: 28px; height: 28px; border-radius: 8px; object-fit: cover;
+  border: 1.5px solid #4ade80; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.cmp-yes, .cmp-no {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 900; line-height: 1;
+}
+.cmp-yes {
+  background: rgba(34, 197, 94, 0.22); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4);
+}
+.cmp-yes--bright {
+  background: #22c55e; color: #052e16; border-color: #86efac;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.45);
+}
+.cmp-no {
+  background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+@media (max-width: 640px) {
+  .compare-section { padding: 0 14px; margin-bottom: 36px; }
+  .compare-card { padding: 20px 12px; border-radius: 22px; }
+  .compare-head h2 { font-size: 19px; }
+  .compare-row { grid-template-columns: 1.25fr 0.78fr 0.78fr 0.98fr; }
+  .compare-cell { padding: 10px 5px; font-size: 11px; }
+  .compare-cell--feature { padding-left: 9px; }
+  .compare-cell--feature b { font-size: 11.5px; }
+  .compare-cell small { font-size: 10px; }
+}
