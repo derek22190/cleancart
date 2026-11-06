@@ -5,9 +5,20 @@ import "./globals.css";
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "CleanCart PureOverlay — Ingredient Grader & 1-Tap Clean Swaps",
+  title: "HeyBroc — Clean Grocery Scanner & 1-Tap Clean Swaps",
   description:
-    "Interactive simulator for CleanCart: a deterministic, ingredient-only grocery grader that floats over Walmart, Instacart, Sam's Club and BJ's with 1-tap clean swaps.",
+    "Instant 0–100 ingredient grader and 1-tap clean grocery swaps across Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco & Shipt.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/broc-mascot.jpg",
+    shortcut: "/broc-mascot.jpg",
+    apple: "/broc-mascot.jpg",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "HeyBroc",
+    statusBarStyle: "default",
+  },
 };
 
 export const viewport: Viewport = {

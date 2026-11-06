@@ -1,0 +1,17 @@
+{
+  "name": "HeyBroc — Clean Grocery Scanner & 1-Tap Swaps",
+  "short_name": "HeyBroc",
+  "description": "100% ingredient-only grocery grader & 1-tap clean food swaps across Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco & Shipt.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f3ee",
+  "theme_color": "#0f7a4a",
+  "icons": [
+    {
+      "src": "/broc-mascot.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
