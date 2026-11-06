@@ -496,16 +496,16 @@ export default function Simulator() {
         ...prev,
       ]);
       if (active.key === targetItem.key || previousDirtyItem?.key === targetItem.key) {
+        setPreviousDirtyItem(targetItem);
         setActive(clean);
-        setPreviousDirtyItem(null);
       }
       setOverlay("pill");
       setOpenFlag(null);
       triggerClimbFlash();
       setToast({
-        title: `Swapped to ${targetSwap.title} · Cart Avg climbing ↑`,
-        body: `Affiliate click fired on your tap → ${targetSwap.deepLink}`,
-        href: targetSwap.webUrl,
+        title: `✓ Swapped to ${targetSwap.title} (100/100)`,
+        body: `Zero flagged additives · Your Cart Average climbed!`,
+        href: targetSwap.deepLink || targetSwap.webUrl,
       });
     },
     [watch, store, active.key, previousDirtyItem, triggerClimbFlash],
@@ -514,6 +514,41 @@ export default function Simulator() {
   const doSwap = useCallback(() => {
     swapCartItem(previousDirtyItem ?? active);
   }, [swapCartItem, previousDirtyItem, active]);
+
+  /** Finds the original dirty item that a clean swap replaced so the user can revert in 1 tap. */
+  const getRevertTarget = useCallback(
+    (item: Product): Product | null => {
+      if (item.origin !== "swap") return null;
+      if (previousDirtyItem && previousDirtyItem.category === item.category) {
+        return previousDirtyItem;
+      }
+      const preset = PRESETS.find((p) => p.category === item.category);
+      return preset ? presetToProduct(preset) : previousDirtyItem;
+    },
+    [previousDirtyItem],
+  );
+
+  const revertSwap = useCallback(
+    (cleanItem: Product = active) => {
+      const orig = getRevertTarget(cleanItem);
+      if (!orig) return;
+      setCart((c) => {
+        const idx = c.findIndex((i) => i.key === cleanItem.key);
+        if (idx === -1) return c;
+        const next = [...c];
+        next[idx] = orig;
+        return next;
+      });
+      setActive(orig);
+      setPreviousDirtyItem(null);
+      setToast({
+        title: `↺ Reverted back to ${orig.brand} ${orig.title}`,
+        body: `Restored original item in your ${STORE_META[store].label} cart.`,
+      });
+    },
+    [active, getRevertTarget, store],
+  );
+  const activeRevertTarget = getRevertTarget(active);
 
   /* ---------------- Live search ---------------- */
   const runLive = useCallback(
@@ -616,8 +651,8 @@ export default function Simulator() {
     if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category));
     triggerClimbFlash();
     setToast({
-      title: `Swapped ${n} item${n === 1 ? "" : "s"} in 1 tap → Cart Avg 100/100!`,
-      body: `${n} affiliate deep link${n === 1 ? "" : "s"} attributed to your tap at ${STORE_META[store].label}.`,
+      title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg 100/100!`,
+      body: `All items upgraded to 100/100 clean alternatives at ${STORE_META[store].label}.`,
     });
   }, [dirty, active.key, store, triggerClimbFlash]);
 
@@ -715,8 +750,8 @@ export default function Simulator() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/broc-mascot.jpg" alt="Broc mascot" className="brand-mascot" />
           <div>
-            <h1>HeyBroc <span>CleanCart Overlay</span></h1>
-            <p>Ingredient-only grader &amp; 1-tap clean swaps — live simulator</p>
+            <h1>HeyBroc <span>Clean Grocery Scanner</span></h1>
+            <p>Instant ingredient grader &amp; 1-tap clean grocery swaps</p>
           </div>
         </div>
 
@@ -727,7 +762,7 @@ export default function Simulator() {
             className={`topbar-btn ${viewMode === "search" ? "is-active" : ""}`}
             onClick={() => setViewMode((m) => (m === "product" ? "search" : "product"))}
           >
-            {viewMode === "search" ? `🛒 Scrolling Search (${animatedCartAvg}/100)` : "🔍 Scrolling Search Results"}
+            {viewMode === "search" ? `🛒 Aisle View (${animatedCartAvg}/100)` : "🔍 Browse Store Aisle"}
           </button>
 
           <button
@@ -736,7 +771,7 @@ export default function Simulator() {
             className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
             onClick={() => setPaywallOpen(true)}
           >
-            {isPro ? "★ PRO Unlocked" : `💎 Paywall / Pro (${Math.min(scanCount, FREE_SCAN_LIMIT)}/${FREE_SCAN_LIMIT})`}
+            {isPro ? "★ PRO Member" : "★ Family Pro"}
           </button>
 
           <button
@@ -745,18 +780,16 @@ export default function Simulator() {
             className="topbar-btn"
             onClick={() => setInfluencerOpen(true)}
           >
-            📈 Influencer Engine
+            🤝 Creator Partners
           </button>
-
-          <a className="topbar-link" href="/api/scan" target="_blank" rel="noreferrer">View rubric API ↗</a>
         </div>
       </header>
 
       <main className="layout">
         {/* ============ CONTROL PANEL ============ */}
-        <section className="controls" aria-label="Simulator controls">
+        <section className="controls" aria-label="Store and product controls">
           <div className="card">
-            <div className="card-head"><h2>Store</h2><span className="hint">Themes the app underneath</span></div>
+            <div className="card-head"><h2>Choose Your Store</h2><span className="hint">Switch supported grocery apps</span></div>
             <div className="segmented" role="tablist">
               {STORES.map((s) => (
                 <button key={s} id={`store-${s}`} role="tab" aria-selected={store === s} className={store === s ? "is-on" : ""} onClick={() => switchStore(s)}>
@@ -768,7 +801,7 @@ export default function Simulator() {
 
           <div className="card">
             <div className="card-head">
-              <h2>Dual-Mode Floating Bubble</h2>
+              <h2>Shopping View</h2>
               <span className="hint">Cart Avg: {animatedCartAvg}/100</span>
             </div>
             <div className="segmented segmented--two">
@@ -778,7 +811,7 @@ export default function Simulator() {
                 className={viewMode === "product" ? "is-on" : ""}
                 onClick={() => setViewMode("product")}
               >
-                📦 Product View ({score.score}/100)
+                📦 Product Page ({score.score}/100)
               </button>
               <button
                 id="mode-search-btn"
@@ -786,7 +819,7 @@ export default function Simulator() {
                 className={viewMode === "search" ? "is-on" : ""}
                 onClick={() => setViewMode("search")}
               >
-                🛒 Scrolling Search ({animatedCartAvg}/100)
+                🛒 Store Aisle ({animatedCartAvg}/100)
               </button>
             </div>
             <div className="bubble-trip-bar">
@@ -797,7 +830,7 @@ export default function Simulator() {
                   className="trip-pill trip-pill--restore"
                   onClick={() => setHiddenForTrip(false)}
                 >
-                  ↺ Overlay hidden for this trip · Tap to Restore
+                  ↺ HeyBroc hidden for this trip · Tap to Restore
                 </button>
               ) : (
                 <button
@@ -807,24 +840,24 @@ export default function Simulator() {
                   onClick={() => {
                     setHiddenForTrip(true);
                     setToast({
-                      title: "CleanCart hidden for this trip",
+                      title: "HeyBroc hidden for this trip",
                       body: `Dismissed until you next open ${STORE_META[store].label}.`,
                     });
                   }}
                 >
-                  ✕ Hide for this trip (or drag bubble to bottom)
+                  ✕ Hide bubble for this trip
                 </button>
               )}
               {cart.some((c) => c.origin === "swap") && (
                 <button type="button" className="link-btn" onClick={resetCartPresets}>
-                  Reset cart to 48/100
+                  Reset sample cart
                 </button>
               )}
             </div>
           </div>
 
           <div className="card">
-            <div className="card-head"><h2>Live real-product search</h2><span className="hint">Open Food Facts → USDA</span></div>
+            <div className="card-head"><h2>Search Any Grocery Item</h2><span className="hint">3M+ Verified Foods</span></div>
             <form className="search" onSubmit={runLive}>
               <input
                 id="live-search-input"
@@ -840,14 +873,13 @@ export default function Simulator() {
             {liveState === "error" && <p className="error">{liveError}</p>}
             {active.origin === "live" && active.lookup && (
               <p className="meta">
-                Found via <b>{active.lookup.source === "cache" ? `local cache (${active.lookup.origin})` : active.lookup.source}</b> in {active.lookup.ms} ms
-                {active.lookup.source !== "cache" && " — scan again for a cached <5 ms hit"}
+                Verified ingredient match in {active.lookup.ms} ms
               </p>
             )}
           </div>
 
           <div className="card">
-            <div className="card-head"><h2>Preset products</h2><span className="hint">Scored live by rubric.ts</span></div>
+            <div className="card-head"><h2>Popular Grocery Items</h2><span className="hint">Tap any item to inspect &amp; swap</span></div>
             <ul className="preset-list">
               {PRESETS.map((p) => {
                 const s = scoreIngredients(p.ingredients, watch);
@@ -869,7 +901,7 @@ export default function Simulator() {
           <div className="tool-row">
             <button id="open-auditor" className="tool" onClick={openAudit}>
               <span className="tool-icon">🛒</span>
-              <span><b>Whole-Cart MCP Auditor</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
+              <span><b>Whole-Cart Health Audit</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
             </button>
             <button id="open-watchlist" className={`tool ${panel === "watchlist" ? "is-on" : ""}`} onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}>
               <span className="tool-icon">⚙︎</span>
@@ -894,21 +926,6 @@ export default function Simulator() {
               <p className="meta">Calories, carbs, natural fat and sodium are never scored.</p>
             </div>
           )}
-
-          <div className="card inspector">
-            <div className="card-head">
-              <h2>API inspector</h2>
-              <div className="mini-tabs">
-                <button className={inspectTab === "json" ? "is-on" : ""} onClick={() => setInspectTab("json")}>JSON</button>
-                <button className={inspectTab === "ios" ? "is-on" : ""} onClick={() => setInspectTab("ios")}>ios_text</button>
-              </div>
-            </div>
-            <pre>
-              {inspectTab === "json"
-                ? apiJson ? JSON.stringify(apiJson, null, 2) : "// Run a live search or the cart auditor to see the real\n// POST /api/scan · /api/audit response here."
-                : iosText || "// Run a live search to see the iOS Shortcut text payload."}
-            </pre>
-          </div>
         </section>
 
         {/* ============ PHONE ============ */}
@@ -948,7 +965,6 @@ export default function Simulator() {
                     </div>
                     <div className="aisle-grid">
                       {aisleItems.map((item) => {
-                        const itemScore = scoreIngredients(item.ingredients, watch);
                         const inCart = cart.some((c) => c.key === item.key);
                         return (
                           <div key={item.key} className="aisle-card">
@@ -959,7 +975,6 @@ export default function Simulator() {
                             >
                               <div className="aisle-art">
                                 <ProductArt product={item} />
-                                <span className={`aisle-score tone-${itemScore.color}`}>{itemScore.score}/100</span>
                               </div>
                               <small className="aisle-brand">{item.brand}</small>
                               <b className="aisle-title">{item.title}</b>
@@ -997,7 +1012,7 @@ export default function Simulator() {
                       >
                         {cart.some((c) => c.key === active.key) ? "In cart ✓" : "Add to cart"}
                       </button>
-                      {swap && (
+                      {swap ? (
                         <button
                           id="pdp-quick-swap"
                           type="button"
@@ -1006,7 +1021,16 @@ export default function Simulator() {
                         >
                           ⚡ 1-Tap Clean Swap ({swap.score}/100)
                         </button>
-                      )}
+                      ) : activeRevertTarget ? (
+                        <button
+                          id="pdp-revert-swap"
+                          type="button"
+                          className="trip-pill"
+                          onClick={() => revertSwap(active)}
+                        >
+                          ↺ Revert back to {activeRevertTarget.brand} {activeRevertTarget.title}
+                        </button>
+                      ) : null}
                     </div>
                     <div className="pdp-fulfil">
                       <div><b>Pickup</b><span>Today</span></div>
@@ -1199,24 +1223,23 @@ export default function Simulator() {
                               </button>
                               <button id="swap-item" className="swap-btn" onClick={doSwap}>Swap Item</button>
                             </div>
-                          ) : previousDirtyItem ? (
+                          ) : activeRevertTarget ? (
                             <div className="swap">
                               <div className="swap-preview-note">
-                                <b>Inspecting Clean Swap ({score.score}/100)</b>
-                                <p>Replacing: {previousDirtyItem.brand} {previousDirtyItem.title}</p>
+                                <b>✓ Clean Swap Active ({score.score}/100)</b>
+                                <p>Replaced: {activeRevertTarget.brand} {activeRevertTarget.title}</p>
                               </div>
-                              <button id="swap-item" className="swap-btn" onClick={doSwap}>
-                                Swap Item in Cart → 100/100
-                              </button>
+                              {!cart.some((c) => c.key === active.key) && (
+                                <button id="swap-item" className="swap-btn" onClick={doSwap}>
+                                  Confirm Swap in Cart → 100/100
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className="link-btn center"
-                                onClick={() => {
-                                  setActive(previousDirtyItem);
-                                  setPreviousDirtyItem(null);
-                                }}
+                                onClick={() => revertSwap(active)}
                               >
-                                ← Back to {previousDirtyItem.title}
+                                ↺ Revert back to {activeRevertTarget.brand} {activeRevertTarget.title}
                               </button>
                             </div>
                           ) : null}
@@ -1617,7 +1640,7 @@ export default function Simulator() {
                             </span>
                             <ScoreChip score={s.score} color={s.color} />
                           </button>
-                          {sw && (
+                          {sw ? (
                             <button
                               type="button"
                               className="cart-row-swap"
@@ -1625,7 +1648,15 @@ export default function Simulator() {
                             >
                               Swap
                             </button>
-                          )}
+                          ) : item.origin === "swap" ? (
+                            <button
+                              type="button"
+                              className="trip-pill"
+                              onClick={() => revertSwap(item)}
+                            >
+                              ↺ Revert
+                            </button>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -1653,7 +1684,7 @@ export default function Simulator() {
                 <div className="toast" role="status">
                   <b>{toast.title}</b>
                   <p>{toast.body}</p>
-                  {toast.href && <a href={toast.href} target="_blank" rel="noreferrer">Open real store ↗</a>}
+                  {toast.href && <a href={toast.href} target="_blank" rel="noreferrer">View on {STORE_META[store].label} ↗</a>}
                 </div>
               )}
             </div>
