@@ -133,21 +133,21 @@ export default function Paywall({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="CleanCart Pro Paywall" onClick={onClose}>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="HeyBroc Family Pro" onClick={onClose}>
       <div className="modal-card paywall-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>
             <span className="eyebrow eyebrow--green">
-              {scanCount >= freeScanLimit ? `Free Scan Limit Reached (${scanCount}/${freeScanLimit})` : "CleanCart Pro · Upgrade"}
+              {scanCount >= freeScanLimit ? `Free Scan Limit Reached (${scanCount}/${freeScanLimit})` : "HeyBroc Family Pro · Upgrade"}
             </span>
-            <h2>Unlimited Live Store Overlays, 1-Tap Clean Swaps &amp; Whole-Cart Audits.</h2>
+            <h2>Unlimited Live Store Overlays, 1-Tap Clean Swaps &amp; Whole-Cart Health Checks.</h2>
           </div>
           <button className="close" onClick={onClose} aria-label="Close paywall">×</button>
         </div>
 
         <ul className="paywall-perks">
-          <li><span>✓</span> Instant floating ingredient grade over Walmart, Instacart, Sam&apos;s Club &amp; BJ&apos;s</li>
-          <li><span>✓</span> 1-Tap verified 90–100 Clean Swaps &amp; Whole-Cart MCP Auditor</li>
+          <li><span>✓</span> Instant floating ingredient grade over Walmart, Instacart, Target, Kroger, ALDI, Sam&apos;s Club, BJ&apos;s &amp; more</li>
+          <li><span>✓</span> 1-Tap verified 90–100 Clean Swaps &amp; Whole-Cart Health Check</li>
           <li><span>✓</span> Custom additive watchlists (seed oils, synthetic dyes, HFCS, nitrates)</li>
         </ul>
 
@@ -168,7 +168,7 @@ export default function Paywall({
             </div>
             <div className="plan-copy">
               <div className="plan-title-row">
-                <strong>Annual CleanCart Pro</strong>
+                <strong>Annual HeyBroc Family Pro</strong>
                 <span className="plan-trial-pill">
                   {trialDays}-Day Free Trial
                 </span>
@@ -212,7 +212,7 @@ export default function Paywall({
         {/* CREATOR / INFLUENCER PROMO CODE BOX */}
         <div className="creator-box">
           <label htmlFor="creator-code-input" className="creator-label">
-            Creator / Influencer Promo Code
+            Creator / Promo Code
           </label>
           <div className="creator-input-row">
             <input
@@ -220,7 +220,7 @@ export default function Paywall({
               type="text"
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-              placeholder="Have a Creator Code? e.g. CLEANMOM, WALMARTHAUL"
+              placeholder="Enter promo code"
             />
             <button
               id="apply-creator-code"
@@ -232,27 +232,10 @@ export default function Paywall({
               {codeBusy ? "…" : "Apply"}
             </button>
           </div>
-          <div className="creator-quick-chips">
-            <span>Quick test:</span>
-            {SAMPLE_CODES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`chip-btn ${appliedCreator?.code === c ? "is-on" : ""}`}
-                onClick={() => applyCode(c)}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
           {codeError && <p className="error">{codeError}</p>}
           {appliedCreator && (
             <div id="creator-applied-badge" className="creator-confirm">
-              <span>✓ Code Applied: Extended 7-Day Free Trial Unlocked!</span>
-              <small>
-                Attributed to <b>{appliedCreator.code}</b> ({appliedCreator.commissionPct}% split ={" "}
-                {usd(commissionFor("annual", appliedCreator.commissionPct))} payout on $49.99/yr)
-              </small>
+              <span>✓ Code <b>{appliedCreator.code}</b> Applied: Extended 7-Day Free Trial Unlocked!</span>
             </div>
           )}
         </div>
@@ -266,7 +249,7 @@ export default function Paywall({
           onClick={handleCheckout}
         >
           {checkoutBusy
-            ? "Activating CleanCart Pro…"
+            ? "Activating HeyBroc Family Pro…"
             : selectedPlan === "annual"
               ? appliedCreator
                 ? "Start 7-Day Free Trial ($0 Today)"
@@ -283,22 +266,12 @@ export default function Paywall({
           <div className="paywall-receipt" role="status">
             <div>
               <strong>
-                ✓ CleanCart Pro Activated ({receipt.plan === "annual" ? "$49.99/yr Annual" : "$9.99/mo Monthly"})
+                ✓ HeyBroc Family Pro Activated ({receipt.plan === "annual" ? "$49.99/yr Annual" : "$9.99/mo Monthly"})
               </strong>
               <p>
-                {receipt.creator ? (
-                  <>
-                    Tagged to creator <b>{receipt.creator.code}</b> · Creator Commission:{" "}
-                    <b>{usd(receipt.commission)}</b> · Your Net Revenue: <b>{usd(receipt.net)}</b>
-                  </>
-                ) : (
-                  <>Direct conversion · Your Net Revenue: <b>{usd(receipt.net)}</b> (no creator split)</>
-                )}
+                Unlimited live store overlays, 1-tap clean swaps &amp; whole-cart health checks are now active on your account.
               </p>
             </div>
-            <button type="button" className="link-btn" onClick={onOpenInfluencerEngine}>
-              View in Influencer Engine →
-            </button>
           </div>
         )}
       </div>

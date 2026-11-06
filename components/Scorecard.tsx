@@ -40,7 +40,7 @@ export default function Scorecard({
 
   if (!open) return null;
 
-  const activeCode = (refCode || defaultReferralCode || "CLEANCART").toUpperCase();
+  const activeCode = (refCode || defaultReferralCode || "HEYBROC").toUpperCase();
   const dodgedList = Array.from(
     new Set(
       (swaps.length > 0 ? swaps.flatMap((s) => s.dodged) : fallbackDodged).filter(Boolean),
@@ -53,7 +53,7 @@ export default function Scorecard({
       ? "Clean Cart Approved"
       : cartAvg >= 50
         ? "In Progress · Getting Cleaner"
-        : "Before CleanCart Swap";
+        : "Before HeyBroc Swap";
 
   const downloadPng = () => {
     const canvas = canvasRef.current;
@@ -156,7 +156,7 @@ export default function Scorecard({
     ctx.fillText(`7-Day Free Trial Code: ${activeCode}`, 120, H - 105);
 
     const a = document.createElement("a");
-    a.download = `cleancart-${store}-scorecard-${cartAvg}.png`;
+    a.download = `heybroc-${store}-scorecard-${cartAvg}.png`;
     a.href = canvas.toDataURL("image/png");
     a.click();
   };
@@ -259,7 +259,7 @@ export default function Scorecard({
                 placeholder="e.g. PARENTMAXX, SARAHHAULS"
               />
               <p className="meta">
-                Every TikTok / IG Story viewer who enters <b>{activeCode}</b> on the CleanCart paywall unlocks a 7-day free trial and attributes a 35% creator commission ($17.50).
+                Share your Clean Haul Scorecard on TikTok or Instagram Stories with your personal code <b>{activeCode}</b> to give friends a 7-day free trial.
               </p>
               <button id="download-scorecard-png" type="button" className="swap-btn swap-btn--wide" onClick={downloadPng}>
                 ⬇ Download 1080×1920 Story PNG

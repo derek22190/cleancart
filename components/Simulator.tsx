@@ -1716,8 +1716,8 @@ export default function Simulator() {
                     <div className="sheet-grip" />
                     <div className="insights-head">
                       <div>
-                        <span className="eyebrow">{auditOpen ? "CleanCart · Whole-Cart MCP Auditor" : STORE_META[store].label}</span>
-                        <h3>{auditOpen ? "Cart audit" : "Your cart"}</h3>
+                        <span className="eyebrow">{auditOpen ? "HeyBroc · Whole-Cart Health Check" : STORE_META[store].label}</span>
+                        <h3>{auditOpen ? "Cart Health Check" : "Your cart"}</h3>
                       </div>
                       <button className="close" onClick={() => { setCartOpen(false); setAuditOpen(false); }} aria-label="Close">×</button>
                     </div>
@@ -1726,7 +1726,7 @@ export default function Simulator() {
                         <Gauge score={animatedCartAvg} rating="Cart avg" color={cartAvgTone} size={78} />
                         <p>
                           {auditBusy
-                            ? "Auditing via /api/audit…"
+                            ? "Checking your cart ingredients…"
                             : dirty.length
                               ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap any item to inspect, or tap <b>Swap</b> to watch your Cart Avg climb!</>
                               : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
@@ -1786,7 +1786,7 @@ export default function Simulator() {
                         📱 Generate 9:16 TikTok/IG Scorecard
                       </button>
                     )}
-                    {cartOpen && <button className="link-btn center" onClick={openAudit}>Run Whole-Cart Audit →</button>}
+                    {cartOpen && <button className="link-btn center" onClick={openAudit}>Run Whole-Cart Health Check →</button>}
                   </div>
                 </div>
               )}
@@ -1831,7 +1831,7 @@ export default function Simulator() {
             {/* Row 1 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Floats directly on Walmart &amp; Instacart</b>
+                <b>Floats on Walmart, Instacart, Target, ALDI &amp; more</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-yes">✓</span>
@@ -1843,7 +1843,7 @@ export default function Simulator() {
               </div>
               <div className="compare-cell compare-cell--broc" role="cell">
                 <span className="cmp-yes cmp-yes--bright">✓</span>
-                <small><b>Yes</b></small>
+                <small><b>Yes (12 stores)</b></small>
               </div>
             </div>
 
@@ -1888,7 +1888,7 @@ export default function Simulator() {
             {/* Row 4 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Whole-Cart Health Audit (Cart Avg 0–100)</b>
+                <b>Whole-Cart Health Check (Cart Avg 0–100)</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-no">✕</span>
@@ -1900,7 +1900,7 @@ export default function Simulator() {
               </div>
               <div className="compare-cell compare-cell--broc" role="cell">
                 <span className="cmp-yes cmp-yes--bright">✓</span>
-                <small><b>Full Cart Audit</b></small>
+                <small><b>Full Cart Check</b></small>
               </div>
             </div>
           </div>
@@ -1918,16 +1918,14 @@ export default function Simulator() {
           setAppliedCreator(c);
           setInfluencerRefresh((n) => n + 1);
         }}
-        onConversionComplete={({ plan, creator, trialDays, commissionOwed }) => {
+        onConversionComplete={({ plan, creator, trialDays }) => {
           setIsPro(true);
           setInfluencerRefresh((n) => n + 1);
           setToast({
             title: creator
-              ? `Pro Unlocked via ${creator.code} (${trialDays}-Day Trial)`
-              : `CleanCart Pro Unlocked (${plan})`,
-            body: creator
-              ? `Creator ${creator.code} credited +$${(commissionOwed ?? 17.5).toFixed(2)} commission in Influencer Engine.`
-              : "Unlimited store overlays, 1-tap clean swaps & cart audits active.",
+              ? `HeyBroc Family Pro Unlocked (${trialDays}-Day Free Trial)`
+              : `HeyBroc Family Pro Unlocked (${plan})`,
+            body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
           });
         }}
         onOpenInfluencerEngine={() => {
