@@ -1,6 +1,6 @@
 import { scoreIngredients, scoreProductYuka, normalizeIngredients, isEnglishIngredientText } from "../lib/rubric";
 import { PRESETS } from "../lib/presets";
-import { CLEAN_ALTERNATIVES, resolveSwap } from "../lib/swaps";
+import { CLEAN_ALTERNATIVES, EXACT_PRODUCT_ALTERNATIVES, resolveSwap } from "../lib/swaps";
 
 let fail = 0;
 const check = (label: string, cond: boolean) => { if (!cond) { fail++; console.log("FAIL", label); } };
@@ -15,8 +15,21 @@ for (const p of PRESETS) {
 }
 for (const a of Object.values(CLEAN_ALTERNATIVES)) {
   const r = scoreIngredients(a.ingredients);
-  check(`${a.brand} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
+  check(`${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
 }
+for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
+  const a = entry.alt;
+  const r = scoreIngredients(a.ingredients);
+  check(`1-for-1 ${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
+}
+// 1-for-1 exact product swap checks
+check("1-for-1 salted butter -> butter (not milk)", Boolean(resolveSwap({ score: 54, productTitle: "Great Value Sweet Cream Salted Butter", store: "walmart" })?.title.includes("Salted Butter")));
+check("1-for-1 unsalted butter -> unsalted butter", Boolean(resolveSwap({ score: 54, productTitle: "Great Value Sweet Cream Unsalted Butter", store: "walmart" })?.title.includes("Unsalted Butter")));
+check("1-for-1 whole milk -> whole milk", Boolean(resolveSwap({ score: 54, productTitle: "Great Value Whole Vitamin D Milk", store: "walmart" })?.title.includes("Whole Milk")));
+check("1-for-1 2% milk -> 2% milk", Boolean(resolveSwap({ score: 54, productTitle: "Great Value 2% Reduced Fat Milk", store: "walmart" })?.title.includes("2% Reduced Fat Milk")));
+check("1-for-1 coffee creamer -> coffee creamer", Boolean(resolveSwap({ score: 35, productTitle: "Coffee mate French Vanilla Liquid Coffee Creamer", store: "walmart" })?.title.includes("Coffee Creamer")));
+check("1-for-1 tortilla chips -> tortilla chips", Boolean(resolveSwap({ score: 45, productTitle: "Doritos Nacho Cheese Tortilla Chips", store: "walmart" })?.title.includes("Tortilla Chips")));
+check("1-for-1 bacon -> bacon", Boolean(resolveSwap({ score: 30, productTitle: "Oscar Mayer Original Naturally Hardwood Smoked Bacon", store: "walmart" })?.title.includes("Bacon")));
 // Edge cases
 check("corn chips no corn oil", !scoreIngredients("Corn, sunflower oil, salt").flagged.some((f) => f.id === "cornoil"));
 check("corn list no corn oil", !scoreIngredients("Ground corn, safflower or sunflower oil, salt").flagged.some((f) => f.id === "cornoil"));

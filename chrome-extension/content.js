@@ -233,10 +233,14 @@
     }
     const C = 2 * Math.PI * 44;
     const flags = r.flagged.length
-      ? r.flagged.map((f) => `<button class="cc-flag cc-risk-${f.risk} ${state.openFlag === f.id ? "is-open" : ""}" data-flag="${f.id}">${esc(f.name)} ⚠️</button>`).join("")
+      ? r.flagged.map((f) => `<span class="cc-flag cc-risk-${f.risk} is-open">${esc(f.name)} ⚠️</span>`).join("")
       : `<p class="cc-clean">✓ No watchlist additives found.</p>`;
-    const open = r.flagged.find((f) => f.id === state.openFlag);
-    const explain = open ? `<div class="cc-explain cc-risk-${open.risk}"><b>${esc(open.name)}</b> <span>−${open.penalty} pts</span><p>${esc(open.explanation)}</p></div>` : "";
+    const explain = r.flagged
+      .map(
+        (f) =>
+          `<div class="cc-explain cc-risk-${f.risk}" style="margin-bottom:6px"><b>${esc(f.name)}</b> <span>−${f.penalty} pts</span><p>${esc(f.explanation)}</p></div>`,
+      )
+      .join("");
     const swap = d.swap
       ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · Cart Avg ${avg}/100</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${d.swap.score}/100 Excellent</span></div>
            <button class="cc-swap-btn" data-act="swap">Swap Item</button></div>`

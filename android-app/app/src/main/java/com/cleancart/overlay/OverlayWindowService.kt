@@ -808,7 +808,7 @@ class OverlayWindowService : Service() {
             sheet.addView(text(prodTitle, 13f, INK_2).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(4), 0, 0) })
         }
 
-        // Gauge + flags
+        // Gauge + flags (all explanations already expanded by default so everything is visible immediately)
         val explain = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val flags = FlowLayout(this, dp(6))
         if (flagged == null || flagged.length() == 0) {
@@ -820,19 +820,18 @@ class OverlayWindowService : Service() {
                 flags.addView(text("${f.optString("name")} ⚠️", 12.5f, fg, bold = true).apply {
                     setPadding(dp(10), dp(6), dp(10), dp(6))
                     background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(999).toFloat() }
-                    setOnClickListener {
-                        openFlag = if (openFlag == f.optString("id")) null else f.optString("id")
-                        explain.removeAllViews()
-                        if (openFlag != null) {
-                            explain.addView(LinearLayout(context).apply {
-                                orientation = LinearLayout.VERTICAL
-                                setPadding(dp(12), dp(12), dp(12), dp(12))
-                                background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(14).toFloat() }
-                                addView(text("${f.optString("name")}  ·  −${f.optInt("penalty")} pts", 13f, INK, bold = true))
-                                addView(text(f.optString("explanation"), 13f, INK).apply { setPadding(0, dp(4), 0, 0) })
-                                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
-                            })
-                        }
+                })
+                explain.addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(14).toFloat() }
+                    addView(text("${f.optString("name")}  ·  −${f.optInt("penalty")} pts", 13f, fg, bold = true))
+                    val expText = f.optString("explanation")
+                    if (expText.isNotBlank()) {
+                        addView(text(expText, 12.5f, INK).apply { setPadding(0, dp(3), 0, 0) })
+                    }
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = if (i == 0) dp(12) else dp(8)
                     }
                 })
             }

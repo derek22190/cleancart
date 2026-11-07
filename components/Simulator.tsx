@@ -20,6 +20,7 @@ import {
   STORE_META,
   STORES,
   detectCategory,
+  resolveCleanAlternative,
   resolveSwap,
   type Store,
   type SwapCategory,
@@ -77,7 +78,9 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
 });
 
 const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
-  const alt = CLEAN_ALTERNATIVES[cat];
+  const alt = replacedItem
+    ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat)
+    : CLEAN_ALTERNATIVES[cat];
   return {
     key: replacedItem ? `clean-${cat}-${replacedItem.key}` : `clean-${cat}`,
     title: alt.name,
@@ -516,8 +519,9 @@ export default function Simulator() {
 
   /** Inspects the Clean Swap item when the user clicks its photo or title inside Health Insights. */
   const inspectCleanSwap = useCallback(
-    (cat: SwapCategory) => {
-      const clean = cleanToProduct(cat);
+    (cat: SwapCategory, replaced?: Product) => {
+      const target = replaced ?? (active.origin !== "swap" ? active : previousDirtyItem ?? undefined);
+      const clean = cleanToProduct(cat, target);
       if (active.origin !== "swap") {
         setPreviousDirtyItem(active);
       }
@@ -532,7 +536,7 @@ export default function Simulator() {
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [active],
+    [active, previousDirtyItem],
   );
 
   const triggerClimbFlash = useCallback(() => {
@@ -1377,9 +1381,9 @@ export default function Simulator() {
                                 id="inspect-clean-swap"
                                 type="button"
                                 className="swap-info swap-info--btn"
-                                onClick={() => inspectCleanSwap(swap.category)}
+                                onClick={() => inspectCleanSwap(swap.category, active)}
                               >
-                                <ProductArt product={cleanToProduct(swap.category)} className="swap-art" />
+                                <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" />
                                 <div className="swap-info-copy">
                                   <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}</span>
                                   <b>{swap.title}</b>
@@ -1418,8 +1422,8 @@ export default function Simulator() {
                                 <div className="yuka-row yuka-row--summary">
                                   <span className="yuka-row-icon"><YukaLineIcon kind="additives" /></span>
                                   <div className="yuka-row-text">
-                                    <b>Additives</b>
-                                    <small>Contains {score.flagged.length} additive{score.flagged.length === 1 ? "" : "s"} to avoid</small>
+                                    <b>Additives &amp; Nutrition Flags</b>
+                                    <small>Contains {score.flagged.length} item{score.flagged.length === 1 ? "" : "s"} to watch</small>
                                   </div>
                                   <div className="yuka-row-right">
                                     <span className="yuka-row-val">{score.flagged.length}</span>
@@ -1427,18 +1431,12 @@ export default function Simulator() {
                                   </div>
                                 </div>
 
-                                {/* Each Flagged Additive Row (Tappable for plain-English explanation) */}
+                                {/* Each Flagged Additive Row (Always expanded with plain-English explanation visible immediately) */}
                                 {score.flagged.map((f: FlaggedAdditive) => {
-                                  const isOpen = openFlag === f.id;
                                   const dotTone = f.risk === "high" ? "red" : "yellow";
                                   return (
                                     <div key={f.id} className="yuka-row-wrap">
-                                      <button
-                                        type="button"
-                                        className={`yuka-row yuka-row--btn ${isOpen ? "is-open" : ""}`}
-                                        onClick={() => setOpenFlag((o) => (o === f.id ? null : f.id))}
-                                        aria-expanded={isOpen}
-                                      >
+                                      <div className="yuka-row is-open">
                                         <span className="yuka-row-icon"><YukaLineIcon kind={f.category} /></span>
                                         <div className="yuka-row-text">
                                           <b>{f.name}</b>
@@ -1447,15 +1445,12 @@ export default function Simulator() {
                                         <div className="yuka-row-right">
                                           <span className="yuka-row-val">−{f.penalty} pts</span>
                                           <span className={`yuka-dot tone-${dotTone}`} />
-                                          <span className="yuka-chevron">{isOpen ? "▴" : "▾"}</span>
                                         </div>
-                                      </button>
-                                      {isOpen && (
-                                        <div className={`explain risk-${f.risk}`}>
-                                          <b>{f.name}</b> <span>{RISK_LABEL[f.risk]} · −{f.penalty} pts</span>
-                                          <p>{f.explanation}</p>
-                                        </div>
-                                      )}
+                                      </div>
+                                      <div className={`explain risk-${f.risk}`}>
+                                        <b>{f.name}</b> <span>{RISK_LABEL[f.risk]} · −{f.penalty} pts</span>
+                                        <p>{f.explanation}</p>
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -1552,7 +1547,7 @@ export default function Simulator() {
                             {PRESETS.map((p) => {
                               const dirtyProd = presetToProduct(p);
                               const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
-                              const cleanProd = cleanToProduct(p.category);
+                              const cleanProd = cleanToProduct(p.category, dirtyProd);
                               return (
                                 <div key={p.id} className="yuka-rec-pair">
                                   {/* Left Dirty Card */}
@@ -1579,7 +1574,7 @@ export default function Simulator() {
                                     <button
                                       type="button"
                                       className="yuka-rec-card-inner"
-                                      onClick={() => inspectCleanSwap(p.category)}
+                                      onClick={() => inspectCleanSwap(p.category, dirtyProd)}
                                     >
                                       <span className="yuka-rec-badge is-good">✓</span>
                                       <ProductArt product={cleanProd} className="yuka-rec-img" />
