@@ -213,11 +213,57 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "A curing salt that converts to nitrite and can form nitrosamines linked to colorectal cancer risk.",
   },
 
+  {
+    id: "phoil", name: "Partially Hydrogenated Oil", risk: "high", category: "seedOils",
+    patterns: ["partially hydrogenated"],
+    explanation: "Artificial trans fat that raises harmful LDL cholesterol, lowers protective HDL cholesterol, stiffens arteries, and increases blood pressure and heart-disease risk.",
+  },
+  {
+    id: "hydrogoil", name: "Hydrogenated Oil", risk: "high", category: "seedOils",
+    patterns: ["(?<!partially )hydrogenated (vegetable|soybean|canola|cottonseed|rapeseed|palm|coconut|corn|sunflower) oils?"],
+    explanation: "Chemically hardened industrial fat that promotes vascular inflammation, poor LDL/HDL cholesterol ratios, and cardiovascular stress.",
+  },
+  {
+    id: "soybeanoil", name: "Soybean Oil", risk: "high", category: "seedOils",
+    patterns: ["soy(bean|a)? oil"],
+    explanation: "Hexane-extracted industrial seed oil high in unstable omega-6 linoleic acid and hidden trans fats that drive oxidized LDL cholesterol and blood vessel inflammation.",
+  },
+  {
+    id: "canolaoil", name: "Canola Oil", risk: "high", category: "seedOils",
+    patterns: ["canola oil", "rapeseed oil"],
+    explanation: "High-heat refined, bleached, and deodorized seed oil with hidden trans fats (0.5%–3%) that degrade LDL cholesterol quality and impair blood vessel elasticity.",
+  },
+  {
+    id: "cornoil", name: "Corn Oil", risk: "high", category: "seedOils",
+    patterns: ["corn oil"],
+    explanation: "Industrially refined seed oil with a lopsided ~46:1 omega-6 to omega-3 ratio linked to oxidized LDL cholesterol, arterial stiffness, and elevated blood pressure.",
+  },
+  {
+    id: "cottonseedoil", name: "Cottonseed Oil", risk: "high", category: "seedOils",
+    patterns: ["cottonseed oil"],
+    explanation: "Refined industrial oil from a heavily sprayed non-food crop; high in pro-inflammatory omega-6 fats that harm cholesterol quality and endothelial health.",
+  },
+  {
+    id: "grapeseedoil", name: "Grapeseed Oil", risk: "high", category: "seedOils",
+    patterns: ["grape ?seed oil"],
+    explanation: "Solvent-extracted by-product oil (~70% omega-6 linoleic acid) that oxidizes rapidly into toxic aldehydes linked to oxidized LDL and vascular stress.",
+  },
+  {
+    id: "ricebranoil", name: "Rice Bran Oil", risk: "high", category: "seedOils",
+    patterns: ["rice ?bran oil"],
+    explanation: "Industrially solvent-extracted seed/bran oil high in omega-6 linoleic acid and prone to oxidation and hidden trans-fat formation during refining.",
+  },
+  {
+    id: "vegoil", name: "Vegetable Oil (Industrial Blend)", risk: "high", category: "seedOils",
+    patterns: ["(?<!brominated |hydrogenated )vegetable oils?"],
+    explanation: "Undisclosed industrial blend of refined seed oils (typically soybean, canola, or corn oil) high in oxidized omega-6 fats that harm cholesterol and blood pressure.",
+  },
+
   // ---------------- MODERATE RISK (-20) ----------------
   {
     id: "hfcs", name: "High Fructose Corn Syrup", risk: "moderate", category: "hfcs",
     patterns: ["high fructose corn syrup", "hfcs", "glucose fructose syrup", "isoglucose"],
-    explanation: "A highly refined industrial sweetener tied to fatty-liver and metabolic issues when consumed regularly.",
+    explanation: "A highly refined industrial sweetener tied to fatty-liver, high triglycerides, and metabolic issues when consumed regularly.",
   },
   {
     id: "cornsyrup", name: "Corn Syrup", risk: "moderate", category: "hfcs",
@@ -226,49 +272,14 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "A refined glucose syrup used as cheap filler sweetener in ultra-processed foods.",
   },
   {
-    id: "soybeanoil", name: "Soybean Oil", risk: "moderate", category: "seedOils",
-    patterns: ["soy(bean|a)? oil"],
-    explanation: "An industrially solvent-extracted seed oil very high in omega-6 linoleic acid.",
-  },
-  {
-    id: "canolaoil", name: "Canola Oil", risk: "moderate", category: "seedOils",
-    patterns: ["canola oil", "rapeseed oil"],
-    explanation: "A refined, bleached and deodorized seed oil typically extracted with hexane solvent.",
-  },
-  {
-    id: "cornoil", name: "Corn Oil", risk: "moderate", category: "seedOils",
-    patterns: ["corn oil"],
-    explanation: "A highly processed seed oil with one of the most lopsided omega-6 to omega-3 ratios.",
-  },
-  {
-    id: "cottonseedoil", name: "Cottonseed Oil", risk: "moderate", category: "seedOils",
-    patterns: ["cottonseed oil"],
-    explanation: "A refined oil from a non-food crop that is heavily sprayed and high in omega-6 fats.",
-  },
-  {
     id: "sunfloweroil", name: "Sunflower Oil", risk: "moderate", category: "seedOils",
     patterns: ["sunflower( seed)? oil"],
-    explanation: "A refined seed oil whose polyunsaturated fats oxidize readily under high-heat processing.",
+    explanation: "Refined seed oil rich in omega-6 fats that oxidize under high-heat frying; cleaner than soybean or canola oil, but far less stable than avocado, olive, or coconut oil.",
   },
   {
     id: "saffloweroil", name: "Safflower Oil", risk: "moderate", category: "seedOils",
     patterns: ["safflower( seed)? oil"],
-    explanation: "A refined seed oil rich in omega-6 fats that are prone to oxidation during frying.",
-  },
-  {
-    id: "grapeseedoil", name: "Grapeseed Oil", risk: "moderate", category: "seedOils",
-    patterns: ["grape ?seed oil"],
-    explanation: "A by-product seed oil that is usually chemically extracted and very high in omega-6.",
-  },
-  {
-    id: "phoil", name: "Partially Hydrogenated Oil", risk: "moderate", category: "seedOils",
-    patterns: ["partially hydrogenated"],
-    explanation: "The primary source of artificial trans fat, which raises LDL cholesterol and heart-disease risk.",
-  },
-  {
-    id: "hydrogoil", name: "Hydrogenated Oil", risk: "moderate", category: "seedOils",
-    patterns: ["(?<!partially )hydrogenated (vegetable|soybean|canola|cottonseed|rapeseed|palm|coconut) oils?"],
-    explanation: "Chemically hardened industrial fat used to make ultra-processed spreads and snacks shelf-stable.",
+    explanation: "Refined seed oil rich in omega-6 fats prone to heat oxidation; better than hexane-extracted soybean/canola oil, but inferior to olive or avocado oil.",
   },
   {
     id: "caramelcolor", name: "Caramel Color", risk: "moderate", category: "dyes",
@@ -388,7 +399,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
 /* Normalization                                                             */
 /* ------------------------------------------------------------------------ */
 
-const SEED_WORDS = "soybean|soy|canola|corn|cottonseed|sunflower|safflower|grapeseed|rapeseed";
+const SEED_WORDS = "soybean|soy|canola|corn|cottonseed|sunflower|safflower|grapeseed|rapeseed|rice bran";
 
 /**
  * Lowercases, strips accents and punctuation, and expands shorthand oil lists like
@@ -411,13 +422,13 @@ export function normalizeIngredients(raw: string): string {
   );
 
   // 1) "oil/shortening/fat (soybean, canola or sunflower)" -> "... (soybean oil, canola oil or sunflower oil)"
-  s = s.replace(/(?:oils?|shortening|fats?)\s*[([]([^)\]]*)[)\]]/g, (whole, inner: string) => {
+  s = s.replace(/(?:vegetable\s+)?(oils?|shortening|fats?)\s*[([]([^)\]]*)[)\]]/g, (whole, kind: string, inner: string) => {
     if (/\b(facility|equipment|processed|allergen|traces|may contain)\b/.test(inner)) return whole;
     const expanded = inner.replace(
       new RegExp(`\\b(${SEED_WORDS})\\b(?!\\s+(oil|lecithin))`, "g"),
       "$1 oil",
     );
-    return whole.replace(inner, expanded);
+    return `${kind} (${expanded})`;
   });
 
   // 2) "soybean, canola or/and sunflower oil" -> "soybean oil, canola oil or/and sunflower oil".
@@ -660,6 +671,7 @@ export function scoreProductYuka(
 
   // Pillar 2: Additives (30% weight -> 0..30 points)
   const hasHighRisk = base.flagged.some((f) => f.risk === "high");
+  const seedOilHits = base.flagged.filter((f) => f.category === "seedOils");
   const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45));
   const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
 
@@ -669,11 +681,13 @@ export function scoreProductYuka(
   // Combine all 3 Yuka pillars (60 + 30 + 10 = 100)
   let finalScore = Math.max(0, Math.min(100, nutritionScore + additiveScore + organicScore));
 
-  // Yuka High-Risk Additive Cap: any High-Risk (Red) additive caps the total score at <= 49/100
-  // and multiple high-risk/moderate additives reduce it further toward 0.
-  if (hasHighRisk) {
+  // Yuka High-Risk Additive Cap: any High-Risk (Red) additive or 2+ seed oils caps the total score at <= 49/100 (Poor)
+  if (hasHighRisk || seedOilHits.length >= 2) {
     const extraAdditiveDrag = Math.max(0, Math.round((base.totalPenalty - 35) * 0.35));
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore - extraAdditiveDrag));
+  } else if (seedOilHits.length === 1) {
+    // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
+    finalScore = Math.max(0, Math.min(59, finalScore));
   }
 
   // Surface Yuka nutritional penalties inside flagged items so the user sees WHY a high-sugar/high-fat/high-sodium item lost points
