@@ -46,10 +46,10 @@ class GroceryScreenReaderService : AccessibilityService() {
             "com.android.permissioncontroller",
             "com.google.android.permissioncontroller"
         )
-        private const val DEBOUNCE_MS = 220L
-        private const val MAX_DEBOUNCE_WAIT_MS = 550L
+        private const val DEBOUNCE_MS = 500L
+        private const val MAX_DEBOUNCE_WAIT_MS = 1300L
         private const val FOREGROUND_CHECK_MS = 1500L
-        private const val MAX_NODES = 900
+        private const val MAX_NODES = 420
         private val TITLE_ID_HINTS = listOf(
             "pdp_title",
             "pdp_product_title",
@@ -217,6 +217,20 @@ class GroceryScreenReaderService : AccessibilityService() {
             }.trim()
             val srcViewId = src?.viewIdResourceName?.lowercase().orEmpty()
             recycleNode(src)
+            val isRemoveOrCartEditClick =
+                Regex("""(?i)\b(remove|delete|save for later|decrease quantity|undo)\b""").containsMatchIn(clickedText) ||
+                    srcViewId.contains("remove") ||
+                    srcViewId.contains("delete") ||
+                    srcViewId.contains("stepper_minus") ||
+                    srcViewId.contains("minus_button")
+            if (isRemoveOrCartEditClick) {
+                lastKey = ""
+                pendingSinceMs = System.currentTimeMillis()
+                handler.removeCallbacks(scanRunnable)
+                // Give the store app ~950ms of zero accessibility IPC traffic to complete its Remove animation/network call
+                handler.postDelayed(scanRunnable, 950L)
+                return
+            }
             val isAddClick =
                 SINGLE_PDP_CTA.containsMatchIn(clickedText) ||
                     ADD_TILE_BUTTON.matches(clickedText) ||
@@ -229,7 +243,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 lastKey = "" // Force re-evaluation so the clicked product is recorded in cart automatically
                 pendingSinceMs = System.currentTimeMillis()
                 handler.removeCallbacks(scanRunnable)
-                handler.postDelayed(scanRunnable, 180L)
+                handler.postDelayed(scanRunnable, 350L)
                 return
             }
         }
@@ -238,7 +252,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             pendingSinceMs = now
             handler.removeCallbacks(scanRunnable)
-            handler.postDelayed(scanRunnable, 150L)
+            handler.postDelayed(scanRunnable, 220L)
             return
         }
         if (pendingSinceMs == 0L) pendingSinceMs = now
@@ -534,6 +548,10 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun cleanTitleCandidate(raw: String): String {
         var s = raw.replace(WHITESPACE, " ").trim()
+        // Never strip "Removed: <Product>" snackbar messages into valid titles — they are handled by extractRemovedCartTitles
+        if (s.matches(Regex("""(?i)^(removed|moved to saved for later|saved for later)\s*:.*"""))) {
+            return ""
+        }
         // Strip leading/embedded favorite/badge/quantity prefixes from compound container contentDescriptions
         s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(remove|delete)\s+(?=[a-z0-9].*\s+[a-z0-9])"""), "")
@@ -552,6 +570,20 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(current\s+price\s*|price\s*)?\$\s*\d+(\.\d{2})?.*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct|\d+\s*ct).*$"""), "")
         return s.trim(' ', ',', '•', '|', '-')
+    }
+
+    private fun extractRemovedCartTitles(nodes: List<TextNode>): List<String> {
+        val removedRe = Regex("""(?i)^(?:removed(?:\s+from\s+cart)?|moved\s+to\s+saved\s+for\s+later)\s*:\s*(.+)$""")
+        val out = LinkedHashSet<String>()
+        for (n in nodes) {
+            val m = removedRe.find(n.text.trim()) ?: continue
+            val rawName = m.groupValues.getOrNull(1)?.trim().orEmpty()
+            val cleaned = cleanTitleCandidate(rawName)
+            if (cleaned.length >= 4) {
+                out.add(cleaned)
+            }
+        }
+        return out.toList()
     }
 
     private fun isCandidateProductTitle(t: String): Boolean =
@@ -626,13 +658,16 @@ class GroceryScreenReaderService : AccessibilityService() {
      * product title viewId so Cart UI chrome (delivery addresses, barcode scanner button, Express/Today time slots)
      * is never mistaken for a cart item.
      */
-    private fun extractCartScreenTitles(nodes: List<TextNode>): List<String> {
+    private fun extractCartScreenTitles(nodes: List<TextNode>, removedTitles: List<String> = emptyList()): List<String> {
         val endIdx = nodes.indexOfFirst { CART_END_BOUNDARY.matches(it.text.trim()) }
         val cartNodes = if (endIdx >= 2) nodes.subList(0, endIdx) else nodes
         val seen = LinkedHashSet<String>()
         for (n in cartNodes) {
             val c = cleanTitleCandidate(n.text)
             if (!isCandidateProductTitle(c)) continue
+            if (removedTitles.any { rem -> c.equals(rem, ignoreCase = true) || c.contains(rem, ignoreCase = true) || rem.contains(c, ignoreCase = true) }) {
+                continue
+            }
             val words = c.split(' ').filter { it.isNotBlank() }
             val hasExplicitTitleViewId = TITLE_ID_HINTS.any { n.viewId.contains(it) }
             if ((words.size >= 1 && FOOD_HINTS.containsMatchIn(c)) || (hasExplicitTitleViewId && words.size >= 2)) {

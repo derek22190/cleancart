@@ -67,6 +67,7 @@ class OverlayWindowService : Service() {
         const val EXTRA_IN_CART = "in_cart"
         const val EXTRA_CART_ARRAY = "cart_array"
         const val EXTRA_REPLACE_CART = "replace_cart"
+        const val EXTRA_REMOVED_TITLES = "removed_titles"
         const val EXTRA_STORE_PKG = "store_pkg"
 
         private const val INK = 0xFF15201B.toInt()
@@ -518,6 +519,17 @@ class OverlayWindowService : Service() {
             else -> data?.optString("error")?.take(48) ?: "HeyBroc"
         }
 
+        // CRITICAL: If the pill window is already attached, update text and dot color IN-PLACE
+        // instead of calling wm.removeView() + wm.addView(). Removing and re-adding a hardware overlay
+        // window causes Android's InputDispatcher to cancel active touch events (ACTION_CANCEL) and glitch the screen!
+        if (pill != null && pillTextView != null && pillDotView != null) {
+            if (pillTextView?.text?.toString() != label) {
+                pillTextView?.text = label
+            }
+            (pillDotView?.background as? GradientDrawable)?.setColor(tone)
+            return
+        }
+
         val mascotView = android.widget.ImageView(this).apply {
             setImageResource(R.drawable.broc_mascot)
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
@@ -543,7 +555,6 @@ class OverlayWindowService : Service() {
             addView(labelView)
         }
 
-        removePill()
         val params = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.TOP or Gravity.END
             x = 0
@@ -595,9 +606,10 @@ class OverlayWindowService : Service() {
                         persistCart()
                         runCatching { wm.updateViewLayout(v, params) }
                         if (!moved) {
+                            val currentlyOk = data?.optBoolean("ok") == true && data?.optJSONObject("result") != null
                             if (isCartAvgMode) {
                                 showAuditorDrawer()
-                            } else if (ok) {
+                            } else if (currentlyOk) {
                                 showCard()
                             } else {
                                 // If scan hadn't finished or had an error, open sample/auditor drawer so tap always responds
@@ -714,7 +726,7 @@ class OverlayWindowService : Service() {
             })
         }
 
-        for (item in tripCart) {
+        for (item in tripCart.toList()) {
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -738,6 +750,16 @@ class OverlayWindowService : Service() {
                         setOnClickListener { openSwap(item.swapObj!!, item) }
                     })
                 }
+                addView(text("✕", 13f, INK_3, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(4), dp(4), dp(4))
+                    setOnClickListener {
+                        tripCart.removeAll { it.key == item.key }
+                        displayedCartAvg = calcCartAvg()
+                        persistCart()
+                        showAuditorDrawer()
+                    }
+                })
             })
         }
 
