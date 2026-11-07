@@ -424,7 +424,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "Synthetic cosmetic preservatives shown to mimic estrogen and disrupt hormone signaling.",
   },
   {
-    id: "chem_sunscreen", name: "Chemical UV Filters (Oxybenzone / Homosalate)", risk: "high", category: "other",
+    id: "chem_sunscreen", name: "Chemical UV Filters (Oxybenzone / Homosalate)", risk: "high", category: "preservatives",
     patterns: ["oxybenzone", "octinoxate", "homosalate", "octocrylene", "avobenzone"],
     explanation: "Chemical sunscreen filters that absorb through skin into the bloodstream and are linked to hormone disruption.",
   },
@@ -449,12 +449,12 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "Synthetic UV-reflecting chemical dyes designed to remain bound to fabric against skin; non-biodegradable.",
   },
   {
-    id: "aluminum_salts", name: "Aluminum Zirconium / Chlorohydrate", risk: "moderate", category: "other",
+    id: "aluminum_salts", name: "Aluminum Zirconium / Chlorohydrate", risk: "moderate", category: "preservatives",
     patterns: ["aluminum zirconium[a-z0-9 ]*", "aluminum chlorohydrate", "aluminum sesquichlorohydrate"],
     explanation: "Synthetic aluminum salts used in antiperspirants to plug sweat ducts.",
   },
   {
-    id: "wetstrengthresin", name: "Bleached Pulp & Wet-Strength Resin", risk: "low", category: "other",
+    id: "wetstrengthresin", name: "Bleached Pulp & Wet-Strength Resin", risk: "low", category: "emulsifiers",
     patterns: ["wet strength polyamide epichlorohydrin resin", "elemental chlorine free bleached"],
     explanation: "Conventional virgin wood pulp treated with chlorine-derivative bleaching and synthetic wet-strength binder resins.",
   },
@@ -836,9 +836,10 @@ export function scoreProductYuka(
         id: "nutri_sugar",
         name: `High Sugar (${Math.round(sugars * 10) / 10}g / 100g)`,
         risk: sugars >= 25 ? "moderate" : "low",
-        category: "other",
+        category: "hfcs",
         penalty: sugars >= 25 ? 20 : 12,
         explanation: "High sugar concentration (per 100g) lowers the Yuka 60% Nutritional Quality score.",
+        matched: "sugar",
       });
     }
     if (satFat >= 10) {
@@ -846,18 +847,20 @@ export function scoreProductYuka(
         id: "nutri_satfat",
         name: `High Saturated Fat (${Math.round(satFat * 10) / 10}g / 100g)`,
         risk: "moderate",
-        category: "other",
+        category: "emulsifiers",
         penalty: 18,
         explanation: "Exceeds Nutri-Score's 10g/100g saturated fat threshold, reducing the 60% Nutritional Quality pillar.",
+        matched: "saturated fat",
       });
     } else if (isWholeMilk) {
       flagged.push({
         id: "nutri_milk_satfat",
         name: "Saturated Dairy Fat (5g / cup)",
         risk: "low",
-        category: "other",
+        category: "emulsifiers",
         penalty: 14,
         explanation: "Whole milk contains 3.25% milkfat (~5g saturated fat per cup), slightly lowering its 60% Nutritional Quality score.",
+        matched: "milkfat",
       });
     }
     if (sodium >= 600) {
@@ -865,9 +868,10 @@ export function scoreProductYuka(
         id: "nutri_sodium",
         name: `High Sodium (${Math.round(sodium)}mg / 100g)`,
         risk: sodium >= 850 ? "moderate" : "low",
-        category: "other",
+        category: "preservatives",
         penalty: sodium >= 850 ? 18 : 10,
         explanation: "High sodium content increases blood-pressure load and lowers the Yuka 60% Nutritional Quality score.",
+        matched: "sodium",
       });
     }
     if (kcal >= 500) {
@@ -875,9 +879,10 @@ export function scoreProductYuka(
         id: "nutri_calories",
         name: `High Calorie Density (${Math.round(kcal)} kcal / 100g)`,
         risk: "low",
-        category: "other",
+        category: "flavors",
         penalty: 10,
         explanation: "Calorie-dense food (>500 kcal per 100g); best enjoyed in small portions.",
+        matched: "calories",
       });
     }
   }
