@@ -708,6 +708,24 @@ class OverlayWindowService : Service() {
         })
         sheet.addView(explain)
 
+        // Yuka 3-Pillar Breakdown (60% Nutrition • 30% Additives • 10% Organic)
+        result.optJSONObject("yukaBreakdown")?.let { yb ->
+            val nutScore = yb.optInt("nutritionScore", 0)
+            val nutGrade = yb.optString("nutriScoreGrade", "C")
+            val addScore = yb.optInt("additiveScore", 0)
+            val orgScore = yb.optInt("organicScore", 0)
+            val capped = yb.optBoolean("highRiskCapped", false)
+            val summaryText = buildString {
+                append("Yuka Score Breakdown:  Nutrition $nutScore/60 (Nutri-Score $nutGrade)  ·  Additives $addScore/30  ·  Organic $orgScore/10")
+                if (capped) append("  ·  ⚠️ Capped ≤49 (High-Risk Additive)")
+            }
+            sheet.addView(text(summaryText, 11.5f, INK_2, bold = true).apply {
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(12).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+            })
+        }
+
         // Clean swap box
         val swapBox = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL

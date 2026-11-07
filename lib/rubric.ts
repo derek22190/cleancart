@@ -25,8 +25,34 @@ export type Category =
 
 export type Watchlist = Partial<Record<Category, boolean | "2x" | number>>;
 
-export type Rating = "Excellent" | "Mediocre" | "Poor";
+export type Rating = "Excellent" | "Good" | "Mediocre" | "Poor" | "Bad";
 export type RatingColor = "green" | "yellow" | "red";
+
+export interface NutritionInput {
+  caloriesKcal100g?: number;
+  sugarsG100g?: number;
+  saturatedFatG100g?: number;
+  sodiumMg100g?: number;
+  fiberG100g?: number;
+  proteinG100g?: number;
+  fruitsVegNutsPct?: number;
+  nutriScoreGrade?: "a" | "b" | "c" | "d" | "e";
+  isOrganic?: boolean;
+  isWholeFood?: boolean;
+  productTitle?: string;
+}
+
+export interface YukaBreakdown {
+  /** 0..60 points (60% of Yuka score, based on Nutri-Score A-E). */
+  nutritionScore: number;
+  nutriScoreGrade: "A" | "B" | "C" | "D" | "E";
+  /** 0..30 points (30% of Yuka score, based on additive count & risk tier). */
+  additiveScore: number;
+  /** 0..10 points (10% of Yuka score, awarded for certified Organic or 100% whole foods). */
+  organicScore: number;
+  /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
+  highRiskCapped: boolean;
+}
 
 export interface AdditiveRule {
   id: string;
@@ -59,6 +85,7 @@ export interface ScoreResult {
   totalPenalty: number;
   normalizedIngredients: string;
   rubricVersion: string;
+  yukaBreakdown?: YukaBreakdown;
 }
 
 export const HIGH_RISK_SCORE_CAP = 49;
@@ -484,6 +511,235 @@ export function scoreIngredients(
     totalPenalty,
     normalizedIngredients: normalized,
     rubricVersion: RUBRIC_VERSION,
+  };
+}
+
+function stepPoints(val: number, thresholds: number[]): number {
+  let pts = 0;
+  for (const t of thresholds) {
+    if (val > t) pts++;
+    else break;
+  }
+  return pts;
+}
+
+/**
+ * Estimates per-100g nutrition when Open Food Facts / USDA did not supply a full nutriments block,
+ * using product category keywords and FDA ingredient-order weight position.
+ */
+export function estimateNutritionFromProduct(productTitle = "", rawIngredients = ""): Required<Pick<NutritionInput, "caloriesKcal100g" | "sugarsG100g" | "saturatedFatG100g" | "sodiumMg100g" | "fiberG100g" | "proteinG100g" | "fruitsVegNutsPct">> {
+  const combined = `${productTitle} ${rawIngredients}`.toLowerCase();
+  const clauses = rawIngredients.toLowerCase().split(/[,;]/).map((c) => c.trim()).filter(Boolean);
+  const top3 = clauses.slice(0, 3).join(" ");
+
+  // 1. Bakery Donuts, Bismarks, Pastries, Danishes, Cinnamon Rolls, Fritters, Cake, Frosting
+  if (/\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|fritter|danish|cinnamon roll|honey bun|eclair|strudel|turnover|cupcake|frosting|icing|glazed|cake|brownie|pie|pastry|pastries|pop[- ]?tart|toaster strudel)\b/.test(combined)) {
+    return { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0 };
+  }
+  // 2. Cookies, Candy, Chocolate, Gummies, Ice Cream, Sweet Snacks
+  if (/\b(cookie|cookies|oreo|candy|gummies|chocolate|nutella|marshmallow|fudge|caramel|ice cream|gelato|popsicle)\b/.test(combined)) {
+    return { caloriesKcal100g: 465, sugarsG100g: 34, saturatedFatG100g: 8.5, sodiumMg100g: 220, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0 };
+  }
+  // 3. Sodas, Sports Drinks, Sweetened Beverages, Eggnog, Creamers
+  if (/\b(soda|cola|pepsi|coke|mountain dew|sprite|dr pepper|gatorade|powerade|sports drink|energy drink|lemonade|sweet tea|eggnog|egg nog|creamer|coffee[- ]?mate)\b/.test(combined)) {
+    return { caloriesKcal100g: 145, sugarsG100g: 21, saturatedFatG100g: 4.5, sodiumMg100g: 95, fiberG100g: 0, proteinG100g: 1.5, fruitsVegNutsPct: 0 };
+  }
+  // 4. Sweetened Breakfast Cereals
+  if (/\b(froot loops|lucky charms|cinnamon toast|frosted|crunch|puffs|cereal)\b/.test(combined) && !/\b(original cheerios|rolled oats|steel cut)\b/.test(combined)) {
+    return { caloriesKcal100g: 385, sugarsG100g: 28, saturatedFatG100g: 1.5, sodiumMg100g: 460, fiberG100g: 3.5, proteinG100g: 5.5, fruitsVegNutsPct: 0 };
+  }
+  // 5. Chips, Crackers, Nacho/Cheese Puffs, Macaroni & Cheese, Salty Snacks
+  if (/\b(doritos|cheetos|takis|chips|crisps|cheez[- ]?it|goldfish|crackers|pretzels|macaroni|mac\s*&\s*cheese|mac and cheese|shells and cheese|ramen)\b/.test(combined)) {
+    return { caloriesKcal100g: 475, sugarsG100g: 4, saturatedFatG100g: 5.5, sodiumMg100g: 680, fiberG100g: 2.2, proteinG100g: 7.0, fruitsVegNutsPct: 0 };
+  }
+  // 6. Processed Deli Meat, Hot Dogs, Bacon, Sausage
+  if (/\b(deli|bologna|hot dog|hotdogs|salami|pepperoni|bacon|sausage|lunchables)\b/.test(combined)) {
+    return { caloriesKcal100g: 240, sugarsG100g: 2, saturatedFatG100g: 6.5, sodiumMg100g: 920, fiberG100g: 0, proteinG100g: 14.0, fruitsVegNutsPct: 0 };
+  }
+  // 7. Dressings, Mayonnaise, Ketchup, Condiments
+  if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|bbq sauce|barbecue sauce)\b/.test(combined)) {
+    const isCleanAvocado = /\b(avocado oil|primal kitchen|chosen foods)\b/.test(combined);
+    return isCleanAvocado
+      ? { caloriesKcal100g: 320, sugarsG100g: 1, saturatedFatG100g: 2.5, sodiumMg100g: 340, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 45 }
+      : { caloriesKcal100g: 440, sugarsG100g: 14, saturatedFatG100g: 6.5, sodiumMg100g: 820, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0 };
+  }
+  // 8. Flavored / Sweetened Yogurt vs Plain Yogurt
+  if (/\byogurt\b/.test(combined)) {
+    const isPlain = /\b(plain|unsweetened)\b/.test(combined) && !/\b(strawberry|berry|vanilla|peach|mango|flip|sugar|corn syrup)\b/.test(combined);
+    return isPlain
+      ? { caloriesKcal100g: 62, sugarsG100g: 3.5, saturatedFatG100g: 0.8, sodiumMg100g: 38, fiberG100g: 0, proteinG100g: 9.5, fruitsVegNutsPct: 0 }
+      : { caloriesKcal100g: 105, sugarsG100g: 14.5, saturatedFatG100g: 1.8, sodiumMg100g: 55, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 10 };
+  }
+  // 9. Ingredient-order heuristic: if Sugar/Syrup is in the first 3 ingredients
+  if (/\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose)\b/.test(top3)) {
+    return { caloriesKcal100g: 370, sugarsG100g: 22, saturatedFatG100g: 5.0, sodiumMg100g: 260, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0 };
+  }
+  // Default balanced whole/minimally-processed staple
+  return { caloriesKcal100g: 110, sugarsG100g: 2.0, saturatedFatG100g: 1.2, sodiumMg100g: 65, fiberG100g: 3.0, proteinG100g: 6.5, fruitsVegNutsPct: 65 };
+}
+
+/**
+ * Yuka-Exact 3-Pillar Scoring System (0–100):
+ *  - 60% Nutritional Quality (0–60 pts, computed via official Nutri-Score A–E per 100g)
+ *  - 30% Additives (0–30 pts + hard cap at 49/100 whenever any High-Risk additive is present)
+ *  - 10% Organic / 100% Whole-Food Bonus (0 or 10 pts)
+ */
+export function scoreProductYuka(
+  rawIngredients: string,
+  watchlist: Watchlist = {},
+  familyWatchlist: Category[] = [],
+  nutrition: NutritionInput = {},
+): ScoreResult {
+  const base = scoreIngredients(rawIngredients, watchlist, familyWatchlist);
+  const titleAndIng = `${nutrition.productTitle || ""} ${rawIngredients}`;
+
+  const isWholeFood =
+    Boolean(nutrition.isWholeFood) ||
+    /100% pure whole food ingredient/i.test(rawIngredients) ||
+    /^(grade a (pasteurized )?milk(\s*,\s*vitamin d3)?|cultured (pasteurized )?(grade a )?(nonfat |whole |lowfat )?milk.*|100% (pure|organic).*)$/i.test(rawIngredients.trim());
+
+  const isOrganic =
+    Boolean(nutrition.isOrganic) ||
+    /\b(organic|usda organic|biologique)\b/i.test(titleAndIng);
+
+  const est = estimateNutritionFromProduct(nutrition.productTitle, rawIngredients);
+  const kcal = nutrition.caloriesKcal100g ?? (isWholeFood ? 75 : est.caloriesKcal100g);
+  const sugars = nutrition.sugarsG100g ?? (isWholeFood ? 2.0 : est.sugarsG100g);
+  const satFat = nutrition.saturatedFatG100g ?? (isWholeFood ? 1.0 : est.saturatedFatG100g);
+  const sodium = nutrition.sodiumMg100g ?? (isWholeFood ? 45 : est.sodiumMg100g);
+  const fiber = nutrition.fiberG100g ?? (isWholeFood ? 3.5 : est.fiberG100g);
+  const protein = nutrition.proteinG100g ?? (isWholeFood ? 6.5 : est.proteinG100g);
+  const fvn = nutrition.fruitsVegNutsPct ?? (isWholeFood ? 85 : est.fruitsVegNutsPct);
+
+  // Nutri-Score Negative points (0..40)
+  const nCal = stepPoints(kcal, [80, 160, 240, 320, 400, 480, 560, 640, 720, 800]);
+  const nSug = stepPoints(sugars, [4.5, 9, 13.5, 18, 22.5, 27, 31, 36, 40, 45]);
+  const nSat = stepPoints(satFat, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const nSod = stepPoints(sodium, [90, 180, 270, 360, 450, 540, 630, 720, 810, 900]);
+  const negativePoints = nCal + nSug + nSat + nSod;
+
+  // Nutri-Score Positive points (0..15)
+  const pFvn = fvn > 80 ? 5 : fvn > 60 ? 2 : fvn > 40 ? 1 : 0;
+  const pFib = stepPoints(fiber, [0.9, 1.9, 2.8, 3.7, 4.7]);
+  const pPro = stepPoints(protein, [1.6, 3.2, 4.8, 6.4, 8.0]);
+  const positivePoints = negativePoints >= 11 && pFvn < 5 ? pFvn + pFib : pFvn + pFib + pPro;
+
+  const nutriRaw = negativePoints - positivePoints;
+  let nutriGrade: "A" | "B" | "C" | "D" | "E" =
+    nutriRaw <= -1 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 10 ? "C" : nutriRaw <= 18 ? "D" : "E";
+  if (nutrition.nutriScoreGrade) {
+    nutriGrade = nutrition.nutriScoreGrade.toUpperCase() as "A" | "B" | "C" | "D" | "E";
+  }
+
+  // Convert Nutri-Score (-15..40) into Yuka's 60-point Nutritional Quality pillar (0..60)
+  let nutritionScore: number;
+  if (isWholeFood) {
+    nutritionScore = 60;
+    nutriGrade = "A";
+  } else if (nutriRaw <= -2) {
+    nutritionScore = 60;
+  } else if (nutriRaw <= -1) {
+    nutritionScore = 55;
+  } else if (nutriRaw <= 0) {
+    nutritionScore = 50;
+  } else if (nutriRaw <= 2) {
+    nutritionScore = 45;
+  } else if (nutriRaw <= 6) {
+    nutritionScore = 36;
+  } else if (nutriRaw <= 10) {
+    nutritionScore = 28;
+  } else if (nutriRaw <= 14) {
+    nutritionScore = 18;
+  } else if (nutriRaw <= 18) {
+    nutritionScore = 12;
+  } else if (nutriRaw <= 23) {
+    nutritionScore = 6;
+  } else {
+    nutritionScore = 2;
+  }
+
+  // Pillar 2: Additives (30% weight -> 0..30 points)
+  const hasHighRisk = base.flagged.some((f) => f.risk === "high");
+  const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45));
+  const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
+
+  // Pillar 3: Organic / 100% Whole-Food Bonus (10% weight -> 0 or 10 points)
+  const organicScore = isOrganic || isWholeFood ? 10 : 0;
+
+  // Combine all 3 Yuka pillars (60 + 30 + 10 = 100)
+  let finalScore = Math.max(0, Math.min(100, nutritionScore + additiveScore + organicScore));
+
+  // Yuka High-Risk Additive Cap: any High-Risk (Red) additive caps the total score at <= 49/100
+  // and multiple high-risk/moderate additives reduce it further toward 0.
+  if (hasHighRisk) {
+    const extraAdditiveDrag = Math.max(0, Math.round((base.totalPenalty - 35) * 0.35));
+    finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore - extraAdditiveDrag));
+  }
+
+  // Surface Yuka nutritional penalties inside flagged items so the user sees WHY a high-sugar/high-fat/high-sodium item lost points
+  const flaggedWithNutrition: FlaggedAdditive[] = [...base.flagged];
+  if (!isWholeFood) {
+    if (sugars >= 13.5) {
+      flaggedWithNutrition.push({
+        id: "yuka_sugar",
+        name: `High Sugar (${Math.round(sugars)}g / 100g)`,
+        risk: sugars >= 22.5 ? "high" : "moderate",
+        category: "hfcs",
+        penalty: nSug * 3,
+        explanation: "Yuka Nutritional Quality (60%): High sugar content spikes blood glucose and sharply lowers the Nutri-Score.",
+        matched: `${Math.round(sugars)}g sugar/100g`,
+      });
+    }
+    if (satFat >= 5) {
+      flaggedWithNutrition.push({
+        id: "yuka_satfat",
+        name: `High Saturated Fat (${satFat.toFixed(1)}g / 100g)`,
+        risk: satFat >= 8 ? "high" : "moderate",
+        category: "seedOils",
+        penalty: nSat * 2,
+        explanation: "Yuka Nutritional Quality (60%): Excess saturated fat lowers the product's Nutri-Score rating.",
+        matched: `${satFat.toFixed(1)}g sat fat/100g`,
+      });
+    }
+    if (kcal >= 360) {
+      flaggedWithNutrition.push({
+        id: "yuka_calories",
+        name: `High Calorie Density (${Math.round(kcal)} kcal / 100g)`,
+        risk: kcal >= 450 ? "moderate" : "low",
+        category: "hfcs",
+        penalty: nCal * 2,
+        explanation: "Yuka Nutritional Quality (60%): High energy density per 100g reduces the nutritional pillar score.",
+        matched: `${Math.round(kcal)} kcal/100g`,
+      });
+    }
+    if (sodium >= 450) {
+      flaggedWithNutrition.push({
+        id: "yuka_sodium",
+        name: `High Sodium (${Math.round(sodium)}mg / 100g)`,
+        risk: sodium >= 720 ? "high" : "moderate",
+        category: "preservatives",
+        penalty: nSod * 2,
+        explanation: "Yuka Nutritional Quality (60%): High sodium content deducts points in Yuka's 60% nutritional quality pillar.",
+        matched: `${Math.round(sodium)}mg sodium/100g`,
+      });
+    }
+  }
+
+  return {
+    score: finalScore,
+    ...ratingFor(finalScore),
+    flagged: flaggedWithNutrition,
+    ignored: base.ignored,
+    totalPenalty: 100 - finalScore,
+    normalizedIngredients: base.normalizedIngredients,
+    rubricVersion: RUBRIC_VERSION,
+    yukaBreakdown: {
+      nutritionScore,
+      nutriScoreGrade: nutriGrade,
+      additiveScore,
+      organicScore,
+      highRiskCapped: hasHighRisk,
+    },
   };
 }
 

@@ -12,6 +12,7 @@
 import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
+import type { NutritionInput } from "./rubric";
 
 export type LookupSource = "screen" | "cache" | "openfoodfacts" | "usda" | "catalog";
 
@@ -27,6 +28,7 @@ export interface LookupResult {
   barcode?: string;
   ingredients: string;
   imageUrl?: string;
+  nutrition?: NutritionInput;
   source: LookupSource;
   /** Where the cached entry originally came from (when source === "cache"). */
   origin?: LookupSource;
@@ -194,10 +196,13 @@ interface OffProduct {
   image_front_url?: string;
   image_url?: string;
   image_front_small_url?: string;
+  nutriscore_grade?: string;
+  labels_tags?: string[];
+  nutriments?: Record<string, number | string | undefined>;
 }
 
 const OFF_FIELDS =
-  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url";
+  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,nutriments";
 
 export const NON_ENGLISH_INGREDIENTS =
   /\b(eau\b|sucre\b|huile\b|farine\b|lait\b|sirop\b|lécithine|acide\b|arômes?|colorants?|amidon|émulsifiants?|conservateurs?|noisettes|poudre\b|zutaten|wasser\b|zucker\b|pflanzliches|weizenmehl|speisesalz|säuerungsmittel|magermilchpulver|ingredientes|agua\b|azúcar|aceite\b|harina\b|leche\b|jarabe\b)/i;
@@ -247,6 +252,38 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
   return best;
 }
 
+function numVal(v: unknown): number | undefined {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+function extractOffNutrition(p: OffProduct): NutritionInput | undefined {
+  const n = p.nutriments || {};
+  const kcal = numVal(n["energy-kcal_100g"]) ?? (numVal(n["energy_100g"]) !== undefined ? Number(n["energy_100g"]) / 4.184 : undefined);
+  const sugars = numVal(n["sugars_100g"]);
+  const satFat = numVal(n["saturated-fat_100g"]);
+  const sodiumG = numVal(n["sodium_100g"]);
+  const saltG = numVal(n["salt_100g"]);
+  const sodiumMg = sodiumG !== undefined ? sodiumG * 1000 : saltG !== undefined ? saltG * 400 : undefined;
+  const fiber = numVal(n["fiber_100g"]);
+  const protein = numVal(n["proteins_100g"]);
+  const fvn = numVal(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]);
+  const gradeRaw = (p.nutriscore_grade || "").toLowerCase();
+  const nutriScoreGrade = ["a", "b", "c", "d", "e"].includes(gradeRaw) ? (gradeRaw as "a" | "b" | "c" | "d" | "e") : undefined;
+  const isOrganic = Array.isArray(p.labels_tags) && p.labels_tags.some((t) => /organic|bio\b/i.test(t));
+  return {
+    caloriesKcal100g: kcal,
+    sugarsG100g: sugars,
+    saturatedFatG100g: satFat,
+    sodiumMg100g: sodiumMg,
+    fiberG100g: fiber,
+    proteinG100g: protein,
+    fruitsVegNutsPct: fvn,
+    nutriScoreGrade,
+    isOrganic,
+  };
+}
+
 function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "ms"> {
   return {
     productTitle: p.product_name_en || p.product_name || fallbackTitle,
@@ -254,6 +291,7 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
     barcode: p.code,
     ingredients: englishIngredients(p),
     imageUrl: bestOffImage(p),
+    nutrition: extractOffNutrition(p),
     source: "openfoodfacts",
   };
 }
@@ -318,6 +356,12 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
 /* USDA FoodData Central (Branded + Foundation + SR Legacy + Survey)   */
 /* ------------------------------------------------------------------ */
 
+interface UsdaNutrient {
+  nutrientName?: string;
+  unitName?: string;
+  value?: number;
+}
+
 interface UsdaFood {
   description?: string;
   brandName?: string;
@@ -325,6 +369,21 @@ interface UsdaFood {
   gtinUpc?: string;
   ingredients?: string;
   dataType?: string;
+  foodNutrients?: UsdaNutrient[];
+}
+
+function extractUsdaNutrition(f: UsdaFood): NutritionInput | undefined {
+  const list = f.foodNutrients || [];
+  if (!list.length) return undefined;
+  const findVal = (re: RegExp) => list.find((n) => re.test(n.nutrientName || ""))?.value;
+  return {
+    caloriesKcal100g: findVal(/^energy$/i),
+    sugarsG100g: findVal(/sugars,\s*total|total\s+sugars/i),
+    saturatedFatG100g: findVal(/fatty acids,\s*total saturated/i),
+    sodiumMg100g: findVal(/^sodium,\s*na$/i),
+    fiberG100g: findVal(/fiber,\s*total dietary/i),
+    proteinG100g: findVal(/^protein$/i),
+  };
 }
 
 async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | null> {
@@ -363,6 +422,7 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     barcode: best.gtinUpc,
     ingredients: best.ingredients!.trim(),
     imageUrl,
+    nutrition: extractUsdaNutrition(best),
     source: "usda",
   };
 }
@@ -378,9 +438,18 @@ interface CatalogEntry {
   title: string;
   ingredients: string;
   imageUrl?: string;
+  nutrition?: NutritionInput;
 }
 
 const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
+  {
+    match: /\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|fritter|danish|cinnamon roll|honey bun|eclair|strudel|turnover|glazed donut|jelly donut|raspberry filled)\b/i,
+    brand: "Freshness Guaranteed",
+    title: "Bakery Donuts / Filled Bismarks",
+    ingredients: "Enriched Wheat Flour Bleached (Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Fruit Filling (High Fructose Corn Syrup, Water, Raspberries, Modified Food Starch, Sugar, Citric Acid, Salt, Potassium Sorbate, Sodium Benzoate, Red 40, Blue 1, Artificial Flavor), Palm and/or Soybean Oil, Sugar, Dextrose, Contains 2% or Less of: Yeast, Soy Flour, Whey, Salt, Mono- and Diglycerides, Sodium Acid Pyrophosphate, Baking Soda, Sodium Stearoyl Lactylate, Soy Lecithin, Calcium Propionate, DATEM, Artificial Flavor, Yellow 5, Yellow 6, Titanium Dioxide (Color).",
+    imageUrl: "/swaps/snacks.jpg",
+    nutrition: { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
+  },
   {
     match: /\b(doritos|nacho cheese)\b/i,
     brand: "Doritos",
@@ -569,6 +638,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Grade A Pasteurized Milk",
     ingredients: "Grade A Milk, Vitamin D3.",
     imageUrl: "/swaps/yogurt.jpg",
+    nutrition: { isWholeFood: true },
   },
   {
     match: /\b(coffee[- ]?mate|international delight|creamer)\b/i,
@@ -578,11 +648,12 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/presets/yogurt.jpg",
   },
   {
-    match: /^(?!.*\b(macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|cookies?|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|nuggets?|fries|ice cream|popsicle|yogurt|creamer|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|kiwi|oranges?|clementines?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|butter|salted butter|unsalted butter|kerrygold|ghee|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|honey|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
+    match: /^(?!.*\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|cookies?|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|nuggets?|fries|ice cream|popsicle|yogurt|creamer|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|kiwi|oranges?|clementines?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|butter|salted butter|unsalted butter|kerrygold|ghee|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|honey|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
     brand: "Fresh Whole Food",
     title: "100% Whole Unprocessed Food",
     ingredients: "100% pure whole food ingredient. No additives, no preservatives, no seed oils, no artificial dyes.",
     imageUrl: "/presets/butter.jpg",
+    nutrition: { isWholeFood: true },
   },
 ];
 
@@ -597,6 +668,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         brand: entry.brand,
         ingredients: entry.ingredients,
         imageUrl: entry.imageUrl,
+        nutrition: entry.nutrition,
         source: "catalog",
       };
     }

@@ -3,7 +3,7 @@
  */
 import "server-only";
 import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
-import { ALL_CATEGORIES, scoreIngredients, type Category, type ScoreResult, type Watchlist } from "./rubric";
+import { ALL_CATEGORIES, scoreProductYuka, type Category, type ScoreResult, type Watchlist } from "./rubric";
 import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
 
 export interface ScanRequest {
@@ -107,7 +107,6 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       error: `No ingredient list found for "${productTitle || barcode}" on Open Food Facts or USDA. Try adding the brand name.`,
     };
   }
-  const result = scoreIngredients(found.ingredients, watchlist, familyWatchlist);
   const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food)$/i;
   const callerWords = productTitle.split(/\s+/).filter(Boolean);
   // If the caller/screen-reader provided a full store product title (3+ words), preserve it
@@ -124,6 +123,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
         ? `${found.brand} ${found.productTitle}`
         : found.productTitle
   ).trim();
+  const result = scoreProductYuka(found.ingredients, watchlist, familyWatchlist, {
+    ...found.nutrition,
+    productTitle: `${productTitle} ${title}`.trim(),
+  });
   const swap = resolveSwap({
     score: result.score,
     productTitle: `${productTitle} ${title}`,

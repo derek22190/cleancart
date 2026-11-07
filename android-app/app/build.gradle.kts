@@ -13,9 +13,18 @@ android {
         applicationId = "com.cleancart.overlay"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("heybroc.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildFeatures { buildConfig = true }
@@ -26,8 +35,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
