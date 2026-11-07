@@ -95,8 +95,10 @@ class MainActivity : Activity() {
             )
             step2Extras.add(
                 label(
-                    "Direct APK / Android 13+ tip: if the switch is greyed out (\"Restricted setting\"), go to " +
-                        "Settings → Apps → HeyBroc → ⋮ (3 dots) → Allow restricted settings, then come back and enable it.",
+                    "Direct APK / Samsung & Android 13+ tip:\n" +
+                        "1) First tap \"Review & Enable Screen Reader\" → Installed apps → HeyBroc.\n" +
+                        "2) If it lets you turn it ON right away, you're done! (No 3 dots needed.)\n" +
+                        "3) Only if it says \"Restricted setting\", tap OK on that popup first — Android hides the ⋮ (top-right 3 dots) on the App Info page until AFTER you try tapping the greyed-out switch once.",
                     12.5f, 0xFF7A5B00.toInt(),
                 ).apply {
                     setPadding(dp(12), dp(10), dp(12), dp(10))
