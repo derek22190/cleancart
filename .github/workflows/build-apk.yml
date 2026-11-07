@@ -45,9 +45,15 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/heybroc-release.jks"
-          else
-            echo "::notice::KEYSTORE_BASE64 secret not set; using committed app/heybroc.keystore so in-place APK updates keep a consistent signature."
+          elif [ -f "app/heybroc.keystore" ]; then
             cp app/heybroc.keystore "$RUNNER_TEMP/heybroc-release.jks"
+          else
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/heybroc-release.jks" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias androiddebugkey \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
 
       - name: Build release APK & App Bundle
