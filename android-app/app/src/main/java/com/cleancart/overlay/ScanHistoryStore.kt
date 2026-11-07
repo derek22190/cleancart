@@ -95,9 +95,48 @@ object ScanHistoryStore {
         out
     }.getOrDefault(emptyList())
 
+    fun productImageUrl(title: String): String =
+        "https://www.heybroc.com/api/product-image?q=${java.net.URLEncoder.encode(title.trim(), "UTF-8")}"
+
     /**
-     * Built-in starter products in the exact `/api/scan` format so History, Recs (side-by-side swaps),
-     * Top Products (by category), and Search feel rich immediately upon install.
+     * Instant 0ms on-device prefix/token matcher across user History, Favorites, and Explore catalog
+     * for GPS-style live autocomplete while typing.
+     */
+    fun localSuggestions(context: Context, rawQuery: String, limit: Int = 6): List<JSONObject> {
+        val q = rawQuery.trim().lowercase()
+        if (q.isEmpty()) return emptyList()
+        val tokens = q.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val pool = LinkedHashMap<String, JSONObject>()
+        (getHistory(context) + getFavorites(context) + EXPLORE_CATALOG).forEach { item ->
+            val t = extractTitle(item)
+            val k = normKey(t)
+            if (k.isNotBlank() && !pool.containsKey(k)) {
+                pool[k] = item
+            }
+        }
+        val scored = mutableListOf<Pair<Int, JSONObject>>()
+        for ((_, item) in pool) {
+            val prod = item.optJSONObject("product")
+            val title = extractTitle(item)
+            val brand = prod?.optString("brand").orEmpty()
+            val cat = prod?.optString("category").orEmpty().ifBlank { item.optString("category") }
+            val hay = "$brand $title $cat".lowercase()
+            val titleLow = title.lowercase()
+            val brandLow = brand.lowercase()
+            val score = when {
+                titleLow.startsWith(q) || brandLow.startsWith(q) -> 100
+                hay.split(Regex("[^a-z0-9]+")).any { it.startsWith(q) } -> 85
+                tokens.all { hay.contains(it) } -> 70
+                else -> 0
+            }
+            if (score > 0) scored.add(score to item)
+        }
+        return scored.sortedByDescending { it.first }.take(limit).map { it.second }
+    }
+
+    /**
+     * Built-in starter products in the exact `/api/scan` format so My Scans, Clean Swaps,
+     * Top Picks (by category), and Search feel rich immediately upon install.
      */
     val EXPLORE_CATALOG: List<JSONObject> by lazy {
         listOf(
@@ -108,7 +147,7 @@ object ScanHistoryStore {
                 score = 12,
                 rating = "Bad",
                 color = "red",
-                imageUrl = "https://images.openfoodfacts.org/images/products/007/110/000/4151/front_en.52.400.jpg",
+                imageUrl = productImageUrl("Hidden Valley Original Ranch Salad Dressing"),
                 ingredients = "Vegetable Oil (Soybean and/or Canola), Water, Sugar, Salt, Buttermilk, Egg Yolk, Natural Flavors, Phosphoric Acid, Xanthan Gum, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid, Calcium Disodium EDTA.",
                 flagged = listOf(
                     FlagInfo("Calcium Disodium EDTA", 25, "high", "Synthetic chelating preservative linked to gut barrier irritation."),
@@ -125,19 +164,19 @@ object ScanHistoryStore {
                     "Primal Kitchen Avocado Oil Ranch Dressing",
                     "Primal Kitchen",
                     90,
-                    "https://images.openfoodfacts.org/images/products/085/523/200/7091/front_en.27.400.jpg",
+                    productImageUrl("Primal Kitchen Avocado Oil Ranch Dressing"),
                     "Avocado Oil, Water, Organic Vinegar, Organic Cage-Free Eggs, Organic Lemon Juice, Salt, Organic Dill, Organic Garlic, Organic Onion."
                 )
             ),
             sampleItem(
-                title = "Marketside Premium Romaine Salad Blend",
-                brand = "Marketside",
+                title = "Marketside Organic Baby Spinach & Romaine Salad Blend",
+                brand = "Marketside Organic",
                 category = "Salads & Dressings",
                 score = 100,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/068/113/132/9477/front_en.3.400.jpg",
-                ingredients = "Romaine Lettuce, Red Cabbage, Carrots.",
+                imageUrl = productImageUrl("Marketside Organic Baby Spinach Romaine Salad"),
+                ingredients = "Organic Romaine Lettuce, Organic Baby Spinach, Organic Red Cabbage, Organic Carrots.",
                 flagged = emptyList(),
                 nutritionScore = 60,
                 nutriGrade = "A",
@@ -152,7 +191,7 @@ object ScanHistoryStore {
                 score = 24,
                 rating = "Bad",
                 color = "red",
-                imageUrl = "https://images.openfoodfacts.org/images/products/001/600/012/4790/front_en.77.400.jpg",
+                imageUrl = productImageUrl("General Mills Cinnamon Toast Crunch Cereal"),
                 ingredients = "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Caramel Color, BHT Added to Preserve Freshness.",
                 flagged = listOf(
                     FlagInfo("BHT", 25, "high", "Synthetic petroleum-derived antioxidant preservative with endocrine disruption concerns."),
@@ -165,11 +204,11 @@ object ScanHistoryStore {
                 additiveScore = 0,
                 organicScore = 0,
                 swap = swapObj(
-                    "Three Wishes Cinnamon Grain-Free Cereal",
-                    "Three Wishes",
+                    "Nature's Path Organic Heritage Flakes Cereal",
+                    "Nature's Path",
                     92,
-                    "https://images.openfoodfacts.org/images/products/085/000/917/2029/front_en.3.400.jpg",
-                    "Chickpea, Tapioca, Pea Protein, Organic Cane Sugar, Cinnamon, Monk Fruit, Salt."
+                    productImageUrl("Nature's Path Organic Heritage Flakes Cereal"),
+                    "Organic Whole Wheat Meal, Organic Oat Flour, Organic Khorasan Wheat, Organic Barley Flour, Organic Spelt Flour, Organic Millet, Organic Quinoa, Organic Cane Sugar, Sea Salt."
                 )
             ),
             sampleItem(
@@ -179,21 +218,21 @@ object ScanHistoryStore {
                 score = 42,
                 rating = "Poor",
                 color = "yellow",
-                imageUrl = "https://images.openfoodfacts.org/images/products/004/227/200/5628/front_en.28.400.jpg",
+                imageUrl = productImageUrl("Marketside New England Clam Chowder 16 oz"),
                 ingredients = "Light Cream, Potatoes, Fish Stock, Sea Clams, Chopped Cockle, Onions, Wheat Flour, Soybean Oil, Butter, Clam Broth, Sea Salt, Celery, Salt Pork, Black Pepper, Worcestershire Sauce, Garlic, Natural Flavors.",
                 flagged = listOf(
                     FlagInfo("Soybean Oil", 15, "moderate", "Refined omega-6 industrial seed oil extracted with hexane."),
                     FlagInfo("Natural Flavors", 5, "low", "Proprietary flavor blend that can include solvents and carriers.")
                 ),
-                nutritionScore = 45,
+                nutritionScore = 42,
                 nutriGrade = "B",
                 additiveScore = 0,
                 organicScore = 0,
                 swap = swapObj(
-                    "Amy's Organic Lentil Vegetable Soup",
-                    "Amy's",
+                    "Amy's Organic Low Fat Lentil Vegetable Soup",
+                    "Amy's Organic",
                     94,
-                    "https://images.openfoodfacts.org/images/products/004/227/200/5628/front_en.28.400.jpg",
+                    productImageUrl("Amy's Organic Lentil Vegetable Soup"),
                     "Filtered Water, Organic Lentils, Organic Carrots, Organic Celery, Organic Potatoes, Organic Extra Virgin Olive Oil, Sea Salt."
                 )
             ),
@@ -204,7 +243,7 @@ object ScanHistoryStore {
                 score = 27,
                 rating = "Poor",
                 color = "yellow",
-                imageUrl = "https://images.openfoodfacts.org/images/products/005/100/001/2616/front_en.29.400.jpg",
+                imageUrl = productImageUrl("Campbell's Chunky New England Clam Chowder Soup"),
                 ingredients = "Clam Stock, Potatoes, Clams, Vegetable Oil (Corn, Canola, And/Or Soybean), Celery, Modified Food Starch, Wheat Flour, Salt, Cream, Soy Protein Concentrate, Monosodium Glutamate, Sodium Phosphate, Disodium Inosinate, Disodium Guanylate, Natural Flavoring, Soy Lecithin.",
                 flagged = listOf(
                     FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil high in oxidized omega-6 fats."),
@@ -214,15 +253,15 @@ object ScanHistoryStore {
                     FlagInfo("Sodium Phosphate", 15, "moderate", "Synthetic phosphate additive."),
                     FlagInfo("Soy Lecithin", 6, "low", "Solvent-extracted industrial emulsifier.")
                 ),
-                nutritionScore = 45,
-                nutriGrade = "B",
+                nutritionScore = 27,
+                nutriGrade = "C",
                 additiveScore = 0,
                 organicScore = 0,
                 swap = swapObj(
-                    "Amy's Organic Lentil Vegetable Soup",
-                    "Amy's",
+                    "Amy's Organic Low Fat Lentil Vegetable Soup",
+                    "Amy's Organic",
                     94,
-                    "https://images.openfoodfacts.org/images/products/004/227/200/5628/front_en.28.400.jpg",
+                    productImageUrl("Amy's Organic Lentil Vegetable Soup"),
                     "Filtered Water, Organic Lentils, Organic Carrots, Organic Celery, Organic Potatoes, Organic Extra Virgin Olive Oil, Sea Salt."
                 )
             ),
@@ -230,10 +269,10 @@ object ScanHistoryStore {
                 title = "Doritos Nacho Cheese Tortilla Chips",
                 brand = "Doritos",
                 category = "Chips & Snacks",
-                score = 10,
+                score = 18,
                 rating = "Bad",
                 color = "red",
-                imageUrl = "https://images.openfoodfacts.org/images/products/002/840/009/0896/front_en.102.400.jpg",
+                imageUrl = productImageUrl("Doritos Nacho Cheese Tortilla Chips"),
                 ingredients = "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Artificial Color (Yellow 6, Yellow 5, Red 40), Disodium Inosinate, Disodium Guanylate.",
                 flagged = listOf(
                     FlagInfo("Red 40", 25, "high", "Petroleum-derived synthetic azo dye linked to hyperactivity in children."),
@@ -247,10 +286,38 @@ object ScanHistoryStore {
                 additiveScore = 0,
                 organicScore = 0,
                 swap = swapObj(
-                    "Siete Sea Salt Tortilla Chips (Avocado Oil)",
+                    "Siete Grain Free Sea Salt Tortilla Chips (Avocado Oil)",
                     "Siete",
-                    88,
-                    "https://images.openfoodfacts.org/images/products/085/176/900/7287/front_en.16.400.jpg",
+                    85,
+                    productImageUrl("Siete Grain Free Sea Salt Tortilla Chips"),
+                    "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt."
+                )
+            ),
+            sampleItem(
+                title = "Doritos Cool Ranch Flavored Tortilla Chips",
+                brand = "Doritos",
+                category = "Chips & Snacks",
+                score = 18,
+                rating = "Bad",
+                color = "red",
+                imageUrl = productImageUrl("Doritos Cool Ranch Tortilla Chips"),
+                ingredients = "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Tomato Powder, Lactose, Whey, Monosodium Glutamate, Artificial Color (Red 40, Blue 1, Yellow 5), Disodium Inosinate, Disodium Guanylate.",
+                flagged = listOf(
+                    FlagInfo("Red 40", 25, "high", "Petroleum-derived synthetic azo dye."),
+                    FlagInfo("Blue 1", 25, "high", "Synthetic triphenylmethane dye."),
+                    FlagInfo("Yellow 5", 25, "high", "Synthetic azo dye."),
+                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil."),
+                    FlagInfo("Monosodium Glutamate (MSG)", 15, "moderate", "Synthetic flavor enhancer.")
+                ),
+                nutritionScore = 18,
+                nutriGrade = "D",
+                additiveScore = 0,
+                organicScore = 0,
+                swap = swapObj(
+                    "Siete Grain Free Sea Salt Tortilla Chips (Avocado Oil)",
+                    "Siete",
+                    85,
+                    productImageUrl("Siete Grain Free Sea Salt Tortilla Chips"),
                     "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt."
                 )
             ),
@@ -261,7 +328,7 @@ object ScanHistoryStore {
                 score = 96,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/003/619/212/2456/front_en.18.400.jpg",
+                imageUrl = productImageUrl("Santa Cruz Organic Dark Roasted Peanut Butter"),
                 ingredients = "Organic Roasted Peanuts, Salt (1% or less).",
                 flagged = emptyList(),
                 nutritionScore = 56,
@@ -277,7 +344,7 @@ object ScanHistoryStore {
                 score = 92,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/085/000/917/2029/front_en.3.400.jpg",
+                imageUrl = productImageUrl("Three Wishes Cocoa Grain Free Cereal"),
                 ingredients = "Chickpea, Tapioca, Pea Protein, Organic Cocoa, Monk Fruit, Salt.",
                 flagged = emptyList(),
                 nutritionScore = 52,
@@ -287,16 +354,16 @@ object ScanHistoryStore {
                 swap = null
             ),
             sampleItem(
-                title = "Kerrygold Pure Irish Grass-Fed Salted Butter",
-                brand = "Kerrygold",
+                title = "Organic Valley Pasture-Raised Salted Butter",
+                brand = "Organic Valley",
                 category = "Milk & Dairy",
-                score = 88,
+                score = 80,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/076/770/700/1079/front_en.112.400.jpg",
-                ingredients = "Pasteurized Cream, Salt.",
+                imageUrl = productImageUrl("Organic Valley Pasture Raised Salted Butter"),
+                ingredients = "Organic Pasteurized Sweet Cream, Salt.",
                 flagged = emptyList(),
-                nutritionScore = 48,
+                nutritionScore = 40,
                 nutriGrade = "B",
                 additiveScore = 30,
                 organicScore = 10,
@@ -309,7 +376,7 @@ object ScanHistoryStore {
                 score = 90,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/004/138/309/0363/front_en.31.400.jpg",
+                imageUrl = productImageUrl("Lactaid Fat Free Milk"),
                 ingredients = "Fat Free Milk, Lactase Enzyme, Vitamin A Palmitate, Vitamin D3.",
                 flagged = emptyList(),
                 nutritionScore = 60,
@@ -325,7 +392,7 @@ object ScanHistoryStore {
                 score = 94,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/004/227/200/5628/front_en.28.400.jpg",
+                imageUrl = productImageUrl("Amy's Organic Lentil Vegetable Soup"),
                 ingredients = "Filtered Water, Organic Onions, Organic Green Lentils, Organic Carrots, Organic Celery, Organic Potatoes, Organic Spinach, Organic Extra Virgin Olive Oil, Sea Salt, Organic Garlic, Organic Bay Leaves.",
                 flagged = emptyList(),
                 nutritionScore = 54,
@@ -335,19 +402,19 @@ object ScanHistoryStore {
                 swap = null
             ),
             sampleItem(
-                title = "Siete Sea Salt Kettle Cooked Potato Chips (Avocado Oil)",
-                brand = "Siete",
+                title = "Boulder Canyon Avocado Oil Canyon Poppers / Kettle Chips",
+                brand = "Boulder Canyon",
                 category = "Chips & Snacks",
-                score = 88,
+                score = 82,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/085/176/900/7287/front_en.16.400.jpg",
+                imageUrl = productImageUrl("Boulder Canyon Avocado Oil Kettle Chips"),
                 ingredients = "Potatoes, Avocado Oil, Sea Salt.",
                 flagged = emptyList(),
-                nutritionScore = 48,
+                nutritionScore = 52,
                 nutriGrade = "B",
                 additiveScore = 30,
-                organicScore = 10,
+                organicScore = 0,
                 swap = null
             ),
             sampleItem(
@@ -357,7 +424,7 @@ object ScanHistoryStore {
                 score = 90,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/001/376/402/7053/front_en.69.400.jpg",
+                imageUrl = productImageUrl("Dave's Killer Bread Organic 21 Whole Grains"),
                 ingredients = "Organic Whole Wheat, Water, Organic Cane Sugar, Organic Cracked Whole Wheat, Organic 21 Whole Grains and Seeds Mix, Organic Vital Wheat Gluten, Organic Oat Fiber, Yeast, Sea Salt.",
                 flagged = emptyList(),
                 nutritionScore = 50,
@@ -373,7 +440,7 @@ object ScanHistoryStore {
                 score = 92,
                 rating = "Excellent",
                 color = "green",
-                imageUrl = "https://images.openfoodfacts.org/images/products/085/018/000/6008/front_en.28.400.jpg",
+                imageUrl = productImageUrl("Hu Simple Organic 70% Dark Chocolate Bar"),
                 ingredients = "Organic Fair-Trade Cacao, Unrefined Organic Coconut Sugar, Organic Fair-Trade Cocoa Butter.",
                 flagged = emptyList(),
                 nutritionScore = 52,

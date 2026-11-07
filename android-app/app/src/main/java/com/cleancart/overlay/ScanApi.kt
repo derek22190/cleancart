@@ -24,12 +24,52 @@ object ScanApi {
         "https://heybroc.com/api/referral",
         "https://cleancart-teal.vercel.app/api/referral",
     ).distinct()
+    private val SUGGEST_ENDPOINTS = listOfNotNull(
+        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/suggest" },
+        "https://www.heybroc.com/api/suggest",
+        "https://heybroc.com/api/suggest",
+        "https://cleancart-teal.vercel.app/api/suggest",
+    ).distinct()
     private val TRUSTED_HOSTS = setOfNotNull(
         runCatching { URL(customBase).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() },
         "www.heybroc.com",
         "heybroc.com",
         "cleancart-teal.vercel.app",
     )
+
+    /** Blocking call — returns up to 8 live product suggestions from GET /api/suggest?q=<query>. */
+    fun suggest(rawQuery: String): List<JSONObject> {
+        val q = rawQuery.trim()
+        if (q.isEmpty()) return emptyList()
+        val encoded = java.net.URLEncoder.encode(q, "UTF-8")
+        for (base in SUGGEST_ENDPOINTS) {
+            try {
+                val url = URL("$base?q=$encoded")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 2500
+                    readTimeout = 3500
+                    setRequestProperty("Accept", "application/json")
+                }
+                try {
+                    if (conn.responseCode in 200..299) {
+                        val body = conn.inputStream.bufferedReader().use(BufferedReader::readText)
+                        val arr = JSONObject(body).optJSONArray("suggestions") ?: continue
+                        val out = ArrayList<JSONObject>(arr.length())
+                        for (i in 0 until arr.length()) {
+                            arr.optJSONObject(i)?.let { out.add(it) }
+                        }
+                        if (out.isNotEmpty()) return out
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (_: Exception) {
+                // try next endpoint
+            }
+        }
+        return emptyList()
+    }
 
     private const val MAX_CACHE_SIZE = 150
     private val responseCache = object : LinkedHashMap<String, String>(64, 0.75f, true) {

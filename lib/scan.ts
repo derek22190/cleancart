@@ -169,13 +169,17 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     });
     entitlement = serializeEntitlement(device);
   }
+  const resolvedImageUrl =
+    found.imageUrl && found.imageUrl.startsWith("http")
+      ? found.imageUrl
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}`;
   return {
     ok: true,
     product: {
       title,
       brand: found.brand,
       barcode: found.barcode,
-      imageUrl: found.imageUrl,
+      imageUrl: resolvedImageUrl,
       ingredients: found.ingredients,
       nutrition: found.nutrition,
     },

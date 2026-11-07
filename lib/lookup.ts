@@ -516,11 +516,18 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
   },
   {
+    match: /\b(cool ranch)\b.*\b(doritos)\b|\b(doritos)\b.*\b(cool ranch)\b/i,
+    brand: "Doritos",
+    title: "Cool Ranch Flavored Tortilla Chips",
+    ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Tomato Powder, Corn Starch, Lactose, Whey, Skim Milk, Corn Syrup Solids, Onion Powder, Sugar, Garlic Powder, Monosodium Glutamate, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Dextrose, Malic Acid, Buttermilk, Natural and Artificial Flavors, Sodium Acetate, Artificial Color (Red 40, Blue 1, Yellow 5), Spice, Citric Acid, Disodium Inosinate, and Disodium Guanylate.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Cool%20Ranch%20Tortilla%20Chips",
+  },
+  {
     match: /\b(doritos|nacho cheese)\b/i,
     brand: "Doritos",
     title: "Nacho Cheese Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Artificial Color (Yellow 6, Yellow 5, Red 40), Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Disodium Inosinate, and Disodium Guanylate.",
-    imageUrl: "/products/chips.jpg",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Nacho%20Cheese%20Tortilla%20Chips",
   },
   {
     match: /\b(cheez[- ]?it)\b/i,
@@ -855,13 +862,18 @@ const UI_NOISE_QUERY =
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query.trim().replace(/,\s*(now|was)$/i, "").replace(/\b\w/g, (c) => c.toUpperCase());
+  const wordCount = cleanTitle.split(/\s+/).filter(Boolean).length;
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (entry.match.test(query)) {
+      const fullEntryTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
+        ? entry.title
+        : `${entry.brand} ${entry.title}`;
+      const resolvedTitle = wordCount <= 2 ? fullEntryTitle : cleanTitle;
       return {
-        productTitle: cleanTitle,
+        productTitle: resolvedTitle,
         brand: entry.brand,
         ingredients: entry.ingredients,
-        imageUrl: entry.imageUrl,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}`,
         nutrition: entry.nutrition,
         source: "catalog",
       };
@@ -879,7 +891,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       productTitle: cleanTitle,
       brand: isOrganic ? "USDA Organic Produce" : "Fresh Produce",
       ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food — Zero Chemical Additives).",
-      imageUrl: "/swaps/snacks.jpg",
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 35, sugarsG100g: 3.5, saturatedFatG100g: 0.1, sodiumMg100g: 12, fiberG100g: 2.8, proteinG100g: 1.4, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
       source: "catalog",
     };
@@ -894,7 +906,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       productTitle: cleanTitle,
       brand: isOrganic ? "Organic Pasture-Raised" : "Fresh Meat & Seafood",
       ingredients: "100% Fresh Whole Food Protein (Zero Chemical Additives, Nitrates, or Preservatives).",
-      imageUrl: "/swaps/turkey.jpg",
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 145, sugarsG100g: 0, saturatedFatG100g: 2.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 22.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
       source: "catalog",
     };
@@ -907,7 +919,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         productTitle: cleanTitle,
         brand: "Organic Soup",
         ingredients: "Filtered Water, Organic Vegetables (Onions, Carrots, Celery, Potatoes, Tomatoes), Organic Beans/Lentils, Organic Extra Virgin Olive Oil, Sea Salt, Organic Garlic, Organic Spices.",
-        imageUrl: "/swaps/ranch.jpg",
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
         nutrition: { caloriesKcal100g: 68, sugarsG100g: 1.8, saturatedFatG100g: 0.4, sodiumMg100g: 260, fiberG100g: 3.2, proteinG100g: 3.8, fruitsVegNutsPct: 65, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
         source: "catalog",
       };
@@ -916,7 +928,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       productTitle: cleanTitle,
       brand: "Prepared Soup",
       ingredients: "Stock/Broth, Potatoes, Vegetables (Carrots, Celery, Onions), Cooked Protein/Clams/Chicken, Enriched Wheat Flour, Soybean Oil, Modified Food Starch, Salt, Yeast Extract, Natural Flavor.",
-      imageUrl: "/products/ranch.jpg",
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 95, sugarsG100g: 1.5, saturatedFatG100g: 2.2, sodiumMg100g: 360, fiberG100g: 1.1, proteinG100g: 4.5, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
       source: "catalog",
     };
@@ -943,7 +955,7 @@ function cleanSearchQuery(title: string): string {
 /* ------------------------------------------------------------------ */
 
 const DIRECT_CATALOG_PRIORITY =
-  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad)\b/i;
+  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|velveeta)\b/i;
 
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();

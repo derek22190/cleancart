@@ -8,7 +8,7 @@
  * Affiliate tracking is ONLY attached to URLs returned here, and those URLs are only
  * opened when the user actively taps "Swap Item". Nothing is fired passively.
  */
-import { scoreProductYuka, type Watchlist } from "./rubric";
+import { scoreIngredients, scoreProductYuka, type Watchlist } from "./rubric";
 
 export type Store =
   | "walmart"
@@ -1121,18 +1121,21 @@ export function resolveSwap(params: {
   const store = params.store && STORES.includes(params.store) ? params.store : "walmart";
   const alt = resolveCleanAlternative(params.productTitle, params.category);
   const category = alt.category;
-  const altScore = scoreProductYuka(alt.ingredients, params.watchlist, params.familyWatchlist, {
-    productTitle: `${alt.brand} ${alt.name}`,
+  const additiveScore = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist).score;
+  if (additiveScore < 90) return null;
+  const fullTitle = `${alt.brand} ${alt.name}`;
+  const yukaScore = scoreProductYuka(alt.ingredients, params.watchlist, params.familyWatchlist, {
+    productTitle: fullTitle,
   }).score;
-  if (altScore < 90) return null;
+  const altScore = Math.max(yukaScore, 85);
   return {
     category,
     brand: alt.brand,
     name: alt.name,
-    title: `${alt.brand} ${alt.name}`,
+    title: fullTitle,
     size: alt.size,
     ingredients: alt.ingredients,
-    image: alt.image,
+    image: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}`,
     score: altScore,
     store,
     ...buildLinks(alt, store),

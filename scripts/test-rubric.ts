@@ -16,16 +16,34 @@ for (const p of PRESETS) {
 for (const a of Object.values(CLEAN_ALTERNATIVES)) {
   const r = scoreIngredients(a.ingredients);
   const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: `${a.brand} ${a.name}` });
+  const b = ry.yukaBreakdown!;
   check(`${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
-  check(`${a.brand} Yuka >= 90 (${ry.score})`, ry.score >= 90);
+  check(`${a.brand} additiveScore === 30 (${b.additiveScore})`, b.additiveScore === 30);
+  check(`${a.brand} 3-pillar sum matches score (${ry.score} vs ${b.nutritionScore + b.additiveScore + b.organicScore})`, ry.score === b.nutritionScore + b.additiveScore + b.organicScore);
 }
 for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
   const a = entry.alt;
   const r = scoreIngredients(a.ingredients);
   const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: `${a.brand} ${a.name}` });
+  const b = ry.yukaBreakdown!;
   check(`1-for-1 ${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
-  check(`1-for-1 ${a.brand} ${a.name} Yuka >= 90 (${ry.score})`, ry.score >= 90);
+  check(`1-for-1 ${a.brand} ${a.name} additiveScore === 30 (${b.additiveScore})`, b.additiveScore === 30);
+  check(`1-for-1 ${a.brand} ${a.name} 3-pillar sum matches score (${ry.score} vs ${b.nutritionScore + b.additiveScore + b.organicScore})`, ry.score === b.nutritionScore + b.additiveScore + b.organicScore);
 }
+const sieteCheck = scoreProductYuka(
+  "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt.",
+  {},
+  [],
+  { productTitle: "Siete Grain-Free Sea Salt Tortilla Chips, 5 oz", caloriesKcal100g: 464, saturatedFatG100g: 2.5, sodiumMg100g: 428, sugarsG100g: 1.8, fiberG100g: 3.6, proteinG100g: 3.6 },
+);
+check(
+  `Siete Tortilla Chips does not falsely score 100/100 and matches 3 pillars (${sieteCheck.score})`,
+  sieteCheck.score < 90 &&
+    sieteCheck.score ===
+      sieteCheck.yukaBreakdown!.nutritionScore +
+        sieteCheck.yukaBreakdown!.additiveScore +
+        sieteCheck.yukaBreakdown!.organicScore,
+);
 // 1-for-1 exact product swap checks
 check("1-for-1 salted butter -> butter (not milk)", Boolean(resolveSwap({ score: 54, productTitle: "Great Value Sweet Cream Salted Butter", store: "walmart" })?.title.includes("Salted Butter")));
 check("1-for-1 unsalted butter -> unsalted butter", Boolean(resolveSwap({ score: 54, productTitle: "Great Value Sweet Cream Unsalted Butter", store: "walmart" })?.title.includes("Unsalted Butter")));

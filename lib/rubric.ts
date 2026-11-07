@@ -842,19 +842,16 @@ export function scoreProductYuka(
   // retain their nutritional credit instead of dropping to 0/100 when an additive or 2x watchlist is present.
   const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
   const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore - multiAdditiveDeduction);
-  let finalScore = base.flagged.length > 0 ? Math.max(base.score, yukaPillarScore) : base.score;
+  let finalScore = yukaPillarScore;
   if (hasHighRisk || seedOilHits.length >= 2) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
     // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
     finalScore = Math.max(0, Math.min(59, finalScore));
   }
-  if (hasTop3AddedSugar && (nutriGrade === "D" || nutriGrade === "E")) {
-    finalScore = Math.min(finalScore, nutritionScore + additiveScore + organicScore);
-  }
 
   // Surface clear nutritional risk flags on high-sugar / high-sat-fat / high-sodium items ONLY when finalScore < 100
-  // so 100/100 additive-free foods (e.g. Grass-Fed Butter) never show contradictory negative penalty badges.
+  // so 100/100 additive-free foods never show contradictory negative penalty badges.
   const flagged: FlaggedAdditive[] = [...base.flagged];
   if (!isWholeFood && finalScore < 100) {
     if (sugars >= 18 || (hasTop3AddedSugar && sugars >= 12)) {
@@ -864,7 +861,7 @@ export function scoreProductYuka(
         risk: sugars >= 25 ? "moderate" : "low",
         category: "hfcs",
         penalty: sugars >= 25 ? 20 : 12,
-        explanation: "High sugar concentration (per 100g) lowers the Yuka 60% Nutritional Quality score.",
+        explanation: "High sugar concentration (per 100g) lowers the 60% Nutritional Quality score.",
         matched: "sugar",
       });
     }
@@ -896,7 +893,7 @@ export function scoreProductYuka(
         risk: sodium >= 850 ? "moderate" : "low",
         category: "preservatives",
         penalty: sodium >= 850 ? 18 : 10,
-        explanation: "High sodium content increases blood-pressure load and lowers the Yuka 60% Nutritional Quality score.",
+        explanation: "High sodium content increases blood-pressure load and lowers the 60% Nutritional Quality score.",
         matched: "sodium",
       });
     }

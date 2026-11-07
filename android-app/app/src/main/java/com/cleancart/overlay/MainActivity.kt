@@ -19,7 +19,9 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.text.Editable
 import android.text.TextUtils
+import android.text.TextWatcher
 import android.util.LruCache
 import android.util.TypedValue
 import android.view.Gravity
@@ -44,11 +46,11 @@ import java.net.URL
 import java.util.concurrent.Executors
 
 /**
- * Full Yuka-style 4-Tab HeyBroc Android App:
- *   - Tab 0 (History): Clean white product list with ★ Favorites filter & top-right ⋮ menu, product photos, ● Excellent/Poor/Bad dots, and relative time.
- *   - Tab 1 (Recs): Side-by-side 2-column comparison cards (⊗ Bad Product ⇄ ✓ Clean Swap) matching Yuka's Recommendations screen.
- *   - Tab 2 (Top): "Top Products" with Food | Store Bubble sub-tabs and pastel rounded-square category rows (Peanut Butter, Cereals & Granolas, Soups & Chowders, etc.).
- *   - Tab 3 (Search): Instant live product search bar + expandable accordion cards for "Search", "Food preferences (Family Watchlist)", "Live Store Bubble", and "Offline mode".
+ * 4-Tab HeyBroc Android App:
+ *   - Tab 0 (Scans / My Scans): Clean white product list with ★ Favorites filter & top-right ⋮ menu, real product photos, ● Excellent/Good/Poor/Bad dots, and relative time.
+ *   - Tab 1 (Top Picks): "Top Picks" with Food | Store Bubble sub-tabs and pastel rounded-square category rows (Peanut Butter, Cereals & Granolas, Soups & Chowders, etc.).
+ *   - Tab 2 (Swaps / Clean Swaps): Side-by-side 2-column comparison cards (⊗ Flagged Product ⇄ ✓ Clean Swap).
+ *   - Tab 3 (Search): GPS-style instant autocomplete product search bar + expandable accordion cards for "Live Store Bubble" and "Food preferences (Family Watchlist)".
  *   - Floating green "[||| Scan]" FAB in the bottom-right corner above the 4-tab bar.
  */
 class MainActivity : Activity() {
@@ -61,17 +63,18 @@ class MainActivity : Activity() {
     private lateinit var floatingScanBtn: LinearLayout
 
     private val io = Executors.newSingleThreadExecutor()
-    private val imgExecutor = Executors.newFixedThreadPool(3)
-    private val bmpCache = LruCache<String, Bitmap>(40)
+    private val imgExecutor = Executors.newFixedThreadPool(4)
+    private val bmpCache = LruCache<String, Bitmap>(64)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var activeTab = 0 // 0 = History, 1 = Recs, 2 = Top, 3 = Search
+    private var activeTab = 0 // 0 = Scans, 1 = Top Picks, 2 = Swaps, 3 = Search
     private var historyFavoritesOnly = false
     private var topSubTab = "Food" // "Food" or "Bubble"
     private var selectedTopCategory: String? = null
     private var lastSearchQuery = ""
     private var isSearching = false
     private var expandedPrefSection: String? = "bubble"
+    private var pendingSuggestRunnable: Runnable? = null
 
     private var pendingAutoChainToA11y = false
     private var watcherAttempts = 0
@@ -130,7 +133,7 @@ class MainActivity : Activity() {
             )
         }
 
-        // Yuka-style Top Header Bar
+        // Top Header Bar
         topBarContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -165,7 +168,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         })
 
-        // Pinned Yuka-style 4-Tab Bottom Bar (History, Recs, Top, Search)
+        // Pinned 4-Tab Bottom Bar (Scans, Top Picks, Swaps, Search)
         bottomNavContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -179,7 +182,7 @@ class MainActivity : Activity() {
         mainVertical.addView(bottomNavContainer)
         rootFrame.addView(mainVertical)
 
-        // Floating Green "[||| Scan]" Button in bottom-right corner (just like Yuka's green Scan FAB!)
+        // Floating Green "[||| Scan]" Button in bottom-right corner
         floatingScanBtn = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -234,8 +237,8 @@ class MainActivity : Activity() {
 
         when (activeTab) {
             0 -> renderHistoryTab()
-            1 -> renderRecsTab()
-            2 -> renderTopProductsTab()
+            1 -> renderTopProductsTab()
+            2 -> renderRecsTab()
             3 -> renderSearchAndPrefsTab()
         }
     }
@@ -243,9 +246,9 @@ class MainActivity : Activity() {
     private fun renderTopBar() {
         topBarContainer.removeAllViews()
         val titleText = when (activeTab) {
-            0 -> if (historyFavoritesOnly) "★ Favorites" else "History"
-            1 -> "Recommendations"
-            2 -> "Top Products"
+            0 -> if (historyFavoritesOnly) "★ Favorites" else "My Scans"
+            1 -> "Top Picks"
+            2 -> "Clean Swaps"
             else -> "Search"
         }
 
@@ -253,7 +256,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
 
-        // On History tab, show the ★ (Favorites filter) icon just like Yuka's top-right star!
+        // On My Scans tab, show the ★ (Favorites filter) icon
         if (activeTab == 0) {
             topBarContainer.addView(label(
                 if (historyFavoritesOnly) "★" else "☆",
@@ -287,7 +290,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(4) }
             setOnClickListener {
-                activeTab = 2
+                activeTab = 1
                 topSubTab = "Bubble"
                 renderScreen()
             }
@@ -304,9 +307,9 @@ class MainActivity : Activity() {
     private fun renderBottomNav() {
         bottomNavContainer.removeAllViews()
         val tabs = listOf(
-            Triple(0, "🥦", "History"),
-            Triple(1, "⇄", "Recs"),
-            Triple(2, "☰", "Top"),
+            Triple(0, "MASCOT", "Scans"),
+            Triple(1, "☰", "Top Picks"),
+            Triple(2, "⇄", "Swaps"),
             Triple(3, "🔍", "Search")
         )
         tabs.forEach { (idx, icon, title) ->
@@ -325,7 +328,7 @@ class MainActivity : Activity() {
                 }
             }
 
-            // Yuka-style soft green pill around the selected icon
+            // Soft green pill around the selected icon
             val iconPill = FrameLayout(this).apply {
                 setPadding(dp(18), dp(4), dp(18), dp(4))
                 if (selected) {
@@ -339,9 +342,17 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             }
-            iconPill.addView(label(icon, 17f, if (selected) 0xFF2E9E5B.toInt() else 0xFF374151.toInt(), bold = true).apply {
-                gravity = Gravity.CENTER
-            })
+            if (icon == "MASCOT") {
+                iconPill.addView(ImageView(this).apply {
+                    setImageResource(R.drawable.broc_mascot)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    layoutParams = FrameLayout.LayoutParams(dp(23), dp(23), Gravity.CENTER)
+                })
+            } else {
+                iconPill.addView(label(icon, 17f, if (selected) 0xFF2E9E5B.toInt() else 0xFF374151.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                })
+            }
             col.addView(iconPill)
 
             col.addView(label(title, 12f, if (selected) 0xFF111814.toInt() else 0xFF4B5563.toInt(), bold = selected).apply {
@@ -352,7 +363,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /* ---------------- TAB 0: 🥦 HISTORY (Matches Screenshot_20261107_173724_Yuka.jpg) ---------------- */
+    /* ---------------- TAB 0: MY SCANS ---------------- */
 
     private fun renderHistoryTab() {
         val overlayOk = Settings.canDrawOverlays(this)
@@ -416,7 +427,7 @@ class MainActivity : Activity() {
                 addView(label("No Saved Favorites Yet", 17f, 0xFF111814.toInt(), bold = true).apply {
                     setPadding(0, dp(8), 0, dp(4))
                 })
-                addView(label("Tap the ☆ star on any item in History or Top Products to save it here.", 13.5f, 0xFF6B7280.toInt()).apply {
+                addView(label("Tap the ☆ star on any item in My Scans or Top Picks to save it here.", 13.5f, 0xFF6B7280.toInt()).apply {
                     gravity = Gravity.CENTER
                 })
             })
@@ -434,15 +445,22 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Exact Yuka History row: Left product image, Right Title + Brand + ● Rating + 🕒 time ago, + ★ Star. */
+    /** Product row: Left product image, Right Title + Brand + ● Rating + 🕒 time ago, + ★ Star. */
     private fun buildYukaHistoryRow(item: JSONObject): View {
         val prod = item.optJSONObject("product")
         val res = item.optJSONObject("result")
         val title = ScanHistoryStore.extractTitle(item)
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
-        val score = res?.optInt("score") ?: item.optInt("score", 50)
-        val rating = res?.optString("rating").orEmpty().ifBlank { ratingForScore(score) }
+        val yb = res?.optJSONObject("yukaBreakdown")
+        val flagLen = res?.optJSONArray("flagged")?.length() ?: 0
+        val rawScore = res?.optInt("score") ?: item.optInt("score", 50)
+        val score = if (yb != null && flagLen == 0) {
+            (yb.optInt("nutritionScore", 42) + yb.optInt("additiveScore", 30) + yb.optInt("organicScore", 0)).coerceIn(0, 100)
+        } else {
+            rawScore
+        }
+        val rating = ratingForScore(score)
         val dotColor = yukaDotColor(score)
         val scannedAt = item.optLong("scannedAtMs", 0L)
         val storeKey = item.optString("storeKey", "")
@@ -832,7 +850,7 @@ class MainActivity : Activity() {
             return
         }
 
-        // Top Card (matches the rounded top card in 173728_Yuka.jpg, showcasing the Live Store Bubble!)
+        // Top Card showcasing the Live Store Bubble with our custom Broc mascot
         val heroBanner = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -853,25 +871,30 @@ class MainActivity : Activity() {
                 renderScreen()
             }
         }
-        heroBanner.addView(label("🥦", 24f, 0xFF2E9E5B.toInt()).apply {
-            gravity = Gravity.CENTER
+        val mascotCircle = FrameLayout(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(0xFFE8F5EC.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(dp(50), dp(50)).apply { marginEnd = dp(16) }
-        })
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.broc_mascot)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = FrameLayout.LayoutParams(dp(34), dp(34), Gravity.CENTER)
+            })
+        }
+        heroBanner.addView(mascotCircle)
         heroBanner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(label("All top products are 100% unlocked — plus auto-scan inside Walmart & Target", 14.5f, 0xFF111814.toInt()))
+            addView(label("All top picks are 100% unlocked — plus auto-scan inside Walmart & Target", 14.5f, 0xFF111814.toInt()))
             addView(label("Manage Live Store Bubble →", 14f, 0xFF2E9E5B.toInt(), bold = true).apply {
                 setPadding(0, dp(6), 0, 0)
             })
         })
         tabContentContainer.addView(heroBanner)
 
-        // Category Rows (matching Screenshot_20261107_173728_Yuka.jpg with pastel rounded-square icons and › chevrons!)
+        // Category Rows with pastel rounded-square icons and › chevrons
         data class TopCat(val title: String, val icon: String, val bgColor: Int)
         val categories = listOf(
             TopCat("Peanut Butter", "🥜", 0xFFFEF9E7.toInt()),
@@ -910,7 +933,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /* ---------------- TAB 3: 🔍 SEARCH & PREFERENCES (Matches 173731 & 173737_Yuka.jpg) ---------------- */
+    /* ---------------- TAB 3: 🔍 SEARCH & PREFERENCES ---------------- */
 
     private fun renderSearchAndPrefsTab() {
         val wrap = LinearLayout(this).apply {
@@ -918,7 +941,6 @@ class MainActivity : Activity() {
             setPadding(dp(16), dp(8), dp(16), dp(28))
         }
 
-        // Instant Search Box (Unlike Yuka's paywall, Search is 100% free & live in HeyBroc!)
         val searchCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
@@ -932,13 +954,13 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(16) }
         }
-        searchCard.addView(label("SEARCH 2,400+ FOODS & USDA CATALOG", 11f, 0xFF2E9E5B.toInt(), bold = true).apply {
+        searchCard.addView(label("SEARCH 4M+ FOODS & USDA CATALOG", 11f, 0xFF2E9E5B.toInt(), bold = true).apply {
             letterSpacing = 0.08f
         })
         searchCard.addView(label("Search for any product", 20f, 0xFF111814.toInt(), bold = true).apply {
             setPadding(0, dp(4), 0, dp(2))
         })
-        searchCard.addView(label("Search any food or brand by name without having to scan it.", 13.5f, 0xFF4B5563.toInt()).apply {
+        searchCard.addView(label("Start typing any food or brand — tap a live suggestion below to inspect it.", 13.5f, 0xFF4B5563.toInt()).apply {
             setPadding(0, 0, 0, dp(12))
         })
 
@@ -947,8 +969,9 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val searchInput = EditText(this).apply {
-            hint = "e.g. Clam Chowder, Cinnamon Toast Crunch, Ranch…"
+            hint = "e.g. Doritos, Clam Chowder, Ranch, Milk…"
             setText(lastSearchQuery)
+            setSelection(lastSearchQuery.length)
             textSize = 14.5f
             setTextColor(0xFF111814.toInt())
             setHintTextColor(0xFF9CA3AF.toInt())
@@ -987,9 +1010,36 @@ class MainActivity : Activity() {
             }
         })
         searchCard.addView(inputRow)
+
+        // GPS-Style Live Autocomplete Dropdown Container right below the search input
+        val suggestionsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        }
+        searchCard.addView(suggestionsBox)
+        attachLiveAutocomplete(searchInput, suggestionsBox) { pickedTitle, fullItem ->
+            lastSearchQuery = pickedTitle
+            if (fullItem != null) {
+                ScanHistoryStore.recordScan(this, fullItem, "search")
+                renderScreen()
+                showProductDetailDialog(fullItem)
+            } else {
+                performLiveProductSearch(pickedTitle)
+            }
+        }
+
         wrap.addView(searchCard)
 
-        // Yuka-style Rounded Feature & Preferences Accordion Card (matches Screenshot_20261107_173737_Yuka.jpg!)
+        // Feature & Preferences Accordion Card (Live Store Bubble + Food preferences)
         val accordionCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
@@ -1003,10 +1053,10 @@ class MainActivity : Activity() {
             ).apply { bottomMargin = dp(16) }
         }
 
-        // Row 1: Live Store Bubble Setup
+        // Row 1: Live Store Bubble Setup (with custom Broc mascot icon)
         accordionCard.addView(buildYukaAccordionRow(
             key = "bubble",
-            icon = "🥦",
+            icon = "MASCOT",
             title = "Live Store Bubble",
             subtitle = "Auto-grade products while shopping in Walmart, Target, Instacart & ALDI."
         ) {
@@ -1023,7 +1073,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         })
 
-        // Row 2: Food preferences (Family Watchlist) — matches "Food preferences" in 173737_Yuka.jpg!
+        // Row 2: Food preferences (Family Watchlist)
         accordionCard.addView(buildYukaAccordionRow(
             key = "prefs",
             icon = "🎚️",
@@ -1034,28 +1084,6 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(16), 0, dp(16), dp(16))
                 addView(watchlistControls())
-            }
-        })
-
-        accordionCard.addView(View(this).apply {
-            setBackgroundColor(0xFFE5E7EB.toInt())
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        })
-
-        // Row 3: Offline & Instant Cache Mode — matches "Offline mode" in 173737_Yuka.jpg!
-        accordionCard.addView(buildYukaAccordionRow(
-            key = "offline",
-            icon = "⚡",
-            title = "Offline & instant cache mode",
-            subtitle = "Instant 0ms grades for recently scanned items even with weak store Wi-Fi."
-        ) {
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(18), 0, dp(18), dp(16))
-                addView(label(
-                    "✓ Enabled automatically — HeyBroc caches your recent product grades on-device so revisiting items in Walmart or Target pops up in 0ms.",
-                    13f, 0xFF16A34A.toInt(), bold = true
-                ))
             }
         })
 
@@ -1093,14 +1121,29 @@ class MainActivity : Activity() {
                 renderScreen()
             }
         }
-        header.addView(label(icon, 18f, 0xFF2E9E5B.toInt()).apply {
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0xFFE8F5EC.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(16) }
-        })
+        if (icon == "MASCOT") {
+            header.addView(FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(0xFFE8F5EC.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(16) }
+                addView(ImageView(context).apply {
+                    setImageResource(R.drawable.broc_mascot)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    layoutParams = FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER)
+                })
+            })
+        } else {
+            header.addView(label(icon, 18f, 0xFF2E9E5B.toInt()).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(0xFFE8F5EC.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(16) }
+            })
+        }
         header.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -1257,27 +1300,55 @@ class MainActivity : Activity() {
     /* ---------------- Quick Scan Modal & Product Detail Sheet ---------------- */
 
     private fun showQuickScanModal() {
+        var modalDialog: AlertDialog? = null
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(12))
         }
         box.addView(label("Instant Food & Brand Scanner", 18f, 0xFF111814.toInt(), bold = true))
-        box.addView(label("Type any product name to grade it immediately, or open Walmart with the live floating bubble.", 13.5f, 0xFF4B5563.toInt()).apply {
+        box.addView(label("Start typing any food or brand — tap a suggestion below or press Scan.", 13.5f, 0xFF4B5563.toInt()).apply {
             setPadding(0, dp(4), 0, dp(12))
         })
         val input = EditText(this).apply {
-            hint = "e.g. Marketside Clam Chowder, Oreos, Milk…"
+            hint = "e.g. Doritos, Clam Chowder, Oreos, Milk…"
             textSize = 15f
             setSingleLine(true)
             setPadding(dp(14), dp(12), dp(14), dp(12))
             background = GradientDrawable().apply {
                 setColor(0xFFF3F4F6.toInt())
                 cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), 0xFF2E9E5B.toInt())
             }
         }
         box.addView(input)
 
-        AlertDialog.Builder(this)
+        val modalSuggestions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        box.addView(modalSuggestions)
+
+        attachLiveAutocomplete(input, modalSuggestions) { pickedTitle, fullItem ->
+            modalDialog?.dismiss()
+            if (fullItem != null) {
+                ScanHistoryStore.recordScan(this, fullItem, "search")
+                renderScreen()
+                showProductDetailDialog(fullItem)
+            } else {
+                performLiveProductSearch(pickedTitle)
+            }
+        }
+
+        modalDialog = AlertDialog.Builder(this)
             .setView(box)
             .setPositiveButton("Scan Product") { _, _ ->
                 val q = input.text.toString().trim()
@@ -1292,8 +1363,8 @@ class MainActivity : Activity() {
 
     private fun showTopRightMenuDialog() {
         val options = arrayOf(
-            "🥦 Manage Live Store Bubble",
-            "🎚️ Food Preferences (Family Watchlist)",
+            "Manage Live Store Bubble",
+            "Food Preferences (Family Watchlist)",
             "★ View Saved Favorites",
             "🗑️ Clear Scan History",
             "🔒 Privacy Policy & Data Disclosure"
@@ -1302,7 +1373,7 @@ class MainActivity : Activity() {
             .setTitle("HeyBroc Menu")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> { activeTab = 2; topSubTab = "Bubble"; renderScreen() }
+                    0 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
                     1 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
                     2 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
                     3 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
@@ -1349,12 +1420,17 @@ class MainActivity : Activity() {
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
         val ingredients = prod?.optString("ingredients").orEmpty().ifBlank { item.optString("ingredients") }
-        val score = res?.optInt("score") ?: item.optInt("score", 50)
-        val rating = res?.optString("rating").orEmpty().ifBlank { ratingForScore(score) }
-        val tone = yukaDotColor(score)
         val flagged = res?.optJSONArray("flagged") ?: JSONArray()
         val flagCount = flagged.length()
         val yb = res?.optJSONObject("yukaBreakdown")
+        val rawScore = res?.optInt("score") ?: item.optInt("score", 50)
+        val score = if (yb != null && flagCount == 0) {
+            (yb.optInt("nutritionScore", 42) + yb.optInt("additiveScore", 30) + yb.optInt("organicScore", 0)).coerceIn(0, 100)
+        } else {
+            rawScore
+        }
+        val rating = ratingForScore(score)
+        val tone = yukaDotColor(score)
         val swap = item.optJSONObject("swap")
 
         val sheetScroll = ScrollView(this)
@@ -1407,7 +1483,7 @@ class MainActivity : Activity() {
         topHeader.addView(favBtn)
         sheet.addView(topHeader)
 
-        // 3-Pillar Yuka Breakdown Box
+        // 3-Pillar Score Breakdown Box
         val nutScore = yb?.optInt("nutritionScore", 42) ?: 42
         val nutGrade = yb?.optString("nutriScoreGrade", "B") ?: "B"
         val addScore = yb?.optInt("additiveScore", if (flagCount == 0) 30 else 0) ?: 0
@@ -1425,7 +1501,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(14) }
-            addView(label("YUKA 3-PILLAR BREAKDOWN", 10.5f, 0xFF6B7280.toInt(), bold = true).apply { letterSpacing = 0.06f })
+            addView(label("3-PILLAR SCORE BREAKDOWN", 10.5f, 0xFF6B7280.toInt(), bold = true).apply { letterSpacing = 0.06f })
             addView(label("🥗 Nutritional Quality: $nutScore/60 (Nutri-Score $nutGrade)", 13f, 0xFF111814.toInt(), bold = true).apply {
                 setPadding(0, dp(4), 0, 0)
             })
@@ -1513,10 +1589,11 @@ class MainActivity : Activity() {
             })
         }
 
-        // Clean Swap Card
+        // Clean Swap Card (with real product photo)
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Swap")
             val swapScore = swap.optInt("score", 92)
+            val swapImg = swap.optString("image").ifBlank { swap.optString("imageUrl") }
             val swapIng = swap.optString("ingredients").ifBlank { swap.optString("cleanIngredients") }
 
             val swapCard = LinearLayout(this).apply {
@@ -1532,17 +1609,28 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = dp(14) }
             }
-            swapCard.addView(label("✓ BETTER ALTERNATIVE · $swapScore/100 EXCELLENT", 11f, 0xFF166534.toInt(), bold = true).apply {
+            swapCard.addView(label("✓ CLEAN SWAP · $swapScore/100 EXCELLENT", 11f, 0xFF166534.toInt(), bold = true).apply {
                 letterSpacing = 0.06f
             })
-            swapCard.addView(label(swapTitle, 15.5f, 0xFF111814.toInt(), bold = true).apply {
-                setPadding(0, dp(4), 0, 0)
-            })
-            if (swapIng.isNotBlank()) {
-                swapCard.addView(label("Ingredients: $swapIng", 12f, 0xFF166534.toInt()).apply {
-                    setPadding(0, dp(4), 0, dp(10))
-                })
+            val swapHeaderRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, dp(8))
             }
+            swapHeaderRow.addView(buildProductImageBox(swapImg, swapTitle, dp(52), dp(62)).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(52), dp(62)).apply { marginEnd = dp(12) }
+            })
+            swapHeaderRow.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(label(swapTitle, 15f, 0xFF111814.toInt(), bold = true))
+                if (swapIng.isNotBlank()) {
+                    addView(label("Ingredients: $swapIng", 12f, 0xFF166534.toInt()).apply {
+                        setPadding(0, dp(3), 0, 0)
+                    })
+                }
+            })
+            swapCard.addView(swapHeaderRow)
             swapCard.addView(label("🛒 Find Clean Swap in Walmart ↗", 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(12), dp(11), dp(12), dp(11))
@@ -1562,6 +1650,153 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /**
+     * Attaches GPS-style live autocomplete to an EditText:
+     *   1. Immediately (0ms) renders local prefix/keyword matches from History + Favorites + Catalog.
+     *   2. Queries GET /api/suggest?q=<prefix> after a 120ms debounce and merges server matches.
+     */
+    private fun attachLiveAutocomplete(
+        input: EditText,
+        suggestionsBox: LinearLayout,
+        onPicked: (String, JSONObject?) -> Unit
+    ) {
+        fun renderSuggestionRows(query: String, localItems: List<JSONObject>, remoteItems: List<JSONObject>) {
+            suggestionsBox.removeAllViews()
+            if (query.isBlank()) {
+                suggestionsBox.visibility = View.GONE
+                return
+            }
+            val merged = ArrayList<Pair<JSONObject, JSONObject?>>() // (displaySummary, fullScanJsonOrNull)
+            val seen = HashSet<String>()
+
+            for (item in localItems) {
+                val t = ScanHistoryStore.extractTitle(item)
+                val key = t.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                if (key.isNotBlank() && seen.add(key)) {
+                    val prod = item.optJSONObject("product")
+                    val res = item.optJSONObject("result")
+                    val summary = JSONObject().apply {
+                        put("title", t)
+                        put("brand", prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") })
+                        put("score", res?.optInt("score") ?: item.optInt("score", 50))
+                        put("imageUrl", prod?.optString("imageUrl").orEmpty().ifBlank { ScanHistoryStore.productImageUrl(t) })
+                    }
+                    merged.add(summary to item)
+                }
+            }
+            for (rem in remoteItems) {
+                val t = rem.optString("title").trim()
+                val key = t.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                if (key.isNotBlank() && seen.add(key)) {
+                    merged.add(rem to null)
+                }
+            }
+
+            suggestionsBox.visibility = View.VISIBLE
+            merged.take(6).forEachIndexed { index, (sug, fullItem) ->
+                val sugTitle = sug.optString("title")
+                val sugBrand = sug.optString("brand")
+                val sugScore = sug.optInt("score", 50)
+                val sugImg = sug.optString("imageUrl").ifBlank { ScanHistoryStore.productImageUrl(sugTitle) }
+
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(9), dp(12), dp(9))
+                    setOnClickListener {
+                        suggestionsBox.visibility = View.GONE
+                        hideKeyboard()
+                        onPicked(sugTitle, fullItem)
+                    }
+                }
+                row.addView(buildProductImageBox(sugImg, sugTitle, dp(38), dp(46)).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(38), dp(46)).apply { marginEnd = dp(12) }
+                })
+                row.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(label(sugTitle, 14f, 0xFF111814.toInt(), bold = true).apply {
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+                    if (sugBrand.isNotBlank()) {
+                        addView(label(sugBrand, 12f, 0xFF6B7280.toInt()).apply {
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                        })
+                    }
+                })
+                row.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), 0, 0, 0)
+                    addView(View(context).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(yukaDotColor(sugScore))
+                        }
+                        layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply { marginEnd = dp(5) }
+                    })
+                    addView(label("$sugScore/100", 12.5f, 0xFF374151.toInt(), bold = true))
+                })
+                suggestionsBox.addView(row)
+                if (index < merged.take(6).lastIndex) {
+                    suggestionsBox.addView(View(this).apply {
+                        setBackgroundColor(0xFFF3F4F6.toInt())
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                    })
+                }
+            }
+
+            // Bottom "Search all foods for '<query>'" action row
+            if (merged.isNotEmpty()) {
+                suggestionsBox.addView(View(this).apply {
+                    setBackgroundColor(0xFFE5E7EB.toInt())
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                })
+            }
+            suggestionsBox.addView(label("🔍  Grade \"$query\" across 4M+ foods →", 13.5f, 0xFF2E9E5B.toInt(), bold = true).apply {
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                setOnClickListener {
+                    suggestionsBox.visibility = View.GONE
+                    hideKeyboard()
+                    onPicked(query, null)
+                }
+            })
+        }
+
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val q = s?.toString()?.trim().orEmpty()
+                pendingSuggestRunnable?.let { mainHandler.removeCallbacks(it) }
+                if (q.isEmpty()) {
+                    suggestionsBox.removeAllViews()
+                    suggestionsBox.visibility = View.GONE
+                    return
+                }
+                val localHits = ScanHistoryStore.localSuggestions(this@MainActivity, q, 6)
+                renderSuggestionRows(q, localHits, emptyList())
+
+                val runnable = Runnable {
+                    imgExecutor.execute {
+                        val remoteHits = runCatching { ScanApi.suggest(q) }.getOrDefault(emptyList())
+                        if (remoteHits.isNotEmpty()) {
+                            mainHandler.post {
+                                if (!isDestroyed && !isFinishing && input.text?.toString()?.trim() == q) {
+                                    renderSuggestionRows(q, localHits, remoteHits)
+                                }
+                            }
+                        }
+                    }
+                }
+                pendingSuggestRunnable = runnable
+                mainHandler.postDelayed(runnable, 120L)
+            }
+        })
+    }
+
     private fun buildProductImageBox(imgUrl: String, title: String, wPx: Int, hPx: Int): FrameLayout {
         val box = FrameLayout(this)
         val fallback = label(
@@ -1575,7 +1810,7 @@ class MainActivity : Activity() {
                 title.contains("chocolate", true) -> "🍫"
                 else -> "🛒"
             },
-            26f, 0xFF111814.toInt()
+            22f, 0xFF111814.toInt()
         ).apply {
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
@@ -1586,14 +1821,15 @@ class MainActivity : Activity() {
         }
         box.addView(fallback)
 
-        if (imgUrl.startsWith("http")) {
-            val iv = ImageView(this).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                layoutParams = FrameLayout.LayoutParams(wPx, hPx)
-            }
-            box.addView(iv)
-            loadThumbnailAsync(imgUrl, iv, fallback)
+        val iv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = FrameLayout.LayoutParams(wPx, hPx)
         }
+        box.addView(iv)
+
+        val fallbackApiUrl = ScanHistoryStore.productImageUrl(title)
+        val primaryUrl = if (imgUrl.startsWith("http")) imgUrl else fallbackApiUrl
+        loadThumbnailAsync(primaryUrl, fallbackApiUrl, iv, fallback)
         return box
     }
 
@@ -1637,23 +1873,42 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun loadThumbnailAsync(url: String, target: ImageView, fallback: View) {
-        bmpCache.get(url)?.let { cached ->
+    private fun fetchBitmapFromUrl(urlStr: String): Bitmap? = runCatching {
+        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 4500
+            readTimeout = 4500
+            setRequestProperty("User-Agent", "HeyBroc-Android/2.0")
+        }
+        try {
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.use { BitmapFactory.decodeStream(it) }
+            } else null
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
+    private fun loadThumbnailAsync(primaryUrl: String, fallbackApiUrl: String, target: ImageView, fallback: View) {
+        bmpCache.get(primaryUrl)?.let { cached ->
+            target.setImageBitmap(cached)
+            fallback.visibility = View.GONE
+            return
+        }
+        bmpCache.get(fallbackApiUrl)?.let { cached ->
             target.setImageBitmap(cached)
             fallback.visibility = View.GONE
             return
         }
         imgExecutor.execute {
-            val bmp = runCatching {
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 4000
-                    readTimeout = 4000
-                    setRequestProperty("User-Agent", "HeyBroc-Android/2.0")
-                }
-                conn.inputStream.use { BitmapFactory.decodeStream(it) }
-            }.getOrNull()
+            var bmp = fetchBitmapFromUrl(primaryUrl)
+            var resolvedKey = primaryUrl
+            if (bmp == null && primaryUrl != fallbackApiUrl) {
+                bmp = fetchBitmapFromUrl(fallbackApiUrl)
+                resolvedKey = fallbackApiUrl
+            }
             if (bmp != null) {
-                bmpCache.put(url, bmp)
+                bmpCache.put(resolvedKey, bmp)
                 mainHandler.post {
                     if (!isDestroyed && !isFinishing) {
                         target.setImageBitmap(bmp)
@@ -1820,6 +2075,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(permissionWatcher)
+        pendingSuggestRunnable?.let { mainHandler.removeCallbacks(it) }
         io.shutdownNow()
         imgExecutor.shutdownNow()
         super.onDestroy()
@@ -1866,10 +2122,10 @@ class MainActivity : Activity() {
     /* ---------------- UI Helpers ---------------- */
 
     private fun yukaDotColor(score: Int): Int = when {
-        score >= 75 -> 0xFF2E9E5B.toInt() // Yuka Excellent Green
-        score >= 50 -> 0xFF66BB6A.toInt() // Yuka Good Light Green
-        score >= 25 -> 0xFFEA8600.toInt() // Yuka Poor Orange
-        else -> 0xFFD93025.toInt()        // Yuka Bad Red
+        score >= 75 -> 0xFF2E9E5B.toInt() // Excellent Green
+        score >= 50 -> 0xFF66BB6A.toInt() // Good Light Green
+        score >= 25 -> 0xFFEA8600.toInt() // Poor Orange
+        else -> 0xFFD93025.toInt()        // Bad Red
     }
 
     private fun ratingForScore(score: Int): String = when {
@@ -1892,14 +2148,16 @@ class MainActivity : Activity() {
     private fun primaryButton(text: String, filled: Boolean = true, onClick: () -> Unit) = Button(this).apply {
         this.text = text
         isAllCaps = false
-        textSize = 15f
+        textSize = 14.5f
+        minHeight = dp(50)
+        setPadding(dp(18), dp(12), dp(18), dp(12))
         setTextColor(if (filled) Color.WHITE else 0xFF2E9E5B.toInt())
         background = GradientDrawable().apply {
             cornerRadius = dp(999).toFloat()
             if (filled) setColor(0xFF2E9E5B.toInt()) else { setColor(Color.WHITE); setStroke(dp(1), 0xFF2E9E5B.toInt()) }
         }
         setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { topMargin = dp(12) }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) }
     }
 
     private fun stepCard(step: String, title: String, body: String, status: TextView?, vararg extra: View) =

@@ -536,19 +536,26 @@ class OverlayWindowService : Service() {
         if (!isCartAvgMode) climbAnimator?.cancel()
         val result = data?.optJSONObject("result")
         val ok = data?.optBoolean("ok") == true && result != null
+        val ybPill = result?.optJSONObject("yukaBreakdown")
+        val pillFlagCount = result?.optJSONArray("flagged")?.length() ?: 0
+        val effectiveScore = if (ok && ybPill != null && pillFlagCount == 0) {
+            (ybPill.optInt("nutritionScore", 42) + ybPill.optInt("additiveScore", 30) + ybPill.optInt("organicScore", 0)).coerceIn(0, 100)
+        } else {
+            result?.optInt("score") ?: 50
+        }
         val avg = displayedCartAvg
         val tone = when {
             loadingText != null -> Color.GRAY
             isCartAvgMode && tripCart.isEmpty() -> BRAND
             isCartAvgMode -> toneColor(colorNameForScore(avg))
             !ok -> Color.GRAY
-            else -> toneColor(result!!.optString("color"))
+            else -> toneColor(colorNameForScore(effectiveScore))
         }
         val label = when {
             loadingText != null -> loadingText
             isCartAvgMode && tripCart.isEmpty() -> "🛒 Cart: Open Cart to Grade"
             isCartAvgMode -> "🛒 Cart Avg: $avg/100"
-            ok -> "${result!!.optInt("score")}/100  •  Tap to Inspect"
+            ok -> "$effectiveScore/100  •  Tap to Inspect"
             else -> data?.optString("error")?.take(48) ?: "HeyBroc"
         }
 
@@ -878,9 +885,21 @@ class OverlayWindowService : Service() {
     private fun showCard() {
         val d = data ?: return
         val result = d.optJSONObject("result") ?: return
-        val score = result.optInt("score")
-        val tone = toneColor(result.optString("color"))
         val flagged = result.optJSONArray("flagged")
+        val ybInit = result.optJSONObject("yukaBreakdown")
+        val rawScore = result.optInt("score")
+        val score = if (ybInit != null && (flagged?.length() ?: 0) == 0) {
+            (ybInit.optInt("nutritionScore", 42) + ybInit.optInt("additiveScore", 30) + ybInit.optInt("organicScore", 0)).coerceIn(0, 100)
+        } else {
+            rawScore
+        }
+        val ratingLabel = when {
+            score >= 75 -> "Excellent"
+            score >= 50 -> "Good"
+            score >= 25 -> "Poor"
+            else -> "Bad"
+        }
+        val tone = toneColor(colorNameForScore(score))
         val swap = d.optJSONObject("swap")
         removeCard()
         removePill()
@@ -1046,7 +1065,7 @@ class OverlayWindowService : Service() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(8), 0, 0)
-            addView(GaugeView(context, score, result.optString("rating"), tone), LinearLayout.LayoutParams(dp(74), dp(74)).apply { marginEnd = dp(12) })
+            addView(GaugeView(context, score, ratingLabel, tone), LinearLayout.LayoutParams(dp(74), dp(74)).apply { marginEnd = dp(12) })
             addView(rightSummaryCol)
         })
 

@@ -1898,15 +1898,7 @@ export default function Simulator() {
                         }}
                       >
                         <span className="yuka-nav-pill">🕒</span>
-                        <small>History</small>
-                      </button>
-                      <button
-                        type="button"
-                        className={`yuka-nav-item ${yukaTab === "recs" ? "is-active" : ""}`}
-                        onClick={() => setYukaTab("recs")}
-                      >
-                        <span className="yuka-nav-pill">⇄</span>
-                        <small>Recs</small>
+                        <small>Scans</small>
                       </button>
                       <button
                         type="button"
@@ -1914,7 +1906,15 @@ export default function Simulator() {
                         onClick={() => setYukaTab("top")}
                       >
                         <span className="yuka-nav-pill">☰</span>
-                        <small>Top</small>
+                        <small>Top Picks</small>
+                      </button>
+                      <button
+                        type="button"
+                        className={`yuka-nav-item ${yukaTab === "recs" ? "is-active" : ""}`}
+                        onClick={() => setYukaTab("recs")}
+                      >
+                        <span className="yuka-nav-pill">⇄</span>
+                        <small>Swaps</small>
                       </button>
                       <button
                         type="button"
@@ -2043,12 +2043,12 @@ export default function Simulator() {
             <p>Combine the effortless floating bubble of coupon apps with deep, 100% ingredient-only food grading.</p>
           </div>
 
-          <div className="compare-grid" role="table" aria-label="HeyBroc vs Honey vs Yuka">
+          <div className="compare-grid" role="table" aria-label="HeyBroc vs Coupon and Barcode Apps">
             {/* Header Row */}
             <div className="compare-row compare-row--head" role="row">
               <div className="compare-cell compare-cell--feature" role="columnheader">Feature</div>
               <div className="compare-cell" role="columnheader">Honey / Rakuten</div>
-              <div className="compare-cell" role="columnheader">Yuka</div>
+              <div className="compare-cell" role="columnheader">Barcode Apps</div>
               <div className="compare-cell compare-cell--broc" role="columnheader">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/broc-mascot.jpg" alt="" className="compare-mascot" />
