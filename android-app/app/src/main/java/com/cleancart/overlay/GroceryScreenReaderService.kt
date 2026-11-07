@@ -46,8 +46,8 @@ class GroceryScreenReaderService : AccessibilityService() {
             "com.android.permissioncontroller",
             "com.google.android.permissioncontroller"
         )
-        private const val DEBOUNCE_MS = 750L
-        private const val MAX_DEBOUNCE_WAIT_MS = 2200L
+        private const val DEBOUNCE_MS = 220L
+        private const val MAX_DEBOUNCE_WAIT_MS = 550L
         private const val FOREGROUND_CHECK_MS = 1500L
         private const val MAX_NODES = 900
         private val TITLE_ID_HINTS = listOf(
@@ -238,7 +238,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             pendingSinceMs = now
             handler.removeCallbacks(scanRunnable)
-            handler.postDelayed(scanRunnable, 350L)
+            handler.postDelayed(scanRunnable, 150L)
             return
         }
         if (pendingSinceMs == 0L) pendingSinceMs = now

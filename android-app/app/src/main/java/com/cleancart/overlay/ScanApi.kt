@@ -20,6 +20,12 @@ object ScanApi {
         "cleancart-teal.vercel.app",
     )
 
+    private const val MAX_CACHE_SIZE = 150
+    private val responseCache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
+            size > MAX_CACHE_SIZE
+    }
+
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
         val prefs = ctx.getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
@@ -29,16 +35,25 @@ object ScanApi {
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
             put("store", store)
             if (familyWatchlist.isNotEmpty()) {
-                put("familyWatchlist", JSONArray(familyWatchlist.toList()))
+                put("familyWatchlist", JSONArray(familyWatchlist.toList().sorted()))
             }
             put("format", "json")
         }.toString()
+
+        synchronized(responseCache) {
+            responseCache[body]?.let { return it }
+        }
 
         var lastErr = """{"ok":false,"error":"Unable to reach HeyBroc server"}"""
         for (endpoint in ENDPOINTS) {
             try {
                 val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
                 if (res.startsWith("{") && (res.contains("\"ok\":true") || res.contains("\"ok\":false") || res.contains("\"result\""))) {
+                    if (res.contains("\"ok\":true")) {
+                        synchronized(responseCache) {
+                            responseCache[body] = res
+                        }
+                    }
                     return res
                 }
                 lastErr = res
