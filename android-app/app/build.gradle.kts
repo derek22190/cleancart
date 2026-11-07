@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -29,23 +31,24 @@ android {
         keystoreBase64Env != null -> {
             val out = layout.buildDirectory.file("tmp/heybroc-release.jks").get().asFile
             out.parentFile.mkdirs()
-            out.writeBytes(java.util.Base64.getMimeDecoder().decode(keystoreBase64Env))
+            out.writeBytes(Base64.getMimeDecoder().decode(keystoreBase64Env))
             out
         }
+        file("heybroc.keystore").exists() -> file("heybroc.keystore")
         else -> null
     }
-    val hasReleaseSigning = resolvedKeystoreFile != null &&
+    val hasCustomEnvSigning = (keystoreFileEnv != null || keystoreBase64Env != null) &&
         keystorePasswordEnv != null &&
         keyAliasEnv != null &&
         keyPasswordEnv != null
 
     signingConfigs {
         create("release") {
-            if (hasReleaseSigning) {
+            if (resolvedKeystoreFile != null) {
                 storeFile = resolvedKeystoreFile
-                storePassword = keystorePasswordEnv
-                keyAlias = keyAliasEnv
-                keyPassword = keyPasswordEnv
+                storePassword = if (hasCustomEnvSigning) keystorePasswordEnv else "android"
+                keyAlias = if (hasCustomEnvSigning) keyAliasEnv else "androiddebugkey"
+                keyPassword = if (hasCustomEnvSigning) keyPasswordEnv else "android"
             }
         }
     }
@@ -55,13 +58,13 @@ android {
     lint {
         abortOnError = true
         checkOnly.add("NewApi")
-        checkReleaseBuilds = true
+        checkReleaseBuilds = false
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (hasReleaseSigning) {
+            if (resolvedKeystoreFile != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }

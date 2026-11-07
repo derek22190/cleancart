@@ -46,21 +46,16 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/heybroc-release.jks"
           else
-            echo "::notice::KEYSTORE_BASE64 secret not set; generating temporary signing keystore in RUNNER_TEMP so APK build succeeds."
-            keytool -genkeypair -v \
-              -keystore "$RUNNER_TEMP/heybroc-release.jks" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias heybroc \
-              -storepass heybroc123 -keypass heybroc123 \
-              -dname "CN=HeyBroc, OU=Mobile, O=HeyBroc, L=US, S=US, C=US"
+            echo "::notice::KEYSTORE_BASE64 secret not set; using committed app/heybroc.keystore so in-place APK updates keep a consistent signature."
+            cp app/heybroc.keystore "$RUNNER_TEMP/heybroc-release.jks"
           fi
 
       - name: Build release APK & App Bundle
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/heybroc-release.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD != '' && secrets.KEYSTORE_PASSWORD || 'heybroc123' }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS != '' && secrets.KEY_ALIAS || 'heybroc' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD != '' && secrets.KEY_PASSWORD || 'heybroc123' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD != '' && secrets.KEYSTORE_PASSWORD || 'android' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS != '' && secrets.KEY_ALIAS || 'androiddebugkey' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD != '' && secrets.KEY_PASSWORD || 'android' }}
         run: |
           chmod +x ./gradlew
           API_BASE="${{ vars.CLEANCART_API_BASE }}"
