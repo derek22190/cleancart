@@ -62,6 +62,9 @@ class OverlayWindowService : Service() {
         const val ACTION_SYNC_CART = "com.cleancart.overlay.SYNC_CART"
         const val ACTION_HIDE = "com.cleancart.overlay.HIDE"
         const val ACTION_RESET_HIDDEN = "com.cleancart.overlay.RESET_HIDDEN"
+        const val ACTION_SHOW_SETUP_GUIDE = "com.cleancart.overlay.SHOW_SETUP_GUIDE"
+        const val ACTION_HIDE_SETUP_GUIDE = "com.cleancart.overlay.HIDE_SETUP_GUIDE"
+        const val EXTRA_SETUP_STEP = "setup_step"
         const val EXTRA_JSON = "json"
         const val EXTRA_TITLE = "title"
         const val EXTRA_IN_CART = "in_cart"
@@ -106,6 +109,7 @@ class OverlayWindowService : Service() {
     private var pillDotView: View? = null
     private var hideTarget: View? = null
     private var card: View? = null
+    private var setupGuideView: View? = null
     private var pillParams: WindowManager.LayoutParams? = null
     private var pillY = 0
     private var data: JSONObject? = null
@@ -187,6 +191,14 @@ class OverlayWindowService : Service() {
         when (intent?.action) {
             ACTION_RESET_HIDDEN -> {
                 hiddenForCurrentScreen = false
+                removeSetupGuide()
+            }
+            ACTION_SHOW_SETUP_GUIDE -> {
+                val step = intent.getStringExtra(EXTRA_SETUP_STEP) ?: "2A"
+                showSetupGuide(step)
+            }
+            ACTION_HIDE_SETUP_GUIDE -> {
+                removeSetupGuide()
             }
             ACTION_LOADING -> {
                 isTestMode = false
@@ -275,6 +287,7 @@ class OverlayWindowService : Service() {
 
     override fun onDestroy() {
         climbAnimator?.cancel()
+        removeSetupGuide()
         removeCard()
         removeHideTarget()
         removePill()
@@ -1330,6 +1343,156 @@ class OverlayWindowService : Service() {
     }
 
     /* ---------------- Helpers ---------------- */
+
+    private fun removeSetupGuide() {
+        setupGuideView?.let { runCatching { wm.removeView(it) } }
+        setupGuideView = null
+    }
+
+    /**
+     * Floating bottom helper card shown on top of Android Settings during Step 2 (2A -> 2B -> 2C)
+     * so sideloaded APK users never open App Info before tapping the greyed-out HeyBroc in Installed apps,
+     * and can jump between Installed apps and App Info (⋮ 3 dots) in a single tap.
+     */
+    private fun showSetupGuide(step: String) {
+        removeSetupGuide()
+        val bannerW = (resources.displayMetrics.widthPixels * 0.92f).toInt()
+        val banner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(0xFF15201B.toInt())
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(2), 0xFF16A34A.toInt())
+            }
+            elevation = dp(14).toFloat()
+        }
+
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val stepTitle = when (step) {
+            "2B" -> "⚡ HEYBROC SETUP · STEP 2B OF 3"
+            "2C" -> "⚡ HEYBROC SETUP · FINAL STEP (2C)"
+            else -> "⚡ HEYBROC SETUP · STEP 2A OF 3"
+        }
+        headerRow.addView(text(stepTitle, 11f, 0xFF4ADE80.toInt(), bold = true).apply {
+            letterSpacing = 0.06f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        headerRow.addView(text("✕", 14f, 0xFF9CA3AF.toInt(), bold = true).apply {
+            setPadding(dp(8), dp(2), dp(4), dp(2))
+            setOnClickListener { removeSetupGuide() }
+        })
+        banner.addView(headerRow)
+
+        when (step) {
+            "2A" -> {
+                banner.addView(text(
+                    "1) Tap \"Installed apps\" → tap the greyed-out \"HeyBroc\" once (then tap OK).",
+                    13f, Color.WHITE, bold = true
+                ).apply { setPadding(0, dp(4), 0, dp(2)) })
+                banner.addView(text(
+                    "Why? Android hides the ⋮ 3-dot button in App Info until you tap the greyed-out HeyBroc first!",
+                    11.5f, 0xFFFDE047.toInt()
+                ).apply { setPadding(0, 0, 0, dp(8)) })
+                banner.addView(text("Done? Open App Info (for ⋮ 3 Dots) →", 13f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    setOnClickListener {
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        showSetupGuide("2B")
+                    }
+                })
+            }
+            "2B" -> {
+                banner.addView(text(
+                    "2) Look at the top-right corner ↑ Tap ⋮ (3 dots) → \"Allow restricted settings\".",
+                    13f, Color.WHITE, bold = true
+                ).apply { setPadding(0, dp(4), 0, dp(2)) })
+                banner.addView(text(
+                    "Don't see ⋮ in the top-right? You must tap the greyed-out HeyBroc in Installed apps first!",
+                    11.5f, 0xFFFDE047.toInt()
+                ).apply { setPadding(0, 0, 0, dp(8)) })
+                banner.addView(text("Unlocked? Back to Accessibility →", 13f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    setOnClickListener {
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        showSetupGuide("2C")
+                    }
+                })
+                banner.addView(text("← No ⋮ 3 dots showing? Tap here to go click greyed-out HeyBroc first", 11.5f, 0xFF93C5FD.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(8), 0, dp(2))
+                    setOnClickListener {
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        showSetupGuide("2A")
+                    }
+                })
+            }
+            "2C" -> {
+                banner.addView(text(
+                    "3) Tap \"Installed apps\" → \"HeyBroc\" → flip the switch ON!",
+                    13.5f, Color.WHITE, bold = true
+                ).apply { setPadding(0, dp(4), 0, dp(4)) })
+                banner.addView(text(
+                    "This helper disappears automatically as soon as HeyBroc is turned ON.",
+                    11.5f, 0xFF86EFAC.toInt()
+                ).apply { setPadding(0, 0, 0, dp(6)) })
+                banner.addView(text("Still says Restricted? Tap to open App Info (⋮ 3 Dots) ↗", 11.5f, 0xFFFDE047.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(4), 0, dp(2))
+                    setOnClickListener {
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        showSetupGuide("2B")
+                    }
+                })
+            }
+        }
+
+        val lp = WindowManager.LayoutParams(
+            bannerW,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dp(64)
+        }
+        setupGuideView = banner
+        runCatching { wm.addView(banner, lp) }
+    }
 
     private fun dp(v: Int): Int = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
 
