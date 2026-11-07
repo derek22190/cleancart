@@ -403,6 +403,71 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     patterns: ["carmine", "cochineal( extract)?", "e ?120"],
     explanation: "An insect-derived red pigment that can trigger allergic reactions in sensitive individuals.",
   },
+  {
+    id: "quats", name: "Quaternary Ammonium Compounds (Quats)", risk: "high", category: "preservatives",
+    patterns: ["quaternary ammonium", "alkyl[a-z0-9 ]*dimethyl[a-z0-9 ]*ammonium chloride", "benzalkonium chloride", "didecyldimethylammonium chloride"],
+    explanation: "Harsh chemical disinfectant ('Quats') linked to asthma, airway irritation, skin sensitization, and indoor surface residue.",
+  },
+  {
+    id: "sles", name: "Sodium Laureth Sulfate (Ethoxylated)", risk: "high", category: "emulsifiers",
+    patterns: ["sodium laureth sulfate", "linear alkylbenzene sulfonate"],
+    explanation: "Ethoxylated surfactant that can carry trace 1,4-dioxane (a probable carcinogen) and harsh skin/respiratory irritants.",
+  },
+  {
+    id: "mit", name: "Methylisothiazolinone (MIT)", risk: "high", category: "preservatives",
+    patterns: ["methylisothiazolinone", "methylchloroisothiazolinone", "benzisothiazolinone"],
+    explanation: "High-risk synthetic biocide and potent contact allergen linked to severe skin sensitization and dermatitis.",
+  },
+  {
+    id: "parabens", name: "Parabens (Endocrine Disruptor)", risk: "high", category: "preservatives",
+    patterns: ["methylparaben", "propylparaben", "butylparaben", "ethylparaben", "isobutylparaben"],
+    explanation: "Synthetic cosmetic preservatives shown to mimic estrogen and disrupt hormone signaling.",
+  },
+  {
+    id: "chem_sunscreen", name: "Chemical UV Filters (Oxybenzone / Homosalate)", risk: "high", category: "other",
+    patterns: ["oxybenzone", "octinoxate", "homosalate", "octocrylene", "avobenzone"],
+    explanation: "Chemical sunscreen filters that absorb through skin into the bloodstream and are linked to hormone disruption.",
+  },
+  {
+    id: "formaldehyde_releaser", name: "DMDM Hydantoin (Formaldehyde Releaser)", risk: "high", category: "preservatives",
+    patterns: ["dmdm hydantoin", "imidazolidinyl urea", "diazolidinyl urea", "quaternium 15", "bronopol"],
+    explanation: "Preservative that slowly releases formaldehyde, a known human carcinogen and scalp/skin sensitizer.",
+  },
+  {
+    id: "triclosan", name: "Triclosan / Synthetic Antibacterial", risk: "high", category: "preservatives",
+    patterns: ["triclosan", "triclocarban", "chlorhexidine"],
+    explanation: "Halogenated antibacterial agent linked to thyroid hormone disruption and antibiotic resistance.",
+  },
+  {
+    id: "synfragrance", name: "Synthetic Fragrance / Parfum", risk: "moderate", category: "flavors",
+    patterns: ["synthetic (lemon )?fragrance", "parfum"],
+    explanation: "Undisclosed chemical scent mixture and solvent carriers that can trigger allergies, migraines, and airway irritation.",
+  },
+  {
+    id: "opticalbrightener", name: "Optical Brighteners", risk: "moderate", category: "dyes",
+    patterns: ["optical brighteners?", "disodium distyrylbiphenyl disulfonate"],
+    explanation: "Synthetic UV-reflecting chemical dyes designed to remain bound to fabric against skin; non-biodegradable.",
+  },
+  {
+    id: "aluminum_salts", name: "Aluminum Zirconium / Chlorohydrate", risk: "moderate", category: "other",
+    patterns: ["aluminum zirconium[a-z0-9 ]*", "aluminum chlorohydrate", "aluminum sesquichlorohydrate"],
+    explanation: "Synthetic aluminum salts used in antiperspirants to plug sweat ducts.",
+  },
+  {
+    id: "wetstrengthresin", name: "Bleached Pulp & Wet-Strength Resin", risk: "low", category: "other",
+    patterns: ["wet strength polyamide epichlorohydrin resin", "elemental chlorine free bleached"],
+    explanation: "Conventional virgin wood pulp treated with chlorine-derivative bleaching and synthetic wet-strength binder resins.",
+  },
+  {
+    id: "phenoxyethanol", name: "Phenoxyethanol", risk: "low", category: "preservatives",
+    patterns: ["phenoxyethanol"],
+    explanation: "Synthetic glycol-ether preservative used in cosmetics, lotions, and wipes; restricted in infant products in the EU.",
+  },
+  {
+    id: "petrolatum_peg", name: "Petrolatum / Mineral Oil / Dimethicone", risk: "low", category: "emulsifiers",
+    patterns: ["petrolatum", "mineral oil", "paraffinum liquidum", "dimethicone", "cocamidopropyl betaine"],
+    explanation: "Petroleum-derived occlusives, silicones, or synthetic foaming surfactants used in conventional personal care.",
+  },
 ];
 
 /* ------------------------------------------------------------------------ */
@@ -669,7 +734,7 @@ export function scoreProductYuka(
   const hasTop3AddedSugar = /\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing)\b/.test(top3);
 
   const NON_WHOLE_FOOD =
-    /\b(butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&

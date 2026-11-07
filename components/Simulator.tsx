@@ -1515,7 +1515,7 @@ export default function Simulator() {
                                 ? scanHistory.filter((h) => favorites.includes(h.product.key))
                                 : scanHistory
                               ).map(({ product: hp, timeLabel }) => {
-                                const hs = scoreIngredients(hp.ingredients, watch);
+                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch);
                                 return (
                                   <li key={hp.key}>
                                     <button
@@ -1551,7 +1551,7 @@ export default function Simulator() {
                           <div className="yuka-recs-grid">
                             {PRESETS.map((p) => {
                               const dirtyProd = presetToProduct(p);
-                              const dirtyScore = scoreIngredients(p.ingredients, watch);
+                              const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
                               const cleanProd = cleanToProduct(p.category);
                               return (
                                 <div key={p.id} className="yuka-rec-pair">
@@ -1678,8 +1678,8 @@ export default function Simulator() {
                             <input
                               value={query}
                               onChange={(e) => setQuery(e.target.value)}
-                              placeholder="Search 3M+ foods (e.g. Doritos, Oreos, Chobani)…"
-                              aria-label="Search any grocery product"
+                              placeholder="Search 7.5M+ food, cosmetic & household items…"
+                              aria-label="Search any grocery, cosmetic, or household product"
                             />
                             <button type="submit" disabled={liveState === "loading" || !query.trim()}>
                               {liveState === "loading" ? "…" : "Scan"}
@@ -1690,7 +1690,7 @@ export default function Simulator() {
                             <img src="/broc-mascot.jpg" alt="Broc" className="yuka-member-mascot" />
                             <span className="yuka-member-eyebrow">MEMBER ACCESS</span>
                             <h4>Search for any product</h4>
-                            <p>3 million+ grocery products scored 100% on ingredient quality via Open Food Facts &amp; USDA.</p>
+                            <p>7.5 million+ food, cosmetic, personal care &amp; household products scored 100% on ingredient &amp; chemical safety via Open Food Facts, Open Beauty Facts, Open Products Facts &amp; USDA.</p>
                             {!isPro && (
                               <button
                                 type="button"
