@@ -236,13 +236,16 @@ class GroceryScreenReaderService : AccessibilityService() {
             val nodes = stripSponsoredAdNodes(rawNodes)
             val ingredients = findIngredients(nodes)
 
-            // 1. Check if the user is viewing their actual Cart screen (e.g., Walmart Cart with "Continue to checkout" / "Estimated total")
+            // 1. Check if the user is viewing their actual Cart or Checkout screen (expanded OR collapsed under "See details")
             val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text) }
             val hasCartItemControls = nodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
             val isCartScreen = hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
                 it.text.contains("continue to checkout", ignoreCase = true) ||
                     it.text.contains("proceed to checkout", ignoreCase = true) ||
                     it.text.contains("estimated total", ignoreCase = true) ||
+                    it.text.contains("subtotal", ignoreCase = true) ||
+                    it.text.equals("checkout", ignoreCase = true) ||
+                    it.text.contains("choose substitution", ignoreCase = true) ||
                     it.text.contains("skip the order min fee", ignoreCase = true) ||
                     it.text.contains("delivery from store", ignoreCase = true) ||
                     it.text.contains("available for all items", ignoreCase = true)
@@ -312,6 +315,39 @@ class GroceryScreenReaderService : AccessibilityService() {
             val title = if (isSingleProductPage) findTitle(primaryNodes) else null
 
             if (!isSingleProductPage || title == null) {
+                // If the user added items to cart directly on a Search Results aisle (which renders "1 in cart - <Product>"),
+                // sync those added items into Cart Check immediately even before they open the Cart screen.
+                val aisleInCartRe = Regex("""(?i)^\d+\s+in\s+(?:cart|bag|basket|order)\s*[-–—:,]\s*(.+)$""")
+                val aisleAddedTitles = nodes.mapNotNull { n ->
+                    aisleInCartRe.find(n.text.trim())?.groupValues?.getOrNull(1)?.let { cleanTitleCandidate(it) }
+                }.filter { isCandidateProductTitle(it) }.distinct()
+
+                if (aisleAddedTitles.isNotEmpty()) {
+                    val aisleCartKey = "$pkg|AISLE_CART|${aisleAddedTitles.joinToString("|")}"
+                    if (lastKey != aisleCartKey) {
+                        lastKey = aisleCartKey
+                        markVisible()
+                        val store = ScanApi.storeForPackage(pkg)
+                        val appContext = applicationContext
+                        io.execute {
+                            val arr = org.json.JSONArray()
+                            for (itemTitle in aisleAddedTitles) {
+                                val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
+                                if (json != null) arr.put(json)
+                            }
+                            handler.post {
+                                if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
+                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                        putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                        putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return
+                }
+
                 val idleKey = "$pkg|IDLE_CART_AVG"
                 if (lastKey != idleKey) {
                     lastKey = idleKey
@@ -418,7 +454,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     if (prevIdx < 0) break
                     val prev = nodes[prevIdx].text.trim()
                     if (prev.startsWith("Search", ignoreCase = true) || PRICE_PATTERN.matches(prev)) break
-                    if (! SINGLE_PDP_CTA.containsMatchIn(prev)) {
+                    if (!SINGLE_PDP_CTA.containsMatchIn(prev)) {
                         dropIndices.add(prevIdx)
                     }
                 }
@@ -437,9 +473,10 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun cleanTitleCandidate(raw: String): String {
         var s = raw.replace(WHITESPACE, " ").trim()
-        // Strip leading/embedded favorite/badge prefixes from compound container contentDescriptions
+        // Strip leading/embedded favorite/badge/quantity prefixes from compound container contentDescriptions
         s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(best seller|overall pick|popular pick|rollback|sponsored|save for later)\s*[,•|\-]?\s*"""), "")
+        s = s.replace(Regex("""(?i)^(quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*"""), "")
         // Strip trailing ratings, review counts, image carousel counters, and prices
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(rated\s+)?\d+(\.\d+)?\s*out of\s*5(\s*stars?)?.*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d[\d,]*\s*(reviews?|ratings?).*$"""), "")

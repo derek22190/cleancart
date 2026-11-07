@@ -75,8 +75,9 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
 
   // Reject store cart-control accessibility labels ("Remove Hood Vanilla Eggnog...", "Decrease quantity, ...",
   // "1 in cart - ...", "Increase quantity, ...", "Reserve a time") so Cart Check only lists each product once.
+  // Note: "Quantity 1, <Product>" is Walmart's collapsed-cart / checkout item label and is stripped below, NOT rejected.
   const CART_CONTROL_OR_UI_NOISE =
-    /^(?:remove\s+.+|delete\s+.+|save\s+for\s+later(?:\s+.+)?|move\s+to\s+cart(?:\s+.+)?|(?:increase|decrease)\s+quantity\b.*|\d+\s+in\s+(?:cart|bag|basket|order)\b.*|quantity\s*:?\s*\d+.*|reserve\s+a\s+time.*|choose\s+a\s+time.*|select\s+a\s+time.*|book\s+a\s+time.*|hide\s+details.*|show\s+details.*|view\s+details.*|don'?t\s+forget.*|delivery\s+from\s+store.*|pickup\s+from\s+store.*|free\s+\d+-day\s+returns.*|add\s+\$\d+.*|skip\s+the\s+order\s+min\s+fee.*|bought\s+\d+\s+times.*)$/i;
+    /^(?:remove\s+.+|delete\s+.+|save\s+for\s+later(?:\s+.+)?|move\s+to\s+cart(?:\s+.+)?|(?:increase|decrease)\s+quantity\b.*|\d+\s+in\s+(?:cart|bag|basket|order)\b.*|reserve\s+a\s+time.*|choose\s+a\s+time.*|select\s+a\s+time.*|book\s+a\s+time.*|hide\s+details.*|show\s+details.*|view\s+details.*|see\s+details.*|don'?t\s+forget.*|delivery\s+from\s+store.*|pickup\s+from\s+store.*|free\s+\d+-day\s+returns.*|add\s+\$\d+.*|skip\s+the\s+order\s+min\s+fee.*|bought\s+\d+\s+times.*|choose\s+substitution.*|say\s+thanks\s+with\s+a\s+tip.*)$/i;
   if (!rawIngredients && !barcode && CART_CONTROL_OR_UI_NOISE.test(rawTitleInput)) {
     return { ok: false, status: 422, error: "Store UI control or duplicate cart action label ignored." };
   }
@@ -84,6 +85,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const productTitle = rawTitleInput
     .replace(/^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*/i, "")
     .replace(/^(best seller|overall pick|popular pick|rollback|sponsored|save for later)\s*[,•|\-]?\s*/i, "")
+    .replace(/^(?:quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*/i, "")
     .trim();
 
   if (!productTitle && !rawIngredients && !barcode) {
