@@ -218,6 +218,7 @@ class OverlayWindowService : Service() {
                 if (incoming?.optBoolean("ok") == true) {
                     data = incoming
                     isCartAvgMode = false
+                    runCatching { ScanHistoryStore.recordScan(this, incoming, currentStoreKey) }
                     if (intent.getBooleanExtra(EXTRA_IN_CART, false)) {
                         recordScannedItem(data)
                     }
@@ -908,6 +909,7 @@ class OverlayWindowService : Service() {
 
         // Compact Header
         val cartAvgBadge = if (tripCart.isEmpty()) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG ${calcCartAvg()}/100"
+        val prodTitle = d.optJSONObject("product")?.optString("title").orEmpty()
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -922,6 +924,19 @@ class OverlayWindowService : Service() {
                 addView(text("Product Analysis", 17f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
+            if (prodTitle.isNotBlank()) {
+                val favInit = ScanHistoryStore.isFavorite(this@OverlayWindowService, prodTitle)
+                addView(text(if (favInit) "♥" else "♡", 17f, if (favInit) 0xFFDC2626.toInt() else INK_2, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
+                    layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(6) }
+                    setOnClickListener {
+                        val nowFav = ScanHistoryStore.toggleFavorite(this@OverlayWindowService, d)
+                        this.text = if (nowFav) "♥" else "♡"
+                        this.setTextColor(if (nowFav) 0xFFDC2626.toInt() else INK_2)
+                    }
+                })
+            }
             addView(text("×", 20f, INK_2).apply {
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
@@ -929,7 +944,6 @@ class OverlayWindowService : Service() {
                 setOnClickListener { removeCard(); showPill() }
             })
         })
-        val prodTitle = d.optJSONObject("product")?.optString("title").orEmpty()
         if (prodTitle.isNotBlank()) {
             sheet.addView(text(prodTitle, 12f, INK_2).apply {
                 maxLines = 1
