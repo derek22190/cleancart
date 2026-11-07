@@ -9,10 +9,20 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <main style={{ maxWidth: 780, margin: "0 auto", padding: "48px 20px", fontFamily: "system-ui, sans-serif", lineHeight: 1.65, color: "#15201B" }}>
-      <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0F7A4A", margin: 0 }}>
-        HeyBroc · Privacy &amp; Google Play Compliance
-      </p>
-      <h1 style={{ fontSize: 32, margin: "8px 0 16px" }}>Privacy Policy &amp; Accessibility Data Disclosure</h1>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/broc-mascot.jpg"
+          alt="HeyBroc mascot"
+          style={{ width: 52, height: 52, borderRadius: 14, objectFit: "contain", background: "#fff", border: "1.5px solid rgba(15, 122, 74, 0.25)" }}
+        />
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0F7A4A", margin: 0 }}>
+            HeyBroc · Privacy &amp; Google Play Compliance
+          </p>
+          <h1 style={{ fontSize: 28, margin: "4px 0 0" }}>Privacy Policy &amp; Accessibility Data Disclosure</h1>
+        </div>
+      </div>
       <p style={{ color: "#4A5550" }}>
         <strong>Effective Date:</strong> November 6, 2026 &nbsp;·&nbsp; <strong>Service:</strong> HeyBroc (heybroc.com)
       </p>

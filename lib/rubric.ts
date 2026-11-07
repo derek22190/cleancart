@@ -72,7 +72,7 @@ export interface FlaggedAdditive {
   penalty: number;
   explanation: string;
   /** The normalized text fragment that triggered the match. */
-  matched: string;
+  matched?: string;
 }
 
 export interface ScoreResult {

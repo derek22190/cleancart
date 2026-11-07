@@ -160,9 +160,13 @@ export default function InfluencerEngine({
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Influencer Affiliate Engine" onClick={onClose}>
       <div className="modal-card influencer-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div>
-            <span className="eyebrow eyebrow--green">Influencer Affiliate Tracker &amp; 1,000-Creator Math</span>
-            <h2>Influencer Engine</h2>
+          <div className="yuka-topbar-left">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <div>
+              <span className="eyebrow eyebrow--green">Influencer Affiliate Tracker &amp; 1,000-Creator Math</span>
+              <h2>Influencer Engine</h2>
+            </div>
           </div>
           <button className="close" onClick={onClose} aria-label="Close Influencer Engine">×</button>
         </div>

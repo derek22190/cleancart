@@ -603,6 +603,11 @@ class OverlayWindowService : Service() {
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            addView(android.widget.ImageView(context).apply {
+                setImageResource(R.drawable.broc_mascot)
+                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginEnd = dp(10) }
+            })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 val itemCountLabel = if (tripCart.size == 1) "1 ITEM" else "${tripCart.size} ITEMS"
@@ -780,6 +785,11 @@ class OverlayWindowService : Service() {
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            addView(android.widget.ImageView(context).apply {
+                setImageResource(R.drawable.broc_mascot)
+                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginEnd = dp(10) }
+            })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text(cartAvgBadge, 11f, INK_3, bold = true).apply { letterSpacing = 0.08f })

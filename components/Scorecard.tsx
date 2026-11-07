@@ -151,13 +151,26 @@ export default function Scorecard({
     roundRect(ctx, 84, H - 210, W - 168, 130, 28);
     ctx.fill();
 
+    const mascotEl = document.querySelector<HTMLImageElement>('img[src="/broc-mascot.jpg"]');
+    let textX = 120;
+    if (mascotEl && mascotEl.complete && mascotEl.naturalWidth > 0) {
+      ctx.save();
+      roundRect(ctx, 110, H - 191, 92, 92, 20);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.clip();
+      ctx.drawImage(mascotEl, 110, H - 191, 92, 92);
+      ctx.restore();
+      textX = 224;
+    }
+
     ctx.fillStyle = "#ffffff";
     ctx.font = `900 36px ${font}`;
-    ctx.fillText("HeyBroc · heybroc.com", 120, H - 150);
+    ctx.fillText("HeyBroc · heybroc.com", textX, H - 150);
 
     ctx.fillStyle = "#86efac";
     ctx.font = `700 28px ${font}`;
-    ctx.fillText(`7-Day Free Trial Code: ${activeCode}`, 120, H - 105);
+    ctx.fillText(`7-Day Free Trial Code: ${activeCode}`, textX, H - 105);
 
     const a = document.createElement("a");
     a.download = `heybroc-${store}-scorecard-${cartAvg}.png`;
@@ -169,9 +182,13 @@ export default function Scorecard({
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="9:16 Clean Haul Scorecard" onClick={onClose}>
       <div className="modal-card scorecard-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div>
-            <span className="eyebrow eyebrow--green">9:16 Viral TikTok / IG Story Generator</span>
-            <h2>Clean Haul Scorecard</h2>
+          <div className="yuka-topbar-left">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <div>
+              <span className="eyebrow eyebrow--green">9:16 Viral TikTok / IG Story Generator</span>
+              <h2>Clean Haul Scorecard</h2>
+            </div>
           </div>
           <button className="close" onClick={onClose} aria-label="Close scorecard">×</button>
         </div>
@@ -234,9 +251,13 @@ export default function Scorecard({
             </div>
 
             <div className="story-watermark">
-              <div>
-                <strong>HeyBroc · heybroc.com</strong>
-                <span>Scan &amp; swap dirty groceries in 1 tap</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/broc-mascot.jpg" alt="Broc" className="story-watermark-mascot" />
+                <div>
+                  <strong>HeyBroc · heybroc.com</strong>
+                  <span>Scan &amp; swap dirty groceries in 1 tap</span>
+                </div>
               </div>
               <div className="story-code-badge">
                 <small>7-DAY FREE TRIAL CODE</small>

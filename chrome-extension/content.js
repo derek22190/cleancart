@@ -161,6 +161,7 @@
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = chrome.runtime.getURL("overlay.css");
+  const mascotUrl = chrome.runtime.getURL("broc-mascot.png");
   const root = document.createElement("div");
   root.className = "cc-root";
   shadow.append(link, root);
@@ -195,7 +196,7 @@
       root.innerHTML = `<div class="cc-backdrop" data-act="collapse">
         <div class="cc-card ${avgTone}" role="dialog" aria-label="Whole-Cart Auditor">
           <div class="cc-head">
-            <div><span class="cc-eyebrow">CleanCart · Whole-Cart MCP Auditor</span><h3>Cart Average: ${avg}/100</h3></div>
+            <div class="cc-head-left"><img class="cc-head-mascot" src="${mascotUrl}" alt="Broc" /><div><span class="cc-eyebrow">HeyBroc · Whole-Cart Health Check</span><h3>Cart Average: ${avg}/100</h3></div></div>
             <button class="cc-close" data-act="collapse">×</button>
           </div>
           <ul class="cc-audit-list">${rows}</ul>
@@ -208,7 +209,7 @@
     // Mode B: Idle / Search Scroll View -> Cart Avg Floating Bubble
     if (state.mode === "cart_avg") {
       root.innerHTML = `<div class="cc-pill ${avgTone}" style="top:${state.y}%" role="button" tabindex="0" data-act="open-auditor">
-          <span class="cc-dot"></span><span>🛒 Cart Avg:</span><b>${avg}/100</b>
+          <img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><span>🛒 Cart Avg:</span><b>${avg}/100</b>
         </div>${hideDropHtml}`;
       bindPillDrag(root.querySelector(".cc-pill"), "auditor");
       return;
@@ -218,14 +219,14 @@
     const d = state.data;
     if (!d) { root.innerHTML = ""; return; }
     if (!d.ok) {
-      root.innerHTML = `<div class="cc-pill cc-tone-gray" style="top:${state.y}%"><span class="cc-dot"></span><span>${esc(d.error)}</span></div>`;
+      root.innerHTML = `<div class="cc-pill cc-tone-gray" style="top:${state.y}%"><img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><span>${esc(d.error)}</span></div>`;
       return;
     }
     const r = d.result;
     const tone = `cc-tone-${r.color}`;
     if (!state.expanded) {
       root.innerHTML = `<div class="cc-pill ${tone}" style="top:${state.y}%" role="button" tabindex="0" data-act="expand">
-          <span class="cc-dot"></span><b>${r.score}/100</b><span class="cc-sep">•</span><span>Tap to Inspect</span>
+          <img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><b>${r.score}/100</b><span class="cc-sep">•</span><span>Tap to Inspect</span>
         </div>${hideDropHtml}`;
       bindPillDrag(root.querySelector(".cc-pill"), "product");
       return;
@@ -243,7 +244,7 @@
 
     root.innerHTML = `<div class="cc-backdrop" data-act="collapse">
       <div class="cc-card ${tone}" role="dialog" aria-label="Health Insights">
-        <div class="cc-head"><div><span class="cc-eyebrow">CleanCart</span><h3>Health Insights</h3></div><button class="cc-close" data-act="collapse">×</button></div>
+        <div class="cc-head"><div class="cc-head-left"><img class="cc-head-mascot" src="${mascotUrl}" alt="Broc" /><div><span class="cc-eyebrow">HeyBroc</span><h3>Health Insights</h3></div></div><button class="cc-close" data-act="collapse">×</button></div>
         <p class="cc-product">${esc(d.product.title)}</p>
         <div class="cc-body">
           <div class="cc-gauge"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="cc-track"/><circle cx="50" cy="50" r="44" class="cc-fill" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - r.score / 100)}" transform="rotate(-90 50 50)"/></svg>

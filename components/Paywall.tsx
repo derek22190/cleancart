@@ -176,11 +176,15 @@ export default function Paywall({
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="HeyBroc Family Pro" onClick={onClose}>
       <div className="modal-card paywall-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <div>
-            <span className="eyebrow eyebrow--green">
-              {scanCount >= freeScanLimit ? `Free Scan Limit Reached (${scanCount}/${freeScanLimit})` : "HeyBroc Family Pro · Upgrade"}
-            </span>
-            <h2>Unlimited Live Store Overlays, 1-Tap Clean Swaps &amp; Whole-Cart Health Checks.</h2>
+          <div className="yuka-topbar-left">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <div>
+              <span className="eyebrow eyebrow--green">
+                {scanCount >= freeScanLimit ? `Free Scan Limit Reached (${scanCount}/${freeScanLimit})` : "HeyBroc Family Pro · Upgrade"}
+              </span>
+              <h2>Unlimited Live Store Overlays, 1-Tap Clean Swaps &amp; Whole-Cart Health Checks.</h2>
+            </div>
           </div>
           <button className="close" onClick={onClose} aria-label="Close paywall">×</button>
         </div>

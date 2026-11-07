@@ -1771,9 +1771,13 @@ export default function Simulator() {
                   <div className="sheet" onClick={(e) => e.stopPropagation()}>
                     <div className="sheet-grip" />
                     <div className="insights-head">
-                      <div>
-                        <span className="eyebrow">{auditOpen ? "HeyBroc · Whole-Cart Health Check" : STORE_META[store].label}</span>
-                        <h3>{auditOpen ? "Cart Health Check" : "Your cart"}</h3>
+                      <div className="yuka-topbar-left">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+                        <div>
+                          <span className="eyebrow">{auditOpen ? "HeyBroc · Whole-Cart Health Check" : STORE_META[store].label}</span>
+                          <h3>{auditOpen ? "Cart Health Check" : "Your cart"}</h3>
+                        </div>
                       </div>
                       <button className="close" onClick={() => { setCartOpen(false); setAuditOpen(false); }} aria-label="Close">×</button>
                     </div>
