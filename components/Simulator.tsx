@@ -13,6 +13,7 @@ import {
 import { PRESETS } from "@/lib/presets";
 import {
   CLEAN_ALTERNATIVES,
+  DIRTY_FALLBACK_IMAGES,
   STORE_META,
   STORES,
   detectCategory,
@@ -647,6 +648,8 @@ export default function Simulator() {
           return;
         }
         const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
+        const liveScore = data.result?.score ?? scoreIngredients(data.product.ingredients, watch).score;
+        const fallbackImg = liveScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
         const p: Product = {
           key: `live-${data.product.barcode || q}`,
           title:
@@ -655,7 +658,7 @@ export default function Simulator() {
               "",
             ) || data.product.title,
           brand: data.product.brand || "Open data",
-          image: data.product.imageUrl || CLEAN_ALTERNATIVES[cat]?.image,
+          image: data.product.imageUrl || fallbackImg,
           ingredients: data.product.ingredients,
           category: cat,
           origin: "live",
@@ -829,15 +832,6 @@ export default function Simulator() {
         </div>
 
         <div className="topbar-actions">
-          <button
-            id="toggle-search-mode"
-            type="button"
-            className={`topbar-btn ${viewMode === "search" ? "is-active" : ""}`}
-            onClick={() => setViewMode((m) => (m === "product" ? "search" : "product"))}
-          >
-            {viewMode === "search" ? `🛒 Aisle View (${animatedCartAvg}/100)` : "🔍 Browse Store Aisle"}
-          </button>
-
           <button
             id="open-paywall"
             type="button"
@@ -1035,17 +1029,58 @@ export default function Simulator() {
           <div className="tool-row">
             <button id="open-auditor" className="tool" onClick={openAudit}>
               <span className="tool-icon">🛒</span>
-              <span><b>Whole-Cart Health Audit</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
+              <span><b>Whole-Cart Health Check</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
             </button>
             <button id="open-watchlist" className={`tool ${panel === "watchlist" ? "is-on" : ""}`} onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}>
               <span className="tool-icon">⚙︎</span>
-              <span><b>My Ingredient Watchlist</b><small>{disabledCount ? `${disabledCount} categor${disabledCount === 1 ? "y" : "ies"} ignored` : "All categories active"}</small></span>
+              <span><b>Settings &amp; Watchlist</b><small>{disabledCount ? `${disabledCount} categor${disabledCount === 1 ? "y" : "ies"} ignored` : "Bubble style & 9 categories"}</small></span>
             </button>
           </div>
 
           {panel === "watchlist" && (
             <div className="card watchlist">
-              <div className="card-head"><h2>Watchlist</h2><button className="link-btn" onClick={() => setWatch(DEFAULT_WATCHLIST)}>Reset</button></div>
+              <div className="card-head">
+                <h2>Floating Bubble Style</h2>
+              </div>
+              <div className="segmented segmented--two" style={{ marginBottom: 8 }}>
+                {(
+                  [
+                    { id: "dark", label: "⬛ Obsidian Dark" },
+                    { id: "green", label: "🥦 HeyBroc Green" },
+                    { id: "score", label: "🎨 Score Color" },
+                    { id: "white", label: "⬜ Crisp White" },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    id={`pill-theme-${t.id}`}
+                    type="button"
+                    className={pillTheme === t.id ? "is-on" : ""}
+                    onClick={() => setPillTheme(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="segmented segmented--two" style={{ marginBottom: 14 }}>
+                <button
+                  id="pill-size-standard"
+                  type="button"
+                  className={pillSize === "standard" ? "is-on" : ""}
+                  onClick={() => setPillSize("standard")}
+                >
+                  Standard Pill (35 / 100 · Poor)
+                </button>
+                <button
+                  id="pill-size-compact"
+                  type="button"
+                  className={pillSize === "compact" ? "is-on" : ""}
+                  onClick={() => setPillSize("compact")}
+                >
+                  Compact Badge (35/100)
+                </button>
+              </div>
+              <div className="card-head"><h2>Chemical Watchlist</h2><button className="link-btn" onClick={() => setWatch(DEFAULT_WATCHLIST)}>Reset</button></div>
               <ul>
                 {ALL_CATEGORIES.map((c) => (
                   <li key={c}>

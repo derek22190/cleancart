@@ -393,6 +393,11 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     patterns: ["citric acid", "e ?330"],
     explanation: "Manufactured citric acid is commonly produced by fermentation and is used to add tartness or preserve shelf life.",
   },
+  {
+    id: "carmine", name: "Carmine", risk: "low", category: "dyes",
+    patterns: ["carmine", "cochineal( extract)?", "e ?120"],
+    explanation: "An insect-derived red pigment that can trigger allergic reactions in sensitive individuals.",
+  },
 ];
 
 /* ------------------------------------------------------------------------ */
@@ -590,10 +595,10 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
 }
 
 /**
- * Yuka-Exact 3-Pillar Scoring System (0–100):
- *  - 60% Nutritional Quality (0–60 pts, computed via official Nutri-Score A–E per 100g)
- *  - 30% Additives (0–30 pts + hard cap at 49/100 whenever any High-Risk additive is present)
- *  - 10% Organic / 100% Whole-Food Bonus (0 or 10 pts)
+ * Yuka 3-Pillar Breakdown + Deterministic Additive Rubric (0–100):
+ *  - Preserves exact deterministic chemical additive scoring (scoreIngredients) across web, API, and Android.
+ *  - Computes Yuka's 3-pillar breakdown (60% Nutrition, 30% Additives, 10% Organic/Whole-Food)
+ *    and applies nutritional deductions when ultra-processed sugary/bakery items have Nutri-Score E.
  */
 export function scoreProductYuka(
   rawIngredients: string,
@@ -603,11 +608,16 @@ export function scoreProductYuka(
 ): ScoreResult {
   const base = scoreIngredients(rawIngredients, watchlist, familyWatchlist);
   const titleAndIng = `${nutrition.productTitle || ""} ${rawIngredients}`;
+  const clauses = rawIngredients.toLowerCase().split(/[,;]/).map((c) => c.trim()).filter(Boolean);
+  const top3 = clauses.slice(0, 3).join(" ");
+  const hasTop3AddedSugar = /\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing)\b/.test(top3);
 
   const isWholeFood =
-    Boolean(nutrition.isWholeFood) ||
-    /100% pure whole food ingredient/i.test(rawIngredients) ||
-    /^(grade a (pasteurized )?milk(\s*,\s*vitamin d3)?|cultured (pasteurized )?(grade a )?(nonfat |whole |lowfat )?milk.*|100% (pure|organic).*)$/i.test(rawIngredients.trim());
+    base.flagged.length === 0 &&
+    !hasTop3AddedSugar &&
+    (Boolean(nutrition.isWholeFood) ||
+      /100% pure whole food ingredient|^whole food:/i.test(rawIngredients) ||
+      nutrition.nutriScoreGrade !== "e");
 
   const isOrganic =
     Boolean(nutrition.isOrganic) ||
@@ -642,7 +652,6 @@ export function scoreProductYuka(
     nutriGrade = nutrition.nutriScoreGrade.toUpperCase() as "A" | "B" | "C" | "D" | "E";
   }
 
-  // Convert Nutri-Score (-15..40) into Yuka's 60-point Nutritional Quality pillar (0..60)
   let nutritionScore: number;
   if (isWholeFood) {
     nutritionScore = 60;
@@ -669,84 +678,29 @@ export function scoreProductYuka(
     nutritionScore = 2;
   }
 
-  // Pillar 2: Additives (30% weight -> 0..30 points)
   const hasHighRisk = base.flagged.some((f) => f.risk === "high");
   const seedOilHits = base.flagged.filter((f) => f.category === "seedOils");
   const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45));
   const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
-
-  // Pillar 3: Organic / 100% Whole-Food Bonus (10% weight -> 0 or 10 points)
   const organicScore = isOrganic || isWholeFood ? 10 : 0;
 
-  // Combine all 3 Yuka pillars (60 + 30 + 10 = 100)
-  let finalScore = Math.max(0, Math.min(100, nutritionScore + additiveScore + organicScore));
-
-  // Yuka High-Risk Additive Cap: any High-Risk (Red) additive or 2+ seed oils caps the total score at <= 49/100 (Poor)
+  // Keep chemical rubric score 100% consistent with scoreIngredients across web + API + Android,
+  // while enforcing the 3-Tier Fat Standard and capping sugary ultra-processed items (Nutri-Score D/E).
+  let finalScore = base.score;
   if (hasHighRisk || seedOilHits.length >= 2) {
-    const extraAdditiveDrag = Math.max(0, Math.round((base.totalPenalty - 35) * 0.35));
-    finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore - extraAdditiveDrag));
+    finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
     // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
     finalScore = Math.max(0, Math.min(59, finalScore));
   }
-
-  // Surface Yuka nutritional penalties inside flagged items so the user sees WHY a high-sugar/high-fat/high-sodium item lost points
-  const flaggedWithNutrition: FlaggedAdditive[] = [...base.flagged];
-  if (!isWholeFood) {
-    if (sugars >= 13.5) {
-      flaggedWithNutrition.push({
-        id: "yuka_sugar",
-        name: `High Sugar (${Math.round(sugars)}g / 100g)`,
-        risk: sugars >= 22.5 ? "high" : "moderate",
-        category: "hfcs",
-        penalty: nSug * 3,
-        explanation: "Yuka Nutritional Quality (60%): High sugar content spikes blood glucose and sharply lowers the Nutri-Score.",
-        matched: `${Math.round(sugars)}g sugar/100g`,
-      });
-    }
-    if (satFat >= 5) {
-      flaggedWithNutrition.push({
-        id: "yuka_satfat",
-        name: `High Saturated Fat (${satFat.toFixed(1)}g / 100g)`,
-        risk: satFat >= 8 ? "high" : "moderate",
-        category: "seedOils",
-        penalty: nSat * 2,
-        explanation: "Yuka Nutritional Quality (60%): Excess saturated fat lowers the product's Nutri-Score rating.",
-        matched: `${satFat.toFixed(1)}g sat fat/100g`,
-      });
-    }
-    if (kcal >= 360) {
-      flaggedWithNutrition.push({
-        id: "yuka_calories",
-        name: `High Calorie Density (${Math.round(kcal)} kcal / 100g)`,
-        risk: kcal >= 450 ? "moderate" : "low",
-        category: "hfcs",
-        penalty: nCal * 2,
-        explanation: "Yuka Nutritional Quality (60%): High energy density per 100g reduces the nutritional pillar score.",
-        matched: `${Math.round(kcal)} kcal/100g`,
-      });
-    }
-    if (sodium >= 450) {
-      flaggedWithNutrition.push({
-        id: "yuka_sodium",
-        name: `High Sodium (${Math.round(sodium)}mg / 100g)`,
-        risk: sodium >= 720 ? "high" : "moderate",
-        category: "preservatives",
-        penalty: nSod * 2,
-        explanation: "Yuka Nutritional Quality (60%): High sodium content deducts points in Yuka's 60% nutritional quality pillar.",
-        matched: `${Math.round(sodium)}mg sodium/100g`,
-      });
-    }
+  if (base.flagged.length === 0 && hasTop3AddedSugar && (nutriGrade === "D" || nutriGrade === "E")) {
+    finalScore = Math.min(finalScore, nutritionScore + additiveScore + organicScore);
   }
 
   return {
+    ...base,
     score: finalScore,
     ...ratingFor(finalScore),
-    flagged: flaggedWithNutrition,
-    ignored: base.ignored,
-    totalPenalty: 100 - finalScore,
-    normalizedIngredients: base.normalizedIngredients,
-    rubricVersion: RUBRIC_VERSION,
     yukaBreakdown: {
       nutritionScore,
       nutriScoreGrade: nutriGrade,

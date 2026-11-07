@@ -396,8 +396,15 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   );
   let best: UsdaFood | null = null;
   let bestScore = 0;
+  const PROCESSED_USDA_DESC = /\b(cookie|cookies|cracker|crackers|chip|chips|cereal|puffs|bar|bars|bread|bun|roll|cake|pie|pastry|donut|doughnut|bismark|muffin|waffle|pancake|candy|chocolate|gummy|gummies|soda|cola|pop|drink|beverage|dressing|mayo|mayonnaise|ketchup|sauce|sausage|hot dog|frankfurter|bologna|salami|pepperoni|bacon|nugget|pizza|fries|ice cream|yogurt|spread|dip|soup|ramen|noodle|macaroni|pretzel|popcorn|frosting|syrup|creamer|margarine)\b/i;
   for (const f of data?.foods || []) {
-    const ing = f.ingredients?.trim() || "";
+    const isTrueWholeFood =
+      (f.dataType === "Foundation" || f.dataType === "SR Legacy") &&
+      f.description &&
+      !PROCESSED_USDA_DESC.test(f.description);
+    const ing =
+      f.ingredients?.trim() ||
+      (isTrueWholeFood ? `Whole Food: ${f.description}` : "");
     if (!ing || !isEnglishIngredientText(ing)) continue;
     let r = 0;
     if (isBarcodeQuery) {
@@ -447,7 +454,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Freshness Guaranteed",
     title: "Bakery Donuts / Filled Bismarks",
     ingredients: "Enriched Wheat Flour Bleached (Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Fruit Filling (High Fructose Corn Syrup, Water, Raspberries, Modified Food Starch, Sugar, Citric Acid, Salt, Potassium Sorbate, Sodium Benzoate, Red 40, Blue 1, Artificial Flavor), Palm and/or Soybean Oil, Sugar, Dextrose, Contains 2% or Less of: Yeast, Soy Flour, Whey, Salt, Mono- and Diglycerides, Sodium Acid Pyrophosphate, Baking Soda, Sodium Stearoyl Lactylate, Soy Lecithin, Calcium Propionate, DATEM, Artificial Flavor, Yellow 5, Yellow 6, Titanium Dioxide (Color).",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
   },
   {
@@ -455,63 +462,63 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Doritos",
     title: "Nacho Cheese Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Artificial Color (Yellow 6, Yellow 5, Red 40), Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Disodium Inosinate, and Disodium Guanylate.",
-    imageUrl: "/swaps/chips.jpg",
+    imageUrl: "/products/chips.jpg",
   },
   {
     match: /\b(cheez[- ]?it)\b/i,
     brand: "Cheez-It",
     title: "Original Baked Snack Crackers",
     ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1, Vitamin B2, Folic Acid), Vegetable Oil (High Oleic Soybean, Soybean, Palm, and/or Canola Oil with TBHQ for Freshness), Cheese Made with Skim Milk (Skim Milk, Whey Protein, Salt, Cheese Cultures, Enzymes, Annatto Extract Color), Contains 2% or Less of Salt, Paprika, Yeast, Paprika Extract Color, Soy Lecithin.",
-    imageUrl: "/presets/crackers.jpg",
+    imageUrl: "/products/crackers.jpg",
   },
   {
     match: /\b(oreo|oreos)\b/i,
     brand: "OREO",
     title: "Chocolate Sandwich Cookies",
     ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm and/or Canola Oil, Cocoa (Processed with Alkali), High Fructose Corn Syrup, Leavening (Baking Soda and/or Calcium Phosphate), Salt, Soy Lecithin, Chocolate, Artificial Flavor.",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
   },
   {
     match: /\b(cheetos|flamin'? hot)\b/i,
     brand: "Cheetos",
     title: "Crunchy Cheese Flavored Snacks",
     ingredients: "Enriched Corn Meal (Corn Meal, Ferrous Sulfate, Niacin, Thiamin Mononitrate, Riboflavin, Folic Acid), Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Cheese Seasoning (Whey, Cheddar Cheese, Canola Oil, Maltodextrin, Natural and Artificial Flavors, Salt, Whey Protein Concentrate, Monosodium Glutamate, Lactic Acid, Citric Acid, Artificial Color [Yellow 6]), and Salt.",
-    imageUrl: "/swaps/chips.jpg",
+    imageUrl: "/products/chips.jpg",
   },
   {
     match: /\b(takis|fuego)\b/i,
     brand: "Takis",
     title: "Fuego Hot Chili Pepper & Lime Tortilla Chips",
     ingredients: "Corn Masa Flour, Vegetable Oil (Palm and/or Soybean and/or Canola Oil), Seasoning (Maltodextrin, Citric Acid, Sugar, Potassium Chloride, Salt, Monosodium Glutamate, Hydrolyzed Soy Protein, Natural and Artificial Flavors, Hydrolyzed Yeast, Soybean Oil, Onion Powder, Red 40 Lake, Yellow 6 Lake, Sodium Bicarbonate, Chili Pepper, Disodium Inosinate, Disodium Guanylate, TBHQ).",
-    imageUrl: "/swaps/chips.jpg",
+    imageUrl: "/products/chips.jpg",
   },
   {
     match: /\b(froot loops|fruit loops)\b/i,
     brand: "Kellogg's",
     title: "Froot Loops Sweetened Multigrain Cereal",
     ingredients: "Corn Flour Blend, Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6, BHT for Freshness.",
-    imageUrl: "/swaps/cereal.jpg",
+    imageUrl: "/products/cereal.jpg",
   },
   {
     match: /\b(lucky charms)\b/i,
     brand: "General Mills",
     title: "Lucky Charms Cereal with Marshmallows",
     ingredients: "Whole Grain Oats, Sugar, Whole Grain Corn, Corn Starch, Corn Syrup, Dextrose, Contains 2% or Less of: Salt, Modified Corn Starch, Gelatin, Trisodium Phosphate, Red 40, Yellow 5 & 6, Blue 1, Natural and Artificial Flavor.",
-    imageUrl: "/swaps/cereal.jpg",
+    imageUrl: "/products/cereal.jpg",
   },
   {
     match: /\b(cinnamon toast crunch)\b/i,
     brand: "General Mills",
     title: "Cinnamon Toast Crunch Cereal",
     ingredients: "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Caramel Color, BHT Added to Preserve Freshness.",
-    imageUrl: "/swaps/cereal.jpg",
+    imageUrl: "/products/cereal.jpg",
   },
   {
     match: /\bhoney nut cheerios\b/i,
     brand: "General Mills",
     title: "Honey Nut Cheerios Oats Cereal",
     ingredients: "Whole Grain Oats, Sugar, Corn Starch, Honey, Brown Sugar Syrup, Salt, Tripotassium Phosphate, Canola and/or Sunflower Oil, Natural Almond Flavor. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
-    imageUrl: "/swaps/cereal.jpg",
+    imageUrl: "/products/cereal.jpg",
   },
   {
     match: /^(?=.*\bcheerios\b)(?!.*\b(honey|frosted|chocolate|strawberry|berry|apple|cinnamon|multigrain|oat\s*crunch)\b).*$/i,
@@ -532,77 +539,77 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Yoplait",
     title: "Original Strawberry Lowfat Yogurt",
     ingredients: "Cultured Grade A Reduced Fat Milk, Sugar, Strawberries, Modified Corn Starch, High Fructose Corn Syrup, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
-    imageUrl: "/presets/yogurt.jpg",
+    imageUrl: "/products/yogurt.jpg",
   },
   {
     match: /\b(hidden valley)\b|(?<!primal kitchen |avocado oil |organic )\branch dressing\b/i,
     brand: "Hidden Valley",
     title: "Original Ranch Salad Dressing & Topping",
     ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
-    imageUrl: "/presets/ranch.jpg",
+    imageUrl: "/products/ranch.jpg",
   },
   {
     match: /\b(oscar mayer|lunchables|bologna|hot dog|hotdogs)\b/i,
     brand: "Oscar Mayer",
     title: "Oven Roasted Turkey Breast Deli Slices",
     ingredients: "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Sodium Lactate, Salt, Sugar, Sodium Phosphates, Carrageenan, Sodium Diacetate, Sodium Ascorbate, Sodium Nitrite, Natural and Artificial Flavor.",
-    imageUrl: "/presets/turkey.jpg",
+    imageUrl: "/products/turkey.jpg",
   },
   {
     match: /\b(gatorade|powerade|sports? drink)\b/i,
     brand: "Gatorade",
     title: "Thirst Quencher Fruit Punch Sports Drink",
     ingredients: "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
   },
   {
     match: /\b(coca[- ]?cola|coke|pepsi|dr pepper|mountain dew|mt dew|sprite)\b/i,
     brand: "Coca-Cola",
     title: "Classic Cola Soft Drink",
     ingredients: "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
   },
   {
     match: /\b(goldfish)\b/i,
     brand: "Pepperidge Farm",
     title: "Goldfish Cheddar Baked Snack Crackers",
     ingredients: "Made With Smiles And Enriched Wheat Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Cheddar Cheese (Cultured Milk, Salt, Enzymes, Annatto), Vegetable Oils (Canola, Sunflower And/Or Soybean), Salt, Contains 2% Or Less Of: Yeast, Sugar, Autolyzed Yeast Extract, Paprika, Spices, Celery, Onion Powder, Monocalcium Phosphate, Baking Soda.",
-    imageUrl: "/presets/crackers.jpg",
+    imageUrl: "/products/crackers.jpg",
   },
   {
     match: /\b(nutella)\b/i,
     brand: "Ferrero",
     title: "Nutella Hazelnut Spread with Cocoa",
     ingredients: "Sugar, Palm Oil, Hazelnuts, Skim Milk, Cocoa, Soy Lecithin as Emulsifier, Vanillin: An Artificial Flavor.",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
   },
   {
     match: /\b(jif|skippy)\b|(?<!organic |natural |smucker'?s |kirkland |just )\bpeanut butter\b/i,
     brand: "Jif",
     title: "Creamy Peanut Butter",
     ingredients: "Made From Roasted Peanuts And Sugar, Contains 2% Or Less Of: Molasses, Fully Hydrogenated Vegetable Oils (Rapeseed And Soybean), Mono And Diglycerides, Salt.",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
   },
   {
     match: /\b(heinz)\b|(?<!organic |primal kitchen |unsweetened )\bketchup\b/i,
     brand: "Heinz",
     title: "Tomato Ketchup",
     ingredients: "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
-    imageUrl: "/swaps/ranch.jpg",
+    imageUrl: "/products/ranch.jpg",
   },
   {
     match: /\b(hellmann'?s|best foods)\b|(?<!avocado oil |primal kitchen |chosen foods |organic )\bmayonnaise\b/i,
     brand: "Hellmann's",
     title: "Real Mayonnaise",
     ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors.",
-    imageUrl: "/swaps/ranch.jpg",
+    imageUrl: "/products/ranch.jpg",
   },
   {
     match: /\b(wonder bread|sara lee|white bread)\b|(?<!ezekiel |sprouted |dave'?s killer |organic |sourdough )\b(hamburger buns|hot dog buns)\b/i,
     brand: "Sara Lee",
     title: "Classic Soft White Bread",
     ingredients: "Enriched Wheat Flour, Water, Sugar, Yeast, Vegetable Oil (Soybean), Salt, Calcium Propionate (to Preserve Freshness), Monoglycerides, DATEM, Calcium Sulfate, Soy Lecithin.",
-    imageUrl: "/swaps/bread.jpg",
+    imageUrl: "/products/bread.jpg",
   },
   {
     match: /\b(annie'?s|organic|goodles)\b.*\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|shells\s*(and|&)\s*(white\s*)?cheddar)\b/i,
@@ -616,21 +623,21 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Clean Grocery Verified",
     title: "Original Macaroni & Cheese Dinner",
     ingredients: "Enriched Macaroni Product (Wheat Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Milk Protein Concentrate, Salt, Sodium Tripolyphosphate, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, Yellow 5, Yellow 6, Enzymes, Cheese Culture).",
-    imageUrl: "/swaps/snacks.jpg",
+    imageUrl: "/products/snacks.jpg",
   },
   {
     match: /\b(organic|alexandre|kalona|maple hill)\b.*\b(eggnog|egg nog)\b/i,
     brand: "Organic Valley",
     title: "Organic Eggnog",
     ingredients: "Organic Grade A Milk, Organic Grade A Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Nutmeg.",
-    imageUrl: "/presets/yogurt.jpg",
+    imageUrl: "/swaps/yogurt.jpg",
   },
   {
     match: /\b(eggnog|egg nog)\b/i,
     brand: "Hood",
     title: "Golden Vanilla Eggnog",
     ingredients: "Milk, Cream, Sugar, Nonfat Milk, Egg Yolks, High Fructose Corn Syrup, Whey, Natural and Artificial Flavor, Nutmeg, Carrageenan, Guar Gum, Mono and Diglycerides, Annatto and Turmeric (Color).",
-    imageUrl: "/presets/yogurt.jpg",
+    imageUrl: "/products/yogurt.jpg",
   },
   {
     match: /^(?!.*\b(soy|soymilk|almond|almondmilk|oat|oatmilk|coconut|cashew|chocolate|strawberry|condensed|evaporated|buttermilk|milkshake|creamer)\b).*\b(whole milk|milk whole|2% milk|milk 2%|1% milk|skim milk|nonfat milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk|organic whole milk)\b/i,
@@ -645,14 +652,14 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Coffee mate",
     title: "French Vanilla Liquid Coffee Creamer",
     ingredients: "Water, Sugar, Vegetable Oil (High Oleic Soybean and/or High Oleic Canola), and Less than 2% of Micellar Casein (a Milk Derivative), Mono- and Diglycerides, Dipotassium Phosphate, Natural and Artificial Flavor, Cellulose Gel, Cellulose Gum, Carrageenan.",
-    imageUrl: "/presets/yogurt.jpg",
+    imageUrl: "/products/yogurt.jpg",
   },
   {
     match: /^(?!.*\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|cookies?|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|nuggets?|fries|ice cream|popsicle|yogurt|creamer|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|kiwi|oranges?|clementines?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|butter|salted butter|unsalted butter|kerrygold|ghee|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|honey|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
     brand: "Fresh Whole Food",
     title: "100% Whole Unprocessed Food",
     ingredients: "100% pure whole food ingredient. No additives, no preservatives, no seed oils, no artificial dyes.",
-    imageUrl: "/presets/butter.jpg",
+    imageUrl: "/products/butter.jpg",
     nutrition: { isWholeFood: true },
   },
 ];

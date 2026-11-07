@@ -149,7 +149,7 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
     name: "Pure Irish Grass-Fed Butter",
     size: "8 oz foil",
     price: 4.28,
-    image: "/presets/butter.jpg",
+    image: "/swaps/butter.jpg",
     ingredients: "Pasteurized cream, salt.",
   },
   Bread: {
@@ -179,6 +179,18 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
     image: "/swaps/snacks.jpg",
     ingredients: "Cashews, dates.",
   },
+};
+
+export const DIRTY_FALLBACK_IMAGES: Record<SwapCategory, string> = {
+  Yogurt: "/products/yogurt.jpg",
+  Crackers: "/products/crackers.jpg",
+  Cereal: "/products/cereal.jpg",
+  "Deli Meat": "/products/turkey.jpg",
+  Chips: "/products/chips.jpg",
+  "Butter/Dairy": "/products/butter.jpg",
+  Bread: "/products/bread.jpg",
+  Dressings: "/products/ranch.jpg",
+  Snacks: "/products/snacks.jpg",
 };
 
 const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
