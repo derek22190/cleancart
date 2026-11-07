@@ -66,7 +66,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CART_CHECKOUT_SIGNALS = Regex(
-            """\b(continue to checkout|proceed to checkout|go to checkout|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|cart \(\d+\))\b""",
+            """\b(continue to checkout|proceed to checkout|go to checkout|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|cart \(\d+\)|skip the order min fee|delivery from store|pickup from store|available for all items)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_ITEM_CONTROLS = Regex(
@@ -242,7 +242,10 @@ class GroceryScreenReaderService : AccessibilityService() {
             val isCartScreen = hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
                 it.text.contains("continue to checkout", ignoreCase = true) ||
                     it.text.contains("proceed to checkout", ignoreCase = true) ||
-                    it.text.contains("estimated total", ignoreCase = true)
+                    it.text.contains("estimated total", ignoreCase = true) ||
+                    it.text.contains("skip the order min fee", ignoreCase = true) ||
+                    it.text.contains("delivery from store", ignoreCase = true) ||
+                    it.text.contains("available for all items", ignoreCase = true)
             })
 
             if (isCartScreen) {
