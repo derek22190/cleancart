@@ -1,8 +1,9 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import {
   createCreator,
   deleteCreator,
-  getOrCreateCreator,
+  getCreator,
   listCreators,
   resetStats,
   totals,
@@ -21,10 +22,14 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-function isAdminAuthorized(req: Request): boolean {
+export function isAdminAuthorized(req: Request): boolean {
   const secret = process.env.HEYBROC_ADMIN_SECRET?.trim();
-  if (!secret) return true;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
+  if (!secret) return false;
+  const authHeader = req.headers.get("authorization") || "";
+  const expected = Buffer.from(`Bearer ${secret}`, "utf8");
+  const actual = Buffer.from(authHeader, "utf8");
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
 }
 
 export function OPTIONS() {
@@ -41,28 +46,38 @@ async function snapshot() {
   };
 }
 
-/** GET /api/influencers            -> all creators + totals
- *  GET /api/influencers?code=XYZ   -> validate/apply a creator code on the paywall */
+/**
+ * GET /api/influencers            -> all creators + totals (requires admin auth)
+ * GET /api/influencers?code=XYZ   -> validate a creator code on the paywall (never auto-creates)
+ */
 export async function GET(request: Request) {
   const code = new URL(request.url).searchParams.get("code");
   if (code) {
-    try {
-      const c = await getOrCreateCreator(code);
-      return NextResponse.json({ ok: true, creator: c }, { status: 200, headers: CORS });
-    } catch (e) {
-      return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 400, headers: CORS });
+    const c = await getCreator(code);
+    if (!c) {
+      return NextResponse.json({ ok: false, error: "Invalid creator code." }, { status: 404, headers: CORS });
     }
+    return NextResponse.json(
+      { ok: true, creator: { code: c.code, name: c.name } },
+      { status: 200, headers: CORS },
+    );
+  }
+  if (!isAdminAuthorized(request)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401, headers: CORS });
   }
   return NextResponse.json(await snapshot(), { headers: CORS });
 }
 
 /**
  * POST actions:
- *  { action: "create", code, name?, commissionPct? }
- *  { action: "update", code, commissionPct?, name? }
- *  { action: "delete", code }
- *  { action: "track",  code, event: "click" | "trial" | "paid_annual" | "paid_monthly" | "checkout_annual" }
- *  { action: "reset" }   -> zero all stats (keeps creators)
+ *  Public (unauthenticated):
+ *   { action: "track", code, event: "click" } -> increments click on existing creator only, returns { ok, creator: { code, name } }
+ *  Admin (requires Bearer HEYBROC_ADMIN_SECRET):
+ *   { action: "create", code, name?, commissionPct? }
+ *   { action: "update", code, commissionPct?, name? }
+ *   { action: "delete", code }
+ *   { action: "track",  code, event }
+ *   { action: "reset" }
  */
 export async function POST(request: Request) {
   let body: { action?: string; code?: string; name?: string; commissionPct?: number; event?: CreatorEvent };
@@ -75,14 +90,23 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
   }
+
+  const isAdmin = isAdminAuthorized(request);
+  const isPublicClickTrack = body.action === "track" && body.event === "click";
+
+  if (!isAdmin && !isPublicClickTrack) {
+    return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401, headers: CORS });
+  }
+
   try {
-    const isProtectedTrack =
-      body.action === "track" &&
-      body.event &&
-      ["paid_annual", "paid_monthly", "checkout_annual"].includes(body.event);
-    if (((body.action && body.action !== "track") || isProtectedTrack) && !isAdminAuthorized(request)) {
-      return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401, headers: CORS });
+    if (!isAdmin && isPublicClickTrack) {
+      const c = await trackEvent(body.code || "", "click");
+      return NextResponse.json(
+        { ok: true, creator: { code: c.code, name: c.name } },
+        { headers: CORS },
+      );
     }
+
     let activeCreator = null;
     switch (body.action) {
       case "create":
@@ -108,6 +132,8 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ...(await snapshot()), creator: activeCreator }, { headers: CORS });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 400, headers: CORS });
+    const msg = (e as Error).message;
+    const status = /invalid creator code|unknown creator code/i.test(msg) ? 404 : 400;
+    return NextResponse.json({ ok: false, error: msg }, { status, headers: CORS });
   }
 }

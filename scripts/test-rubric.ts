@@ -15,12 +15,16 @@ for (const p of PRESETS) {
 }
 for (const a of Object.values(CLEAN_ALTERNATIVES)) {
   const r = scoreIngredients(a.ingredients);
+  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: `${a.brand} ${a.name}` });
   check(`${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
+  check(`${a.brand} Yuka >= 90 (${ry.score})`, ry.score >= 90);
 }
 for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
   const a = entry.alt;
   const r = scoreIngredients(a.ingredients);
+  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: `${a.brand} ${a.name}` });
   check(`1-for-1 ${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
+  check(`1-for-1 ${a.brand} ${a.name} Yuka >= 90 (${ry.score})`, ry.score >= 90);
 }
 // 1-for-1 exact product swap checks
 check("1-for-1 salted butter -> butter (not milk)", Boolean(resolveSwap({ score: 54, productTitle: "Great Value Sweet Cream Salted Butter", store: "walmart" })?.title.includes("Salted Butter")));
@@ -59,6 +63,7 @@ check("familyWatchlist array 2x multiplier", scoreIngredients("Potatoes, sunflow
 check("tier 1 industrial seed oil high risk cap <= 49", scoreIngredients("Potatoes, canola oil, salt").score === 49 && scoreIngredients("Potatoes, soybean oil, salt").score === 49);
 check("tier 2 sunflower oil capped <= 59 Mediocre in Yuka", scoreProductYuka("Organic potatoes, sunflower oil, sea salt").score <= 59 && scoreProductYuka("Organic potatoes, sunflower oil, sea salt").rating === "Mediocre");
 check("tier 3 avocado oil scores Green >= 80 in Yuka", scoreProductYuka("Organic potatoes, avocado oil, sea salt").score >= 80 && scoreProductYuka("Organic potatoes, avocado oil, sea salt").rating === "Excellent");
+check("adding citric acid never increases Yuka score", scoreProductYuka("Sugar, water, citric acid", {}, [], { nutriScoreGrade: "e" }).score <= scoreProductYuka("Sugar, water", {}, [], { nutriScoreGrade: "e" }).score);
 check("tripotassium & tricalcium phosphate", scoreIngredients("Whole grain oats, tripotassium phosphate, tricalcium phosphate").flagged.some((f) => f.id === "naphosphate"));
 check("swap deepLink uses https universal link", Boolean(resolveSwap({ score: 40, productTitle: "Strawberry Yogurt", store: "walmart" })?.deepLink.startsWith("https://")));
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));

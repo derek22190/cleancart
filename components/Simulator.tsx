@@ -8,11 +8,17 @@ import {
   scoreProductYuka,
   type Category,
   type FlaggedAdditive,
+  type NutritionInput,
   type ScoreResult,
 } from "@/lib/rubric";
 
-const gradeProduct = (title: string, ingredients: string, watchlist: Record<Category, boolean>): ScoreResult =>
-  scoreProductYuka(ingredients, watchlist, [], { productTitle: title });
+const gradeProduct = (
+  title: string,
+  ingredients: string,
+  watchlist: Record<Category, boolean>,
+  nutrition?: NutritionInput,
+): ScoreResult =>
+  scoreProductYuka(ingredients, watchlist, [], { ...nutrition, productTitle: title });
 import { PRESETS } from "@/lib/presets";
 import {
   CLEAN_ALTERNATIVES,
@@ -27,7 +33,6 @@ import {
   type SwapResult,
 } from "@/lib/swaps";
 import Paywall, { type AppliedCreator } from "./Paywall";
-import InfluencerEngine from "./InfluencerEngine";
 import Scorecard, { type SwapRecord } from "./Scorecard";
 
 /* ------------------------------------------------------------------ */
@@ -44,6 +49,7 @@ interface Product {
   price?: number;
   image?: string;
   ingredients: string;
+  nutrition?: NutritionInput;
   category?: SwapCategory;
   origin: Origin;
   replacedItem?: Product;
@@ -53,7 +59,14 @@ interface Product {
 interface ApiScan {
   ok: boolean;
   error?: string;
-  product?: { title: string; brand?: string; barcode?: string; imageUrl?: string; ingredients: string };
+  product?: {
+    title: string;
+    brand?: string;
+    barcode?: string;
+    imageUrl?: string;
+    ingredients: string;
+    nutrition?: NutritionInput;
+  };
   lookup?: { source: string; origin?: string; ms: number };
   result?: ScoreResult;
   swap?: SwapResult | null;
@@ -349,29 +362,54 @@ export default function Simulator() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallAutoShown, setPaywallAutoShown] = useState(false);
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
-  const [influencerOpen, setInfluencerOpen] = useState(false);
-  const [influencerRefresh, setInfluencerRefresh] = useState(0);
   const [scorecardOpen, setScorecardOpen] = useState(false);
 
   const [toast, setToast] = useState<{ title: string; body: string; href?: string } | null>(null);
 
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const sessionId = params.get("session_id") || "";
-      if (params.get("pro") === "1" && /^cs_(test|live)_[A-Za-z0-9]+$/.test(sessionId)) {
-        setIsPro(true);
-        window.localStorage.setItem("heybroc_pro", "1");
-        setToast({
-          title: "✓ HeyBroc Family Pro Unlocked",
-          body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
-        });
-      } else if (window.localStorage.getItem("heybroc_pro") === "1") {
-        setIsPro(true);
+    let cancelled = false;
+    async function checkEntitlement() {
+      try {
+        // Clear legacy unverified flag so forged localStorage cannot unlock Pro
+        window.localStorage.removeItem("heybroc_pro");
+        const params = new URLSearchParams(window.location.search);
+        const urlSessionId = (params.get("session_id") || "").trim();
+        const storedSessionId = (window.localStorage.getItem("heybroc_session_id") || "").trim();
+        const candidateSessionId = urlSessionId || storedSessionId;
+        if (!candidateSessionId) {
+          if (!cancelled) setIsPro(false);
+          return;
+        }
+        const res = await fetch(
+          `/api/entitlement?session_id=${encodeURIComponent(candidateSessionId)}`,
+          { cache: "no-store" }
+        );
+        const data = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          active?: boolean;
+        } | null;
+        if (cancelled) return;
+        if (res.ok && data?.ok && data.active === true) {
+          setIsPro(true);
+          window.localStorage.setItem("heybroc_session_id", candidateSessionId);
+          if (urlSessionId) {
+            setToast({
+              title: "✓ HeyBroc Family Pro Unlocked",
+              body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
+            });
+          }
+        } else {
+          setIsPro(false);
+          window.localStorage.removeItem("heybroc_session_id");
+        }
+      } catch {
+        if (!cancelled) setIsPro(false);
       }
-    } catch {
-      /* ignore storage errors */
     }
+    void checkEntitlement();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [query, setQuery] = useState("");
@@ -407,7 +445,10 @@ export default function Simulator() {
   const screenRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const score = useMemo(() => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch), [active, watch]);
+  const score = useMemo(
+    () => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch, active.nutrition),
+    [active, watch],
+  );
   const swap = useMemo(
     () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store }),
     [score.score, active, store],
@@ -418,7 +459,7 @@ export default function Simulator() {
   const cartScored = useMemo(
     () =>
       cart.map((item) => {
-        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch);
+        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${item.brand} ${item.title}`,
@@ -449,7 +490,7 @@ export default function Simulator() {
 
   const fallbackSwaps = useMemo<SwapRecord[]>(
     () =>
-      PRESETS.map((p) => {
+      PRESETS.map((p): SwapRecord | null => {
         const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
         const sw = resolveSwap({
           score: s.score,
@@ -462,6 +503,7 @@ export default function Simulator() {
         return {
           fromTitle: `${p.brand} ${p.title}`,
           toTitle: sw.title,
+          toScore: sw.score,
           store,
           dodged: s.flagged.map((f) => f.name),
         };
@@ -545,10 +587,74 @@ export default function Simulator() {
     return () => clearTimeout(t);
   }, []);
 
+  /** Commits a product (or a pending clean swap) to the simulated cart when added by the user. */
+  const commitItemToCart = useCallback(
+    (itemToAdd: Product) => {
+      const cleanScore = gradeProduct(
+        `${itemToAdd.brand} ${itemToAdd.title}`,
+        itemToAdd.ingredients,
+        watch,
+        itemToAdd.nutrition,
+      );
+      const replacedDirty =
+        itemToAdd.origin === "swap"
+          ? itemToAdd.replacedItem ??
+            (previousDirtyItem && previousDirtyItem.category === itemToAdd.category
+              ? previousDirtyItem
+              : null)
+          : null;
+
+      if (replacedDirty) {
+        const dirtyScore = gradeProduct(
+          `${replacedDirty.brand} ${replacedDirty.title}`,
+          replacedDirty.ingredients,
+          watch,
+          replacedDirty.nutrition,
+        );
+        setCart((c) => {
+          if (c.some((i) => i.key === itemToAdd.key)) return c;
+          const idx = c.findIndex((i) => i.key === replacedDirty.key);
+          if (idx === -1) return [...c, itemToAdd];
+          const next = [...c];
+          next[idx] = itemToAdd;
+          return next;
+        });
+        setSwapHistory((prev) => [
+          {
+            fromTitle: `${replacedDirty.brand} ${replacedDirty.title}`,
+            toTitle: `${itemToAdd.brand} ${itemToAdd.title}`,
+            toScore: cleanScore.score,
+            store,
+            dodged: dirtyScore.flagged.map((f) => f.name),
+          },
+          ...prev,
+        ]);
+        triggerClimbFlash();
+        setToast({
+          title: `✓ Swapped to ${itemToAdd.brand} ${itemToAdd.title} (${cleanScore.score}/100)`,
+          body: `Added clean swap to your ${STORE_META[store].label} cart · Cart Avg updated!`,
+        });
+        return;
+      }
+
+      setCart((c) => (c.some((i) => i.key === itemToAdd.key) ? c : [...c, itemToAdd]));
+      setToast({
+        title: "Added to cart",
+        body: `${itemToAdd.brand} ${itemToAdd.title} (${cleanScore.score}/100)`,
+      });
+    },
+    [watch, previousDirtyItem, store, triggerClimbFlash],
+  );
+
   /* ---------------- Swap (single item or from auditor) ---------------- */
   const swapCartItem = useCallback(
     (targetItem: Product) => {
-      const itemScore = gradeProduct(`${targetItem.brand} ${targetItem.title}`, targetItem.ingredients, watch);
+      const itemScore = gradeProduct(
+        `${targetItem.brand} ${targetItem.title}`,
+        targetItem.ingredients,
+        watch,
+        targetItem.nutrition,
+      );
       const targetSwap = resolveSwap({
         score: itemScore.score,
         productTitle: `${targetItem.brand} ${targetItem.title}`,
@@ -559,41 +665,30 @@ export default function Simulator() {
       });
       if (!targetSwap) return;
       const clean = cleanToProduct(targetSwap.category, targetItem);
-      setCart((c) => {
-        const idx = c.findIndex((i) => i.key === targetItem.key);
-        if (idx === -1) return [...c, clean];
-        const next = [...c];
-        next[idx] = clean;
-        return next;
-      });
-      setSwapHistory((prev) => [
-        {
-          fromTitle: `${targetItem.brand} ${targetItem.title}`,
-          toTitle: targetSwap.title,
-          store,
-          dodged: itemScore.flagged.map((f) => f.name),
-        },
-        ...prev,
-      ]);
-      if (active.key === targetItem.key || previousDirtyItem?.key === targetItem.key) {
-        setPreviousDirtyItem(targetItem);
-        setActive(clean);
-      }
+      setPreviousDirtyItem(targetItem);
+      setActive(clean);
+      setViewMode("product");
+      setCartOpen(false);
+      setAuditOpen(false);
       setOverlay("pill");
       setOpenFlag(null);
-      triggerClimbFlash();
+      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       setToast({
-        title: `✓ Swapped to ${targetSwap.title} (100/100)`,
-        body: `Zero flagged additives · Your Cart Average climbed!`,
+        title: `Viewing Clean Swap: ${targetSwap.title} (${targetSwap.score}/100)`,
+        body: `Tap "Add to cart" on the product page to swap this item in your ${STORE_META[store].label} cart.`,
         href: targetSwap.deepLink || targetSwap.webUrl,
       });
     },
-    [watch, store, active.key, previousDirtyItem, triggerClimbFlash],
+    [watch, store],
   );
 
   const doSwap = useCallback(() => {
+    if (active.origin === "swap") {
+      commitItemToCart(active);
+      return;
+    }
     swapCartItem(previousDirtyItem ?? active);
-  }, [swapCartItem, previousDirtyItem, active]);
+  }, [active, commitItemToCart, swapCartItem, previousDirtyItem]);
 
   /** Finds the original dirty item that a clean swap replaced so the user can revert in 1 tap. */
   const getRevertTarget = useCallback(
@@ -655,7 +750,9 @@ export default function Simulator() {
           return;
         }
         const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
-        const liveScore = data.result?.score ?? gradeProduct(data.product.title, data.product.ingredients, watch).score;
+        const liveScore =
+          data.result?.score ??
+          gradeProduct(data.product.title, data.product.ingredients, watch, data.product.nutrition).score;
         const fallbackImg = liveScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
         const p: Product = {
           key: `live-${data.product.barcode || q}`,
@@ -667,6 +764,7 @@ export default function Simulator() {
           brand: data.product.brand || "Open data",
           image: data.product.imageUrl || fallbackImg,
           ingredients: data.product.ingredients,
+          nutrition: data.product.nutrition,
           category: cat,
           origin: "live",
           lookup: data.lookup,
@@ -720,24 +818,34 @@ export default function Simulator() {
     const records: SwapRecord[] = dirty.map((d) => ({
       fromTitle: `${d.item.brand} ${d.item.title}`,
       toTitle: d.sw!.title,
+      toScore: d.sw!.score,
       store,
       dodged: d.s.flagged.map((f) => f.name),
     }));
     setSwapHistory((prev) => [...records, ...prev]);
-    setCart((c) =>
-      c.map((item) => {
-        const hit = dirty.find((d) => d.item.key === item.key);
-        return hit?.sw ? cleanToProduct(hit.sw.category, item) : item;
-      }),
-    );
+    const nextCart = cart.map((item) => {
+      const hit = dirty.find((d) => d.item.key === item.key);
+      return hit?.sw ? cleanToProduct(hit.sw.category, item) : item;
+    });
+    setCart(nextCart);
+    const nextAvg = nextCart.length
+      ? Math.round(
+          nextCart.reduce(
+            (sum, item) =>
+              sum +
+              gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition).score,
+            0,
+          ) / nextCart.length,
+        )
+      : 0;
     const replaced = dirty.find((d) => d.item.key === active.key);
     if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category, replaced.item));
     triggerClimbFlash();
     setToast({
-      title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg 100/100!`,
-      body: `All items upgraded to 100/100 clean alternatives at ${STORE_META[store].label}.`,
+      title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
+      body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, active.key, store, triggerClimbFlash]);
+  }, [dirty, cart, watch, active.key, store, triggerClimbFlash]);
 
   const resetCartPresets = useCallback(() => {
     setCart(PRESETS.map(presetToProduct));
@@ -856,15 +964,6 @@ export default function Simulator() {
           >
             📲 Android App (.apk)
           </a>
-
-          <button
-            id="open-influencers"
-            type="button"
-            className="topbar-btn"
-            onClick={() => setInfluencerOpen(true)}
-          >
-            🤝 Creator Partners
-          </button>
         </div>
       </header>
 
@@ -1151,8 +1250,11 @@ export default function Simulator() {
                               type="button"
                               className={`aisle-add ${inCart ? "is-in" : ""}`}
                               onClick={() => {
-                                if (!inCart) setCart((c) => [...c, item]);
-                                setToast({ title: inCart ? "Already in cart" : "Added to cart", body: `${item.brand} ${item.title}` });
+                                if (inCart) {
+                                  setToast({ title: "Already in cart", body: `${item.brand} ${item.title}` });
+                                } else {
+                                  commitItemToCart(item);
+                                }
                               }}
                             >
                               {inCart ? "In Cart ✓" : "+ Add"}
@@ -1173,8 +1275,11 @@ export default function Simulator() {
                       <button
                         className="pdp-add"
                         onClick={() => {
-                          if (!cart.some((c) => c.key === active.key)) setCart((c) => [...c, active]);
-                          setToast({ title: "Added to cart", body: `${active.brand} ${active.title}` });
+                          if (cart.some((c) => c.key === active.key)) {
+                            setToast({ title: "Already in cart", body: `${active.brand} ${active.title}` });
+                          } else {
+                            commitItemToCart(active);
+                          }
                         }}
                       >
                         {cart.some((c) => c.key === active.key) ? "In cart ✓" : "Add to cart"}
@@ -1400,7 +1505,7 @@ export default function Simulator() {
                               </div>
                               {!cart.some((c) => c.key === active.key) && (
                                 <button id="swap-item" className="swap-btn" onClick={doSwap}>
-                                  Confirm Swap in Cart → 100/100
+                                  Confirm Swap in Cart → {score.score}/100
                                 </button>
                               )}
                               <button
@@ -1510,7 +1615,7 @@ export default function Simulator() {
                                 ? scanHistory.filter((h) => favorites.includes(h.product.key))
                                 : scanHistory
                               ).map(({ product: hp, timeLabel }) => {
-                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch);
+                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch, hp.nutrition);
                                 return (
                                   <li key={hp.key}>
                                     <button
@@ -1548,6 +1653,11 @@ export default function Simulator() {
                               const dirtyProd = presetToProduct(p);
                               const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
                               const cleanProd = cleanToProduct(p.category, dirtyProd);
+                              const cleanScore = gradeProduct(
+                                `${cleanProd.brand} ${cleanProd.title}`,
+                                cleanProd.ingredients,
+                                watch,
+                              );
                               return (
                                 <div key={p.id} className="yuka-rec-pair">
                                   {/* Left Dirty Card */}
@@ -1581,8 +1691,8 @@ export default function Simulator() {
                                       <b className="yuka-rec-title">{cleanProd.title}</b>
                                       <small className="yuka-rec-brand">{cleanProd.brand}</small>
                                       <span className="yuka-rec-status">
-                                        <i className="yuka-dot tone-green" />
-                                        Excellent (100)
+                                        <i className={`yuka-dot tone-${cleanScore.color}`} />
+                                        {cleanScore.rating} ({cleanScore.score})
                                       </span>
                                     </button>
                                     <button
@@ -1968,32 +2078,15 @@ export default function Simulator() {
         appliedCreator={appliedCreator}
         onCreatorApplied={(c) => {
           setAppliedCreator(c);
-          setInfluencerRefresh((n) => n + 1);
         }}
         onConversionComplete={({ plan, creator, trialDays }) => {
           setIsPro(true);
-          setInfluencerRefresh((n) => n + 1);
           setToast({
             title: creator
               ? `HeyBroc Family Pro Unlocked (${trialDays}-Day Free Trial)`
               : `HeyBroc Family Pro Unlocked (${plan})`,
             body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
           });
-        }}
-        onOpenInfluencerEngine={() => {
-          setPaywallOpen(false);
-          setInfluencerOpen(true);
-        }}
-      />
-
-      <InfluencerEngine
-        open={influencerOpen}
-        onClose={() => setInfluencerOpen(false)}
-        refreshKey={influencerRefresh}
-        onSelectCodeForPaywall={(code) => {
-          setAppliedCreator({ code, name: code, commissionPct: 35 });
-          setInfluencerOpen(false);
-          setPaywallOpen(true);
         }}
       />
 

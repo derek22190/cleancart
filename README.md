@@ -8,7 +8,7 @@ Zero-friction grocery ingredient grader and 1-tap affiliate swap engine that flo
 
 ## Core Product Rules
 
-1. **100% Ingredient-Only Scoring** (`lib/rubric.ts`): Grades strictly on chemical additives, synthetic dyes, industrial seed oils, HFCS, emulsifiers, nitrates, and preservatives. Never penalizes calories, carbs, natural fat, or sodium.
+1. **Unified 3-Pillar Yuka + Additive Scoring** (`lib/rubric.ts` — `scoreProductYuka`): Every surface (Web Simulator, `/api/scan`, `/api/audit`, Android overlay, Chrome extension, and iOS Shortcut) uses `scoreProductYuka`, combining 60% Nutritional Quality (Nutri-Score A–E per 100g: calories, sugar, saturated fat, sodium, fiber, protein, fruits/veg/nuts), 30% Chemical Additives (`scoreIngredients`), and 10% Certified Organic Bonus, with hard caps for High-Risk additives (`<= 49/100`) and Tier 2 seed oils (`<= 59/100`).
 2. **Deterministic Rubric (`lib/rubric.ts`)**: Starts at `100`, deducts `-35` (High Risk), `-20` (Moderate Risk), `-10` (Low Risk), clamps `0..100`, and supports user-customizable watchlist category toggles.
 3. **Zero-Scraping / $0 Infrastructure (`lib/lookup.ts`)**: Reads product titles/ingredients client-side from the user's screen, resolves ingredients via Open Food Facts v2 + USDA FoodData Central with local caching (`<5ms` repeat lookups).
 4. **Legitimate Affiliate Attribution (`lib/swaps.ts`)**: Impact.com affiliate links (`?irgwc=1&clickid=YOUR_IMPACT_ID`) fire **only** when the user explicitly taps **"Swap Item"**.

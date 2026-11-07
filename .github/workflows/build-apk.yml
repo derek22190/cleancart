@@ -39,17 +39,35 @@ jobs:
       - name: Set up Gradle (with caching)
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Missing KEYSTORE_BASE64 secret. Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD in GitHub Secrets."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/heybroc-release.jks"
+
+      - name: Build release APK & App Bundle
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/heybroc-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
-          # Optional: set repo variable CLEANCART_API_BASE to your deployed API URL.
           API_BASE="${{ vars.CLEANCART_API_BASE }}"
           if [ -n "$API_BASE" ]; then
-            ./gradlew assembleDebug --stacktrace -PcleancartApiBase="$API_BASE"
+            ./gradlew assembleRelease bundleRelease --stacktrace -PcleancartApiBase="$API_BASE"
           else
-            ./gradlew assembleDebug --stacktrace
+            ./gradlew assembleRelease bundleRelease --stacktrace
           fi
-          cp app/build/outputs/apk/debug/app-debug.apk cleancart-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk cleancart-release.apk
+
+      - name: Clean up decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/heybroc-release.jks"
 
       - name: Publish updated APK to public/heybroc.apk
         if: github.ref == 'refs/heads/main'
@@ -57,27 +75,24 @@ jobs:
         run: |
           git config user.name "derek22190"
           git config user.email "53961265+derek22190@users.noreply.github.com"
-          cp android-app/cleancart-debug.apk public/heybroc.apk
+          cp android-app/cleancart-release.apk public/heybroc.apk
           if ! git diff --quiet public/heybroc.apk; then
             git add public/heybroc.apk
-            git commit -m "Update public/heybroc.apk with latest Android build"
+            git commit -m "Update public/heybroc.apk with latest Android release build"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
-      - name: Upload APK artifact
+      - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cleancart-debug.apk
-          path: android-app/cleancart-debug.apk
+          name: cleancart-release.apk
+          path: android-app/cleancart-release.apk
           if-no-files-found: error
 
-      - name: Generate unsigned App Bundle
-        run: ./gradlew bundleRelease --stacktrace
-
-      - name: Upload unsigned App Bundle for review
+      - name: Upload release App Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: heybroc-release-unsigned.aab
+          name: heybroc-release.aab
           path: android-app/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error

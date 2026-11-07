@@ -35,16 +35,22 @@ export interface CreatorTotals {
 
 interface InfluencerEngineProps {
   open: boolean;
-  onClose: () => void;
-  refreshKey: number;
-  onSelectCodeForPaywall: (code: string) => void;
+  onClose?: () => void;
+  refreshKey?: number;
+  onSelectCodeForPaywall?: (code: string) => void;
+  adminSecret?: string;
+  standalone?: boolean;
+  onUnauthorized?: () => void;
 }
 
 export default function InfluencerEngine({
   open,
   onClose,
-  refreshKey,
+  refreshKey = 0,
   onSelectCodeForPaywall,
+  adminSecret = "",
+  standalone = false,
+  onUnauthorized,
 }: InfluencerEngineProps) {
   const [creators, setCreators] = useState<CreatorRow[]>([]);
   const [totals, setTotals] = useState<CreatorTotals>({
@@ -71,18 +77,38 @@ export default function InfluencerEngine({
     commissionPct: PRICING.defaultCommissionPct,
   });
 
+  const authHeaders = useCallback(
+    (json = false): HeadersInit => {
+      const headers: Record<string, string> = {};
+      if (json) headers["Content-Type"] = "application/json";
+      if (adminSecret) headers["Authorization"] = `Bearer ${adminSecret}`;
+      return headers;
+    },
+    [adminSecret]
+  );
+
   const loadSnapshot = useCallback(async () => {
     try {
-      const res = await fetch("/api/influencers");
+      const res = await fetch("/api/influencers", {
+        headers: authHeaders(false),
+      });
+      if (res.status === 401) {
+        setError("Unauthorized: invalid or unset HEYBROC_ADMIN_SECRET.");
+        onUnauthorized?.();
+        return;
+      }
       const data = await res.json();
       if (data.ok) {
+        setError("");
         setCreators(data.creators || []);
         if (data.totals) setTotals(data.totals);
+      } else {
+        setError(data.error || "Failed to load creator snapshot.");
       }
     } catch {
       /* ignore transient fetch errors */
     }
-  }, []);
+  }, [authHeaders, onUnauthorized]);
 
   useEffect(() => {
     if (open) loadSnapshot();
@@ -90,7 +116,15 @@ export default function InfluencerEngine({
 
   if (!open) return null;
 
-  const applySnapshot = (data: { ok?: boolean; creators?: CreatorRow[]; totals?: CreatorTotals; error?: string }) => {
+  const applySnapshot = (
+    status: number,
+    data: { ok?: boolean; creators?: CreatorRow[]; totals?: CreatorTotals; error?: string }
+  ) => {
+    if (status === 401) {
+      setError("Unauthorized: invalid or unset HEYBROC_ADMIN_SECRET.");
+      onUnauthorized?.();
+      return;
+    }
     if (!data.ok) {
       setError(data.error || "Operation failed.");
       return;
@@ -107,7 +141,7 @@ export default function InfluencerEngine({
     try {
       const res = await fetch("/api/influencers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         body: JSON.stringify({
           action: "create",
           code: newCode.trim().toUpperCase(),
@@ -116,7 +150,7 @@ export default function InfluencerEngine({
         }),
       });
       const data = await res.json();
-      applySnapshot(data);
+      applySnapshot(res.status, data);
       if (data.ok) {
         setNewCode("");
         setNewName("");
@@ -129,47 +163,52 @@ export default function InfluencerEngine({
   const quickEvent = async (code: string, event: "click" | "trial" | "paid_annual" | "checkout_annual") => {
     const res = await fetch("/api/influencers", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(true),
       body: JSON.stringify({ action: "track", code, event }),
     });
-    applySnapshot(await res.json());
+    applySnapshot(res.status, await res.json());
   };
 
   const updateSplit = async (code: string, commissionPct: number) => {
     const res = await fetch("/api/influencers", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(true),
       body: JSON.stringify({ action: "update", code, commissionPct }),
     });
-    applySnapshot(await res.json());
+    applySnapshot(res.status, await res.json());
   };
 
   const resetAll = async () => {
     const res = await fetch("/api/influencers", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(true),
       body: JSON.stringify({ action: "reset" }),
     });
-    applySnapshot(await res.json());
+    applySnapshot(res.status, await res.json());
   };
 
   const proj = projectOutreach(outreach);
   const perAnnualPayout = commissionFor("annual", newPct);
 
-  return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Influencer Affiliate Engine" onClick={onClose}>
-      <div className="modal-card influencer-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <div className="yuka-topbar-left">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
-            <div>
-              <span className="eyebrow eyebrow--green">Influencer Affiliate Tracker &amp; 1,000-Creator Math</span>
-              <h2>Influencer Engine</h2>
-            </div>
+  const cardContent = (
+    <div
+      className="modal-card influencer-modal"
+      style={standalone ? { maxWidth: 960, width: "100%", margin: "0 auto" } : undefined}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="modal-head">
+        <div className="yuka-topbar-left">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+          <div>
+            <span className="eyebrow eyebrow--green">Influencer Affiliate Tracker &amp; 1,000-Creator Math</span>
+            <h2>Influencer Engine</h2>
           </div>
-          <button className="close" onClick={onClose} aria-label="Close Influencer Engine">×</button>
         </div>
+        {onClose && (
+          <button className="close" onClick={onClose} aria-label="Close Influencer Engine">×</button>
+        )}
+      </div>
 
         {/* LIVE KPI STRIP */}
         <div className="kpi-grid">
@@ -290,13 +329,15 @@ export default function InfluencerEngine({
                         >
                           +$49.99 Checkout
                         </button>
-                        <button
-                          type="button"
-                          className="mini-action"
-                          onClick={() => onSelectCodeForPaywall(c.code)}
-                        >
-                          Test in Paywall ↗
-                        </button>
+                        {onSelectCodeForPaywall && (
+                          <button
+                            type="button"
+                            className="mini-action"
+                            onClick={() => onSelectCodeForPaywall(c.code)}
+                          >
+                            Test in Paywall ↗
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -402,6 +443,15 @@ export default function InfluencerEngine({
           </div>
         </div>
       </div>
+  );
+
+  if (standalone) {
+    return cardContent;
+  }
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Influencer Affiliate Engine" onClick={onClose}>
+      {cardContent}
     </div>
   );
 }

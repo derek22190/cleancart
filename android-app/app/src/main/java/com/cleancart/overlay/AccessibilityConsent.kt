@@ -1,12 +1,10 @@
 package com.cleancart.overlay
 
 import android.content.Context
-import android.provider.Settings
 
 /**
- * Tracks user consent and revocation for the Prominent Accessibility Service Disclosure.
- * If the user has already enabled the Accessibility Service in Android system settings and
- * has not explicitly revoked reading in-app, automatic store detection remains active.
+ * Tracks explicit user consent and revocation for the Prominent Accessibility Service Disclosure.
+ * Screen reading is active only after the user explicitly accepts the in-app disclosure.
  */
 object AccessibilityConsent {
     private const val VERSION = 1
@@ -16,13 +14,7 @@ object AccessibilityConsent {
 
     fun granted(ctx: Context): Boolean {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_REVOKED, false)) return false
-        if (prefs.getInt(KEY, 0) == VERSION) return true
-        val enabled = Settings.Secure.getString(
-            ctx.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ).orEmpty()
-        return enabled.contains(ctx.packageName)
+        return !prefs.getBoolean(KEY_REVOKED, false) && prefs.getInt(KEY, 0) == VERSION
     }
 
     fun grant(ctx: Context) {

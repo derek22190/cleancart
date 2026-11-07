@@ -3,7 +3,7 @@
  */
 import "server-only";
 import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
-import { ALL_CATEGORIES, scoreProductYuka, type Category, type ScoreResult, type Watchlist } from "./rubric";
+import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
 import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
 
 export interface ScanRequest {
@@ -24,6 +24,7 @@ export interface ScanResponse {
     barcode?: string;
     imageUrl?: string;
     ingredients: string;
+    nutrition?: NutritionInput;
   };
   lookup: { source: LookupResult["source"]; origin?: LookupResult["origin"]; ms: number };
   result: ScoreResult;
@@ -163,6 +164,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       barcode: found.barcode,
       imageUrl: found.imageUrl,
       ingredients: found.ingredients,
+      nutrition: found.nutrition,
     },
     lookup: { source: found.source, origin: found.origin, ms: found.ms },
     result,

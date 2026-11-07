@@ -6,6 +6,7 @@ import { STORE_META, type Store } from "@/lib/swaps";
 export interface SwapRecord {
   fromTitle: string;
   toTitle: string;
+  toScore?: number;
   store: Store;
   dodged: string[];
 }
@@ -142,7 +143,7 @@ export default function Scorecard({
 
       ctx.fillStyle = "#86efac";
       ctx.font = `800 30px ${font}`;
-      ctx.fillText(`✓ ${sw.toTitle.slice(0, 40)} (100/100)`, 116, y + 98);
+      ctx.fillText(`✓ ${sw.toTitle.slice(0, 40)} (${sw.toScore ?? 90}/100)`, 116, y + 98);
       y += 148;
     });
 
@@ -199,7 +200,7 @@ export default function Scorecard({
               Your cart still has <b>{dirtyCount}</b> unswapped item{dirtyCount === 1 ? "" : "s"} (current avg: {cartAvg}/100).
             </span>
             <button id="scorecard-swap-all" type="button" className="swap-btn" onClick={onSwapAllAndMax}>
-              Swap All &amp; Boost to 100/100 ✨
+              Swap All Clean Alternatives ✨
             </button>
           </div>
         )}
@@ -244,7 +245,7 @@ export default function Scorecard({
                 {displayedSwaps.map((sw, idx) => (
                   <li key={`${sw.fromTitle}-${idx}`}>
                     <span className="story-from">✗ {sw.fromTitle}</span>
-                    <span className="story-to">✓ {sw.toTitle} <em>100/100</em></span>
+                    <span className="story-to">✓ {sw.toTitle} <em>{sw.toScore ?? 90}/100</em></span>
                   </li>
                 ))}
               </ul>

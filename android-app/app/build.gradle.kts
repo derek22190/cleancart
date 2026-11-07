@@ -18,12 +18,35 @@ android {
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
     }
 
+    val keystoreFileEnv = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    val keystoreBase64Env = System.getenv("KEYSTORE_BASE64")?.takeIf { it.isNotBlank() }
+    val keystorePasswordEnv = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+    val keyAliasEnv = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+    val keyPasswordEnv = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+
+    val resolvedKeystoreFile = when {
+        keystoreFileEnv != null && file(keystoreFileEnv).exists() -> file(keystoreFileEnv)
+        keystoreBase64Env != null -> {
+            val out = layout.buildDirectory.file("tmp/heybroc-release.jks").get().asFile
+            out.parentFile.mkdirs()
+            out.writeBytes(java.util.Base64.getMimeDecoder().decode(keystoreBase64Env))
+            out
+        }
+        else -> null
+    }
+    val hasReleaseSigning = resolvedKeystoreFile != null &&
+        keystorePasswordEnv != null &&
+        keyAliasEnv != null &&
+        keyPasswordEnv != null
+
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("heybroc.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = resolvedKeystoreFile
+                storePassword = keystorePasswordEnv
+                keyAlias = keyAliasEnv
+                keyPassword = keyPasswordEnv
+            }
         }
     }
 
@@ -32,16 +55,15 @@ android {
     lint {
         abortOnError = true
         checkOnly.add("NewApi")
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
     }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("debug")
-        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

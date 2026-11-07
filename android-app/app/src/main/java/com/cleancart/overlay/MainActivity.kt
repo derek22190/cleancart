@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         }
         col.addView(stepCard(
             "Step 2", "Enable Store Screen Reader",
-            "Go to: Accessibility → Installed apps → HeyBroc and turn it ON.\nReads only the product title & ingredients in all 12 store apps.",
+            "Go to: Accessibility → Installed apps → HeyBroc and turn it ON.\nReads product titles, ingredient lists, and visible cart item titles (up to 20 items) in all 12 store apps.",
             a11yStatus,
             *step2Extras.toTypedArray(),
         ))
@@ -147,10 +147,11 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Accessibility Service Disclosure")
             .setMessage(
-                "HeyBroc uses the Android AccessibilityService API solely to detect when you view a single grocery product " +
-                    "and read the visible product title and ingredient list inside 12 supported grocery apps " +
-                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt).\n\n" +
-                    "• What is transmitted: Only the product title and ingredient text are sent over HTTPS to heybroc.com/api/scan to compute your 0–100 ingredient score.\n" +
+                "HeyBroc uses the Android AccessibilityService API solely inside 12 supported grocery apps " +
+                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
+                    "1) Detect when you view a grocery product page and read the visible product title and ingredient list, and\n" +
+                    "2) Read visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
+                    "• What is transmitted: Only extracted grocery product titles, ingredient text, and active store identifier are sent over HTTPS to heybroc.com/api/scan to compute your 0–100 ingredient score.\n" +
                     "• What is NEVER read: HeyBroc never reads passwords, payment fields, messages, or any other apps on your device, and never sells or shares personal data."
             )
             .setCancelable(false)

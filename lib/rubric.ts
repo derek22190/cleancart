@@ -660,7 +660,7 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   // 7. Bacon, Sausage, Kielbasa, Hot Dogs, Salami, Pepperoni, Processed Deli Meat
   if (/\b(deli|bologna|hot dog|hotdogs|frankfurter|salami|pepperoni|bacon|sausage|kielbasa|bratwurst|chorizo|pancetta|prosciutto|lunchables|jimmy dean)\b/.test(combined)) {
     if (/\b(applegate organics|oven roasted turkey breast)\b/.test(combined) && !/\b(bacon|sausage|kielbasa|nitrite|celery powder)\b/.test(combined)) {
-      return { caloriesKcal100g: 98, sugarsG100g: 1.0, saturatedFatG100g: 0.4, sodiumMg100g: 390, fiberG100g: 0, proteinG100g: 19.0, fruitsVegNutsPct: 0 };
+      return { caloriesKcal100g: 98, sugarsG100g: 1.0, saturatedFatG100g: 0.4, sodiumMg100g: 250, fiberG100g: 0, proteinG100g: 19.0, fruitsVegNutsPct: 0 };
     }
     if (/\bturkey bacon\b/.test(combined)) {
       return { caloriesKcal100g: 215, sugarsG100g: 1.5, saturatedFatG100g: 2.8, sodiumMg100g: 760, fiberG100g: 0, proteinG100g: 17.0, fruitsVegNutsPct: 0 };
@@ -677,9 +677,9 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   }
   // 10. Dressings, Mayonnaise, Ketchup, Condiments
   if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|bbq sauce|barbecue sauce)\b/.test(combined)) {
-    const isCleanAvocado = /\b(avocado oil|primal kitchen|chosen foods)\b/.test(combined);
+    const isCleanAvocado = /\b(avocado oil|extra virgin olive oil|primal kitchen|chosen foods)\b/.test(combined);
     return isCleanAvocado
-      ? { caloriesKcal100g: 320, sugarsG100g: 1, saturatedFatG100g: 2.5, sodiumMg100g: 340, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 45 }
+      ? { caloriesKcal100g: 140, sugarsG100g: 0.5, saturatedFatG100g: 1.5, sodiumMg100g: 160, fiberG100g: 1.0, proteinG100g: 3.5, fruitsVegNutsPct: 85 }
       : { caloriesKcal100g: 440, sugarsG100g: 14, saturatedFatG100g: 6.5, sodiumMg100g: 820, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0 };
   }
   // 11. Flavored / Sweetened Yogurt vs Plain Yogurt
@@ -701,7 +701,10 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
     return { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85 };
   }
   // 14. Dairy Milk (Whole Milk has ~2.0g/100ml saturated fat; Reduced-Fat/Skim has lower saturated fat)
-  if (/\b(milk|lactaid|fairlife)\b/.test(combined) && !/\b(coconut milk|almond milk|oat milk|soy milk|chocolate|condensed|evaporated|buttermilk)\b/.test(combined)) {
+  if (
+    /\b(milk|lactaid|fairlife)\b/.test(combined) &&
+    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|coconut milk|almond milk|oat milk|soy milk|chocolate|condensed|evaporated|buttermilk)\b/.test(combined)
+  ) {
     const isLowFat = /\b(skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat)\b/.test(combined);
     return isLowFat
       ? { caloriesKcal100g: 46, sugarsG100g: 4.8, saturatedFatG100g: 0.9, sodiumMg100g: 44, fiberG100g: 0, proteinG100g: 3.4, fruitsVegNutsPct: 0 }
@@ -731,7 +734,9 @@ export function scoreProductYuka(
   const titleAndIng = `${nutrition.productTitle || ""} ${rawIngredients}`;
   const clauses = rawIngredients.toLowerCase().split(/[,;]/).map((c) => c.trim()).filter(Boolean);
   const top3 = clauses.slice(0, 3).join(" ");
-  const hasTop3AddedSugar = /\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing)\b/.test(top3);
+  const hasTop3AddedSugar =
+    /\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing)\b/.test(top3) ||
+    (/\b(sugar|cane sugar|brown sugar)\b/.test(top3) && !/\borganic\b/.test(top3));
 
   const NON_WHOLE_FOOD =
     /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
@@ -739,7 +744,6 @@ export function scoreProductYuka(
   const isWholeFood =
     nutrition.isWholeFood !== false &&
     !NON_WHOLE_FOOD.test(titleAndIng) &&
-    base.flagged.length === 0 &&
     !hasTop3AddedSugar &&
     (Boolean(nutrition.isWholeFood) ||
       /100% pure whole food ingredient|^whole food:/i.test(rawIngredients));
@@ -778,13 +782,12 @@ export function scoreProductYuka(
   }
 
   const isPureButterOrGhee =
-    base.flagged.length === 0 &&
     /\b(butter|kerrygold|ghee|land o'? ?lakes)\b/i.test(titleAndIng) &&
     !/\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk)\b/i.test(titleAndIng);
 
   const isWholeMilk =
     /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
-    !/\b(skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy)\b/i.test(titleAndIng);
+    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy)\b/i.test(titleAndIng);
 
   let nutritionScore: number;
   if (isWholeFood) {
@@ -796,8 +799,8 @@ export function scoreProductYuka(
     nutritionScore = sodium <= 50 ? 28 : 22;
     nutriGrade = sodium <= 50 ? "D" : "E";
   } else if (isWholeMilk) {
-    // Whole milk has ~2.1g/100ml saturated fat (5g per cup) -> Nutri-Score B (46/60 nutrition points)
-    nutritionScore = 46;
+    // Whole milk has ~2.1g/100ml saturated fat (5g per cup) -> Nutri-Score B (50/60 nutrition points)
+    nutritionScore = 50;
     nutriGrade = "B";
   } else if (nutriRaw <= -2) {
     nutritionScore = 60;
@@ -887,20 +890,20 @@ export function scoreProductYuka(
     }
   }
 
-  let finalScore = Math.min(base.score, nutritionScore + additiveScore + organicScore);
+  let finalScore = base.score;
   if (hasHighRisk || seedOilHits.length >= 2) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
     // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
     finalScore = Math.max(0, Math.min(59, finalScore));
   }
-
-  const totalPenalty = flagged.reduce((sum, f) => sum + f.penalty, 0);
+  if (hasTop3AddedSugar && (nutriGrade === "D" || nutriGrade === "E")) {
+    finalScore = Math.min(finalScore, nutritionScore + additiveScore + organicScore);
+  }
 
   return {
     ...base,
     flagged,
-    totalPenalty,
     score: finalScore,
     ...ratingFor(finalScore),
     yukaBreakdown: {
@@ -916,8 +919,8 @@ export function scoreProductYuka(
 export const NON_ENGLISH_INGREDIENTS =
   /\b(eau\b|sucre\b|huile\b|farine\b|lait\b|sirop\b|lécithine|acide\b|arômes?|colorants?|amidon|émulsifiants?|conservateurs?|noisettes|poudre\b|zutaten|wasser\b|zucker\b|pflanzliches|weizenmehl|speisesalz|säuerungsmittel|magermilchpulver|ingredientes|agua\b|azúcar|aceite\b|harina\b|leche\b|jarabe\b)/i;
 
-const ENGLISH_INGREDIENT_ANCHORS =
-  /\b(water|sugar|salt|flour|milk|oil|cream|butter|cheese|eggs?|corn|wheat|rice|oats?|soy|acid|flavor|flavors|starch|syrup|extract|vinegar|yeast|cocoa|beef|chicken|pork|turkey|apple|strawberry)\b/i;
+export const ENGLISH_INGREDIENT_ANCHORS =
+  /\b(water|sugar|salt|flour|milk|cream|butter|cheese|whey|casein|yogurt|eggs?|oil|fat|tallow|lard|corn|wheat|rice|oats?|barley|rye|quinoa|millet|sorghum|flax|chia|hemp|sesame|soy|soybeans?|peanuts?|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|pistachios?|macadamia|coconut|cocoa|chocolate|vanilla|cinnamon|honey|molasses|syrup|dextrose|fructose|sucrose|maltose|lactose|maltodextrin|starch|pectin|gelatin|vinegar|yeast|baking|soda|acid|citric|lactic|malic|ascorbic|tocopherols?|lecithin|gum|carrageenan|cellulose|flavor\w*|color\w*|extract|spices?|garlic|onion|paprika|turmeric|annatto|celery|carrots?|tomato\w*|potato\w*|apples?|strawberr\w*|raspberr\w*|blueberr\w*|cranberr\w*|cherries|cherry|lemon|lime|orange|peach|mango|banana|pineapple|grape|dates?|raisins?|figs?|beans?|lentils?|chickpeas?|peas|spinach|broccoli|kale|peppers?|chili|jalapeno|mushrooms?|beef|pork|chicken|turkey|lamb|bison|duck|salmon|tuna|cod|fish|shrimp|broth|stock|cultures?|enzymes?|vitamins?|niacin|riboflavin|thiamin\w*|folic|iron|calcium|sodium|potassium|phosphate\w*|nitrite|nitrate|erythorbate|sorbate|benzoate|propionate|sulfite|bht|bha|tbhq|edta|datem|monoglycerides|diglycerides|polysorbate|sucralose|aspartame|acesulfame|stevia|erythritol|xylitol|sorbitol|red 40|yellow 5|yellow 6|blue 1|blue 2|titanium dioxide|caramel)\b/i;
 
 export function isEnglishIngredientText(raw: string): boolean {
   const s = raw.trim();

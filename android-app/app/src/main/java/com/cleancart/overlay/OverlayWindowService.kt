@@ -106,6 +106,8 @@ class OverlayWindowService : Service() {
     private var currentStoreKey = "walmart"
     private val tripCart = mutableListOf<TripCartItem>()
     private var displayedCartAvg = 100
+    private var pendingSwapFromKey: String? = null
+    private var pendingSwapTitle: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -286,8 +288,18 @@ class OverlayWindowService : Service() {
         return false
     }
 
+    private fun matchesPendingSwap(rawTitle: String): Boolean {
+        val pending = pendingSwapTitle ?: return false
+        if (isSameCartItem(rawTitle, pending)) return true
+        val words = normalizeCartKey(pending).split(" ").filter { it.length >= 3 }
+        val lower = normalizeCartKey(rawTitle)
+        return words.size >= 2 && words.take(2).all { lower.contains(it) }
+    }
+
     private fun syncCartFromScreen(arrRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
+        val prevAvg = calcCartAvg()
+        var swapDetectedInCart = false
         // Never clear tripCart on virtualized RecyclerView cart screens — merge/accumulate visible rows
         // so scrolling up and down a Walmart/BJ's/ALDI cart retains off-screen items smoothly.
         tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
@@ -300,6 +312,15 @@ class OverlayWindowService : Service() {
             if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) continue
             val score = result.optInt("score", 50)
             val swap = d.optJSONObject("swap")
+            if (matchesPendingSwap(rawTitle)) {
+                val fromKey = pendingSwapFromKey
+                if (!fromKey.isNullOrBlank()) {
+                    tripCart.removeAll { isSameCartItem(it.key, fromKey) || isSameCartItem(it.title, fromKey) }
+                }
+                pendingSwapFromKey = null
+                pendingSwapTitle = null
+                swapDetectedInCart = true
+            }
             val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
             if (existing != null) {
                 existing.score = score
@@ -315,8 +336,12 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        displayedCartAvg = calcCartAvg()
+        val nextAvg = calcCartAvg()
+        displayedCartAvg = nextAvg
         persistCart()
+        if (swapDetectedInCart && nextAvg > prevAvg) {
+            animateCartAvgClimb(prevAvg, nextAvg)
+        }
     }
 
     private fun recordScannedItem(d: JSONObject?) {
@@ -326,9 +351,20 @@ class OverlayWindowService : Service() {
         val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
         if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) return
         if (Regex("(?i)(gas savings|walmart\\+|notification|scan barcodes|qr code|account|sparky)").containsMatchIn(rawTitle)) return
+        val prevAvg = calcCartAvg()
+        var swapDetectedInCart = false
         val score = result.optInt("score", 50)
         val swap = d.optJSONObject("swap")
         tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
+        if (matchesPendingSwap(rawTitle)) {
+            val fromKey = pendingSwapFromKey
+            if (!fromKey.isNullOrBlank()) {
+                tripCart.removeAll { isSameCartItem(it.key, fromKey) || isSameCartItem(it.title, fromKey) }
+            }
+            pendingSwapFromKey = null
+            pendingSwapTitle = null
+            swapDetectedInCart = true
+        }
         val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
         if (existing != null) {
             existing.score = score
@@ -340,8 +376,12 @@ class OverlayWindowService : Service() {
                 tripCart.removeAt(tripCart.size - 1)
             }
         }
-        displayedCartAvg = calcCartAvg()
+        val nextAvg = calcCartAvg()
+        displayedCartAvg = nextAvg
         persistCart()
+        if (swapDetectedInCart && nextAvg > prevAvg) {
+            animateCartAvgClimb(prevAvg, nextAvg)
+        }
     }
 
     private fun persistCart() {
@@ -688,27 +728,18 @@ class OverlayWindowService : Service() {
         }
 
         val dirtyItems = tripCart.filter { it.score < 75 }
-        if (dirtyItems.isNotEmpty()) {
-            sheet.addView(text("Swap All ${dirtyItems.size} Dirty Items → 100/100", 14f, Color.WHITE, bold = true).apply {
+        val firstDirtyWithSwap = dirtyItems.firstOrNull { it.swapObj != null }
+        if (firstDirtyWithSwap?.swapObj != null) {
+            val firstSwap = firstDirtyWithSwap.swapObj!!
+            val swapTitle = firstSwap.optString("title", "Clean Alternative")
+            val swapScore = firstSwap.optInt("score", 90)
+            sheet.addView(text("Find Clean Swap: $swapTitle ($swapScore/100)", 14f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
                 setOnClickListener {
-                    val prevAvg = calcCartAvg()
-                    val firstSwap = dirtyItems.firstNotNullOfOrNull { it.swapObj }
-                    for (d in dirtyItems) {
-                        d.title = d.swapObj?.optString("title")?.takeIf { it.isNotBlank() } ?: d.title
-                        d.score = d.swapObj?.optInt("score", 100) ?: 100
-                    }
-                    persistCart()
-                    val nextAvg = calcCartAvg()
-                    removeCard()
-                    if (firstSwap != null) {
-                        openSwap(firstSwap)
-                    } else {
-                        animateCartAvgClimb(prevAvg, nextAvg)
-                    }
+                    openSwap(firstSwap, firstDirtyWithSwap)
                 }
             })
         }
@@ -905,17 +936,15 @@ class OverlayWindowService : Service() {
         card = null
     }
 
-    /** Fires the affiliate deep link inside the store's native app (falls back to browser) and animates Cart Avg climbing. */
+    /**
+     * Fires the affiliate deep link inside the store's native app (falls back to browser).
+     * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
+     */
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
-        val prevAvg = calcCartAvg()
         val prodTitle = data?.optJSONObject("product")?.optString("title").orEmpty()
         val target = explicitItem ?: tripCart.firstOrNull { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
-        if (target != null) {
-            target.title = swap.optString("title", target.title)
-            target.score = swap.optInt("score", 100)
-        }
-        persistCart()
-        val nextAvg = calcCartAvg()
+        pendingSwapFromKey = target?.key ?: prodTitle.takeIf { it.isNotBlank() }
+        pendingSwapTitle = swap.optString("title").takeIf { it.isNotBlank() }
 
         val link = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
         val pkg = swap.optString("androidPackage")
@@ -926,7 +955,7 @@ class OverlayWindowService : Service() {
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(swap.optString("webUrl"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
         removeCard()
-        animateCartAvgClimb(prevAvg, nextAvg)
+        showPill()
     }
 
     /* ---------------- Helpers ---------------- */

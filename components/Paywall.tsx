@@ -14,7 +14,6 @@ import {
 export interface AppliedCreator {
   code: string;
   name: string;
-  commissionPct: number;
 }
 
 interface PaywallProps {
@@ -28,12 +27,8 @@ interface PaywallProps {
     plan: PlanId;
     creator: AppliedCreator | null;
     trialDays: number;
-    commissionOwed?: number;
   }) => void;
-  onOpenInfluencerEngine: () => void;
 }
-
-const SAMPLE_CODES = ["CLEANMOM", "WALMARTHAUL", "SARAHHAULS", "PARENTMAXX"];
 
 export default function Paywall({
   open,
@@ -43,7 +38,6 @@ export default function Paywall({
   appliedCreator,
   onCreatorApplied,
   onConversionComplete,
-  onOpenInfluencerEngine,
 }: PaywallProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("annual");
   const [codeInput, setCodeInput] = useState(appliedCreator?.code ?? "");
@@ -54,8 +48,6 @@ export default function Paywall({
     plan: PlanId;
     trialDays: number;
     creator: AppliedCreator | null;
-    commission: number;
-    net: number;
   } | null>(null);
 
   useEffect(() => {
@@ -75,20 +67,23 @@ export default function Paywall({
     setCodeBusy(true);
     setCodeError("");
     try {
-      const res = await fetch("/api/influencers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "track", code: target, event: "click" }),
-      });
+      const res = await fetch(`/api/influencers?code=${encodeURIComponent(target)}`);
       const data = await res.json();
-      if (!data.ok || !data.creator) {
-        setCodeError(data.error || "Could not apply code.");
+      if (!res.ok || !data.ok || !data.creator) {
+        onCreatorApplied(null);
+        setCodeError(data.error || "Invalid creator code.");
         return;
       }
+      // Best-effort click tracking on verified code
+      void fetch("/api/influencers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "track", code: data.creator.code, event: "click" }),
+      }).catch(() => {});
+
       const c: AppliedCreator = {
         code: data.creator.code,
         name: data.creator.name,
-        commissionPct: data.creator.commissionPct,
       };
       setCodeInput(c.code);
       onCreatorApplied(c);
@@ -107,9 +102,6 @@ export default function Paywall({
     setCheckoutBusy(true);
     setCodeError("");
     try {
-      const gross = selectedPlan === "annual" ? PRICING.annual : PRICING.monthly;
-      let commission = 0;
-
       const checkoutRes = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -121,13 +113,6 @@ export default function Paywall({
       });
       const checkoutData = await checkoutRes.json().catch(() => ({}));
       if (checkoutData?.ok && checkoutData?.mode === "stripe" && checkoutData?.url) {
-        if (appliedCreator) {
-          await fetch("/api/influencers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "track", code: appliedCreator.code, event: "trial" }),
-          });
-        }
         window.location.href = checkoutData.url;
         return;
       }
@@ -138,29 +123,15 @@ export default function Paywall({
         return;
       }
 
-      if (appliedCreator) {
-        commission = commissionFor(selectedPlan, appliedCreator.commissionPct);
-        const event = selectedPlan === "annual" ? "checkout_annual" : "paid_monthly";
-        await fetch("/api/influencers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "track", code: appliedCreator.code, event }),
-        });
-      }
-
-      const net = Math.round((gross - commission) * 100) / 100;
       setReceipt({
         plan: selectedPlan,
         trialDays: selectedPlan === "annual" ? trialDays : 0,
         creator: appliedCreator,
-        commission,
-        net,
       });
       onConversionComplete({
         plan: selectedPlan,
         creator: appliedCreator,
         trialDays: selectedPlan === "annual" ? trialDays : 0,
-        commissionOwed: commission,
       });
       setTimeout(() => {
         onClose();

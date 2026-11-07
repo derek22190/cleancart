@@ -34,9 +34,10 @@
     openFlag: null,
     y: 50,
     cartItems: [], // [{ key, title, score, swapTitle, swapScore, swapUrl }]
-    displayedAvg: 0,
+    displayedAvg: 100,
     dragging: false,
     overHide: false,
+    pendingSwap: null, // { fromKey, toTitle }
   };
 
   /* ---------------- Trip cart persistence ---------------- */
@@ -44,18 +45,15 @@
     try {
       const stored = await chrome.storage.local.get(CART_STORAGE_KEY);
       const list = stored?.[CART_STORAGE_KEY];
-      if (Array.isArray(list) && list.length) {
-        state.cartItems = list;
+      if (Array.isArray(list)) {
+        state.cartItems = list.filter((i) => i && !String(i.key || "").startsWith("seed-"));
       } else {
-        state.cartItems = [
-          { key: "seed-1", title: "Strawberry Lowfat Yogurt", score: 35, swapTitle: "Stonyfield Organic Plain Yogurt", swapScore: 100, swapUrl: `https://${HOST}/search?q=Stonyfield+Organic+Yogurt&irgwc=1&clickid=YOUR_IMPACT_ID` },
-          { key: "seed-2", title: "Baked Cheddar Crackers", score: 40, swapTitle: "Mary's Gone Crackers", swapScore: 100, swapUrl: `https://${HOST}/search?q=Marys+Gone+Crackers&irgwc=1&clickid=YOUR_IMPACT_ID` },
-          { key: "seed-3", title: "Grass-Fed Salted Butter", score: 100, swapTitle: null, swapScore: 100, swapUrl: null },
-        ];
+        state.cartItems = [];
       }
       state.displayedAvg = calcCartAvg();
     } catch {
-      state.displayedAvg = 58;
+      state.cartItems = [];
+      state.displayedAvg = 100;
     }
   }
 
@@ -137,6 +135,22 @@
     return isValidIngredientText(inlineText) ? inlineText : "";
   }
 
+  function isAmazonGroceryPage() {
+    const crumbText = (
+      document.querySelector(
+        "#wayfinding-breadcrumbs_feature_div, #nav-subnav, #brandByline_feature_div, #almDetailPagePoi, #fresh-merchant-info"
+      )?.textContent || ""
+    );
+    if (/\b(grocery|gourmet food|amazon fresh|whole foods|pantry|food\s*&\s*beverage|snacks|beverages)\b/i.test(crumbText)) {
+      return true;
+    }
+    const searchAlias = document.querySelector("#searchDropdownBox option[selected], #nav-search-label-id")?.textContent || "";
+    if (/\b(grocery|amazon fresh|whole foods|prime pantry)\b/i.test(searchAlias)) {
+      return true;
+    }
+    return Boolean(readIngredients());
+  }
+
   function isProductPage() {
     const p = location.pathname;
     if (STORE === "walmart") return /\/ip\//.test(p);
@@ -146,7 +160,7 @@
     if (STORE === "aldi") return /\/products?\//.test(p);
     if (STORE === "doordash") return /\/products?\//.test(p) || /item-details/i.test(location.search);
     if (STORE === "ubereats") return /\/product\//.test(p) || /mod=quickView/i.test(location.search);
-    if (STORE === "amazon") return /\/(dp|gp\/product)\//.test(p);
+    if (STORE === "amazon") return /\/(dp|gp\/product)\//.test(p) && isAmazonGroceryPage();
     if (STORE === "sams") return /\/(p|product|ip)\//.test(p);
     if (STORE === "bjs") return /\/product\//.test(p);
     if (STORE === "costco") return /\/p\/|\.product\./i.test(p);
@@ -182,25 +196,27 @@
 
     // Whole-Cart Auditor Drawer (opened by tapping the bubble in Cart Avg mode)
     if (state.auditorOpen) {
-      const rows = state.cartItems
-        .map(
-          (item, idx) => `<li class="cc-audit-row">
-            <div><b>${esc(item.title)}</b>${item.swapTitle && item.score < 75 ? `<small>Clean Swap: ${esc(item.swapTitle)} (100/100)</small>` : ""}</div>
-            <span class="cc-chip cc-tone-${toneForScore(item.score)}">${item.score}</span>
-            ${item.score < 75 && item.swapTitle ? `<button class="cc-mini-swap" data-swap-idx="${idx}">Swap</button>` : ""}
-          </li>`,
-        )
-        .join("");
-      const dirtyCount = state.cartItems.filter((i) => i.score < 75).length;
+      const rows = state.cartItems.length
+        ? state.cartItems
+            .map(
+              (item, idx) => `<li class="cc-audit-row">
+                <div><b>${esc(item.title)}</b>${item.swapTitle && item.score < 75 ? `<small>Clean Swap: ${esc(item.swapTitle)} (${esc(item.swapScore || 90)}/100)</small>` : ""}</div>
+                <span class="cc-chip cc-tone-${toneForScore(item.score)}">${esc(item.score)}</span>
+                ${item.score < 75 && item.swapTitle ? `<button class="cc-mini-swap" data-swap-idx="${idx}">Swap</button>` : ""}
+              </li>`,
+            )
+            .join("")
+        : `<li class="cc-audit-row"><div><b>Your cart is empty</b><small>Add items to your store cart to audit your real Cart Avg.</small></div></li>`;
+      const firstDirty = state.cartItems.find((i) => i.score < 75 && i.swapUrl);
 
       root.innerHTML = `<div class="cc-backdrop" data-act="collapse">
         <div class="cc-card ${avgTone}" role="dialog" aria-label="Whole-Cart Auditor">
           <div class="cc-head">
-            <div class="cc-head-left"><img class="cc-head-mascot" src="${mascotUrl}" alt="Broc" /><div><span class="cc-eyebrow">HeyBroc · Whole-Cart Health Check</span><h3>Cart Average: ${avg}/100</h3></div></div>
+            <div class="cc-head-left"><img class="cc-head-mascot" src="${mascotUrl}" alt="Broc" /><div><span class="cc-eyebrow">HeyBroc · Whole-Cart Health Check</span><h3>${state.cartItems.length ? `Cart Average: ${avg}/100` : "Cart Check: Empty"}</h3></div></div>
             <button class="cc-close" data-act="collapse">×</button>
           </div>
           <ul class="cc-audit-list">${rows}</ul>
-          ${dirtyCount > 0 ? `<button class="cc-swap-btn cc-wide" data-act="swap-all">Swap All ${dirtyCount} Dirty Items → 100/100</button>` : `<p class="cc-clean" style="margin-top:12px">✓ Every item in your cart scores 75+!</p>`}
+          ${firstDirty ? `<button class="cc-swap-btn cc-wide" data-act="swap-all">Find Clean Swap: ${esc(firstDirty.swapTitle)} (${esc(firstDirty.swapScore || 90)}/100)</button>` : state.cartItems.length ? `<p class="cc-clean" style="margin-top:12px">✓ Every item in your cart scores 75+!</p>` : ""}
         </div>
       </div>`;
       return;
@@ -208,8 +224,9 @@
 
     // Mode B: Idle / Search Scroll View -> Cart Avg Floating Bubble
     if (state.mode === "cart_avg") {
+      const pillLabel = state.cartItems.length ? `${avg}/100` : "Empty";
       root.innerHTML = `<div class="cc-pill ${avgTone}" style="top:${state.y}%" role="button" tabindex="0" data-act="open-auditor">
-          <img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><span>🛒 Cart Avg:</span><b>${avg}/100</b>
+          <img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><span>🛒 Cart Avg:</span><b>${pillLabel}</b>
         </div>${hideDropHtml}`;
       bindPillDrag(root.querySelector(".cc-pill"), "auditor");
       return;
@@ -223,26 +240,27 @@
       return;
     }
     const r = d.result;
-    const tone = `cc-tone-${r.color}`;
+    const safeScore = Math.max(0, Math.min(100, Number(r.score) || 0));
+    const tone = `cc-tone-${esc(r.color)}`;
     if (!state.expanded) {
       root.innerHTML = `<div class="cc-pill ${tone}" style="top:${state.y}%" role="button" tabindex="0" data-act="expand">
-          <img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><b>${r.score}/100</b><span class="cc-sep">•</span><span>Tap to Inspect</span>
+          <img class="cc-pill-mascot" src="${mascotUrl}" alt="" /><span class="cc-dot"></span><b>${esc(safeScore)}/100</b><span class="cc-sep">•</span><span>Tap to Inspect</span>
         </div>${hideDropHtml}`;
       bindPillDrag(root.querySelector(".cc-pill"), "product");
       return;
     }
     const C = 2 * Math.PI * 44;
     const flags = r.flagged.length
-      ? r.flagged.map((f) => `<span class="cc-flag cc-risk-${f.risk} is-open">${esc(f.name)} ⚠️</span>`).join("")
+      ? r.flagged.map((f) => `<span class="cc-flag cc-risk-${esc(f.risk)} is-open">${esc(f.name)} ⚠️</span>`).join("")
       : `<p class="cc-clean">✓ No watchlist additives found.</p>`;
     const explain = r.flagged
       .map(
         (f) =>
-          `<div class="cc-explain cc-risk-${f.risk}" style="margin-bottom:6px"><b>${esc(f.name)}</b> <span>−${f.penalty} pts</span><p>${esc(f.explanation)}</p></div>`,
+          `<div class="cc-explain cc-risk-${esc(f.risk)}" style="margin-bottom:6px"><b>${esc(f.name)}</b> <span>−${esc(f.penalty)} pts</span><p>${esc(f.explanation)}</p></div>`,
       )
       .join("");
     const swap = d.swap
-      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · Cart Avg ${avg}/100</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${d.swap.score}/100 Excellent</span></div>
+      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Verified Pick"}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 Excellent</span></div>
            <button class="cc-swap-btn" data-act="swap">Swap Item</button></div>`
       : `<div class="cc-swap cc-swap-ok">Great pick — no swap needed.</div>`;
 
@@ -251,8 +269,8 @@
         <div class="cc-head"><div class="cc-head-left"><img class="cc-head-mascot" src="${mascotUrl}" alt="Broc" /><div><span class="cc-eyebrow">HeyBroc</span><h3>Health Insights</h3></div></div><button class="cc-close" data-act="collapse">×</button></div>
         <p class="cc-product">${esc(d.product.title)}</p>
         <div class="cc-body">
-          <div class="cc-gauge"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="cc-track"/><circle cx="50" cy="50" r="44" class="cc-fill" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - r.score / 100)}" transform="rotate(-90 50 50)"/></svg>
-            <div class="cc-gauge-label"><strong>${r.score}<span>/100</span></strong><em>${r.rating}</em></div></div>
+          <div class="cc-gauge"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="cc-track"/><circle cx="50" cy="50" r="44" class="cc-fill" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - safeScore / 100)}" transform="rotate(-90 50 50)"/></svg>
+            <div class="cc-gauge-label"><strong>${esc(safeScore)}<span>/100</span></strong><em>${esc(r.rating)}</em></div></div>
           <div class="cc-flags">${flags}</div>
         </div>
         ${explain}
@@ -260,18 +278,92 @@
       </div></div>`;
   }
 
+  function isCurrentProductInCart() {
+    const badges = document.querySelectorAll('button, [role="button"], [aria-label*="in cart" i], [aria-label*="in bag" i], [data-testid*="quantity" i]');
+    for (const el of badges) {
+      const txt = `${el.textContent || ""} ${el.getAttribute("aria-label") || ""}`.trim();
+      if (/\b(\d+\s+in\s+(cart|bag|basket|order)|added\s+to\s+(cart|bag|basket))\b/i.test(txt)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function matchesPendingSwapTitle(title) {
+    if (!state.pendingSwap?.toTitle || !title) return false;
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    const a = norm(title);
+    const b = norm(state.pendingSwap.toTitle);
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const words = b.split(" ").filter((w) => w.length >= 3);
+    return words.length >= 2 && words.slice(0, 2).every((w) => a.includes(w));
+  }
+
+  function recordProductInCart(resp, fallbackTitle) {
+    if (!resp?.ok || !resp.result) return;
+    const prevAvg = calcCartAvg();
+    const itemKey = resp.product?.title || fallbackTitle;
+    if (!itemKey) return;
+
+    let swappedInCart = false;
+    if (matchesPendingSwapTitle(itemKey)) {
+      const fromKey = state.pendingSwap?.fromKey;
+      if (fromKey) {
+        state.cartItems = state.cartItems.filter((i) => i.key !== fromKey);
+      }
+      state.pendingSwap = null;
+      swappedInCart = true;
+    }
+
+    const existing = state.cartItems.find((i) => i.key === itemKey);
+    if (existing) {
+      existing.score = resp.result.score;
+      existing.swapTitle = resp.swap?.title || null;
+      existing.swapScore = resp.swap?.score || null;
+      existing.swapUrl = resp.swap?.webUrl || null;
+    } else {
+      state.cartItems.unshift({
+        key: itemKey,
+        title: itemKey,
+        score: resp.result.score,
+        swapTitle: resp.swap?.title || null,
+        swapScore: resp.swap?.score || null,
+        swapUrl: resp.swap?.webUrl || null,
+      });
+      state.cartItems = state.cartItems.slice(0, 20);
+    }
+    saveTripCart();
+    const nextAvg = calcCartAvg();
+    if (swappedInCart && nextAvg > prevAvg) {
+      animateCartAvgTo(nextAvg);
+    } else {
+      state.displayedAvg = nextAvg;
+      render();
+    }
+  }
+
+  // Detect explicit user clicks on store "Add to Cart" buttons on the active product page
+  document.addEventListener(
+    "click",
+    (e) => {
+      const btn = e.target?.closest?.('button, [role="button"], input[type="submit"], input[type="button"]');
+      if (!btn || !isProductPage() || !state.data?.ok) return;
+      const label = `${btn.textContent || ""} ${btn.getAttribute("aria-label") || ""} ${btn.value || ""}`.trim();
+      if (/\b(add\s+to\s+(cart|bag|basket|order))\b/i.test(label)) {
+        recordProductInCart(state.data, readTitle());
+      }
+    },
+    true
+  );
+
   root.addEventListener("click", (e) => {
     const swapIdxBtn = e.target.closest("[data-swap-idx]");
     if (swapIdxBtn) {
       const idx = Number(swapIdxBtn.dataset.swapIdx);
       const item = state.cartItems[idx];
       if (item) {
+        state.pendingSwap = { fromKey: item.key, toTitle: item.swapTitle };
         if (item.swapUrl) window.open(item.swapUrl, "_blank", "noopener");
-        item.title = item.swapTitle || item.title;
-        item.score = item.swapScore || 100;
-        item.swapTitle = null;
-        saveTripCart();
-        animateCartAvgTo(calcCartAvg());
       }
       return;
     }
@@ -287,31 +379,19 @@
     }
     if (act === "swap" && state.data?.swap) {
       // Affiliate link is ONLY opened on this explicit user tap.
+      // Do NOT mutate cartItems until the next screen scan or Add-to-Cart detects the swap item in cart.
+      const currentKey = state.data.product?.title || readTitle();
+      state.pendingSwap = { fromKey: currentKey, toTitle: state.data.swap.title };
       window.open(state.data.swap.webUrl, "_blank", "noopener");
-      const currentKey = state.data.product?.title || "current";
-      const existing = state.cartItems.find((i) => i.key === currentKey);
-      if (existing) {
-        existing.title = state.data.swap.title;
-        existing.score = state.data.swap.score;
-        existing.swapTitle = null;
-      } else {
-        state.cartItems.push({ key: currentKey, title: state.data.swap.title, score: state.data.swap.score, swapTitle: null, swapScore: 100, swapUrl: null });
-      }
-      saveTripCart();
       state.expanded = false;
-      state.mode = "cart_avg";
-      animateCartAvgTo(calcCartAvg());
+      render();
     }
     if (act === "swap-all") {
-      state.cartItems.forEach((item) => {
-        if (item.score < 75 && item.swapTitle) {
-          item.title = item.swapTitle;
-          item.score = item.swapScore || 100;
-          item.swapTitle = null;
-        }
-      });
-      saveTripCart();
-      animateCartAvgTo(calcCartAvg());
+      const firstDirty = state.cartItems.find((i) => i.score < 75 && i.swapUrl);
+      if (firstDirty) {
+        state.pendingSwap = { fromKey: firstDirty.key, toTitle: firstDirty.swapTitle };
+        window.open(firstDirty.swapUrl, "_blank", "noopener");
+      }
     }
   });
 
@@ -373,7 +453,8 @@
       return;
     }
     const rawIngredients = readIngredients();
-    const key = `${location.pathname}|${productTitle}|${rawIngredients.length}`;
+    const inCart = isCurrentProductInCart();
+    const key = `${location.pathname}|${productTitle}|${rawIngredients.length}|${inCart ? 1 : 0}`;
     if (key === lastKey) return;
     lastKey = key;
     chrome.runtime.sendMessage(
@@ -386,21 +467,8 @@
           expanded: false,
           openFlag: null,
         };
-        if (resp?.ok && resp.result) {
-          const itemKey = resp.product?.title || productTitle;
-          if (!state.cartItems.some((i) => i.key === itemKey)) {
-            state.cartItems.unshift({
-              key: itemKey,
-              title: itemKey,
-              score: resp.result.score,
-              swapTitle: resp.swap?.title || null,
-              swapScore: resp.swap?.score || 100,
-              swapUrl: resp.swap?.webUrl || null,
-            });
-            state.cartItems = state.cartItems.slice(0, 12);
-            saveTripCart();
-            state.displayedAvg = calcCartAvg();
-          }
+        if (resp?.ok && resp.result && isCurrentProductInCart()) {
+          recordProductInCart(resp, productTitle);
         }
         render();
       },

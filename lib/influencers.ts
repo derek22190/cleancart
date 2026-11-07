@@ -1,12 +1,10 @@
 /**
  * CleanCart — Influencer / Creator affiliate store (server-only).
- * In-memory with best-effort JSON persistence (./.cache locally, /tmp on Vercel).
- * For production, swap this module for a real database (e.g. Vercel Postgres / Supabase).
+ * Backed by Upstash Redis / Vercel KV via lib/storage.ts (with local .cache fallback in dev).
  */
 import "server-only";
-import { promises as fs } from "fs";
-import path from "path";
 import { PRICING, commissionFor, type PlanId } from "./pricing";
+import { kvGet, kvSet, kvSetNx } from "./storage";
 
 export interface Creator {
   code: string;
@@ -24,8 +22,7 @@ export interface Creator {
 
 export type CreatorEvent = "click" | "trial" | "paid_annual" | "paid_monthly" | "checkout_annual";
 
-const DIR = process.env.CLEANCART_CACHE_DIR || (process.env.VERCEL ? "/tmp/cleancart-cache" : path.join(process.cwd(), ".cache"));
-const FILE = path.join(DIR, "influencers.json");
+const CREATORS_KV_KEY = "heybroc:creators:v1";
 
 const SEED: Array<Pick<Creator, "code" | "name">> = [
   { code: "CLEANMOM", name: "Clean Mom Club" },
@@ -33,8 +30,6 @@ const SEED: Array<Pick<Creator, "code" | "name">> = [
   { code: "SARAHHAULS", name: "Sarah Grocery Hauls" },
   { code: "PARENTMAXX", name: "ParentMaxxing Official" },
 ];
-
-let store: Map<string, Creator> | null = null;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -59,27 +54,25 @@ function blank(code: string, name: string, commissionPct: number = PRICING.defau
 }
 
 async function load(): Promise<Map<string, Creator>> {
-  if (store) return store;
   try {
-    const json = JSON.parse(await fs.readFile(FILE, "utf8")) as Creator[];
-    store = new Map(json.map((c) => [c.code, c]));
-    for (const s of SEED) {
-      if (!store.has(s.code)) store.set(s.code, blank(s.code, s.name));
+    const json = await kvGet<Creator[]>(CREATORS_KV_KEY);
+    if (Array.isArray(json) && json.length > 0) {
+      const store = new Map(json.map((c) => [c.code, c]));
+      for (const s of SEED) {
+        if (!store.has(s.code)) store.set(s.code, blank(s.code, s.name));
+      }
+      return store;
     }
   } catch {
-    store = new Map(SEED.map((s) => [s.code, blank(s.code, s.name)]));
+    /* fall through to seed */
   }
-  return store;
+  const seeded = new Map(SEED.map((s) => [s.code, blank(s.code, s.name)]));
+  await save(seeded);
+  return seeded;
 }
 
-async function save() {
-  if (!store) return;
-  try {
-    await fs.mkdir(DIR, { recursive: true });
-    await fs.writeFile(FILE, JSON.stringify([...store.values()], null, 2));
-  } catch {
-    /* read-only FS: keep in memory */
-  }
+async function save(store: Map<string, Creator>) {
+  await kvSet(CREATORS_KV_KEY, [...store.values()]);
 }
 
 export async function listCreators(): Promise<Creator[]> {
@@ -90,20 +83,6 @@ export async function getCreator(code: string): Promise<Creator | null> {
   return (await load()).get(normalizeCode(code)) ?? null;
 }
 
-/** Finds an existing creator or auto-creates one at the default 35% split so any test code works. */
-export async function getOrCreateCreator(code: string, name?: string, commissionPct?: number): Promise<Creator> {
-  const norm = normalizeCode(code);
-  if (norm.length < 2) throw new Error("Creator code must be at least 2 characters.");
-  const s = await load();
-  const existing = s.get(norm);
-  if (existing) return existing;
-  const pct = clampPct(commissionPct ?? PRICING.defaultCommissionPct);
-  const created = blank(norm, name?.trim() || norm, pct);
-  s.set(norm, created);
-  await save();
-  return created;
-}
-
 export async function createCreator(input: { code: string; name?: string; commissionPct?: number }): Promise<Creator> {
   const s = await load();
   const code = normalizeCode(input.code);
@@ -112,33 +91,37 @@ export async function createCreator(input: { code: string; name?: string; commis
     const existing = s.get(code)!;
     if (input.commissionPct !== undefined) existing.commissionPct = clampPct(input.commissionPct);
     if (input.name?.trim()) existing.name = input.name.trim();
-    await save();
+    await save(s);
     return existing;
   }
   const pct = clampPct(input.commissionPct ?? PRICING.defaultCommissionPct);
   const c = blank(code, input.name?.trim() || code, pct);
   s.set(code, c);
-  await save();
+  await save(s);
   return c;
 }
 
 export async function updateCreator(code: string, patch: { commissionPct?: number; name?: string }): Promise<Creator> {
-  const c = await getCreator(code);
+  const s = await load();
+  const c = s.get(normalizeCode(code));
   if (!c) throw new Error("Unknown creator code.");
   if (patch.commissionPct !== undefined) c.commissionPct = clampPct(patch.commissionPct);
   if (patch.name) c.name = patch.name.trim();
-  await save();
+  await save(s);
   return c;
 }
 
 export async function deleteCreator(code: string) {
-  (await load()).delete(normalizeCode(code));
-  await save();
+  const s = await load();
+  s.delete(normalizeCode(code));
+  await save(s);
 }
 
 /** Records a funnel event and recomputes payout math. Commission is locked at the creator's current split. */
 export async function trackEvent(code: string, event: CreatorEvent): Promise<Creator> {
-  const c = await getOrCreateCreator(code);
+  const s = await load();
+  const c = s.get(normalizeCode(code));
+  if (!c) throw new Error("Invalid creator code.");
   const paid = (plan: PlanId) => {
     const price = plan === "annual" ? PRICING.annual : PRICING.monthly;
     c.grossRevenue = round2(c.grossRevenue + price);
@@ -160,14 +143,32 @@ export async function trackEvent(code: string, event: CreatorEvent): Promise<Cre
     paid("monthly");
   }
   c.netRevenue = round2(c.grossRevenue - c.commissionOwed);
-  await save();
+  await save(s);
   return c;
+}
+
+/**
+ * Idempotently records a creator conversion from a verified Stripe webhook event.
+ * Prevents duplicate webhook deliveries from inflating creator payouts.
+ */
+export async function recordStripeCreatorConversionOnce(
+  idempotencyKey: string,
+  code: string,
+  event: CreatorEvent
+): Promise<Creator | null> {
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+  const creator = await getCreator(norm);
+  if (!creator) return null;
+  const acquired = await kvSetNx(`heybroc:creator:conv:${idempotencyKey}`, "1");
+  if (!acquired) return creator;
+  return trackEvent(norm, event);
 }
 
 export async function resetStats() {
   const s = await load();
   for (const c of s.values()) Object.assign(c, { ...blank(c.code, c.name, c.commissionPct), createdAt: c.createdAt });
-  await save();
+  await save(s);
 }
 
 export function totals(list: Creator[]) {

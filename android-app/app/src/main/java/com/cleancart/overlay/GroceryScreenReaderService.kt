@@ -463,7 +463,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         queue.add(root)
         var seen = 0
         while (queue.isNotEmpty() && seen < MAX_NODES) {
-            val node = queue.removeFirst()
+            val node = queue.pollFirst() ?: break
             seen++
             try {
                 if (node.isPassword) continue
@@ -493,7 +493,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
         }
         while (queue.isNotEmpty()) {
-            val leftover = queue.removeFirst()
+            val leftover = queue.pollFirst() ?: break
             if (leftover !== root) recycleNode(leftover)
         }
         return out

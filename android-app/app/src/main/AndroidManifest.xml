@@ -14,7 +14,10 @@
         <package android:name="com.dd.doordash" />
         <package android:name="com.ubercab.eats" />
         <package android:name="com.amazon.mShop.android.shopping" />
+        <package android:name="com.wholefoods.wholefoodsmarket" />
+        <package android:name="com.rfi.sams.android" />
         <package android:name="com.samsclub.app" />
+        <package android:name="com.brandingbrand.reactnative.and.bjs" />
         <package android:name="com.bjs.mobile" />
         <package android:name="com.costco.app.android" />
         <package android:name="com.shipt.groceries" />

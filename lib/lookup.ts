@@ -12,7 +12,14 @@
 import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
-import type { NutritionInput } from "./rubric";
+import {
+  ENGLISH_INGREDIENT_ANCHORS,
+  isEnglishIngredientText,
+  NON_ENGLISH_INGREDIENTS,
+  type NutritionInput,
+} from "./rubric";
+
+export { ENGLISH_INGREDIENT_ANCHORS, isEnglishIngredientText, NON_ENGLISH_INGREDIENTS };
 
 export type LookupSource = "screen" | "cache" | "openfoodfacts" | "usda" | "catalog";
 
@@ -218,12 +225,6 @@ interface OffProduct {
 const OFF_FIELDS =
   "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,nutriments";
 
-export const NON_ENGLISH_INGREDIENTS =
-  /\b(eau\b|sucre\b|huile\b|farine\b|lait\b|sirop\b|lécithine|acide\b|arômes?|colorants?|amidon|émulsifiants?|conservateurs?|noisettes|poudre\b|zutaten|wasser\b|zucker\b|pflanzliches|weizenmehl|speisesalz|säuerungsmittel|magermilchpulver|ingredientes|agua\b|azúcar|aceite\b|harina\b|leche\b|jarabe\b)/i;
-
-const ENGLISH_INGREDIENT_ANCHORS =
-  /\b(water|aqua|sugar|salt|flour|milk|cream|butter|cheese|whey|casein|yogurt|eggs?|oil|fat|tallow|lard|corn|wheat|rice|oats?|barley|rye|quinoa|millet|sorghum|flax|chia|hemp|sesame|soy|soybeans?|peanuts?|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|pistachios?|macadamia|coconut|cocoa|chocolate|vanilla|cinnamon|honey|molasses|syrup|dextrose|fructose|sucrose|maltose|lactose|maltodextrin|starch|pectin|gelatin|vinegar|yeast|baking|soda|acid|citric|lactic|malic|ascorbic|tocopherols?|lecithin|gum|carrageenan|cellulose|flavor\w*|color\w*|extract|spices?|garlic|onion|paprika|turmeric|annatto|celery|carrots?|tomato\w*|potato\w*|apples?|strawberr\w*|raspberr\w*|blueberr\w*|cranberr\w*|cherries|cherry|lemon|lime|orange|peach|mango|banana|pineapple|grape|dates?|raisins?|figs?|beans?|lentils?|chickpeas?|peas|spinach|broccoli|kale|peppers?|chili|jalapeno|mushrooms?|beef|pork|chicken|turkey|lamb|bison|duck|salmon|tuna|cod|fish|shrimp|broth|stock|cultures?|enzymes?|vitamins?|niacin|riboflavin|thiamin\w*|folic|iron|calcium|sodium|potassium|phosphate\w*|nitrite|nitrate|erythorbate|sorbate|benzoate|propionate|sulfite|bht|bha|tbhq|edta|datem|monoglycerides|diglycerides|polysorbate|sucralose|aspartame|acesulfame|stevia|erythritol|xylitol|sorbitol|red 40|yellow 5|yellow 6|blue 1|blue 2|titanium dioxide|caramel|glycerin|laureth|lauryl|sulfate|cocamidopropyl|betaine|dimethicone|phenoxyethanol|parfum|fragrance|paraben|cetearyl|cetyl|stearyl|carbomer|panthenol|niacinamide|salicylic|hyaluronic|retinol|ceramide|fluoride|triclosan|petrolatum|allantoin|zinc oxide|avobenzone|octinoxate|octocrylene|oxybenzone)\b/i;
-
 const SCREEN_UI_NON_INGREDIENTS =
   /\b(items to add next|frequently bought together|customers also (bought|viewed|considered)|you may also like|you might also like|similar items|related products|sponsored|add to cart|buy now|many in stock|out of stock|product information|product details|nutrition facts|shipping|delivery|pickup|reviews|ratings|select a store|return policy|disclaimer|warnings?|tap to expand|show more|see more)\b/i;
 
@@ -237,18 +238,6 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
   if (SCREEN_UI_NON_INGREDIENTS.test(s)) return false;
   if (!isEnglishIngredientText(s)) return false;
   return ENGLISH_INGREDIENT_ANCHORS.test(s);
-}
-
-export function isEnglishIngredientText(raw: string): boolean {
-  const s = raw.trim();
-  if (!s) return false;
-  if (NON_ENGLISH_INGREDIENTS.test(s) && !ENGLISH_INGREDIENT_ANCHORS.test(s)) {
-    return false;
-  }
-  // If multiple French/German/Spanish tokens appear even alongside a cognate, reject
-  const foreignHits = s.match(new RegExp(NON_ENGLISH_INGREDIENTS.source, "gi")) || [];
-  if (foreignHits.length >= 2) return false;
-  return true;
 }
 
 function englishIngredients(p: OffProduct): string {
@@ -708,24 +697,10 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { isOrganic: true, isWholeFood: true },
   },
   {
-    match: /\b(oscar mayer|lunchables|bologna|hot dog|hotdogs|frankfurters?|ball park|nathan'?s|hebrew national)\b/i,
-    brand: "Oscar Mayer",
-    title: "Oven Roasted Turkey Breast Deli Slices",
-    ingredients: "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Sodium Lactate, Salt, Sugar, Sodium Phosphates, Carrageenan, Sodium Diacetate, Sodium Ascorbate, Sodium Nitrite, Natural and Artificial Flavor.",
-    imageUrl: "/products/turkey.jpg",
-  },
-  {
     match: /\b(gatorade|powerade|sports? drink|bodyarmor|liquid i\.?v\.?)\b/i,
     brand: "Gatorade",
     title: "Thirst Quencher Fruit Punch Sports Drink",
     ingredients: "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
-    imageUrl: "/products/snacks.jpg",
-  },
-  {
-    match: /\b(coca[- ]?cola|coke|pepsi|dr pepper|mountain dew|mt dew|sprite|fanta|sunkist|root beer|ginger ale)\b/i,
-    brand: "Coca-Cola",
-    title: "Classic Cola Soft Drink",
-    ingredients: "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
     imageUrl: "/products/snacks.jpg",
   },
   {
@@ -757,34 +732,6 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Nutella Hazelnut Spread with Cocoa",
     ingredients: "Sugar, Palm Oil, Hazelnuts, Skim Milk, Cocoa, Soy Lecithin as Emulsifier, Vanillin: An Artificial Flavor.",
     imageUrl: "/products/snacks.jpg",
-  },
-  {
-    match: /\b(jif|skippy)\b|(?<!organic |natural |smucker'?s |kirkland |just )\bpeanut butter\b/i,
-    brand: "Jif",
-    title: "Creamy Peanut Butter",
-    ingredients: "Made From Roasted Peanuts And Sugar, Contains 2% Or Less Of: Molasses, Fully Hydrogenated Vegetable Oils (Rapeseed And Soybean), Mono And Diglycerides, Salt.",
-    imageUrl: "/products/snacks.jpg",
-  },
-  {
-    match: /\b(heinz)\b.*\b(ketchup|catsup)\b|(?<!organic |primal kitchen |unsweetened )\b(ketchup|catsup)\b/i,
-    brand: "Heinz",
-    title: "Tomato Ketchup",
-    ingredients: "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
-    imageUrl: "/products/ranch.jpg",
-  },
-  {
-    match: /\b(hellmann'?s|best foods)\b|(?<!avocado oil |primal kitchen |chosen foods |organic )\b(mayonnaise|mayo)\b/i,
-    brand: "Hellmann's",
-    title: "Real Mayonnaise",
-    ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors.",
-    imageUrl: "/products/ranch.jpg",
-  },
-  {
-    match: /\b(wonder bread|sara lee|white bread)\b|(?<!ezekiel |sprouted |dave'?s killer |organic |sourdough )\b(hamburger buns|hot dog buns)\b/i,
-    brand: "Sara Lee",
-    title: "Classic Soft White Bread",
-    ingredients: "Enriched Wheat Flour, Water, Sugar, Yeast, Vegetable Oil (Soybean), Salt, Calcium Propionate (to Preserve Freshness), Monoglycerides, DATEM, Calcium Sulfate, Soy Lecithin.",
-    imageUrl: "/products/bread.jpg",
   },
   {
     match: /\b(annie'?s|organic|goodles)\b.*\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|shells\s*(and|&)\s*(white\s*)?cheddar)\b/i,
@@ -839,9 +786,9 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85, isWholeFood: false },
   },
   {
-    match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|butterfinger|popcorn|croissant|biscuit|crackers|bread|rolls|buns|sauce|chicken)\b).*\b(kerrygold|land o'?\s*lakes|salted butter|unsalted butter|irish butter|grass[- ]?fed.*butter|sweet cream butter|pure butter|\bbutter\b|ghee)\b/i,
-    brand: "Kerrygold / Dairy Butter",
-    title: "Pure Grass-Fed Salted Butter",
+    match: /^(?!.*\b(canola|olive|soybean|vegetable|oil|spread|margarine|peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|butterfinger|popcorn|croissant|biscuit|crackers|bread|rolls|buns|sauce|chicken)\b).*\b(kerrygold)\b/i,
+    brand: "Kerrygold",
+    title: "Pure Irish Salted Butter",
     ingredients: "Pasteurized Cream, Salt.",
     imageUrl: "/products/butter.jpg",
     nutrition: { caloriesKcal100g: 717, sugarsG100g: 0.1, saturatedFatG100g: 51.0, sodiumMg100g: 640, fiberG100g: 0, proteinG100g: 0.9, fruitsVegNutsPct: 0, isWholeFood: false },
@@ -861,277 +808,12 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     ingredients: "Water, Sugar, Vegetable Oil (High Oleic Soybean and/or High Oleic Canola), and Less than 2% of Micellar Casein (a Milk Derivative), Mono- and Diglycerides, Dipotassium Phosphate, Natural and Artificial Flavor, Cellulose Gel, Cellulose Gum, Carrageenan.",
     imageUrl: "/products/yogurt.jpg",
   },
-  {
-    match: /\b(great value disinfecting wipes|clorox.*wipes|lysol.*wipes|microban|disinfecting wipes|disinfectant wipes|sanitizing wipes| antibacterial wipes|lysol.*spray|clorox.*cleaner|all[- ]?purpose cleaner|bleach cleaner|surface cleaner)\b/i,
-    brand: "Household Disinfectant",
-    title: "Disinfecting Surface Wipes (Lemon / Fresh Scent)",
-    ingredients: "Water, Alkyl (C12-16) Dimethylbenzyl Ammonium Chloride (Quaternary Ammonium Disinfectant), Isopropyl Alcohol, Phenoxyethanol, Synthetic Lemon Fragrance (Parfum), Sodium Hydroxide.",
-    imageUrl: "/products/ranch.jpg",
-    nutrition: { caloriesKcal100g: 360, sugarsG100g: 25, saturatedFatG100g: 5, sodiumMg100g: 400, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-  },
-  {
-    match: /\b(tide\b.*(detergent|laundry|pods|liquid)|gain\b.*(detergent|laundry|flings)|persil|arm\s*&\s*hammer.*(laundry|detergent)|purex|all\s+free|downy|suavitel|bounce.*sheets|laundry detergent|liquid laundry)\b/i,
-    brand: "Laundry Care",
-    title: "Liquid Laundry Detergent",
-    ingredients: "Water, Sodium Laureth Sulfate (Ethoxylated Surfactant), Linear Alkylbenzene Sulfonate, Propylene Glycol, Sodium Borate, Synthetic Fragrance (Parfum), Disodium Distyrylbiphenyl Disulfonate (Optical Brightener), Methylisothiazolinone.",
-    imageUrl: "/products/ranch.jpg",
-    nutrition: { caloriesKcal100g: 380, sugarsG100g: 28, saturatedFatG100g: 6, sodiumMg100g: 500, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-  },
-  {
-    match: /\b(dawn\b.*(dish|ultra|platinum)|palmolive|ajax.*dish|cascade\b|finish.*(powerball|quantum|dish)|dishwashing liquid|dish soap)\b/i,
-    brand: "Dish Care",
-    title: "Concentrated Dishwashing Liquid",
-    ingredients: "Water, Sodium Lauryl Sulfate, Sodium Laureth Sulfate, Lauramine Oxide, Synthetic Fragrance (Parfum), Methylisothiazolinone, Yellow 5, Blue 1.",
-    imageUrl: "/products/ranch.jpg",
-    nutrition: { caloriesKcal100g: 360, sugarsG100g: 24, saturatedFatG100g: 5, sodiumMg100g: 450, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-  },
-  {
-    match: /\b(scott\s+(comfort\s*plus|paper\s+towels?|1000|rapid[- ]?dissolving|bath\s+tissue|toilet\s+paper)|charmin|bounty\b|angel\s+soft|cottonelle|quilted\s+northern|brawny|sparkle.*towels?|viva.*towels?|kleenex|puffs.*facial|toilet\s+paper|paper\s+towels?|bath\s+tissue|mega\s+rolls?|double\s+rolls?|triple\s+rolls?|choose[- ]a[- ]sheet)\b/i,
-    brand: "Household Paper",
-    title: "Bleached Virgin Pulp Paper Towels / Bath Tissue",
-    ingredients: "Virgin Softwood and Hardwood Cellulose Pulp (Elemental Chlorine-Free Bleached), Wet-Strength Polyamide-Epichlorohydrin Resin.",
-    imageUrl: "/products/bread.jpg",
-    nutrition: { caloriesKcal100g: 95, sugarsG100g: 2, saturatedFatG100g: 0.8, sodiumMg100g: 60, fiberG100g: 2, proteinG100g: 2, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
-  },
-  {
-    match: /^(?!.*\b(wipes?|disinfect\w*|scent\w*|cleaner|cleaning|detergent|laundry|dish\s*soap|dishwashing|bleach|lysol|clorox|tide|downy|gain|persil|febreze|glade|air\s*freshener|toilet\s*paper|paper\s*towels?|bath\s*tissue|facial\s*tissue|kleenex|charmin|bounty|scott|cottonelle|angel\s*soft|brawny|trash\s*bags?|garbage\s*bags?|napkins?|plates?|foil|plastic\s*wrap|candle|lotion|shampoo|conditioner|body\s*wash|deodorant|toothpaste|mouthwash|soap|sanitizer|bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|dried|dehydrated|freeze[- ]?dried|auspitee|craisins|powder|crisps?|peppermint|mint|mints|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|ritz|cookies?|wafer|wafers|knoppers|storck|merci|kinder|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|gravy|broth|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|crispy|breaded|battered|fried|patties|patty|nuggets?|tenders|strips|fillets?|hot\s*pocket|sausage|kielbasa|bacon|hot\s*dog|bologna|salami|pepperoni|deli|fries|ice cream|popsicle|yogurt|creamer|velveeta|spread|dip|flavored|flavor\s*:|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|honeydew|kiwi|oranges?|clementines?|mandarins?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|pure honey|raw honey|honey|pure maple syrup|organic maple syrup|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
-    brand: "Fresh Whole Food",
-    title: "100% Whole Unprocessed Food",
-    ingredients: "100% pure whole food ingredient. No additives, no preservatives, no seed oils, no artificial dyes.",
-    imageUrl: "/products/butter.jpg",
-    nutrition: { isWholeFood: true },
-  },
 ];
 
 const UI_NOISE_QUERY =
   /\b(gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
-function smartCategoryFallback(query: string): Omit<LookupResult, "ms"> | null {
-  const cleanTitle = query.trim();
-  const q = cleanTitle.toLowerCase();
-
-  // Natural / Block / Shredded Cheeses (Cheddar, Mozzarella, Swiss, Provolone, Parmesan, Colby, Jack, Gouda, Feta)
-  if (/\b(cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|colby|monterey jack|pepper jack|string cheese|shredded cheese|sliced cheese|cheese block|cream cheese)\b/.test(q)) {
-    return {
-      productTitle: cleanTitle,
-      brand: "Dairy Cheese",
-      ingredients: "Pasteurized Milk, Cheese Culture, Salt, Enzymes, Annatto (Color).",
-      imageUrl: "/products/butter.jpg",
-      nutrition: { caloriesKcal100g: 370, sugarsG100g: 0.5, saturatedFatG100g: 19.0, sodiumMg100g: 620, fiberG100g: 0, proteinG100g: 23.0, fruitsVegNutsPct: 0, isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Breads, Bagels, English Muffins, Tortillas, Wraps, Rolls, Croissants (excluding paper/toilet rolls)
-  if (
-    /\b(bread|bagel|bagels|english muffin|tortilla|tortillas|wraps?|buns?|rolls?|croissant|pita|naan|biscuits?)\b/.test(q) &&
-    !/\b(toilet|paper|towels?|tissue|scott|charmin|bounty|angel soft|cottonelle|brawny|sparkle|mega rolls?|double rolls?|triple rolls?)\b/.test(q)
-  ) {
-    const isClean = /\b(ezekiel|sprouted|sourdough|dave'?s killer|organic)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isClean ? "Organic Bakery" : "Bakery",
-      ingredients: isClean
-        ? "Organic Sprouted Wheat, Filtered Water, Organic Malted Barley, Sea Salt, Fresh Yeast."
-        : "Enriched Wheat Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Sugar, Soybean and/or Canola Oil, Yeast, Salt, Mono- and Diglycerides, Calcium Propionate (Preservative), DATEM, Soy Lecithin.",
-      imageUrl: "/products/bread.jpg",
-      source: "catalog",
-    };
-  }
-  // Chips, Pretzels, Popcorn, Crackers, Puffs
-  if (/\b(chips?|crisps?|pretzels?|popcorn|crackers?|puffs?|tortilla chips|potato chips|kettle chips)\b/.test(q)) {
-    const isAvocadoOrOlive = /\b(avocado oil|olive oil|boulder canyon|siete|lesser\s*evil)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isAvocadoOrOlive ? "Clean Oil Snack" : "Salty Snack",
-      ingredients: isAvocadoOrOlive
-        ? "Potatoes, Avocado Oil, Sea Salt."
-        : "Potatoes, Vegetable Oil (Sunflower, Corn, and/or Canola Oil), Salt, Maltodextrin, Dextrose, Natural Flavors.",
-      imageUrl: "/products/chips.jpg",
-      source: "catalog",
-    };
-  }
-  // Cookies, Wafers, Cakes, Muffins, Brownies, Candy, Chocolate, Ice Cream
-  if (/\b(cookies?|wafers?|brownies?|cupcakes?|muffins?|cake|pie|pastry|pastries|candy|gummies|chocolate|truffles?|ice cream|gelato|popsicle|frosting)\b/.test(q)) {
-    return {
-      productTitle: cleanTitle,
-      brand: "Sweet Treat",
-      ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm and/or Soybean Oil, Corn Syrup, Cocoa, Soy Lecithin, Salt, Baking Soda, Natural and Artificial Flavor.",
-      imageUrl: "/products/snacks.jpg",
-      source: "catalog",
-    };
-  }
-  // Pasta Sauce, Marinara, Alfredo, Salsa, BBQ Sauce, Teriyaki, Condiments
-  if (/\b(marinara|pasta sauce|tomato sauce|alfredo|vodka sauce|pesto|salsa|picante|bbq sauce|barbecue sauce|teriyaki|soy sauce|steak sauce|hot sauce|buffalo sauce|wing sauce|mustard)\b/.test(q)) {
-    const isAlfredo = /\balfredo\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: "Pantry Sauce",
-      ingredients: isAlfredo
-        ? "Water, Cream, Parmesan Cheese (Pasteurized Milk, Cheese Cultures, Salt, Enzymes), Soybean Oil, Modified Corn Starch, Enzyme Modified Egg Yolks, Salt, Whey, Disodium Phosphate, Xanthan Gum, Garlic Powder, Natural Flavor."
-        : "Tomato Puree (Water, Tomato Paste), Diced Tomatoes, Sugar, Soybean Oil, Salt, Dried Garlic, Dried Onion, Citric Acid, Spices, Natural Flavor.",
-      imageUrl: "/products/ranch.jpg",
-      source: "catalog",
-    };
-  }
-  // Dry Pasta, Noodles, Ramen
-  if (/\b(spaghetti|penne|rotini|fettuccine|linguine|rigatoni|farfalle|elbows|macaroni|lasagna|pasta|egg noodles|noodles|ramen)\b/.test(q)) {
-    const isRamen = /\bramen\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isRamen ? "Instant Noodles" : "Durum Semolina Pasta",
-      ingredients: isRamen
-        ? "Enriched Wheat Flour, Palm Oil, Salt, Contains Less than 2% of Monosodium Glutamate, Hydrolyzed Corn Protein, Caramel Color, Disodium Inosinate, Disodium Guanylate, TBHQ."
-        : "Durum Wheat Semolina, Niacin, Iron (Ferrous Sulfate), Thiamin Mononitrate, Riboflavin, Folic Acid.",
-      imageUrl: "/products/bread.jpg",
-      source: "catalog",
-    };
-  }
-  // Frozen Pizza, Waffles, Pancakes, French Fries, Tater Tots
-  if (/\b(pizza|french fries|tater tots|hash browns|waffles|pancakes|french toast sticks)\b/.test(q)) {
-    return {
-      productTitle: cleanTitle,
-      brand: "Frozen Prepared",
-      ingredients: "Enriched Wheat Flour, Water, Vegetable Oil (Soybean and/or Canola Oil), Low-Moisture Part-Skim Mozzarella Cheese, Tomato Paste, Sugar, Salt, Modified Food Starch, Dextrose, Sodium Phosphate, Soy Lecithin, Natural Flavor.",
-      imageUrl: "/products/snacks.jpg",
-      source: "catalog",
-    };
-  }
-  // Hair Care & Body Wash (Shampoo, Conditioner, Body Wash, Shower Gel, Hand Soap)
-  if (/\b(shampoo|conditioner|body\s*wash|shower\s*gel|hand\s*soap|hand\s*wash|liquid\s*soap|bar\s*soap|dove|pantene|head\s*&\s*shoulders|tresemme|herbal\s*essences|garnier|suave|old\s*spice|olay|dr\.?\s*bronner'?s?|native)\b/.test(q) && !/\b(deodorant|toothpaste|lotion|cream|sunscreen)\b/.test(q)) {
-    const isSulfateFree = /\b(sulfate[- ]?free|dr\.?\s*bronner|native|honest|shea\s*moisture|burt'?s\s*bees|attitude|vanicream)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isSulfateFree ? "Clean Personal Care" : "Personal Care",
-      ingredients: isSulfateFree
-        ? "Water (Aqua), Sodium Cocoyl Isethionate, Cocamidopropyl Betaine, Glycerin, Aloe Barbadensis Leaf Juice, Tocopherol (Vitamin E), Citric Acid."
-        : "Water (Aqua), Sodium Laureth Sulfate, Cocamidopropyl Betaine, Sodium Chloride, Fragrance (Parfum), Glycol Distearate, Citric Acid, Sodium Benzoate, Tetrasodium EDTA, Methylchloroisothiazolinone, Methylisothiazolinone.",
-      imageUrl: "/swaps/yogurt.jpg",
-      nutrition: isSulfateFree
-        ? { caloriesKcal100g: 40, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 10, fiberG100g: 4, proteinG100g: 4, fruitsVegNutsPct: 80, nutriScoreGrade: "a", isWholeFood: false }
-        : { caloriesKcal100g: 360, sugarsG100g: 25, saturatedFatG100g: 5, sodiumMg100g: 450, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Skincare, Moisturizers, Lotions, Cleansers, Serums, Cosmetics
-  if (/\b(lotion|moisturizer|face\s*wash|cleanser|serum|toner|facial|eye\s*cream|body\s*cream|hand\s*cream|healing\s*ointment|lip\s*balm|cerave|cetaphil|neutrogena|aveeno|eucerin|aquaphor|vaseline|nivea|jergens|lubriderm|gold\s*bond|la\s*roche|ordinary|maybelline|l'?oreal|revlon|covergirl|nyx|e\.?l\.?f\.?)\b/.test(q)) {
-    const isFragranceFree = /\b(cerave|cetaphil|vanicream|la\s*roche|ordinary|fragrance[- ]?free|unscented|aveeno)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isFragranceFree ? "Dermatologist Skincare" : "Skincare & Cosmetics",
-      ingredients: isFragranceFree
-        ? "Water (Aqua), Glycerin, Cetearyl Alcohol, Caprylic/Capric Triglyceride, Cetyl Alcohol, Ceramide NP, Ceramide AP, Ceramide EOP, Hyaluronic Acid, Tocopherol, Phenoxyethanol."
-        : "Water (Aqua), Mineral Oil (Paraffinum Liquidum), Glycerin, Petrolatum, Cetearyl Alcohol, PEG-100 Stearate, Dimethicone, Phenoxyethanol, Methylparaben, Propylparaben, Fragrance (Parfum), BHT.",
-      imageUrl: "/swaps/yogurt.jpg",
-      nutrition: isFragranceFree
-        ? { caloriesKcal100g: 80, sugarsG100g: 1, saturatedFatG100g: 0.5, sodiumMg100g: 40, fiberG100g: 2, proteinG100g: 2, fruitsVegNutsPct: 45, nutriScoreGrade: "b", isWholeFood: false }
-        : { caloriesKcal100g: 340, sugarsG100g: 22, saturatedFatG100g: 5, sodiumMg100g: 400, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Sunscreen & SPF
-  if (/\b(sunscreen|spf\s*\d+|sunblock|coppertone|banana\s*boat|sun\s*bum|neutrogena.*sun|mineral\s*sunscreen)\b/.test(q)) {
-    const isMineral = /\b(mineral|zinc\s*oxide|titanium|baby|badger|thinkbaby|blue\s*lizard)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isMineral ? "Mineral SPF" : "Chemical SPF",
-      ingredients: isMineral
-        ? "Zinc Oxide 20%, Caprylic/Capric Triglyceride, Cocos Nucifera (Coconut) Oil, Butyrospermum Parkii (Shea) Butter, Tocopherol (Vitamin E)."
-        : "Avobenzone 3%, Homosalate 10%, Octisalate 5%, Octocrylene 7.5%, Oxybenzone 4%, Water, Propylene Glycol, Phenoxyethanol, Fragrance (Parfum), Disodium EDTA.",
-      imageUrl: "/swaps/yogurt.jpg",
-      nutrition: isMineral
-        ? { caloriesKcal100g: 40, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 10, fiberG100g: 4, proteinG100g: 4, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false }
-        : { caloriesKcal100g: 360, sugarsG100g: 25, saturatedFatG100g: 5, sodiumMg100g: 450, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Deodorant & Antiperspirant
-  if (/\b(deodorant|antiperspirant|degree|secret|old\s*spice|axe|mitchum|speed\s*stick|dove.*deo|native.*deo|schmidt'?s|lume)\b/.test(q)) {
-    const isAluminumFree = /\b(aluminum[- ]?free|native|schmidt'?s|lume|humble|tom'?s\s*of\s*maine|dr\.?\s*squatch)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isAluminumFree ? "Aluminum-Free Deodorant" : "Antiperspirant / Deodorant",
-      ingredients: isAluminumFree
-        ? "Caprylic/Capric Triglyceride, Tapioca Starch, Ozokerite, Sodium Bicarbonate (Baking Soda), Magnesium Hydroxide, Cocos Nucifera (Coconut) Oil, Butyrospermum Parkii (Shea) Butter."
-        : "Aluminum Zirconium Tetrachlorohydrex GLY 18%, Cyclopentasiloxane, Stearyl Alcohol, PPG-14 Butyl Ether, Hydrogenated Castor Oil, Talc, PEG-8 Distearate, Fragrance (Parfum), BHT.",
-      imageUrl: "/swaps/yogurt.jpg",
-      nutrition: isAluminumFree
-        ? { caloriesKcal100g: 50, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 10, fiberG100g: 4, proteinG100g: 4, fruitsVegNutsPct: 80, nutriScoreGrade: "a", isWholeFood: false }
-        : { caloriesKcal100g: 330, sugarsG100g: 20, saturatedFatG100g: 5, sodiumMg100g: 400, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Oral Care (Toothpaste, Mouthwash, Whitening)
-  if (/\b(toothpaste|mouthwash|oral\s*rinse|colgate|crest|sensodyne|listerine|act\b|thera\s*breath|tom'?s\s*of\s*maine|hello\s+oral|boka)\b/.test(q)) {
-    const isCleanOral = /\b(boka|hello|tom'?s\s*of\s*maine|thera\s*breath|sls[- ]?free|hydroxyapatite)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isCleanOral ? "Clean Oral Care" : "Oral Care",
-      ingredients: isCleanOral
-        ? "Water, Vegetable Glycerin, Hydrated Silica, Xylitol, Nano-Hydroxyapatite, Calcium Carbonate, Mentha Piperita (Peppermint) Oil, Aloe Barbadensis Leaf Juice."
-        : "Sodium Fluoride 0.24%, Water, Sorbitol, Hydrated Silica, Sodium Lauryl Sulfate, PEG-12, Cellulose Gum, Sodium Saccharin, Carrageenan, Titanium Dioxide, Blue 1.",
-      imageUrl: "/swaps/yogurt.jpg",
-      nutrition: isCleanOral
-        ? { caloriesKcal100g: 40, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 10, fiberG100g: 4, proteinG100g: 4, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false }
-        : { caloriesKcal100g: 320, sugarsG100g: 18, saturatedFatG100g: 4, sodiumMg100g: 380, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Baby Wipes & Diapers
-  if (/\b(huggies|pampers|luvs|honest\s+company|waterwipes|baby\s*wipes|diapers?|pull[- ]?ups)\b/.test(q)) {
-    const isWaterWipes = /\b(waterwipes|water\s*wipes|honest|99%\s*water|unscented|fragrance[- ]?free|sensitive)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isWaterWipes ? "Pure Baby Care" : "Baby Care",
-      ingredients: isWaterWipes
-        ? "Purified Water 99.9%, Citrus Grandis (Grapefruit) Seed Extract, Plant-Derived Cellulose Fiber."
-        : "Water, Butoxy PEG-4 PG-Amodimethicone, Caprylyl Glycol, Sodium Benzoate, Coco-Betaine, Polysorbate 20, Malic Acid, Sodium Citrate, Phenoxyethanol, Fragrance (Parfum).",
-      imageUrl: "/swaps/yogurt.jpg",
-      nutrition: isWaterWipes
-        ? { caloriesKcal100g: 30, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 5, fiberG100g: 4, proteinG100g: 4, fruitsVegNutsPct: 90, nutriScoreGrade: "a", isWholeFood: false }
-        : { caloriesKcal100g: 220, sugarsG100g: 10, saturatedFatG100g: 2, sodiumMg100g: 220, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-  // Pet Food & Treats
-  if (/\b(dog\s*food|cat\s*food|pet\s*food|puppy|kitten|kibble|purina|pedigree|friskies|blue\s*buffalo|fancy\s*feast|cesar|iams|milk[- ]?bone|temptations|greenies)\b/.test(q)) {
-    const isGrainFree = /\b(blue\s*buffalo|wellness|orijen|acana|merrick|salmon\s*&\s*sweet\s*potato|grain[- ]?free)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isGrainFree ? "Whole-Prey Pet Nutrition" : "Conventional Pet Food",
-      ingredients: isGrainFree
-        ? "Deboned Chicken, Chicken Meal, Brown Rice, Barley, Oatmeal, Pea Starch, Flaxseed, Chicken Fat (Preserved with Mixed Tocopherols), Sweet Potatoes, Carrots, Blueberries."
-        : "Ground Whole Grain Corn, Meat and Bone Meal, Corn Gluten Meal, Animal Fat (Preserved with BHA and Citric Acid), Soybean Meal, Chicken By-Product Meal, Artificial Flavors, Red 40, Yellow 5, Blue 2.",
-      imageUrl: "/products/snacks.jpg",
-      source: "catalog",
-    };
-  }
-  // Supplements, Vitamins, Protein Powders, Electrolytes
-  if (/\b(vitamin|multivitamin|probiotic|collagen|whey\s*protein|protein\s*powder|protein\s*shake|premier\s*protein|fairlife\s*core|muscle\s*milk|orgain|optimum\s*nutrition|liquid\s*i\.?v\.?|lmnt|pedialyte|emergen[- ]?c|airborne|melatonin|magnesium|omega[- ]?3|fish\s*oil|creatine)\b/.test(q)) {
-    const isCleanSupp = /\b(orgain|lmnt|vital\s*proteins|garden\s*of\s*life|thorne|pure\s*encapsulations|unflavored|creatine)\b/.test(q);
-    return {
-      productTitle: cleanTitle,
-      brand: isCleanSupp ? "Clean Supplement" : "Nutrition & Supplement",
-      ingredients: isCleanSupp
-        ? "Organic Pea Protein, Organic Brown Rice Protein, Organic Chia Seed, Organic Acacia, Stevia Leaf Extract, Sea Salt."
-        : "Water, Milk Protein Concentrate, Calcium Caseinate, Contains Less than 1% of High Oleic Sunflower Oil, Natural and Artificial flavors, Sucralose, Acesulfame Potassium, Carrageenan, Cellulose Gel, Dipotassium Phosphate.",
-      imageUrl: "/swaps/yogurt.jpg",
-      source: "catalog",
-    };
-  }
-  // Universal fallback for any remaining packaged grocery or consumer item so 0% of scans fail
-  if (cleanTitle.length >= 3) {
-    return {
-      productTitle: cleanTitle,
-      brand: "Packaged Grocery / Household",
-      ingredients: "Water, Enriched Wheat Flour, Sugar, Vegetable Oil (Soybean and/or Canola Oil), Salt, Citric Acid, Natural Flavor.",
-      imageUrl: "/products/snacks.jpg",
-      source: "catalog",
-    };
-  }
-  return null;
-}
-
-function instantCatalogLookup(query: string): Omit<LookupResult, "ms"> | null {
+function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query.trim().replace(/\b\w/g, (c) => c.toUpperCase());
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (entry.match.test(query)) {
@@ -1146,10 +828,6 @@ function instantCatalogLookup(query: string): Omit<LookupResult, "ms"> | null {
     }
   }
   return null;
-}
-
-function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
-  return instantCatalogLookup(query) || smartCategoryFallback(query);
 }
 
 /** Strips club-store pack counts and trailing weights (e.g. `, 3 pk./ 16 oz.`, `, Serves 12, 3 lbs.`) for cleaner external API queries. */
@@ -1186,14 +864,6 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
         source: "screen",
         ms: ms(),
       };
-    }
-  }
-
-  // Deterministic instant resolution for verified catalog staples & whole foods when no barcode is specified
-  if (!input.barcode && title) {
-    const instant = instantCatalogLookup(title);
-    if (instant) {
-      return { ...instant, ms: ms() };
     }
   }
 
