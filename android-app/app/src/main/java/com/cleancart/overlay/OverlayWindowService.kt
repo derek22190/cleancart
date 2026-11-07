@@ -821,7 +821,7 @@ class OverlayWindowService : Service() {
                     setPadding(dp(10), dp(6), dp(10), dp(6))
                     background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(999).toFloat() }
                 })
-                explain.addView(LinearLayout(context).apply {
+                explain.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(12), dp(10), dp(12), dp(10))
                     background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(14).toFloat() }
