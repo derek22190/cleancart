@@ -49,7 +49,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         private const val DEBOUNCE_MS = 500L
         private const val MAX_DEBOUNCE_WAIT_MS = 1300L
         private const val FOREGROUND_CHECK_MS = 1500L
-        private const val MAX_NODES = 420
+        private const val MAX_NODES = 1000
         private val TITLE_ID_HINTS = listOf(
             "pdp_title",
             "pdp_product_title",
@@ -66,7 +66,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CART_CHECKOUT_SIGNALS = Regex(
-            """(\b(continue to checkout|proceed to checkout|go to checkout|checkout all items|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|skip the order min fee|delivery from store|pickup from store|available for all items|available for \d+ of \d+ items)\b|\bcart\s*,?\s*\(\d+(\s+items?)?\)|^(in-club pickup|same-day delivery|pickup|delivery|shipping)\s*\(\d+\)$|^[^a-z0-9]*checkout(\s+all\s+items|\s*\(\d+\))?$)""",
+            """(\b(continue to checkout|proceed to checkout|go to checkout|checkout all items|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|skip the order min fee|available for all items|available for \d+ of \d+ items)\b|^[^a-z0-9]*checkout(\s+all\s+items|\s*\(\d+\))?$)""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_ITEM_CONTROLS = Regex(
@@ -102,12 +102,12 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|lactaid|eggnog|egg nog|yogurt|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|buns|rolls|tortilla|muffin|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|fritter|eclair|strudel|turnover|cupcake|pie|cobbler|chips|crisps|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|kielbasa|bratwurst|meatballs|patties|fillets|cutlets|strip|strips|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|lemonade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|water|seltzer|kombucha|cookie|cookies|brownie|cake|candy|peppermint|mint|mints|chocolate|gummies|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|tomato|tomatoes|potato|potatoes|onion|onions|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|orange|oranges|grape|grapes|peach|peaches|mango|mangoes|lemon|lemons|lime|limes|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|pizza|burrito|hot pocket|hot pockets|morningstar|nuggets|tenders|fries|waffles|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|huggies|pampers|vitamin|protein|collagen|purina|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts)\b""",
+            """\b(milk|lactaid|eggnog|egg nog|yogurt|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|rolls|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|kielbasa|bratwurst|meatballs|patties|fillets|cutlets|strip|strips|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|capri sun|pouches|lemonade|limeade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|water|seltzer|kombucha|cookie|cookies|brownie|brownies|cake|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|gummies|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|half-baked|half baked|ben & jerry|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|tomato|tomatoes|potato|potatoes|mashed|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|corn|peas|orange|oranges|grape|grapes|peach|peaches|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|pineapple|pear|pears|plum|plums|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|stock|bouillon|pizza|burrito|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix|spindrift|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|huggies|pampers|vitamin|protein|collagen|purina|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2})?|\b\d+\s*dollars?\s*and\s*\d+\s*cents?\b)""", RegexOption.IGNORE_CASE)
         private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add|quick add|add item|choose options|\+|increase quantity.*)$""", RegexOption.IGNORE_CASE)
-        private val CLUB_ITEM_NUMBER = Regex("""^(item|model|sku)\s*:?\s*#?\d+$""", RegexOption.IGNORE_CASE)
+        private val CLUB_ITEM_NUMBER = Regex("""^(item|model|sku)\s*:?\s*#?[a-z0-9\-]+(\s*[|•,/]\s*(item|model|sku)\s*:?\s*#?[a-z0-9\-]+)*$""", RegexOption.IGNORE_CASE)
         private val NON_INGREDIENT_TEXT = Regex(
             """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value|items to add next|product information|customers also|similar items|you might also|related items|sold by|fulfilled by)\b""",
             RegexOption.IGNORE_CASE,
@@ -129,6 +129,11 @@ class GroceryScreenReaderService : AccessibilityService() {
     private val scanRunnable = Runnable {
         pendingSinceMs = 0L
         readAndScan()
+    }
+    private val followUpScanRunnable = Runnable {
+        if (lastKey.isEmpty() || lastKey.endsWith("|IDLE_CART_AVG") || lastKey.endsWith("|CART_EMPTY")) {
+            readAndScan()
+        }
     }
     private val foregroundCheck = object : Runnable {
         override fun run() {
@@ -162,6 +167,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                     overlayVisible = false
                     lastKey = ""
                     wasOnCartScreen = false
+                } else if (pkg in STORE_PACKAGES && (lastKey.isEmpty() || lastKey.endsWith("|IDLE_CART_AVG") || lastKey.endsWith("|CART_EMPTY"))) {
+                    // Automatically re-check if a Product Detail Page finished loading asynchronously without firing an AccessibilityEvent
+                    readAndScan()
                 }
             }
             if (overlayVisible) handler.postDelayed(this, FOREGROUND_CHECK_MS)
@@ -252,7 +260,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             pendingSinceMs = now
             handler.removeCallbacks(scanRunnable)
-            handler.postDelayed(scanRunnable, 220L)
+            handler.removeCallbacks(followUpScanRunnable)
+            handler.postDelayed(scanRunnable, 240L)
+            handler.postDelayed(followUpScanRunnable, 900L)
             return
         }
         if (pendingSinceMs == 0L) pendingSinceMs = now
@@ -300,13 +310,38 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (pkg !in STORE_PACKAGES) return
 
             val rawNodes = collectTextNodes(root)
-            val nodes = stripSponsoredAdNodes(rawNodes)
-            val ingredients = findIngredients(nodes)
+            val allNodes = stripSponsoredAdNodes(rawNodes)
+            val visibleOnly = allNodes.filter { it.isVisible }
+            val nodes = if (visibleOnly.size >= 3) {
+                visibleOnly.mapIndexed { idx, n -> n.copy(index = idx) }
+            } else {
+                allNodes
+            }
+            val ingredients = findIngredients(nodes) ?: findIngredients(allNodes)
 
-            // 1. Check if the user is viewing their actual Cart or Checkout screen (expanded OR collapsed under "See details")
+            // Slice off "Similar items / Customers also bought / Related items" bottom carousels when evaluating PDP vs. Aisle
+            val carouselIdx = nodes.indexOfFirst { it.index >= 4 && CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
+            val primaryNodes = if (carouselIdx >= 4) nodes.subList(0, carouselIdx) else nodes
+
+            val tileAddCount = primaryNodes.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
+            val hasOptionsButtons = primaryNodes.any { it.text.trim().equals("options", ignoreCase = true) }
+
+            val hasHomeOrAisleBanners = primaryNodes.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
+            val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
+            val hasSinglePdpDetails = ingredients != null || nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
+            val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
+            val hasClubItemNumber = primaryNodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
+
+            val isConfirmedSinglePdp =
+                hasExplicitPdpViewId ||
+                    hasSinglePdpDetails ||
+                    (hasClubItemNumber && tileAddCount < 3) ||
+                    (hasSinglePdpCta && tileAddCount <= 1)
+
+            // 1. Check if the user is viewing their actual Cart or Checkout screen (only when NOT on a confirmed Single Product Detail Page)
             val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text.trim()) }
             val hasCartItemControls = nodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
-            val isCartScreen = hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
+            val isCartScreen = !isConfirmedSinglePdp && hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
                 val t = it.text.trim()
                 t.contains("continue to checkout", ignoreCase = true) ||
                     t.contains("proceed to checkout", ignoreCase = true) ||
@@ -314,11 +349,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                     t.contains("estimated total", ignoreCase = true) ||
                     t.contains("subtotal", ignoreCase = true) ||
                     t.matches(Regex("""(?i)^[^a-z0-9]*checkout(\s*\(\d+\))?$""")) ||
-                    t.matches(Regex("""(?i)^cart\s*,?\s*\(\d+(\s+items?)?\)$""")) ||
-                    t.matches(Regex("""(?i)^(in-club pickup|same-day delivery|pickup|delivery|shipping)\s*\(\d+\)$""")) ||
                     t.contains("choose substitution", ignoreCase = true) ||
                     t.contains("skip the order min fee", ignoreCase = true) ||
-                    t.contains("delivery from store", ignoreCase = true) ||
                     t.contains("available for all items", ignoreCase = true) ||
                     t.matches(Regex("""(?i)^available for \d+ of \d+ items.*"""))
             })
@@ -366,31 +398,12 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
             wasOnCartScreen = false
 
-            // 2. Slice off "Similar items / Customers also bought" bottom carousels when evaluating PDP vs. Aisle
-            val carouselIdx = nodes.indexOfFirst { it.index >= 4 && CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
-            val primaryNodes = if (carouselIdx >= 4) nodes.subList(0, carouselIdx) else nodes
-            val visiblePrimary = primaryNodes.filter { it.isVisible }
-
-            val tileAddCount = visiblePrimary.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
-            val hasOptionsButtons = visiblePrimary.any { it.text.trim().equals("options", ignoreCase = true) }
-
-            val hasHomeOrAisleBanners = visiblePrimary.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
-            val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
-            val hasSinglePdpDetails = ingredients != null || nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
-            val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
-            val hasClubItemNumber = primaryNodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
-
-            // Grade the top-most complete product on Product Detail Pages AND vertical product card feeds
-            // (excluding store Home / Department banner hubs).
+            // 2. Grade the product on Product Detail Pages AND vertical product card feeds
             val isProductView =
-                !hasHomeOrAisleBanners &&
-                    (hasExplicitPdpViewId ||
-                        hasSinglePdpDetails ||
-                        (hasClubItemNumber && tileAddCount < 3) ||
-                        hasSinglePdpCta ||
-                        hasOptionsButtons)
+                isConfirmedSinglePdp ||
+                    (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons))
 
-            val title = if (isProductView) findTitle(primaryNodes) else null
+            val title = if (isProductView) findTitle(primaryNodes, isConfirmedSinglePdp) else null
 
             if (!isProductView || title == null) {
                 // If the user added items to cart directly on a Search Results aisle (which renders "1 in cart - <Product>"),
@@ -600,7 +613,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             !BRAND_OR_UNIT_ONLY.matches(t.trim()) &&
             !PRICE_PATTERN.containsMatchIn(t)
 
-    private fun findTitle(nodes: List<TextNode>): String? {
+    private fun findTitle(nodes: List<TextNode>, isConfirmedSinglePdp: Boolean = false): String? {
         // If a previous product card is 90% scrolled off the top of the screen, its trailing "Options" or
         // "Add to cart" button appears in the first few nodes with no product title above it. Skip past
         // that orphaned button so we always scan the top-most complete product card on screen.
@@ -611,7 +624,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         val hasTitleBeforeOrphanCta = if (orphanedTopCtaIdx > 0) {
             nodes.subList(0, orphanedTopCtaIdx).any { n ->
                 val c = cleanTitleCandidate(n.text)
-                isCandidateProductTitle(c) && c.split(' ').size >= 3 && c.length >= 14
+                isCandidateProductTitle(c) && c.split(' ').size >= 2 && c.length >= 10
             }
         } else false
         val searchNodes = if (orphanedTopCtaIdx >= 0 && !hasTitleBeforeOrphanCta && orphanedTopCtaIdx + 1 < nodes.size) {
@@ -639,20 +652,22 @@ class GroceryScreenReaderService : AccessibilityService() {
         }?.let { return cleanTitleCandidate(it.text) }
 
         // 4. First multi-word node in top-to-bottom order containing recognizable grocery/household keywords
-        searchNodes.take(65).firstOrNull { n ->
+        searchNodes.take(85).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 5. Single-word produce/food title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados" in ALDI)
-        searchNodes.take(45).firstOrNull { n ->
+        // 5. Single-word produce/food title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados", "Parsley" in ALDI)
+        searchNodes.take(65).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
         // 6. Fallback to the first descriptive product title in top-to-bottom order
-        return searchNodes.take(75).map { cleanTitleCandidate(it.text) }
-            .firstOrNull { isCandidateProductTitle(it) && it.length in 12..140 && it.split(' ').size >= 3 }
+        val minWords = if (isConfirmedSinglePdp) 2 else 3
+        val minLen = if (isConfirmedSinglePdp) 7 else 12
+        return searchNodes.take(85).map { cleanTitleCandidate(it.text) }
+            .firstOrNull { isCandidateProductTitle(it) && it.length in minLen..140 && it.split(' ').size >= minWords }
     }
 
     /**

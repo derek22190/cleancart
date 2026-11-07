@@ -642,18 +642,30 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   if (/\b(cookie|cookies|oreo|candy|gummies|chocolate|knoppers|storck|merci|kinder|ferrero|lindt|ghirardelli|hershey|reese'?s|snickers|twix|kit\s*kat|m&m'?s|wafer|wafers|truffle|truffles|praline|toffee|nutella|marshmallow|fudge|caramel|ice cream|gelato|popsicle)\b/.test(combined) && !/\b(cashew cookie|larabar|lärabar)\b/.test(combined)) {
     return { caloriesKcal100g: 510, sugarsG100g: 38, saturatedFatG100g: 14.5, sodiumMg100g: 180, fiberG100g: 1.8, proteinG100g: 5.0, fruitsVegNutsPct: 0 };
   }
-  // 4. Sodas, Sports Drinks, Sweetened Beverages, Eggnog, Creamers
-  if (/\b(soda|cola|pepsi|coke|mountain dew|sprite|dr pepper|gatorade|powerade|sports drink|energy drink|lemonade|sweet tea|eggnog|egg nog|creamer|coffee[- ]?mate)\b/.test(combined)) {
+  // 4. Beverages: Sodas, Juice Drinks (Capri Sun, Hi-C, Kool-Aid, SunnyD), Lemonade, Sweet Tea, Sports Drinks, Energy Drinks
+  if (/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|lemonade|limeade|sweet\s+tea|soda|cola|pepsi|coke|mountain\s+dew|sprite|dr\.?\s*pepper|fanta|root\s+beer|ginger\s+ale|7up|crush|sunkist|gatorade|powerade|bodyarmor|sports?\s+drink|energy\s+drink)\b/.test(combined) && !/\b(unsweetened|zero\s+sugar|diet|spindrift|la\s*croix|hint\s+water|nooma|olipop|poppi)\b/.test(combined)) {
+    return { caloriesKcal100g: 42, sugarsG100g: 9.8, saturatedFatG100g: 0, sodiumMg100g: 15, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 10 };
+  }
+  // 4b. 100% Fruit Juices (Orange Juice, Apple Juice, Grape Juice, Cranberry Juice — ~9-10g natural liquid sugar/100ml with 0g fiber)
+  if (/\b(orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tropicana|simply\s+orange|minute\s+maid|uncle\s+matt'?s|welch'?s.*juice|ocean\s+spray|nature'?s\s+nectar|100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|fruit)\s+juice)\b/.test(combined)) {
+    return { caloriesKcal100g: 45, sugarsG100g: 9.2, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0.2, proteinG100g: 0.7, fruitsVegNutsPct: 100 };
+  }
+  // 4c. Eggnog & Liquid Coffee Creamers
+  if (/\b(eggnog|egg nog|creamer|coffee[- ]?mate|international delight)\b/.test(combined)) {
     return { caloriesKcal100g: 145, sugarsG100g: 21, saturatedFatG100g: 4.5, sodiumMg100g: 95, fiberG100g: 0, proteinG100g: 1.5, fruitsVegNutsPct: 0 };
   }
   // 5. Sweetened Breakfast Cereals
   if (/\b(froot loops|lucky charms|cinnamon toast|frosted|crunch|puffs|cereal)\b/.test(combined) && !/\b(original cheerios|heritage flakes|rolled oats|steel cut)\b/.test(combined)) {
     return { caloriesKcal100g: 385, sugarsG100g: 28, saturatedFatG100g: 1.5, sodiumMg100g: 460, fiberG100g: 3.5, proteinG100g: 5.5, fruitsVegNutsPct: 0 };
   }
+  // 5b. Crispy Fried Onions, Onion Rings, French Fries, Tater Tots, Fried Battered Sides
+  if (/\b(crispy\s+fried\s+onions?|french'?s.*onions?|fried\s+onions?|french\s+fried\s+onions?|onion\s+rings?|mozzarella\s+sticks?|jalapeno\s+poppers?|corn\s*dogs?|funnel\s+cake)\b/.test(combined)) {
+    return { caloriesKcal100g: 570, sugarsG100g: 5.5, saturatedFatG100g: 15.5, sodiumMg100g: 800, fiberG100g: 2.5, proteinG100g: 5.0, fruitsVegNutsPct: 15 };
+  }
   // 6. Chips, Crackers (Ritz, Cheez-It, Goldfish), Pretzels, Macaroni & Cheese, Salty Snacks
   if (
     /\b(doritos|cheetos|takis|chips|crisps|ritz|cheez[- ]?it|goldfish|triscuit|wheat thins|saltines|crackers|pretzels|macaroni|mac\s*&\s*cheese|mac and cheese|shells and cheese|velveeta|ramen)\b/.test(combined) &&
-    !/\b(mary'?s gone crackers|boulder canyon|avocado oil|extra virgin olive oil)\b/.test(combined)
+    !/\b(mary'?s gone crackers|boulder canyon|avocado oil|extra virgin olive oil|siete|lesserevil|quinn|annie'?s|goodles)\b/.test(combined)
   ) {
     return { caloriesKcal100g: 485, sugarsG100g: 5.5, saturatedFatG100g: 6.5, sodiumMg100g: 680, fiberG100g: 2.0, proteinG100g: 6.5, fruitsVegNutsPct: 0 };
   }
@@ -670,8 +682,15 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
     }
     return { caloriesKcal100g: 420, sugarsG100g: 1.5, saturatedFatG100g: 14.0, sodiumMg100g: 980, fiberG100g: 0, proteinG100g: 22.0, fruitsVegNutsPct: 0 };
   }
+  // 7b. Basted / Solution-Injected Whole Turkey & Poultry (e.g. Butterball Whole Turkey with salt solution)
+  if (/\b(butterball|whole.*turkey|frozen.*turkey|basted.*turkey|young\s+turkey)\b/.test(combined) && !/\b(organic|plain\s+raw)\b/.test(combined)) {
+    return { caloriesKcal100g: 160, sugarsG100g: 0, saturatedFatG100g: 4.2, sodiumMg100g: 310, fiberG100g: 0, proteinG100g: 19.0, fruitsVegNutsPct: 0 };
+  }
   // 8. Breaded / Crispy Chicken Patties, Fillets, Nuggets, Tenders, Hot Pockets, Stuffed Sandwiches
   if (/\b(crispy chicken|breaded chicken|chicken patties|chicken patty|chicken nuggets|chicken tenders|chicken strips|popcorn chicken|hot pocket|hot pockets|lean pocket|pizza rolls|bagel bites|corn dog)\b/.test(combined)) {
+    if (/\b(just\s+bare|applegate|organic)\b/.test(combined)) {
+      return { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0 };
+    }
     return { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 4.8, sodiumMg100g: 620, fiberG100g: 1.5, proteinG100g: 13.0, fruitsVegNutsPct: 0 };
   }
   // 9. Gravy, Condensed Soup, Bouillon vs. Fresh Soups / Clam Chowder / Stews
@@ -716,6 +735,10 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
       ? { caloriesKcal100g: 46, sugarsG100g: 4.8, saturatedFatG100g: 0.9, sodiumMg100g: 44, fiberG100g: 0, proteinG100g: 3.4, fruitsVegNutsPct: 0 }
       : { caloriesKcal100g: 62, sugarsG100g: 4.8, saturatedFatG100g: 2.1, sodiumMg100g: 43, fiberG100g: 0, proteinG100g: 3.2, fruitsVegNutsPct: 0 };
   }
+  // 14b. Canned Sweet Corn / Canned Vegetables with Added Salt/Sugar
+  if (/\b(sweet\s+corn|whole\s+kernel\s+corn|golden\s+sweet\s+corn|canned\s+corn|cream\s+style\s+corn)\b/.test(combined)) {
+    return { caloriesKcal100g: 71, sugarsG100g: 5.3, saturatedFatG100g: 0.2, sodiumMg100g: 230, fiberG100g: 1.8, proteinG100g: 2.4, fruitsVegNutsPct: 85 };
+  }
   // 15. Ingredient-order heuristic: if Sugar/Syrup is in the first 3 ingredients
   if (/\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose)\b/.test(top3)) {
     return { caloriesKcal100g: 370, sugarsG100g: 22, saturatedFatG100g: 5.0, sodiumMg100g: 260, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0 };
@@ -726,9 +749,10 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
 
 /**
  * Yuka 3-Pillar Breakdown + Deterministic Additive Rubric (0–100):
- *  - Preserves exact deterministic chemical additive scoring (scoreIngredients) across web, API, and Android.
- *  - Computes Yuka's 3-pillar breakdown (60% Nutrition, 30% Additives, 10% Organic/Whole-Food)
- *    and applies nutritional deductions when high-sugar, high-saturated-fat, or high-sodium foods are scanned.
+ *  - Computes Yuka's 3-pillar breakdown (60% Nutrition, 30% Additives, 10% Organic)
+ *    using official Nutri-Score tables for both solid foods and beverages.
+ *  - Ensures the final 0–100 score always matches the 3-pillar breakdown so high-sugar,
+ *    high-saturated-fat, high-sodium, or non-organic items never falsely display 100/100.
  */
 export function scoreProductYuka(
   rawIngredients: string,
@@ -741,15 +765,26 @@ export function scoreProductYuka(
   const clauses = rawIngredients.toLowerCase().split(/[,;]/).map((c) => c.trim()).filter(Boolean);
   const top3 = clauses.slice(0, 3).join(" ");
   const hasTop3AddedSugar =
-    /\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing)\b/.test(top3) ||
+    /\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing|liquid sugar|invert sugar)\b/.test(top3) ||
     (/\b(sugar|cane sugar|brown sugar)\b/.test(top3) && !/\borganic\b/.test(top3));
 
+  const isBeverage =
+    /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tropicana|simply\s+orange|minute\s+maid|uncle\s+matt'?s|nature'?s\s+nectar|lemonade|limeade|sweet\s+tea|iced\s+tea|soda|cola|pepsi|coke|mountain\s+dew|sprite|dr\.?\s*pepper|fanta|root\s+beer|ginger\s+ale|7up|crush|sunkist|gatorade|powerade|bodyarmor|prime|red\s+bull|monster|celsius|sports?\s+drink|energy\s+drink|electrolyte|kombucha|olipop|poppi|spindrift|la\s*croix|sparkling\s+water|seltzer)\b/i.test(titleAndIng) &&
+    !/\b(gummies|gummy|bars?|chews?|crisps?|sauce|marinade|glaze|dressing|vinaigrette|extract|fruit\s+spread|jam|jelly)\b/i.test(titleAndIng);
+
+  const is100PctFruitJuice =
+    isBeverage &&
+    !hasTop3AddedSugar &&
+    /\b(100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|cranberry|grapefruit|pomegranate|pineapple|fruit)\s+juice|orange\s+juice|apple\s+juice|grape\s+juice|simply\s+orange|tropicana|uncle\s+matt'?s)\b/i.test(titleAndIng) &&
+    !/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|juice\s+drink|juice\s+pouch\w*|cocktail|blend\s+with\s+sugar|high\s+fructose|lemonade|limeade)\b/i.test(titleAndIng);
+
   const NON_WHOLE_FOOD =
-    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade)\b/i;
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&
     !NON_WHOLE_FOOD.test(titleAndIng) &&
+    !isBeverage &&
     !hasTop3AddedSugar &&
     (Boolean(nutrition.isWholeFood) ||
       /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients));
@@ -767,9 +802,13 @@ export function scoreProductYuka(
   const protein = nutrition.proteinG100g ?? (isWholeFood ? 6.5 : est.proteinG100g);
   const fvn = nutrition.fruitsVegNutsPct ?? (isWholeFood ? 85 : est.fruitsVegNutsPct);
 
-  // Nutri-Score Negative points (0..40)
-  const nCal = stepPoints(kcal, [80, 160, 240, 320, 400, 480, 560, 640, 720, 800]);
-  const nSug = stepPoints(sugars, [4.5, 9, 13.5, 18, 22.5, 27, 31, 36, 40, 45]);
+  // Nutri-Score Negative points (0..40) — uses official Beverage thresholds for drinks/juices
+  const nCal = isBeverage
+    ? stepPoints(kcal, [0, 7.2, 14.3, 21.5, 28.5, 35.9, 43.0, 50.2, 57.4, 64.5])
+    : stepPoints(kcal, [80, 160, 240, 320, 400, 480, 560, 640, 720, 800]);
+  const nSug = isBeverage
+    ? stepPoints(sugars, [0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 12.0, 13.5])
+    : stepPoints(sugars, [4.5, 9, 13.5, 18, 22.5, 27, 31, 36, 40, 45]);
   const nSat = stepPoints(satFat, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   const nSod = stepPoints(sodium, [90, 180, 270, 360, 450, 540, 630, 720, 810, 900]);
   const negativePoints = nCal + nSug + nSat + nSod;
@@ -781,8 +820,9 @@ export function scoreProductYuka(
   const positivePoints = negativePoints >= 11 && pFvn < 5 ? pFvn + pFib : pFvn + pFib + pPro;
 
   const nutriRaw = negativePoints - positivePoints;
-  let nutriGrade: "A" | "B" | "C" | "D" | "E" =
-    nutriRaw <= -1 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 10 ? "C" : nutriRaw <= 18 ? "D" : "E";
+  let nutriGrade: "A" | "B" | "C" | "D" | "E" = isBeverage
+    ? nutriRaw <= 0 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 6 ? "C" : nutriRaw <= 9 ? "D" : "E"
+    : nutriRaw <= -1 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 10 ? "C" : nutriRaw <= 18 ? "D" : "E";
   if (nutrition.nutriScoreGrade) {
     nutriGrade = nutrition.nutriScoreGrade.toUpperCase() as "A" | "B" | "C" | "D" | "E";
   }
@@ -799,9 +839,21 @@ export function scoreProductYuka(
   if (isWholeFood) {
     nutritionScore = 60;
     nutriGrade = "A";
+  } else if (is100PctFruitJuice) {
+    // 100% Orange / Apple / Fruit Juice has ~9-10g liquid sugar per 100ml (~22g per cup) with 0g fiber -> Nutri-Score C (34/60)
+    nutritionScore = 34;
+    nutriGrade = "C";
+  } else if (isBeverage && (sugars >= 5 || hasTop3AddedSugar)) {
+    // Sweetened beverages (Capri Sun, Soda, Hi-C, Kool-Aid, Lemonade, Sweet Tea, Sports Drinks) -> Nutri-Score E (6/60)
+    nutritionScore = sugars >= 7 ? 6 : 14;
+    nutriGrade = sugars >= 7 ? "E" : "D";
+  } else if (isBeverage && sugars <= 3.5 && kcal <= 25) {
+    // Unsweetened / low-sugar sparkling water, fruit-infused water, or prebiotic soda (Spindrift, LaCroix, Hint, Olipop, Nooma)
+    nutritionScore = 60;
+    nutriGrade = "A";
   } else if (isPureButterOrGhee) {
     // Pure grass-fed/dairy butter has 0 chemical additives (30/30) and Tier 3 natural fat,
-    // but high saturated fat (51g/100g) and calories (717 kcal/100g) -> Mediocre (~52-58/100), never 100/100.
+    // but high saturated fat (51g/100g) and calories (717 kcal/100g) -> Mediocre (~52-68/100), never 100/100.
     nutritionScore = sodium <= 50 ? 28 : 22;
     nutriGrade = sodium <= 50 ? "D" : "E";
   } else if (isWholeMilk) {
@@ -837,12 +889,11 @@ export function scoreProductYuka(
   // Yuka 10% Organic bonus (10/10) is awarded strictly to certified Organic items
   const organicScore = isOrganic ? 10 : 0;
 
-  // Combine Yuka's 60% Nutritional Quality pillar with the 30% Additive pillar and 10% Organic pillar
-  // so foods made with nutritious whole ingredients (fish, clams, milk, potatoes, vegetables, whole grains)
-  // retain their nutritional credit instead of dropping to 0/100 when an additive or 2x watchlist is present.
+  // Always compute finalScore from Yuka's 3 pillars (60% Nutrition + 30% Additives + 10% Organic)
+  // and cap by base.score when chemical additives are present so the gauge score always matches the breakdown.
   const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
   const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore - multiAdditiveDeduction);
-  let finalScore = yukaPillarScore;
+  let finalScore = base.flagged.length > 0 ? Math.min(base.score, yukaPillarScore) : yukaPillarScore;
   if (hasHighRisk || seedOilHits.length >= 2) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
@@ -850,11 +901,30 @@ export function scoreProductYuka(
     finalScore = Math.max(0, Math.min(59, finalScore));
   }
 
-  // Surface clear nutritional risk flags on high-sugar / high-sat-fat / high-sodium items ONLY when finalScore < 100
-  // so 100/100 additive-free foods never show contradictory negative penalty badges.
+  // Surface clear nutritional risk flags on high-sugar / high-sat-fat / high-sodium items when finalScore < 90
   const flagged: FlaggedAdditive[] = [...base.flagged];
-  if (!isWholeFood && finalScore < 100) {
-    if (sugars >= 18 || (hasTop3AddedSugar && sugars >= 12)) {
+  if (!isWholeFood && finalScore < 90) {
+    if (is100PctFruitJuice) {
+      flagged.push({
+        id: "nutri_liquid_fruit_sugar",
+        name: `Liquid Fruit Sugar (${Math.round(sugars * 10) / 10}g / 100ml · ~22g / cup)`,
+        risk: "low",
+        category: "hfcs",
+        penalty: 26,
+        explanation: "Even 100% fruit juice removes whole-fruit fiber and delivers ~22g of concentrated free liquid sugar per cup, so Yuka caps its nutrition score.",
+        matched: "juice",
+      });
+    } else if (isBeverage && sugars >= 5) {
+      flagged.push({
+        id: "nutri_beverage_sugar",
+        name: `High Liquid Sugar (${Math.round(sugars * 10) / 10}g / 100ml)`,
+        risk: "moderate",
+        category: "hfcs",
+        penalty: 35,
+        explanation: "Sugary beverages spike blood glucose rapidly with zero dietary fiber, receiving the lowest Nutri-Score beverage grade (E).",
+        matched: "sugar",
+      });
+    } else if (sugars >= 18 || (hasTop3AddedSugar && sugars >= 12)) {
       flagged.push({
         id: "nutri_sugar",
         name: `High Sugar (${Math.round(sugars * 10) / 10}g / 100g)`,
@@ -881,7 +951,7 @@ export function scoreProductYuka(
         name: "Saturated Dairy Fat (5g / cup)",
         risk: "low",
         category: "emulsifiers",
-        penalty: 14,
+        penalty: 10,
         explanation: "Whole milk contains 3.25% milkfat (~5g saturated fat per cup), slightly lowering its 60% Nutritional Quality score.",
         matched: "milkfat",
       });
@@ -895,6 +965,16 @@ export function scoreProductYuka(
         penalty: sodium >= 850 ? 18 : 10,
         explanation: "High sodium content increases blood-pressure load and lowers the 60% Nutritional Quality score.",
         matched: "sodium",
+      });
+    } else if (sodium >= 280 && nutritionScore <= 42) {
+      flagged.push({
+        id: "nutri_moderate_sodium",
+        name: `Added Sodium Solution (${Math.round(sodium)}mg / 100g)`,
+        risk: "low",
+        category: "preservatives",
+        penalty: 10,
+        explanation: "Contains added salt/basting solution that lowers the 60% Nutritional Quality score compared to plain unbasted meat.",
+        matched: "salt",
       });
     }
     if (kcal >= 500) {

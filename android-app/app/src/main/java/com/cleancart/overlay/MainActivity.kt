@@ -78,7 +78,35 @@ class MainActivity : Activity() {
 
     private var pendingAutoChainToA11y = false
     private var watcherAttempts = 0
-    private var hasTappedGreyedOutA11yOnce = false
+    private val toastRunnables = mutableListOf<Runnable>()
+
+    private fun getSetupSubStep(): String {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        return prefs.getString("setup_sub_step", "2A") ?: "2A"
+    }
+
+    private fun setSetupSubStep(step: String) {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        prefs.edit().putString("setup_sub_step", step).apply()
+    }
+
+    private fun clearScheduledToasts() {
+        toastRunnables.forEach { mainHandler.removeCallbacks(it) }
+        toastRunnables.clear()
+    }
+
+    private fun scheduleSettingsToasts(vararg messages: String) {
+        clearScheduledToasts()
+        messages.forEachIndexed { idx, msg ->
+            val r = Runnable {
+                if (!isDestroyed && !isFinishing && !isAccessibilityEnabled()) {
+                    Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+            toastRunnables.add(r)
+            mainHandler.postDelayed(r, idx * 3600L)
+        }
+    }
 
     private val permissionWatcher = object : Runnable {
         override fun run() {
@@ -88,15 +116,11 @@ class MainActivity : Activity() {
 
             if (pendingAutoChainToA11y && overlayOk && !isAccessibilityEnabled()) {
                 pendingAutoChainToA11y = false
-                hasTappedGreyedOutA11yOnce = true
-                if (!isInstalledFromPlayStore()) {
-                    showFloatingSetupHelper("2A")
-                }
-                Toast.makeText(
-                    this@MainActivity,
-                    "✓ Step 1 done! Tap Installed apps → greyed-out HeyBroc once, then tap the green button at the bottom!",
-                    Toast.LENGTH_LONG
-                ).show()
+                setSetupSubStep("2B")
+                scheduleSettingsToasts(
+                    "✓ Step 1 done! Tap 'Installed apps' → tap greyed-out 'HeyBroc' once, then press Back!",
+                    "👉 Tap 'Installed apps' → tap greyed-out 'HeyBroc' once, then press Back to HeyBroc!"
+                )
                 runCatching {
                     startActivity(
                         Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -107,6 +131,7 @@ class MainActivity : Activity() {
 
             if (overlayOk && a11yOk) {
                 pendingAutoChainToA11y = false
+                clearScheduledToasts()
                 hideFloatingSetupHelper()
                 renderScreen()
                 return
@@ -367,10 +392,20 @@ class MainActivity : Activity() {
 
     private fun renderHistoryTab() {
         val overlayOk = Settings.canDrawOverlays(this)
-        val a11yOk = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
+        val a11yServiceEnabled = isAccessibilityEnabled()
+        val a11yOk = a11yServiceEnabled && AccessibilityConsent.granted(this)
 
-        // Compact 1-tap Store Bubble Setup banner if not yet active
-        if (!overlayOk || !a11yOk) {
+        // Show the sleek auto-advancing dark-green Step 2 card (2A -> 2B -> 2C) when Step 1 is done
+        if (overlayOk && !a11yServiceEnabled && !isInstalledFromPlayStore()) {
+            tabContentContainer.addView(buildDarkGreenStep2Card(getSetupSubStep()).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(dp(16), dp(4), dp(16), dp(10))
+                }
+            })
+        } else if (!overlayOk || !a11yOk) {
             val done = (if (overlayOk) 1 else 0) + (if (a11yOk) 1 else 0)
             tabContentContainer.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1193,6 +1228,7 @@ class MainActivity : Activity() {
         } else {
             val doneCount = (if (overlayOk) 1 else 0) + (if (a11yOk) 1 else 0)
             val statusBadge = label("$doneCount of 2 enabled", 12f, 0xFF7A5B00.toInt(), bold = true)
+            val subStep = getSetupSubStep()
 
             val checklist = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1223,6 +1259,8 @@ class MainActivity : Activity() {
             val mainActionLabel = when {
                 !overlayOk -> "⚡ Start Guided Setup (Allow Everything) →"
                 a11yServiceEnabled && !consentOk -> "⚡ Confirm & Activate HeyBroc"
+                subStep == "2B" && !isInstalledFromPlayStore() -> "⚡ Step 2B: Open App Info (Tap ⋮ Top-Right 3 Dots) →"
+                subStep == "2C" && !isInstalledFromPlayStore() -> "⚡ Step 2C: Open Accessibility & Turn ON HeyBroc →"
                 else -> "⚡ Step 2A: Open Accessibility → Installed apps →"
             }
 
@@ -1246,30 +1284,12 @@ class MainActivity : Activity() {
                 )
                 extras.add(
                     primaryButton("Step 2B: Open App Info (Tap ⋮ Top-Right 3 Dots)", filled = false) {
-                        if (!hasTappedGreyedOutA11yOnce) {
-                            AlertDialog.Builder(this)
-                                .setTitle("Did you tap the greyed-out HeyBroc first?")
-                                .setMessage(
-                                    "Samsung/Android hides the ⋮ (3 dots) button in the top-right corner of App Info until you go to:\n\n" +
-                                        "Accessibility → Installed apps → tap the greyed-out \"HeyBroc\" once.\n\n" +
-                                        "If you haven't tapped the greyed-out HeyBroc yet, the ⋮ 3 dots won't appear on the next screen!"
-                                )
-                                .setPositiveButton("Do Step 2A First (Installed apps)") { _, _ ->
-                                    hasTappedGreyedOutA11yOnce = true
-                                    showFloatingSetupHelper("2A")
-                                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                }
-                                .setNegativeButton("I already tapped it → Open App Info") { _, _ ->
-                                    hasTappedGreyedOutA11yOnce = true
-                                    showFloatingSetupHelper("2B")
-                                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-                                }
-                                .show()
-                        } else {
-                            showFloatingSetupHelper("2B")
-                            Toast.makeText(this, "Look at top-right ↑ Tap ⋮ (3 dots) → Allow restricted settings", Toast.LENGTH_LONG).show()
-                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-                        }
+                        setSetupSubStep("2C")
+                        scheduleSettingsToasts(
+                            "Look at top-right ↑ Tap ⋮ (3 dots) → Allow restricted settings!",
+                            "After tapping 'Allow restricted settings', press Back to return to HeyBroc!"
+                        )
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
                     }
                 )
             }
@@ -1280,7 +1300,7 @@ class MainActivity : Activity() {
                 if (!overlayOk) {
                     "Tap below and HeyBroc will automatically take you from Switch 1 straight to Switch 2."
                 } else {
-                    "Tap Step 2A below — a floating HeyBroc helper button will stay at the bottom of your screen to jump you through 2A → 2B → 2C."
+                    "Follow Steps 2A → 2B → 2C below to unlock and turn on HeyBroc in Accessibility."
                 },
                 statusBadge,
                 *extras.toTypedArray(),
@@ -1963,14 +1983,31 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Turn ON \"HeyBroc\" here — we'll open Step 2 automatically!", Toast.LENGTH_LONG).show()
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         } else if (!a11yServiceEnabled) {
-            hasTappedGreyedOutA11yOnce = true
+            val subStep = getSetupSubStep()
             startPermissionWatcher()
-            if (!isInstalledFromPlayStore()) {
-                showFloatingSetupHelper("2A")
+            if (subStep == "2B" && !isInstalledFromPlayStore()) {
+                setSetupSubStep("2C")
+                scheduleSettingsToasts(
+                    "Look at top-right ↑ Tap ⋮ (3 dots) → Allow restricted settings!",
+                    "After tapping 'Allow restricted settings', press Back to return to HeyBroc!"
+                )
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            } else if (subStep == "2C" && !isInstalledFromPlayStore()) {
+                scheduleSettingsToasts(
+                    "Tap 'Installed apps' → 'HeyBroc' → flip switch ON!",
+                    "Almost done! Tap 'HeyBroc' and turn the switch ON!"
+                )
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            } else {
+                setSetupSubStep("2B")
+                scheduleSettingsToasts(
+                    "1) Tap 'Installed apps'  2) Tap greyed-out 'HeyBroc' once, then press Back!",
+                    "After tapping greyed-out 'HeyBroc' once, press Back to return to HeyBroc for Step 2B!"
+                )
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
-            Toast.makeText(this, "1) Tap Installed apps  2) Tap greyed-out HeyBroc once!", Toast.LENGTH_LONG).show()
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         } else {
+            clearScheduledToasts()
             hideFloatingSetupHelper()
             renderScreen()
         }
@@ -2046,18 +2083,15 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        clearScheduledToasts()
         if (pendingAutoChainToA11y && Settings.canDrawOverlays(this) && !isAccessibilityEnabled()) {
             pendingAutoChainToA11y = false
-            hasTappedGreyedOutA11yOnce = true
+            setSetupSubStep("2B")
             renderScreen()
-            if (!isInstalledFromPlayStore()) {
-                showFloatingSetupHelper("2A")
-            }
-            Toast.makeText(
-                this,
-                "✓ Step 1 done! Tap Installed apps → greyed-out HeyBroc once, then tap the green button at the bottom!",
-                Toast.LENGTH_LONG
-            ).show()
+            scheduleSettingsToasts(
+                "✓ Step 1 done! Tap 'Installed apps' → tap greyed-out 'HeyBroc' once, then press Back!",
+                "👉 Tap 'Installed apps' → tap greyed-out 'HeyBroc' once, then press Back to HeyBroc!"
+            )
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             return
         }

@@ -84,6 +84,30 @@ check("tier 3 avocado oil scores Green >= 80 in Yuka", scoreProductYuka("Organic
 check("adding citric acid never increases Yuka score", scoreProductYuka("Sugar, water, citric acid", {}, [], { nutriScoreGrade: "e" }).score <= scoreProductYuka("Sugar, water", {}, [], { nutriScoreGrade: "e" }).score);
 check("tripotassium & tricalcium phosphate", scoreIngredients("Whole grain oats, tripotassium phosphate, tricalcium phosphate").flagged.some((f) => f.id === "naphosphate"));
 check("swap deepLink uses https universal link", Boolean(resolveSwap({ score: 40, productTitle: "Strawberry Yogurt", store: "walmart" })?.deepLink.startsWith("https://")));
+check("Capri Sun scores Poor <= 24 and swaps to Spindrift with drink.png", (() => {
+  const s = scoreProductYuka("Water, sugar, pear and grape juice concentrate, citric acid, strawberry and kiwi juice concentrate, natural flavor.", {}, [], { productTitle: "Capri Sun Strawberry Kiwi Juice Pouches" });
+  const sw = resolveSwap({ score: s.score, productTitle: "Capri Sun Strawberry Kiwi Juice Pouches", store: "aldi" });
+  return s.score <= 24 && s.rating === "Poor" && Boolean(sw?.title.includes("Spindrift")) && sw?.image === "/swaps/drink.png";
+})());
+check("100% Orange Juice never scores 100 (scores <= 75)", (() => {
+  const conv = scoreProductYuka("100% pure squeezed pasteurized orange juice.", {}, [], { productTitle: "100% Pure Squeezed Orange Juice" });
+  const org = scoreProductYuka("100% organic pasteurized orange juice.", {}, [], { productTitle: "Uncle Matt's Organic 100% Pulp-Free Orange Juice" });
+  return conv.score === 64 && org.score === 74;
+})());
+check("Ben & Jerry's Half-Baked scores <= 35 (matches 3-pillar sum, never 100)", (() => {
+  const s = scoreProductYuka("Cream, skim milk, liquid sugar, water, wheat flour, brown sugar, sugar, cocoa, egg yolks, butter, soybean oil, eggs, guar gum, carrageenan.", {}, [], { productTitle: "Ben & Jerry's Half-Baked Ice Cream" });
+  const cleanIceCream = scoreProductYuka("Cream, skim milk, cane sugar, egg yolks, vanilla extract.", {}, [], { productTitle: "Ben & Jerry's Vanilla Ice Cream" });
+  return s.score <= 35 && cleanIceCream.score === 32;
+})());
+check("French's Original Crispy Fried Onions scores <= 35 (never 100)", (() => {
+  const s = scoreProductYuka("Onions, palm oil, enriched flour, soy flour, salt, dextrose.", {}, [], { productTitle: "French's Original Crispy Fried Onions" });
+  const sw = resolveSwap({ score: s.score, productTitle: "French's Original Crispy Fried Onions", store: "aldi" });
+  return s.score <= 35 && Boolean(sw?.title.includes("Yellow Onions")) && sw?.image === "/swaps/produce.png";
+})());
+check("Butterball Whole Turkey scores 72 Mediocre (42 + 30 + 0)", (() => {
+  const s = scoreProductYuka("Whole young turkey, water, salt.", {}, [], { productTitle: "Butterball Frozen Whole Turkey" });
+  return s.score === 72 && s.rating === "Mediocre";
+})());
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
 console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
 process.exit(fail ? 1 : 0);
