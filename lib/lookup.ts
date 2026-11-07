@@ -775,20 +775,28 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/yogurt.jpg",
   },
   {
-    match: /\b(dried cranberries|craisins)\b(?!.*\b(unsweetened|no sugar)\b)/i,
-    brand: "Dried Fruit",
-    title: "Sweetened Dried Cranberries",
-    ingredients: "Cranberries, Sugar, Refined Sunflower Oil is Used as a Processing Aid.",
+    match: /\b(red bird|peppermint\s+(candy|puffs?|mints?|bark|stick|canes?)|candy\s+(puffs?|canes?)|starlight\s+mints?|butter\s+mints?|dinner\s+mints?|hard\s+cand(y|ies)|lifesavers|jolly\s+rancher|werther'?s)\b/i,
+    brand: "Red Bird / Confectionery",
+    title: "Peppermint Candy Puffs",
+    ingredients: "Pure Cane Sugar, Invert Sugar, Corn Syrup, Natural Oil of Peppermint, Red 40 (Artificial Color).",
     imageUrl: "/products/snacks.jpg",
-    nutrition: { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.1, sodiumMg100g: 5, fiberG100g: 5.3, proteinG100g: 0.2, fruitsVegNutsPct: 60, isWholeFood: false },
+    nutrition: { caloriesKcal100g: 392, sugarsG100g: 93, saturatedFatG100g: 0, sodiumMg100g: 15, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
   },
   {
-    match: /\b(freeze[- ]?dried)\b.*\b(blueberr\w*|strawberr\w*|raspberr\w*|bananas?|apples?|mangos?|peaches|fruit|crisps?)\b/i,
-    brand: "Freeze-Dried Fruit",
-    title: "100% Freeze-Dried Whole Fruit Crisps",
-    ingredients: "100% pure whole food ingredient. Freeze-dried fruit with no added sugar, no preservatives, no seed oils.",
+    match: /\b(auspitee|craisins|sweetened dried|dried cranberr\w*|dried blueberr\w*|dried cherr\w*|dried strawberr\w*|dehydrated\s+(blueberr\w*|cranberr\w*|cherr\w*|strawberr\w*|fruit|berr\w*))\b(?!.*\b(unsweetened|no sugar|freeze[- ]?dried)\b)/i,
+    brand: "Sweetened Dried Fruit",
+    title: "Sweetened Dried Berries",
+    ingredients: "Berries (Blueberries / Cranberries), Cane Sugar, Refined Sunflower Oil (Used as a Processing Aid).",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.2, sodiumMg100g: 5, fiberG100g: 5.3, proteinG100g: 0.4, fruitsVegNutsPct: 60, isWholeFood: false },
+  },
+  {
+    match: /\b(freeze[- ]?dried)\b.*\b(blueberr\w*|strawberr\w*|raspberr\w*|bananas?|apples?|mangos?|peaches|fruit|crisps?)\b|\b(blueberry|strawberry|raspberry|berry|fruit)\s+powder\b/i,
+    brand: "Freeze-Dried / Fruit Powder",
+    title: "Dehydrated / Freeze-Dried Fruit",
+    ingredients: "Dehydrated / Freeze-Dried Fruit (Concentrated Natural Fruit Sugars).",
     imageUrl: "/swaps/snacks.jpg",
-    nutrition: { isWholeFood: true },
+    nutrition: { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85, isWholeFood: false },
   },
   {
     match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|butterfinger|popcorn|croissant|biscuit|crackers|bread|rolls|buns|sauce|chicken)\b).*\b(kerrygold|land o'?\s*lakes|salted butter|unsalted butter|irish butter|grass[- ]?fed.*butter|sweet cream butter|pure butter|\bbutter\b|ghee)\b/i,
@@ -804,7 +812,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Grade A Pasteurized Milk",
     ingredients: "Grade A Milk, Vitamin D3.",
     imageUrl: "/swaps/yogurt.jpg",
-    nutrition: { isWholeFood: true },
+    nutrition: { isWholeFood: false },
   },
   {
     match: /\b(coffee[- ]?mate|international delight|creamer)\b/i,
@@ -814,7 +822,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/yogurt.jpg",
   },
   {
-    match: /^(?!.*\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|dried cranberries|craisins|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|ritz|cookies?|wafer|wafers|knoppers|storck|merci|kinder|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|gravy|broth|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|crispy|breaded|battered|fried|patties|patty|nuggets?|tenders|strips|fillets?|hot\s*pocket|sausage|kielbasa|bacon|hot\s*dog|bologna|salami|pepperoni|deli|fries|ice cream|popsicle|yogurt|creamer|velveeta|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|honeydew|kiwi|oranges?|clementines?|mandarins?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|pure honey|raw honey|honey|pure maple syrup|organic maple syrup|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
+    match: /^(?!.*\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|dried|dehydrated|freeze[- ]?dried|auspitee|craisins|powder|crisps?|peppermint|mint|mints|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|ritz|cookies?|wafer|wafers|knoppers|storck|merci|kinder|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|gravy|broth|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|crispy|breaded|battered|fried|patties|patty|nuggets?|tenders|strips|fillets?|hot\s*pocket|sausage|kielbasa|bacon|hot\s*dog|bologna|salami|pepperoni|deli|fries|ice cream|popsicle|yogurt|creamer|velveeta|spread|dip|flavored|flavor\s*:|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|honeydew|kiwi|oranges?|clementines?|mandarins?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|pure honey|raw honey|honey|pure maple syrup|organic maple syrup|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
     brand: "Fresh Whole Food",
     title: "100% Whole Unprocessed Food",
     ingredients: "100% pure whole food ingredient. No additives, no preservatives, no seed oils, no artificial dyes.",
@@ -824,7 +832,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
 ];
 
 const UI_NOISE_QUERY =
-  /\b(gas savings|walmart\+|new notification|scan barcodes|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller)\b/i;
+  /\b(gas savings|walmart\+|new notification|scan barcodes|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller)\b|^(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+/i;
 
 function smartCategoryFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query.trim();

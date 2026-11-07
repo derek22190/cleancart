@@ -98,15 +98,16 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*\d+$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow|today|\d{1,2}(:\d{2})?\s*(am|pm)\s*-\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+.*|change|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+ times|stay stocked|last purchased|gas savings|walmart\+|scan barcodes|qr code|aisle\s+[a-z0-9]+|\d+\s+[a-z0-9.\s]+\b(rd|road|st|street|ave|avenue|blvd|dr|drive|ln|lane|way|ct|court|pkwy|hwy))\b""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow|today|\d{1,2}(:\d{2})?\s*(am|pm)\s*-\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+.*|change|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+ times|stay stocked|last purchased|gas savings|walmart\+|scan barcodes|qr code|aisle\s+[a-z0-9]+|\d+\s+[a-z0-9.\s]+\b(rd|road|st|street|ave|avenue|blvd|dr|drive|ln|lane|way|ct|court|pkwy|hwy))\b""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|lactaid|eggnog|egg nog|yogurt|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|buns|rolls|tortilla|muffin|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|fritter|eclair|strudel|turnover|cupcake|pie|cobbler|chips|crisps|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|kielbasa|bratwurst|meatballs|patties|fillets|cutlets|strip|strips|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|lemonade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|cookie|cookies|brownie|cake|candy|chocolate|gummies|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|tomato|tomatoes|potato|potatoes|onion|onions|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|orange|oranges|grape|grapes|peach|peaches|mango|mangoes|lemon|lemons|lime|limes|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|pizza|burrito|hot pocket|hot pockets|morningstar|nuggets|tenders|fries|waffles|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix|diaper|diapers|wipes)\b""",
+            """\b(milk|lactaid|eggnog|egg nog|yogurt|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|buns|rolls|tortilla|muffin|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|fritter|eclair|strudel|turnover|cupcake|pie|cobbler|chips|crisps|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|kielbasa|bratwurst|meatballs|patties|fillets|cutlets|strip|strips|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|lemonade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|cookie|cookies|brownie|cake|candy|peppermint|mint|mints|chocolate|gummies|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|tomato|tomatoes|potato|potatoes|onion|onions|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|orange|oranges|grape|grapes|peach|peaches|mango|mangoes|lemon|lemons|lime|limes|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|pizza|burrito|hot pocket|hot pockets|morningstar|nuggets|tenders|fries|waffles|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix|diaper|diapers|wipes)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2})?|\b\d+\s*dollars?\s*and\s*\d+\s*cents?\b)""", RegexOption.IGNORE_CASE)
         private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add|quick add|add item|choose options|\+|increase quantity.*)$""", RegexOption.IGNORE_CASE)
+        private val CLUB_ITEM_NUMBER = Regex("""^(item|model|sku)\s*:?\s*#?\d+$""", RegexOption.IGNORE_CASE)
         private val NON_INGREDIENT_TEXT = Regex(
             """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value|items to add next|product information|customers also|similar items|you might also|related items|sold by|fulfilled by)\b""",
             RegexOption.IGNORE_CASE,
@@ -123,6 +124,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     private var pendingSinceMs = 0L
     private var wasOnCartScreen = false
     private var pendingAddToCartClick = false
+    private var nullPkgCount = 0
 
     private val scanRunnable = Runnable {
         pendingSinceMs = 0L
@@ -134,17 +136,33 @@ class GroceryScreenReaderService : AccessibilityService() {
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
+                nullPkgCount = 0
                 return
             }
             val root = rootInActiveWindow
             val pkg = root?.packageName?.toString()
             recycleNode(root)
-            val isTransient = pkg == null || pkg in IGNORED_TRANSIENT_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")
-            if (overlayVisible && !isTransient && pkg !in STORE_PACKAGES && pkg != packageName) {
-                sendToOverlay(OverlayWindowService.ACTION_HIDE)
-                overlayVisible = false
-                lastKey = ""
-                wasOnCartScreen = false
+            // Because accessibility_service_config.xml restricts packageNames to STORE_PACKAGES,
+            // rootInActiveWindow returns null whenever the user leaves a store app for the Home Screen,
+            // App Switcher, or Settings. After 2 consecutive null checks (~3s), hide the overlay and reset hidden state.
+            if (pkg == null) {
+                nullPkgCount++
+                if (overlayVisible && nullPkgCount >= 2) {
+                    sendToOverlay(OverlayWindowService.ACTION_HIDE)
+                    overlayVisible = false
+                    lastKey = ""
+                    wasOnCartScreen = false
+                    nullPkgCount = 0
+                }
+            } else {
+                nullPkgCount = 0
+                val isTransient = pkg in IGNORED_TRANSIENT_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")
+                if (overlayVisible && !isTransient && pkg !in STORE_PACKAGES && pkg != packageName) {
+                    sendToOverlay(OverlayWindowService.ACTION_HIDE)
+                    overlayVisible = false
+                    lastKey = ""
+                    wasOnCartScreen = false
+                }
             }
             if (overlayVisible) handler.postDelayed(this, FOREGROUND_CHECK_MS)
         }
@@ -152,9 +170,14 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
+        sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
+        lastKey = ""
         if (!AccessibilityConsent.granted(this)) {
             sendToOverlay(OverlayWindowService.ACTION_HIDE)
             overlayVisible = false
+        } else {
+            handler.postDelayed(scanRunnable, 250L)
         }
     }
 
@@ -169,7 +192,12 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
         val pkg = event?.packageName?.toString() ?: return
         if (pkg !in STORE_PACKAGES) return
-        currentPackage = pkg
+        nullPkgCount = 0
+        if (pkg != currentPackage) {
+            currentPackage = pkg
+            lastKey = ""
+            wasOnCartScreen = false
+        }
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val src = runCatching { event.source }.getOrNull()
@@ -222,6 +250,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        sendToOverlay(OverlayWindowService.ACTION_HIDE)
         handler.removeCallbacksAndMessages(null)
         io.shutdownNow()
         super.onDestroy()
@@ -327,13 +356,15 @@ class GroceryScreenReaderService : AccessibilityService() {
             val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
             val hasSinglePdpDetails = ingredients != null || nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
             val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
+            val hasClubItemNumber = primaryNodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
             // Grade a single product whenever the user is on a Product Detail Page (PDP), even if it has
-            // multiple flavor/pack-size variant prices or its title sits just behind the sticky Add to cart footer.
+            // multiple flavor/pack-size variant prices or its Add to Cart button is below the fold (e.g. BJ's).
             val isSingleProductPage =
                 !hasHomeOrAisleBanners &&
                     (hasExplicitPdpViewId ||
                         hasSinglePdpDetails ||
+                        (hasClubItemNumber && tileAddCount < 3) ||
                         (hasSinglePdpCta && singlePdpCtaCount <= 2 && tileAddCount < 3))
 
             val title = if (isSingleProductPage) findTitle(primaryNodes) else null
@@ -625,7 +656,12 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun sendToOverlay(action: String, extras: Intent.() -> Unit = {}) {
-        val intent = Intent(this, OverlayWindowService::class.java).setAction(action).apply(extras)
+        val intent = Intent(this, OverlayWindowService::class.java).setAction(action).apply {
+            if (currentPackage.isNotEmpty()) {
+                putExtra(OverlayWindowService.EXTRA_STORE_PKG, currentPackage)
+            }
+            extras()
+        }
         try {
             startService(intent)
         } catch (_: IllegalStateException) {

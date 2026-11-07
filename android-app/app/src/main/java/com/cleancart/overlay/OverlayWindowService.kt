@@ -50,11 +50,13 @@ class OverlayWindowService : Service() {
         const val ACTION_IDLE_CART_AVG = "com.cleancart.overlay.IDLE_CART_AVG"
         const val ACTION_SYNC_CART = "com.cleancart.overlay.SYNC_CART"
         const val ACTION_HIDE = "com.cleancart.overlay.HIDE"
+        const val ACTION_RESET_HIDDEN = "com.cleancart.overlay.RESET_HIDDEN"
         const val EXTRA_JSON = "json"
         const val EXTRA_TITLE = "title"
         const val EXTRA_IN_CART = "in_cart"
         const val EXTRA_CART_ARRAY = "cart_array"
         const val EXTRA_REPLACE_CART = "replace_cart"
+        const val EXTRA_STORE_PKG = "store_pkg"
 
         private const val INK = 0xFF15201B.toInt()
         private const val INK_2 = 0xFF4A5550.toInt()
@@ -62,13 +64,17 @@ class OverlayWindowService : Service() {
         private const val BRAND = 0xFF0F7A4A.toInt()
         private const val PREFS_NAME = "heybroc_overlay_prefs"
         private const val LEGACY_KEY_TRIP_CART = "trip_cart_json"
-        private const val KEY_TRIP_CART = "trip_cart_v2_json"
+        private const val LEGACY_KEY_TRIP_CART_V2 = "trip_cart_v2_json"
+        private const val KEY_TRIP_CART_PREFIX = "trip_cart_v3_"
         private const val KEY_PILL_Y = "pill_y"
         private val DEMO_SEED_TITLES = setOf(
             "berry swirl strawberry lowfat yogurt",
             "strawberry lowfat yogurt",
             "baked cheddar crackers",
             "grass-fed salted butter"
+        )
+        private val VARIANT_NOISE_TITLE = Regex(
+            """^(?i)(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+"""
         )
     }
 
@@ -95,7 +101,8 @@ class OverlayWindowService : Service() {
 
     private var isCartAvgMode = false
     private var isTestMode = false
-    private var hiddenForTrip = false
+    private var hiddenForCurrentScreen = false
+    private var currentStoreKey = "walmart"
     private val tripCart = mutableListOf<TripCartItem>()
     private var displayedCartAvg = 100
 
@@ -105,12 +112,27 @@ class OverlayWindowService : Service() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.contains(LEGACY_KEY_TRIP_CART)) {
-            prefs.edit().remove(LEGACY_KEY_TRIP_CART).apply()
+        if (prefs.contains(LEGACY_KEY_TRIP_CART) || prefs.contains(LEGACY_KEY_TRIP_CART_V2)) {
+            prefs.edit().remove(LEGACY_KEY_TRIP_CART).remove(LEGACY_KEY_TRIP_CART_V2).apply()
         }
         pillY = prefs.getInt(KEY_PILL_Y, dp(220))
-        loadPersistedCart()
+        loadPersistedCart(currentStoreKey)
         displayedCartAvg = calcCartAvg()
+    }
+
+    private fun switchStoreIfNeeded(intent: Intent?) {
+        val pkg = intent?.getStringExtra(EXTRA_STORE_PKG).orEmpty()
+        if (pkg.isBlank()) return
+        val nextStore = ScanApi.storeForPackage(pkg)
+        if (nextStore != currentStoreKey) {
+            persistCart()
+            currentStoreKey = nextStore
+            data = null
+            openFlag = null
+            hiddenForCurrentScreen = false
+            loadPersistedCart(currentStoreKey)
+            displayedCartAvg = calcCartAvg()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -125,48 +147,50 @@ class OverlayWindowService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        switchStoreIfNeeded(intent)
         when (intent?.action) {
+            ACTION_RESET_HIDDEN -> {
+                hiddenForCurrentScreen = false
+            }
             ACTION_LOADING -> {
                 isTestMode = false
-                if (!hiddenForTrip) {
-                    isCartAvgMode = false
-                    showPill(loadingText = "Scanning…")
-                }
+                // Navigating to a product page always brings the pill back
+                hiddenForCurrentScreen = false
+                isCartAvgMode = false
+                showPill(loadingText = "Scanning…")
             }
             ACTION_SHOW_RESULT -> {
                 isTestMode = false
-                if (!hiddenForTrip) {
-                    isCartAvgMode = false
-                    data = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
-                    if (intent.getBooleanExtra(EXTRA_IN_CART, false)) {
-                        recordScannedItem(data)
-                    }
-                    openFlag = null
-                    removeCard()
-                    showPill()
+                hiddenForCurrentScreen = false
+                isCartAvgMode = false
+                data = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
+                if (intent.getBooleanExtra(EXTRA_IN_CART, false)) {
+                    recordScannedItem(data)
                 }
+                openFlag = null
+                removeCard()
+                showPill()
             }
             ACTION_SYNC_CART -> {
                 isTestMode = false
+                hiddenForCurrentScreen = false
                 val arrRaw = intent.getStringExtra(EXTRA_CART_ARRAY) ?: "[]"
                 val replaceCart = intent.getBooleanExtra(EXTRA_REPLACE_CART, true)
                 syncCartFromScreen(arrRaw, replaceCart)
-                if (!hiddenForTrip) {
-                    isCartAvgMode = true
-                    removeCard()
-                    showPill()
-                }
+                isCartAvgMode = true
+                removeCard()
+                showPill()
             }
             ACTION_IDLE_CART_AVG -> {
                 isTestMode = false
-                if (!hiddenForTrip) {
+                if (!hiddenForCurrentScreen) {
                     isCartAvgMode = true
                     removeCard()
                     showPill()
                 }
             }
             ACTION_SHOW_TEST -> {
-                hiddenForTrip = false
+                hiddenForCurrentScreen = false
                 isCartAvgMode = false
                 isTestMode = true
                 data = JSONObject(intent.getStringExtra(EXTRA_JSON) ?: ScanApi.SAMPLE_JSON)
@@ -183,9 +207,8 @@ class OverlayWindowService : Service() {
                 }
             }
             ACTION_HIDE -> {
-                // Reset hiddenForTrip when the user exits the store app so next trip shows the bubble again
                 isTestMode = false
-                hiddenForTrip = false
+                hiddenForCurrentScreen = false
                 removeCard()
                 removeHideTarget()
                 removePill()
@@ -233,14 +256,14 @@ class OverlayWindowService : Service() {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         // Never clear tripCart on virtualized RecyclerView cart screens — merge/accumulate visible rows
         // so scrolling up and down a Walmart/BJ's/ALDI cart retains off-screen items smoothly.
-        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES }
+        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
         for (i in 0 until arr.length()) {
             val d = runCatching { JSONObject(arr.optString(i, "{}")) }.getOrNull() ?: continue
             if (d.optBoolean("ok") != true) continue
             val result = d.optJSONObject("result") ?: continue
             val prod = d.optJSONObject("product") ?: continue
             val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
-            if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES) continue
+            if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) continue
             val score = result.optInt("score", 50)
             val swap = d.optJSONObject("swap")
             val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
@@ -267,11 +290,11 @@ class OverlayWindowService : Service() {
         val result = d.optJSONObject("result") ?: return
         val prod = d.optJSONObject("product") ?: return
         val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
-        if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES) return
+        if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) return
         if (Regex("(?i)(gas savings|walmart\\+|notification|scan barcodes|qr code|account|sparky)").containsMatchIn(rawTitle)) return
         val score = result.optInt("score", 50)
         val swap = d.optJSONObject("swap")
-        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES }
+        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
         val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
         if (existing != null) {
             existing.score = score
@@ -289,7 +312,7 @@ class OverlayWindowService : Service() {
 
     private fun persistCart() {
         val arr = JSONArray()
-        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES }) {
+        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES && !VARIANT_NOISE_TITLE.matches(it.title.trim()) }) {
             arr.put(JSONObject().apply {
                 put("key", item.key)
                 put("title", item.title)
@@ -299,32 +322,31 @@ class OverlayWindowService : Service() {
             })
         }
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(KEY_TRIP_CART, arr.toString())
+            .putString("$KEY_TRIP_CART_PREFIX$currentStoreKey", arr.toString())
             .putInt(KEY_PILL_Y, pillY)
             .apply()
     }
 
-    private fun loadPersistedCart() {
-        val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_TRIP_CART, null) ?: return
+    private fun loadPersistedCart(storeKey: String) {
+        tripCart.clear()
+        val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("$KEY_TRIP_CART_PREFIX$storeKey", null) ?: return
         runCatching {
             val arr = JSONArray(raw)
-            if (arr.length() > 0) {
-                tripCart.clear()
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    val title = o.optString("title")
-                    if (title.lowercase() in DEMO_SEED_TITLES) continue
-                    tripCart.add(
-                        TripCartItem(
-                            key = o.optString("key"),
-                            title = title,
-                            score = o.optInt("score", 50),
-                            swapObj = o.optJSONObject("swap"),
-                            isSeed = false,
-                            fullJson = o.optJSONObject("fullJson"),
-                        )
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val title = o.optString("title")
+                if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
+                tripCart.add(
+                    TripCartItem(
+                        key = o.optString("key"),
+                        title = title,
+                        score = o.optInt("score", 50),
+                        swapObj = o.optJSONObject("swap"),
+                        isSeed = false,
+                        fullJson = o.optJSONObject("fullJson"),
                     )
-                }
+                )
             }
         }
     }
@@ -360,7 +382,7 @@ class OverlayWindowService : Service() {
 
     private fun showHideTarget(hot: Boolean = false) {
         if (hideTarget == null) {
-            val tv = text("✕ Hide for this trip", 13f, Color.WHITE, bold = true).apply {
+            val tv = text("✕ Remove", 13f, Color.WHITE, bold = true).apply {
                 setPadding(dp(18), dp(10), dp(18), dp(10))
                 background = GradientDrawable().apply {
                     setColor(if (hot) 0xFFDC2626.toInt() else 0xDD141A17.toInt())
@@ -388,7 +410,7 @@ class OverlayWindowService : Service() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun showPill(loadingText: String? = null) {
-        if (hiddenForTrip || !Settings.canDrawOverlays(this)) return
+        if (hiddenForCurrentScreen || !Settings.canDrawOverlays(this)) return
         if (!isCartAvgMode) climbAnimator?.cancel()
         val result = data?.optJSONObject("result")
         val ok = data?.optBoolean("ok") == true && result != null
@@ -478,7 +500,7 @@ class OverlayWindowService : Service() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     removeHideTarget()
                     if (moved && overHide) {
-                        hiddenForTrip = true
+                        hiddenForCurrentScreen = true
                         removePill()
                     } else {
                         params.x = 0

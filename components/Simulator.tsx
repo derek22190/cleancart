@@ -12,7 +12,7 @@ import {
 } from "@/lib/rubric";
 
 const gradeProduct = (title: string, ingredients: string, watchlist: Record<Category, boolean>): ScoreResult =>
-  scoreProductYuka({ rawIngredients: ingredients, productTitle: title, watchlist });
+  scoreProductYuka(ingredients, watchlist, [], { productTitle: title });
 import { PRESETS } from "@/lib/presets";
 import {
   CLEAN_ALTERNATIVES,
@@ -1280,7 +1280,7 @@ export default function Simulator() {
                   id="hide-drop-target"
                   className={`hide-drop-zone ${overHideZone ? "is-hot" : ""}`}
                 >
-                  ✕ Hide for this trip
+                  ✕ Remove
                 </div>
               )}
 

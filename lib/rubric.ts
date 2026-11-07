@@ -624,7 +624,25 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
       ? { caloriesKcal100g: 62, sugarsG100g: 3.5, saturatedFatG100g: 0.8, sodiumMg100g: 38, fiberG100g: 0, proteinG100g: 9.5, fruitsVegNutsPct: 0 }
       : { caloriesKcal100g: 105, sugarsG100g: 14.5, saturatedFatG100g: 1.8, sodiumMg100g: 55, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 10 };
   }
-  // 12. Ingredient-order heuristic: if Sugar/Syrup is in the first 3 ingredients
+  // 12. Sweetened Dried / Dehydrated Fruit (e.g. AUSPITEE Dried Blueberries / Dried Cranberries / Craisins)
+  if (
+    /\b(auspitee|craisins|sweetened dried|dried cranberr\w*|dried blueberr\w*|dried cherr\w*|dried strawberr\w*|dehydrated\s+(blueberr\w*|cranberr\w*|fruit|berr\w*))\b/.test(combined) &&
+    !/\b(unsweetened|freeze[- ]?dried)\b/.test(combined)
+  ) {
+    return { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.2, sodiumMg100g: 5, fiberG100g: 5.0, proteinG100g: 0.5, fruitsVegNutsPct: 60 };
+  }
+  // 13. Freeze-Dried Fruit Crisps & Fruit Powders (concentrated natural fruit sugars ~52-60g/100g & ~345 kcal/100g)
+  if (/\b(freeze[- ]?dried|fruit crisps?|berry powder|blueberry powder|strawberry powder|fruit powder)\b/.test(combined)) {
+    return { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85 };
+  }
+  // 14. Dairy Milk (Whole Milk has ~2.0g/100ml saturated fat; Reduced-Fat/Skim has lower saturated fat)
+  if (/\b(milk|lactaid|fairlife)\b/.test(combined) && !/\b(coconut milk|almond milk|oat milk|soy milk|chocolate|condensed|evaporated|buttermilk)\b/.test(combined)) {
+    const isLowFat = /\b(skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat)\b/.test(combined);
+    return isLowFat
+      ? { caloriesKcal100g: 46, sugarsG100g: 4.8, saturatedFatG100g: 0.9, sodiumMg100g: 44, fiberG100g: 0, proteinG100g: 3.4, fruitsVegNutsPct: 0 }
+      : { caloriesKcal100g: 62, sugarsG100g: 4.8, saturatedFatG100g: 2.1, sodiumMg100g: 43, fiberG100g: 0, proteinG100g: 3.2, fruitsVegNutsPct: 0 };
+  }
+  // 15. Ingredient-order heuristic: if Sugar/Syrup is in the first 3 ingredients
   if (/\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose)\b/.test(top3)) {
     return { caloriesKcal100g: 370, sugarsG100g: 22, saturatedFatG100g: 5.0, sodiumMg100g: 260, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0 };
   }
@@ -651,7 +669,7 @@ export function scoreProductYuka(
   const hasTop3AddedSugar = /\b(sugar|cane sugar|brown sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing)\b/.test(top3);
 
   const NON_WHOLE_FOOD =
-    /\b(butter|ghee|margarine|shortening|lard|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
+    /\b(butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&
@@ -699,6 +717,10 @@ export function scoreProductYuka(
     /\b(butter|kerrygold|ghee|land o'? ?lakes)\b/i.test(titleAndIng) &&
     !/\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk)\b/i.test(titleAndIng);
 
+  const isWholeMilk =
+    /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
+    !/\b(skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy)\b/i.test(titleAndIng);
+
   let nutritionScore: number;
   if (isWholeFood) {
     nutritionScore = 60;
@@ -708,6 +730,10 @@ export function scoreProductYuka(
     // but high saturated fat (51g/100g) and calories (717 kcal/100g) -> Mediocre (~52-58/100), never 100/100.
     nutritionScore = sodium <= 50 ? 28 : 22;
     nutriGrade = sodium <= 50 ? "D" : "E";
+  } else if (isWholeMilk) {
+    // Whole milk has ~2.1g/100ml saturated fat (5g per cup) -> Nutri-Score B (46/60 nutrition points)
+    nutritionScore = 46;
+    nutriGrade = "B";
   } else if (nutriRaw <= -2) {
     nutritionScore = 60;
   } else if (nutriRaw <= -1) {
@@ -717,7 +743,7 @@ export function scoreProductYuka(
   } else if (nutriRaw <= 2) {
     nutritionScore = 45;
   } else if (nutriRaw <= 6) {
-    nutritionScore = 36;
+    nutritionScore = 42;
   } else if (nutriRaw <= 10) {
     nutritionScore = 28;
   } else if (nutriRaw <= 14) {
@@ -734,9 +760,10 @@ export function scoreProductYuka(
   const seedOilHits = base.flagged.filter((f) => f.category === "seedOils");
   const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45));
   const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
-  const organicScore = isOrganic || isWholeFood ? 10 : 0;
+  // Yuka 10% Organic bonus (10/10) is awarded strictly to certified Organic items
+  const organicScore = isOrganic ? 10 : 0;
 
-  // Surface clear nutritional risk flags on Nutri-Score D/E items so the user sees WHY the score was reduced
+  // Surface clear nutritional risk flags on high-sugar / high-sat-fat / high-sodium items so the user sees WHY the score was reduced
   const flagged: FlaggedAdditive[] = [...base.flagged];
   if (!isWholeFood) {
     if (sugars >= 18 || (hasTop3AddedSugar && sugars >= 12)) {
@@ -746,7 +773,7 @@ export function scoreProductYuka(
         risk: sugars >= 25 ? "moderate" : "low",
         category: "other",
         penalty: sugars >= 25 ? 20 : 12,
-        explanation: "High added sugar content spikes blood glucose and lowers the Yuka 60% Nutritional Quality score.",
+        explanation: "High sugar concentration (per 100g) lowers the Yuka 60% Nutritional Quality score.",
       });
     }
     if (satFat >= 10) {
@@ -757,6 +784,15 @@ export function scoreProductYuka(
         category: "other",
         penalty: 18,
         explanation: "Exceeds Nutri-Score's 10g/100g saturated fat threshold, reducing the 60% Nutritional Quality pillar.",
+      });
+    } else if (isWholeMilk) {
+      flagged.push({
+        id: "nutri_milk_satfat",
+        name: "Saturated Dairy Fat (5g / cup)",
+        risk: "low",
+        category: "other",
+        penalty: 14,
+        explanation: "Whole milk contains 3.25% milkfat (~5g saturated fat per cup), slightly lowering its 60% Nutritional Quality score.",
       });
     }
     if (sodium >= 600) {
@@ -781,10 +817,7 @@ export function scoreProductYuka(
     }
   }
 
-  let finalScore = base.score;
-  if (!isWholeFood && (nutriGrade === "D" || nutriGrade === "E" || isPureButterOrGhee || NON_WHOLE_FOOD.test(titleAndIng))) {
-    finalScore = Math.min(finalScore, nutritionScore + additiveScore + organicScore);
-  }
+  let finalScore = Math.min(base.score, nutritionScore + additiveScore + organicScore);
   if (hasHighRisk || seedOilHits.length >= 2) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {

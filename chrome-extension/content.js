@@ -176,7 +176,7 @@
     const avg = state.displayedAvg || calcCartAvg();
     const avgTone = `cc-tone-${toneForScore(avg)}`;
     const hideDropHtml = state.dragging
-      ? `<div class="cc-hide-drop ${state.overHide ? "is-hot" : ""}">✕ Hide for this trip</div>`
+      ? `<div class="cc-hide-drop ${state.overHide ? "is-hot" : ""}">✕ Remove</div>`
       : "";
 
     // Whole-Cart Auditor Drawer (opened by tapping the bubble in Cart Avg mode)
