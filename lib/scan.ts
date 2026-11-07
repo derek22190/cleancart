@@ -162,7 +162,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   });
   let entitlement: ReturnType<typeof serializeEntitlement> | undefined;
   if (typeof req.deviceId === "string" && req.deviceId.trim().length >= 4) {
-    const { device } = applyOrActivateReferral({
+    const { device } = await applyOrActivateReferral({
       deviceId: req.deviceId,
       referralCode: req.referredByCode,
       activateNow: true,

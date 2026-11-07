@@ -14,7 +14,7 @@ const ALLOWED_ORIGINS = new Set([
  * Body: { plan: "annual" | "monthly", creatorCode?: string, origin?: string }
  *
  * - If STRIPE_SECRET_KEY is configured in environment variables (Vercel), creates a live
- *   Stripe Checkout Session with Apple Pay / Google Pay / Card and automatic 3-day (or 7-day verified creator)
+ *   Stripe Checkout Session with Apple Pay / Google Pay / Card and automatic 7-day (or 14-day creator/friend)
  *   free trial, returning { ok: true, mode: "stripe", url: session.url }.
  * - If STRIPE_SECRET_KEY is not configured yet and ALLOW_PREVIEW_CHECKOUT === "true", returns
  *   { ok: true, mode: "preview" } for local preview testing.
@@ -28,11 +28,12 @@ export async function POST(req: NextRequest) {
     const body = parsed as Record<string, unknown>;
     const plan: PlanId = body.plan === "monthly" ? "monthly" : "annual";
     const rawCreatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
-    const validCreator = rawCreatorCode ? await getCreator(rawCreatorCode) : null;
-    if (rawCreatorCode && !validCreator) {
+    const isFriendCode = /^BROC-[A-Z0-9]{4,8}$/.test(rawCreatorCode);
+    const validCreator = rawCreatorCode && !isFriendCode ? await getCreator(rawCreatorCode) : null;
+    if (rawCreatorCode && !isFriendCode && !validCreator) {
       return NextResponse.json({ ok: false, error: "Invalid creator code." }, { status: 400 });
     }
-    const verifiedCode = validCreator?.code || "";
+    const verifiedCode = validCreator?.code || (isFriendCode ? rawCreatorCode : "");
 
     const candidateOrigin = (typeof body.origin === "string" ? body.origin : req.headers.get("origin"))?.replace(/\/+$/, "") || "";
     const origin = ALLOWED_ORIGINS.has(candidateOrigin) ? candidateOrigin : "https://heybroc.com";

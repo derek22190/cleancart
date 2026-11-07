@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   applyOrActivateReferral,
   getOrCreateDevice,
+  saveDevice,
   serializeEntitlement,
 } from "@/lib/referrals";
 import { PRICING } from "@/lib/pricing";
@@ -19,10 +20,10 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const deviceId = searchParams.get("deviceId") || "anon-web";
-  const device = getOrCreateDevice(deviceId);
+  const device = await getOrCreateDevice(deviceId);
   return NextResponse.json(
     { ok: true, entitlement: serializeEntitlement(device) },
     { headers: CORS },
@@ -35,15 +36,17 @@ export async function POST(request: Request) {
       action?: "status" | "claim" | "activate" | "record_swap" | "courtesy_refill";
       deviceId?: string;
       referralCode?: string;
+      referredByCode?: string;
       productKey?: string;
     };
     const deviceId = (body.deviceId || "anon-web").trim();
     const action = body.action || "status";
+    const resolvedReferralCode = (body.referralCode || body.referredByCode || "").trim();
 
     if (action === "claim" || action === "activate") {
-      const res = applyOrActivateReferral({
+      const res = await applyOrActivateReferral({
         deviceId,
-        referralCode: body.referralCode,
+        referralCode: resolvedReferralCode,
         activateNow: action === "activate",
       });
       return NextResponse.json(
@@ -57,10 +60,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const device = getOrCreateDevice(deviceId);
+    const device = await getOrCreateDevice(deviceId);
 
     if (action === "courtesy_refill") {
       device.courtesyRefillUsedThisWeek = true;
+      await saveDevice(device);
       return NextResponse.json(
         {
           ok: true,
@@ -75,6 +79,7 @@ export async function POST(request: Request) {
       const normKey = body.productKey.trim().toLowerCase();
       if (normKey && !device.weeklySwapsUsed.includes(normKey)) {
         device.weeklySwapsUsed.push(normKey);
+        await saveDevice(device);
       }
     }
 

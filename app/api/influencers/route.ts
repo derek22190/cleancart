@@ -12,6 +12,7 @@ import {
   type CreatorEvent,
 } from "@/lib/influencers";
 import { PRICING, commissionFor } from "@/lib/pricing";
+import { checkRateLimit } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,13 @@ export async function POST(request: Request) {
 
   try {
     if (!isAdmin && isPublicClickTrack) {
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        request.headers.get("x-real-ip") ||
+        "anon";
+      if (!checkRateLimit(`inf-click:${ip}`, 20)) {
+        return NextResponse.json({ ok: false, error: "Too many requests." }, { status: 429, headers: CORS });
+      }
       const c = await trackEvent(body.code || "", "click");
       return NextResponse.json(
         { ok: true, creator: { code: c.code, name: c.name } },

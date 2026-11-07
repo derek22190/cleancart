@@ -251,7 +251,7 @@
     }
     const C = 2 * Math.PI * 44;
     const flags = r.flagged.length
-      ? r.flagged.map((f) => `<span class="cc-flag cc-risk-${esc(f.risk)} is-open">${esc(f.name)} ⚠️</span>`).join("")
+      ? r.flagged.map((f) => `<span class="cc-flag cc-risk-${esc(f.risk)} is-open" data-flag="${esc(f.name)}">${esc(f.name)} ⚠️</span>`).join("")
       : `<p class="cc-clean">✓ No watchlist additives found.</p>`;
     const explain = r.flagged
       .map(
@@ -476,7 +476,24 @@
   }
 
   loadTripCart().then(() => {
-    const schedule = () => { clearTimeout(timer); timer = setTimeout(scan, DEBOUNCE_MS); };
+    const MAX_DEBOUNCE_WAIT_MS = 2500;
+    let firstQueuedAt = 0;
+    const runScheduledScan = () => {
+      firstQueuedAt = 0;
+      timer = null;
+      scan();
+    };
+    const schedule = () => {
+      const now = Date.now();
+      if (!firstQueuedAt) firstQueuedAt = now;
+      if (now - firstQueuedAt >= MAX_DEBOUNCE_WAIT_MS) {
+        clearTimeout(timer);
+        runScheduledScan();
+        return;
+      }
+      clearTimeout(timer);
+      timer = setTimeout(runScheduledScan, DEBOUNCE_MS);
+    };
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
     window.addEventListener("popstate", schedule);
     schedule();

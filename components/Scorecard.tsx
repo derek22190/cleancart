@@ -261,7 +261,7 @@ export default function Scorecard({
                 </div>
               </div>
               <div className="story-code-badge">
-                <small>7-DAY FREE TRIAL CODE</small>
+                <small>FREE PRO INVITE CODE</small>
                 <b>{activeCode}</b>
               </div>
             </div>
@@ -285,7 +285,7 @@ export default function Scorecard({
                 placeholder="e.g. PARENTMAXX, SARAHHAULS"
               />
               <p className="meta">
-                Share your Clean Haul Scorecard on TikTok or Instagram Stories with your personal code <b>{activeCode}</b> to give friends a 7-day free trial.
+                Share your Clean Haul Scorecard on TikTok or Instagram Stories with your personal code <b>{activeCode}</b> to give friends +7 Free Pro Days (or a 14-day extended creator trial).
               </p>
               <button id="download-scorecard-png" type="button" className="swap-btn swap-btn--wide" onClick={downloadPng}>
                 ⬇ Download 1080×1920 Story PNG

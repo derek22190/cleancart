@@ -98,6 +98,26 @@ export default function Paywall({
     setCodeError("");
     try {
       if (target.startsWith("BROC-")) {
+        if (!/^BROC-[A-Z0-9]{4,8}$/.test(target)) {
+          setCodeError("Invalid friend invite code format (expected BROC-XXXXX).");
+          return;
+        }
+        const devId =
+          (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) ||
+          "anon-web";
+        const refRes = await fetch("/api/referral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "claim", deviceId: devId, referralCode: target }),
+        }).catch(() => null);
+        const refData = refRes ? await refRes.json().catch(() => null) : null;
+        if (refData && refData.ok === false) {
+          setCodeError(refData.error || "Could not apply friend code.");
+          return;
+        }
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("heybroc_referred_by", target);
+        }
         const c: AppliedCreator = {
           code: target,
           name: "Friend Referral (+7 Days Free Pro)",

@@ -11,6 +11,7 @@
  */
 import "server-only";
 import { PRICING } from "./pricing";
+import { kvGet, kvSet } from "./storage";
 
 export interface DeviceEntitlement {
   deviceId: string;
@@ -27,9 +28,36 @@ export interface DeviceEntitlement {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
+const MAX_MEM_DEVICES = 2000;
+const KV_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
 const devices = new Map<string, DeviceEntitlement>();
 const codeToDevice = new Map<string, string>();
+
+function setMemCache(entry: DeviceEntitlement) {
+  if (devices.size >= MAX_MEM_DEVICES && !devices.has(entry.deviceId)) {
+    const oldestKey = devices.keys().next().value;
+    if (oldestKey) devices.delete(oldestKey);
+  }
+  devices.set(entry.deviceId, entry);
+  if (codeToDevice.size >= MAX_MEM_DEVICES && !codeToDevice.has(entry.referralCode)) {
+    const oldestCode = codeToDevice.keys().next().value;
+    if (oldestCode) codeToDevice.delete(oldestCode);
+  }
+  codeToDevice.set(entry.referralCode, entry.deviceId);
+}
+
+export async function saveDevice(entry: DeviceEntitlement): Promise<void> {
+  setMemCache(entry);
+  try {
+    await Promise.all([
+      kvSet(`heybroc:device:${entry.deviceId}`, entry, KV_TTL_SECONDS),
+      kvSet(`heybroc:refcode:${entry.referralCode}`, entry.deviceId, KV_TTL_SECONDS),
+    ]);
+  } catch {
+    /* keep in-memory fallback if KV is transiently unreachable */
+  }
+}
 
 /** Deterministic, human-friendly referral code from a deviceId (e.g. "BROC-7F4A2"). */
 export function codeFromDeviceId(deviceId: string): string {
@@ -49,10 +77,21 @@ export function codeFromDeviceId(deviceId: string): string {
   return `BROC-${suffix}`;
 }
 
-export function getOrCreateDevice(rawDeviceId?: string): DeviceEntitlement {
+export async function getOrCreateDevice(rawDeviceId?: string): Promise<DeviceEntitlement> {
   const now = Date.now();
   const deviceId = (rawDeviceId || "anon-web").trim().slice(0, 128) || "anon-web";
   let entry = devices.get(deviceId);
+  if (!entry) {
+    try {
+      const persisted = await kvGet<DeviceEntitlement>(`heybroc:device:${deviceId}`);
+      if (persisted && typeof persisted.deviceId === "string") {
+        entry = persisted;
+        setMemCache(entry);
+      }
+    } catch {
+      /* ignore KV read errors */
+    }
+  }
   if (!entry) {
     const referralCode = codeFromDeviceId(deviceId);
     entry = {
@@ -66,12 +105,12 @@ export function getOrCreateDevice(rawDeviceId?: string): DeviceEntitlement {
       weekResetAt: now + WEEK_MS,
       courtesyRefillUsedThisWeek: false,
     };
-    devices.set(deviceId, entry);
-    codeToDevice.set(referralCode, deviceId);
+    await saveDevice(entry);
   } else if (now >= entry.weekResetAt) {
     entry.weeklySwapsUsed = [];
     entry.weekResetAt = now + WEEK_MS;
     entry.courtesyRefillUsedThisWeek = false;
+    await saveDevice(entry);
   }
   return entry;
 }
@@ -80,17 +119,17 @@ export function getOrCreateDevice(rawDeviceId?: string): DeviceEntitlement {
  * Links a referred device to an inviter's code. If `activateNow` is true (e.g. when the friend
  * completes their first store scan in Walmart/Target/etc.), both devices immediately receive +7 days of Pro.
  */
-export function applyOrActivateReferral(params: {
+export async function applyOrActivateReferral(params: {
   deviceId: string;
   referralCode?: string;
   activateNow?: boolean;
-}): {
+}): Promise<{
   device: DeviceEntitlement;
   rewardedNow: boolean;
   message: string;
-} {
+}> {
   const now = Date.now();
-  const device = getOrCreateDevice(params.deviceId);
+  const device = await getOrCreateDevice(params.deviceId);
   const inputCode = (params.referralCode || device.referredByCode || "").trim().toUpperCase();
 
   if (!inputCode) {
@@ -106,6 +145,7 @@ export function applyOrActivateReferral(params: {
   device.referredByCode = inputCode;
 
   if (!params.activateNow) {
+    await saveDevice(device);
     return {
       device,
       rewardedNow: false,
@@ -117,13 +157,22 @@ export function applyOrActivateReferral(params: {
   const bonusMs = PRICING.referralBonusDays * DAY_MS;
   device.referralActivated = true;
   device.proUntil = Math.max(now, device.proUntil) + bonusMs;
+  await saveDevice(device);
 
   // Also credit the inviter device (+7 Pro days, no cap on how many friends they invite!)
-  const inviterDeviceId = codeToDevice.get(inputCode);
+  let inviterDeviceId = codeToDevice.get(inputCode);
+  if (!inviterDeviceId) {
+    try {
+      inviterDeviceId = (await kvGet<string>(`heybroc:refcode:${inputCode}`)) || undefined;
+    } catch {
+      /* ignore KV lookup errors */
+    }
+  }
   if (inviterDeviceId && inviterDeviceId !== device.deviceId) {
-    const inviter = getOrCreateDevice(inviterDeviceId);
+    const inviter = await getOrCreateDevice(inviterDeviceId);
     inviter.proUntil = Math.max(now, inviter.proUntil) + bonusMs;
     inviter.referralsCompleted += 1;
+    await saveDevice(inviter);
   }
 
   return {

@@ -11,17 +11,21 @@ import java.util.UUID
 
 /** Minimal HTTP client for POST /api/scan and /api/referral (no third-party dependencies). */
 object ScanApi {
-    private val ENDPOINTS = listOf(
+    private val customBase = BuildConfig.API_BASE.trim().trimEnd('/')
+    private val ENDPOINTS = listOfNotNull(
+        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/scan" },
         "https://www.heybroc.com/api/scan",
         "https://heybroc.com/api/scan",
         "https://cleancart-teal.vercel.app/api/scan",
-    )
-    private val REFERRAL_ENDPOINTS = listOf(
+    ).distinct()
+    private val REFERRAL_ENDPOINTS = listOfNotNull(
+        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/referral" },
         "https://www.heybroc.com/api/referral",
         "https://heybroc.com/api/referral",
         "https://cleancart-teal.vercel.app/api/referral",
-    )
-    private val TRUSTED_HOSTS = setOf(
+    ).distinct()
+    private val TRUSTED_HOSTS = setOfNotNull(
+        runCatching { URL(customBase).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() },
         "www.heybroc.com",
         "heybroc.com",
         "cleancart-teal.vercel.app",
@@ -84,6 +88,7 @@ object ScanApi {
         val body = JSONObject().apply {
             put("action", "claim")
             put("deviceId", deviceId(ctx))
+            put("referralCode", clean)
             put("referredByCode", clean)
         }.toString()
         for (endpoint in REFERRAL_ENDPOINTS) {

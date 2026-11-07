@@ -434,7 +434,13 @@ class MainActivity : Activity() {
                     isChecked = key in selected
                     setOnCheckedChangeListener { _, checked ->
                         val next = (prefs.getStringSet("familyWatchlist", emptySet()) ?: emptySet()).toMutableSet()
-                        if (checked) next.add(key) else next.remove(key)
+                        if (checked) {
+                            next.add(key)
+                            if (key == "preservatives") next.add("nitrates")
+                        } else {
+                            next.remove(key)
+                            if (key == "preservatives") next.remove("nitrates")
+                        }
                         prefs.edit().putStringSet("familyWatchlist", next).apply()
                     }
                 })

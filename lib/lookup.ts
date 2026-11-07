@@ -979,7 +979,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
   const cache = await loadCache();
   const hit = cache.get(key);
-  if (isFreshCacheEntry(hit) && hit.imageUrl && !hit.productTitle.startsWith("Conventional Grocery")) {
+  if (isFreshCacheEntry(hit) && !hit.productTitle.startsWith("Conventional Grocery")) {
     const { cachedAt: _c, source, ...rest } = hit;
     return { ...rest, source: "cache", origin: source, ms: ms() };
   }

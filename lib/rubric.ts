@@ -837,9 +837,26 @@ export function scoreProductYuka(
   // Yuka 10% Organic bonus (10/10) is awarded strictly to certified Organic items
   const organicScore = isOrganic ? 10 : 0;
 
-  // Surface clear nutritional risk flags on high-sugar / high-sat-fat / high-sodium items so the user sees WHY the score was reduced
+  // Combine Yuka's 60% Nutritional Quality pillar with the 30% Additive pillar and 10% Organic pillar
+  // so foods made with nutritious whole ingredients (fish, clams, milk, potatoes, vegetables, whole grains)
+  // retain their nutritional credit instead of dropping to 0/100 when an additive or 2x watchlist is present.
+  const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
+  const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore - multiAdditiveDeduction);
+  let finalScore = base.flagged.length > 0 ? Math.max(base.score, yukaPillarScore) : base.score;
+  if (hasHighRisk || seedOilHits.length >= 2) {
+    finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
+  } else if (seedOilHits.length === 1) {
+    // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
+    finalScore = Math.max(0, Math.min(59, finalScore));
+  }
+  if (hasTop3AddedSugar && (nutriGrade === "D" || nutriGrade === "E")) {
+    finalScore = Math.min(finalScore, nutritionScore + additiveScore + organicScore);
+  }
+
+  // Surface clear nutritional risk flags on high-sugar / high-sat-fat / high-sodium items ONLY when finalScore < 100
+  // so 100/100 additive-free foods (e.g. Grass-Fed Butter) never show contradictory negative penalty badges.
   const flagged: FlaggedAdditive[] = [...base.flagged];
-  if (!isWholeFood) {
+  if (!isWholeFood && finalScore < 100) {
     if (sugars >= 18 || (hasTop3AddedSugar && sugars >= 12)) {
       flagged.push({
         id: "nutri_sugar",
@@ -894,22 +911,6 @@ export function scoreProductYuka(
         matched: "calories",
       });
     }
-  }
-
-  // Combine Yuka's 60% Nutritional Quality pillar with the 30% Additive pillar and 10% Organic pillar
-  // so foods made with nutritious whole ingredients (fish, clams, milk, potatoes, vegetables, whole grains)
-  // retain their nutritional credit instead of dropping to 0/100 when an additive or 2x watchlist is present.
-  const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
-  const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore - multiAdditiveDeduction);
-  let finalScore = base.flagged.length > 0 ? Math.max(base.score, yukaPillarScore) : base.score;
-  if (hasHighRisk || seedOilHits.length >= 2) {
-    finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
-  } else if (seedOilHits.length === 1) {
-    // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
-    finalScore = Math.max(0, Math.min(59, finalScore));
-  }
-  if (hasTop3AddedSugar && (nutriGrade === "D" || nutriGrade === "E")) {
-    finalScore = Math.min(finalScore, nutritionScore + additiveScore + organicScore);
   }
 
   return {

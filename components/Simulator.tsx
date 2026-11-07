@@ -372,35 +372,66 @@ export default function Simulator() {
     let cancelled = false;
     async function checkEntitlement() {
       try {
-        let myCode = window.localStorage.getItem("heybroc_my_referral_code");
-        if (!myCode) {
-          const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
-          myCode = `BROC-${rand}`;
-          window.localStorage.setItem("heybroc_my_referral_code", myCode);
+        let deviceId = window.localStorage.getItem("heybroc_device_id");
+        if (!deviceId) {
+          deviceId = `web-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
+          window.localStorage.setItem("heybroc_device_id", deviceId);
         }
-        if (!cancelled) setPersonalReferralCode(myCode);
 
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
         const refParam = (params.get("ref") || "").trim().toUpperCase();
-        if (refParam) {
+        if (refParam && /^BROC-[A-Z0-9]{4,8}$/.test(refParam)) {
           window.localStorage.setItem("heybroc_referred_by", refParam);
-          if (!cancelled) {
-            setIsPro(true);
-            setToast({
-              title: `🎁 +7 Free Days of HeyBroc Pro Unlocked (${refParam})`,
-              body: "Friend invite active! Scan any grocery item so you and your friend both get +7 Free Pro Days.",
-            });
+        }
+
+        const storedRef = (window.localStorage.getItem("heybroc_referred_by") || "").trim().toUpperCase();
+        const refRes = await fetch("/api/referral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: refParam ? "claim" : "status",
+            deviceId,
+            referralCode: refParam || storedRef || undefined,
+          }),
+        }).catch(() => null);
+        const refData = (refRes ? await refRes.json().catch(() => null) : null) as {
+          ok?: boolean;
+          message?: string;
+          entitlement?: {
+            referralCode?: string;
+            isProActive?: boolean;
+          };
+        } | null;
+
+        if (!cancelled && refData?.entitlement?.referralCode) {
+          setPersonalReferralCode(refData.entitlement.referralCode);
+          window.localStorage.setItem("heybroc_my_referral_code", refData.entitlement.referralCode);
+        } else {
+          let myCode = window.localStorage.getItem("heybroc_my_referral_code");
+          if (!myCode) {
+            const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+            myCode = `BROC-${rand}`;
+            window.localStorage.setItem("heybroc_my_referral_code", myCode);
           }
-          return;
+          if (!cancelled) setPersonalReferralCode(myCode);
+        }
+
+        if (!cancelled && refParam && refData?.ok) {
+          setToast({
+            title: `🎁 Friend Invite Saved (${refParam})`,
+            body: refData.message || "Scan any grocery item so you and your friend both unlock +7 Free Pro Days!",
+          });
         }
 
         const urlSessionId = (params.get("session_id") || "").trim();
         const storedSessionId = (window.localStorage.getItem("heybroc_session_id") || "").trim();
         const candidateSessionId = urlSessionId || storedSessionId;
         if (!candidateSessionId) {
-          if (!cancelled) setIsPro(false);
+          if (!cancelled) {
+            setIsPro(Boolean(refData?.entitlement?.isProActive));
+          }
           return;
         }
         const res = await fetch(
@@ -422,7 +453,7 @@ export default function Simulator() {
             });
           }
         } else {
-          setIsPro(false);
+          setIsPro(Boolean(refData?.entitlement?.isProActive));
           window.localStorage.removeItem("heybroc_session_id");
         }
       } catch {
@@ -473,8 +504,8 @@ export default function Simulator() {
     [active, watch],
   );
   const swap = useMemo(
-    () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store }),
-    [score.score, active, store],
+    () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store, watchlist: watch }),
+    [score.score, active, store, watch],
   );
   const theme = STORE_THEME[store];
 
@@ -489,6 +520,7 @@ export default function Simulator() {
           ingredients: item.ingredients,
           category: item.category,
           store,
+          watchlist: watch,
         });
         return { item, s, sw };
       }),
@@ -521,6 +553,7 @@ export default function Simulator() {
           ingredients: p.ingredients,
           category: p.category,
           store,
+          watchlist: watch,
         });
         if (!sw) return null;
         return {
@@ -758,7 +791,11 @@ export default function Simulator() {
       setLiveState("loading");
       setLiveError("");
       try {
-        const payload = { productTitle: q, store, watchlist: watch };
+        const deviceId =
+          (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) || undefined;
+        const referredByCode =
+          (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
+        const payload = { productTitle: q, store, watchlist: watch, deviceId, referredByCode };
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -838,6 +875,12 @@ export default function Simulator() {
   const swapAll = useCallback(() => {
     const n = dirty.length;
     if (n === 0) return;
+    const weeklyAllowance = courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3;
+    if (!isPro && swapsUsedThisWeek + n > weeklyAllowance) {
+      setPaywallOpen(true);
+      return;
+    }
+    setSwapsUsedThisWeek((prev) => prev + n);
     const records: SwapRecord[] = dirty.map((d) => ({
       fromTitle: `${d.item.brand} ${d.item.title}`,
       toTitle: d.sw!.title,
@@ -868,7 +911,7 @@ export default function Simulator() {
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
       body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, cart, watch, active.key, store, triggerClimbFlash]);
+  }, [dirty, cart, watch, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, courtesyRefillAvailable]);
 
   const resetCartPresets = useCallback(() => {
     setCart(PRESETS.map(presetToProduct));
@@ -2096,7 +2139,7 @@ export default function Simulator() {
       <Paywall
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
-        scanCount={swapsUsedThisWeek || scanCount}
+        scanCount={swapsUsedThisWeek}
         freeScanLimit={courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3}
         appliedCreator={appliedCreator}
         onCreatorApplied={(c) => {

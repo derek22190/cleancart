@@ -1304,7 +1304,7 @@ class OverlayWindowService : Service() {
             "butter" in s -> "Organic pasteurized sweet cream, salt."
             "yogurt" in s -> "Cultured pasteurized organic whole milk, pectin, vitamin D3."
             "turkey" in s -> "Organic turkey breast, water, sea salt, organic vinegar, organic cane sugar."
-            "bacon" in s -> "Organic pork, water, sea salt, organic cane sugar, celery powder."
+            "bacon" in s -> "Organic pork, water, sea salt, organic cane sugar, organic rosemary extract."
             "tortilla" in s && "chips" in s -> "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt."
             "chips" in s -> "Potatoes, avocado oil, sea salt."
             "cheddar" in s && "crackers" in s -> "Organic cassava flour, organic cheddar cheese, organic coconut oil, organic chia seeds, sea salt."
@@ -1318,6 +1318,7 @@ class OverlayWindowService : Service() {
     private fun removeCard() {
         card?.let { runCatching { wm.removeView(it) } }
         card = null
+        isAuditorOpen = false
     }
 
     /**

@@ -326,13 +326,15 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (isCartScreen) {
                 wasOnCartScreen = true
                 val cartTitles = extractCartScreenTitles(nodes)
-                if (cartTitles.isNotEmpty()) {
-                    val cartKey = "$pkg|CART|${cartTitles.joinToString("|")}"
+                val removedTitles = extractRemovedCartTitles(nodes)
+                if (cartTitles.isNotEmpty() || removedTitles.isNotEmpty()) {
+                    val cartKey = "$pkg|CART|${cartTitles.joinToString("|")}|REM:${removedTitles.joinToString("|")}"
                     if (lastKey != cartKey) {
                         lastKey = cartKey
                         markVisible()
                         val store = ScanApi.storeForPackage(pkg)
                         val appContext = applicationContext
+                        val removedJson = org.json.JSONArray(removedTitles).toString()
                         io.execute {
                             val arr = org.json.JSONArray()
                             for (itemTitle in cartTitles) {
@@ -345,6 +347,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                                 if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
                                     sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
                                         putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                        putExtra(OverlayWindowService.EXTRA_REMOVED_TITLES, removedJson)
                                         putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
                                     }
                                 }
