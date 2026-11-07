@@ -810,11 +810,11 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(clam\s+chowder|new\s+england.*chowder|corn\s+chowder|potato\s+chowder|seafood\s+chowder|lobster\s+bisque|tomato\s+bisque|broccoli\s+cheddar\s+soup|loaded\s+baked\s+potato\s+soup)\b/i,
-    brand: "Marketside / Deli Soup",
+    brand: "Marketside",
     title: "New England Style Clam Chowder",
-    ingredients: "Clam Broth, Potatoes, Clams, Cream, Water, Contains 2% or Less of: Soybean Oil, Modified Food Starch, Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Salt, Butter (Cream, Salt), Soy Protein Concentrate, Sodium Tripolyphosphate (to Retain Moisture), Garlic Powder, Onion Powder, Spice, Yeast Extract, Natural Flavor.",
+    ingredients: "Light Cream (Milk, Cream), Potatoes, Fish Stock (Water, Cod Bones, Haddock Bones, Onions, Celery, Black Pepper, Thyme, Mustard Seed, Bay Leaves), Sea Clams (Sea Clams, Water), Chopped Cockle (Clam Meat), Onions, Wheat Flour, Soybean Oil, Butter (Cream, Salt), Clam Broth (Dehydrated Clam Broth, Maltodextrin), Sea Salt, Celery, Salt Pork (Pork, Sea Salt), Black Pepper, Worcestershire Sauce (Distilled White Vinegar, Molasses, Sugar, Water, Salt, Onions, Anchovies, Garlic, Cloves, Tamarind Extract, Natural Flavorings, Chili Pepper Extract), Garlic.",
     imageUrl: "/products/ranch.jpg",
-    nutrition: { caloriesKcal100g: 115, sugarsG100g: 1.5, saturatedFatG100g: 3.8, sodiumMg100g: 410, fiberG100g: 0.8, proteinG100g: 4.5, fruitsVegNutsPct: 15, nutriScoreGrade: "c", isWholeFood: false },
+    nutrition: { caloriesKcal100g: 115, sugarsG100g: 1.5, saturatedFatG100g: 3.5, sodiumMg100g: 350, fiberG100g: 0.9, proteinG100g: 5.2, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
   },
   {
     match: /^(?!.*\b(amy'?s|pacific\s+foods|organic|kettle\s*&\s*fire)\b).*\b(campbell'?s|progresso|chunky\s+soup|chicken\s+noodle\s+soup|tomato\s+soup|cream\s+of\s+(mushroom|chicken|celery)|beef\s+stew|vegetable\s+beef\s+soup|minestrone\s+soup|italian\s+wedding\s+soup|ramen\s+noodle\s+soup|maruchan|top\s+ramen)\b/i,
@@ -831,6 +831,22 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     ingredients: "Corn Flour, Sugar, Marshmallows (Sugar, Modified Corn Starch, Corn Syrup, Dextrose, Gelatin, Sodium Hexametaphosphate, Artificial Flavor, Blue 1), Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, High Fructose Corn Syrup, Salt, Baking Soda, Soy Lecithin, Natural and Artificial Flavor, BHT Added to Preserve Freshness.",
     imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(salad\s+kit|chopped\s+kit|caesar\s+salad\s+kit|ranch\s+salad\s+kit|southwest\s+salad\s+kit|asian\s+salad\s+kit|sweet\s+kale\s+kit)\b/i,
+    brand: "Marketside / Taylor Farms",
+    title: "Salad Kit with Dressing Packet",
+    ingredients: "Romaine Lettuce, Dressing (Soybean and/or Canola Oil, Water, Parmesan Cheese, Egg Yolk, Distilled Vinegar, Salt, Sugar, Garlic, Lemon Juice Concentrate, Natural Flavor, Xanthan Gum), Croutons (Enriched Wheat Flour, Sunflower Oil, Salt, Yeast, Garlic Powder), Parmesan Cheese.",
+    imageUrl: "/products/ranch.jpg",
+    nutrition: { caloriesKcal100g: 140, sugarsG100g: 3.0, saturatedFatG100g: 2.5, sodiumMg100g: 310, fiberG100g: 2.0, proteinG100g: 3.5, fruitsVegNutsPct: 65, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /^(?!.*\b(kit|caesar|ranch|dressing|macaroni|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|pasta\s+salad|ham\s+salad|seafood\s+salad)\b).*\b(romaine\s+salad|salad\s+blend|classic\s+romaine|classic\s+iceberg|spring\s+mix|baby\s+spinach|spinach\s+blend|half\s*(&|and)\s*half\s+salad|shredded\s+lettuce|iceberg\s+lettuce|romaine\s+hearts|leaf\s+lettuce|butter\s+lettuce|arugula|kale\s+greens|coleslaw\s+mix|tri[- ]?color\s+slaw|garden\s+salad|field\s+greens|mixed\s+greens|salad\s+greens|sweet\s+butter\s+salad)\b/i,
+    brand: "Fresh Produce",
+    title: "100% Fresh Washed Salad Greens",
+    ingredients: "100% Fresh Whole Produce: Romaine Lettuce, Carrots, Red Cabbage (Zero Chemical Additives or Preservatives).",
+    imageUrl: "/swaps/ranch.jpg",
+    nutrition: { caloriesKcal100g: 18, sugarsG100g: 1.5, saturatedFatG100g: 0, sodiumMg100g: 18, fiberG100g: 2.2, proteinG100g: 1.3, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true },
   },
 ];
 
@@ -851,16 +867,72 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       };
     }
   }
+  const s = query.toLowerCase();
+  const isOrganic = /\b(organic|usda organic)\b/i.test(query);
+
+  // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (when not flavoured/dressed/fried/candied)
+  if (
+    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomatoes?|potatoes?|onions?|garlic|peppers?|mushrooms?|avocados?|zucchini|squash|asparagus|green beans|brussels sprouts|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|lemons?|limes?|peaches?|plums?|nectarines?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|berries|fresh produce)\b/.test(s) &&
+    !/\b(chips?|crisps?|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|ketchup|salsa|pie|cake|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad)\b/.test(s)
+  ) {
+    return {
+      productTitle: cleanTitle,
+      brand: isOrganic ? "USDA Organic Produce" : "Fresh Produce",
+      ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food — Zero Chemical Additives).",
+      imageUrl: "/swaps/snacks.jpg",
+      nutrition: { caloriesKcal100g: 35, sugarsG100g: 3.5, saturatedFatG100g: 0.1, sodiumMg100g: 12, fiberG100g: 2.8, proteinG100g: 1.4, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
+      source: "catalog",
+    };
+  }
+
+  // 2. Plain Fresh Meat, Poultry, Seafood & Shell Eggs (unbreaded, uncured)
+  if (
+    /\b(chicken\s+(breast|thighs?|drumsticks?|wings?|tenderloins?)|ground\s+(beef|turkey|chicken|pork|bison|lamb)|steak|ribeye|sirloin|filet|roast|pork\s+(chops?|loin|tenderloin)|salmon|cod|tilapia|haddock|halibut|trout|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+a\s+eggs?)\b/.test(s) &&
+    !/\b(breaded|crispy|nuggets?|tenders?|strips?|patties|patty|popcorn|bacon|sausage|hot\s*dog|salami|pepperoni|bologna|deli|lunch|ham|jerky|soup|chowder|flavou?red|marinated|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper)\b/.test(s)
+  ) {
+    return {
+      productTitle: cleanTitle,
+      brand: isOrganic ? "Organic Pasture-Raised" : "Fresh Meat & Seafood",
+      ingredients: "100% Fresh Whole Food Protein (Zero Chemical Additives, Nitrates, or Preservatives).",
+      imageUrl: "/swaps/turkey.jpg",
+      nutrition: { caloriesKcal100g: 145, sugarsG100g: 0, saturatedFatG100g: 2.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 22.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
+      source: "catalog",
+    };
+  }
+
+  // 3. Soups, Chowders, Bisques, Stews & Chilis
+  if (/\b(soup|chowder|bisque|stew|chili|gumbo)\b/.test(s)) {
+    if (isOrganic || /\b(amy'?s|pacific\s+foods|kettle\s*&\s*fire)\b/.test(s)) {
+      return {
+        productTitle: cleanTitle,
+        brand: "Organic Soup",
+        ingredients: "Filtered Water, Organic Vegetables (Onions, Carrots, Celery, Potatoes, Tomatoes), Organic Beans/Lentils, Organic Extra Virgin Olive Oil, Sea Salt, Organic Garlic, Organic Spices.",
+        imageUrl: "/swaps/ranch.jpg",
+        nutrition: { caloriesKcal100g: 68, sugarsG100g: 1.8, saturatedFatG100g: 0.4, sodiumMg100g: 260, fiberG100g: 3.2, proteinG100g: 3.8, fruitsVegNutsPct: 65, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
+        source: "catalog",
+      };
+    }
+    return {
+      productTitle: cleanTitle,
+      brand: "Prepared Soup",
+      ingredients: "Stock/Broth, Potatoes, Vegetables (Carrots, Celery, Onions), Cooked Protein/Clams/Chicken, Enriched Wheat Flour, Soybean Oil, Modified Food Starch, Salt, Yeast Extract, Natural Flavor.",
+      imageUrl: "/products/ranch.jpg",
+      nutrition: { caloriesKcal100g: 95, sugarsG100g: 1.5, saturatedFatG100g: 2.2, sodiumMg100g: 360, fiberG100g: 1.1, proteinG100g: 4.5, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
+      source: "catalog",
+    };
+  }
+
   return null;
 }
 
-/** Strips club-store pack counts, decimal weights, and Walmart promo suffixes (e.g. `, 16.5 oz Box, Now`) for cleaner external API queries. */
+/** Strips club-store pack counts, decimal weights, and Walmart promo suffixes (e.g. `, 16.5 oz Box, Now`, `, Fresh Deli Soup, 16 oz Cup`) for cleaner external API queries. */
 function cleanSearchQuery(title: string): string {
   return title
     .replace(/[®™©]/g, "")
-    .replace(/,\s*(family\s+size|mega\s+size|giant\s+size|value\s+size|party\s+size|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton)\b).*$/i, "")
+    .replace(/,\s*(fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|party\s+size|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch)\b).*$/i, "")
     .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack)\b.*$/i, "")
     .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(pk|pack|ct|count|oz|lb|lbs)\b.*$/i, "")
+    .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
     .replace(/\.\.\.+$/, "")
     .trim();
@@ -869,6 +941,9 @@ function cleanSearchQuery(title: string): string {
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
+
+const DIRECT_CATALOG_PRIORITY =
+  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad)\b/i;
 
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();
@@ -892,6 +967,12 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
         ms: ms(),
       };
     }
+  }
+
+  // Fast-path exact store-brand items verified directly from packaging (e.g. Marketside Clam Chowder, Marketside Romaine Salad)
+  if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
+    const direct = catalogFallback(title);
+    if (direct) return { ...direct, ms: ms() };
   }
 
   const key = cacheKey(input);

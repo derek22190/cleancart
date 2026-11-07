@@ -657,8 +657,11 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   ) {
     return { caloriesKcal100g: 485, sugarsG100g: 5.5, saturatedFatG100g: 6.5, sodiumMg100g: 680, fiberG100g: 2.0, proteinG100g: 6.5, fruitsVegNutsPct: 0 };
   }
-  // 7. Bacon, Sausage, Kielbasa, Hot Dogs, Salami, Pepperoni, Processed Deli Meat
-  if (/\b(deli|bologna|hot dog|hotdogs|frankfurter|salami|pepperoni|bacon|sausage|kielbasa|bratwurst|chorizo|pancetta|prosciutto|lunchables|jimmy dean)\b/.test(combined)) {
+  // 7. Bacon, Sausage, Kielbasa, Hot Dogs, Salami, Pepperoni, Processed Deli Meat (excluding Deli Soups & Salads)
+  if (
+    /\b(deli|bologna|hot dog|hotdogs|frankfurter|salami|pepperoni|bacon|sausage|kielbasa|bratwurst|chorizo|pancetta|prosciutto|lunchables|jimmy dean)\b/.test(combined) &&
+    !/\b(soup|chowder|bisque|stew|chili|broth|stock|salad|lettuce|romaine|spinach)\b/.test(combined)
+  ) {
     if (/\b(applegate organics|oven roasted turkey breast)\b/.test(combined) && !/\b(bacon|sausage|kielbasa|nitrite|celery powder)\b/.test(combined)) {
       return { caloriesKcal100g: 98, sugarsG100g: 1.0, saturatedFatG100g: 0.4, sodiumMg100g: 250, fiberG100g: 0, proteinG100g: 19.0, fruitsVegNutsPct: 0 };
     }
@@ -671,9 +674,12 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   if (/\b(crispy chicken|breaded chicken|chicken patties|chicken patty|chicken nuggets|chicken tenders|chicken strips|popcorn chicken|hot pocket|hot pockets|lean pocket|pizza rolls|bagel bites|corn dog)\b/.test(combined)) {
     return { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 4.8, sodiumMg100g: 620, fiberG100g: 1.5, proteinG100g: 13.0, fruitsVegNutsPct: 0 };
   }
-  // 9. Gravy, Condensed Soup, Bouillon
+  // 9. Gravy, Condensed Soup, Bouillon vs. Fresh Soups / Clam Chowder / Stews
   if (/\b(gravy|bouillon|condensed soup|cream of mushroom|cream of chicken)\b/.test(combined)) {
     return { caloriesKcal100g: 65, sugarsG100g: 1.5, saturatedFatG100g: 1.8, sodiumMg100g: 560, fiberG100g: 0, proteinG100g: 2.0, fruitsVegNutsPct: 0 };
+  }
+  if (/\b(clam chowder|chowder|bisque|stew|chili|soup)\b/.test(combined)) {
+    return { caloriesKcal100g: 115, sugarsG100g: 1.5, saturatedFatG100g: 3.2, sodiumMg100g: 350, fiberG100g: 1.2, proteinG100g: 5.5, fruitsVegNutsPct: 45 };
   }
   // 10. Dressings, Mayonnaise, Ketchup, Condiments
   if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|bbq sauce|barbecue sauce)\b/.test(combined)) {
@@ -739,14 +745,14 @@ export function scoreProductYuka(
     (/\b(sugar|cane sugar|brown sugar)\b/.test(top3) && !/\borganic\b/.test(top3));
 
   const NON_WHOLE_FOOD =
-    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|crispy|breaded|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni)\b/i;
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&
     !NON_WHOLE_FOOD.test(titleAndIng) &&
     !hasTop3AddedSugar &&
     (Boolean(nutrition.isWholeFood) ||
-      /100% pure whole food ingredient|^whole food:/i.test(rawIngredients));
+      /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients));
 
   const isOrganic =
     Boolean(nutrition.isOrganic) ||
@@ -783,11 +789,11 @@ export function scoreProductYuka(
 
   const isPureButterOrGhee =
     /\b(butter|kerrygold|ghee|land o'? ?lakes)\b/i.test(titleAndIng) &&
-    !/\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk)\b/i.test(titleAndIng);
+    !/\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
 
   const isWholeMilk =
     /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
-    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy)\b/i.test(titleAndIng);
+    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
 
   let nutritionScore: number;
   if (isWholeFood) {
@@ -890,7 +896,12 @@ export function scoreProductYuka(
     }
   }
 
-  let finalScore = base.score;
+  // Combine Yuka's 60% Nutritional Quality pillar with the 30% Additive pillar and 10% Organic pillar
+  // so foods made with nutritious whole ingredients (fish, clams, milk, potatoes, vegetables, whole grains)
+  // retain their nutritional credit instead of dropping to 0/100 when an additive or 2x watchlist is present.
+  const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
+  const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore - multiAdditiveDeduction);
+  let finalScore = base.flagged.length > 0 ? Math.max(base.score, yukaPillarScore) : base.score;
   if (hasHighRisk || seedOilHits.length >= 2) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
