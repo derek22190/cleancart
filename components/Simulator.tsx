@@ -358,9 +358,11 @@ export default function Simulator() {
 
   // Paywall & Influencer Engine state
   const [scanCount, setScanCount] = useState(1);
+  const [swapsUsedThisWeek, setSwapsUsedThisWeek] = useState(0);
+  const [courtesyRefillAvailable, setCourtesyRefillAvailable] = useState(true);
+  const [personalReferralCode, setPersonalReferralCode] = useState("BROC-7F4A2");
   const [isPro, setIsPro] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
-  const [paywallAutoShown, setPaywallAutoShown] = useState(false);
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
 
@@ -370,9 +372,30 @@ export default function Simulator() {
     let cancelled = false;
     async function checkEntitlement() {
       try {
+        let myCode = window.localStorage.getItem("heybroc_my_referral_code");
+        if (!myCode) {
+          const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+          myCode = `BROC-${rand}`;
+          window.localStorage.setItem("heybroc_my_referral_code", myCode);
+        }
+        if (!cancelled) setPersonalReferralCode(myCode);
+
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
+        const refParam = (params.get("ref") || "").trim().toUpperCase();
+        if (refParam) {
+          window.localStorage.setItem("heybroc_referred_by", refParam);
+          if (!cancelled) {
+            setIsPro(true);
+            setToast({
+              title: `🎁 +7 Free Days of HeyBroc Pro Unlocked (${refParam})`,
+              body: "Friend invite active! Scan any grocery item so you and your friend both get +7 Free Pro Days.",
+            });
+          }
+          return;
+        }
+
         const urlSessionId = (params.get("session_id") || "").trim();
         const storedSessionId = (window.localStorage.getItem("heybroc_session_id") || "").trim();
         const candidateSessionId = urlSessionId || storedSessionId;
@@ -517,16 +540,10 @@ export default function Simulator() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Product scores & ingredient explanations are 100% free forever — viewing items never opens the paywall.
   const registerScan = useCallback(() => {
-    setScanCount((prev) => {
-      const next = prev + 1;
-      if (next >= FREE_SCAN_LIMIT && !isPro && !paywallAutoShown) {
-        setPaywallAutoShown(true);
-        setPaywallOpen(true);
-      }
-      return next;
-    });
-  }, [isPro, paywallAutoShown]);
+    setScanCount((prev) => prev + 1);
+  }, []);
 
   const [storeExpanded, setStoreExpanded] = useState(false);
   const storeRailRef = useRef<HTMLDivElement>(null);
@@ -649,6 +666,11 @@ export default function Simulator() {
   /* ---------------- Swap (single item or from auditor) ---------------- */
   const swapCartItem = useCallback(
     (targetItem: Product) => {
+      const weeklyAllowance = courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3;
+      if (!isPro && swapsUsedThisWeek >= weeklyAllowance) {
+        setPaywallOpen(true);
+        return;
+      }
       const itemScore = gradeProduct(
         `${targetItem.brand} ${targetItem.title}`,
         targetItem.ingredients,
@@ -664,6 +686,7 @@ export default function Simulator() {
         watchlist: watch,
       });
       if (!targetSwap) return;
+      setSwapsUsedThisWeek((n) => n + 1);
       const clean = cleanToProduct(targetSwap.category, targetItem);
       setPreviousDirtyItem(targetItem);
       setActive(clean);
@@ -679,7 +702,7 @@ export default function Simulator() {
         href: targetSwap.deepLink || targetSwap.webUrl,
       });
     },
-    [watch, store],
+    [watch, store, isPro, swapsUsedThisWeek, courtesyRefillAvailable],
   );
 
   const doSwap = useCallback(() => {
@@ -2073,8 +2096,8 @@ export default function Simulator() {
       <Paywall
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
-        scanCount={scanCount}
-        freeScanLimit={FREE_SCAN_LIMIT}
+        scanCount={swapsUsedThisWeek || scanCount}
+        freeScanLimit={courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3}
         appliedCreator={appliedCreator}
         onCreatorApplied={(c) => {
           setAppliedCreator(c);
@@ -2088,6 +2111,16 @@ export default function Simulator() {
             body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
           });
         }}
+        personalReferralCode={personalReferralCode}
+        courtesyRefillAvailable={courtesyRefillAvailable}
+        onUseCourtesyRefill={() => {
+          setCourtesyRefillAvailable(false);
+          setPaywallOpen(false);
+          setToast({
+            title: "✓ +3 Free Courtesy Swaps Added!",
+            body: "Finish cleaning your cart right now — on us.",
+          });
+        }}
       />
 
       <Scorecard
@@ -2098,7 +2131,7 @@ export default function Simulator() {
         swaps={swapHistory}
         fallbackDodged={fallbackDodged}
         fallbackSwaps={fallbackSwaps}
-        defaultReferralCode={appliedCreator?.code || "PARENTMAXX"}
+        defaultReferralCode={appliedCreator?.code || personalReferralCode}
         dirtyCount={dirty.length}
         onSwapAllAndMax={swapAll}
       />

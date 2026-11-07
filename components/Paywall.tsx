@@ -28,6 +28,9 @@ interface PaywallProps {
     creator: AppliedCreator | null;
     trialDays: number;
   }) => void;
+  personalReferralCode?: string;
+  courtesyRefillAvailable?: boolean;
+  onUseCourtesyRefill?: () => void;
 }
 
 export default function Paywall({
@@ -38,12 +41,16 @@ export default function Paywall({
   appliedCreator,
   onCreatorApplied,
   onConversionComplete,
+  personalReferralCode = "BROC-7F4A2",
+  courtesyRefillAvailable = true,
+  onUseCourtesyRefill,
 }: PaywallProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("annual");
   const [codeInput, setCodeInput] = useState(appliedCreator?.code ?? "");
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeError, setCodeError] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [receipt, setReceipt] = useState<{
     plan: PlanId;
     trialDays: number;
@@ -57,24 +64,55 @@ export default function Paywall({
   if (!open) return null;
 
   const trialDays = appliedCreator ? PRICING.creatorTrialDays : PRICING.trialDays;
+  const referralUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/r/${encodeURIComponent(personalReferralCode)}`
+      : `https://heybroc.com/r/${encodeURIComponent(personalReferralCode)}`;
+
+  const handleShareWithFriend = async () => {
+    const shareText = `Check out HeyBroc — this little broccoli floats over Walmart, Target & Instacart to grade ingredients (0–100) and swap dirty items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: ${referralUrl}`;
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({
+          title: "7 Free Days of HeyBroc Pro",
+          text: shareText,
+          url: referralUrl,
+        });
+        setShareCopied(true);
+        return;
+      }
+      await navigator.clipboard.writeText(shareText);
+      setShareCopied(true);
+    } catch {
+      setShareCopied(true);
+    }
+  };
 
   const applyCode = async (raw?: string) => {
     const target = (raw ?? codeInput).trim().toUpperCase();
     if (!target) {
-      setCodeError("Enter a creator code first (e.g. CLEANMOM).");
+      setCodeError("Enter a creator or friend code first (e.g. CLEANMOM).");
       return;
     }
     setCodeBusy(true);
     setCodeError("");
     try {
+      if (target.startsWith("BROC-")) {
+        const c: AppliedCreator = {
+          code: target,
+          name: "Friend Referral (+7 Days Free Pro)",
+        };
+        setCodeInput(c.code);
+        onCreatorApplied(c);
+        return;
+      }
       const res = await fetch(`/api/influencers?code=${encodeURIComponent(target)}`);
       const data = await res.json();
       if (!res.ok || !data.ok || !data.creator) {
         onCreatorApplied(null);
-        setCodeError(data.error || "Invalid creator code.");
+        setCodeError(data.error || "Invalid promo code.");
         return;
       }
-      // Best-effort click tracking on verified code
       void fetch("/api/influencers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -117,7 +155,6 @@ export default function Paywall({
         return;
       }
 
-      // Fail closed unless server explicitly authorized preview mode (ALLOW_PREVIEW_CHECKOUT=true)
       if (!checkoutRes.ok || !checkoutData?.ok || checkoutData?.mode !== "preview") {
         setCodeError(checkoutData?.error || "Checkout is currently unavailable. Please try again.");
         return;
@@ -152,18 +189,20 @@ export default function Paywall({
             <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
             <div>
               <span className="eyebrow eyebrow--green">
-                {scanCount >= freeScanLimit ? `Free Scan Limit Reached (${scanCount}/${freeScanLimit})` : "HeyBroc Family Pro · Upgrade"}
+                {scanCount >= freeScanLimit
+                  ? `Weekly Free Swap Allowance Reached (${scanCount}/${freeScanLimit})`
+                  : "HeyBroc Family Pro · Unlimited Cart Swaps"}
               </span>
-              <h2>Unlimited Live Store Overlays, 1-Tap Clean Swaps &amp; Whole-Cart Health Checks.</h2>
+              <h2>Scores &amp; Ingredient Breakdowns Are Always Free. Unlock Unlimited 1-Tap Clean Swaps &amp; Swap All.</h2>
             </div>
           </div>
           <button className="close" onClick={onClose} aria-label="Close paywall">×</button>
         </div>
 
         <ul className="paywall-perks">
-          <li><span>✓</span> Instant floating ingredient grade over Walmart, Instacart, Target, Kroger, ALDI, Sam&apos;s Club, BJ&apos;s &amp; more</li>
-          <li><span>✓</span> 1-Tap verified 90–100 Clean Swaps &amp; Whole-Cart Health Check</li>
-          <li><span>✓</span> Custom additive watchlists (seed oils, synthetic dyes, HFCS, nitrates)</li>
+          <li><span>✓</span> <b>Always Free:</b> Product scores (0–100), expanded additive explanations &amp; live Cart Avg across all 12 stores</li>
+          <li><span>✓</span> <b>Pro Unlocked:</b> Unlimited 1-for-1 Clean Swaps &amp; 1-Tap Whole-Cart &ldquo;Swap All&rdquo; Makeovers</li>
+          <li><span>✓</span> <b>Pro Unlocked:</b> Custom Family Watchlists (2x penalties for seed oils, dyes, HFCS &amp; nitrites)</li>
         </ul>
 
         {/* PRIMARY PRE-SELECTED ANNUAL ANCHOR CARD */}
@@ -224,10 +263,69 @@ export default function Paywall({
           </div>
         </div>
 
+        {/* UNLIMITED GIVE 7 DAYS, GET 7 DAYS FRIEND REFERRAL LOOP */}
+        <div
+          className="creator-box"
+          style={{
+            background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
+            border: "1.5px solid #86efac",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <strong style={{ display: "block", fontSize: 13.5, color: "#0b4f30" }}>
+                🎁 Invite Friends → Get +7 Free Pro Days Per Friend (No Limit!)
+              </strong>
+              <span style={{ fontSize: 12, color: "#3d5949" }}>
+                Every friend who installs HeyBroc and scans 1 grocery item unlocks <b>+7 Free Days of Pro</b> for both of you.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleShareWithFriend}
+              style={{
+                background: "#0f7a4a",
+                color: "#fff",
+                border: "none",
+                borderRadius: 999,
+                padding: "9px 14px",
+                fontSize: 12.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {shareCopied ? "✓ Invite Link Copied!" : `Text a Friend (${personalReferralCode}) →`}
+            </button>
+          </div>
+          {courtesyRefillAvailable && onUseCourtesyRefill && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #bbf7d0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#3d5949" }}>In the middle of checkout right now?</span>
+              <button
+                type="button"
+                onClick={onUseCourtesyRefill}
+                style={{
+                  background: "transparent",
+                  color: "#0f7a4a",
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                +3 Free Courtesy Swaps right now →
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* CREATOR / INFLUENCER PROMO CODE BOX */}
         <div className="creator-box">
           <label htmlFor="creator-code-input" className="creator-label">
-            Creator / Promo Code
+            Have a Creator or Friend Code? (Unlocks 14-Day Free Trial)
           </label>
           <div className="creator-input-row">
             <input
@@ -235,7 +333,7 @@ export default function Paywall({
               type="text"
               value={codeInput}
               onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-              placeholder="Enter promo code"
+              placeholder="Enter promo or friend code (e.g. CLEANMOM)"
             />
             <button
               id="apply-creator-code"
@@ -250,7 +348,7 @@ export default function Paywall({
           {codeError && <p className="error">{codeError}</p>}
           {appliedCreator && (
             <div id="creator-applied-badge" className="creator-confirm">
-              <span>✓ Code <b>{appliedCreator.code}</b> Applied: Extended 7-Day Free Trial Unlocked!</span>
+              <span>✓ Code <b>{appliedCreator.code}</b> Applied: Extended {PRICING.creatorTrialDays}-Day Free Trial Unlocked!</span>
             </div>
           )}
         </div>
@@ -268,9 +366,7 @@ export default function Paywall({
             : receipt
               ? "✓ Family Pro Active! Start Scanning →"
               : selectedPlan === "annual"
-                ? appliedCreator
-                  ? "Start 7-Day Free Trial ($0 Today)"
-                  : "Start 3-Day Free Trial ($0 Today)"
+                ? `Start ${trialDays}-Day Free Trial ($0 Today)`
                 : `Subscribe Monthly ($${PRICING.monthly.toFixed(2)} Today)`}
         </button>
         <p className="paywall-sub">

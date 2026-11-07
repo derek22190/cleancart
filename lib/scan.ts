@@ -3,6 +3,7 @@
  */
 import "server-only";
 import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
+import { applyOrActivateReferral, serializeEntitlement, type EntitlementSummary } from "./referrals";
 import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
 import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
 
@@ -13,6 +14,8 @@ export interface ScanRequest {
   store?: string;
   watchlist?: Watchlist;
   familyWatchlist?: Category[];
+  deviceId?: string;
+  referredByCode?: string;
   format?: "json" | "ios_text";
 }
 
@@ -31,6 +34,7 @@ export interface ScanResponse {
   swap: SwapResult | null;
   store: Store;
   pill: string;
+  entitlement?: EntitlementSummary;
 }
 
 export interface ScanError {
@@ -156,6 +160,15 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     watchlist,
     familyWatchlist,
   });
+  let entitlement: ReturnType<typeof serializeEntitlement> | undefined;
+  if (typeof req.deviceId === "string" && req.deviceId.trim().length >= 4) {
+    const { device } = applyOrActivateReferral({
+      deviceId: req.deviceId,
+      referralCode: req.referredByCode,
+      activateNow: true,
+    });
+    entitlement = serializeEntitlement(device);
+  }
   return {
     ok: true,
     product: {
@@ -171,6 +184,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     swap,
     store,
     pill: `${result.score}/100 • Tap to Inspect`,
+    ...(entitlement ? { entitlement } : {}),
   };
 }
 

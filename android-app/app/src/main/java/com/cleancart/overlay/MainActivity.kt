@@ -2,6 +2,7 @@ package com.cleancart.overlay
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -19,6 +20,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -112,6 +114,26 @@ class MainActivity : Activity() {
             watchlistControls(),
         ))
 
+        // Unlimited Friend Referral Card (+7 Free Pro Days Per Friend)
+        val myRefCode = ScanApi.myReferralCode(this)
+        val claimedRefStatus = label(
+            ScanApi.referredByCode(this)?.let { "✓ Claimed friend code: $it (+7 Pro Days)" } ?: "Your code: $myRefCode",
+            12.5f,
+            0xFF0F7A4A.toInt(),
+            bold = true,
+        )
+        col.addView(stepCard(
+            "🎁 Free Pro Forever", "Invite Friends → Get +7 Pro Days Each (No Limit!)",
+            "Product scores (0–100), expanded ingredient breakdowns & Cart Avg are 100% free forever. Want unlimited 1-tap swaps & Swap All without paying? Every friend who installs HeyBroc and scans 1 item gives BOTH of you +7 Free Days of Pro.",
+            claimedRefStatus,
+            primaryButton("Text / Share My Invite Link ($myRefCode)") {
+                shareInviteLink(myRefCode)
+            },
+            primaryButton("Enter or Paste Friend's Invite Code (+7 Days Pro)", filled = false) {
+                promptFriendCode(claimedRefStatus)
+            },
+        ))
+
         // Mandatory Play Store Privacy Policy link
         col.addView(label("Privacy Policy & Accessibility Data Disclosure ↗", 13f, 0xFF0F7A4A.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
@@ -123,6 +145,49 @@ class MainActivity : Activity() {
 
         refreshHeroCard()
         setContentView(ScrollView(this).apply { addView(col); setBackgroundColor(0xFFF4F3EE.toInt()) })
+    }
+
+    private fun shareInviteLink(myCode: String) {
+        val url = "https://www.heybroc.com/r/$myCode"
+        val msg = "Check out HeyBroc — this little broccoli floats over Walmart, Target & Instacart to grade ingredients (0–100) and swap dirty items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: $url"
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "7 Free Days of HeyBroc Pro")
+            putExtra(Intent.EXTRA_TEXT, msg)
+        }
+        startActivity(Intent.createChooser(sendIntent, "Share your HeyBroc invite link"))
+    }
+
+    private fun promptFriendCode(statusView: TextView) {
+        val clip = (getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+            ?.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+        val prefill = if (clip.contains("BROC-", ignoreCase = true) || clip.contains("/r/", ignoreCase = true)) {
+            clip.trim()
+        } else {
+            ScanApi.referredByCode(this).orEmpty()
+        }
+        val input = EditText(this).apply {
+            hint = "e.g. BROC-7F4A2"
+            setText(prefill)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Redeem Friend's Invite Code")
+            .setMessage("Enter your friend's BROC-XXXXX invite code. As soon as you scan your first grocery item in Walmart, Target, or Instacart, you BOTH get +7 Free Days of HeyBroc Pro!")
+            .setView(input)
+            .setPositiveButton("Apply +7 Free Pro Days") { _, _ ->
+                val raw = input.text?.toString()?.trim().orEmpty()
+                if (raw.isBlank()) return@setPositiveButton
+                val appContext = applicationContext
+                val saved = ScanApi.saveReferredByCode(appContext, raw)
+                statusView.text = "✓ Claimed friend code: $saved (+7 Pro Days)"
+                Toast.makeText(this, "🎁 +7 Free Days of Pro claimed ($saved)! Scan any store item to activate for both of you.", Toast.LENGTH_LONG).show()
+                io.execute {
+                    runCatching { ScanApi.claimReferral(appContext, saved) }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun refreshHeroCard() {

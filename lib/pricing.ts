@@ -6,8 +6,12 @@
 export const PRICING = {
   annual: 49.99,
   monthly: 9.99,
-  trialDays: 3,
-  creatorTrialDays: 7,
+  trialDays: 7,
+  creatorTrialDays: 14,
+  freeWeeklySwaps: 5,
+  courtesyRefillSwaps: 3,
+  firstTripPassDays: 7,
+  referralBonusDays: 7,
   defaultCommissionPct: 35,
 } as const;
 

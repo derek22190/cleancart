@@ -799,6 +799,33 @@ class OverlayWindowService : Service() {
             })
         }
 
+        val myRefCode = ScanApi.myReferralCode(this)
+        sheet.addView(text("🎁 Invite a Friend ($myRefCode) → Both Get +7 Free Pro Days", 12.5f, BRAND, bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(11), dp(14), dp(11))
+            background = GradientDrawable().apply {
+                setColor(0xFFE6F5EC.toInt())
+                cornerRadius = dp(999).toFloat()
+                setStroke(dp(1), 0x4416A34A)
+            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+            setOnClickListener {
+                val url = "https://www.heybroc.com/r/$myRefCode"
+                val msg = "Check out HeyBroc — this little broccoli floats over Walmart, Target & Instacart to grade ingredients (0–100) and swap dirty items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: $url"
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "7 Free Days of HeyBroc Pro")
+                    putExtra(Intent.EXTRA_TEXT, msg)
+                }
+                val chooser = Intent.createChooser(sendIntent, "Share your HeyBroc invite link").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                removeCard()
+                showPill()
+                runCatching { startActivity(chooser) }
+            }
+        })
+
         val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
         backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             setMargins(dp(10), dp(10), dp(10), dp(24))
