@@ -11,6 +11,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
@@ -25,16 +27,51 @@ import android.widget.Toast
 import java.util.concurrent.Executors
 
 /**
- * 2-step permission onboarding:
- *   1) "Appear on top" (SYSTEM_ALERT_WINDOW)
- *   2) "Enable Store Screen Reader" (AccessibilityService)
- *   3) Launch a test overlay pill immediately.
+ * Guided 1-button permission onboarding:
+ *   - Combines disclosure + "Appear on top" + "Accessibility" into a single guided flow.
+ *   - Automatically advances from "Appear on top" straight to Accessibility as soon as toggled.
+ *   - Collapses setup clutter into a clean "Active & Ready" card once enabled.
  */
 class MainActivity : Activity() {
 
-    private lateinit var overlayStatus: TextView
-    private lateinit var a11yStatus: TextView
+    private lateinit var heroCardContainer: LinearLayout
     private val io = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingAutoChainToA11y = false
+    private var watcherAttempts = 0
+
+    private val permissionWatcher = object : Runnable {
+        override fun run() {
+            if (isDestroyed || isFinishing) return
+            val overlayOk = Settings.canDrawOverlays(this@MainActivity)
+            val a11yOk = isAccessibilityEnabled() && AccessibilityConsent.granted(this@MainActivity)
+
+            if (pendingAutoChainToA11y && overlayOk && !isAccessibilityEnabled()) {
+                pendingAutoChainToA11y = false
+                Toast.makeText(
+                    this@MainActivity,
+                    "✓ Step 1 done! Now tap: Installed apps → HeyBroc → Turn ON",
+                    Toast.LENGTH_LONG
+                ).show()
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+            }
+
+            if (overlayOk && a11yOk) {
+                pendingAutoChainToA11y = false
+                refreshHeroCard()
+                return
+            }
+
+            if (watcherAttempts++ < 180) {
+                mainHandler.postDelayed(this, 500)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,69 +97,12 @@ class MainActivity : Activity() {
             setPadding(0, dp(8), 0, dp(20))
         })
 
-        // Step 1 — overlay permission
-        overlayStatus = label("", 13f, 0xFF85908A.toInt())
-        col.addView(stepCard(
-            "Step 1", "Allow \"Appear on top\"",
-            "Lets HeyBroc float its score bubble over your grocery app.",
-            overlayStatus,
-            primaryButton("Open \"Appear on top\" settings") {
-                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            },
-        ))
-
-        // Step 2 — accessibility service
-        a11yStatus = label("", 13f, 0xFF85908A.toInt())
-        val step2Extras = mutableListOf<android.view.View>(
-            primaryButton("Review & Enable Screen Reader") {
-                showProminentAccessibilityDisclosure()
-            },
-            primaryButton("Turn off HeyBroc reading", filled = false) {
-                AccessibilityConsent.revoke(this)
-                runCatching {
-                    startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE))
-                }
-                Toast.makeText(this, "HeyBroc screen reading paused. You can also turn off the service in Settings.", Toast.LENGTH_LONG).show()
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            },
-        )
-        if (!isInstalledFromPlayStore()) {
-            step2Extras.add(
-                primaryButton("Unlock Restricted Setting (1-Tap App Info)", filled = false) {
-                    Toast.makeText(this, "Tap ⋮ (top-right 3 dots) → Allow restricted settings", Toast.LENGTH_LONG).show()
-                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-                }
-            )
-            step2Extras.add(
-                label(
-                    "Direct APK / Samsung & Android 13+ tip:\n" +
-                        "1) First tap \"Review & Enable Screen Reader\" → Installed apps → HeyBroc.\n" +
-                        "2) If it lets you turn it ON right away, you're done! (No 3 dots needed.)\n" +
-                        "3) Only if it says \"Restricted setting\", tap OK on that popup first — Android hides the ⋮ (top-right 3 dots) on the App Info page until AFTER you try tapping the greyed-out switch once.",
-                    12.5f, 0xFF7A5B00.toInt(),
-                ).apply {
-                    setPadding(dp(12), dp(10), dp(12), dp(10))
-                    background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
-                }
-            )
+        // Dynamic Guided Setup / Active Ready card
+        heroCardContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        col.addView(stepCard(
-            "Step 2", "Enable Store Screen Reader",
-            "Go to: Accessibility → Installed apps → HeyBroc and turn it ON.\nReads product titles, ingredient lists, and visible cart item titles (up to 20 items) in all 12 store apps.",
-            a11yStatus,
-            *step2Extras.toTypedArray(),
-        ))
-
-        // Step 3 — test overlay
-        col.addView(stepCard(
-            "Step 3", "Automatic in Store Apps (or Preview Here)",
-            "You do NOT need to open HeyBroc before shopping! Once Steps 1 & 2 are enabled, the pill pops up automatically as soon as you open Walmart, BJ's, Target, or any supported grocery app. Use the button below only to preview a sample pill right here.",
-            null,
-            primaryButton("Launch Test Overlay Pill") { launchTestPill() },
-            primaryButton("Hide Overlay Pill", filled = false) {
-                startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE))
-            },
-        ))
+        col.addView(heroCardContainer)
 
         // Family Watchlist (2x penalty multiplier)
         col.addView(stepCard(
@@ -141,11 +121,154 @@ class MainActivity : Activity() {
             }
         })
 
+        refreshHeroCard()
         setContentView(ScrollView(this).apply { addView(col); setBackgroundColor(0xFFF4F3EE.toInt()) })
     }
 
+    private fun refreshHeroCard() {
+        heroCardContainer.removeAllViews()
+        val overlayOk = Settings.canDrawOverlays(this)
+        val a11yServiceEnabled = isAccessibilityEnabled()
+        val consentOk = AccessibilityConsent.granted(this)
+        val a11yOk = a11yServiceEnabled && consentOk
+
+        if (overlayOk && a11yOk) {
+            val statusBadge = label("✓ ACTIVE & READY", 12.5f, 0xFF16A34A.toInt(), bold = true)
+            heroCardContainer.addView(stepCard(
+                "All Set",
+                "HeyBroc is Running Automatically",
+                "You don't need to open HeyBroc before shopping! Just open Walmart, Target, BJ's, ALDI, Instacart, or any supported store app — the score bubble pops up automatically when you view food items.",
+                statusBadge,
+                primaryButton("Preview Score Bubble Here") { launchTestPill() },
+                primaryButton("Hide Preview Bubble", filled = false) {
+                    startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE))
+                },
+                primaryButton("Pause / Turn Off HeyBroc", filled = false) {
+                    AccessibilityConsent.revoke(this)
+                    runCatching {
+                        startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE))
+                    }
+                    refreshHeroCard()
+                    Toast.makeText(this, "HeyBroc paused. You can also turn off the switch in Accessibility Settings.", Toast.LENGTH_LONG).show()
+                },
+            ))
+            return
+        }
+
+        val doneCount = (if (overlayOk) 1 else 0) + (if (a11yOk) 1 else 0)
+        val statusBadge = label("$doneCount of 2 enabled", 12.5f, 0xFF7A5B00.toInt(), bold = true)
+
+        val checklist = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(0xFFF4F3EE.toInt())
+                cornerRadius = dp(14).toFloat()
+            }
+            addView(label(
+                if (overlayOk) "✓  1. Floating Score Bubble (Allowed)"
+                else "○  1. Allow \"Appear on top\" (Floating Bubble)",
+                13.5f,
+                if (overlayOk) 0xFF16A34A.toInt() else 0xFF15201B.toInt(),
+                bold = !overlayOk
+            ))
+            addView(label(
+                when {
+                    a11yOk -> "✓  2. Store Screen Reader (Enabled)"
+                    a11yServiceEnabled && !consentOk -> "○  2. Confirm in-app disclosure (1 tap)"
+                    else -> "○  2. Turn ON HeyBroc in Accessibility → Installed apps"
+                },
+                13.5f,
+                if (a11yOk) 0xFF16A34A.toInt() else 0xFF15201B.toInt(),
+                bold = overlayOk && !a11yOk
+            ).apply { setPadding(0, dp(6), 0, 0) })
+        }
+
+        val mainActionLabel = when {
+            !overlayOk -> "⚡ Start Guided Setup (Allow Everything) →"
+            a11yServiceEnabled && !consentOk -> "⚡ Confirm & Activate HeyBroc"
+            else -> "⚡ Final Step: Turn ON HeyBroc in Accessibility →"
+        }
+
+        val extras = mutableListOf<android.view.View>(
+            checklist,
+            primaryButton(mainActionLabel) { runGuidedSetupStep() }
+        )
+
+        // Only show the sideloaded "Restricted setting" helper when Step 1 is already done and user is on Step 2
+        if (overlayOk && !a11yServiceEnabled && !isInstalledFromPlayStore()) {
+            extras.add(
+                label(
+                    "If Android says \"Restricted setting\" when you tap HeyBroc in Accessibility:\n" +
+                        "1) Tap OK on that popup first (Android hides the ⋮ menu until you try tapping the greyed-out switch once).\n" +
+                        "2) Tap the button below → tap ⋮ (top-right 3 dots) → Allow restricted settings.",
+                    12.5f, 0xFF7A5B00.toInt(),
+                ).apply {
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
+                }
+            )
+            extras.add(
+                primaryButton("Unlock \"Restricted Setting\" (Open App Info)", filled = false) {
+                    Toast.makeText(this, "Tap ⋮ (top-right 3 dots) → Allow restricted settings", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                }
+            )
+        }
+
+        heroCardContainer.addView(stepCard(
+            "Quick 1-Time Setup",
+            if (!overlayOk) "Enable HeyBroc in 2 Quick Switches" else "Almost Done — Turn ON HeyBroc",
+            if (!overlayOk) {
+                "Android requires your permission for floating bubbles and screen reading. Tap below and HeyBroc will automatically take you from Switch 1 straight to Switch 2."
+            } else {
+                "Tap below, then select Installed apps → HeyBroc and flip the switch ON."
+            },
+            statusBadge,
+            *extras.toTypedArray(),
+        ))
+    }
+
+    private fun runGuidedSetupStep() {
+        val overlayOk = Settings.canDrawOverlays(this)
+        val a11yServiceEnabled = isAccessibilityEnabled()
+        val consentOk = AccessibilityConsent.granted(this)
+
+        if (!consentOk) {
+            showProminentAccessibilityDisclosure {
+                proceedAfterConsent()
+            }
+        } else {
+            proceedAfterConsent()
+        }
+    }
+
+    private fun proceedAfterConsent() {
+        val overlayOk = Settings.canDrawOverlays(this)
+        val a11yServiceEnabled = isAccessibilityEnabled()
+
+        if (!overlayOk) {
+            pendingAutoChainToA11y = !a11yServiceEnabled
+            startPermissionWatcher()
+            Toast.makeText(this, "Turn ON \"HeyBroc\" here — we'll open Step 2 automatically!", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        } else if (!a11yServiceEnabled) {
+            startPermissionWatcher()
+            Toast.makeText(this, "Tap: Installed apps → HeyBroc → Turn ON", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } else {
+            refreshHeroCard()
+        }
+    }
+
+    private fun startPermissionWatcher() {
+        watcherAttempts = 0
+        mainHandler.removeCallbacks(permissionWatcher)
+        mainHandler.postDelayed(permissionWatcher, 500)
+    }
+
     /** Google Play Accessibility API Policy: Mandatory Prominent Disclosure before redirecting to Settings. */
-    private fun showProminentAccessibilityDisclosure() {
+    private fun showProminentAccessibilityDisclosure(onAccepted: () -> Unit) {
         AlertDialog.Builder(this)
             .setTitle("Accessibility Service Disclosure")
             .setMessage(
@@ -159,8 +282,8 @@ class MainActivity : Activity() {
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->
                 AccessibilityConsent.grant(this)
-                Toast.makeText(this, "Tap: Installed apps → HeyBroc → Turn ON", Toast.LENGTH_LONG).show()
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                refreshHeroCard()
+                onAccepted()
             }
             .setNegativeButton("No Thanks", null)
             .show()
@@ -209,19 +332,14 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        val overlayOk = Settings.canDrawOverlays(this)
-        overlayStatus.text = if (overlayOk) "✓ Allowed" else "Not allowed yet"
-        overlayStatus.setTextColor(if (overlayOk) 0xFF16A34A.toInt() else 0xFF85908A.toInt())
-        val a11yServiceEnabled = isAccessibilityEnabled()
-        val consentOk = AccessibilityConsent.granted(this)
-        val a11yOk = a11yServiceEnabled && consentOk
-        a11yStatus.text = when {
-            a11yOk -> "✓ Enabled"
-            a11yServiceEnabled && !consentOk -> "Enabled in system, consent needed"
-            consentOk -> "Consent saved — turn ON in system settings"
-            else -> "Not enabled yet"
+        if (pendingAutoChainToA11y && Settings.canDrawOverlays(this) && !isAccessibilityEnabled()) {
+            pendingAutoChainToA11y = false
+            refreshHeroCard()
+            Toast.makeText(this, "✓ Step 1 done! Now tap: Installed apps → HeyBroc → Turn ON", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            return
         }
-        a11yStatus.setTextColor(if (a11yOk) 0xFF16A34A.toInt() else 0xFF85908A.toInt())
+        refreshHeroCard()
     }
 
     override fun onStop() {
@@ -234,13 +352,14 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(permissionWatcher)
         io.shutdownNow()
         super.onDestroy()
     }
 
     private fun launchTestPill() {
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Complete Step 1 first", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Tap Start Guided Setup first", Toast.LENGTH_LONG).show()
             return
         }
         val appContext = applicationContext
@@ -322,3 +441,4 @@ class MainActivity : Activity() {
             }
         }
 }
+
