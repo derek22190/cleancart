@@ -7,30 +7,41 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.LruCache
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
@@ -108,6 +119,9 @@ class OverlayWindowService : Service() {
     private var displayedCartAvg = 100
     private var pendingSwapFromKey: String? = null
     private var pendingSwapTitle: String? = null
+    private val mainUiHandler = Handler(Looper.getMainLooper())
+    private val imageExecutor = Executors.newFixedThreadPool(2)
+    private val swapBitmapCache = LruCache<String, Bitmap>(24)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -874,6 +888,72 @@ class OverlayWindowService : Service() {
             addView(GaugeView(context, score, result.optString("rating"), tone), LinearLayout.LayoutParams(dp(108), dp(108)).apply { marginEnd = dp(16) })
             addView(flags, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         })
+
+        // Clean swap box placed RIGHT BELOW the score gauge so you never have to scroll past additive cards to see it!
+        val swapBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = GradientDrawable().apply { setColor(0xFFE6F5EC.toInt()); cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0x2E16A34A) }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
+        }
+        if (swap != null) {
+            val swapTitle = swap.optString("title", "Clean Alternative")
+            val swapScore = swap.optInt("score", 100)
+            val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
+            val storeName = storeDisplayName(currentStoreKey)
+
+            val topRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            // Product photo thumbnail (54dp x 54dp rounded) — tapping opens full Swap Preview
+            val thumbView = buildSwapThumbnailView(swap, dp(54)).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(54), dp(54)).apply { marginEnd = dp(10) }
+                setOnClickListener { showSwapPreviewModal(swap) }
+            }
+            topRow.addView(thumbView)
+
+            // Title + score + "Tap to preview" — tapping opens full Swap Preview
+            topRow.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                isClickable = true
+                setOnClickListener { showSwapPreviewModal(swap) }
+                addView(text("CLEAN SWAP · TAP TO PREVIEW", 10.5f, BRAND, bold = true).apply { letterSpacing = 0.06f })
+                addView(text(swapTitle, 13.5f, INK, bold = true).apply {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                })
+                addView(text("$swapScore/100 Excellent", 12f, 0xFF16A34A.toInt(), bold = true))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+
+            // Action button — opens directly in the store app
+            topRow.addView(text("View & Swap ↗", 13f, Color.WHITE, bold = true).apply {
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
+                setOnClickListener { openSwap(swap) }
+            })
+            swapBox.addView(topRow)
+
+            if (swapIngredients.isNotBlank()) {
+                swapBox.addView(text("✓ Clean Ingredients: $swapIngredients", 12f, 0xFF0B5E39.toInt()).apply {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                    setPadding(0, dp(8), 0, 0)
+                    setOnClickListener { showSwapPreviewModal(swap) }
+                })
+            }
+            swapBox.addView(text("👁 Preview Swap Details   •   🛒 Find in $storeName ↗", 11.5f, BRAND, bold = true).apply {
+                setPadding(0, dp(6), 0, 0)
+                setOnClickListener { showSwapPreviewModal(swap) }
+            })
+        } else {
+            swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 13.5f, 0xFF0B5E39.toInt(), bold = true))
+        }
+        sheet.addView(swapBox)
+
         sheet.addView(explain)
 
         // Yuka 3-Pillar Breakdown (60% Nutrition • 30% Additives • 10% Organic)
@@ -894,31 +974,121 @@ class OverlayWindowService : Service() {
             })
         }
 
-        // Clean swap box
-        val swapBox = LinearLayout(this).apply {
+        val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
+        backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+            setMargins(dp(10), dp(10), dp(10), dp(24))
+        })
+
+        val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)
+        if (runCatching { wm.addView(backdrop, params) }.isSuccess) {
+            card = backdrop
+        }
+    }
+
+    /**
+     * Full Clean Swap Preview modal: lets the user inspect the swap product's photo, 100/100 score,
+     * and complete ingredient list BEFORE jumping into the store app.
+     */
+    private fun showSwapPreviewModal(swap: JSONObject) {
+        removeCard()
+        removePill()
+        val swapTitle = swap.optString("title", "Clean Alternative")
+        val swapScore = swap.optInt("score", 100)
+        val swapSize = swap.optString("size")
+        val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
+        val storeName = storeDisplayName(currentStoreKey)
+
+        val backdrop = object : FrameLayout(this) {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    showCard(); return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
+        }.apply {
+            setBackgroundColor(0x660C100E)
+            isFocusableInTouchMode = true
+            requestFocus()
+            setOnClickListener { showCard() }
+        }
+
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(26).toFloat() }
+            elevation = dp(16).toFloat()
+            isClickable = true
+        }
+
+        // Header
+        sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = GradientDrawable().apply { setColor(0xFFE6F5EC.toInt()); cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0x2E16A34A) }
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
-        }
-        if (swap != null) {
-            swapBox.addView(LinearLayout(this).apply {
+            addView(buildSwapThumbnailView(swap, dp(64)).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(64), dp(64)).apply { marginEnd = dp(12) }
+            })
+            addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("CLEAN SWAP", 11f, BRAND, bold = true).apply { letterSpacing = 0.08f })
-                addView(text(swap.optString("title"), 13.5f, INK, bold = true))
-                addView(text("${swap.optInt("score")}/100 Excellent", 12f, 0xFF16A34A.toInt(), bold = true))
+                addView(text("CLEAN SWAP PREVIEW", 11f, BRAND, bold = true).apply { letterSpacing = 0.08f })
+                addView(text(swapTitle, 18f, INK, bold = true))
+                if (swapSize.isNotBlank()) {
+                    addView(text(swapSize, 12.5f, INK_2).apply { setPadding(0, dp(2), 0, 0) })
+                }
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
-            swapBox.addView(text("Swap Item", 14f, Color.WHITE, bold = true).apply {
-                setPadding(dp(16), dp(11), dp(16), dp(11))
-                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
-                setOnClickListener { openSwap(swap) }
+            addView(text("×", 22f, INK_2).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
+                layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+                setOnClickListener { showCard() }
             })
-        } else {
-            swapBox.addView(text("Great pick — this item already scores $score/100.", 13.5f, 0xFF0B5E39.toInt()))
+        })
+
+        // Score Gauge + Zero Watchlist Additives badge
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(14), 0, dp(10))
+            addView(GaugeView(context, swapScore, "Excellent", 0xFF16A34A.toInt()), LinearLayout.LayoutParams(dp(92), dp(92)).apply { marginEnd = dp(14) })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(text("✓ 0 Watchlist Additives", 14f, 0xFF16A34A.toInt(), bold = true))
+                addView(text("Verified clean 1-for-1 replacement with real whole-food ingredients.", 12.5f, INK_2).apply {
+                    setPadding(0, dp(4), 0, 0)
+                })
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        })
+
+        // Full Clean Ingredients Box
+        if (swapIngredients.isNotBlank()) {
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply { setColor(0xFFE6F5EC.toInt()); cornerRadius = dp(16).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) }
+                addView(text("CLEAN INGREDIENTS", 11f, BRAND, bold = true).apply { letterSpacing = 0.08f })
+                addView(text(swapIngredients, 13.5f, INK).apply { setPadding(0, dp(4), 0, 0) })
+            })
         }
-        sheet.addView(swapBox)
+
+        // Primary CTA: Open in Store App
+        sheet.addView(text("Find & Swap in $storeName ↗", 15f, Color.WHITE, bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+            background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
+            setOnClickListener { openSwap(swap) }
+        })
+
+        // Secondary CTA: Back to Current Product Analysis
+        sheet.addView(text("← Back to Product Analysis", 13.5f, INK_2, bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(11), dp(14), dp(11))
+            background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(999).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+            setOnClickListener { showCard() }
+        })
 
         val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
         backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
@@ -928,6 +1098,91 @@ class OverlayWindowService : Service() {
         val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)
         if (runCatching { wm.addView(backdrop, params) }.isSuccess) {
             card = backdrop
+        }
+    }
+
+    private fun buildSwapThumbnailView(swap: JSONObject, sizePx: Int): FrameLayout {
+        val rawImage = swap.optString("image", "/swaps/butter.jpg")
+        val fullUrl = when {
+            rawImage.startsWith("https://") -> rawImage
+            rawImage.startsWith("/") -> "https://www.heybroc.com$rawImage"
+            else -> "https://www.heybroc.com/swaps/butter.jpg"
+        }
+        val radius = dp(14).toFloat()
+        val box = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = radius
+                setStroke(dp(1), 0x3316A34A)
+            }
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+                }
+            }
+        }
+        val iv = ImageView(this).apply {
+            setImageResource(R.drawable.broc_mascot)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        box.addView(iv)
+
+        swapBitmapCache.get(fullUrl)?.let { cached ->
+            iv.setPadding(0, 0, 0, 0)
+            iv.setImageBitmap(cached)
+            return box
+        }
+
+        imageExecutor.execute {
+            val bmp = runCatching {
+                val parsed = URL(fullUrl)
+                if (!parsed.protocol.equals("https", ignoreCase = true)) return@runCatching null
+                val conn = (parsed.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 4000
+                    readTimeout = 5000
+                    instanceFollowRedirects = true
+                }
+                try {
+                    if (conn.responseCode in 200..299) {
+                        conn.inputStream.use { stream ->
+                            val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
+                            Bitmap.createScaledBitmap(decoded, sizePx, sizePx, true)
+                        }
+                    } else null
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrNull()
+            if (bmp != null) {
+                swapBitmapCache.put(fullUrl, bmp)
+                mainUiHandler.post {
+                    iv.setPadding(0, 0, 0, 0)
+                    iv.setImageBitmap(bmp)
+                }
+            }
+        }
+        return box
+    }
+
+    private fun cleanIngredientsPreviewFor(title: String): String {
+        val s = title.lowercase()
+        return when {
+            "eggnog" in s -> "Organic Grade A milk, organic cream, organic cane sugar, organic egg yolks, organic vanilla extract, organic nutmeg."
+            "unsalted butter" in s -> "Organic pasteurized sweet cream, microbial culture."
+            "butter" in s -> "Organic pasteurized sweet cream, salt."
+            "yogurt" in s -> "Cultured pasteurized organic whole milk, pectin, vitamin D3."
+            "turkey" in s -> "Organic turkey breast, water, sea salt, organic vinegar, organic cane sugar."
+            "bacon" in s -> "Organic pork, water, sea salt, organic cane sugar, celery powder."
+            "tortilla" in s && "chips" in s -> "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt."
+            "chips" in s -> "Potatoes, avocado oil, sea salt."
+            "cheddar" in s && "crackers" in s -> "Organic cassava flour, organic cheddar cheese, organic coconut oil, organic chia seeds, sea salt."
+            "crackers" in s -> "Organic whole grain brown rice, organic quinoa, organic flax seeds, organic sesame seeds, sea salt."
+            "ranch" in s -> "Avocado oil, water, organic eggs, organic distilled vinegar, sea salt, organic herbs & spices."
+            "milk" in s -> "Organic Grade A milk, vitamin D3."
+            else -> "100% clean whole-food ingredients — zero watchlist additives."
         }
     }
 

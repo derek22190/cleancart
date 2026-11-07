@@ -72,6 +72,9 @@ export interface SwapResult {
   brand: string;
   name: string;
   title: string;
+  size?: string;
+  ingredients: string;
+  searchQuery: string;
   image: string;
   score: number;
   store: Store;
@@ -964,9 +967,10 @@ function withAffiliate(url: string, store: Store, clickId: string): string {
   }
 }
 
-/** Concise 2-3 word 1-for-1 search query for club stores (BJ's / Costco / Sam's) so native search screens always find in-stock matches. */
+/** Concise 2-3 word 1-for-1 search query for grocery stores so native search screens always find in-stock clean matches instead of "0 results". */
 function conciseClubQuery(q: string): string {
   const s = q.toLowerCase();
+  if (/\b(eggnog|egg nog)\b/.test(s)) return "Organic Eggnog";
   if (/\b(broth|gravy|stock)\b/.test(s)) return "Organic Broth";
   if (/\b(bacon)\b/.test(s)) return "Applegate Bacon";
   if (/\b(hot dog)\b/.test(s)) return "Organic Hot Dogs";
@@ -976,58 +980,65 @@ function conciseClubQuery(q: string): string {
   if (/\b(salami)\b/.test(s)) return "Organic Salami";
   if (/\b(roast beef)\b/.test(s)) return "Organic Roast Beef";
   if (/\b(turkey|deli)\b/.test(s)) return "Applegate Organic Turkey";
-  if (/\b(yogurt)\b/.test(s)) return "Organic Yogurt";
+  if (/\b(yogurt)\b/.test(s)) return "Stonyfield Organic Yogurt";
   if (/\b(graham)\b/.test(s)) return "Organic Graham Crackers";
+  if (/\b(cheddar crackers)\b/.test(s)) return "Simple Mills Cheddar Crackers";
   if (/\b(crackers)\b/.test(s)) return "Organic Crackers";
   if (/\b(oats|oatmeal)\b/.test(s)) return "Organic Rolled Oats";
   if (/\b(granola)\b/.test(s)) return "Organic Granola";
   if (/\b(maple syrup)\b/.test(s)) return "Organic Maple Syrup";
   if (/\b(cereal|flakes)\b/.test(s)) return "Organic Cereal";
-  if (/\b(tortilla chips)\b/.test(s)) return "Avocado Oil Tortilla Chips";
+  if (/\b(tortilla chips)\b/.test(s)) return "Siete Tortilla Chips";
   if (/\b(popcorn)\b/.test(s)) return "Organic Popcorn";
   if (/\b(pretzels)\b/.test(s)) return "Organic Pretzels";
   if (/\b(chips|space balls)\b/.test(s)) return "Avocado Oil Chips";
   if (/\b(peanut butter)\b/.test(s)) return "Organic Peanut Butter";
   if (/\b(hazelnut)\b/.test(s)) return "Organic Hazelnut Spread";
-  if (/\b(fruit spread|strawberry)\b/.test(s)) return "Organic Fruit Spread";
-  if (/\b(butter)\b/.test(s)) return "Organic Butter";
+  if (/\b(fruit spread|strawberry)\b/.test(s)) return "Organic Strawberry Spread";
+  if (/\b(unsalted butter)\b/.test(s)) return "Organic Unsalted Butter";
+  if (/\b(butter)\b/.test(s)) return "Organic Salted Butter";
   if (/\b(creamer)\b/.test(s)) return "Organic Coffee Creamer";
   if (/\b(whipping cream|heavy cream)\b/.test(s)) return "Organic Heavy Cream";
   if (/\b(half & half|half and half)\b/.test(s)) return "Organic Half and Half";
   if (/\b(sour cream)\b/.test(s)) return "Organic Sour Cream";
-  if (/\b(cottage cheese)\b/.test(s)) return "Organic Cottage Cheese";
+  if (/\b(cottage cheese)\b/.test(s)) return "Good Culture Cottage Cheese";
   if (/\b(cream cheese)\b/.test(s)) return "Organic Cream Cheese";
   if (/\b(string cheese|stringles)\b/.test(s)) return "Organic String Cheese";
   if (/\b(cheese|cheddar)\b/.test(s)) return "Organic Cheddar Cheese";
-  if (/\b(eggs)\b/.test(s)) return "Organic Pasture Raised Eggs";
-  if (/\b(ice cream)\b/.test(s)) return "Organic Ice Cream";
-  if (/\b(grassmilk|milk|oat milk|almond milk)\b/.test(s)) return "Organic Milk";
-  if (/\b(mac|shells & real aged cheddar)\b/.test(s)) return "Organic Mac and Cheese";
-  if (/\b(tortillas)\b/.test(s)) return "Almond Flour Tortillas";
+  if (/\b(eggs)\b/.test(s)) return "Vital Farms Organic Eggs";
+  if (/\b(ice cream)\b/.test(s)) return "Organic Vanilla Ice Cream";
+  if (/\b(chocolate milk)\b/.test(s)) return "Organic Chocolate Milk";
+  if (/\b(oat milk)\b/.test(s)) return "Organic Oat Milk";
+  if (/\b(almond milk)\b/.test(s)) return "Organic Almond Milk";
+  if (/\b(2%)\b/.test(s) && /\bmilk\b/.test(s)) return "Organic 2% Milk";
+  if (/\b(grassmilk|milk)\b/.test(s)) return "Organic Whole Milk";
+  if (/\b(mac|shells & real aged cheddar)\b/.test(s)) return "Annie's Organic Mac and Cheese";
+  if (/\b(tortillas)\b/.test(s)) return "Siete Almond Flour Tortillas";
   if (/\b(bagels)\b/.test(s)) return "Organic Bagels";
   if (/\b(buns)\b/.test(s)) return "Organic Burger Buns";
   if (/\b(waffles)\b/.test(s)) return "Organic Waffles";
   if (/\b(pasta|einkorn)\b/.test(s)) return "Organic Pasta";
   if (/\b(pizza)\b/.test(s)) return "Organic Pizza";
-  if (/\b(bread|ezekiel|sprouted)\b/.test(s)) return "Organic Bread";
-  if (/\b(mayonnaise|mayo)\b/.test(s)) return "Avocado Oil Mayonnaise";
+  if (/\b(bread|ezekiel|sprouted)\b/.test(s)) return "Ezekiel Sprouted Bread";
+  if (/\b(mayonnaise|mayo)\b/.test(s)) return "Primal Kitchen Avocado Oil Mayo";
   if (/\b(ketchup)\b/.test(s)) return "Organic Ketchup";
   if (/\b(mustard)\b/.test(s)) return "Organic Mustard";
   if (/\b(bbq)\b/.test(s)) return "Organic BBQ Sauce";
   if (/\b(marinara|rao)\b/.test(s)) return "Rao's Marinara";
   if (/\b(salsa)\b/.test(s)) return "Mateo's Salsa";
-  if (/\b(ranch|dressing)\b/.test(s)) return "Avocado Oil Ranch";
+  if (/\b(ranch|dressing)\b/.test(s)) return "Primal Kitchen Ranch";
   if (/\b(cookies)\b/.test(s)) return "Simple Mills Cookies";
   if (/\b(chocolate bar|dark chocolate)\b/.test(s)) return "Organic Dark Chocolate";
   if (/\b(soda|cola|olipop)\b/.test(s)) return "Olipop Soda";
   if (/\b(electrolyte)\b/.test(s)) return "Organic Electrolyte Drink";
   if (/\b(orange juice)\b/.test(s)) return "Organic Orange Juice";
-  if (/\b(bar|larabar|lärabar|cashew|fruit bars)\b/.test(s)) return "Organic Fruit Bars";
+  if (/\b(bar|larabar|lärabar|cashew|fruit bars)\b/.test(s)) return "Larabar Cashew Cookie";
   return q.replace(/['"/\\]+/g, " ").trim().split(/\s+/).slice(0, 3).join(" ");
 }
 
 function searchPath(store: Store, q: string): string {
-  const e = encodeURIComponent(q);
+  const concise = conciseClubQuery(q);
+  const e = encodeURIComponent(concise);
   switch (store) {
     case "walmart": return `/search?q=${e}`;
     case "instacart": return `/store/s?k=${e}`;
@@ -1037,12 +1048,11 @@ function searchPath(store: Store, q: string): string {
     case "doordash": return `/search/store/${e}`;
     case "ubereats": return `/search?q=${e}`;
     case "amazon": return `/s?k=${e}&i=amazonfresh`;
-    case "sams": return `/s/${encodeURIComponent(conciseClubQuery(q))}`;
+    case "sams": return `/s/${e}`;
     case "bjs": {
-      const bjsQ = encodeURIComponent(conciseClubQuery(q));
-      return `/search/${bjsQ}?q=${bjsQ}&query=${bjsQ}&searchTerm=${bjsQ}`;
+      return `/search/${e}?q=${e}&query=${e}&searchTerm=${e}`;
     }
-    case "costco": return `/CatalogSearch?dept=All&keyword=${encodeURIComponent(conciseClubQuery(q))}`;
+    case "costco": return `/CatalogSearch?dept=All&keyword=${e}`;
     case "shipt": return `/shop/search?query=${e}`;
   }
 }
@@ -1068,6 +1078,7 @@ function productPath(store: Store, id: string): string {
 export function buildLinks(alt: CleanAlternative, store: Store, clickId = impactClickId()) {
   const meta = STORE_META[store];
   const query = `${alt.brand} ${alt.name}`;
+  const searchQuery = conciseClubQuery(query);
   const id = alt.itemIds?.[store];
   const path = id ? productPath(store, id) : searchPath(store, query);
   const webUrl = withAffiliate(`https://${meta.host}${path}`, store, clickId);
@@ -1076,7 +1087,7 @@ export function buildLinks(alt: CleanAlternative, store: Store, clickId = impact
   const androidIntentUrl =
     `intent://${meta.host}${withAffiliate(path, store, clickId)}#Intent;scheme=https;package=${meta.androidPackage};` +
     `S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
-  return { webUrl, deepLink, androidIntentUrl, androidPackage: meta.androidPackage };
+  return { searchQuery, webUrl, deepLink, androidIntentUrl, androidPackage: meta.androidPackage };
 }
 
 /**
@@ -1106,6 +1117,8 @@ export function resolveSwap(params: {
     brand: alt.brand,
     name: alt.name,
     title: `${alt.brand} ${alt.name}`,
+    size: alt.size,
+    ingredients: alt.ingredients,
     image: alt.image,
     score: altScore,
     store,
