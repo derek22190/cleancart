@@ -808,13 +808,37 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     ingredients: "Water, Sugar, Vegetable Oil (High Oleic Soybean and/or High Oleic Canola), and Less than 2% of Micellar Casein (a Milk Derivative), Mono- and Diglycerides, Dipotassium Phosphate, Natural and Artificial Flavor, Cellulose Gel, Cellulose Gum, Carrageenan.",
     imageUrl: "/products/yogurt.jpg",
   },
+  {
+    match: /\b(clam\s+chowder|new\s+england.*chowder|corn\s+chowder|potato\s+chowder|seafood\s+chowder|lobster\s+bisque|tomato\s+bisque|broccoli\s+cheddar\s+soup|loaded\s+baked\s+potato\s+soup)\b/i,
+    brand: "Marketside / Deli Soup",
+    title: "New England Style Clam Chowder",
+    ingredients: "Clam Broth, Potatoes, Clams, Cream, Water, Contains 2% or Less of: Soybean Oil, Modified Food Starch, Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Salt, Butter (Cream, Salt), Soy Protein Concentrate, Sodium Tripolyphosphate (to Retain Moisture), Garlic Powder, Onion Powder, Spice, Yeast Extract, Natural Flavor.",
+    imageUrl: "/products/ranch.jpg",
+    nutrition: { caloriesKcal100g: 115, sugarsG100g: 1.5, saturatedFatG100g: 3.8, sodiumMg100g: 410, fiberG100g: 0.8, proteinG100g: 4.5, fruitsVegNutsPct: 15, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /^(?!.*\b(amy'?s|pacific\s+foods|organic|kettle\s*&\s*fire)\b).*\b(campbell'?s|progresso|chunky\s+soup|chicken\s+noodle\s+soup|tomato\s+soup|cream\s+of\s+(mushroom|chicken|celery)|beef\s+stew|vegetable\s+beef\s+soup|minestrone\s+soup|italian\s+wedding\s+soup|ramen\s+noodle\s+soup|maruchan|top\s+ramen)\b/i,
+    brand: "Campbell's / Progresso",
+    title: "Homestyle Soup",
+    ingredients: "Chicken Stock, Enriched Egg Noodles (Wheat Flour, Egg Whites, Eggs, Niacin, Ferrous Sulfate, Thiamine Mononitrate, Riboflavin, Folic Acid), Cooked Chicken Meat, Carrots, Celery, Contains Less than 2% of: Modified Food Starch, Salt, Chicken Fat, Monosodium Glutamate, Yeast Extract, Soy Protein Isolate, Sodium Phosphate, Potassium Chloride, Natural Flavor, Beta Carotene for Color, Disodium Inosinate, Disodium Guanylate.",
+    imageUrl: "/products/ranch.jpg",
+    nutrition: { caloriesKcal100g: 55, sugarsG100g: 1.0, saturatedFatG100g: 0.6, sodiumMg100g: 390, fiberG100g: 0.6, proteinG100g: 2.5, fruitsVegNutsPct: 10, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(oreo\s+puffs?|oreo\s+o'?s|cocoa\s+puffs?|reese'?s\s+puffs?|cookie\s+crisp|cocoa\s+pebbles|fruity\s+pebbles|cap'?n\s+crunch|apple\s+jacks|frosted\s+flakes|krave|pops\s+cereal|honey\s+smacks|golden\s+grahams|trix)\b/i,
+    brand: "Post / Sweetened Cereal",
+    title: "Sweetened Breakfast Cereal",
+    ingredients: "Corn Flour, Sugar, Marshmallows (Sugar, Modified Corn Starch, Corn Syrup, Dextrose, Gelatin, Sodium Hexametaphosphate, Artificial Flavor, Blue 1), Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, High Fructose Corn Syrup, Salt, Baking Soda, Soy Lecithin, Natural and Artificial Flavor, BHT Added to Preserve Freshness.",
+    imageUrl: "/products/cereal.jpg",
+    nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
 ];
 
 const UI_NOISE_QUERY =
   /\b(gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
-  const cleanTitle = query.trim().replace(/\b\w/g, (c) => c.toUpperCase());
+  const cleanTitle = query.trim().replace(/,\s*(now|was)$/i, "").replace(/\b\w/g, (c) => c.toUpperCase());
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (entry.match.test(query)) {
       return {
@@ -830,11 +854,14 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   return null;
 }
 
-/** Strips club-store pack counts and trailing weights (e.g. `, 3 pk./ 16 oz.`, `, Serves 12, 3 lbs.`) for cleaner external API queries. */
+/** Strips club-store pack counts, decimal weights, and Walmart promo suffixes (e.g. `, 16.5 oz Box, Now`) for cleaner external API queries. */
 function cleanSearchQuery(title: string): string {
   return title
-    .replace(/,\s*(serves\s+\d+|\d+\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs)\b).*$/i, "")
-    .replace(/\s*[-–—]\s*\d+\s*(pk|pack|ct|count|oz|lb|lbs)\b.*$/i, "")
+    .replace(/[®™©]/g, "")
+    .replace(/,\s*(family\s+size|mega\s+size|giant\s+size|value\s+size|party\s+size|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton)\b).*$/i, "")
+    .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack)\b.*$/i, "")
+    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(pk|pack|ct|count|oz|lb|lbs)\b.*$/i, "")
+    .replace(/,\s*(now|was)\b.*$/i, "")
     .replace(/\.\.\.+$/, "")
     .trim();
 }

@@ -567,8 +567,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(rated\s+)?\d+(\.\d+)?\s*out of\s*5(\s*stars?)?.*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d[\d,]*\s*(reviews?|ratings?).*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(product\s+)?image\s+\d+\s+of\s+\d+.*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(current\s+price\s*|price\s*)?\$\s*\d+(\.\d{2})?.*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(current\s+price\s*|price\s*|now\s*)?\$\s*\d+(\.\d{2})?.*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct|\d+\s*ct).*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]\s*(now|was|current\s+price|price)\s*$"""), "")
         return s.trim(' ', ',', '•', '|', '-')
     }
 

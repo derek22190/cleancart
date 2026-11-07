@@ -190,8 +190,10 @@ class OverlayWindowService : Service() {
             }
             ACTION_LOADING -> {
                 isTestMode = false
-                // Navigating to a product page always brings the pill back
+                // Navigating to a product page always brings the pill back and clears any stale previous product
                 hiddenForCurrentScreen = false
+                data = null
+                openFlag = null
                 if (card == null) {
                     isCartAvgMode = false
                     showPill(loadingText = "Scanning…")
@@ -208,8 +210,10 @@ class OverlayWindowService : Service() {
                         recordScannedItem(data)
                     }
                     openFlag = null
-                } else if (data?.optBoolean("ok") != true) {
-                    // Never show ugly "No ingredient list found for..." errors on the pill — fall back to Cart Avg mode
+                } else {
+                    // Never keep a stale previous product (e.g. Oreo Puffs) if a scan fails — clear data and fall back to Cart Avg mode
+                    data = null
+                    openFlag = null
                     isCartAvgMode = true
                 }
                 if (card == null) {
@@ -222,8 +226,9 @@ class OverlayWindowService : Service() {
                 val prevSize = tripCart.size
                 val prevAvg = displayedCartAvg
                 val arrRaw = intent.getStringExtra(EXTRA_CART_ARRAY) ?: "[]"
+                val remRaw = intent.getStringExtra(EXTRA_REMOVED_TITLES) ?: "[]"
                 val replaceCart = intent.getBooleanExtra(EXTRA_REPLACE_CART, false)
-                syncCartFromScreen(arrRaw, replaceCart)
+                syncCartFromScreen(arrRaw, remRaw, replaceCart)
                 isCartAvgMode = true
                 if (card != null && isAuditorOpen) {
                     if (tripCart.size != prevSize || displayedCartAvg != prevAvg) {
@@ -311,13 +316,27 @@ class OverlayWindowService : Service() {
         return words.size >= 2 && words.take(2).all { lower.contains(it) }
     }
 
-    private fun syncCartFromScreen(arrRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean) {
+    private fun syncCartFromScreen(arrRaw: String, remRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
+        val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
         val prevAvg = calcCartAvg()
         var swapDetectedInCart = false
         // Never clear tripCart on virtualized RecyclerView cart screens — merge/accumulate visible rows
         // so scrolling up and down a Walmart/BJ's/ALDI cart retains off-screen items smoothly.
         tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
+        if (remArr != null) {
+            for (i in 0 until remArr.length()) {
+                val remTitle = remArr.optString(i).trim()
+                if (remTitle.length >= 4) {
+                    tripCart.removeAll {
+                        isSameCartItem(it.key, remTitle) ||
+                            isSameCartItem(it.title, remTitle) ||
+                            normalizeCartKey(it.title).contains(normalizeCartKey(remTitle)) ||
+                            normalizeCartKey(remTitle).contains(normalizeCartKey(it.title))
+                    }
+                }
+            }
+        }
         for (i in 0 until arr.length()) {
             val d = runCatching { JSONObject(arr.optString(i, "{}")) }.getOrNull() ?: continue
             if (d.optBoolean("ok") != true) continue
@@ -841,13 +860,13 @@ class OverlayWindowService : Service() {
 
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
-            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(26).toFloat() }
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(24).toFloat() }
             elevation = dp(16).toFloat()
             isClickable = true
         }
 
-        // Header
+        // Compact Header
         val cartAvgBadge = if (tripCart.isEmpty()) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG ${calcCartAvg()}/100"
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -855,68 +874,137 @@ class OverlayWindowService : Service() {
             addView(android.widget.ImageView(context).apply {
                 setImageResource(R.drawable.broc_mascot)
                 scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-                layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginEnd = dp(10) }
+                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(8) }
             })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text(cartAvgBadge, 11f, INK_3, bold = true).apply { letterSpacing = 0.08f })
-                addView(text("Product Analysis", 20f, INK, bold = true))
+                addView(text(cartAvgBadge, 10f, INK_3, bold = true).apply { letterSpacing = 0.07f })
+                addView(text("Product Analysis", 17f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
-            addView(text("×", 22f, INK_2).apply {
+            addView(text("×", 20f, INK_2).apply {
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
-                layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30))
                 setOnClickListener { removeCard(); showPill() }
             })
         })
         val prodTitle = d.optJSONObject("product")?.optString("title").orEmpty()
         if (prodTitle.isNotBlank()) {
-            sheet.addView(text(prodTitle, 13f, INK_2).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(4), 0, 0) })
+            sheet.addView(text(prodTitle, 12f, INK_2).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(0, dp(3), 0, 0)
+            })
         }
 
-        // Gauge + flags (all explanations already expanded by default so everything is visible immediately)
+        // Flagged additive description list (bounded scroll area so the Clean Swap at the bottom is ALWAYS visible)
+        val flagCount = flagged?.length() ?: 0
         val explain = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val flags = FlowLayout(this, dp(6))
-        if (flagged == null || flagged.length() == 0) {
-            flags.addView(text("✓ No watchlist additives found.", 13.5f, 0xFF16A34A.toInt(), bold = true))
-        } else {
-            for (i in 0 until flagged.length()) {
+        if (flagged != null && flagCount > 0) {
+            for (i in 0 until flagCount) {
                 val f = flagged.getJSONObject(i)
                 val (bg, fg) = riskColors(f.optString("risk"))
-                flags.addView(text("${f.optString("name")} ⚠️", 12.5f, fg, bold = true).apply {
-                    setPadding(dp(10), dp(6), dp(10), dp(6))
-                    background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(999).toFloat() }
-                })
                 explain.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(12), dp(10), dp(12), dp(10))
-                    background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(14).toFloat() }
-                    addView(text("${f.optString("name")}  ·  −${f.optInt("penalty")} pts", 13f, fg, bold = true))
+                    setPadding(dp(10), dp(7), dp(10), dp(7))
+                    background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(11).toFloat() }
+                    addView(text("${f.optString("name")}  ·  −${f.optInt("penalty")} pts", 12f, fg, bold = true))
                     val expText = f.optString("explanation")
                     if (expText.isNotBlank()) {
-                        addView(text(expText, 12.5f, INK).apply { setPadding(0, dp(3), 0, 0) })
+                        addView(text(expText, 11f, INK).apply {
+                            maxLines = 2
+                            ellipsize = TextUtils.TruncateAt.END
+                            setPadding(0, dp(2), 0, 0)
+                        })
                     }
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = if (i == 0) dp(12) else dp(8)
+                        topMargin = if (i == 0) dp(4) else dp(5)
                     }
                 })
             }
         }
+
+        // Bounded ScrollView for the flagged descriptions so they never push the bottom Clean Swap off-screen
+        val explainScroll = object : ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val maxH = dp(185)
+                val cappedSpec = MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, cappedSpec)
+            }
+        }.apply {
+            addView(explain)
+            isVerticalScrollBarEnabled = true
+            visibility = if (flagCount > 0) View.VISIBLE else View.GONE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(6)
+            }
+        }
+
+        // Compact Gauge + Dropdown Toggle header (replaces the duplicate top pill list!)
+        var issuesExpanded = true
+        val toggleBtn = text(
+            if (flagCount == 0) "✓ No Watchlist Additives Found"
+            else "▼ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to hide/show",
+            12f,
+            if (flagCount == 0) 0xFF16A34A.toInt() else 0xFFB91C1C.toInt(),
+            bold = true
+        ).apply {
+            setPadding(dp(10), dp(7), dp(10), dp(7))
+            background = GradientDrawable().apply {
+                setColor(if (flagCount == 0) 0xFFE6F5EC.toInt() else 0xFFFDECEC.toInt())
+                cornerRadius = dp(10).toFloat()
+            }
+            if (flagCount > 0) {
+                setOnClickListener {
+                    issuesExpanded = !issuesExpanded
+                    explainScroll.visibility = if (issuesExpanded) View.VISIBLE else View.GONE
+                    text = if (issuesExpanded) {
+                        "▼ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to hide"
+                    } else {
+                        "▶ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to show"
+                    }
+                }
+            }
+        }
+
+        val rightSummaryCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(toggleBtn)
+            result.optJSONObject("yukaBreakdown")?.let { yb ->
+                val nutScore = yb.optInt("nutritionScore", 0)
+                val nutGrade = yb.optString("nutriScoreGrade", "C")
+                val addScore = yb.optInt("additiveScore", 0)
+                val orgScore = yb.optInt("organicScore", 0)
+                val capped = yb.optBoolean("highRiskCapped", false)
+                val summaryText = buildString {
+                    append("Nutrition $nutScore/60 ($nutGrade) · Additives $addScore/30 · Organic $orgScore/10")
+                    if (capped) append(" · ⚠️ Capped ≤49")
+                }
+                addView(text(summaryText, 10.5f, INK_2, bold = true).apply {
+                    setPadding(dp(2), dp(5), dp(2), 0)
+                })
+            }
+        }
+
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(14), 0, 0)
-            addView(GaugeView(context, score, result.optString("rating"), tone), LinearLayout.LayoutParams(dp(108), dp(108)).apply { marginEnd = dp(16) })
-            addView(flags, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            setPadding(0, dp(8), 0, 0)
+            addView(GaugeView(context, score, result.optString("rating"), tone), LinearLayout.LayoutParams(dp(74), dp(74)).apply { marginEnd = dp(12) })
+            addView(rightSummaryCol)
         })
 
-        // Clean swap box placed RIGHT BELOW the score gauge so you never have to scroll past additive cards to see it!
+        // Add the collapsible, height-bounded descriptions list right below the top row
+        sheet.addView(explainScroll)
+
+        // Pinned Clean Swap box at the bottom of the card — ALWAYS visible without scrolling!
         val swapBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = GradientDrawable().apply { setColor(0xFFE6F5EC.toInt()); cornerRadius = dp(18).toFloat(); setStroke(dp(1), 0x2E16A34A) }
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
+            setPadding(dp(11), dp(10), dp(11), dp(10))
+            background = GradientDrawable().apply { setColor(0xFFE6F5EC.toInt()); cornerRadius = dp(16).toFloat(); setStroke(dp(1), 0x2E16A34A) }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
         }
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Alternative")
@@ -929,9 +1017,9 @@ class OverlayWindowService : Service() {
                 gravity = Gravity.CENTER_VERTICAL
             }
 
-            // Product photo thumbnail (54dp x 54dp rounded) — tapping opens full Swap Preview
-            val thumbView = buildSwapThumbnailView(swap, dp(54)).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(54), dp(54)).apply { marginEnd = dp(10) }
+            // Product photo thumbnail (46dp x 46dp rounded) — tapping opens full Swap Preview
+            val thumbView = buildSwapThumbnailView(swap, dp(46)).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(9) }
                 setOnClickListener { showSwapPreviewModal(swap) }
             }
             topRow.addView(thumbView)
@@ -941,64 +1029,43 @@ class OverlayWindowService : Service() {
                 orientation = LinearLayout.VERTICAL
                 isClickable = true
                 setOnClickListener { showSwapPreviewModal(swap) }
-                addView(text("CLEAN SWAP · TAP TO PREVIEW", 10.5f, BRAND, bold = true).apply { letterSpacing = 0.06f })
-                addView(text(swapTitle, 13.5f, INK, bold = true).apply {
+                addView(text("CLEAN SWAP · TAP TO PREVIEW", 9.5f, BRAND, bold = true).apply { letterSpacing = 0.05f })
+                addView(text(swapTitle, 12.5f, INK, bold = true).apply {
                     maxLines = 2
                     ellipsize = TextUtils.TruncateAt.END
                 })
-                addView(text("$swapScore/100 Excellent", 12f, 0xFF16A34A.toInt(), bold = true))
+                addView(text("$swapScore/100 Excellent", 11f, 0xFF16A34A.toInt(), bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
 
             // Action button — opens directly in the store app
-            topRow.addView(text("View & Swap ↗", 13f, Color.WHITE, bold = true).apply {
-                setPadding(dp(14), dp(10), dp(14), dp(10))
+            topRow.addView(text("Swap ↗", 12.5f, Color.WHITE, bold = true).apply {
+                setPadding(dp(13), dp(9), dp(13), dp(9))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
                 setOnClickListener { openSwap(swap) }
             })
             swapBox.addView(topRow)
 
             if (swapIngredients.isNotBlank()) {
-                swapBox.addView(text("✓ Clean Ingredients: $swapIngredients", 12f, 0xFF0B5E39.toInt()).apply {
-                    maxLines = 2
+                swapBox.addView(text("✓ Clean Ingredients: $swapIngredients", 11f, 0xFF0B5E39.toInt()).apply {
+                    maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
-                    setPadding(0, dp(8), 0, 0)
+                    setPadding(0, dp(5), 0, 0)
                     setOnClickListener { showSwapPreviewModal(swap) }
                 })
             }
-            swapBox.addView(text("👁 Preview Swap Details   •   🛒 Find in $storeName ↗", 11.5f, BRAND, bold = true).apply {
-                setPadding(0, dp(6), 0, 0)
+            swapBox.addView(text("👁 Tap to Preview Photo & Ingredients  •  🛒 Find in $storeName ↗", 10.5f, BRAND, bold = true).apply {
+                setPadding(0, dp(4), 0, 0)
                 setOnClickListener { showSwapPreviewModal(swap) }
             })
         } else {
-            swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 13.5f, 0xFF0B5E39.toInt(), bold = true))
+            swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 12.5f, 0xFF0B5E39.toInt(), bold = true))
         }
         sheet.addView(swapBox)
 
-        sheet.addView(explain)
-
-        // Yuka 3-Pillar Breakdown (60% Nutrition • 30% Additives • 10% Organic)
-        result.optJSONObject("yukaBreakdown")?.let { yb ->
-            val nutScore = yb.optInt("nutritionScore", 0)
-            val nutGrade = yb.optString("nutriScoreGrade", "C")
-            val addScore = yb.optInt("additiveScore", 0)
-            val orgScore = yb.optInt("organicScore", 0)
-            val capped = yb.optBoolean("highRiskCapped", false)
-            val summaryText = buildString {
-                append("Yuka Score Breakdown:  Nutrition $nutScore/60 (Nutri-Score $nutGrade)  ·  Additives $addScore/30  ·  Organic $orgScore/10")
-                if (capped) append("  ·  ⚠️ Capped ≤49 (High-Risk Additive)")
-            }
-            sheet.addView(text(summaryText, 11.5f, INK_2, bold = true).apply {
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(12).toFloat() }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
-            })
-        }
-
-        val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
-        backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            setMargins(dp(10), dp(10), dp(10), dp(24))
+        backdrop.addView(sheet, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+            setMargins(dp(10), dp(10), dp(10), dp(20))
         })
 
         val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)

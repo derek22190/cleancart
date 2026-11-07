@@ -483,7 +483,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(cheetos|cheese\s+puffs?|puffs|pirate'?s\s+booty|funyuns)\b/i,
+    match: /^(?!.*\b(cereal|breakfast|marshmallow|cocoa|oreo|reese|wheat|rice|kamut|oat|candy|peppermint|pastry|pastries)\b).*\b(cheetos|cheese\s+puffs?|puffs|pirate'?s\s+booty|funyuns)\b/i,
     alt: {
       category: "Chips",
       brand: "LesserEvil",
@@ -554,6 +554,18 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       price: 7.98,
       image: "/swaps/cereal.jpg",
       ingredients: "100% pure organic maple syrup.",
+    },
+  },
+  {
+    match: /\b(clam\s+chowder|chowder|soup|bisque|stew|chili|campbell'?s|progresso)\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Amy's Organic",
+      name: "Organic Low Fat Lentil Vegetable Soup",
+      size: "14.5 oz can",
+      price: 3.49,
+      image: "/swaps/ranch.jpg",
+      ingredients: "Filtered water, organic onions, organic carrots, organic lentils, organic celery, organic potatoes, organic tomatoes, organic spinach, organic extra virgin olive oil, sea salt, organic garlic, organic bay leaf.",
     },
   },
 
@@ -971,6 +983,7 @@ function withAffiliate(url: string, store: Store, clickId: string): string {
 function conciseClubQuery(q: string): string {
   const s = q.toLowerCase();
   if (/\b(eggnog|egg nog)\b/.test(s)) return "Organic Eggnog";
+  if (/\b(soup|chowder|bisque|stew|chili)\b/.test(s)) return "Amy's Organic Soup";
   if (/\b(broth|gravy|stock)\b/.test(s)) return "Organic Broth";
   if (/\b(bacon)\b/.test(s)) return "Applegate Bacon";
   if (/\b(hot dog)\b/.test(s)) return "Organic Hot Dogs";
