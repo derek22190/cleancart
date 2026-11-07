@@ -42,9 +42,10 @@ const CACHE_DIR =
   process.env.CLEANCART_CACHE_DIR ||
   (process.env.VERCEL ? "/tmp/cleancart-cache" : path.join(process.cwd(), ".cache"));
 const CACHE_FILE = path.join(CACHE_DIR, "lookup-cache.json");
-const TIMEOUT_MS = 3200;
+const TIMEOUT_MS = 900;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 1000;
+let offUnavailableUntil = 0;
 
 let memory: Map<string, CacheEntry> | null = null;
 let loading: Promise<Map<string, CacheEntry>> | null = null;
@@ -166,17 +167,30 @@ function relevance(query: string, candidate: string): number {
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
+  const isOff = url.includes("openfoodfacts.org");
+  if (isOff && Date.now() < offUnavailableUntil) {
+    return null;
+  }
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (isOff && res.status >= 500) {
+        offUnavailableUntil = Date.now() + 3 * 60 * 1000;
+      }
+      return null;
+    }
     const type = res.headers.get("content-type") || "";
-    if (!type.includes("json")) return null;
+    if (!type.includes("json")) {
+      if (isOff) offUnavailableUntil = Date.now() + 3 * 60 * 1000;
+      return null;
+    }
     return (await res.json()) as T;
   } catch {
+    if (isOff) offUnavailableUntil = Date.now() + 60 * 1000;
     return null;
   }
 }
@@ -208,7 +222,22 @@ export const NON_ENGLISH_INGREDIENTS =
   /\b(eau\b|sucre\b|huile\b|farine\b|lait\b|sirop\b|lécithine|acide\b|arômes?|colorants?|amidon|émulsifiants?|conservateurs?|noisettes|poudre\b|zutaten|wasser\b|zucker\b|pflanzliches|weizenmehl|speisesalz|säuerungsmittel|magermilchpulver|ingredientes|agua\b|azúcar|aceite\b|harina\b|leche\b|jarabe\b)/i;
 
 const ENGLISH_INGREDIENT_ANCHORS =
-  /\b(water|sugar|salt|flour|milk|oil|cream|butter|cheese|eggs?|corn|wheat|rice|oats?|soy|acid|flavor|flavors|starch|syrup|extract|vinegar|yeast|cocoa|beef|chicken|pork|turkey|apple|strawberry)\b/i;
+  /\b(water|sugar|salt|flour|milk|cream|butter|cheese|whey|casein|yogurt|eggs?|oil|fat|tallow|lard|corn|wheat|rice|oats?|barley|rye|quinoa|millet|sorghum|flax|chia|hemp|sesame|soy|soybeans?|peanuts?|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|pistachios?|macadamia|coconut|cocoa|chocolate|vanilla|cinnamon|honey|molasses|syrup|dextrose|fructose|sucrose|maltose|lactose|maltodextrin|starch|pectin|gelatin|vinegar|yeast|baking|soda|acid|citric|lactic|malic|ascorbic|tocopherols?|lecithin|gum|carrageenan|cellulose|flavor\w*|color\w*|extract|spices?|garlic|onion|paprika|turmeric|annatto|celery|carrots?|tomato\w*|potato\w*|apples?|strawberr\w*|raspberr\w*|blueberr\w*|cranberr\w*|cherries|cherry|lemon|lime|orange|peach|mango|banana|pineapple|grape|dates?|raisins?|figs?|beans?|lentils?|chickpeas?|peas|spinach|broccoli|kale|peppers?|chili|jalapeno|mushrooms?|beef|pork|chicken|turkey|lamb|bison|duck|salmon|tuna|cod|fish|shrimp|broth|stock|cultures?|enzymes?|vitamins?|niacin|riboflavin|thiamin\w*|folic|iron|calcium|sodium|potassium|phosphate\w*|nitrite|nitrate|erythorbate|sorbate|benzoate|propionate|sulfite|bht|bha|tbhq|edta|datem|monoglycerides|diglycerides|polysorbate|sucralose|aspartame|acesulfame|stevia|erythritol|xylitol|sorbitol|red 40|yellow 5|yellow 6|blue 1|blue 2|titanium dioxide|caramel)\b/i;
+
+const SCREEN_UI_NON_INGREDIENTS =
+  /\b(items to add next|frequently bought together|customers also (bought|viewed|considered)|you may also like|you might also like|similar items|related products|sponsored|add to cart|buy now|many in stock|out of stock|product information|product details|nutrition facts|shipping|delivery|pickup|reviews|ratings|select a store|return policy|disclaimer|warnings?|tap to expand|show more|see more)\b/i;
+
+/**
+ * Verifies that rawIngredients captured from a store screen is a genuine ingredient list
+ * and not an adjacent UI heading (such as ALDI's "Items to add next" below a collapsed "Ingredients v" pill).
+ */
+export function isPlausibleScreenIngredients(raw: string): boolean {
+  const s = raw.trim();
+  if (s.length < 10 || s.length > 10_000) return false;
+  if (SCREEN_UI_NON_INGREDIENTS.test(s)) return false;
+  if (!isEnglishIngredientText(s)) return false;
+  return ENGLISH_INGREDIENT_ANCHORS.test(s);
+}
 
 export function isEnglishIngredientText(raw: string): boolean {
   const s = raw.trim();
@@ -549,25 +578,131 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/ranch.jpg",
   },
   {
-    match: /\b(oscar mayer|lunchables|bologna|hot dog|hotdogs)\b/i,
+    match: /\b(ritz)\b|(?<!mary'?s gone |organic |seed )\b(club crackers|town house|wheat thins|triscuit|saltines|butter crackers|holiday crackers)\b/i,
+    brand: "Ritz",
+    title: "Original Baked Crackers",
+    ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soybean and/or Canola Oil, Palm Oil, Sugar, Salt, Leavening (Calcium Phosphate, Baking Soda), High Fructose Corn Syrup, Soy Lecithin, Natural Flavor.",
+    imageUrl: "/products/crackers.jpg",
+  },
+  {
+    match: /\b(knoppers|storck|merci|kinder|ferrero rocher|lindt|ghirardelli|hershey'?s?|reese'?s|snickers|twix|kit\s*kat|m&m'?s|butterfinger|milky way|3 musketeers)\b|\b(hazelnut wafers?|chocolate variety|milk and creamy chocolate|chocolate candy|chocolate bar|chocolate truffles)\b/i,
+    brand: "Storck / Confectionery",
+    title: "Milk Chocolate & Hazelnut Confectionery",
+    ingredients: "Sugar, Vegetable Fats (Palm, Shea), Whole Milk Powder, Cocoa Butter, Wheat Flour, Hazelnuts, Cocoa Mass, Skim Milk Powder, Lactose, Butterfat, Low-Fat Cocoa, Soy Lecithin, Whey Product, Salt, Natural and Artificial Flavors, Sodium Bicarbonate.",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 535, sugarsG100g: 44, saturatedFatG100g: 16.5, sodiumMg100g: 160, fiberG100g: 2.0, proteinG100g: 6.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
+  },
+  {
+    match: /\b(velveeta)\b|(?<!organic )\b(processed cheese|cheese loaf|queso dip|pasteurized process cheese)\b/i,
+    brand: "Velveeta",
+    title: "Original Pasteurized Recipe Cheese Product",
+    ingredients: "Milk, Water, Whey, Milk Protein Concentrate, Milkfat, Whey Protein Concentrate, Sodium Phosphate, Contains Less than 2% of Salt, Calcium Phosphate, Lactic Acid, Sorbic Acid as a Preservative, Sodium Citrate, Sodium Alginate, Enzymes, Apocarotenal and Annatto (Color), Cheese Culture.",
+    imageUrl: "/products/butter.jpg",
+    nutrition: { caloriesKcal100g: 285, sugarsG100g: 7.0, saturatedFatG100g: 11.0, sodiumMg100g: 1460, fiberG100g: 0, proteinG100g: 14.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
+  },
+  {
+    match: /\b(uncured)\b.*\b(turkey bacon)\b|\b(applegate)\b.*\b(turkey bacon)\b/i,
+    brand: "Applegate Naturals",
+    title: "Hickory Smoked Uncured Turkey Bacon",
+    ingredients: "Turkey, Water, Contains Less than 2% of Sea Salt, Cane Sugar, Celery Powder, Rosemary Extract.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 215, sugarsG100g: 1.5, saturatedFatG100g: 2.8, sodiumMg100g: 760, fiberG100g: 0, proteinG100g: 17.0, fruitsVegNutsPct: 0, isWholeFood: false },
+  },
+  {
+    match: /\b(uncured)\b.*\b(bacon|sunday bacon|black forest|hickory smoked)\b|\b(applegate|coleman|dietz\s*&\s*watson|nueske'?s|paleo|pederson'?s)\b.*\b(bacon)\b/i,
+    brand: "Natural Uncured",
+    title: "Hickory Smoked Uncured Pork Bacon",
+    ingredients: "Pork, Water, Sea Salt, Less than 2% of Cane Sugar, Celery Powder.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 410, sugarsG100g: 1.5, saturatedFatG100g: 13.5, sodiumMg100g: 920, fiberG100g: 0, proteinG100g: 24.0, fruitsVegNutsPct: 0, isWholeFood: false },
+  },
+  {
+    match: /^(?!.*\b(uncured|bits|ranch|hot pocket|macaroni)\b).*\b(wellsley farms sliced bacon|hormel.*bacon|smithfield.*bacon|oscar mayer.*bacon|wright.*bacon|farmland.*bacon|kirkland.*bacon|great value.*bacon|member'?s mark.*bacon|thick cut.*bacon|microwave ready bacon|fully cooked bacon|hickory smoked.*bacon|sliced bacon|pork bacon|low sodium bacon|bacon)\b/i,
+    brand: "Cured Pork Bacon",
+    title: "Hickory Smoked Cured Sliced Bacon",
+    ingredients: "Pork, Water, Salt, Sugar, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 440, sugarsG100g: 1.5, saturatedFatG100g: 14.5, sodiumMg100g: 1080, fiberG100g: 0, proteinG100g: 26.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(morningstar farms|beyond meat|beyond sausage|impossible sausage|impossible burger|boca|gardein)\b/i,
+    brand: "MorningStar Farms",
+    title: "Plant-Based Sausage Patties",
+    ingredients: "Water, Wheat Gluten, Soy Flour, Vegetable Oil (Corn, Canola and/or Sunflower Oil), Egg Whites, Soy Protein Isolate, Methylcellulose, Salt, Autolyzed Yeast Extract, Natural Flavors, Spices, Xanthan Gum, Caramel Color, Disodium Inosinate, Disodium Guanylate, Citric Acid.",
+    imageUrl: "/products/turkey.jpg",
+  },
+  {
+    match: /\b(hot pocket|hot pockets|lean pocket|lean pockets|pizza rolls|totino'?s|bagel bites|stouffer'?s)\b/i,
+    brand: "Hot Pockets",
+    title: "Stuffed Sandwich Pockets",
+    ingredients: "Enriched Flour (Wheat Flour, Malted Barley Flour, Niacin, Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Cooked White Meat Chicken, Reduced Fat Cheddar Cheese, Soybean Oil, Bacon (Cured with Water, Salt, Sugar, Smoke Flavoring, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite), 2% or Less of Modified Food Starch, Sugar, Salt, Buttermilk, Potassium Chloride, Autolyzed Yeast Extract, Disodium Phosphate, Xanthan Gum, Monosodium Glutamate, Natural Flavors, Titanium Dioxide.",
+    imageUrl: "/products/snacks.jpg",
+  },
+  {
+    match: /\b(hillshire farm|kielbasa|polska kielbasa|smoked sausage|eckrich|johnsonville|jimmy dean|breakfast croissant|sausage,?\s*egg\s*(&|and)\s*cheese)\b/i,
+    brand: "Hillshire Farm / Jimmy Dean",
+    title: "Smoked Sausage / Kielbasa",
+    ingredients: "Mechanically Separated Turkey, Turkey, Pork, Water, Corn Syrup, Modified Food Starch, Contains 2% or Less of Salt, Dextrose, Sodium Citrate, Sodium Phosphate, Monosodium Glutamate, Sodium Diacetate, Sodium Erythorbate, Flavorings, Sodium Nitrite.",
+    imageUrl: "/products/turkey.jpg",
+  },
+  {
+    match: /\b(crispy chicken|breaded chicken|chicken patties|chicken patty|chicken nuggets|chicken tenders|chicken strips|popcorn chicken|chicken fries|perdue.*breaded|tyson.*chicken|wellsley farms.*crispy chicken|wellsley farms.*chicken patties)\b/i,
+    brand: "Breaded Poultry",
+    title: "Breaded Crispy Chicken Breast Patties / Fillets",
+    ingredients: "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Bleached Wheat Flour, Modified Food Starch, Vegetable Oil (Soybean and/or Canola Oil), Salt, Dextrose, Sodium Phosphates, Leavening (Sodium Acid Pyrophosphate, Sodium Bicarbonate), Yeast Extract, Onion Powder, Garlic Powder, Spice, Natural Flavor.",
+    imageUrl: "/products/turkey.jpg",
+  },
+  {
+    match: /\b(heinz.*gravy|turkey gravy|chicken gravy|beef gravy|mushroom gravy|country gravy|sausage gravy|homestyle.*gravy|franco[- ]?american.*gravy|mccormick.*gravy|campbell'?s.*gravy|pioneer.*gravy|\bgravy\b)\b/i,
+    brand: "Heinz HomeStyle",
+    title: "HomeStyle Savory Gravy",
+    ingredients: "Turkey Broth, Water, Modified Corn Starch, Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Chicken Fat, Contains Less than 2% of Salt, Turkey Meat, Monosodium Glutamate, Autolyzed Yeast Extract, Caramel Color, Onion Powder, Disodium Inosinate, Disodium Guanylate, Natural Flavor.",
+    imageUrl: "/products/ranch.jpg",
+  },
+  {
+    match: /\b(kettle\s*&\s*fire|organic.*broth|organic.*stock|bone broth)\b/i,
+    brand: "Kettle & Fire",
+    title: "Organic Slow-Simmered Bone Broth",
+    ingredients: "Organic Bone Broth (Water, Organic Turkey/Chicken Bones, Organic Onions, Organic Carrots, Organic Celery), Organic Apple Cider Vinegar, Sea Salt, Organic Rosemary, Organic Sage, Organic Thyme, Organic Black Pepper.",
+    imageUrl: "/swaps/turkey.jpg",
+    nutrition: { isOrganic: true, isWholeFood: true },
+  },
+  {
+    match: /\b(oscar mayer|lunchables|bologna|hot dog|hotdogs|frankfurters?|ball park|nathan'?s|hebrew national)\b/i,
     brand: "Oscar Mayer",
     title: "Oven Roasted Turkey Breast Deli Slices",
     ingredients: "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Sodium Lactate, Salt, Sugar, Sodium Phosphates, Carrageenan, Sodium Diacetate, Sodium Ascorbate, Sodium Nitrite, Natural and Artificial Flavor.",
     imageUrl: "/products/turkey.jpg",
   },
   {
-    match: /\b(gatorade|powerade|sports? drink)\b/i,
+    match: /\b(gatorade|powerade|sports? drink|bodyarmor|liquid i\.?v\.?)\b/i,
     brand: "Gatorade",
     title: "Thirst Quencher Fruit Punch Sports Drink",
     ingredients: "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
     imageUrl: "/products/snacks.jpg",
   },
   {
-    match: /\b(coca[- ]?cola|coke|pepsi|dr pepper|mountain dew|mt dew|sprite)\b/i,
+    match: /\b(coca[- ]?cola|coke|pepsi|dr pepper|mountain dew|mt dew|sprite|fanta|sunkist|root beer|ginger ale)\b/i,
     brand: "Coca-Cola",
     title: "Classic Cola Soft Drink",
     ingredients: "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
     imageUrl: "/products/snacks.jpg",
+  },
+  {
+    match: /\b(capri\s*sun|hi-c|kool-aid|hawaiian punch|sunny\s*d)\b/i,
+    brand: "Capri Sun",
+    title: "Fruit Punch Juice Drink Blend",
+    ingredients: "Water, Sugar, Apple, Grape and Cherry Juice Concentrates, Citric Acid, Natural Flavor.",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 30, sugarsG100g: 7.2, saturatedFatG100g: 0, sodiumMg100g: 8, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 10 },
+  },
+  {
+    match: /\b(health[- ]?ade|gt'?s|synergy|kombucha)\b/i,
+    brand: "Health-Ade",
+    title: "Organic Raw Kombucha",
+    ingredients: "Purified Water, Kombucha Culture (Yeast and Bacteria Cultures), Organic Black Tea, Organic Green Tea, Organic Cane Sugar, Organic Cold Pressed Juice.",
+    imageUrl: "/swaps/snacks.jpg",
+    nutrition: { caloriesKcal100g: 15, sugarsG100g: 3.2, saturatedFatG100g: 0, sodiumMg100g: 5, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 20, isOrganic: true },
   },
   {
     match: /\b(goldfish)\b/i,
@@ -591,14 +726,14 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/snacks.jpg",
   },
   {
-    match: /\b(heinz)\b|(?<!organic |primal kitchen |unsweetened )\bketchup\b/i,
+    match: /\b(heinz)\b.*\b(ketchup|catsup)\b|(?<!organic |primal kitchen |unsweetened )\b(ketchup|catsup)\b/i,
     brand: "Heinz",
     title: "Tomato Ketchup",
     ingredients: "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
     imageUrl: "/products/ranch.jpg",
   },
   {
-    match: /\b(hellmann'?s|best foods)\b|(?<!avocado oil |primal kitchen |chosen foods |organic )\bmayonnaise\b/i,
+    match: /\b(hellmann'?s|best foods)\b|(?<!avocado oil |primal kitchen |chosen foods |organic )\b(mayonnaise|mayo)\b/i,
     brand: "Hellmann's",
     title: "Real Mayonnaise",
     ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors.",
@@ -620,7 +755,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|kraft\s+mac|velveeta\s+shells)\b/i,
-    brand: "Clean Grocery Verified",
+    brand: "Kraft / Conventional",
     title: "Original Macaroni & Cheese Dinner",
     ingredients: "Enriched Macaroni Product (Wheat Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Milk Protein Concentrate, Salt, Sodium Tripolyphosphate, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, Yellow 5, Yellow 6, Enzymes, Cheese Culture).",
     imageUrl: "/products/snacks.jpg",
@@ -640,8 +775,32 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/yogurt.jpg",
   },
   {
-    match: /^(?!.*\b(soy|soymilk|almond|almondmilk|oat|oatmilk|coconut|cashew|chocolate|strawberry|condensed|evaporated|buttermilk|milkshake|creamer)\b).*\b(whole milk|milk whole|2% milk|milk 2%|1% milk|skim milk|nonfat milk|reduced fat milk|fat free milk|vitamin d milk|great value milk|fairlife|horizon organic milk|organic whole milk)\b/i,
-    brand: "Clean Grocery Verified",
+    match: /\b(dried cranberries|craisins)\b(?!.*\b(unsweetened|no sugar)\b)/i,
+    brand: "Dried Fruit",
+    title: "Sweetened Dried Cranberries",
+    ingredients: "Cranberries, Sugar, Refined Sunflower Oil is Used as a Processing Aid.",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.1, sodiumMg100g: 5, fiberG100g: 5.3, proteinG100g: 0.2, fruitsVegNutsPct: 60, isWholeFood: false },
+  },
+  {
+    match: /\b(freeze[- ]?dried)\b.*\b(blueberr\w*|strawberr\w*|raspberr\w*|bananas?|apples?|mangos?|peaches|fruit|crisps?)\b/i,
+    brand: "Freeze-Dried Fruit",
+    title: "100% Freeze-Dried Whole Fruit Crisps",
+    ingredients: "100% pure whole food ingredient. Freeze-dried fruit with no added sugar, no preservatives, no seed oils.",
+    imageUrl: "/swaps/snacks.jpg",
+    nutrition: { isWholeFood: true },
+  },
+  {
+    match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|butterfinger|popcorn|croissant|biscuit|crackers|bread|rolls|buns|sauce|chicken)\b).*\b(kerrygold|land o'?\s*lakes|salted butter|unsalted butter|irish butter|grass[- ]?fed.*butter|sweet cream butter|pure butter|\bbutter\b|ghee)\b/i,
+    brand: "Kerrygold / Dairy Butter",
+    title: "Pure Grass-Fed Salted Butter",
+    ingredients: "Pasteurized Cream, Salt.",
+    imageUrl: "/products/butter.jpg",
+    nutrition: { caloriesKcal100g: 717, sugarsG100g: 0.1, saturatedFatG100g: 51.0, sodiumMg100g: 640, fiberG100g: 0, proteinG100g: 0.9, fruitsVegNutsPct: 0, isWholeFood: false },
+  },
+  {
+    match: /^(?!.*\b(soy|soymilk|almond|almondmilk|oat|oatmilk|coconut|cashew|chocolate|strawberry|condensed|evaporated|buttermilk|milkshake|creamer|wafer|wafers|candy|bar|chocolate)\b).*\b(lactaid|lactose[- ]?free.*milk|whole.*milk|milk.*whole|2%.*milk|milk.*2%|1%.*milk|skim.*milk|nonfat.*milk|reduced[- ]?fat.*milk|fat[- ]?free.*milk|vitamin d.*milk|great value.*milk|wellsley farms.*milk|kirkland.*milk|member'?s mark.*milk|fairlife|horizon.*milk|organic.*milk|grade a.*milk)\b/i,
+    brand: "Grade A Dairy",
     title: "Grade A Pasteurized Milk",
     ingredients: "Grade A Milk, Vitamin D3.",
     imageUrl: "/swaps/yogurt.jpg",
@@ -655,7 +814,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/yogurt.jpg",
   },
   {
-    match: /^(?!.*\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|cookies?|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|nuggets?|fries|ice cream|popsicle|yogurt|creamer|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|kiwi|oranges?|clementines?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|butter|salted butter|unsalted butter|kerrygold|ghee|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|honey|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
+    match: /^(?!.*\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|pastry|pastries|danish|fritter|croissant|cinnamon roll|honey bun|eclair|strudel|turnover|scone|tart|cobbler|brownie|cupcake|filled|filling|glazed|frosted|iced|icing|coated|candied|sweetened|dried cranberries|craisins|freshness guaranteed|marketside|bakery|macaroni|mac\s*&\s*cheese|mac\s+and\s+cheese|chips?|crackers?|ritz|cookies?|wafer|wafers|knoppers|storck|merci|kinder|cake|pie|muffins?|waffles?|pancakes?|cereal|puffs?|pop[- ]?tarts?|bars?|candy|gummies|soda|drink|lemonade|sauce|gravy|broth|dressing|ketchup|mayo|mayonnaise|bread|buns?|rolls?|bagels?|toast|pizza|crispy|breaded|battered|fried|patties|patty|nuggets?|tenders|strips|fillets?|hot\s*pocket|sausage|kielbasa|bacon|hot\s*dog|bologna|salami|pepperoni|deli|fries|ice cream|popsicle|yogurt|creamer|velveeta|spread|dip|flavored|frosting|syrup|cup|cups)\b).*\b(bananas?|apples?|avocados?|strawberr\w*|blueberr\w*|raspberr\w*|blackberr\w*|cranberr\w*|cherries|cherry|peaches|peach|plums?|pears?|mangos?|mangoes|pineapple|watermelon|melon|cantaloupe|honeydew|kiwi|oranges?|clementines?|mandarins?|grapefruit|grapes?|lemons?|limes?|spinach|broccoli|kale|lettuce|romaine|arugula|cabbage|cauliflower|brussels sprouts|asparagus|celery|cucumbers?|zucchini|squash|carrots?|potatoes?|sweet potatoes?|yams?|tomatoes?|onions?|shallots?|garlic|peppers?|mushrooms?|green beans|peas|corn on the cob|eggs?|egg white|pasture[- ]raised eggs|heavy cream|whipping cream|half and half|cottage cheese|sour cream|plain greek yogurt|salmon|tuna|cod|halibut|tilapia|mahimahi|trout|sardines|shrimp|scallops|crab|lobster|ribeye|sirloin|filet mignon|ny strip|roast|brisket|steak|ground beef|beef chuck|pork chops?|pork tenderloin|pork loin|ground pork|lamb|bison|venison|chicken breast|chicken thighs?|chicken drumsticks?|chicken wings?|whole chicken|ground turkey|ground chicken|olive oil|extra virgin olive oil|avocado oil|coconut oil|beef tallow|pure honey|raw honey|honey|pure maple syrup|organic maple syrup|oats|rolled oats|steel cut oats|quinoa|brown rice|white rice|jasmine rice|basmati rice|lentils|chickpeas|black beans|pinto beans|kidney beans|almonds|walnuts|pecans|cashews|pistachios|macadamia|chia seeds|flax seeds|hemp seeds|pumpkin seeds|coffee beans|ground coffee|black tea|green tea|sparkling water|spring water|mineral water|baking soda|sea salt|kosher salt)\b/i,
     brand: "Fresh Whole Food",
     title: "100% Whole Unprocessed Food",
     ingredients: "100% pure whole food ingredient. No additives, no preservatives, no seed oils, no artificial dyes.",
@@ -664,7 +823,98 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
 ];
 
-const UI_NOISE_QUERY = /\b(gas savings|walmart\+|new notification|scan barcodes|qr code|pickup or delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items)\b/i;
+const UI_NOISE_QUERY =
+  /\b(gas savings|walmart\+|new notification|scan barcodes|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller)\b/i;
+
+function smartCategoryFallback(query: string): Omit<LookupResult, "ms"> | null {
+  const cleanTitle = query.trim();
+  const q = cleanTitle.toLowerCase();
+
+  // Natural / Block / Shredded Cheeses (Cheddar, Mozzarella, Swiss, Provolone, Parmesan, Colby, Jack, Gouda, Feta)
+  if (/\b(cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|colby|monterey jack|pepper jack|string cheese|shredded cheese|sliced cheese|cheese block|cream cheese)\b/.test(q)) {
+    return {
+      productTitle: cleanTitle,
+      brand: "Dairy Cheese",
+      ingredients: "Pasteurized Milk, Cheese Culture, Salt, Enzymes, Annatto (Color).",
+      imageUrl: "/products/butter.jpg",
+      nutrition: { caloriesKcal100g: 370, sugarsG100g: 0.5, saturatedFatG100g: 19.0, sodiumMg100g: 620, fiberG100g: 0, proteinG100g: 23.0, fruitsVegNutsPct: 0, isWholeFood: false },
+      source: "catalog",
+    };
+  }
+  // Breads, Bagels, English Muffins, Tortillas, Wraps, Rolls, Croissants
+  if (/\b(bread|bagel|bagels|english muffin|tortilla|tortillas|wraps?|buns?|rolls?|croissant|pita|naan|biscuits?)\b/.test(q)) {
+    const isClean = /\b(ezekiel|sprouted|sourdough|dave'?s killer|organic)\b/.test(q);
+    return {
+      productTitle: cleanTitle,
+      brand: isClean ? "Organic Bakery" : "Bakery",
+      ingredients: isClean
+        ? "Organic Sprouted Wheat, Filtered Water, Organic Malted Barley, Sea Salt, Fresh Yeast."
+        : "Enriched Wheat Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Sugar, Soybean and/or Canola Oil, Yeast, Salt, Mono- and Diglycerides, Calcium Propionate (Preservative), DATEM, Soy Lecithin.",
+      imageUrl: "/products/bread.jpg",
+      source: "catalog",
+    };
+  }
+  // Chips, Pretzels, Popcorn, Crackers, Puffs
+  if (/\b(chips?|crisps?|pretzels?|popcorn|crackers?|puffs?|tortilla chips|potato chips|kettle chips)\b/.test(q)) {
+    const isAvocadoOrOlive = /\b(avocado oil|olive oil|boulder canyon|siete|lesser\s*evil)\b/.test(q);
+    return {
+      productTitle: cleanTitle,
+      brand: isAvocadoOrOlive ? "Clean Oil Snack" : "Salty Snack",
+      ingredients: isAvocadoOrOlive
+        ? "Potatoes, Avocado Oil, Sea Salt."
+        : "Potatoes, Vegetable Oil (Sunflower, Corn, and/or Canola Oil), Salt, Maltodextrin, Dextrose, Natural Flavors.",
+      imageUrl: "/products/chips.jpg",
+      source: "catalog",
+    };
+  }
+  // Cookies, Wafers, Cakes, Muffins, Brownies, Candy, Chocolate, Ice Cream
+  if (/\b(cookies?|wafers?|brownies?|cupcakes?|muffins?|cake|pie|pastry|pastries|candy|gummies|chocolate|truffles?|ice cream|gelato|popsicle|frosting)\b/.test(q)) {
+    return {
+      productTitle: cleanTitle,
+      brand: "Sweet Treat",
+      ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm and/or Soybean Oil, Corn Syrup, Cocoa, Soy Lecithin, Salt, Baking Soda, Natural and Artificial Flavor.",
+      imageUrl: "/products/snacks.jpg",
+      source: "catalog",
+    };
+  }
+  // Pasta Sauce, Marinara, Alfredo, Salsa, BBQ Sauce, Teriyaki, Condiments
+  if (/\b(marinara|pasta sauce|tomato sauce|alfredo|vodka sauce|pesto|salsa|picante|bbq sauce|barbecue sauce|teriyaki|soy sauce|steak sauce|hot sauce|buffalo sauce|wing sauce|mustard)\b/.test(q)) {
+    const isAlfredo = /\balfredo\b/.test(q);
+    return {
+      productTitle: cleanTitle,
+      brand: "Pantry Sauce",
+      ingredients: isAlfredo
+        ? "Water, Cream, Parmesan Cheese (Pasteurized Milk, Cheese Cultures, Salt, Enzymes), Soybean Oil, Modified Corn Starch, Enzyme Modified Egg Yolks, Salt, Whey, Disodium Phosphate, Xanthan Gum, Garlic Powder, Natural Flavor."
+        : "Tomato Puree (Water, Tomato Paste), Diced Tomatoes, Sugar, Soybean Oil, Salt, Dried Garlic, Dried Onion, Citric Acid, Spices, Natural Flavor.",
+      imageUrl: "/products/ranch.jpg",
+      source: "catalog",
+    };
+  }
+  // Dry Pasta, Noodles, Ramen
+  if (/\b(spaghetti|penne|rotini|fettuccine|linguine|rigatoni|farfalle|elbows|macaroni|lasagna|pasta|egg noodles|noodles|ramen)\b/.test(q)) {
+    const isRamen = /\bramen\b/.test(q);
+    return {
+      productTitle: cleanTitle,
+      brand: isRamen ? "Instant Noodles" : "Durum Semolina Pasta",
+      ingredients: isRamen
+        ? "Enriched Wheat Flour, Palm Oil, Salt, Contains Less than 2% of Monosodium Glutamate, Hydrolyzed Corn Protein, Caramel Color, Disodium Inosinate, Disodium Guanylate, TBHQ."
+        : "Durum Wheat Semolina, Niacin, Iron (Ferrous Sulfate), Thiamin Mononitrate, Riboflavin, Folic Acid.",
+      imageUrl: "/products/bread.jpg",
+      source: "catalog",
+    };
+  }
+  // Frozen Pizza, Waffles, Pancakes, French Fries, Tater Tots
+  if (/\b(pizza|french fries|tater tots|hash browns|waffles|pancakes|french toast sticks)\b/.test(q)) {
+    return {
+      productTitle: cleanTitle,
+      brand: "Frozen Prepared",
+      ingredients: "Enriched Wheat Flour, Water, Vegetable Oil (Soybean and/or Canola Oil), Low-Moisture Part-Skim Mozzarella Cheese, Tomato Paste, Sugar, Salt, Modified Food Starch, Dextrose, Sodium Phosphate, Soy Lecithin, Natural Flavor.",
+      imageUrl: "/products/snacks.jpg",
+      source: "catalog",
+    };
+  }
+  return null;
+}
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query.trim().replace(/\b\w/g, (c) => c.toUpperCase());
@@ -680,8 +930,16 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       };
     }
   }
-  // Never invent fake ingredient lists for unknown products when OFF/USDA return no match.
-  return null;
+  return smartCategoryFallback(query);
+}
+
+/** Strips club-store pack counts and trailing weights (e.g. `, 3 pk./ 16 oz.`, `, Serves 12, 3 lbs.`) for cleaner external API queries. */
+function cleanSearchQuery(title: string): string {
+  return title
+    .replace(/,\s*(serves\s+\d+|\d+\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs)\b).*$/i, "")
+    .replace(/\s*[-–—]\s*\d+\s*(pk|pack|ct|count|oz|lb|lbs)\b.*$/i, "")
+    .replace(/\.\.\.+$/, "")
+    .trim();
 }
 
 /* ------------------------------------------------------------------ */
@@ -697,14 +955,19 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     return null;
   }
 
-  if (input.rawIngredients?.trim()) {
-    return {
-      productTitle: title || "Scanned product",
-      barcode: input.barcode,
-      ingredients: input.rawIngredients.trim(),
-      source: "screen",
-      ms: ms(),
-    };
+  const rawIng = input.rawIngredients?.trim() || "";
+  if (rawIng) {
+    // If productTitle is also provided (e.g. from the mobile screen reader or browser extension),
+    // verify that rawIngredients is an actual ingredient list and not an adjacent UI heading like "Items to add next".
+    if (!title || isPlausibleScreenIngredients(rawIng)) {
+      return {
+        productTitle: title || "Scanned product",
+        barcode: input.barcode,
+        ingredients: rawIng,
+        source: "screen",
+        ms: ms(),
+      };
+    }
   }
 
   // Deterministic instant resolution for verified catalog staples & whole foods when no barcode is specified
@@ -726,11 +989,14 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   let found: Omit<LookupResult, "ms"> | null = null;
   if (input.barcode) {
-    found = await offByBarcode(input.barcode);
-    if (!found) found = await usdaSearch(input.barcode);
+    const [offRes, usdaRes] = await Promise.all([offByBarcode(input.barcode), usdaSearch(input.barcode)]);
+    found = offRes || usdaRes;
   }
-  if (!found && title) found = await offSearch(title);
-  if (!found && title) found = await usdaSearch(title);
+  if (!found && title) {
+    const qClean = cleanSearchQuery(title) || title;
+    const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
+    found = offRes || usdaRes;
+  }
   if (!found && title) found = catalogFallback(title);
   if (!found) return null;
 

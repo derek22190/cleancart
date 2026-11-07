@@ -66,15 +66,15 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CART_CHECKOUT_SIGNALS = Regex(
-            """\b(continue to checkout|proceed to checkout|go to checkout|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|cart \(\d+\)|skip the order min fee|delivery from store|pickup from store|available for all items)\b""",
+            """(\b(continue to checkout|proceed to checkout|go to checkout|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|skip the order min fee|delivery from store|pickup from store|available for all items|available for \d+ of \d+ items)\b|^cart\s*\(\d+\)$|^(in-club pickup|same-day delivery|pickup|delivery|shipping)\s*\(\d+\)$|^checkout$)""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_ITEM_CONTROLS = Regex(
-            """^(remove|save for later)$""",
+            """^(remove|save for later|select all)$""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_END_BOUNDARY = Regex(
-            """^(saved for later.*|recommended for you.*|customers also.*|similar items.*|frequently bought.*|people also bought.*|don't forget.*)$""",
+            """^(saved for later.*|recommended for you.*|customers also.*|similar items.*|frequently bought.*|people also bought.*|don't forget.*|items to add next.*)$""",
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_PDP_CTA = Regex(
@@ -86,11 +86,11 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_PDP_DETAILS = Regex(
-            """^(about this item|product details|ingredients|nutrition facts|nutrition information|specifications|at a glance|product description|dietary\s*&\s*lifestyle|disclaimer|warnings|directions)$""",
+            """^(about this item|product details|product information|ingredients|nutrition facts|nutrition information|specifications|at a glance|product description|dietary\s*&\s*lifestyle|disclaimer|warnings|directions)$""",
             RegexOption.IGNORE_CASE,
         )
         private val CAROUSEL_BOUNDARY = Regex(
-            """^(similar items|customers also (bought|viewed|considered)|frequently bought together|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar)$""",
+            """^(items to add next|similar items|customers also (bought|viewed|considered)|frequently bought together|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar)$""",
             RegexOption.IGNORE_CASE,
         )
         private val BRAND_OR_UNIT_ONLY = Regex(
@@ -98,17 +98,17 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*\d+$|^(remove\s+.+|delete\s+.+|(increase|decrease)\s+quantity.*|\d+\s+in\s+(cart|bag|basket|order).*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|express|temporarily unavailable|not available.*|available|ready in \d+.*|check nearby clubs|out of stock.*|in stock|ebt eligible|snap ebt.*|tomorrow|today|\d{1,2}(:\d{2})?\s*(am|pm)\s*-\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+.*|change|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+ times|stay stocked|last purchased|gas savings|walmart\+|scan barcodes|qr code|aisle\s+[a-z0-9]+|\d+\s+[a-z0-9.\s]+\b(rd|road|st|street|ave|avenue|blvd|dr|drive|ln|lane|way|ct|court|pkwy|hwy))\b""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*\d+$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow|today|\d{1,2}(:\d{2})?\s*(am|pm)\s*-\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+.*|change|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+ times|stay stocked|last purchased|gas savings|walmart\+|scan barcodes|qr code|aisle\s+[a-z0-9]+|\d+\s+[a-z0-9.\s]+\b(rd|road|st|street|ave|avenue|blvd|dr|drive|ln|lane|way|ct|court|pkwy|hwy))\b""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|eggnog|egg nog|yogurt|cheese|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|buns|rolls|tortilla|muffin|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|fritter|eclair|strudel|turnover|cupcake|pie|cobbler|chips|crackers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|lemonade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|cookie|cookies|brownie|cake|candy|chocolate|gummies|fruit|snacks|apple|banana|strawberry|blueberry|raspberry|berry|avocado|spinach|broccoli|kale|salad|lettuce|tomato|potato|onion|garlic|carrot|orange|grape|lemon|lime|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|pizza|burrito|nuggets|tenders|fries|waffles|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix)\b""",
+            """\b(milk|lactaid|eggnog|egg nog|yogurt|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|buns|rolls|tortilla|muffin|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|fritter|eclair|strudel|turnover|cupcake|pie|cobbler|chips|crisps|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|waffle|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|kielbasa|bratwurst|meatballs|patties|fillets|cutlets|strip|strips|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|lemonade|soda|cola|sparkling|sports drink|gatorade|tea|coffee|espresso|cookie|cookies|brownie|cake|candy|chocolate|gummies|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|tomato|tomatoes|potato|potatoes|onion|onions|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|orange|oranges|grape|grapes|peach|peaches|mango|mangoes|lemon|lemons|lime|limes|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|pizza|burrito|hot pocket|hot pockets|morningstar|nuggets|tenders|fries|waffles|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|pepsi|dr pepper|mountain dew|sprite|red bull|monster|celsius|liquid death|olipop|poppi|la croix|diaper|diapers|wipes)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2})?|\b\d+\s*dollars?\s*and\s*\d+\s*cents?\b)""", RegexOption.IGNORE_CASE)
-        private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add|quick add|add item|choose options)$""", RegexOption.IGNORE_CASE)
+        private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add|quick add|add item|choose options|\+|increase quantity.*)$""", RegexOption.IGNORE_CASE)
         private val NON_INGREDIENT_TEXT = Regex(
-            """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value)\b""",
+            """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value|items to add next|product information|customers also|similar items|you might also|related items|sold by|fulfilled by)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val WHITESPACE = Regex("""\s+""")
@@ -172,13 +172,33 @@ class GroceryScreenReaderService : AccessibilityService() {
         currentPackage = pkg
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val src = runCatching { event.source }.getOrNull()
             val clickedText = buildString {
                 event.text?.forEach { append(it).append(' ') }
-                event.contentDescription?.let { append(it) }
+                event.contentDescription?.let { append(it).append(' ') }
+                if (src != null) {
+                    src.text?.let { append(it).append(' ') }
+                    src.contentDescription?.let { append(it).append(' ') }
+                    for (i in 0 until minOf(src.childCount, 4)) {
+                        val ch = runCatching { src.getChild(i) }.getOrNull() ?: continue
+                        ch.text?.let { append(it).append(' ') }
+                        ch.contentDescription?.let { append(it).append(' ') }
+                        recycleNode(ch)
+                    }
+                }
             }.trim()
-            if (SINGLE_PDP_CTA.containsMatchIn(clickedText) || ADD_TILE_BUTTON.matches(clickedText)) {
+            val srcViewId = src?.viewIdResourceName?.lowercase().orEmpty()
+            recycleNode(src)
+            val isAddClick =
+                SINGLE_PDP_CTA.containsMatchIn(clickedText) ||
+                    ADD_TILE_BUTTON.matches(clickedText) ||
+                    srcViewId.contains("add_to_cart") ||
+                    srcViewId.contains("addtocart") ||
+                    srcViewId.contains("stepper_plus") ||
+                    srcViewId.contains("plus_button")
+            if (isAddClick) {
                 pendingAddToCartClick = true
-                lastKey = "" // Force re-evaluation so the clicked product is recorded in cart
+                lastKey = "" // Force re-evaluation so the clicked product is recorded in cart automatically
             }
         }
 
@@ -237,18 +257,22 @@ class GroceryScreenReaderService : AccessibilityService() {
             val ingredients = findIngredients(nodes)
 
             // 1. Check if the user is viewing their actual Cart or Checkout screen (expanded OR collapsed under "See details")
-            val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text) }
+            val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text.trim()) }
             val hasCartItemControls = nodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
             val isCartScreen = hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
-                it.text.contains("continue to checkout", ignoreCase = true) ||
-                    it.text.contains("proceed to checkout", ignoreCase = true) ||
-                    it.text.contains("estimated total", ignoreCase = true) ||
-                    it.text.contains("subtotal", ignoreCase = true) ||
-                    it.text.equals("checkout", ignoreCase = true) ||
-                    it.text.contains("choose substitution", ignoreCase = true) ||
-                    it.text.contains("skip the order min fee", ignoreCase = true) ||
-                    it.text.contains("delivery from store", ignoreCase = true) ||
-                    it.text.contains("available for all items", ignoreCase = true)
+                val t = it.text.trim()
+                t.contains("continue to checkout", ignoreCase = true) ||
+                    t.contains("proceed to checkout", ignoreCase = true) ||
+                    t.contains("estimated total", ignoreCase = true) ||
+                    t.contains("subtotal", ignoreCase = true) ||
+                    t.equals("checkout", ignoreCase = true) ||
+                    t.matches(Regex("""(?i)^cart\s*\(\d+\)$""")) ||
+                    t.matches(Regex("""(?i)^(in-club pickup|same-day delivery|pickup|delivery|shipping)\s*\(\d+\)$""")) ||
+                    t.contains("choose substitution", ignoreCase = true) ||
+                    t.contains("skip the order min fee", ignoreCase = true) ||
+                    t.contains("delivery from store", ignoreCase = true) ||
+                    t.contains("available for all items", ignoreCase = true) ||
+                    t.matches(Regex("""(?i)^available for \d+ of \d+ items.*"""))
             })
 
             if (isCartScreen) {
@@ -475,8 +499,13 @@ class GroceryScreenReaderService : AccessibilityService() {
         var s = raw.replace(WHITESPACE, " ").trim()
         // Strip leading/embedded favorite/badge/quantity prefixes from compound container contentDescriptions
         s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*"""), "")
-        s = s.replace(Regex("""(?i)^(best seller|overall pick|popular pick|rollback|sponsored|save for later)\s*[,•|\-]?\s*"""), "")
+        s = s.replace(Regex("""(?i)^(remove|delete)\s+(?=[a-z0-9].*\s+[a-z0-9])"""), "")
+        s = s.replace(Regex("""(?i)^\d+\s+in\s+(cart|bag|basket|order)\s*[-–—:,]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*"""), "")
+        s = s.replace(
+            Regex("""(?i)^((bought\s+\d+\s+times|best seller|overall pick|popular pick|rollback|sponsored|save for later|(current\s+price\s*|price\s*)?\$\s*\d+(\.\d{2})?(\s*/\s*(ea|oz|fl oz|lb|ct))?|\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct))\s*[,•|\-]\s*)+(?=[a-zA-Z]{2,})"""),
+            ""
+        )
         // Strip trailing ratings, review counts, image carousel counters, and prices
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(rated\s+)?\d+(\.\d+)?\s*out of\s*5(\s*stars?)?.*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d[\d,]*\s*(reviews?|ratings?).*$"""), "")
@@ -487,10 +516,12 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun isCandidateProductTitle(t: String): Boolean =
-        t.length in 6..180 &&
+        t.length in 5..180 &&
             !NOISE.containsMatchIn(t) &&
             !HOME_OR_AISLE_BANNERS.containsMatchIn(t) &&
             !CART_CHECKOUT_SIGNALS.containsMatchIn(t) &&
+            !SINGLE_PDP_DETAILS.matches(t.trim()) &&
+            !CAROUSEL_BOUNDARY.matches(t.trim()) &&
             !BRAND_OR_UNIT_ONLY.matches(t.trim()) &&
             !PRICE_PATTERN.containsMatchIn(t)
 
@@ -501,7 +532,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             isCandidateProductTitle(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 2. Accessibility heading on the page that matches food/product hints
+        // 2. Accessibility heading on the page that matches food/product hints (including 1-word produce like "Raspberries")
         nodes.firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             n.isHeading && isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
@@ -513,19 +544,25 @@ class GroceryScreenReaderService : AccessibilityService() {
             n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 4. Any node in the primary PDP nodes containing recognizable food/grocery keywords
+        // 4. Multi-word node in the primary PDP nodes containing recognizable food/grocery keywords
         nodes.take(65).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 5. Fallback on a confirmed single-product page to the first descriptive product title
+        // 5. Single-word produce/food title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados" in ALDI)
+        nodes.take(45).firstOrNull { n ->
+            val c = cleanTitleCandidate(n.text)
+            isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
+        }?.let { return cleanTitleCandidate(it.text) }
+
+        // 6. Fallback on a confirmed single-product page to the first descriptive product title
         return nodes.take(75).map { cleanTitleCandidate(it.text) }
             .firstOrNull { isCandidateProductTitle(it) && it.length in 12..140 && it.split(' ').size >= 3 }
     }
 
     /**
-     * Extracts the actual product titles listed in the user's Cart screen (e.g. Walmart Cart)
+     * Extracts the actual product titles listed in the user's Cart screen (e.g. Walmart, BJ's, ALDI Cart)
      * so `🛒 Cart Avg` and the Whole-Cart Health Check drawer match the real items in their cart.
      */
     private fun extractCartScreenTitles(nodes: List<TextNode>): List<String> {
@@ -536,24 +573,31 @@ class GroceryScreenReaderService : AccessibilityService() {
             val c = cleanTitleCandidate(n.text)
             if (!isCandidateProductTitle(c)) continue
             val words = c.split(' ').filter { it.isNotBlank() }
-            if (words.size >= 2 && (FOOD_HINTS.containsMatchIn(c) || (words.size >= 3 && c.length in 12..140))) {
+            if ((words.size >= 1 && FOOD_HINTS.containsMatchIn(c)) || (words.size >= 3 && c.length in 12..140)) {
                 val normKey = c.lowercase()
                 if (seen.none { it.lowercase() == normKey }) {
                     seen.add(c)
                 }
             }
-            if (seen.size >= 15) break
+            if (seen.size >= 20) break
         }
         return seen.toList()
     }
 
     private fun findIngredients(nodes: List<TextNode>): String? {
+        val realIngredientHint = Regex(
+            """\b(water|milk|cream|sugar|salt|flour|wheat|corn|soy|oil|butter|egg|cheese|cocoa|chocolate|vanilla|syrup|starch|acid|lecithin|gum|flavor|natural|organic|vitamin|potassium|sodium|calcium|turkey|chicken|beef|pork|apple|berry|raspberry|strawberry|blueberry|cranberry|oat|rice|potato|tomato|onion|garlic|spice|vinegar|yeast|honey|almond|peanut|hazelnut|extract|culture|enzyme|nitrite|nitrate|celery|dextrose|maltodextrin|carrageenan|sorbate|benzoate)\b""",
+            RegexOption.IGNORE_CASE
+        )
         fun validIngredientList(raw: String): String? {
             val cleaned = raw.trim()
             if (cleaned.length < 12) return null
+            if (NOISE.containsMatchIn(cleaned)) return null
             if (NON_INGREDIENT_TEXT.containsMatchIn(cleaned)) return null
             if (SINGLE_PDP_DETAILS.matches(cleaned)) return null
-            if (!cleaned.contains(",") && !cleaned.contains(" ") && cleaned.length < 18) return null
+            if (CAROUSEL_BOUNDARY.matches(cleaned)) return null
+            if (HOME_OR_AISLE_BANNERS.containsMatchIn(cleaned)) return null
+            if (!cleaned.contains(",") && !realIngredientHint.containsMatchIn(cleaned)) return null
             return cleaned
         }
         for (n in nodes) {

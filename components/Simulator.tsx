@@ -5,11 +5,14 @@ import {
   ALL_CATEGORIES,
   CATEGORY_LABELS,
   DEFAULT_WATCHLIST,
-  scoreIngredients,
+  scoreProductYuka,
   type Category,
   type FlaggedAdditive,
   type ScoreResult,
 } from "@/lib/rubric";
+
+const gradeProduct = (title: string, ingredients: string, watchlist: Record<Category, boolean>): ScoreResult =>
+  scoreProductYuka({ rawIngredients: ingredients, productTitle: title, watchlist });
 import { PRESETS } from "@/lib/presets";
 import {
   CLEAN_ALTERNATIVES,
@@ -401,7 +404,7 @@ export default function Simulator() {
   const screenRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const score = useMemo(() => scoreIngredients(active.ingredients, watch), [active, watch]);
+  const score = useMemo(() => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch), [active, watch]);
   const swap = useMemo(
     () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store }),
     [score.score, active, store],
@@ -412,7 +415,7 @@ export default function Simulator() {
   const cartScored = useMemo(
     () =>
       cart.map((item) => {
-        const s = scoreIngredients(item.ingredients, watch);
+        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${item.brand} ${item.title}`,
@@ -435,7 +438,7 @@ export default function Simulator() {
     () =>
       Array.from(
         new Set(
-          PRESETS.flatMap((p) => scoreIngredients(p.ingredients, watch).flagged.map((f) => f.name)),
+          PRESETS.flatMap((p) => gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch).flagged.map((f) => f.name)),
         ),
       ),
     [watch],
@@ -444,7 +447,7 @@ export default function Simulator() {
   const fallbackSwaps = useMemo<SwapRecord[]>(
     () =>
       PRESETS.map((p) => {
-        const s = scoreIngredients(p.ingredients, watch);
+        const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${p.brand} ${p.title}`,
@@ -541,7 +544,7 @@ export default function Simulator() {
   /* ---------------- Swap (single item or from auditor) ---------------- */
   const swapCartItem = useCallback(
     (targetItem: Product) => {
-      const itemScore = scoreIngredients(targetItem.ingredients, watch);
+      const itemScore = gradeProduct(`${targetItem.brand} ${targetItem.title}`, targetItem.ingredients, watch);
       const targetSwap = resolveSwap({
         score: itemScore.score,
         productTitle: `${targetItem.brand} ${targetItem.title}`,
@@ -648,7 +651,7 @@ export default function Simulator() {
           return;
         }
         const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
-        const liveScore = data.result?.score ?? scoreIngredients(data.product.ingredients, watch).score;
+        const liveScore = data.result?.score ?? gradeProduct(data.product.title, data.product.ingredients, watch).score;
         const fallbackImg = liveScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
         const p: Product = {
           key: `live-${data.product.barcode || q}`,
@@ -1010,7 +1013,7 @@ export default function Simulator() {
             <div className="card-head"><h2>Popular Grocery Items</h2></div>
             <ul className="preset-list">
               {PRESETS.map((p) => {
-                const s = scoreIngredients(p.ingredients, watch);
+                const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
                 const on = active.key === p.id && viewMode === "product";
                 return (
                   <li key={p.id}>

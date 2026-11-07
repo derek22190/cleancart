@@ -92,7 +92,7 @@ export const STORE_META: Record<Store, { label: string; host: string; androidPac
   ubereats: { label: "Uber Eats", host: "www.ubereats.com", androidPackage: "com.ubercab.eats", scheme: "ubereats" },
   amazon: { label: "Amazon Fresh", host: "www.amazon.com", androidPackage: "com.amazon.mShop.android.shopping", scheme: "amazon" },
   sams: { label: "Sam's Club", host: "www.samsclub.com", androidPackage: "com.rfi.sams.android", scheme: "samsclub" },
-  bjs: { label: "BJ's Wholesale", host: "www.bjs.com", androidPackage: "com.brandingbrand.reactnative.and.bjs", scheme: "bjs" },
+  bjs: { label: "BJ's Wholesale", host: "www.bjs.com", androidPackage: "com.bjs.mobile", scheme: "bjs" },
   costco: { label: "Costco", host: "www.costco.com", androidPackage: "com.costco.app.android", scheme: "costco" },
   shipt: { label: "Shipt", host: "www.shipt.com", androidPackage: "com.shipt.groceries", scheme: "shipt" },
 };
@@ -145,12 +145,12 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
   },
   "Butter/Dairy": {
     category: "Butter/Dairy",
-    brand: "Kerrygold",
-    name: "Pure Irish Grass-Fed Butter",
-    size: "8 oz foil",
-    price: 4.28,
+    brand: "Organic Valley",
+    name: "Organic 100% Grassmilk Dairy",
+    size: "64 oz carton",
+    price: 5.98,
     image: "/swaps/butter.jpg",
-    ingredients: "Pasteurized cream, salt.",
+    ingredients: "Organic Grade A whole milk, vitamin D3.",
   },
   Bread: {
     category: "Bread",
@@ -181,6 +181,16 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
   },
 };
 
+const BROTH_GRAVY_ALTERNATIVE: CleanAlternative = {
+  category: "Dressings",
+  brand: "Kettle & Fire",
+  name: "Organic Turkey Bone Broth",
+  size: "16.9 oz carton",
+  price: 6.49,
+  image: "/swaps/turkey.jpg",
+  ingredients: "Organic turkey bone broth (water, organic turkey bones, organic onions, organic carrots, organic celery), organic apple cider vinegar, sea salt, organic rosemary, organic sage, organic thyme, organic black pepper.",
+};
+
 export const DIRTY_FALLBACK_IMAGES: Record<SwapCategory, string> = {
   Yogurt: "/products/yogurt.jpg",
   Crackers: "/products/crackers.jpg",
@@ -198,11 +208,11 @@ const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
   ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat thins|graham)\b/i],
   ["Chips", /\b(chips|crisps|tortilla chips|doritos|pringles|cheetos|cheese puffs|puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
   ["Cereal", /\b(cereal|flakes|granola|loops|o's|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran)\b/i],
-  ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|lunch ?meat|roast beef|chicken breast|nuggets|beef|steak|pork)\b/i],
-  ["Dressings", /\b(dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|bbq|barbecue|sauce|salsa|marinara)\b/i],
-  ["Butter/Dairy", /\b(butter|margarine|spread|milk|cheese|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
-  ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza)\b/i],
-  ["Snacks", /\b(bars?|cookies?|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|water|tea|coffee)\b/i],
+  ["Dressings", /\b(gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|bbq|barbecue|sauce|salsa|marinara)\b/i],
+  ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|kielbasa|lunch ?meat|roast beef|chicken breast|chicken patties|nuggets|tenders|beef|steak|pork)\b/i],
+  ["Butter/Dairy", /\b(butter|margarine|spread|milk|eggnog|egg nog|cheese|velveeta|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
+  ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza|hot pockets?)\b/i],
+  ["Snacks", /\b(bars?|cookies?|wafers?|knoppers|storck|merci|kinder|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|water|tea|coffee)\b/i],
 ];
 
 export function detectCategory(productTitle = "", _ingredients = ""): SwapCategory {
@@ -241,6 +251,22 @@ function withAffiliate(url: string, store: Store, clickId: string): string {
   }
 }
 
+/** Concise 2-3 word search query for club stores (BJ's / Costco / Sam's) so native search screens always find in-stock matches. */
+function conciseClubQuery(q: string): string {
+  const s = q.toLowerCase();
+  if (/\b(broth|gravy|stock)\b/.test(s)) return "Organic Broth";
+  if (/\b(turkey|bacon|sausage|deli)\b/.test(s)) return "Applegate Organic";
+  if (/\b(yogurt)\b/.test(s)) return "Organic Yogurt";
+  if (/\b(crackers)\b/.test(s)) return "Organic Crackers";
+  if (/\b(cereal|flakes|oats)\b/.test(s)) return "Organic Cereal";
+  if (/\b(chips)\b/.test(s)) return "Avocado Oil Chips";
+  if (/\b(butter|grassmilk|milk)\b/.test(s)) return "Organic Milk";
+  if (/\b(bread|ezekiel|sprouted)\b/.test(s)) return "Organic Bread";
+  if (/\b(ranch|dressing)\b/.test(s)) return "Organic Ranch";
+  if (/\b(bar|larabar|lärabar|cashew)\b/.test(s)) return "Organic Fruit Bars";
+  return q.replace(/['"/\\]+/g, " ").trim().split(/\s+/).slice(0, 3).join(" ");
+}
+
 function searchPath(store: Store, q: string): string {
   const e = encodeURIComponent(q);
   switch (store) {
@@ -252,9 +278,12 @@ function searchPath(store: Store, q: string): string {
     case "doordash": return `/search/store/${e}`;
     case "ubereats": return `/search?q=${e}`;
     case "amazon": return `/s?k=${e}&i=amazonfresh`;
-    case "sams": return `/s/${e}`;
-    case "bjs": return `/search/${encodeURIComponent(q.replace(/['"/\\]+/g, " ").trim())}`;
-    case "costco": return `/CatalogSearch?dept=All&keyword=${e}`;
+    case "sams": return `/s/${encodeURIComponent(conciseClubQuery(q))}`;
+    case "bjs": {
+      const bjsQ = encodeURIComponent(conciseClubQuery(q));
+      return `/search/${bjsQ}?q=${bjsQ}&query=${bjsQ}&searchTerm=${bjsQ}`;
+    }
+    case "costco": return `/CatalogSearch?dept=All&keyword=${encodeURIComponent(conciseClubQuery(q))}`;
     case "shipt": return `/shop/search?query=${e}`;
   }
 }
@@ -307,8 +336,9 @@ export function resolveSwap(params: {
 }): SwapResult | null {
   if (params.score >= 75) return null;
   const store = params.store && STORES.includes(params.store) ? params.store : "walmart";
+  const isBrothOrGravy = /\b(gravy|broth|stock|bouillon)\b/i.test(params.productTitle || "");
   const category = params.category ?? detectCategory(params.productTitle, params.ingredients);
-  const alt = CLEAN_ALTERNATIVES[category];
+  const alt = isBrothOrGravy ? BROTH_GRAVY_ALTERNATIVE : CLEAN_ALTERNATIVES[category];
   const altScore = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist).score;
   if (altScore < 90) return null;
   return {

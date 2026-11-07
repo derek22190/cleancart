@@ -98,9 +98,23 @@
   }
 
   /* ---------------- DOM reading ---------------- */
+  const NON_TITLE_RE = /^(search|your cart|shopping cart|cart|checkout|items to add next|product information|similar items|customers also.*)$/i;
+  const NON_INGREDIENT_RE = /\b(items to add next|product information|similar items|customers also|you might also|related items|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
+  const REAL_ING_HINT_RE = /\b(water|milk|cream|sugar|salt|flour|wheat|corn|soy|oil|butter|egg|cheese|cocoa|chocolate|vanilla|syrup|starch|acid|lecithin|gum|flavor|natural|organic|vitamin|potassium|sodium|calcium|turkey|chicken|beef|pork|apple|berry|oat|rice|potato|tomato|onion|garlic|spice|vinegar|yeast|honey|almond|peanut|hazelnut|extract|culture|enzyme)\b/i;
+
+  function isValidIngredientText(raw) {
+    const t = String(raw || "").replace(/\s+/g, " ").trim();
+    if (t.length < 12 || t.length >= 3000) return false;
+    if (NON_INGREDIENT_RE.test(t) || NON_TITLE_RE.test(t)) return false;
+    if (!t.includes(",") && !REAL_ING_HINT_RE.test(t)) return false;
+    return true;
+  }
+
   function readTitle() {
     const h1 = document.querySelector('h1[itemprop="name"], h1[data-testid*="title" i], main h1, h1');
-    return (h1?.textContent || "").replace(/\s+/g, " ").trim();
+    const t = (h1?.textContent || "").replace(/\s+/g, " ").trim();
+    if (!t || NON_TITLE_RE.test(t)) return "";
+    return t;
   }
 
   function readIngredients() {
@@ -111,15 +125,16 @@
       let sib = el.nextElementSibling;
       for (let i = 0; i < 3 && sib; i++, sib = sib.nextElementSibling) {
         const t = sib.textContent.replace(/\s+/g, " ").trim();
-        if (t.length > 12) return t;
+        if (isValidIngredientText(t)) return t;
       }
       const parentText = el.parentElement?.textContent.replace(/\s+/g, " ").trim() || "";
       const stripped = parentText.replace(/^ingredients\s*:?\s*/i, "");
-      if (stripped.length > 12 && stripped.length < 3000) return stripped;
+      if (isValidIngredientText(stripped)) return stripped;
     }
     const inline = [...document.querySelectorAll("p, div, span")].find((n) =>
       n.children.length === 0 && /^ingredients\s*:/i.test(n.textContent.trim()));
-    return inline ? inline.textContent.replace(/^ingredients\s*:\s*/i, "").trim() : "";
+    const inlineText = inline ? inline.textContent.replace(/^ingredients\s*:\s*/i, "").trim() : "";
+    return isValidIngredientText(inlineText) ? inlineText : "";
   }
 
   function isProductPage() {

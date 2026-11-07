@@ -73,23 +73,30 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const barcode =
     typeof req.barcode === "string" || typeof req.barcode === "number" ? String(req.barcode).trim().slice(0, 32) : "";
 
-  // Reject store cart-control accessibility labels ("Remove Hood Vanilla Eggnog...", "Decrease quantity, ...",
-  // "1 in cart - ...", "Increase quantity, ...", "Reserve a time") so Cart Check only lists each product once.
-  // Note: "Quantity 1, <Product>" is Walmart's collapsed-cart / checkout item label and is stripped below, NOT rejected.
+  // Reject pure store UI controls, quantity +/- steppers, shipping/seller lines, and section headers
   const CART_CONTROL_OR_UI_NOISE =
-    /^(?:remove\s+.+|delete\s+.+|save\s+for\s+later(?:\s+.+)?|move\s+to\s+cart(?:\s+.+)?|(?:increase|decrease)\s+quantity\b.*|\d+\s+in\s+(?:cart|bag|basket|order)\b.*|reserve\s+a\s+time.*|choose\s+a\s+time.*|select\s+a\s+time.*|book\s+a\s+time.*|hide\s+details.*|show\s+details.*|view\s+details.*|see\s+details.*|don'?t\s+forget.*|delivery\s+from\s+store.*|pickup\s+from\s+store.*|free\s+\d+-day\s+returns.*|add\s+\$\d+.*|skip\s+the\s+order\s+min\s+fee.*|bought\s+\d+\s+times.*|choose\s+substitution.*|say\s+thanks\s+with\s+a\s+tip.*)$/i;
+    /^(?:(?:increase|decrease)\s+quantity\b.*|reserve\s+a\s+time.*|choose\s+a\s+time.*|select\s+a\s+time.*|book\s+a\s+time.*|hide\s+details.*|show\s+details.*|view\s+details.*|see\s+details.*|don'?t\s+forget.*|delivery\s+from\s+store.*|pickup\s+from\s+store.*|pickup\s+and\s+delivery.*|available\s+for\s+\d+\s+of\s+\d+\s+items.*|free\s+\d+-day\s+returns$|free\s+holiday\s+returns.*|gift\s+eligible.*|sold\s+by\s+.+|fulfilled\s+by\s+.+|sold\s+and\s+shipped\s+by\s+.+|arrives\s+(?:between|by)\s+.+|fees\s+may\s+apply.*|add\s+\$\d+.*|skip\s+the\s+order\s+min\s+fee.*|bought\s+\d+\s+times?$|choose\s+substitution.*|say\s+thanks\s+with\s+a\s+tip.*|product\s+information.*|items\s+to\s+add\s+next.*|many\s+in\s+stock.*|out\s+of\s+stock.*|snap\s+ebt\s+eligible$|pro\s+seller$|save\s+for\s+later$|move\s+to\s+cart$|remove$|delete$)$/i;
   if (!rawIngredients && !barcode && CART_CONTROL_OR_UI_NOISE.test(rawTitleInput)) {
     return { ok: false, status: 422, error: "Store UI control or duplicate cart action label ignored." };
   }
 
   const productTitle = rawTitleInput
     .replace(/^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*/i, "")
-    .replace(/^(best seller|overall pick|popular pick|rollback|sponsored|save for later)\s*[,•|\-]?\s*/i, "")
+    .replace(/^(?:remove|delete|save\s+for\s+later|move\s+to\s+cart)\s*[,:•|\-]?\s+/i, "")
+    .replace(/^\d+\s+in\s+(?:cart|bag|basket|order)\s*[,:•|\-–—]?\s*/i, "")
     .replace(/^(?:quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*/i, "")
+    .replace(/^(?:bought\s+\d+\s+times?|best\s+seller|overall\s+pick|popular\s+pick|rollback|sponsored|save\s+for\s+later)\s*[,•|\-]?\s*/gi, "")
+    .replace(/^(?:bought\s+\d+\s+times?|best\s+seller|overall\s+pick|popular\s+pick|rollback|sponsored)\s*[,•|\-]?\s*/gi, "")
+    .replace(/^\$\s*\d+(?:\.\d{2})?(?:\s*[,•|\-]?\s*\$\s*\d+(?:\.\d{2})?\s*\/?\s*(?:ea|oz|fl\s*oz|lb|ct)?)?\s*[,•|\-]?\s*/i, "")
+    .replace(/\s*[,•|\-]?\s*(?:free\s+\d+-day\s+returns|free\s+holiday\s+returns.*|snap\s+ebt\s+eligible|gift\s+eligible.*|subscribe)$/gi, "")
+    .replace(/\.\.\.+$/, "")
     .trim();
 
   if (!productTitle && !rawIngredients && !barcode) {
     return { ok: false, status: 400, error: "Provide productTitle, barcode, or rawIngredients." };
+  }
+  if (!rawIngredients && !barcode && CART_CONTROL_OR_UI_NOISE.test(productTitle)) {
+    return { ok: false, status: 422, error: "Store UI control or duplicate cart action label ignored." };
   }
   if (rawIngredients && !isEnglishIngredientText(rawIngredients)) {
     return {

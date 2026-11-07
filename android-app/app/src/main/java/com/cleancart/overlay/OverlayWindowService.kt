@@ -78,6 +78,7 @@ class OverlayWindowService : Service() {
         var score: Int,
         var swapObj: JSONObject? = null,
         val isSeed: Boolean = false,
+        var fullJson: JSONObject? = null,
     )
 
     private lateinit var wm: WindowManager
@@ -212,26 +213,49 @@ class OverlayWindowService : Service() {
         else -> "red"
     }
 
-    private fun syncCartFromScreen(arrRaw: String, replaceCart: Boolean) {
+    private fun normalizeCartKey(raw: String): String =
+        raw.lowercase()
+            .replace(Regex("^(conventional grocery|organic|natural)\\s+"), "")
+            .replace(Regex("[,•|\\-–—.…]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun isSameCartItem(a: String, b: String): Boolean {
+        if (a.equals(b, ignoreCase = true)) return true
+        val na = normalizeCartKey(a)
+        val nb = normalizeCartKey(b)
+        if (na == nb) return true
+        if (na.length >= 16 && nb.length >= 16 && (na.startsWith(nb) || nb.startsWith(na))) return true
+        return false
+    }
+
+    private fun syncCartFromScreen(arrRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
-        if (replaceCart) {
-            tripCart.clear()
-        }
+        // Never clear tripCart on virtualized RecyclerView cart screens — merge/accumulate visible rows
+        // so scrolling up and down a Walmart/BJ's/ALDI cart retains off-screen items smoothly.
+        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES }
         for (i in 0 until arr.length()) {
             val d = runCatching { JSONObject(arr.optString(i, "{}")) }.getOrNull() ?: continue
             if (d.optBoolean("ok") != true) continue
             val result = d.optJSONObject("result") ?: continue
             val prod = d.optJSONObject("product") ?: continue
             val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
-            if (rawTitle.isBlank()) continue
+            if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES) continue
             val score = result.optInt("score", 50)
             val swap = d.optJSONObject("swap")
-            val existing = tripCart.firstOrNull { it.key.equals(rawTitle, ignoreCase = true) }
+            val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
             if (existing != null) {
                 existing.score = score
                 existing.swapObj = swap
+                existing.fullJson = d
+                if (rawTitle.length > existing.title.length && !rawTitle.endsWith("...")) {
+                    existing.title = rawTitle
+                }
             } else {
-                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap))
+                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d))
+                while (tripCart.size > 40) {
+                    tripCart.removeAt(tripCart.size - 1)
+                }
             }
         }
         displayedCartAvg = calcCartAvg()
@@ -248,13 +272,16 @@ class OverlayWindowService : Service() {
         val score = result.optInt("score", 50)
         val swap = d.optJSONObject("swap")
         tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES }
-        val existing = tripCart.firstOrNull { it.key.equals(rawTitle, ignoreCase = true) }
+        val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
         if (existing != null) {
             existing.score = score
             existing.swapObj = swap
+            existing.fullJson = d
         } else {
-            tripCart.add(0, TripCartItem(rawTitle, rawTitle, score, swap))
-            if (tripCart.size > 15) tripCart.removeLast()
+            tripCart.add(0, TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d))
+            while (tripCart.size > 40) {
+                tripCart.removeAt(tripCart.size - 1)
+            }
         }
         displayedCartAvg = calcCartAvg()
         persistCart()
@@ -268,6 +295,7 @@ class OverlayWindowService : Service() {
                 put("title", item.title)
                 put("score", item.score)
                 item.swapObj?.let { put("swap", it) }
+                item.fullJson?.let { put("fullJson", it) }
             })
         }
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
@@ -286,7 +314,16 @@ class OverlayWindowService : Service() {
                     val o = arr.getJSONObject(i)
                     val title = o.optString("title")
                     if (title.lowercase() in DEMO_SEED_TITLES) continue
-                    tripCart.add(TripCartItem(o.optString("key"), title, o.optInt("score", 50), o.optJSONObject("swap")))
+                    tripCart.add(
+                        TripCartItem(
+                            key = o.optString("key"),
+                            title = title,
+                            score = o.optInt("score", 50),
+                            swapObj = o.optJSONObject("swap"),
+                            isSeed = false,
+                            fullJson = o.optJSONObject("fullJson"),
+                        )
+                    )
                 }
             }
         }
@@ -560,6 +597,8 @@ class OverlayWindowService : Service() {
                 setPadding(dp(10), dp(10), dp(10), dp(10))
                 background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(12).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+                isClickable = true
+                setOnClickListener { openCartItemAnalysis(item) }
                 addView(text(item.title, 13f, INK, bold = true).apply {
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
@@ -611,6 +650,29 @@ class OverlayWindowService : Service() {
         if (runCatching { wm.addView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)) }.isSuccess) {
             card = backdrop
         }
+    }
+
+    private fun openCartItemAnalysis(item: TripCartItem) {
+        val rating = when {
+            item.score >= 75 -> "Excellent"
+            item.score >= 50 -> "Good"
+            item.score >= 25 -> "Poor"
+            else -> "Bad"
+        }
+        val fallbackJson = JSONObject().apply {
+            put("ok", true)
+            put("product", JSONObject().apply { put("title", item.title) })
+            put("result", JSONObject().apply {
+                put("score", item.score)
+                put("rating", rating)
+                put("color", colorNameForScore(item.score))
+                put("flagged", JSONArray())
+            })
+            item.swapObj?.let { put("swap", it) }
+        }
+        data = item.fullJson ?: fallbackJson
+        openFlag = null
+        showCard()
     }
 
     /* ---------------- Health Insights card (Mode A tap) ---------------- */
@@ -752,36 +814,6 @@ class OverlayWindowService : Service() {
         }
         sheet.addView(swapBox)
 
-        // Optional manual Add/Remove to Cart Check
-        if (prodTitle.isNotBlank() && prodTitle.lowercase() !in DEMO_SEED_TITLES) {
-            val inCartNow = tripCart.any { it.key.equals(prodTitle, ignoreCase = true) }
-            val toggleBtn = text(
-                if (inCartNow) "✓ Included in Cart Check (Tap to Remove)" else "＋ Add to Cart Check",
-                12.5f,
-                if (inCartNow) BRAND else INK_2,
-                bold = true
-            ).apply {
-                gravity = Gravity.CENTER
-                setPadding(dp(12), dp(9), dp(12), dp(9))
-                background = GradientDrawable().apply {
-                    setColor(0xFFF4F3EE.toInt())
-                    cornerRadius = dp(999).toFloat()
-                }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
-                setOnClickListener {
-                    if (inCartNow) {
-                        tripCart.removeAll { it.key.equals(prodTitle, ignoreCase = true) }
-                        displayedCartAvg = calcCartAvg()
-                        persistCart()
-                    } else {
-                        recordScannedItem(d)
-                    }
-                    showCard()
-                }
-            }
-            sheet.addView(toggleBtn)
-        }
-
         val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
         backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             setMargins(dp(10), dp(10), dp(10), dp(24))
@@ -802,7 +834,7 @@ class OverlayWindowService : Service() {
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
         val prevAvg = calcCartAvg()
         val prodTitle = data?.optJSONObject("product")?.optString("title").orEmpty()
-        val target = explicitItem ?: tripCart.firstOrNull { it.key.equals(prodTitle, ignoreCase = true) } ?: tripCart.firstOrNull { it.score < 75 }
+        val target = explicitItem ?: tripCart.firstOrNull { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
         if (target != null) {
             target.title = swap.optString("title", target.title)
             target.score = swap.optInt("score", 100)
