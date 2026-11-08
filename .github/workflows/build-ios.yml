@@ -80,16 +80,15 @@ jobs:
           </dict>
           </plist>
           EOF
+          sed -i '' 's/com\.heybroc\.HeyBroc/com.heybroc.app/g' ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj
           xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
             -scheme "HeyBroc" \
             -sdk iphoneos \
             -configuration Release \
             -archivePath "ios-app/build/HeyBroc.xcarchive" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             archive
           xcodebuild -exportArchive \
             -archivePath "ios-app/build/HeyBroc.xcarchive" \
