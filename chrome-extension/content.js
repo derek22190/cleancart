@@ -297,15 +297,24 @@
           `<div class="cc-explain cc-risk-${esc(f.risk)}" style="margin-bottom:6px"><b>${esc(f.name)}</b> <span>−${esc(f.penalty)} pts</span><p>${esc(f.explanation)}</p></div>`,
       )
       .join("");
+    const swapPaidSuffix = d.swap?.isPaidLink ? " · paid link" : "";
     const swap = d.swap
-      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Verified Pick"}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 Excellent</span></div>
-           <button class="cc-swap-btn" data-act="swap">Swap Item</button></div>`
+      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 Excellent</span></div>
+           <button class="cc-swap-btn" data-act="swap">Swap Item${swapPaidSuffix}</button></div>`
       : `<div class="cc-swap cc-swap-ok">Great pick — no swap needed.</div>`;
+    const srcKey = d.product?.origin || d.product?.source || "catalog";
+    const srcName = srcKey === "screen" ? "Store page ingredients"
+      : srcKey === "openfoodfacts" ? "Open Food Facts (crowdsourced)"
+      : srcKey === "usda" ? "USDA FoodData Central"
+      : "Representative formulation — verify physical label";
+    const updatedPart = d.product?.sourceUpdatedAt ? ` · updated ${esc(d.product.sourceUpdatedAt)}` : "";
+    const reportHref = `mailto:support@heybroc.com?subject=${encodeURIComponent(`Label mismatch: ${d.product?.title || ""}`)}`;
 
     root.innerHTML = `<div class="cc-backdrop" data-act="collapse">
       <div class="cc-card ${tone}" role="dialog" aria-label="Health Insights">
         <div class="cc-head"><div class="cc-head-left"><img class="cc-head-mascot" src="${mascotUrl}" alt="Broc" /><div><span class="cc-eyebrow">HeyBroc</span><h3>Health Insights</h3></div></div><button class="cc-close" data-act="collapse">×</button></div>
         <p class="cc-product">${esc(d.product.title)}</p>
+        <p style="margin:-4px 0 8px;font-size:10px;color:#64748b">${esc(srcName)}${updatedPart} · <a href="${reportHref}" target="_blank" rel="noopener" style="color:#0f7a4a;text-decoration:underline">Report a mistake</a></p>
         <div class="cc-body">
           <div class="cc-gauge"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="cc-track"/><circle cx="50" cy="50" r="44" class="cc-fill" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - safeScore / 100)}" transform="rotate(-90 50 50)"/></svg>
             <div class="cc-gauge-label"><strong>${esc(safeScore)}<span>/100</span></strong><em>${esc(r.rating)}</em></div></div>
@@ -313,7 +322,7 @@
         </div>
         ${explain}
         ${swap}
-        <p style="margin:8px 0 0;font-size:10px;line-height:1.4;color:#64748b">Informational clean-label opinion only — not medical advice. Flagged ingredients are FDA-permitted/GRAS; always verify physical package label. Swap links may earn an affiliate commission. HeyBroc is not affiliated with any store or brand.</p>
+        <p style="margin:8px 0 0;font-size:10px;line-height:1.4;color:#64748b">Informational opinion only — most flagged ingredients are FDA-permitted or GRAS; verify physical label. HeyBroc is not affiliated with any store or brand.</p>
       </div></div>`;
   }
 
@@ -421,6 +430,11 @@
       // Do NOT mutate cartItems until the next screen scan or Add-to-Cart detects the swap item in cart.
       const currentKey = state.data.product?.title || readTitle();
       state.pendingSwap = { fromKey: currentKey, toTitle: state.data.swap.title };
+      try {
+        chrome.runtime.sendMessage({ type: "CLEANCART_RECORD_SWAP", productKey: currentKey });
+      } catch {
+        /* ignore */
+      }
       if (state.data.swap.webUrl) window.open(state.data.swap.webUrl, "_blank", "noopener");
       state.expanded = false;
       render();

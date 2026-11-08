@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret",
 };
 
 export function OPTIONS() {
@@ -16,7 +16,7 @@ export function OPTIONS() {
 }
 
 /**
- * Whole-Cart Auditor: POST { items: [{ productTitle?, rawIngredients?, barcode? }], store?, watchlist? }
+ * Whole-Cart Auditor: POST { items: [{ productTitle?, rawIngredients?, barcode? }], store?, surface?, watchlist? }
  * Scores every cart item and returns the 1-tap swap list for anything under 75.
  */
 export async function POST(request: Request) {
@@ -24,7 +24,15 @@ export async function POST(request: Request) {
   if (!checkRateLimit(`audit:${ip}`, 10)) {
     return NextResponse.json({ ok: false, error: "Too many cart audit requests. Please wait a moment." }, { status: 429, headers: CORS });
   }
-  let body: { items?: unknown; store?: string; watchlist?: Watchlist; familyWatchlist?: Category[] };
+  let body: {
+    items?: unknown;
+    store?: string;
+    surface?: "web" | "android" | "extension";
+    deviceId?: string;
+    deviceSecret?: string;
+    watchlist?: Watchlist;
+    familyWatchlist?: Category[];
+  };
   try {
     const parsed = await request.json();
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -43,6 +51,15 @@ export async function POST(request: Request) {
       { status: 400, headers: CORS },
     );
   }
+  const reqOrigin = (request.headers.get("origin") || "").toLowerCase();
+  const effectiveSurface =
+    reqOrigin.startsWith("chrome-extension://") ||
+    reqOrigin.startsWith("safari-web-extension://") ||
+    reqOrigin.startsWith("moz-extension://")
+      ? "extension"
+      : body.surface;
+  const effectiveSecret =
+    request.headers.get("x-device-secret")?.trim() || body.deviceSecret;
   const items = body.items;
   const memo = new Map<string, Promise<ScanResponse | ScanError>>();
 
@@ -59,6 +76,9 @@ export async function POST(request: Request) {
             pending = runScan({
               productTitle: item,
               store: body.store,
+              surface: effectiveSurface,
+              deviceId: body.deviceId,
+              deviceSecret: effectiveSecret,
               watchlist: body.watchlist,
               familyWatchlist: body.familyWatchlist,
             });
@@ -91,6 +111,9 @@ export async function POST(request: Request) {
           pending = runScan({
             ...reqItem,
             store: body.store,
+            surface: effectiveSurface ?? reqItem.surface,
+            deviceId: reqItem.deviceId ?? body.deviceId,
+            deviceSecret: reqItem.deviceSecret ?? effectiveSecret,
             watchlist: body.watchlist,
             familyWatchlist: reqItem.familyWatchlist ?? body.familyWatchlist,
           });

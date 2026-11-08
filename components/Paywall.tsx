@@ -52,6 +52,8 @@ export default function Paywall({
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeError, setCodeError] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [receipt, setReceipt] = useState<{
     plan: PlanId;
@@ -184,9 +186,79 @@ export default function Paywall({
     }
   };
 
+  const handleOpenBillingPortal = async () => {
+    setPortalBusy(true);
+    setCodeError("");
+    try {
+      const sp =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const devId =
+        sp?.get("deviceId") ||
+        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) ||
+        "";
+      const devSecret =
+        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) ||
+        "";
+      const sessionId =
+        sp?.get("session_id") ||
+        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_session_id")) ||
+        "";
+      const authToken =
+        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_auth_token")) ||
+        "";
+      let userEmail = sp?.get("email") || "";
+      if (!userEmail && typeof window !== "undefined") {
+        try {
+          const cachedUser = JSON.parse(
+            window.localStorage.getItem("heybroc_auth_user") ||
+              window.localStorage.getItem("heybroc_user") ||
+              "null"
+          ) as { email?: string } | null;
+          if (cachedUser?.email) userEmail = cachedUser.email;
+        } catch {
+          /* ignore */
+        }
+      }
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+        },
+        body: JSON.stringify({
+          deviceId: devId || undefined,
+          deviceSecret: devSecret || undefined,
+          sessionId: sessionId || undefined,
+          email: userEmail || undefined,
+          returnUrl: typeof window !== "undefined" ? window.location.origin : "https://heybroc.com",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok && data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setCodeError(
+        data?.error ||
+          "No active subscription found for this device. Log in with your checkout email or visit /terms for cancellation options."
+      );
+    } catch {
+      setCodeError("Network error opening Billing Portal. Please try again.");
+    } finally {
+      setPortalBusy(false);
+    }
+  };
+
   const handleCheckout = async () => {
     if (receipt) {
       onClose();
+      return;
+    }
+    if (!agreedToTerms) {
+      setCodeError(
+        "Please check the box below to agree to the Terms and automatic renewal terms before continuing."
+      );
       return;
     }
     setCheckoutBusy(true);
@@ -219,6 +291,8 @@ export default function Paywall({
           creatorCode: appliedCreator?.code,
           deviceId: devId || undefined,
           email: userEmail || undefined,
+          termsAccepted: true,
+          termsVersion: "2026-11-08",
           origin: typeof window !== "undefined" ? window.location.origin : "https://heybroc.com",
         }),
       });
@@ -417,12 +491,63 @@ export default function Paywall({
           )}
         </div>
 
+        {/* EXPRESS AUTO-RENEWAL CONSENT CHECKBOX (CA ARL / FTC NEGATIVE OPTION) */}
+        <label
+          htmlFor="paywall-arl-consent"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            margin: "12px 0 10px",
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: agreedToTerms ? "#ecfdf5" : "#f8faf9",
+            border: agreedToTerms ? "1.5px solid #0f7a4a" : "1.5px solid #cbd5e1",
+            fontSize: 12.5,
+            lineHeight: 1.45,
+            color: "#15201B",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            id="paywall-arl-consent"
+            type="checkbox"
+            checked={agreedToTerms}
+            onChange={(e) => {
+              setAgreedToTerms(e.target.checked);
+              if (e.target.checked) setCodeError("");
+            }}
+            style={{ marginTop: 3, width: 16, height: 16, accentColor: "#0f7a4a", flexShrink: 0 }}
+          />
+          <span>
+            I agree to the{" "}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "underline" }}
+            >
+              Terms
+            </a>{" "}
+            and that HeyBroc Pro renews automatically at{" "}
+            {selectedPlan === "annual"
+              ? `$${PRICING.annual.toFixed(2)}/yr after the ${trialDays}-day trial`
+              : `$${PRICING.monthly.toFixed(2)}/mo`}{" "}
+            until I cancel.
+          </span>
+        </label>
+
         {/* PRIMARY CTA */}
         <button
           id="paywall-cta"
           type="button"
           className="paywall-cta-btn"
-          disabled={checkoutBusy}
+          disabled={checkoutBusy || (!agreedToTerms && !receipt)}
+          style={
+            !agreedToTerms && !receipt
+              ? { opacity: 0.6, cursor: "not-allowed" }
+              : undefined
+          }
           onClick={handleCheckout}
         >
           {checkoutBusy
@@ -435,12 +560,22 @@ export default function Paywall({
         </button>
         <p className="paywall-sub">
           {selectedPlan === "annual"
-            ? `$0 due today, then $${PRICING.annual.toFixed(2)}/year ($${annualPerMonth.toFixed(2)}/mo). Cancel anytime in 1 tap.`
-            : `Billed monthly at $${PRICING.monthly.toFixed(2)}/mo ($${monthlyPerYear.toFixed(2)}/yr). Switch to Annual to save ${annualSavingsPct}%.`}
+            ? `$0 due today, then $${PRICING.annual.toFixed(2)}/year ($${annualPerMonth.toFixed(2)}/mo) after your ${trialDays}-day trial. Cancel anytime via Billing Settings.`
+            : `Billed monthly at $${PRICING.monthly.toFixed(2)}/mo ($${monthlyPerYear.toFixed(2)}/yr). Switch to Annual to save ${annualSavingsPct}%. Cancel anytime via Billing Settings.`}
         </p>
 
-        {onOpenLogin && (
-          <div style={{ textAlign: "center", marginTop: 6 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+            marginTop: 8,
+            fontSize: 12,
+          }}
+        >
+          {onOpenLogin && (
             <button
               type="button"
               onClick={onOpenLogin}
@@ -448,22 +583,57 @@ export default function Paywall({
                 background: "transparent",
                 border: "none",
                 color: "#0f7a4a",
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
                 textDecoration: "underline",
+                padding: 0,
               }}
             >
-              Already have an account or want to sync Pro across devices? Log in →
+              Already have an account? Log in →
             </button>
-          </div>
-        )}
+          )}
+          <button
+            id="paywall-manage-subscription"
+            type="button"
+            disabled={portalBusy}
+            onClick={handleOpenBillingPortal}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#3d5949",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              textDecoration: "underline",
+              padding: 0,
+            }}
+          >
+            {portalBusy ? "Opening Billing Portal…" : "Manage / Cancel subscription"}
+          </button>
+          <a
+            href="/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#3d5949", textDecoration: "underline" }}
+          >
+            Terms of Service
+          </a>
+          <a
+            href="/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#3d5949", textDecoration: "underline" }}
+          >
+            Privacy Policy
+          </a>
+        </div>
 
         {receipt && (
           <div className="paywall-receipt" role="status">
             <div>
               <strong>
-                ✓ HeyBroc Family Pro Activated ({receipt.plan === "annual" ? "$49.99/yr Annual" : "$9.99/mo Monthly"})
+                ✓ HeyBroc Family Pro Activated ({receipt.plan === "annual" ? `$${PRICING.annual.toFixed(2)}/yr Annual` : `$${PRICING.monthly.toFixed(2)}/mo Monthly`})
               </strong>
               <p>
                 Unlimited live store overlays, 1-tap clean swaps &amp; whole-cart health checks are now active on your account.

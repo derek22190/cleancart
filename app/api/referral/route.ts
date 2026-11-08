@@ -106,11 +106,30 @@ export async function POST(request: Request) {
       );
     }
 
+    if (action === "courtesy_refill" || action === "record_swap") {
+      if (!deviceId || deviceId === "anon-web" || !deviceSecret) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "A bound deviceId and deviceSecret are required for swap tracking and courtesy refills.",
+          },
+          { status: 400, headers: CORS }
+        );
+      }
+    }
+
     const device = await getOrCreateDevice(deviceId, deviceSecret);
     if (!verifyDeviceSecret(device, deviceSecret)) {
       return NextResponse.json(
         { ok: false, error: "Invalid device credentials." },
         { status: 403, headers: CORS }
+      );
+    }
+    if ((action === "courtesy_refill" || action === "record_swap") && !device.deviceSecretHash) {
+      return NextResponse.json(
+        { ok: false, error: "Unbound device credentials." },
+        { status: 400, headers: CORS }
       );
     }
 

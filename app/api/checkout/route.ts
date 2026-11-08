@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordSubscriptionConsent } from "@/lib/entitlements";
 import { getCreator } from "@/lib/influencers";
 import { PRICING, type PlanId } from "@/lib/pricing";
 import { isValidReferralCode } from "@/lib/referrals";
@@ -10,9 +11,19 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
 ]);
 
+const DEFAULT_TERMS_VERSION = "2026-11-08";
+
+function getClientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "anon"
+  );
+}
+
 /**
  * POST /api/checkout
- * Body: { plan: "annual" | "monthly", creatorCode?: string, deviceId?: string, origin?: string }
+ * Body: { plan: "annual" | "monthly", creatorCode?: string, deviceId?: string, email?: string, termsAccepted: boolean, termsVersion?: string, origin?: string }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -21,9 +32,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400 });
     }
     const body = parsed as Record<string, unknown>;
+    if (body.termsAccepted !== true) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Please check the box to agree to the Terms of Service and automatic renewal terms before continuing.",
+        },
+        { status: 400 }
+      );
+    }
+
     const plan: PlanId = body.plan === "monthly" ? "monthly" : "annual";
     const rawCreatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
     const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
+    const termsVersion =
+      typeof body.termsVersion === "string" && body.termsVersion.trim()
+        ? body.termsVersion.trim().slice(0, 40)
+        : DEFAULT_TERMS_VERSION;
     const rawEmail =
       typeof body.email === "string"
         ? body.email
@@ -33,6 +59,17 @@ export async function POST(req: NextRequest) {
     const customerEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(rawEmail.trim())
       ? rawEmail.trim().toLowerCase()
       : "";
+
+    const consentTimestamp = new Date().toISOString();
+    const clientIp = getClientIp(req);
+    await recordSubscriptionConsent({
+      deviceId: deviceId || "anon-web",
+      email: customerEmail,
+      plan,
+      termsVersion,
+      timestamp: consentTimestamp,
+      ip: clientIp,
+    });
 
     const isFriendCodeFormat = /^BROC-[A-Z0-9]{4,10}$/.test(rawCreatorCode);
     let verifiedCode = "";
@@ -89,9 +126,9 @@ export async function POST(req: NextRequest) {
     params.set("mode", "subscription");
     params.set(
       "success_url",
-      `${origin}/?pro=1&session_id={CHECKOUT_SESSION_ID}&plan=${plan}${verifiedCode ? `&code=${encodeURIComponent(verifiedCode)}` : ""}`
+      `${origin}/?pro=1&session_id={CHECKOUT_SESSION_ID}&plan=${plan}${verifiedCode ? `&code=${encodeURIComponent(verifiedCode)}` : ""}${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`
     );
-    params.set("cancel_url", `${origin}/?checkout=cancelled`);
+    params.set("cancel_url", `${origin}/?checkout=cancelled${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`);
     params.set("line_items[0][price_data][currency]", "usd");
     params.set("line_items[0][price_data][unit_amount]", String(unitAmountCents));
     params.set("line_items[0][price_data][recurring][interval]", interval);
@@ -105,7 +142,11 @@ export async function POST(req: NextRequest) {
     );
     params.set("line_items[0][quantity]", "1");
     params.set("metadata[plan]", plan);
+    params.set("metadata[terms_version]", termsVersion);
+    params.set("metadata[terms_accepted_at]", consentTimestamp);
     params.set("subscription_data[metadata][plan]", plan);
+    params.set("subscription_data[metadata][terms_version]", termsVersion);
+    params.set("subscription_data[metadata][terms_accepted_at]", consentTimestamp);
 
     if (deviceId) {
       params.set("client_reference_id", deviceId);

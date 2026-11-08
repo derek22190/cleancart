@@ -255,7 +255,150 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     Boolean(!promoBannerScan.ok && promoBannerScan.status === 422)
   );
 
+  // Step 4f & High 1 / High 3 / High 4 / Step 3 / Step 6 Regression Assertions
+  check(
+    "DRINKS_CATALOG has 0 multi-brand '/' entries and every entry has sourceUrl + verifiedAt",
+    DRINKS_CATALOG.every(
+      (d) =>
+        !d.brand.includes("/") &&
+        Boolean(d.sourceUrl && d.sourceUrl.startsWith("https://")) &&
+        Boolean(d.verifiedAt && !Number.isNaN(Date.parse(d.verifiedAt)))
+    )
+  );
+
+  const silkSoyScan = await runScan({ productTitle: "Silk Soymilk Original", store: "walmart" });
+  check(
+    "Silk Soymilk lists soy and NEVER lists almonds",
+    Boolean(
+      silkSoyScan.ok &&
+      /\bsoybeans?\b/i.test(silkSoyScan.product?.ingredients ?? "") &&
+      !/\balmonds?\b/i.test(silkSoyScan.product?.ingredients ?? "")
+    )
+  );
+
+  const liquidDeathWaterScan = await runScan({ productTitle: "Liquid Death Mountain Water", store: "walmart" });
+  check(
+    "Liquid Death Mountain Water returns plain mountain water only and scores 100/100",
+    Boolean(
+      liquidDeathWaterScan.ok &&
+      /^mountain water\.?$/i.test((liquidDeathWaterScan.product?.ingredients ?? "").trim()) &&
+      liquidDeathWaterScan.result?.score === 100 &&
+      liquidDeathWaterScan.result?.yukaBreakdown?.organicScore === 0
+    )
+  );
+
+  const doritosNkdScan = await runScan({ productTitle: "Doritos Simply NKD Nacho Cheese Tortilla Chips", store: "walmart" });
+  check(
+    "Doritos Simply NKD does not list Red 40, Yellow 5, or Yellow 6",
+    Boolean(
+      doritosNkdScan.ok &&
+      !/\b(red\s*40|yellow\s*5|yellow\s*6)\b/i.test(doritosNkdScan.product?.ingredients ?? "")
+    )
+  );
+
+  const luckyCharmsScan = await runScan({ productTitle: "General Mills Lucky Charms Cereal", store: "walmart" });
+  check(
+    "Lucky Charms does not list Red 40, Yellow 5, Yellow 6, or Blue 1",
+    Boolean(
+      luckyCharmsScan.ok &&
+      !/\b(red\s*40|yellow\s*5|yellow\s*6|blue\s*1)\b/i.test(luckyCharmsScan.product?.ingredients ?? "")
+    )
+  );
+
+  const pedialyteUnflavored = matchDrinkCatalog("Pedialyte Unflavored Electrolyte Solution");
+  check(
+    "Pedialyte Unflavored Electrolyte Solution does not list Red 40, sucralose, or acesulfame potassium",
+    Boolean(
+      pedialyteUnflavored &&
+      pedialyteUnflavored.id === "pedialyte-unflavored" &&
+      !/\b(red\s*40|sucralose|acesulfame)\b/i.test(pedialyteUnflavored.ingredients)
+    )
+  );
+
+  const planetOatExtraCreamy = matchDrinkCatalog("Planet Oat Extra Creamy Oatmilk");
+  check(
+    "Planet Oat Extra Creamy Oatmilk lists sunflower oil",
+    Boolean(
+      planetOatExtraCreamy &&
+      planetOatExtraCreamy.id === "planet-oat-extra-creamy" &&
+      /\bsunflower\s+oil\b/i.test(planetOatExtraCreamy.ingredients)
+    )
+  );
+
+  const doubleshot = matchDrinkCatalog("Starbucks Doubleshot Espresso and Cream");
+  check(
+    "Starbucks Doubleshot Espresso matches dedicated Doubleshot entry (not Frappuccino Mocha)",
+    Boolean(doubleshot && doubleshot.id === "starbucks-doubleshot-espresso")
+  );
+
+  const owynProElite = matchDrinkCatalog("OWYN Pro Elite Vanilla Protein Shake");
+  check(
+    "OWYN Pro Elite Vanilla Protein Shake matches dedicated 0g-sugar Pro Elite entry (no cane sugar)",
+    Boolean(
+      owynProElite &&
+      owynProElite.id === "owyn-pro-elite-shake" &&
+      !/\bcane\s+sugar\b/i.test(owynProElite.ingredients)
+    )
+  );
+
+  const itoEnRegular = matchDrinkCatalog("Ito En Oi Ocha Unsweetened Green Tea");
+  const itoEnOrganic = matchDrinkCatalog("Ito En Organic Green Tea");
+  check(
+    "Ito En regular Oi Ocha is not marked USDA Organic, while Ito En Organic Green Tea is",
+    Boolean(
+      itoEnRegular &&
+      itoEnRegular.nutrition.isOrganic === false &&
+      itoEnOrganic &&
+      itoEnOrganic.nutrition.isOrganic === true
+    )
+  );
+
+  const teaOrganicCheck = scoreProductYuka("Water, Organic Green Tea", {}, [], {
+    productTitle: "Tea",
+    isOrganic: false,
+  });
+  check(
+    "High 3: scoreProductYuka('Water, Organic Green Tea', {}, [], {productTitle:'Tea', isOrganic:false}) returns organicScore === 0",
+    teaOrganicCheck.yukaBreakdown?.organicScore === 0
+  );
+
+  const spikeCheck = scoreProductYuka("Sugar, corn syrup, enriched wheat flour", {}, [], {
+    productTitle: "Sweet Pastry",
+  });
+  check(
+    "High 4: yukaBreakdown never emits blood-glucose 'Spike' predictions",
+    Boolean(
+      spikeCheck.yukaBreakdown &&
+      !/spike/i.test(spikeCheck.yukaBreakdown.glucoseImpact ?? "") &&
+      !/glycemic profile/i.test(spikeCheck.yukaBreakdown.glucoseNote ?? "")
+    )
+  );
+
+  const extSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "extension" });
+  const androidSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "android" });
+  const webSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "web" });
+  check(
+    "Step 3: extension and unapproved android never attach Amazon affiliate tag, while web does",
+    Boolean(
+      extSwap && !(extSwap.deepLink ?? "").includes("tag=") && !extSwap.isPaidLink &&
+      androidSwap && !(androidSwap.deepLink ?? "").includes("tag=") && !androidSwap.isPaidLink &&
+      webSwap && (webSwap.deepLink ?? "").includes("tag=heybroc-20") && webSwap.isPaidLink
+    )
+  );
+
+  const wholeOatsScan = await runScan({
+    productTitle: "Pure Whole Grain Rolled Oats",
+    rawIngredients: "100% Whole Grain Rolled Oats.",
+    store: "walmart",
+    dietaryWatchlist: ["wheat_gluten", "egg"],
+  });
+  check(
+    "Step 6 allergen word-boundary fix: 'Whole Grain Rolled Oats' never triggers wheat_gluten or egg alerts",
+    Boolean(wholeOatsScan.ok && (wholeOatsScan.dietaryAlerts?.length ?? 0) === 0)
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);
 })();
+

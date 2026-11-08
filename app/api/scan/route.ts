@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret",
 };
 
 export function OPTIONS() {
@@ -22,7 +22,7 @@ export function GET() {
     {
       service: "CleanCart scan API",
       rubricVersion: RUBRIC_VERSION,
-      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, watchlist?, format?: 'json' | 'ios_text' }",
+      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, surface?, watchlist?, format?: 'json' | 'ios_text' }",
       categories: CATEGORY_LABELS,
       rules: ADDITIVE_RULES.map(({ id, name, risk, category }) => ({ id, name, risk, category })),
     },
@@ -48,6 +48,19 @@ export async function POST(request: Request) {
     body = parsed as ScanRequest;
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
+  }
+
+  const headerSecret = request.headers.get("x-device-secret")?.trim();
+  if (headerSecret && !body.deviceSecret) {
+    body.deviceSecret = headerSecret;
+  }
+  const reqOrigin = (request.headers.get("origin") || "").toLowerCase();
+  if (
+    reqOrigin.startsWith("chrome-extension://") ||
+    reqOrigin.startsWith("safari-web-extension://") ||
+    reqOrigin.startsWith("moz-extension://")
+  ) {
+    body.surface = "extension";
   }
 
   const scan = await runScan(body);

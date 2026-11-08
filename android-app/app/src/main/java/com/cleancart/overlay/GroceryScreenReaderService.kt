@@ -269,14 +269,19 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            if (event.isPassword) return
             val src = runCatching { event.source }.getOrNull()
+            if (src != null && (src.isPassword || src.isEditable)) {
+                recycleNode(src)
+                return
+            }
             val candidateClickStrings = ArrayList<String>()
             event.text?.forEach { addCandidateStrings(candidateClickStrings, it) }
             addCandidateStrings(candidateClickStrings, event.contentDescription)
             val clickedText = buildString {
                 event.text?.forEach { append(it).append(' ') }
                 event.contentDescription?.let { append(it).append(' ') }
-                if (src != null) {
+                if (src != null && !src.isPassword && !src.isEditable && src.isVisibleToUser) {
                     src.text?.let {
                         append(it).append(' ')
                         addCandidateStrings(candidateClickStrings, it)
@@ -287,10 +292,12 @@ class GroceryScreenReaderService : AccessibilityService() {
                     }
                     for (i in 0 until minOf(src.childCount, 10)) {
                         val ch = runCatching { src.getChild(i) }.getOrNull() ?: continue
-                        addCandidateStrings(candidateClickStrings, ch.text)
-                        addCandidateStrings(candidateClickStrings, ch.contentDescription)
-                        ch.text?.let { append(it).append(' ') }
-                        ch.contentDescription?.let { append(it).append(' ') }
+                        if (!ch.isPassword && !ch.isEditable && ch.isVisibleToUser) {
+                            addCandidateStrings(candidateClickStrings, ch.text)
+                            addCandidateStrings(candidateClickStrings, ch.contentDescription)
+                            ch.text?.let { append(it).append(' ') }
+                            ch.contentDescription?.let { append(it).append(' ') }
+                        }
                         recycleNode(ch)
                     }
                     // Walk up to 4 ancestor levels so tapping a product photo inside a nested CardView/Compose node captures the product card's title
@@ -298,13 +305,17 @@ class GroceryScreenReaderService : AccessibilityService() {
                     var depth = 0
                     while (ancestor != null && depth < 4) {
                         val curAncestor = ancestor
-                        addCandidateStrings(candidateClickStrings, curAncestor.text)
-                        addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
-                        for (i in 0 until minOf(curAncestor.childCount, 10)) {
-                            val pch = runCatching { curAncestor.getChild(i) }.getOrNull() ?: continue
-                            addCandidateStrings(candidateClickStrings, pch.text)
-                            addCandidateStrings(candidateClickStrings, pch.contentDescription)
-                            recycleNode(pch)
+                        if (!curAncestor.isPassword && !curAncestor.isEditable && curAncestor.isVisibleToUser) {
+                            addCandidateStrings(candidateClickStrings, curAncestor.text)
+                            addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
+                            for (i in 0 until minOf(curAncestor.childCount, 10)) {
+                                val pch = runCatching { curAncestor.getChild(i) }.getOrNull() ?: continue
+                                if (!pch.isPassword && !pch.isEditable && pch.isVisibleToUser) {
+                                    addCandidateStrings(candidateClickStrings, pch.text)
+                                    addCandidateStrings(candidateClickStrings, pch.contentDescription)
+                                }
+                                recycleNode(pch)
+                            }
                         }
                         val nextParent = runCatching { curAncestor.parent }.getOrNull()
                         recycleNode(curAncestor)
@@ -806,22 +817,20 @@ class GroceryScreenReaderService : AccessibilityService() {
                     viewId.contains("search_src_text") ||
                     viewId.contains("search_bar_text") ||
                     viewId.endsWith("search_box") ||
-                    viewId.endsWith("search_edit_text")
+                    viewId.endsWith("search_edit_text") ||
+                    viewId.contains("password") ||
+                    viewId.contains("card_number") ||
+                    viewId.contains("cvv")
                 if (!isSearchInput) {
                     val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
                     val visible = node.isVisibleToUser
                     node.getBoundsInScreen(rect)
                     val nodeW = rect.width()
-                    // Keep invisible nodes ONLY if they are below the fold (`rect.top >= belowFoldThresholdY`, e.g. a PDP
-                    // title pushed below the sticky bottom bar by a tall photo). Invisible nodes in the upper half of the
-                    // screen are occluded background screens in React Native ScreenStack (like BJ's previous page)!
-                    val allowNode = visible || rect.top >= belowFoldThresholdY
-                    if (allowNode) {
-                        val isEdgeClipped = visible && (
+                    if (visible) {
+                        val isEdgeClipped =
                             rect.left < edgeMarginPx ||
                                 rect.right > screenW - edgeMarginPx ||
                                 (nodeW in 1 until minCardTextWidthPx)
-                            )
                         val emittedForNode = HashSet<String>(6)
                         emitSplitAndCombinedNodes(out, node.text, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)
                         emitSplitAndCombinedNodes(out, node.contentDescription, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)

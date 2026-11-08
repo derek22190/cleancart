@@ -1066,7 +1066,7 @@ class OverlayWindowService : Service() {
         // Personal Allergy & Diabetes Watch Alert Banner (only shown when user checked corresponding box)
         val dietaryAlerts = ScanApi.evaluateDietaryAlerts(this, prodObj, result, d)
         if (dietaryAlerts.isNotEmpty()) {
-            root.addView(LinearLayout(this).apply {
+            sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 background = GradientDrawable().apply {
@@ -1251,6 +1251,8 @@ class OverlayWindowService : Service() {
             val swapUnlocked = ScanApi.isSwapUnlocked(this, prodTitle, swapTitle)
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
+            val isPaidLink = swap.optBoolean("isPaidLink", false)
+            val swapBtnLabel = if (isPaidLink) "Swap ↗ · paid link" else "Swap ↗"
 
             if (swapUnlocked) {
                 val topRow = LinearLayout(this).apply {
@@ -1280,8 +1282,8 @@ class OverlayWindowService : Service() {
                 })
 
                 // Action button — opens directly in the store app
-                topRow.addView(text("Swap ↗", 12.5f, Color.WHITE, bold = true).apply {
-                    setPadding(dp(13), dp(9), dp(13), dp(9))
+                topRow.addView(text(swapBtnLabel, 11.5f, Color.WHITE, bold = true).apply {
+                    setPadding(dp(12), dp(9), dp(12), dp(9))
                     background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
                     setOnClickListener { openSwap(swap) }
@@ -1377,13 +1379,42 @@ class OverlayWindowService : Service() {
             swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 12.5f, 0xFF0B5E39.toInt(), bold = true))
         }
         sheet.addView(swapBox)
+        val rawSource = d.optString("source").ifBlank { prodObj?.optString("source").orEmpty() }
+        val sourceUpdated = d.optString("sourceUpdatedAt").ifBlank { prodObj?.optString("sourceUpdatedAt").orEmpty() }
+        val sourceLabel = when (rawSource) {
+            "usda" -> "USDA FoodData Central"
+            "openfoodfacts" -> "Open Food Facts"
+            "catalog" -> "Representative formulation — verify physical label"
+            "screen" -> "On-screen package text"
+            else -> "Ingredient lookup"
+        }
+        val provenanceLine = buildString {
+            append("Source: $sourceLabel")
+            if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
+            append(" · Tap to report a mistake")
+        }
+        sheet.addView(
+            text(provenanceLine, 9.5f, BRAND, bold = true).apply {
+                setPadding(dp(2), dp(6), dp(2), 0)
+                setOnClickListener {
+                    runCatching {
+                        val subject = java.net.URLEncoder.encode("Ingredient label correction: $prodTitle", "UTF-8")
+                        val mailIntent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("mailto:support@heybroc.com?subject=$subject")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(mailIntent)
+                    }
+                }
+            }
+        )
         sheet.addView(
             text(
-                "Informational opinion only — not medical advice. Rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc's independent clean-label rubric. Always verify physical package label. Swap links may earn an affiliate commission. HeyBroc is independent and not affiliated with any store or brand.",
+                "Informational opinion only — not medical advice. Scores reflect HeyBroc's independent clean-label rubric. Formulations vary by region and lot; always verify the physical package label.",
                 9.5f,
                 INK_3
             ).apply {
-                setPadding(dp(2), dp(7), dp(2), 0)
+                setPadding(dp(2), dp(4), dp(2), 0)
             }
         )
 
@@ -1414,6 +1445,8 @@ class OverlayWindowService : Service() {
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
         val storeName = storeDisplayName(currentStoreKey)
+        val isPaidLink = swap.optBoolean("isPaidLink", false)
+        val modalSwapCta = if (isPaidLink) "Find & Swap in $storeName ↗ · paid link" else "Find & Swap in $storeName ↗"
 
         val backdrop = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -1470,7 +1503,7 @@ class OverlayWindowService : Service() {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text("✓ 0 Watchlist Additives", 14f, 0xFF16A34A.toInt(), bold = true))
-                addView(text("Verified clean 1-for-1 replacement with real whole-food ingredients.", 12.5f, INK_2).apply {
+                addView(text("Clean 1-for-1 replacement with whole-food ingredients.", 12.5f, INK_2).apply {
                     setPadding(0, dp(4), 0, 0)
                 })
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -1490,7 +1523,7 @@ class OverlayWindowService : Service() {
         }
 
         // Primary CTA: Open in Store App
-        sheet.addView(text("Find & Swap in $storeName ↗", 15f, Color.WHITE, bold = true).apply {
+        sheet.addView(text(modalSwapCta, 14f, Color.WHITE, bold = true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(18), dp(14), dp(18), dp(14))
             background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }

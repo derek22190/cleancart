@@ -12,6 +12,7 @@
     label { display: block; font-weight: 600; margin-bottom: 6px; }
     input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 10px; border: 1px solid #d8d9d3; font: inherit; }
     button { margin-top: 10px; width: 100%; padding: 10px; border: 0; border-radius: 999px; background: #0f7a4a; color: #fff; font-weight: 700; cursor: pointer; }
+    button.secondary { background: #eff1f0; color: #15201b; border: 1px solid #d8d9d3; margin-top: 8px; }
     #status { margin-top: 8px; min-height: 18px; color: #0f7a4a; font-weight: 600; }
   </style>
 </head>
@@ -25,6 +26,11 @@
   <input id="api" placeholder="https://heybroc.com" />
   <button id="save">Save &amp; test</button>
   <a href="https://www.heybroc.com/login" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:9px;border-radius:999px;background:#eff1f0;color:#15201b;text-align:center;font-weight:700;text-decoration:none;border:1px solid #d8d9d3;">👤 Log in / Sync Account →</a>
+  <button id="manage-sub" class="secondary" type="button">Manage / Cancel subscription</button>
+  <div style="margin-top:8px;text-align:center;font-size:11px;color:#64748b;">
+    <a href="https://www.heybroc.com/terms" target="_blank" rel="noopener" style="color:#4a5550;">Terms</a> ·
+    <a href="https://www.heybroc.com/privacy" target="_blank" rel="noopener" style="color:#4a5550;">Privacy</a>
+  </div>
   <div id="status"></div>
   <script src="popup.js"></script>
 </body>

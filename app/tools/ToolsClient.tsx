@@ -229,15 +229,15 @@ export default function ToolsClient() {
                     fontSize: 12,
                     fontWeight: 800,
                     background:
-                      liveScore.yukaBreakdown.glucoseImpact === "Low Spike"
+                      liveScore.yukaBreakdown.glucoseImpact === "Low Sugar / Carb"
                         ? "#dcfce7"
-                        : liveScore.yukaBreakdown.glucoseImpact === "Moderate Spike"
+                        : liveScore.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
                           ? "#fef3c7"
                           : "#fee2e2",
                     color:
-                      liveScore.yukaBreakdown.glucoseImpact === "Low Spike"
+                      liveScore.yukaBreakdown.glucoseImpact === "Low Sugar / Carb"
                         ? "#166534"
-                        : liveScore.yukaBreakdown.glucoseImpact === "Moderate Spike"
+                        : liveScore.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
                           ? "#92400e"
                           : "#991b1b",
                   }}

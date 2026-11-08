@@ -410,6 +410,66 @@ export default function AuthModal({
             </button>
 
             <button
+              id="account-manage-subscription"
+              type="button"
+              className="gococo-forgot-pill"
+              style={{ marginTop: 10 }}
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                setInfoMessage("");
+                try {
+                  const token =
+                    typeof window !== "undefined"
+                      ? window.localStorage.getItem("heybroc_auth_token") || ""
+                      : "";
+                  const devSecret =
+                    typeof window !== "undefined"
+                      ? window.localStorage.getItem("heybroc_device_secret") || ""
+                      : "";
+                  const sessionId =
+                    typeof window !== "undefined"
+                      ? window.localStorage.getItem("heybroc_session_id") || ""
+                      : "";
+                  const res = await fetch("/api/billing/portal", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                      ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+                    },
+                    body: JSON.stringify({
+                      deviceId,
+                      deviceSecret: devSecret || undefined,
+                      sessionId: sessionId || undefined,
+                      email: user.email,
+                      returnUrl:
+                        typeof window !== "undefined"
+                          ? window.location.origin
+                          : "https://heybroc.com",
+                    }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (res.ok && data?.ok && data?.url) {
+                    window.location.href = data.url;
+                    return;
+                  }
+                  setError(
+                    data?.error ||
+                      "No active Stripe subscription found for this account."
+                  );
+                } catch {
+                  setError("Could not open Billing Portal. Please try again.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <span>Manage / Cancel subscription</span>
+            </button>
+
+            <button
               type="button"
               className="gococo-forgot-pill"
               style={{ marginTop: 10 }}

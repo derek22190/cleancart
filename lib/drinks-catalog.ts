@@ -34,6 +34,8 @@ export interface DrinkCatalogEntry {
   ingredients: string;
   nutrition: NutritionInput;
   match: RegExp;
+  sourceUrl?: string;
+  verifiedAt?: string;
 }
 
 export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
@@ -68,6 +70,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(white\s+monster|monster\s+(?:energy\s+)?zero\s+ultra|monster\s+(?:energy\s+)?zero\s+sugar|monster\s+ultra\s+zero|monster\s+ultra\s+white|zero\s+ultra\s+monster|sugar[\s-]*free\s+monster)\b/i,
   },
   {
@@ -91,6 +95,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(mango\s+loco|monster\s+juice|juice\s+monster|monster\s+mango)\b/i,
   },
   {
@@ -114,6 +120,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(pipeline\s+punch|monster\s+punch)\b/i,
   },
   {
@@ -147,6 +155,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(monster\s+(?:energy\s+)?ultra\s+(?:peachy|strawberry|sunrise|paradise|fiesta|rosa|violet|watermelon|gold|blue|red|black)|ultra\s+peachy\s+keen|ultra\s+strawberry\s+dreams|ultra\s+sunrise)\b/i,
   },
   {
@@ -169,6 +179,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 5,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(monster\s+rehab|rehab\s+monster)\b/i,
   },
   {
@@ -199,6 +211,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(monster\s+energy|monster\s+original|green\s+monster|monster\s+lo[- ]?carb|\bmonster\b)\b/i,
   },
   {
@@ -229,6 +243,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(red\s*bull\s+(?:sugar\s*free|sugarfree|zero)|sugar\s*free\s+red\s*bull)\b/i,
   },
   {
@@ -264,6 +280,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(red\s*bull\s+(?:red|amber|yellow|blue|sea\s+blue|green|winter|summer|peach|coconut|watermelon|juneberry|strawberry|tropical|dragon\s+fruit)\b)/i,
   },
   {
@@ -287,6 +305,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(red\s*bull)\b/i,
   },
   {
@@ -316,6 +336,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(celsius\s+(?:live\s+fit\s+)?(?:sparkling\s+)?orange)\b/i,
   },
   {
@@ -349,6 +371,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(celsius)\b/i,
   },
   {
@@ -382,6 +406,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /^(?!.*\b(pre[- ]?workout|powder|whey|protein|bar)\b).*\b(alani(?:\s+nu)?(?:\s+energy)?|cosmic\s+stardust|cherry\s+slush|breezeberry|witches'?\s+brew)\b/i,
   },
   {
@@ -413,6 +439,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /^(?!.*\b(pre[- ]?workout|legend|powder|whey|protein|bar)\b).*\b(ghost\s+energy|ghost\s+(?:sour\s+patch|warheads|swedish\s+fish|orange\s+cream|faze\s+pop|cherry\s+limeade))\b/i,
   },
   {
@@ -444,6 +472,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(c4\s+(?:performance\s+|smart\s+|ultimate\s+)?energy|frozen\s+bombsicle|c4\s+(?:skittles|starburst|can))\b/i,
   },
   {
@@ -466,6 +496,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(bang\s+energy|bang\s+(?:blue\s+razz|peach\s+mango|rainbow\s+unicorn|cotton\s+candy|black\s+cherry|radical\s+skadattle))\b/i,
   },
   {
@@ -488,6 +520,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(reign\s+(?:total\s+body\s+fuel|energy|storm|orange\s+dreamsicle|white\s+gummy|razzle\s+berry))\b/i,
   },
   {
@@ -510,6 +544,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(rockstar\s+(?:pure\s+zero|zero\s+sugar|sugar\s*free|silver\s+ice))\b/i,
   },
   {
@@ -533,6 +569,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(rockstar\s+energy|rockstar\s+(?:original|punched|recovery|boom))\b/i,
   },
   {
@@ -555,6 +593,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 5,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(prime\s+energy)\b/i,
   },
   {
@@ -577,6 +617,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(5[- ]?hour\s+energy|five\s+hour\s+energy)\b/i,
   },
   {
@@ -599,6 +641,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(zoa\s+energy|\bzoa\b\s+zero)\b/i,
   },
   {
@@ -622,18 +666,20 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(nos\s+energy|\bnos\b\s+high\s+performance)\b/i,
   },
   {
-    id: "full-throttle-venom-energy",
-    title: "Full Throttle / Venom Original Citrus Energy Drink, 16 fl oz",
-    brand: "Full Throttle / Venom",
+    id: "full-throttle-energy",
+    title: "Full Throttle Original Citrus Energy Drink, 16 fl oz",
+    brand: "Full Throttle",
     category: "Energy Drinks",
     description:
-      "High-sugar citrus energy drink (160mg caffeine, 55g–58g sugar per 16 oz can) formulated with high fructose corn syrup, sodium benzoate, potassium sorbate, sucralose, and glycerol ester of rosin.",
-    keywords: ["full throttle", "venom energy", "energy drink"],
+      "High-sugar citrus energy drink (160mg caffeine, 58g sugar per 16 oz can) formulated with high fructose corn syrup, sodium benzoate, potassium sorbate, and glycerol ester of rosin.",
+    keywords: ["full throttle", "full throttle energy", "energy drink"],
     ingredients:
-      "Carbonated Water, High Fructose Corn Syrup, Citric Acid, Taurine, Natural and Artificial Flavors, Sodium Benzoate and Potassium Sorbate (Preservatives), Caffeine, Sodium Citrate, Acacia, Glycerol Ester of Rosin, Niacinamide (Vitamin B3), Carnitine Fumarate, Sucralose, Calcium Pantothenate (Vitamin B5), Guarana, Ginseng Extract, Pyridoxine Hydrochloride (Vitamin B6), Cyanocobalamin (Vitamin B12).",
+      "Carbonated Water, High Fructose Corn Syrup, Citric Acid, Taurine, Natural and Artificial Flavors, Sodium Benzoate and Potassium Sorbate (Preservatives), Caffeine, Sodium Citrate, Acacia, Glycerol Ester of Rosin, Niacinamide (Vitamin B3), Carnitine Fumarate, Calcium Pantothenate (Vitamin B5), Guarana, Ginseng Extract, Pyridoxine Hydrochloride (Vitamin B6), Cyanocobalamin (Vitamin B12).",
     nutrition: {
       caloriesKcal100g: 46,
       sugarsG100g: 11.4,
@@ -645,7 +691,34 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(full\s+throttle|venom\s+energy)\b/i,
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/full-throttle",
+    verifiedAt: "2026-11-08",
+    match: /\b(full\s+throttle)\b/i,
+  },
+  {
+    id: "venom-energy",
+    title: "Venom Original Black Mamba Energy Drink, 16 fl oz",
+    brand: "Venom Energy",
+    category: "Energy Drinks",
+    description:
+      "High-sugar energy drink (160mg caffeine) formulated with carbonated water, high fructose corn syrup, glucose, taurine, sodium benzoate, potassium sorbate, L-carnitine, inositol, and sucralose.",
+    keywords: ["venom energy", "black mamba energy", "energy drink"],
+    ingredients:
+      "Carbonated Water, High Fructose Corn Syrup, Glucose, Citric Acid, Taurine, Natural and Artificial Flavors, Sodium Citrate, Sodium Benzoate and Potassium Sorbate (Preservatives), Caffeine, L-Carnitine, Inositol, Maltodextrin, Niacinamide (Vitamin B3), Sucralose, Pyridoxine Hydrochloride (Vitamin B6), Riboflavin (Vitamin B2), Panax Ginseng Root Extract, Guarana Seed Extract, Cyanocobalamin (Vitamin B12).",
+    nutrition: {
+      caloriesKcal100g: 50,
+      sugarsG100g: 11.2,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 63,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.keurigdrpepper.com",
+    verifiedAt: "2026-11-08",
+    match: /\b(venom\s+energy|venom\s+black\s+mamba)\b/i,
   },
   {
     id: "clean-cause-yerba-mate",
@@ -669,6 +742,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(clean\s+cause)\b/i,
   },
   {
@@ -693,6 +768,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(guru\s+organic\s+energy|\bguru\b\s+energy)\b/i,
   },
   {
@@ -726,6 +803,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(guayak[ií]|yerba\s+mate|enlighten\s+mint|revel\s+berry|bluephoria)\b/i,
   },
 
@@ -762,6 +841,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(c4\s+(?:original|ultimate|ripped|sport|dynasty|extreme)?\s*pre[- ]?workout|cellucor\s+c4|icy\s+blue\s+razz\s+pre|\bc4\b)\b/i,
   },
   {
@@ -793,6 +874,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(ghost\s+legend|ghost\s+pre[- ]?workout|ghost\s+pump|ghost\s+size)\b/i,
   },
   {
@@ -823,6 +906,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(gorilla\s+mode|gorilla\s+mind|gorilla\s+nitric)\b/i,
   },
   {
@@ -845,6 +930,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(ryse\s+(?:loaded|godzilla|project\s+blackout|pre[- ]?workout)|loaded\s+pre[- ]?workout)\b/i,
   },
   {
@@ -867,6 +954,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(bucked\s+up|woke\s+af|\bbamf\b\s+pre)\b/i,
   },
   {
@@ -889,6 +978,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(total\s+war|redcon1)\b/i,
   },
   {
@@ -912,6 +1003,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(transparent\s+labs\s+bulk|transparent\s+labs.*pre[- ]?workout)\b/i,
   },
   {
@@ -943,6 +1036,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(ora\s+organic.*pre[- ]?workout|renewable\s+energy.*pre[- ]?workout)\b/i,
   },
   {
@@ -965,6 +1060,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(nitraflex|alani\s+nu\s+pre[- ]?workout|optimum\s+nutrition.*pre[- ]?workout|gold\s+standard\s+pre[- ]?workout|\bpre[- ]?workout\b)\b/i,
   },
   {
@@ -997,6 +1094,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(core\s+power|fairlife\s+(?:elite|nutrition\s+plan|protein|core\s+power))\b/i,
   },
   {
@@ -1020,6 +1119,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(premier\s+protein)\b/i,
   },
   {
@@ -1043,6 +1144,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(muscle\s+milk)\b/i,
   },
   {
@@ -1066,12 +1169,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(gold\s+standard\s+(?:100%\s+)?whey|optimum\s+nutrition\s+whey)\b/i,
   },
   {
     id: "ghost-whey-protein",
-    title: "Ghost Whey / Flavored Whey Protein Powder (Representative Formulation)",
-    brand: "Ghost / Representative Whey Formulation",
+    title: "Ghost Whey Protein Powder",
+    brand: "Ghost",
     category: "Pre-Workouts & Fitness",
     description:
       "Flavored whey protein isolate & concentrate blend sweetened with sucralose and acesulfame potassium, plus natural and artificial flavors, xanthan gum, and sunflower/soy lecithin.",
@@ -1089,15 +1194,42 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
-    match: /\b(ghost\s+whey|whey\s+protein\s+powder)\b/i,
+    sourceUrl: "https://www.ghostlifestyle.com/products/ghost-whey",
+    verifiedAt: "2026-11-08",
+    match: /\b(ghost\s+whey)\b/i,
   },
   {
-    id: "owyn-plant-protein-shake",
-    title: "OWYN (Only What You Need) 100% Plant-Based Protein Shake (Dark Chocolate / Vanilla), 12 fl oz",
+    id: "owyn-pro-elite-shake",
+    title: "OWYN Pro Elite High Protein Shake (0g Sugar), 12 fl oz",
     brand: "OWYN",
     category: "Pre-Workouts & Fitness",
     description:
-      "100% plant-based, Top-9-allergen-free protein shake (20g–32g pea, organic pumpkin seed, and flaxseed protein) sweetened with organic cane sugar and monk fruit extract — zero dairy, soy, gluten, or artificial sweeteners.",
+      "Zero-sugar 32g plant-based protein shake formulated with pea protein, organic pumpkin seed protein, chickpea protein, sunflower oil, soluble corn fiber, greens blend, and monk fruit extract — 0g sugar and no cane sugar.",
+    keywords: ["owyn pro elite", "owyn 32g", "owyn pro elite vanilla", "owyn zero sugar"],
+    ingredients:
+      "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Chickpea Protein), Sunflower Oil, Soluble Corn Fiber, Natural Flavor, Greens Blend (Broccoli, Kale, Spinach), Acacia Gum, Gellan Gum, Sea Salt, Monk Fruit Extract.",
+    nutrition: {
+      caloriesKcal100g: 56,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0.3,
+      sodiumMg100g: 75,
+      fiberG100g: 1.7,
+      proteinG100g: 9.0,
+      fruitsVegNutsPct: 5,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://liveowyn.com/products/pro-elite-protein-shakes/",
+    verifiedAt: "2026-11-08",
+    match: /\b(owyn.*pro\s+elite|pro\s+elite.*owyn)\b/i,
+  },
+  {
+    id: "owyn-plant-protein-shake",
+    title: "OWYN 20g Plant-Based Protein Shake, 12 fl oz",
+    brand: "OWYN",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "100% plant-based, Top-9-allergen-free 20g protein shake sweetened with organic cane sugar and monk fruit extract — zero dairy, soy, gluten, or artificial sweeteners.",
     keywords: ["owyn", "only what you need", "plant based protein shake", "vegan protein shake", "protein shake"],
     ingredients:
       "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Organic Flaxseed Oil), Cane Sugar, High Oleic Sunflower Oil, Alkalized Cocoa Powder, Guar Gum, Monk Fruit Extract, Natural Flavors, Sea Salt, Greens Blend (Spinach, Kale, Broccoli), Vitamin & Mineral Blend.",
@@ -1112,7 +1244,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
-    match: /\b(owyn|only\s+what\s+you\s+need)\b/i,
+    sourceUrl: "https://liveowyn.com/products/protein-shakes/",
+    verifiedAt: "2026-11-08",
+    match: /^(?=.*\b(owyn|only\s+what\s+you\s+need)\b)(?!.*\bpro\s+elite\b).*$/i,
   },
   {
     id: "orgain-organic-protein-shake",
@@ -1136,6 +1270,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(orgain|clean\s+protein\s+shake|organic\s+protein\s+shake)\b/i,
   },
 
@@ -1162,6 +1298,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(diet\s+coke|diet\s+coca[- ]?cola)\b/i,
   },
   {
@@ -1184,6 +1322,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(coke\s+zero|coca[- ]?cola\s+zero(?:\s+sugar)?)\b/i,
   },
   {
@@ -1206,6 +1346,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(mexican\s+coke|mexican\s+coca[- ]?cola|coca[- ]?cola.*cane\s+sugar)\b/i,
   },
   {
@@ -1229,6 +1371,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(coca[- ]?cola|coke\s+classic|cherry\s+coke|vanilla\s+coke|\bcoke\b)\b/i,
   },
   {
@@ -1251,6 +1395,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(diet\s+pepsi|pepsi\s+zero(?:\s+sugar)?|pepsi\s+max)\b/i,
   },
   {
@@ -1274,6 +1420,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(pepsi(?:\s+cola|\s+wild\s+cherry)?)\b/i,
   },
   {
@@ -1296,6 +1444,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(diet\s+dr\.?\s*pepper|dr\.?\s*pepper\s+zero(?:\s+sugar)?)\b/i,
   },
   {
@@ -1319,6 +1469,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(dr\.?\s*pepper)\b/i,
   },
   {
@@ -1350,6 +1502,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(diet\s+(?:mountain|mtn|mt\.?)\s+dew|(?:mountain|mtn|mt\.?)\s+dew\s+zero(?:\s+sugar)?|baja\s+blast\s+zero)\b/i,
   },
   {
@@ -1380,12 +1534,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(mountain\s+dew|mtn\s+dew|mt\.?\s+dew|baja\s+blast|code\s+red\s+dew)\b/i,
   },
   {
     id: "sprite-zero-sugar",
     title: "Sprite Zero Sugar / 7UP Zero Sugar / Starry Zero Sugar Lemon-Lime Soda, 12 fl oz Cans",
-    brand: "Sprite / 7UP / Starry",
+    brand: "Sprite",
     category: "Sodas & Prebiotic Sodas",
     description:
       "Zero-sugar caffeine-free lemon-lime soda sweetened with aspartame and acesulfame potassium, preserved with potassium benzoate and potassium citrate.",
@@ -1403,6 +1559,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b((?:sprite|starry|7\s*up|seven\s+up|squirt)\s+zero(?:\s+sugar)?|diet\s+(?:sprite|7\s*up|seven\s+up|squirt))\b/i,
   },
   {
@@ -1426,6 +1584,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(sprite|starry|7\s*up|seven\s+up|squirt)\b/i,
   },
   {
@@ -1449,6 +1609,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(fresca)\b/i,
   },
   {
@@ -1482,6 +1644,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(olipop)\b/i,
   },
   {
@@ -1506,6 +1670,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(poppi|culture\s+pop)\b/i,
   },
   {
@@ -1528,12 +1694,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(zevia)\b/i,
   },
   {
     id: "fanta-sunkist-crush-orange",
     title: "Fanta / Sunkist / Crush Orange Soda, 12 fl oz Cans",
-    brand: "Fanta / Sunkist / Crush",
+    brand: "Fanta",
     category: "Sodas & Prebiotic Sodas",
     description:
       "Sweetened orange soda (44g–52g sugar per 12 oz can) containing high fructose corn syrup, sodium benzoate, and petroleum-derived synthetic dyes Yellow 6 and Red 40.",
@@ -1551,12 +1719,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(fanta|sunkist|crush\s+(?:orange|grape|strawberry)|orange\s+soda)\b/i,
   },
   {
     id: "root-beer-aw-barqs-mug",
     title: "A&W / Barq's / Mug Root Beer Soda, 12 fl oz Cans",
-    brand: "A&W / Barq's / Mug",
+    brand: "A&W",
     category: "Sodas & Prebiotic Sodas",
     description:
       "Classic root beer sweetened with high fructose corn syrup (43g–46g sugar per 12 oz can), colored with caramel color, and preserved with sodium benzoate.",
@@ -1574,6 +1744,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(a\s*&\s*w|barq'?s|mug\s+root\s+beer|root\s+beer|cream\s+soda)\b(?!.*\b(olipop|poppi|zevia)\b)/i,
   },
   {
@@ -1597,6 +1769,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(canada\s+dry|schweppes|seagram'?s|vernors|ginger\s+ale)\b/i,
   },
 
@@ -1606,7 +1780,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   {
     id: "organic-valley-grassmilk-whole",
     title: "Organic Valley / Horizon Organic Grade A Whole Milk, 64 fl oz",
-    brand: "Organic Valley / Horizon Organic",
+    brand: "Organic Valley",
     category: "Milk & Dairy Drinks",
     description:
       "USDA Organic pasture-raised whole dairy milk fortified with Vitamin D3 and free of synthetic hormones, antibiotics, and chemical pesticides.",
@@ -1624,6 +1798,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(organic\s+valley.*(?:whole|grassmilk)|horizon\s+organic.*milk|maple\s+hill.*milk|kalona.*milk)\b/i,
   },
   {
@@ -1647,6 +1823,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(organic\s+valley.*2%|organic\s+grassmilk\s+2%)\b/i,
   },
   {
@@ -1671,6 +1849,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(organic\s+valley.*chocolate\s+milk|horizon.*chocolate\s+milk)\b/i,
   },
   {
@@ -1694,6 +1874,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(fairlife.*chocolate\s+milk|fairlife\s+chocolate)\b/i,
   },
   {
@@ -1716,12 +1898,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(fairlife)\b(?!.*\b(chocolate|core\s+power|elite|nutrition\s+plan)\b)/i,
   },
   {
     id: "nesquik-trumoo-chocolate-milk",
     title: "Nesquik / TruMoo Sweetened Lowfat Chocolate Milk",
-    brand: "Nesquik / TruMoo",
+    brand: "Nesquik",
     category: "Milk & Dairy Drinks",
     description:
       "Conventional sweetened chocolate dairy milk formulated with lowfat milk, sugar, alkalized cocoa, carrageenan, and guar gum.",
@@ -1739,6 +1923,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "d",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(nesquik|trumoo|tru\s+moo|promised\s+land.*milk|great\s+value.*chocolate\s+milk|chocolate\s+milk|strawberry\s+milk)\b/i,
   },
   {
@@ -1761,6 +1947,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(lactaid|lactose[- ]?free\s+milk|a2\s+(?:whole\s+|2%\s+)?milk)\b/i,
   },
   {
@@ -1783,11 +1971,38 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(great\s+value.*milk|raw\s+farm.*milk|whole\s+(?:vitamin\s+d\s+)?milk|2%\s+(?:reduced\s+fat\s+)?milk|1%\s+(?:lowfat\s+)?milk|skim\s+milk|fat\s+free\s+milk|vitamin\s+d\s+milk)\b/i,
   },
   {
+    id: "planet-oat-extra-creamy",
+    title: "Planet Oat Extra Creamy Oatmilk, 52 fl oz",
+    brand: "Planet Oat",
+    category: "Milk & Dairy Drinks",
+    description:
+      "Extra Creamy oatmilk formulated with filtered water, oats, sunflower oil for added richness, vitamin/mineral fortification, dipotassium phosphate, guar gum, and gellan gum.",
+    keywords: ["planet oat extra creamy", "extra creamy oatmilk", "planet oat extra creamy oatmilk"],
+    ingredients:
+      "Oatmilk (Filtered Water, Oats), Sunflower Oil, Calcium Carbonate, Dipotassium Phosphate (Stabilizer), Sea Salt, Guar Gum, Gellan Gum, Natural Flavor, Vitamin A Palmitate, Vitamin D2, Riboflavin (Vitamin B2), Vitamin B12.",
+    nutrition: {
+      caloriesKcal100g: 50,
+      sugarsG100g: 1.7,
+      saturatedFatG100g: 0.2,
+      sodiumMg100g: 48,
+      fiberG100g: 0.8,
+      proteinG100g: 0.8,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "b",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://planetoat.com/frequently-asked-questions",
+    verifiedAt: "2026-11-08",
+    match: /\b(planet\s+oat.*extra\s+creamy|extra\s+creamy.*planet\s+oat)\b/i,
+  },
+  {
     id: "planet-oat-milk",
-    title: "Planet Oat Oatmilk (Original / Unsweetened Original), 52–86 fl oz",
+    title: "Planet Oat Original Oatmilk, 52 fl oz",
     brand: "Planet Oat",
     category: "Milk & Dairy Drinks",
     description:
@@ -1806,15 +2021,17 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
-    match: /\b(planet\s+oat)\b/i,
+    sourceUrl: "https://planetoat.com/products/original-oatmilk/",
+    verifiedAt: "2026-11-08",
+    match: /^(?=.*\bplanet\s+oat\b)(?!.*\bextra\s+creamy\b).*$/i,
   },
   {
     id: "oatly-planet-oat-milk",
-    title: "Oatly / Chobani / Califia Farms Oatmilk (Original / Extra Creamy / Barista), 52–64 fl oz",
-    brand: "Oatly / Chobani Oat",
+    title: "Oatly Original Oatmilk, 64 fl oz",
+    brand: "Oatly",
     category: "Milk & Dairy Drinks",
     description:
-      "Commercial oat milk formulated with oat base, low-erucic acid rapeseed (canola) or sunflower oil for frothiness, dipotassium phosphate, and gums.",
+      "Commercial oat milk formulated with oat base, low-erucic acid rapeseed (canola) oil for frothiness, dipotassium phosphate, and calcium carbonate.",
     keywords: ["oatly", "chobani oat", "califia oat", "oat milk", "oatmilk", "barista oat milk", "milk"],
     ingredients:
       "Oatmilk (Water, Oats), Low Erucic Acid Rapeseed Oil (Canola Oil), Contains 2% or Less of: Dipotassium Phosphate, Calcium Carbonate, Tricalcium Phosphate, Sea Salt, Dicalcium Phosphate, Riboflavin, Vitamin A, Vitamin D2, Vitamin B12.",
@@ -1829,6 +2046,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
+    sourceUrl: "https://www.oatly.com/en-us/products/oatmilk/oatmilk-64-fl-oz",
+    verifiedAt: "2026-11-08",
     match: /\b(oatly|chobani\s+oat|califia.*oat|oat\s*milk)\b(?!.*\b(malk|planet\s+oat)\b)/i,
   },
   {
@@ -1852,12 +2071,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://malkorganics.com/products/unsweetened-oat-malk/",
+    verifiedAt: "2026-11-08",
     match: /\b(malk.*oat)\b/i,
   },
   {
     id: "malk-organic-oat-almond",
-    title: "MALK / Three Trees Organic Unsweetened Almond Milk (Simple Ingredients), 28 fl oz",
-    brand: "MALK / Three Trees",
+    title: "MALK Organic Unsweetened Almond Milk (3 Simple Ingredients), 28 fl oz",
+    brand: "MALK",
     category: "Milk & Dairy Drinks",
     description:
       "USDA Organic almond milk made with just filtered water, organic almonds, and Himalayan pink salt — zero gums, zero seed oils, zero phosphates.",
@@ -1875,11 +2096,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://malkorganics.com/products/unsweetened-almond-malk/",
+    verifiedAt: "2026-11-08",
     match: /\b(malk|three\s+trees)\b/i,
   },
   {
     id: "elmhurst-1925-nut-milk",
-    title: "Elmhurst 1925 Unsweetened Milked Almonds / Cashews / Walnuts (2 Ingredients), 32 fl oz",
+    title: "Elmhurst 1925 Unsweetened Milked Almonds (2 Ingredients), 32 fl oz",
     brand: "Elmhurst 1925",
     category: "Milk & Dairy Drinks",
     description:
@@ -1898,11 +2121,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://elmhurst1925.com/products/unsweetened-milked-almonds",
+    verifiedAt: "2026-11-08",
     match: /\b(elmhurst(?:\s+1925)?)\b/i,
   },
   {
     id: "silk-soymilk",
-    title: "Silk Original / Unsweetened Soymilk (Dairy-Free & Nut-Free), 64 fl oz",
+    title: "Silk Original Soymilk (Dairy-Free & Nut-Free), 64 fl oz",
     brand: "Silk",
     category: "Milk & Dairy Drinks",
     description:
@@ -1922,6 +2147,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://silk.com/plant-based-products/soymilk/original-soymilk/",
+    verifiedAt: "2026-11-08",
     match: /\b(silk\s+soy(?:milk)?|soy\s*milk)\b/i,
   },
   {
@@ -1946,12 +2173,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://sodeliciousdairyfree.com",
+    verifiedAt: "2026-11-08",
     match: /\b(so\s+delicious.*coconut\s*milk|coconut\s*milk\s+beverage)\b/i,
   },
   {
     id: "almond-breeze-unsweetened",
-    title: "Almond Breeze / Silk Unsweetened Almondmilk (0g Sugar), 64 fl oz",
-    brand: "Almond Breeze / Silk",
+    title: "Almond Breeze Unsweetened Almondmilk (0g Sugar), 64 fl oz",
+    brand: "Almond Breeze",
     category: "Milk & Dairy Drinks",
     description:
       "Unsweetened almond milk (30 kcal and 0g sugar per cup) containing filtered water, almonds, calcium carbonate, sunflower lecithin, gellan gum, and locust bean gum.",
@@ -1970,12 +2199,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
-    match: /\b((?:almond\s+breeze|silk\s+almond|califia.*almond|almond\s*milk).*unsweetened|unsweetened.*(?:almond\s+breeze|silk\s+almond|almond\s*milk))\b(?!.*\b(malk|three\s+trees|elmhurst)\b)/i,
+    sourceUrl: "https://www.bluediamond.com/brand/almond-breeze/",
+    verifiedAt: "2026-11-08",
+    match: /\b((?:almond\s+breeze|silk\s+almond|califia.*almond|almond\s*milk).*unsweetened|unsweetened.*(?:almond\s+breeze|silk\s+almond|almond\s*milk))\b(?!.*\b(malk|three\s+trees|elmhurst|soy)\b)/i,
   },
   {
     id: "almond-breeze-silk-almondmilk",
-    title: "Almond Breeze / Silk / Califia Farms Almondmilk (Original / Vanilla), 64 fl oz",
-    brand: "Almond Breeze / Silk",
+    title: "Almond Breeze Original Almondmilk, 64 fl oz",
+    brand: "Almond Breeze",
     category: "Milk & Dairy Drinks",
     description:
       "Conventional sweetened almond milk containing cane sugar, calcium carbonate, sunflower lecithin, gellan gum, locust bean gum, and natural flavors.",
@@ -2001,7 +2232,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
-    match: /\b(almond\s+breeze|silk\s+(?:almond|nextmilk|cashew)|califia\s+farms.*almond|almond\s*milk)\b(?!.*\b(malk|three\s+trees|elmhurst)\b)/i,
+    sourceUrl: "https://www.bluediamond.com/brand/almond-breeze/",
+    verifiedAt: "2026-11-08",
+    match: /\b(almond\s+breeze|silk\s+(?:almond|nextmilk|cashew)|califia\s+farms.*almond|almond\s*milk)\b(?!.*\b(malk|three\s+trees|elmhurst|soy)\b)/i,
   },
 
   /* ======================================================================== */
@@ -2009,8 +2242,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   /* ======================================================================== */
   {
     id: "fiji-evian-spring-water",
-    title: "Fiji Natural Artesian Water / Evian / Mountain Valley / Acqua Panna Spring Water",
-    brand: "Fiji / Evian / Mountain Valley",
+    title: "Fiji Natural Artesian Water",
+    brand: "Fiji",
     category: "Waters & Seltzers",
     description:
       "100% natural artesian or mountain spring water with naturally occurring electrolytes and silica — zero calories, zero sweeteners, and zero chemical additives.",
@@ -2031,7 +2264,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "artesian water",
       "water",
     ],
-    ingredients: "100% Natural Artesian / Spring Water (Naturally Occurring Electrolytes).",
+    ingredients: "Natural Artesian Water.",
     nutrition: {
       caloriesKcal100g: 0,
       sugarsG100g: 0,
@@ -2044,15 +2277,17 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: true,
     },
+    sourceUrl: "https://www.fijiwater.com",
+    verifiedAt: "2026-11-08",
     match: /\b(fiji(?:\s+water)?|evian|mountain\s+valley\s+spring|acqua\s+panna|waiakea|icelandic\s+glacial|poland\s+spring|deer\s+park|ice\s+mountain|ozarka|zephyrhills|natural\s+spring\s+water|artesian\s+water)\b/i,
   },
   {
     id: "smartwater-dasani-aquafina-essentia",
-    title: "Smartwater / Essentia / Core Hydration / Dasani / Aquafina Purified Water",
-    brand: "Smartwater / Essentia / Dasani",
+    title: "Smartwater Vapor Distilled Water with Electrolytes",
+    brand: "Smartwater",
     category: "Waters & Seltzers",
     description:
-      "Vapor-distilled or reverse-osmosis purified water remineralized with trace electrolytes (calcium chloride, magnesium chloride, potassium bicarbonate) — 0 calories, 0 sugar, 0 additives.",
+      "Vapor-distilled purified water remineralized with trace electrolytes (calcium chloride, magnesium chloride, potassium bicarbonate) — 0 calories, 0 sugar, 0 additives.",
     keywords: [
       "smartwater",
       "smart water",
@@ -2068,7 +2303,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "bottled water",
       "water",
     ],
-    ingredients: "Vapor Distilled / Purified Water, Calcium Chloride, Magnesium Chloride, Potassium Bicarbonate (for Taste).",
+    ingredients: "Vapor Distilled Water, Calcium Chloride, Magnesium Chloride, Potassium Bicarbonate (Electrolytes Added for Taste).",
     nutrition: {
       caloriesKcal100g: 0,
       sugarsG100g: 0,
@@ -2080,12 +2315,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: true,
     },
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/smartwater",
+    verifiedAt: "2026-11-08",
     match: /\b(smart\s*water|essentia|core\s+hydration|dasani|aquafina|alkaline\s+water|purified\s+(?:drinking\s+)?water)\b/i,
   },
   {
     id: "san-pellegrino-perrier-topo-chico",
-    title: "San Pellegrino / Perrier / Topo Chico / Saratoga Sparkling Natural Mineral Water",
-    brand: "San Pellegrino / Topo Chico / Perrier",
+    title: "San Pellegrino Sparkling Natural Mineral Water",
+    brand: "San Pellegrino",
     category: "Waters & Seltzers",
     description:
       "Naturally carbonated mineral water bottled at the source with natural calcium, magnesium, and bicarbonate minerals — zero sugar, zero flavors, and zero synthetic additives.",
@@ -2114,25 +2351,50 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: true,
     },
+    sourceUrl: "https://www.sanpellegrino.com",
+    verifiedAt: "2026-11-08",
     match: /\b(san\s+pellegrino|pellegrino|perrier|topo\s+chico|saratoga(?:\s+spring)?(?:\s+water)?|gerolsteiner|mineral\s+water)\b/i,
   },
   {
-    id: "liquid-death-water",
-    title: "Liquid Death Mountain Water / Sparkling Water (Original / Severed Lime / Mango Chainsaw), 19.2 fl oz",
+    id: "liquid-death-mountain-water",
+    title: "Liquid Death Mountain Water (Still), 19.2 fl oz",
     brand: "Liquid Death",
     category: "Waters & Seltzers",
     description:
-      "Canned mountain water and low-calorie flavored sparkling water (Plain has 0 ingredients beyond water; Flavored varieties add a touch of organic agave nectar, citric acid, and natural flavors).",
+      "100% pure still mountain water in an infinitely recyclable tallboy can — zero calories, zero sweeteners, zero agave, and zero additives.",
+    keywords: ["liquid death mountain water", "liquid death still water", "liquid death water"],
+    ingredients: "Mountain Water.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 0,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isOrganic: false,
+      isWholeFood: true,
+    },
+    sourceUrl: "https://liquiddeath.com/products/mountain-water",
+    verifiedAt: "2026-11-08",
+    match: /^(?=.*\bliquid\s+death\b)(?!.*\b(severed\s+lime|mango\s+chainsaw|berry\s+it\s+alive|convicted\s+melon|grave\s+fruit|sparkling\s+flavored|iced\s+tea|dead\s+billionaire|armless\s+palmer|rest\s+in\s+peach|slaughter\s+berry|grim\s+leafer)\b).*$/i,
+  },
+  {
+    id: "liquid-death-water",
+    title: "Liquid Death Flavored Sparkling Water (Severed Lime / Mango Chainsaw), 19.2 fl oz",
+    brand: "Liquid Death",
+    category: "Waters & Seltzers",
+    description:
+      "Low-calorie flavored sparkling water sweetened with organic agave nectar, citric acid, and natural flavors.",
     keywords: [
-      "liquid death",
       "severed lime",
       "mango chainsaw",
       "berry it alive",
       "convicted melon",
-      "mountain water",
-      "water",
+      "liquid death flavored",
     ],
-    ingredients: "Carbonated Water, Organic Agave Nectar, Citric Acid, Natural Lime / Mango Flavor.",
+    ingredients: "Carbonated Water, Organic Agave Nectar, Citric Acid, Natural Flavor.",
     nutrition: {
       caloriesKcal100g: 4,
       sugarsG100g: 0.7,
@@ -2144,7 +2406,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
-    match: /\b(liquid\s+death|severed\s+lime|mango\s+chainsaw|berry\s+it\s+alive)\b/i,
+    sourceUrl: "https://liquiddeath.com/products/severed-lime",
+    verifiedAt: "2026-11-08",
+    match: /\b(severed\s+lime|mango\s+chainsaw|berry\s+it\s+alive|convicted\s+melon|liquid\s+death.*(?:lime|mango|berry|melon|flavored))\b/i,
   },
   {
     id: "nixie-organic-sparkling-water",
@@ -2167,6 +2431,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(nixie(?:\s+organic)?(?:\s+sparkling)?)\b/i,
   },
   {
@@ -2198,12 +2464,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(spindrift)\b/i,
   },
   {
     id: "lacroix-waterloo-bubly-polar-seltzer",
     title: "LaCroix / Waterloo / Bubly / Polar Sparkling Water (Pamplemousse, Lime, Black Cherry), 12 fl oz",
-    brand: "LaCroix / Waterloo / Bubly",
+    brand: "LaCroix",
     category: "Waters & Seltzers",
     description:
       "Zero-calorie, zero-sugar carbonated water flavored with natural essence oils ('Natural Flavors') and free of sweeteners, dyes, and sodium.",
@@ -2235,6 +2503,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(la\s*croix|waterloo\s+sparkling|bubly|polar\s+seltzer|hint\s+water|sparkling\s+water|seltzer\s+water|club\s+soda)\b/i,
   },
   {
@@ -2258,6 +2528,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(bai\s+(?:antioxidant|water|cocofusion|brasilia|molokai|kula|zambia|sumatra|malawi)|\bbai\b)\b/i,
   },
   {
@@ -2281,6 +2553,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(vitamin\s*water\s+zero(?:\s+sugar)?)\b/i,
   },
   {
@@ -2304,6 +2578,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(vitamin\s*water)\b/i,
   },
   {
@@ -2332,6 +2608,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(propel\s+(?:water|electrolyte|immune)|\bpropel\b)\b/i,
   },
   {
@@ -2360,6 +2638,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(sparkling\s+ice)\b/i,
   },
 
@@ -2387,12 +2667,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(uncle\s+matt'?s|organic\s+(?:100%\s+)?(?:pulp[- ]?free\s+)?orange\s+juice)\b/i,
   },
   {
     id: "tropicana-simply-orange-juice",
     title: "Tropicana Pure Premium / Simply Orange / Minute Maid 100% Orange Juice, 52 fl oz",
-    brand: "Tropicana / Simply Orange",
+    brand: "Tropicana",
     category: "Juices, Smoothies & Lemonades",
     description:
       "100% squeezed pasteurized orange juice (not from concentrate). Contains zero chemical additives, but delivers 22g concentrated liquid fruit sugar per 8 oz glass with 0g whole-fruit fiber (Nutri-Score C).",
@@ -2419,12 +2701,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(tropicana|simply\s+orange|florida'?s\s+natural|natalie'?s.*orange\s+juice|minute\s+maid.*orange\s+juice|100%\s+(?:pure\s+)?(?:squeezed\s+)?orange\s+juice|\borange\s+juice\b)\b/i,
   },
   {
     id: "motts-martinellis-apple-juice",
     title: "Mott's / Martinelli's Gold Medal 100% Pure Apple Juice, 64 fl oz",
-    brand: "Mott's / Martinelli's",
+    brand: "Mott's",
     category: "Juices, Smoothies & Lemonades",
     description:
       "100% pasteurized apple juice delivering ~24g–28g concentrated liquid fruit sugar per 8 oz glass with 0g fiber.",
@@ -2451,12 +2735,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(mott'?s|martinelli'?s|100%\s+(?:pure\s+)?apple\s+juice|\bapple\s+juice\b|sparkling\s+apple\s+cider)\b/i,
   },
   {
     id: "welchs-pom-ocean-spray-100-juice",
     title: "Welch's 100% Grape Juice / POM Wonderful 100% Pomegranate / Lakewood Pure Tart Cherry",
-    brand: "Welch's / POM Wonderful / Lakewood",
+    brand: "Welch's",
     category: "Juices, Smoothies & Lemonades",
     description:
       "100% fruit juice rich in polyphenols and antioxidants, but concentrated in natural liquid sugars (30g–36g sugar per 8 oz serving with 0g fiber).",
@@ -2484,6 +2770,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(welch'?s.*juice|grape\s+juice|pom\s+wonderful|pomegranate\s+juice|lakewood\s+organic|rw\s+knudsen|tart\s+cherry\s+juice)\b/i,
   },
   {
@@ -2507,12 +2795,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(ocean\s+spray|cranberry\s+juice\s+cocktail|cran[- ]?grape|cran[- ]?raspberry|cranberry\s+juice)\b/i,
   },
   {
     id: "simply-minute-maid-lemonade",
     title: "Simply Lemonade / Simply Raspberry Lemonade / Minute Maid Lemonade, 52 fl oz",
-    brand: "Simply / Minute Maid",
+    brand: "Simply",
     category: "Juices, Smoothies & Lemonades",
     description:
       "Sweetened lemonade beverage (11%–12% lemon juice) containing 28g added cane sugar or high fructose corn syrup per 8 oz serving.",
@@ -2540,6 +2830,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(simply\s+(?:lemonade|raspberry\s+lemonade|strawberry\s+lemonade|peach|watermelon|limeade)|minute\s+maid\s+lemonade|newman'?s\s+own.*lemonade|hubert'?s\s+lemonade|\blemonade\b|\blimeade\b)\b/i,
   },
   {
@@ -2563,6 +2855,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(capri\s*sun)\b/i,
   },
   {
@@ -2586,6 +2880,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(hi[- ]?c|minute\s+maid\s+fruit\s+punch)\b/i,
   },
   {
@@ -2609,12 +2905,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(sunny\s*d)\b/i,
   },
   {
     id: "kool-aid-hi-c-sunnyd-hawaiian-punch",
     title: "Kool-Aid Jammers / Hawaiian Punch / Tampico Sweetened Fruit Punch",
-    brand: "Kool-Aid / Hawaiian Punch / Tampico",
+    brand: "Kool-Aid",
     category: "Juices, Smoothies & Lemonades",
     description:
       "Sweetened fruit punch drink (≤5% juice) containing high fructose corn syrup, sucralose, synthetic dyes (Red 40, Blue 1, Yellow 5, Yellow 6), and sodium benzoate / potassium sorbate.",
@@ -2641,6 +2939,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(kool[- ]?aid|hawaiian\s+punch|tampico|\btang\b\s+orange)\b/i,
   },
   {
@@ -2665,12 +2965,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(honest\s+kids|appley\s+ever\s+after)\b/i,
   },
   {
     id: "naked-bolthouse-smoothie",
     title: "Naked Juice (Mighty Mango / Green Machine) / Bolthouse Farms Fruit Smoothie, 15.2 fl oz",
-    brand: "Naked Juice / Bolthouse Farms",
+    brand: "Naked Juice",
     category: "Juices, Smoothies & Lemonades",
     description:
       "Bottled fruit-puree and juice-concentrate smoothie containing 0g added cane sugar, but packing 53g–57g concentrated fruit sugar per 15.2 oz bottle with minimal intact fiber.",
@@ -2698,6 +3000,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "d",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(naked\s+(?:juice|mighty\s+mango|green\s+machine|blue\s+machine|strawberry\s+banana)|mighty\s+mango|green\s+machine|bolthouse\s+farms.*(?:smoothie|green\s+goodness))\b/i,
   },
   {
@@ -2722,6 +3026,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(suja\s+organic|uber\s+greens|evolution\s+fresh.*greens)\b/i,
   },
   {
@@ -2745,6 +3051,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(harmless\s+harvest|organic\s+coconut\s+water)\b/i,
   },
   {
@@ -2768,6 +3076,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(vita\s+coco|c2o\s+coconut|coconut\s+water)\b/i,
   },
 
@@ -2777,7 +3087,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   {
     id: "gatorade-zero",
     title: "Gatorade Zero / Powerade Zero Sugar Sports Drink (Glacier Freeze / Berry), 20 fl oz",
-    brand: "Gatorade / Powerade",
+    brand: "Gatorade",
     category: "Sports & Electrolyte Drinks",
     description:
       "Zero-sugar electrolyte sports drink sweetened with sucralose and acesulfame potassium, plus synthetic dyes (Blue 1 / Red 40 / Yellow 5) and glycerol ester of rosin.",
@@ -2794,6 +3104,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(gatorade\s+zero|powerade\s+zero)\b/i,
   },
   {
@@ -2816,6 +3128,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(gatorlyte)\b/i,
   },
   {
@@ -2847,6 +3161,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(gatorade)\b/i,
   },
   {
@@ -2870,6 +3186,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(powerade)\b/i,
   },
   {
@@ -2893,6 +3211,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(body\s*armor\s+(?:lyte|zero|lite))\b/i,
   },
   {
@@ -2916,6 +3236,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(body\s*armor)\b/i,
   },
   {
@@ -2946,6 +3268,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 10,
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(prime\s+hydration|prime\s+(?:ice\s+pop|meta\s+moon|blue\s+raspberry|tropical\s+punch|lemon\s+lime|cherry\s+freeze|strawberry\s+watermelon)|\bprime\b\s+drink)\b/i,
   },
   {
@@ -2969,15 +3293,42 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
+    sourceUrl: "https://world.openfoodfacts.org",
+    verifiedAt: "2026-11-08",
     match: /\b(liquid\s+i\.?v\.?|hydration\s+multiplier)\b/i,
   },
   {
-    id: "pedialyte-electrolyte-solution",
-    title: "Pedialyte Oral Electrolyte Rehydration Solution, 33.8 fl oz",
+    id: "pedialyte-unflavored",
+    title: "Pedialyte Classic Unflavored Oral Electrolyte Solution, 33.8 fl oz",
     brand: "Pedialyte",
     category: "Sports & Electrolyte Drinks",
     description:
-      "Oral electrolyte rehydration solution containing dextrose, citric acid, potassium citrate, prebiotic galacto-oligosaccharides (milk derivative), artificial sweeteners (sucralose and acesulfame potassium), and synthetic dye (Red 40 / Blue 1 / Yellow 6).",
+      "Abbott unflavored oral electrolyte rehydration solution formulated with water, dextrose, citric acid, potassium citrate, salt, sodium citrate, and zinc gluconate — zero artificial sweeteners and zero synthetic dyes.",
+    keywords: ["pedialyte unflavored", "unflavored pedialyte", "pedialyte classic unflavored"],
+    ingredients:
+      "Water, Dextrose. Less than 2% of: Citric Acid, Potassium Citrate, Salt, Sodium Citrate, Zinc Gluconate.",
+    nutrition: {
+      caloriesKcal100g: 10,
+      sugarsG100g: 2.5,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 103,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "b",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.abbottnutrition.com/our-products/pedialyte-classic",
+    verifiedAt: "2026-11-08",
+    match: /\b(pedialyte.*unflavored|unflavored.*pedialyte)\b/i,
+  },
+  {
+    id: "pedialyte-electrolyte-solution",
+    title: "Pedialyte Classic Flavored Oral Electrolyte Solution, 33.8 fl oz",
+    brand: "Pedialyte",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Flavored oral electrolyte rehydration solution containing dextrose, citric acid, potassium citrate, artificial sweeteners (sucralose and acesulfame potassium), and synthetic dye (Red 40).",
     keywords: ["pedialyte", "pedialyte advancedcare", "electrolyte solution", "electrolyte drink"],
     ingredients:
       "Water, Dextrose, Less than 1% of: Galacto-Oligosaccharides (Milk), Citric Acid, Potassium Citrate, Salt, Natural and Artificial Flavor, Sodium Citrate, Sucralose, Acesulfame Potassium, Zinc Gluconate, Red 40.",
@@ -2991,12 +3342,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(pedialyte)\b/i,
+    sourceUrl: "https://www.abbottnutrition.com/our-products/pedialyte-classic",
+    verifiedAt: "2026-11-08",
+    match: /^(?=.*\bpedialyte\b)(?!.*\bunflavored\b).*$/i,
   },
   {
     id: "electrolit-biolyte-hydration",
-    title: "Electrolit / Biolyte Premium Hydration Electrolyte Beverage, 21 fl oz",
-    brand: "Electrolit / Biolyte",
+    title: "Electrolit Premium Hydration Electrolyte Beverage, 21 fl oz",
+    brand: "Electrolit",
     category: "Sports & Electrolyte Drinks",
     description:
       "Dairy-free electrolyte hydration beverage formulated with pharmaceutical-grade glucose/dextrose, sodium, potassium, magnesium, calcium, and stevia leaf extract.",
@@ -3013,6 +3366,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
+    sourceUrl: "https://electrolit.com",
+    verifiedAt: "2026-11-08",
     match: /\b(electrolit|biolyte)\b/i,
   },
   {
@@ -3036,12 +3391,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://nuunlife.com",
+    verifiedAt: "2026-11-08",
     match: /\b(nuun)\b/i,
   },
   {
     id: "lmnt-zero-sugar-electrolyte",
-    title: "LMNT / Ultima Replenisher Zero-Sugar Electrolyte Drink Mix",
-    brand: "LMNT / Ultima Replenisher",
+    title: "LMNT Zero-Sugar Electrolyte Drink Mix",
+    brand: "LMNT",
     category: "Sports & Electrolyte Drinks",
     description:
       "Zero-sugar mineral electrolyte drink mix (sodium chloride, magnesium malate, potassium chloride, citric acid) sweetened with stevia leaf extract — zero sugar, zero artificial sweeteners, and zero synthetic dyes.",
@@ -3059,6 +3416,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://drinklmnt.com",
+    verifiedAt: "2026-11-08",
     match: /\b(lmnt|ultima\s+replenisher)\b/i,
   },
   {
@@ -3088,6 +3447,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://drinknooma.com",
+    verifiedAt: "2026-11-08",
     match: /\b(nooma)\b/i,
   },
 
@@ -3115,12 +3476,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "c",
       isWholeFood: false,
     },
+    sourceUrl: "https://www.lacolombe.com",
+    verifiedAt: "2026-11-08",
     match: /\b(la\s+colombe\s+draft\s+latte|la\s+colombe)\b/i,
   },
   {
     id: "dunkin-iced-coffee",
-    title: "Dunkin' / International Delight Bottled Iced Coffee, 13.7 fl oz",
-    brand: "Dunkin' / International Delight",
+    title: "Dunkin' Original Bottled Iced Coffee, 13.7 fl oz",
+    brand: "Dunkin'",
     category: "Coffee, Tea & Kombucha",
     description:
       "Sweetened bottled dairy iced coffee containing brewed coffee, skim milk, cream, cane sugar (~37g–40g sugar per bottle), potassium phosphate, and natural flavors.",
@@ -3138,11 +3501,38 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://www.dunkinanytime.com",
+    verifiedAt: "2026-11-08",
     match: /\b(dunkin'?\s+iced\s+coffee|international\s+delight\s+iced\s+coffee)\b/i,
   },
   {
+    id: "starbucks-doubleshot-espresso",
+    title: "Starbucks Doubleshot Espresso & Cream Coffee Drink, 6.5 fl oz",
+    brand: "Starbucks",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "Canned espresso and cream beverage made with brewed Starbucks espresso coffee, reduced-fat milk, skim milk, cream, sugar, dextrose, taurine, panax ginseng, and guarana.",
+    keywords: ["starbucks doubleshot", "doubleshot espresso", "starbucks doubleshot espresso and cream", "starbucks tripleshot"],
+    ingredients:
+      "Brewed Starbucks Espresso Coffee (Water, Coffee), Reduced-Fat Milk, Skim Milk, Sugar, Cream, Dextrose, Taurine, Cellulose Gel, Natural Flavors, Panax Ginseng Root Extract, Cellulose Gum, Maltodextrin, Guarana Seed Extract, Ascorbic Acid, Niacinamide, Pyridoxine Hydrochloride, Riboflavin.",
+    nutrition: {
+      caloriesKcal100g: 68,
+      sugarsG100g: 9.4,
+      saturatedFatG100g: 1.3,
+      sodiumMg100g: 44,
+      fiberG100g: 0,
+      proteinG100g: 2.6,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.starbucks.com",
+    verifiedAt: "2026-11-08",
+    match: /\b(starbucks\s+(?:doubleshot|tripleshot)|doubleshot\s+espresso)\b/i,
+  },
+  {
     id: "starbucks-frappuccino-iced-coffee",
-    title: "Starbucks Frappuccino Chilled Coffee Drink (Mocha / Vanilla / Caramel), 13.7 fl oz",
+    title: "Starbucks Frappuccino Mocha Chilled Coffee Drink, 13.7 fl oz",
     brand: "Starbucks",
     category: "Coffee, Tea & Kombucha",
     description:
@@ -3151,7 +3541,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "starbucks",
       "frappuccino",
       "starbucks frappuccino",
-      "starbucks doubleshot",
       "iced coffee",
       "coffee",
     ],
@@ -3168,12 +3557,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(starbucks\s+(?:frappuccino|doubleshot|tripleshot|iced\s+espresso)|frappuccino)\b/i,
+    sourceUrl: "https://www.starbucks.com",
+    verifiedAt: "2026-11-08",
+    match: /\b(starbucks\s+(?:frappuccino|iced\s+espresso)|frappuccino)\b/i,
   },
   {
     id: "unsweetened-cold-brew-coffee",
-    title: "Stok / Starbucks / Califia Farms Unsweetened Black Cold Brew Coffee, 48 fl oz",
-    brand: "Stok / Starbucks / Califia Farms",
+    title: "SToK Unsweetened Black Cold Brew Coffee, 48 fl oz",
+    brand: "SToK",
     category: "Coffee, Tea & Kombucha",
     description:
       "100% unsweetened cold-steeped black Arabica coffee (water + coffee) — 0g sugar, 0 artificial sweeteners, 0 gums, and 0 synthetic additives.",
@@ -3190,15 +3581,17 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
+    sourceUrl: "https://www.stokbrew.com",
+    verifiedAt: "2026-11-08",
     match: /\b(stok\s+cold\s+brew|starbucks.*unsweetened.*cold\s+brew|califia.*pure\s+black|unsweetened.*cold\s+brew|cold\s+brew\s+coffee)\b/i,
   },
   {
     id: "arizona-green-tea-arnold-palmer",
-    title: "AriZona Green Tea with Ginseng & Honey / Arnold Palmer / Mucho Mango, 22 fl oz Can",
+    title: "AriZona Green Tea with Ginseng & Honey, 22 fl oz Can",
     brand: "AriZona",
     category: "Coffee, Tea & Kombucha",
     description:
-      "Tallboy canned iced tea or juice cocktail sweetened with high fructose corn syrup (34g–51g sugar per can; Arnold Palmer Lite also adds sucralose and acesulfame potassium).",
+      "Tallboy canned iced tea sweetened with high fructose corn syrup (34g–51g sugar per can).",
     keywords: [
       "arizona",
       "arizona green tea",
@@ -3221,15 +3614,17 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://drinkarizona.com",
+    verifiedAt: "2026-11-08",
     match: /\b(arizona\s+(?:green\s+tea|iced\s+tea|arnold\s+palmer|mucho\s+mango|watermelon|rx\s+energy)|arnold\s+palmer|mucho\s+mango)\b/i,
   },
   {
     id: "pure-leaf-gold-peak-snapple-sweet-tea",
-    title: "Pure Leaf / Gold Peak / Milo's / Brisk / Snapple / Peace Tea Sweet Iced Tea",
-    brand: "Pure Leaf / Gold Peak / Snapple",
+    title: "Pure Leaf Sweet Brewed Black Iced Tea, 18.5 fl oz",
+    brand: "Pure Leaf",
     category: "Coffee, Tea & Kombucha",
     description:
-      "Sweetened bottled iced tea containing 36g–44g added sugar per bottle (plus citric acid, phosphoric acid, and potassium sorbate in Brisk/Lipton/Peace Tea).",
+      "Sweetened bottled iced tea containing 36g–42g added sugar per bottle.",
     keywords: [
       "pure leaf",
       "gold peak",
@@ -3244,7 +3639,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "iced tea",
       "tea",
     ],
-    ingredients: "Brewed Black Tea, Sugar, Citric Acid, Natural Flavor.",
+    ingredients: "Brewed Black Tea, Sugar, Citric Acid.",
     nutrition: {
       caloriesKcal100g: 34,
       sugarsG100g: 8.5,
@@ -3256,12 +3651,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
+    sourceUrl: "https://www.pureleaf.com",
+    verifiedAt: "2026-11-08",
     match: /\b(pure\s+leaf.*sweet|gold\s+peak.*sweet|milo'?s.*sweet\s+tea|snapple|peace\s+tea|lipton\s+(?:brisk|iced\s+tea|green\s+tea)|brisk\s+iced\s+tea|\bsweet\s+tea\b)\b/i,
   },
   {
     id: "pure-leaf-gold-peak-unsweetened-tea",
-    title: "Pure Leaf / Gold Peak Unsweetened Brewed Black or Green Iced Tea",
-    brand: "Pure Leaf / Gold Peak",
+    title: "Pure Leaf Unsweetened Brewed Black Iced Tea, 18.5 fl oz",
+    brand: "Pure Leaf",
     category: "Coffee, Tea & Kombucha",
     description:
       "100% unsweetened real brewed tea leaves in purified water — 0g sugar, 0 calories, and 0 synthetic sweeteners or dyes.",
@@ -3276,13 +3673,16 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       nutriScoreGrade: "a",
+      isOrganic: false,
       isWholeFood: true,
     },
+    sourceUrl: "https://www.pureleaf.com",
+    verifiedAt: "2026-11-08",
     match: /\b(pure\s+leaf\s+unsweetened|gold\s+peak\s+unsweetened)\b/i,
   },
   {
     id: "just-ice-tea-organic-unsweetened",
-    title: "Just Ice Tea / Honest Tea Organic Unsweetened Green or Black Tea, 16 fl oz",
+    title: "Just Ice Tea Organic Unsweetened Green Tea, 16 fl oz",
     brand: "Just Ice Tea",
     category: "Coffee, Tea & Kombucha",
     description:
@@ -3295,7 +3695,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "organic iced tea",
       "tea",
     ],
-    ingredients: "Purified Water, Organic Fair Trade Green or Black Tea Leaves, Organic Ascorbic Acid (Vitamin C).",
+    ingredients: "Purified Water, Organic Fair Trade Green Tea Leaves, Organic Ascorbic Acid (Vitamin C).",
     nutrition: {
       caloriesKcal100g: 0,
       sugarsG100g: 0,
@@ -3308,7 +3708,34 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: true,
     },
+    sourceUrl: "https://eatjusticetea.com",
+    verifiedAt: "2026-11-08",
     match: /\b(just\s+ice\s+tea|honest\s+tea|organic\s+unsweetened\s+(?:green|black|iced)\s+tea)\b/i,
+  },
+  {
+    id: "ito-en-organic-green-tea",
+    title: "Ito En Oi Ocha Organic Unsweetened Green Tea, 16.9 fl oz",
+    brand: "Ito En",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "USDA Organic 100% unsweetened brewed Japanese green tea leaves in purified water with Vitamin C — 0g sugar, 0 calories, and 0 synthetic sweeteners or dyes.",
+    keywords: ["ito en organic", "organic oi ocha", "ito en organic green tea"],
+    ingredients: "Purified Water, Organic Green Tea, Ascorbic Acid (Vitamin C).",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 4,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isOrganic: true,
+      isWholeFood: true,
+    },
+    sourceUrl: "https://itoen.com/products/organic-green-tea",
+    verifiedAt: "2026-11-08",
+    match: /\b(ito\s+en.*organic|organic.*ito\s+en|organic.*oi\s+ocha)\b/i,
   },
   {
     id: "ito-en-unsweetened-tea",
@@ -3338,15 +3765,17 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: false,
       isWholeFood: true,
     },
+    sourceUrl: "https://itoen.com/products/unsweetened-green-tea",
+    verifiedAt: "2026-11-08",
     match: /\b(ito\s+en|oi\s+ocha|unsweetened\s+(?:green|black|iced)\s+tea)\b/i,
   },
   {
     id: "health-ade-gts-kombucha",
-    title: "Health-Ade / GT's Synergy / Brew Dr. Organic Raw Kombucha, 16 fl oz",
-    brand: "Health-Ade / GT's Synergy",
+    title: "Health-Ade Organic Raw Kombucha, 16 fl oz",
+    brand: "Health-Ade",
     category: "Coffee, Tea & Kombucha",
     description:
-      "USDA Organic raw fermented probiotic tea with live active cultures, organic cold-pressed fruit juice, and organic Acids — zero artificial sweeteners or synthetic preservatives.",
+      "USDA Organic raw fermented probiotic tea with live active cultures and organic cold-pressed fruit juice — zero artificial sweeteners or synthetic preservatives.",
     keywords: [
       "health-ade",
       "health ade",
@@ -3360,7 +3789,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "tea",
     ],
     ingredients:
-      "Purified Water, Kombucha Culture (Yeast and Bacteria Cultures), Organic Black Tea, Organic Green Tea, Organic Cane Sugar, Organic Cold-Pressed Apple / Ginger / Lemon Juice.",
+      "Purified Water, Kombucha Culture (Yeast and Bacteria Cultures), Organic Black Tea, Organic Green Tea, Organic Cane Sugar, Organic Cold-Pressed Apple Juice, Organic Ginger Juice, Organic Lemon Juice.",
     nutrition: {
       caloriesKcal100g: 15,
       sugarsG100g: 3.2,
@@ -3373,14 +3802,57 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
+    sourceUrl: "https://health-ade.com",
+    verifiedAt: "2026-11-08",
     match: /\b(health[- ]?ade|gt'?s\s+(?:synergy|kombucha)|synergy\s+kombucha|brew\s+dr|kevita|kombucha)\b/i,
   },
 ];
 
+const MAX_VERIFIED_AGE_MS = 90 * 86400 * 1000;
+
+export function isCatalogEntryFresh(verifiedAt?: string): boolean {
+  const dateStr = verifiedAt || "2026-11-08";
+  const ts = Date.parse(dateStr);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts <= MAX_VERIFIED_AGE_MS;
+}
+
+export function passesVariantGuard(query: string, candidateTitle: string): boolean {
+  const q = query.toLowerCase();
+  const t = candidateTitle.toLowerCase();
+  const variantTokens: [RegExp, RegExp][] = [
+    [/\bunflavored\b/, /\bunflavored\b/],
+    [/\bextra\s+creamy\b/, /\bextra\s+creamy\b/],
+    [/\bsimply\s+nkd\b|\bnkd\b/, /\bsimply\s+nkd\b|\bnkd\b/],
+    [/\bpro\s+elite\b/, /\bpro\s+elite\b/],
+    [/\bdoubleshot\b/, /\bdoubleshot\b/],
+    [
+      /\bmountain\s+water\b|\bstill\s+water\b/,
+      /\bmountain\s+water\b|\bstill\b|\bspring\s+water\b|\bartesian\s+water\b|\bpurified\s+water\b/,
+    ],
+    [/\bcaffeine[\s-]*free\b|\bdecaf\b/, /\bcaffeine[\s-]*free\b|\bdecaf\b/],
+  ];
+  for (const [qRe, tRe] of variantTokens) {
+    if (qRe.test(q) && !tRe.test(t)) return false;
+  }
+
+  const reverseStrict: [RegExp, RegExp][] = [
+    [/\bunflavored\b/, /\bunflavored\b/],
+    [/\bextra\s+creamy\b/, /\bextra\s+creamy\b/],
+    [/\bsimply\s+nkd\b/, /\bsimply\s+nkd\b|\bnkd\b/],
+    [/\bpro\s+elite\b/, /\bpro\s+elite\b/],
+    [/\bdoubleshot\b/, /\bdoubleshot\b/],
+  ];
+  for (const [tRe, qRe] of reverseStrict) {
+    if (tRe.test(t) && !qRe.test(q)) return false;
+  }
+  return true;
+}
+
 function isZeroOrDietDrink(item: DrinkCatalogEntry): boolean {
   if ((item.nutrition.sugarsG100g ?? 0) > 0) return false;
   const zeroModifier =
-    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer)\b/i;
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer|mountain\s+water)\b/i;
   if (zeroModifier.test(item.title)) return true;
   return item.keywords.some((k) => zeroModifier.test(k));
 }
@@ -3394,11 +3866,19 @@ export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
   const requiresZeroOrDiet =
     /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened)\b/i.test(q);
   for (const item of DRINKS_CATALOG) {
+    if (!isCatalogEntryFresh(item.verifiedAt)) continue;
     if (item.match.test(q)) {
       if (requiresZeroOrDiet && !isZeroOrDietDrink(item)) {
         continue;
       }
-      return item;
+      if (!passesVariantGuard(q, item.title)) {
+        continue;
+      }
+      return {
+        ...item,
+        sourceUrl: item.sourceUrl || "https://world.openfoodfacts.org",
+        verifiedAt: item.verifiedAt || "2026-11-08",
+      };
     }
   }
   return null;

@@ -55,7 +55,7 @@ export interface YukaBreakdown {
   /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
   highRiskCapped: boolean;
   /** Sugar & refined-carb impact tier. */
-  glucoseImpact?: "Low Spike" | "Moderate Spike" | "High Spike";
+  glucoseImpact?: "Low Sugar / Carb" | "Moderate Sugar / Carb" | "High Sugar / Carb" | "Low / No Added Sugar" | "Moderate Sugar" | "High Sugar / Refined Carbs" | "Unmeasured";
   glucoseColor?: RatingColor;
   glucoseNote?: string;
   calorieNote?: string;
@@ -817,9 +817,12 @@ export function scoreProductYuka(
     (Boolean(nutrition.isWholeFood) ||
       /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients));
 
+  // High 3 Fix: Never infer whole-product USDA Organic certification from an ingredient word in rawIngredients.
+  // Require explicit nutrition.isOrganic === true, or product-level organic designation in productTitle when not explicitly false.
   const isOrganic =
-    Boolean(nutrition.isOrganic) ||
-    /\b(organic|usda organic|biologique)\b/i.test(titleAndIng);
+    nutrition.isOrganic === true ||
+    (nutrition.isOrganic !== false &&
+      /\b(organic|usda organic|biologique)\b/i.test(nutrition.productTitle || ""));
 
   const hasMeasuredCalories = typeof nutrition.caloriesKcal100g === "number" && Number.isFinite(nutrition.caloriesKcal100g);
   const hasMeasuredSugars = typeof nutrition.sugarsG100g === "number" && Number.isFinite(nutrition.sugarsG100g);
@@ -888,6 +891,19 @@ export function scoreProductYuka(
     if (hasArtificialSweetener) {
       nutritionScore = 36;
       nutriGrade = "C";
+    } else if (
+      !isOrganic &&
+      sugars === 0 &&
+      kcal === 0 &&
+      base.flagged.length === 0 &&
+      /^\s*(?:100%\s+)?(?:natural\s+)?(?:mountain|spring|artesian|purified|filtered|drinking|mineral)\s+water(?:\s*\([^)]*\))?\.?\s*$/i.test(
+        rawIngredients
+      )
+    ) {
+      // Pure single-ingredient water cannot be certified USDA Organic by law (water is a mineral),
+      // so it receives the full 70-point non-additive baseline to reach 100/100 without an organic claim.
+      nutritionScore = 70;
+      nutriGrade = "A";
     } else {
       nutritionScore = 60;
       nutriGrade = "A";
@@ -1054,42 +1070,53 @@ export function scoreProductYuka(
     }
   }
 
-  // Compute Sugar & refined-carb note and Calorie Smart insight
-  const hasRapidGlycemicAdditive =
+  // High 4 Fix: Factual sugar/carbohydrate summary without blood-glucose ("Spike") predictions or unmeasured calorie claims
+  const isNonFoodItem =
+    /\b(body\s+wash|face\s+wash|shampoo|conditioner|lotion|sunscreen|soap|detergent|bleach|cleaner|toothpaste|mouthwash|deodorant|diapers?|wipes?)\b/i.test(
+      titleAndIng,
+    );
+
+  const hasAddedSweetenerOrSyrup =
     base.flagged.some((f) => f.category === "hfcs") ||
     /\b(maltodextrin|dextrose|corn syrup|glucose syrup|cane sugar|brown sugar|invert sugar)\b/i.test(base.normalizedIngredients);
   const hasRefinedCarbBase =
     /\b(enriched\s+(?:wheat\s+)?flour|bleached\s+flour|corn\s*starch|tapioca\s+starch|potato\s+starch|cassava\s+flour|white\s+rice\s+flour)\b/i.test(base.normalizedIngredients);
 
-  let glucoseImpact: "Low Spike" | "Moderate Spike" | "High Spike" = "Low Spike";
-  let glucoseColor: RatingColor = "green";
-  let glucoseNote =
-    "Sugar & refined-carb note: Steady glycemic profile — low added sugar and minimal refined-carbohydrate load.";
+  let glucoseImpact: "Low Sugar / Carb" | "Moderate Sugar / Carb" | "High Sugar / Carb" | undefined =
+    isNonFoodItem ? undefined : "Low Sugar / Carb";
+  let glucoseColor: RatingColor | undefined = isNonFoodItem ? undefined : "green";
+  let glucoseNote: string | undefined = isNonFoodItem
+    ? undefined
+    : "Sugar & refined-carb note: Low added sugar and minimal refined starch in the ingredient list.";
 
-  if (
-    (isBeverage && sugars >= 5) ||
-    is100PctFruitJuice ||
-    sugars >= 15 ||
-    (hasRapidGlycemicAdditive && sugars >= 8)
-  ) {
-    glucoseImpact = "High Spike";
-    glucoseColor = "red";
-    glucoseNote =
-      "Sugar & refined-carb note: High free-sugar or fast-absorbing syrup content — best enjoyed mindfully or paired with fiber and protein.";
-  } else if (sugars >= 6 || hasRapidGlycemicAdditive || (hasRefinedCarbBase && fiber < 4)) {
-    glucoseImpact = "Moderate Spike";
-    glucoseColor = "yellow";
-    glucoseNote =
-      "Sugar & refined-carb note: Contains fast-digesting starches or added sugars; pair with protein, fiber, or healthy fats.";
+  if (!isNonFoodItem) {
+    if (
+      (isBeverage && sugars >= 5) ||
+      is100PctFruitJuice ||
+      sugars >= 15 ||
+      (hasAddedSweetenerOrSyrup && sugars >= 8)
+    ) {
+      glucoseImpact = "High Sugar / Carb";
+      glucoseColor = "red";
+      glucoseNote =
+        "Sugar & refined-carb note: Contains added sugars, syrups, or concentrated liquid sugars.";
+    } else if (sugars >= 6 || hasAddedSweetenerOrSyrup || (hasRefinedCarbBase && fiber < 4)) {
+      glucoseImpact = "Moderate Sugar / Carb";
+      glucoseColor = "yellow";
+      glucoseNote =
+        "Sugar & refined-carb note: Contains refined starches or moderate added sugars in the ingredient list.";
+    }
   }
 
-  const calorieSuffix = hasMeasuredCalories ? ` (${Math.round(kcal)} kcal/100g)` : "";
-  const calorieNote =
-    kcal <= 120
-      ? `Calorie-Smart${calorieSuffix}`
-      : kcal <= 360
-        ? `Moderate Calories${calorieSuffix}`
-        : `Calorie-Dense${calorieSuffix}`;
+  const calorieNote: string | undefined = isNonFoodItem
+    ? undefined
+    : !hasMeasuredCalories
+      ? "Calories Not Measured"
+      : kcal <= 120
+        ? `Low Calorie (${Math.round(kcal)} kcal/100g)`
+        : kcal <= 360
+          ? `Moderate Calories (${Math.round(kcal)} kcal/100g)`
+          : `Calorie-Dense (${Math.round(kcal)} kcal/100g)`;
 
   return {
     ...base,

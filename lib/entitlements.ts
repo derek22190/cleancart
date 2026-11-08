@@ -31,9 +31,44 @@ const SESSION_KEY_PREFIX = "heybroc:entitlement:session:";
 const SUB_KEY_PREFIX = "heybroc:entitlement:sub:";
 const DEVICE_KEY_PREFIX = "heybroc:entitlement:device:";
 const EMAIL_KEY_PREFIX = "heybroc:entitlement:email:";
+const CUSTOMER_KEY_PREFIX = "heybroc:entitlement:customer:";
+const CONSENT_KEY_PREFIX = "heybroc:consent:";
 
 /** Retain entitlement & billing records for 400 days (covers annual billing cycle + grace period). */
 export const ENTITLEMENT_TTL_SECONDS = 400 * 24 * 60 * 60;
+
+/** Retain express auto-renewal consent logs for 3 years (California ARL / FTC negative-option compliance). */
+export const CONSENT_TTL_SECONDS = 3 * 365 * 86400;
+
+export interface SubscriptionConsentRecord {
+  deviceId: string;
+  email: string;
+  plan: PlanId;
+  termsVersion: string;
+  timestamp: string;
+  ip: string;
+}
+
+export async function recordSubscriptionConsent(
+  consent: SubscriptionConsentRecord
+): Promise<void> {
+  const idPart = (consent.deviceId || consent.email || "anon")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9@._-]/g, "_");
+  await kvSet(
+    `${CONSENT_KEY_PREFIX}${idPart}:${Date.now()}`,
+    consent,
+    CONSENT_TTL_SECONDS
+  );
+  if (consent.deviceId) {
+    await kvSet(
+      `${CONSENT_KEY_PREFIX}latest:${consent.deviceId.trim()}`,
+      consent,
+      CONSENT_TTL_SECONDS
+    );
+  }
+}
 
 export function isValidStripeSessionIdFormat(sessionId: string): boolean {
   return /^cs_(test_|live_)?[A-Za-z0-9_]{16,128}$/.test(sessionId.trim());
@@ -91,6 +126,8 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
   const normalized: EntitlementRecord = {
     ...existing,
     ...record,
+    customerId: record.customerId || existing?.customerId,
+    customerEmail: record.customerEmail || existing?.customerEmail,
     deviceId: record.deviceId || existing?.deviceId,
     expiresAtMs,
     lastStripeEventCreated:
@@ -112,6 +149,13 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
       ENTITLEMENT_TTL_SECONDS
     );
   }
+  if (normalized.customerId) {
+    await kvSet(
+      `${CUSTOMER_KEY_PREFIX}${normalized.customerId}`,
+      normalized,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
   if (normalized.deviceId) {
     await kvSet(
       `${DEVICE_KEY_PREFIX}${normalized.deviceId}`,
@@ -129,6 +173,20 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
       );
     }
   }
+}
+
+export async function getCustomerEntitlement(
+  customerId: string
+): Promise<EntitlementRecord | null> {
+  const cleanId = (customerId || "").trim();
+  if (!cleanId) return null;
+  const rec = await kvGet<EntitlementRecord>(`${CUSTOMER_KEY_PREFIX}${cleanId}`);
+  if (!rec) return null;
+  if (rec.subscriptionId) {
+    const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
+    if (latestSub) return latestSub;
+  }
+  return withCurrentExpiry(rec);
 }
 
 export async function getEmailEntitlement(
@@ -224,6 +282,13 @@ export async function updateSubscriptionEntitlement(
   if (existing?.sessionId) {
     await kvSet(
       `${SESSION_KEY_PREFIX}${existing.sessionId}`,
+      updated,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (updated.customerId) {
+    await kvSet(
+      `${CUSTOMER_KEY_PREFIX}${updated.customerId}`,
       updated,
       ENTITLEMENT_TTL_SECONDS
     );
@@ -407,4 +472,99 @@ export async function verifyStripeCheckoutSession(
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolves a Stripe customer ID (`cus_...`) for the self-serve Stripe Billing Portal
+ * using the caller's `sessionId`, `deviceId`, or `email`.
+ */
+export async function resolveBillingPortalCustomer(params: {
+  sessionId?: string;
+  deviceId?: string;
+  email?: string;
+}): Promise<{ customerId: string; record?: EntitlementRecord } | null> {
+  const cleanSessionId = (params.sessionId || "").trim();
+  const cleanDeviceId = (params.deviceId || "").trim();
+  const cleanEmail = (params.email || "").trim().toLowerCase();
+
+  let record: EntitlementRecord | null = null;
+  if (cleanSessionId) {
+    record = await verifyStripeCheckoutSession(
+      cleanSessionId,
+      cleanDeviceId || undefined
+    );
+  }
+  if (!record && cleanDeviceId && cleanDeviceId !== "anon-web") {
+    record = await getDevicePaidEntitlement(cleanDeviceId);
+  }
+  if (!record && cleanEmail) {
+    record = await getEmailEntitlement(cleanEmail);
+  }
+
+  if (record?.customerId) {
+    return { customerId: record.customerId, record };
+  }
+
+  const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+  if (!secretKey) {
+    return null;
+  }
+
+  // If we have a subscriptionId on the record but customerId was not stored yet, fetch the subscription
+  if (record?.subscriptionId) {
+    try {
+      const subRes = await fetch(
+        `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(record.subscriptionId)}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${secretKey}` },
+          cache: "no-store",
+        }
+      );
+      if (subRes.ok) {
+        const subData = (await subRes.json()) as {
+          customer?: string | { id?: string };
+        };
+        const cid =
+          typeof subData.customer === "string"
+            ? subData.customer
+            : subData.customer?.id;
+        if (cid) {
+          record.customerId = cid;
+          await saveEntitlement(record);
+          return { customerId: cid, record };
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Fallback: look up Stripe customer by email if provided
+  const lookupEmail = cleanEmail || record?.customerEmail?.trim().toLowerCase();
+  if (lookupEmail) {
+    try {
+      const cusUrl = new URL("https://api.stripe.com/v1/customers");
+      cusUrl.searchParams.set("email", lookupEmail);
+      cusUrl.searchParams.set("limit", "1");
+      const cusRes = await fetch(cusUrl.toString(), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+        cache: "no-store",
+      });
+      if (cusRes.ok) {
+        const cusData = (await cusRes.json()) as {
+          data?: Array<{ id?: string }>;
+        };
+        const cid = cusData.data?.[0]?.id;
+        if (cid) {
+          return { customerId: cid, record: record ?? undefined };
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return null;
 }

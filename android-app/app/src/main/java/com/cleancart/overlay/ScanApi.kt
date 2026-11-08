@@ -352,7 +352,44 @@ object ScanApi {
         val shortBadge: String,
         val reason: String,
     ) {
+        val icon: String get() = label.substringBefore(" ")
         val matchedDetail: String get() = reason
+    }
+
+    private val BILLING_PORTAL_ENDPOINTS = listOfNotNull(
+        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/billing/portal" },
+        "https://www.heybroc.com/api/billing/portal",
+        "https://heybroc.com/api/billing/portal",
+        "https://cleancart-teal.vercel.app/api/billing/portal",
+    ).distinct()
+
+    /** Blocking call — fetches a Stripe Billing Portal session URL for one-tap subscription cancellation/management. */
+    fun billingPortalUrl(ctx: Context): String? {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val email = prefs.getString("auth_email", null)?.trim()
+        val body = JSONObject().apply {
+            put("deviceId", deviceId(ctx))
+            put("deviceSecret", deviceSecret(ctx))
+            if (!email.isNullOrBlank()) put("email", email)
+        }.toString()
+        for (endpoint in BILLING_PORTAL_ENDPOINTS) {
+            try {
+                val res = postFollowingRedirects(
+                    endpoint,
+                    body,
+                    maxRedirects = 4,
+                    extraHeaders = mapOf("X-Device-Secret" to deviceSecret(ctx))
+                )
+                if (res.startsWith("{")) {
+                    val json = JSONObject(res)
+                    val url = json.optString("url").trim()
+                    if (url.startsWith("https://")) return url
+                }
+            } catch (_: Exception) {
+                // try next endpoint
+            }
+        }
+        return null
     }
 
     val DIETARY_OPTIONS = listOf(
@@ -636,6 +673,7 @@ object ScanApi {
             put("productTitle", productTitle)
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
             put("store", store)
+            put("surface", "android")
             if (familyWatchlist.isNotEmpty()) {
                 put("familyWatchlist", JSONArray(familyWatchlist.toList().sorted()))
             }
@@ -643,6 +681,7 @@ object ScanApi {
                 put("dietaryWatchlist", JSONArray(dietaryWatchlist.toList().sorted()))
             }
             put("deviceId", deviceId(ctx))
+            put("deviceSecret", deviceSecret(ctx))
             if (!refCode.isNullOrBlank()) {
                 put("referredByCode", refCode)
             }

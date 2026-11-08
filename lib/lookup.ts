@@ -12,7 +12,7 @@
 import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
-import { matchDrinkCatalog } from "./drinks-catalog";
+import { isCatalogEntryFresh, matchDrinkCatalog, passesVariantGuard } from "./drinks-catalog";
 import {
   ENGLISH_INGREDIENT_ANCHORS,
   isEnglishIngredientText,
@@ -42,6 +42,8 @@ export interface LookupResult {
   source: LookupSource;
   /** Where the cached entry originally came from (when source === "cache"). */
   origin?: LookupSource;
+  /** ISO date (YYYY-MM-DD) when the upstream record or catalog entry was last updated/verified. */
+  sourceUpdatedAt?: string | null;
   ms: number;
 }
 
@@ -221,11 +223,12 @@ interface OffProduct {
   image_front_small_url?: string;
   nutriscore_grade?: string;
   labels_tags?: string[];
+  last_modified_t?: number;
   nutriments?: Record<string, number | string | undefined>;
 }
 
 const OFF_FIELDS =
-  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,nutriments";
+  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,last_modified_t,nutriments";
 
 const SCREEN_UI_NON_INGREDIENTS =
   /\b(items to add next|frequently bought together|customers also (bought|viewed|considered)|you may also like|you might also like|similar items|related products|sponsored|add to cart|buy now|many in stock|out of stock|product information|product details|nutrition facts|shipping|delivery|pickup|reviews|ratings|select a store|return policy|disclaimer|warnings?|tap to expand|show more|see more|velveeta\s+original|frito[- ]?lay|doritos|cheetos|bold\s+snack)\b/i;
@@ -268,6 +271,7 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
   for (const p of products) {
     if (!englishIngredients(p)) continue;
     const name = `${p.brands || ""} ${p.product_name_en || p.product_name || ""}`;
+    if (!passesVariantGuard(query, name)) continue;
     const r = relevance(query, name);
     if (r < 0.45) continue;
     const bonus = bestOffImage(p) ? 0.03 : 0;
@@ -312,6 +316,10 @@ function extractOffNutrition(p: OffProduct): NutritionInput | undefined {
 }
 
 function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "ms"> {
+  const sourceUpdatedAt =
+    typeof p.last_modified_t === "number" && p.last_modified_t > 0
+      ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10)
+      : null;
   return {
     productTitle: p.product_name_en || p.product_name || fallbackTitle,
     brand: p.brands?.split(",")[0]?.trim() || undefined,
@@ -320,6 +328,7 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
     imageUrl: bestOffImage(p),
     nutrition: extractOffNutrition(p),
     source: "openfoodfacts",
+    sourceUpdatedAt,
   };
 }
 
@@ -431,6 +440,7 @@ interface UsdaFood {
   gtinUpc?: string;
   ingredients?: string;
   dataType?: string;
+  publishedDate?: string;
   foodNutrients?: UsdaNutrient[];
 }
 
@@ -469,6 +479,8 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
       f.ingredients?.trim() ||
       (isTrueWholeFood ? `Whole Food: ${f.description}` : "");
     if (!ing || !isEnglishIngredientText(ing)) continue;
+    const candidateName = `${f.brandName || f.brandOwner || ""} ${f.description || ""}`;
+    if (!isBarcodeQuery && !passesVariantGuard(query, candidateName)) continue;
     let r = 0;
     if (isBarcodeQuery) {
       const fCode = (f.gtinUpc || "").replace(/\D/g, "");
@@ -476,7 +488,7 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
         r = 1;
       }
     } else {
-      r = relevance(query, `${f.brandName || f.brandOwner || ""} ${f.description || ""}`);
+      r = relevance(query, candidateName);
     }
     if (r > bestScore) {
       best = { ...f, ingredients: ing };
@@ -494,6 +506,7 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     imageUrl,
     nutrition: extractUsdaNutrition(best),
     source: "usda",
+    sourceUpdatedAt: best.publishedDate ? best.publishedDate.slice(0, 10) : null,
   };
 }
 
@@ -509,6 +522,8 @@ interface CatalogEntry {
   ingredients: string;
   imageUrl?: string;
   nutrition?: NutritionInput;
+  sourceUrl?: string;
+  verifiedAt?: string;
 }
 
 const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
@@ -521,18 +536,32 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
   },
   {
+    match: /\b(doritos.*(?:simply\s+nkd|nkd)|(?:simply\s+nkd|nkd).*doritos)\b/i,
+    brand: "Doritos",
+    title: "Doritos Simply NKD Organic White Cheddar Tortilla Chips",
+    ingredients: "Organic White Corn, Expeller-Pressed Sunflower Oil, White Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey, Buttermilk, Salt, Onion Powder, Garlic Powder, Lactic Acid, Citric Acid, Natural Flavor.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Simply%20NKD",
+    nutrition: { caloriesKcal100g: 500, sugarsG100g: 3.6, saturatedFatG100g: 3.6, sodiumMg100g: 640, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: true, isWholeFood: false },
+    sourceUrl: "https://www.simplyfritolay.com",
+    verifiedAt: "2026-11-08",
+  },
+  {
     match: /\b(cool ranch)\b.*\b(doritos)\b|\b(doritos)\b.*\b(cool ranch)\b/i,
     brand: "Doritos",
     title: "Cool Ranch Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Tomato Powder, Corn Starch, Lactose, Whey, Skim Milk, Corn Syrup Solids, Onion Powder, Sugar, Garlic Powder, Monosodium Glutamate, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Dextrose, Malic Acid, Buttermilk, Natural and Artificial Flavors, Sodium Acetate, Artificial Color (Red 40, Blue 1, Yellow 5), Spice, Citric Acid, Disodium Inosinate, and Disodium Guanylate.",
     imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Cool%20Ranch%20Tortilla%20Chips",
+    sourceUrl: "https://www.doritos.com/products/doritos-cool-ranch-flavored-tortilla-chips",
+    verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(doritos)\b/i,
+    match: /^(?=.*\bdoritos\b)(?!.*\b(simply\s+nkd|nkd|cool\s+ranch|flamin|blaze|tapatio|salsa\s+verde|dinamita|organic|spicy\s+sweet\s+chili)\b).*$/i,
     brand: "Doritos",
     title: "Nacho Cheese Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Artificial Color (Yellow 6, Yellow 5, Red 40), Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Disodium Inosinate, and Disodium Guanylate.",
     imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Nacho%20Cheese%20Tortilla%20Chips",
+    sourceUrl: "https://www.doritos.com/products/doritos-nacho-cheese-flavored-tortilla-chips",
+    verifiedAt: "2026-11-08",
   },
   {
     match: /\b(cheez[- ]?it)\b/i,
@@ -605,8 +634,10 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(lucky charms)\b/i,
     brand: "General Mills",
     title: "Lucky Charms Cereal with Marshmallows",
-    ingredients: "Whole Grain Oats, Sugar, Whole Grain Corn, Corn Starch, Corn Syrup, Dextrose, Contains 2% or Less of: Salt, Modified Corn Starch, Gelatin, Trisodium Phosphate, Red 40, Yellow 5 & 6, Blue 1, Natural and Artificial Flavor.",
+    ingredients: "Whole Grain Oats, Sugar, Whole Grain Corn, Corn Starch, Corn Syrup, Dextrose, Contains 2% or Less of: Salt, Modified Corn Starch, Gelatin, Trisodium Phosphate, Fruit and Vegetable Juice for Color, Spirulina Extract for Color, Turmeric Extract for Color, Annatto Extract for Color, Natural Flavor, Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
     imageUrl: "/products/cereal.jpg",
+    sourceUrl: "https://www.luckycharms.com/products/original-lucky-charms",
+    verifiedAt: "2026-11-08",
   },
   {
     match: /\b(cinnamon toast crunch)\b/i,
@@ -688,7 +719,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(knoppers|storck|merci)\b|\b(hazelnut wafers?)\b/i,
-    brand: "Storck / Confectionery",
+    brand: "Storck",
     title: "Milk Chocolate & Hazelnut Wafers",
     ingredients: "Sugar, Vegetable Fats (Palm, Shea), Whole Milk Powder, Cocoa Butter, Wheat Flour, Hazelnuts, Cocoa Mass, Skim Milk Powder, Lactose, Butterfat, Low-Fat Cocoa, Soy Lecithin, Whey Product, Salt, Natural Flavors, Sodium Bicarbonate.",
     imageUrl: "/products/snacks.jpg",
@@ -772,7 +803,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(jimmy\s+dean|breakfast\s+croissant|sausage,?\s*egg\s*(&|and)\s*cheese)\b/i,
-    brand: "Jimmy Dean / Representative Breakfast Sausage",
+    brand: "Jimmy Dean",
     title: "Pork Breakfast Sausage / Sandwich (Representative Formulation)",
     ingredients: "Pork, Water, Contains 2% or Less of: Salt, Sugar, Spices, Dextrose, Monosodium Glutamate, Natural Flavorings, Citric Acid.",
     imageUrl: "/products/turkey.jpg",
@@ -867,7 +898,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|kraft\s+mac|velveeta\s+shells)\b/i,
-    brand: "Kraft / Conventional",
+    brand: "Kraft",
     title: "Original Macaroni & Cheese Dinner",
     ingredients: "Enriched Macaroni Product (Wheat Flour, Durum Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Salt, Milk Protein Concentrate, Sodium Triphosphate, Contains Less than 2% of Tapioca Flour, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, with Paprika, Turmeric, and Annatto Added for Color, Enzymes, Cheese Culture).",
     imageUrl: "/products/snacks.jpg",
@@ -896,7 +927,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(red bird|peppermint\s+(candy|puffs?|mints?|bark|stick|canes?)|candy\s+(puffs?|canes?)|starlight\s+mints?|butter\s+mints?|dinner\s+mints?|hard\s+cand(y|ies)|lifesavers|jolly\s+rancher)\b/i,
-    brand: "Red Bird / Confectionery",
+    brand: "Red Bird",
     title: "Peppermint Candy Puffs",
     ingredients: "Pure Cane Sugar, Invert Sugar, Corn Syrup, Natural Oil of Peppermint, Red 40 (Artificial Color).",
     imageUrl: "/products/snacks.jpg",
@@ -912,7 +943,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(freeze[- ]?dried)\b.*\b(blueberr\w*|strawberr\w*|raspberr\w*|bananas?|apples?|mangos?|peaches|fruit|crisps?)\b|\b(blueberry|strawberry|raspberry|berry|fruit)\s+powder\b/i,
-    brand: "Freeze-Dried / Fruit Powder",
+    brand: "Freeze-Dried",
     title: "Dehydrated / Freeze-Dried Fruit",
     ingredients: "Dehydrated / Freeze-Dried Fruit (Concentrated Natural Fruit Sugars).",
     imageUrl: "/swaps/snacks.jpg",
@@ -943,7 +974,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(international\s+delight|creamer)\b/i,
-    brand: "International Delight / Representative Creamer",
+    brand: "International Delight",
     title: "Flavored Liquid Coffee Creamer (Representative Formulation)",
     ingredients: "Water, Sugar, Palm and/or Soybean Oil, Contains 2% or Less of: Sodium Caseinate (a Milk Derivative), Dipotassium Phosphate, Carrageenan, Mono and Diglycerides, Cellulose Gel, Cellulose Gum, Natural and Artificial Flavors.",
     imageUrl: "/products/yogurt.jpg",
@@ -958,7 +989,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(panera(\s+bread)?.*broccoli\s+cheddar|broccoli\s+cheddar\s+soup)\b/i,
-    brand: "Panera Bread / Representative Deli Soup Formulation",
+    brand: "Panera Bread",
     title: "Broccoli Cheddar Soup (Representative Formulation)",
     ingredients: "Water, Milk, Broccoli, Pasteurized Process Cheddar Cheese (Cheddar Cheese [Pasteurized Milk, Cheese Culture, Salt, Enzymes], Water, Sodium Phosphate, Milkfat, Salt, Apocarotenal [Color]), Heavy Cream, Carrots, Seasoning (Modified Corn Starch, Wheat Flour, Salt, Chicken Base [Chicken Meat Including Chicken Juices, Salt, Chicken Fat, Sugar, Maltodextrin, Hydrolyzed Corn Protein, Dried Whey, Natural Flavor, Turmeric], Spices, Paprika), Onions, Butter (Cream, Salt), Soybean Oil, Dijon Mustard (Water, Vinegar, Mustard Seed, Salt, White Wine, Fruit Pectin, Tartaric Acid, Citric Acid, Sugar, Spice), Nisin Preparation, Annatto Extract (Color).",
     imageUrl: "/products/ranch.jpg",
@@ -974,7 +1005,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /^(?!.*\b(lotus\s+foods|organic|mike'?s\s+mighty\s+good)\b).*\b(maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?)\b/i,
-    brand: "Maruchan / Instant Ramen",
+    brand: "Maruchan",
     title: "Instant Ramen Noodle Soup (Representative Formulation)",
     ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Vegetable Oil (Contains One or More of the Following: Canola, Cottonseed, Palm) Preserved by TBHQ, Salt, Monosodium Glutamate, Maltodextrin, Hydrolyzed Corn, Wheat and Soy Protein, Dehydrated Vegetables (Onion, Garlic, Chive), Sugar, Spices, Potassium Carbonate, Sodium (Mono, Hexameta, and/or Tripoly) Phosphate, Sodium Carbonate, Soy Sauce (Water, Wheat, Soybeans, Salt), Disodium Inosinate, Disodium Guanylate, Chicken Broth, Caramel Color, Yellow 5, Yellow 6, Silicon Dioxide (Anti-Caking Agent), Natural and Artificial Flavor, Citric Acid, Lactose.",
     imageUrl: "/products/snacks.jpg",
@@ -982,7 +1013,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /^(?!.*\b(amy'?s|pacific\s+foods|organic|kettle\s*&\s*fire|ramen|maruchan|nissin)\b).*\b(campbell'?s|progresso|chunky\s+soup|chicken\s+noodle\s+soup|tomato\s+soup|cream\s+of\s+(mushroom|chicken|celery)|beef\s+stew|vegetable\s+beef\s+soup|minestrone\s+soup|italian\s+wedding\s+soup)\b/i,
-    brand: "Campbell's / Progresso",
+    brand: "Campbell's",
     title: "Homestyle Soup",
     ingredients: "Chicken Stock, Enriched Egg Noodles (Wheat Flour, Egg Whites, Eggs, Niacin, Ferrous Sulfate, Thiamine Mononitrate, Riboflavin, Folic Acid), Cooked Chicken Meat, Carrots, Celery, Contains Less than 2% of: Modified Food Starch, Salt, Chicken Fat, Monosodium Glutamate, Yeast Extract, Soy Protein Isolate, Sodium Phosphate, Potassium Chloride, Natural Flavor, Beta Carotene for Color, Disodium Inosinate, Disodium Guanylate.",
     imageUrl: "/products/ranch.jpg",
@@ -1062,7 +1093,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b((peaches|pears|mandarin\s+oranges|pineapple|fruit\s+cocktail|mixed\s+fruit|cherries|apricots)\s+in\s+(heavy|light|extra\s+light)\s+syrup|dole.*syrup|del\s+monte.*(peaches|syrup|fruit\s+cup))\b/i,
-    brand: "Del Monte / Dole",
+    brand: "Del Monte",
     title: "Sliced Peaches in Heavy Syrup",
     ingredients: "Peaches, Water, High Fructose Corn Syrup, Corn Syrup, Sugar.",
     imageUrl: "/products/snacks.jpg",
@@ -1254,7 +1285,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(chosen\s+foods.*avocado\s+oil|avocado\s+oil)\b/i,
-    brand: "Chosen Foods / Pure Culinary Oil",
+    brand: "Chosen Foods",
     title: "100% Pure Avocado Oil",
     ingredients: "100% Pure Avocado Oil (Expeller-Pressed Single-Ingredient Fruit Oil).",
     imageUrl: "/swaps/ranch.jpg",
@@ -1262,7 +1293,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(extra\s+virgin\s+olive\s+oil|olive\s+oil|pompeian|bertolli.*olive\s+oil|california\s+olive\s+ranch)\b/i,
-    brand: "Pompeian / Pure Culinary Oil",
+    brand: "Pompeian",
     title: "100% Extra Virgin Olive Oil",
     ingredients: "100% Extra Virgin Olive Oil (Cold-Pressed Single-Ingredient Fruit Oil).",
     imageUrl: "/swaps/ranch.jpg",
@@ -1342,7 +1373,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(claussen|grillo'?s\s+pickles)\b/i,
-    brand: "Claussen / Grillo's",
+    brand: "Claussen",
     title: "Refrigerated Kosher Dill Pickles",
     ingredients: "Fresh Cucumbers, Water, Salt, Distilled Vinegar, Fresh Garlic, Fresh Dill, Spices, Mustard Seed.",
     imageUrl: "/swaps/ranch.jpg",
@@ -1627,7 +1658,11 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   if (/\bjust\s+bare\b/i.test(query)) {
     const jbIng =
       "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Contains 2% or Less of: Yellow Corn Flour, Sea Salt, Rice Starch, Spices, Dried Garlic, Dried Onion, Paprika, Yeast, Cream of Tartar, Sodium Bicarbonate.";
-    if (!isDietaryOrVariantMismatch(query, "Just Bare Lightly Breaded Chicken Breast Strips", jbIng)) {
+    if (
+      isCatalogEntryFresh("2026-11-08") &&
+      passesVariantGuard(query, "Just Bare Lightly Breaded Chicken Breast Strips") &&
+      !isDietaryOrVariantMismatch(query, "Just Bare Lightly Breaded Chicken Breast Strips", jbIng)
+    ) {
       return {
         productTitle: cleanTitle,
         brand: "Just Bare",
@@ -1635,6 +1670,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
         nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false, isOrganic },
         source: "catalog",
+        sourceUpdatedAt: "2026-11-08",
       };
     }
   }
@@ -1655,12 +1691,15 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}`,
       nutrition: { ...drinkHit.nutrition, isOrganic: drinkHit.nutrition?.isOrganic ?? isOrganic },
       source: "catalog",
+      sourceUpdatedAt: drinkHit.verifiedAt || "2026-11-08",
     };
   }
 
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (
+      isCatalogEntryFresh(entry.verifiedAt) &&
       entry.match.test(query) &&
+      passesVariantGuard(query, entry.title) &&
       !isDietaryOrVariantMismatch(query, entry.title, entry.ingredients, entry.nutrition)
     ) {
       const fullEntryTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
@@ -1674,6 +1713,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}`,
         nutrition: { ...entry.nutrition, isOrganic: entry.nutrition?.isOrganic ?? isOrganic },
         source: "catalog",
+        sourceUpdatedAt: entry.verifiedAt || "2026-11-08",
       };
     }
   }
@@ -1685,6 +1725,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   for (const cat of CATEGORY_FALLBACK_CATALOG) {
     if (
       cat.match.test(query) &&
+      passesVariantGuard(query, cat.brand) &&
       !isDietaryOrVariantMismatch(query, cat.brand, cat.ingredients, cat.nutrition)
     ) {
       return {
@@ -1696,6 +1737,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
         nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic ?? isOrganic },
         source: "catalog",
+        sourceUpdatedAt: "2026-11-08",
       };
     }
   }
@@ -1715,6 +1757,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 35, sugarsG100g: 3.5, saturatedFatG100g: 0.1, sodiumMg100g: 12, fiberG100g: 2.8, proteinG100g: 1.4, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
       source: "catalog",
+      sourceUpdatedAt: "2026-11-08",
     };
   }
 
@@ -1729,6 +1772,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 145, sugarsG100g: 0, saturatedFatG100g: 2.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 22.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
       source: "catalog",
+      sourceUpdatedAt: "2026-11-08",
     };
   }
 
@@ -1791,7 +1835,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   let found: Omit<LookupResult, "ms"> | null = null;
   const DIRECT_CATALOG_PRIORITY =
-    /\b(velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
+    /\b(velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
 
   if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
     const directCat = catalogFallback(title);

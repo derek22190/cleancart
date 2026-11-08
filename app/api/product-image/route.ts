@@ -49,6 +49,29 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   return { relPath: "public/swaps/drink.png", contentType: "image/png" };
 }
 
+const STOP_TOKENS = new Set([
+  "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack",
+  "original", "classic", "organic", "natural", "flavored", "flavor",
+]);
+
+function distinctiveTokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(" ")
+    .filter((t) => t.length >= 3 && !STOP_TOKENS.has(t) && !/^\d+$/.test(t));
+}
+
+function hasProductIdentityMatch(query: string, candidateName: string): boolean {
+  const qTokens = distinctiveTokens(query);
+  const cTokens = distinctiveTokens(candidateName);
+  if (!qTokens.length || !cTokens.length) return false;
+  const matched = qTokens.filter((qt) =>
+    cTokens.some((ct) => ct === qt || ct === `${qt}s` || qt === `${ct}s`)
+  );
+  return matched.length / qTokens.length >= 0.5;
+}
+
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
   const clean = rawQuery
     .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|g|kg|ml|l|cup|bag|box|can|jar|bottle))\b/gi, " ")
@@ -58,18 +81,27 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
   const cached = imageUrlCache.get(cacheKey);
   if (cached) return cached;
 
-  // OpenFoodFacts open-licensed product image lookup (ODbL / CC-BY-SA)
+  // OpenFoodFacts open-licensed product image lookup (ODbL / CC-BY-SA 3.0)
   try {
-    const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(clean)}&search_simple=1&action=process&json=1&page_size=3&fields=image_front_small_url,image_front_url`;
+    const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(clean)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,image_front_small_url,image_front_url`;
     const res = await fetch(offUrl, {
       headers: { "User-Agent": "HeyBroc/2.0 (https://www.heybroc.com)" },
       signal: AbortSignal.timeout(4000),
     });
     if (res.ok) {
       const data = (await res.json()) as {
-        products?: Array<{ image_front_small_url?: string; image_front_url?: string }>;
+        products?: Array<{
+          product_name?: string;
+          brands?: string;
+          image_front_small_url?: string;
+          image_front_url?: string;
+        }>;
       };
-      const hit = (data.products || []).find((p) => p.image_front_small_url || p.image_front_url);
+      const hit = (data.products || []).find(
+        (p) =>
+          (p.image_front_small_url || p.image_front_url) &&
+          hasProductIdentityMatch(clean, `${p.brands || ""} ${p.product_name || ""}`)
+      );
       const url = hit?.image_front_small_url || hit?.image_front_url;
       if (url && isAllowedImageUrl(url)) {
         if (imageUrlCache.size >= 1000) {
@@ -110,6 +142,8 @@ export async function GET(request: Request) {
         "Content-Type": cachedBytes.contentType,
         "Cache-Control": "public, max-age=604800, immutable",
         "Access-Control-Allow-Origin": "*",
+        "X-Image-Source": "Open Food Facts (https://world.openfoodfacts.org)",
+        "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
       },
     });
   }
@@ -138,6 +172,8 @@ export async function GET(request: Request) {
                 "Content-Type": contentType,
                 "Cache-Control": "public, max-age=604800, immutable",
                 "Access-Control-Allow-Origin": "*",
+                "X-Image-Source": "Open Food Facts (https://world.openfoodfacts.org)",
+                "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
               },
             });
           }
@@ -159,6 +195,8 @@ export async function GET(request: Request) {
         "Content-Type": fallback.contentType,
         "Cache-Control": "public, max-age=86400",
         "Access-Control-Allow-Origin": "*",
+        "X-Image-Source": "HeyBroc Category Illustration",
+        "X-Image-License": "Proprietary",
       },
     });
   } catch {

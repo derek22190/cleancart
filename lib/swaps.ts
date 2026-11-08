@@ -67,6 +67,8 @@ export interface CleanAlternative {
   itemIds?: Partial<Record<Store, string>>;
 }
 
+export type ScanSurface = "web" | "android" | "extension";
+
 export interface SwapResult {
   category: SwapCategory;
   brand: string;
@@ -83,6 +85,8 @@ export interface SwapResult {
   androidPackage: string;
   /** Android browser intent URL that opens the store app if installed, else falls back to web. */
   androidIntentUrl?: string;
+  /** True when webUrl/deepLink contains an affiliate tag or Impact redirect requiring " · paid link" disclosure. */
+  isPaidLink: boolean;
 }
 
 export const STORE_META: Record<Store, { label: string; host: string; androidPackage: string; scheme: string }> = {
@@ -1135,20 +1139,42 @@ function impactRedirectBase(store: Store): string {
   }
 }
 
-function withAffiliate(url: string, store: Store, clickId: string): string {
+function withAffiliate(
+  url: string,
+  store: Store,
+  clickId: string,
+  surface: ScanSurface = "web"
+): { url: string; isPaidLink: boolean } {
+  // Browser extensions (Chrome / Safari) must never inject Amazon tags or Walmart Impact links
+  if (surface === "extension") {
+    return { url, isPaidLink: false };
+  }
   const sep = url.includes("?") ? "&" : "?";
   if (store === "amazon") {
+    // Android must not attach Amazon Associates tag until explicitly approved by Amazon
+    if (
+      surface === "android" &&
+      (typeof process === "undefined" || process.env?.AMAZON_APP_APPROVED !== "true")
+    ) {
+      return { url, isPaidLink: false };
+    }
     const tag = amazonPartnerTag();
-    if (!tag) return url;
-    return `${url}${sep}tag=${encodeURIComponent(tag)}&linkCode=ll2`;
+    if (!tag) return { url, isPaidLink: false };
+    return {
+      url: `${url}${sep}tag=${encodeURIComponent(tag)}&linkCode=ll2`,
+      isPaidLink: true,
+    };
   }
   const redirectBase = impactRedirectBase(store);
   if (redirectBase && url.startsWith("https://")) {
     const baseSep = redirectBase.includes("?") ? "&" : "?";
     const subIdParam = clickId ? `&subId1=${encodeURIComponent(clickId)}` : "";
-    return `${redirectBase.replace(/\/+$/, "")}${baseSep}u=${encodeURIComponent(url)}${subIdParam}`;
+    return {
+      url: `${redirectBase.replace(/\/+$/, "")}${baseSep}u=${encodeURIComponent(url)}${subIdParam}`,
+      isPaidLink: true,
+    };
   }
-  return url;
+  return { url, isPaidLink: false };
 }
 
 /** Concise 2-3 word 1-for-1 search query for grocery stores so native search screens always find in-stock clean matches instead of "0 results". */
@@ -1268,19 +1294,37 @@ function productPath(store: Store, id: string): string {
 }
 
 /** Builds web + native deep links for a clean alternative at the active store. */
-export function buildLinks(alt: CleanAlternative, store: Store, clickId = impactClickId()) {
+export function buildLinks(
+  alt: CleanAlternative,
+  store: Store,
+  clickId = impactClickId(),
+  surface: ScanSurface = "web"
+) {
   const meta = STORE_META[store];
   const query = `${alt.brand} ${alt.name}`;
   const searchQuery = conciseClubQuery(query);
   const id = alt.itemIds?.[store];
   const path = id ? productPath(store, id) : searchPath(store, query);
-  const webUrl = withAffiliate(`https://${meta.host}${path}`, store, clickId);
-  // Always use HTTPS App Links / Universal Links so native grocery apps preserve Impact/Amazon affiliate params.
+  const { url: webUrl, isPaidLink } = withAffiliate(
+    `https://${meta.host}${path}`,
+    store,
+    clickId,
+    surface
+  );
+  // Always use HTTPS App Links / Universal Links so native grocery apps preserve Impact/Amazon affiliate params when permitted.
   const deepLink = webUrl;
+  const { url: intentPath } = withAffiliate(path, store, clickId, surface);
   const androidIntentUrl =
-    `intent://${meta.host}${withAffiliate(path, store, clickId)}#Intent;scheme=https;package=${meta.androidPackage};` +
+    `intent://${meta.host}${intentPath}#Intent;scheme=https;package=${meta.androidPackage};` +
     `S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
-  return { searchQuery, webUrl, deepLink, androidIntentUrl, androidPackage: meta.androidPackage };
+  return {
+    searchQuery,
+    webUrl,
+    deepLink,
+    androidIntentUrl,
+    androidPackage: meta.androidPackage,
+    isPaidLink,
+  };
 }
 
 const NON_FOOD_SWAP_GUARD =
@@ -1299,12 +1343,17 @@ export function resolveSwap(params: {
   category?: SwapCategory;
   watchlist?: Watchlist;
   familyWatchlist?: import("./rubric").Category[];
+  surface?: ScanSurface;
 }): SwapResult | null {
   if (params.score >= 75) return null;
   if (params.productTitle && NON_FOOD_SWAP_GUARD.test(params.productTitle)) {
     return null;
   }
   const store = params.store && STORES.includes(params.store) ? params.store : "walmart";
+  const surface: ScanSurface =
+    params.surface === "android" || params.surface === "extension"
+      ? params.surface
+      : "web";
   const alt = resolveCleanAlternative(params.productTitle, params.category);
   const category = alt.category;
   const baseClean = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist);
@@ -1327,7 +1376,7 @@ export function resolveSwap(params: {
       : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}`,
     score: altScore,
     store,
-    ...buildLinks(alt, store),
+    ...buildLinks(alt, store, impactClickId(), surface),
   };
 }
 

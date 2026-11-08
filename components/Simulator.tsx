@@ -57,7 +57,7 @@ interface Product {
   category?: SwapCategory;
   origin: Origin;
   replacedItem?: Product;
-  lookup?: { source: string; origin?: string; ms: number };
+  lookup?: { source: string; origin?: string; sourceUpdatedAt?: string | null; ms: number };
 }
 
 interface ApiScan {
@@ -73,7 +73,7 @@ interface ApiScan {
     ingredients: string;
     nutrition?: NutritionInput;
   };
-  lookup?: { source: string; origin?: string; ms: number };
+  lookup?: { source: string; origin?: string; sourceUpdatedAt?: string | null; ms: number };
   result?: ScoreResult;
   swap?: SwapResult | null;
 }
@@ -360,6 +360,11 @@ export default function Simulator() {
           deviceId = `web-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
           window.localStorage.setItem("heybroc_device_id", deviceId);
         }
+        let deviceSecret = window.localStorage.getItem("heybroc_device_secret");
+        if (!deviceSecret) {
+          deviceSecret = `sec-${Math.random().toString(36).substring(2, 12)}-${Math.random().toString(36).substring(2, 12)}-${Date.now().toString(36)}`;
+          window.localStorage.setItem("heybroc_device_secret", deviceSecret);
+        }
         if (!cancelled) setDeviceIdState(deviceId);
 
         try {
@@ -429,6 +434,7 @@ export default function Simulator() {
           body: JSON.stringify({
             action: refParam ? "claim" : "status",
             deviceId,
+            deviceSecret,
             referralCode: refParam || storedRef || undefined,
           }),
         }).catch(() => null);
@@ -464,8 +470,10 @@ export default function Simulator() {
         }
 
         const urlSessionId = (params.get("session_id") || "").trim();
+        const urlDeviceId = (params.get("deviceId") || "").trim();
         const storedSessionId = (window.localStorage.getItem("heybroc_session_id") || "").trim();
         const candidateSessionId = urlSessionId || storedSessionId;
+        const targetDeviceId = urlDeviceId || deviceId;
         if (!candidateSessionId) {
           if (!cancelled) {
             setIsPro(authenticatedPro || Boolean(refData?.entitlement?.isProActive));
@@ -473,7 +481,7 @@ export default function Simulator() {
           return;
         }
         const res = await fetch(
-          `/api/entitlement?session_id=${encodeURIComponent(candidateSessionId)}&deviceId=${encodeURIComponent(deviceId)}`,
+          `/api/entitlement?session_id=${encodeURIComponent(candidateSessionId)}&deviceId=${encodeURIComponent(targetDeviceId)}`,
           { cache: "no-store" }
         );
         const data = (await res.json().catch(() => null)) as {
@@ -485,9 +493,12 @@ export default function Simulator() {
           setIsPro(true);
           window.localStorage.setItem("heybroc_session_id", candidateSessionId);
           if (urlSessionId) {
+            const isPhoneCheckout = Boolean(urlDeviceId && urlDeviceId !== deviceId);
             setToast({
-              title: "✓ HeyBroc Family Pro Unlocked",
-              body: "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
+              title: isPhoneCheckout ? "✓ Pro is active on your phone" : "✓ HeyBroc Family Pro Unlocked",
+              body: isPhoneCheckout
+                ? "Pro is active on your phone! Return to the HeyBroc app to enjoy unlimited store overlays and 1-tap swaps."
+                : "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
             });
           }
         } else {
@@ -1274,7 +1285,21 @@ export default function Simulator() {
             {liveState === "error" && <p className="error">{liveError}</p>}
             {active.origin === "live" && active.lookup && (
               <p className="meta">
-                Verified ingredient match in {active.lookup.ms} ms
+                {active.lookup.source === "catalog"
+                  ? "Representative catalog formulation"
+                  : active.lookup.source === "openfoodfacts"
+                    ? "Open Food Facts record"
+                    : active.lookup.source === "usda"
+                      ? "USDA FoodData Central record"
+                      : `Source: ${active.lookup.source}`}
+                {active.lookup.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
+                {" · Verify physical label · "}
+                <a
+                  href={`mailto:support@heybroc.com?subject=${encodeURIComponent(`Label report: ${active.brand} ${active.title}`)}`}
+                  style={{ color: "#15803d", fontWeight: 700, textDecoration: "underline" }}
+                >
+                  Report a mistake
+                </a>
               </p>
             )}
           </div>
@@ -1411,7 +1436,7 @@ export default function Simulator() {
                               </div>
                               <small className="aisle-brand">{item.brand}</small>
                               <b className="aisle-title">{item.title}</b>
-                              <span className="aisle-price">${(item.price ?? 4.49).toFixed(2)}</span>
+                              <span className="aisle-price">See price in store</span>
                             </button>
                             <button
                               type="button"
@@ -1437,7 +1462,7 @@ export default function Simulator() {
                     <p className="pdp-brand">{active.brand}</p>
                     <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
                     <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
-                    <div className="pdp-price">{active.price ? `$${active.price.toFixed(2)}` : "See price in app"}</div>
+                    <div className="pdp-price">See live price in {STORE_META[store].label}</div>
                     <div className="pdp-cta-row">
                       <button
                         className="pdp-add"
@@ -1458,7 +1483,7 @@ export default function Simulator() {
                           className="pdp-swap-inline"
                           onClick={doSwap}
                         >
-                          ⚡ 1-Tap Clean Swap ({swap.score}/100)
+                          ⚡ 1-Tap Clean Swap ({swap.score}/100){swap.isPaidLink ? " · paid link" : ""}
                         </button>
                       ) : activeRevertTarget ? (
                         <button
@@ -1662,12 +1687,14 @@ export default function Simulator() {
                               >
                                 <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" />
                                 <div className="swap-info-copy">
-                                  <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}</span>
+                                  <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
                                   <b>{swap.title}</b>
                                   <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
                                 </div>
                               </button>
-                              <button id="swap-item" className="swap-btn" onClick={doSwap}>Swap Item</button>
+                              <button id="swap-item" className="swap-btn" onClick={doSwap}>
+                                Swap Item{swap.isPaidLink ? " · paid link" : ""}
+                              </button>
                             </div>
                           ) : activeRevertTarget ? (
                             <div className="swap">
@@ -1721,9 +1748,9 @@ export default function Simulator() {
                                       fontWeight: 800,
                                       marginTop: 3,
                                       color:
-                                        score.yukaBreakdown.glucoseImpact === "High Spike"
+                                        score.yukaBreakdown.glucoseImpact === "High Sugar / Carb"
                                           ? "#dc2626"
-                                          : score.yukaBreakdown.glucoseImpact === "Moderate Spike"
+                                          : score.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
                                             ? "#ea580c"
                                             : "#16a34a",
                                     }}
@@ -1814,8 +1841,23 @@ export default function Simulator() {
                           <div className="insights-ingredients-box">
                             <span>Ingredients Inspected:</span>
                             <p>{active.ingredients}</p>
-                            <small style={{ display: "block", marginTop: 6, fontSize: 10.5, color: "#64748b", lineHeight: 1.4 }}>
-                              Informational opinion only — not medical or regulatory advice. All rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc&apos;s independent clean-label rubric.
+                            <small style={{ display: "block", marginTop: 6, fontSize: 10.5, color: "#475569", fontWeight: 700, lineHeight: 1.4 }}>
+                              {active.lookup?.source === "openfoodfacts"
+                                ? "Source: Open Food Facts"
+                                : active.lookup?.source === "usda"
+                                  ? "Source: USDA FoodData Central"
+                                  : "Source: Representative catalog"}
+                              {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : " · updated 2026-11-08"}
+                              {" · "}
+                              <a
+                                href={`mailto:support@heybroc.com?subject=${encodeURIComponent(`Label report: ${active.brand} ${active.title}`)}`}
+                                style={{ color: "#15803d", textDecoration: "underline" }}
+                              >
+                                Report a mistake
+                              </a>
+                            </small>
+                            <small style={{ display: "block", marginTop: 4, fontSize: 10.5, color: "#64748b", lineHeight: 1.4 }}>
+                              Informational opinion only — not medical or regulatory advice. Most flagged ingredients are permitted or GRAS under U.S. FDA rules; scores reflect HeyBroc&apos;s independent clean-label rubric. Always verify the physical product label.
                             </small>
                           </div>
                         </>
@@ -2185,7 +2227,11 @@ export default function Simulator() {
                 <div className="toast" role="status">
                   <b>{toast.title}</b>
                   <p>{toast.body}</p>
-                  {toast.href && <a href={toast.href} target="_blank" rel="noreferrer">View on {STORE_META[store].label} ↗</a>}
+                  {toast.href && (
+                    <a href={toast.href} target="_blank" rel="noreferrer">
+                      View on {STORE_META[store].label}{swap?.isPaidLink ? " · paid link" : ""} ↗
+                    </a>
+                  )}
                 </div>
               )}
             </div>
@@ -2335,7 +2381,46 @@ export default function Simulator() {
             <div style={{ marginTop: 16, display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
               <a href="/tools" style={{ color: "#15803d", fontWeight: 700 }}>🧪 Free Ingredient &amp; Seed Oil Tools</a>
               <a href="/swaps" style={{ color: "#15803d", fontWeight: 700 }}>⇄ Clean Grocery Swaps Directory</a>
+              <a href="/terms" style={{ color: "#15803d", fontWeight: 600 }}>Terms of Service</a>
               <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy &amp; Disclaimers</a>
+              <button
+                type="button"
+                onClick={async () => {
+                  const devId = window.localStorage.getItem("heybroc_device_id") || deviceIdState;
+                  const sId = window.localStorage.getItem("heybroc_session_id") || undefined;
+                  const tok = window.localStorage.getItem("heybroc_auth_token") || undefined;
+                  try {
+                    const res = await fetch("/api/billing/portal", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+                      },
+                      body: JSON.stringify({ deviceId: devId, sessionId: sId, email: authUser?.email }),
+                    });
+                    const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; error?: string } | null;
+                    if (res.ok && data?.ok && data.url) {
+                      window.location.href = data.url;
+                    } else {
+                      setPaywallOpen(true);
+                    }
+                  } catch {
+                    setPaywallOpen(true);
+                  }
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "#15803d",
+                  fontWeight: 600,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                Manage / Cancel subscription
+              </button>
               <a href="/llms.txt" style={{ color: "#15803d", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
               <a href="/sitemap.xml" style={{ color: "#15803d", fontWeight: 600 }}>Sitemap</a>
             </div>
@@ -2352,7 +2437,7 @@ export default function Simulator() {
               }}
             >
               <strong style={{ color: "#334155" }}>Independent Opinion, Label Verification, Pricing &amp; Non-Affiliation Notice:</strong>{" "}
-              HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists and sample prices shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
+              HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
             </div>
           </div>
         </div>
@@ -2482,6 +2567,19 @@ export default function Simulator() {
         personalReferralCode={personalReferralCode}
         courtesyRefillAvailable={courtesyRefillAvailable}
         onUseCourtesyRefill={() => {
+          if (typeof window !== "undefined") {
+            const devId = window.localStorage.getItem("heybroc_device_id") || deviceIdState;
+            const devSecret = window.localStorage.getItem("heybroc_device_secret") || undefined;
+            void fetch("/api/referral", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "courtesy_refill",
+                deviceId: devId,
+                deviceSecret: devSecret,
+              }),
+            }).catch(() => {});
+          }
           setCourtesyRefillAvailable(false);
           setPaywallOpen(false);
           setToast({

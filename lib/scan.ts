@@ -10,7 +10,7 @@ import {
   type EntitlementSummary,
 } from "./referrals";
 import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
-import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
+import { resolveSwap, STORES, STORE_META, type ScanSurface, type Store, type SwapResult } from "./swaps";
 
 export interface DietaryAlert {
   id: string;
@@ -24,10 +24,12 @@ export interface ScanRequest {
   rawIngredients?: string;
   barcode?: string;
   store?: string;
+  surface?: ScanSurface;
   watchlist?: Watchlist;
   familyWatchlist?: Category[];
   dietaryWatchlist?: string[];
   deviceId?: string;
+  deviceSecret?: string;
   referredByCode?: string;
   format?: "json" | "ios_text";
 }
@@ -44,7 +46,12 @@ export interface ScanResponse {
     ingredients: string;
     nutrition?: NutritionInput;
   };
-  lookup: { source: LookupResult["source"]; origin?: LookupResult["origin"]; ms: number };
+  lookup: {
+    source: LookupResult["source"];
+    origin?: LookupResult["origin"];
+    sourceUpdatedAt?: string | null;
+    ms: number;
+  };
   result: ScoreResult;
   dietaryAlerts?: DietaryAlert[];
   swap: SwapResult | null;
@@ -77,7 +84,7 @@ export function evaluateDietaryAlerts(
       const reasons: string[] = [];
       if (sugarsG >= 10) reasons.push(`${sugarsG}g sugar per 100g`);
       if (sugarMatch) reasons.push(`Added sweetener (${sugarMatch[0]})`);
-      else if (refinedCarbMatch) reasons.push(`Refined glycemic starch (${refinedCarbMatch[0]})`);
+      else if (refinedCarbMatch) reasons.push(`Refined starch (${refinedCarbMatch[0]})`);
       alerts.push({
         id: "sugar_diabetes",
         label: "🩸 Sugar / Diabetes Watch",
@@ -88,10 +95,14 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("dairy") && !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/i.test(productTitle)) {
-    const m = text.match(
-      /\b(milk|cream|butter|buttermilk|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|sour\s+cream|half\s+and\s+half|lactalbumin)\b/i,
+    const dairyCleaned = text.replace(
+      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi,
+      " ",
     );
-    if (m && !/\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|peanut\s+butter|cocoa\s+butter|shea\s+butter|apple\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|cream\s+of\s+tartar)\b/i.test(m[0])) {
+    const m = dairyCleaned.match(
+      /\b(buttermilk|sour\s+cream|half\s+and\s+half|milk|cream|butter|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|lactalbumin)\b/i,
+    );
+    if (m) {
       alerts.push({
         id: "dairy",
         label: "🥛 Dairy / Lactose Alert",
@@ -102,8 +113,9 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("wheat_gluten") && !/\b(gluten[\s-]*free|grain[\s-]*free|celiac)\b/i.test(productTitle)) {
-    const m = text.match(
-      /\b(wheat|enriched\s+flour|bleached\s+flour|unbleached\s+flour|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|graham\s+flour|vital\s+wheat\s+gluten)\b/i,
+    const wheatCleaned = text.replace(/\b(buckwheat|wheat\s*grass)\b/gi, " ");
+    const m = wheatCleaned.match(
+      /\b(vital\s+wheat\s+gluten|graham\s+flour|enriched\s+flour|bleached\s+flour|unbleached\s+flour|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale)\b/i,
     );
     if (m) {
       alerts.push({
@@ -116,8 +128,12 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("peanuts_nuts")) {
-    const m = text.match(
-      /\b(peanuts?|peanut\s+butter|peanut\s+oil|peanut\s+flour|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
+    const nutCleaned = text.replace(
+      /\b(nutmeg|butternut|water\s+chestnuts?|coconuts?)\b/gi,
+      " ",
+    );
+    const m = nutCleaned.match(
+      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|peanuts?|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
     );
     if (m) {
       alerts.push({
@@ -131,7 +147,7 @@ export function evaluateDietaryAlerts(
 
   if (selected.has("soy")) {
     const m = text.match(
-      /\b(soy|soya|soybeans?|soybean\s+oil|soy\s+lecithin|soy\s+protein|soy\s+flour|soy\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\s+vegetable\s+protein)\b/i,
+      /\b(soybean\s+oil|soy\s+lecithin|soy\s+protein|soy\s+flour|soy\s+sauce|textured\s+vegetable\s+protein|soybeans?|soymilk|soy|soya|tamari|tofu|tempeh|edamame|miso)\b/i,
     );
     if (m) {
       alerts.push({
@@ -144,10 +160,11 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("egg")) {
-    const m = text.match(
-      /\b(eggs?|egg\s+whites?|egg\s+yolks?|dried\s+egg|powdered\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\b/i,
+    const eggCleaned = text.replace(/\beggplants?\b/gi, " ");
+    const m = eggCleaned.match(
+      /\b(egg\s+whites?|egg\s+yolks?|dried\s+egg|powdered\s+egg|eggs?|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\b/i,
     );
-    if (m && !/\beggplants?\b/i.test(m[0])) {
+    if (m) {
       alerts.push({
         id: "egg",
         label: "🥚 Egg Alert",
@@ -495,7 +512,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const isCatalogPrefix = found.productTitle.toLowerCase().startsWith(productTitle.toLowerCase());
   const isCategoryEstimate = Boolean(found.brand && /category estimate/i.test(found.brand));
   const baseTitle = (
-    callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
+    found.source !== "catalog" && callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
       ? productTitle
       : shouldPrependBrand
         ? `${found.brand} ${found.productTitle}`
@@ -515,6 +532,18 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     found.ingredients,
     found.nutrition,
   );
+  const effectiveDeviceId =
+    typeof req.deviceId === "string" && req.deviceId.trim().length >= 4
+      ? req.deviceId.trim()
+      : "anon-web";
+  const resolvedSurface: ScanSurface =
+    req.surface === "extension" || req.surface === "android" || req.surface === "web"
+      ? req.surface
+      : effectiveDeviceId.startsWith("ext-")
+        ? "extension"
+        : effectiveDeviceId !== "anon-web" && !effectiveDeviceId.startsWith("web-")
+          ? "android"
+          : "web";
   const swap = resolveSwap({
     score: result.score,
     productTitle: `${productTitle} ${title}`,
@@ -522,11 +551,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     store,
     watchlist,
     familyWatchlist,
+    surface: resolvedSurface,
   });
-  const effectiveDeviceId =
-    typeof req.deviceId === "string" && req.deviceId.trim().length >= 4
-      ? req.deviceId.trim()
-      : "anon-web";
   let entitlement: EntitlementSummary | undefined;
   try {
     if (req.referredByCode && effectiveDeviceId !== "anon-web") {
@@ -534,10 +560,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
         deviceId: effectiveDeviceId,
         referralCode: req.referredByCode,
         activateNow: false,
+        deviceSecret: req.deviceSecret,
       });
       entitlement = await serializeEntitlementWithPaidLookup(device);
     } else {
-      const device = await getOrCreateDevice(effectiveDeviceId);
+      const device = await getOrCreateDevice(effectiveDeviceId, req.deviceSecret);
       entitlement = await serializeEntitlementWithPaidLookup(device);
     }
   } catch {
@@ -598,7 +625,12 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       ingredients: found.ingredients,
       nutrition: found.nutrition,
     },
-    lookup: { source: found.source, origin: found.origin, ms: found.ms },
+    lookup: {
+      source: found.source,
+      origin: found.origin,
+      sourceUpdatedAt: found.sourceUpdatedAt,
+      ms: found.ms,
+    },
     result,
     ...(dietaryAlerts.length > 0 ? { dietaryAlerts } : {}),
     swap: resolvedSwap,

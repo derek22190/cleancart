@@ -42,3 +42,28 @@ document.getElementById("save").addEventListener("click", async () => {
     status.textContent = "Saved, but the API didn't respond.";
   }
 });
+
+document.getElementById("manage-sub")?.addEventListener("click", async () => {
+  const checked = validateApiBase(input.value);
+  const apiBase = checked.ok ? checked.url : DEFAULT_API;
+  const { heybroc_device_id: deviceId } = await chrome.storage.local.get("heybroc_device_id");
+  status.style.color = "";
+  status.textContent = "Opening billing portal…";
+  try {
+    const res = await fetch(`${apiBase}/api/billing/portal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: deviceId || undefined }),
+    });
+    const data = await res.json();
+    if (data?.ok && data?.url) {
+      chrome.tabs.create({ url: data.url });
+      status.textContent = "✓ Opened billing portal";
+      return;
+    }
+    chrome.tabs.create({ url: `${apiBase}/login` });
+    status.textContent = "Log in on web to manage your subscription.";
+  } catch {
+    chrome.tabs.create({ url: `${apiBase}/login` });
+  }
+});

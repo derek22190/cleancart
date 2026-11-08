@@ -124,15 +124,15 @@ export default async function SwapReportPage({
                 fontSize: 13,
                 fontWeight: 800,
                 background:
-                  yb.glucoseImpact === "Low Spike"
+                  yb.glucoseImpact === "Low Sugar / Carb"
                     ? "#dcfce7"
-                    : yb.glucoseImpact === "Moderate Spike"
+                    : yb.glucoseImpact === "Moderate Sugar / Carb"
                       ? "#fef3c7"
                       : "#fee2e2",
                 color:
-                  yb.glucoseImpact === "Low Spike"
+                  yb.glucoseImpact === "Low Sugar / Carb"
                     ? "#166534"
-                    : yb.glucoseImpact === "Moderate Spike"
+                    : yb.glucoseImpact === "Moderate Sugar / Carb"
                       ? "#92400e"
                       : "#991b1b",
               }}
@@ -160,7 +160,7 @@ export default async function SwapReportPage({
               rel="noreferrer"
               style={{ display: "inline-block", padding: "9px 16px", borderRadius: 999, background: "#059669", color: "#ffffff", fontWeight: 800, fontSize: 13, textDecoration: "none" }}
             >
-              Shop Clean Swap on Walmart ↗
+              Shop Clean Swap on Walmart ↗{swap.isPaidLink ? " · paid link" : ""}
             </a>
             <span style={{ display: "block", fontSize: 11, color: "#047857", marginTop: 6 }}>
               Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. Not affiliated with Walmart or any brand shown.

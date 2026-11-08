@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getCustomerEntitlement,
   getSubscriptionEntitlement,
   saveEntitlement,
   updateSubscriptionEntitlement,
@@ -37,6 +38,139 @@ function normalizeStripeSubStatus(raw: unknown): EntitlementStatus {
     default:
       return "incomplete";
   }
+}
+
+function extractSubIdFromInvoiceObject(inv: Record<string, unknown>): string {
+  const parentObj = (inv.parent ?? {}) as {
+    subscription_details?: {
+      subscription?: string | { id?: string } | null;
+    };
+  };
+  const subDetails = (inv.subscription_details ?? {}) as {
+    subscription?: string | { id?: string } | null;
+  };
+  const rawSub =
+    parentObj.subscription_details?.subscription ??
+    inv.subscription ??
+    subDetails.subscription;
+  if (typeof rawSub === "string") return rawSub;
+  if (rawSub && typeof (rawSub as { id?: string }).id === "string") {
+    return (rawSub as { id: string }).id;
+  }
+  return "";
+}
+
+async function resolveSubscriptionFromCharge(
+  chargeObj: Record<string, unknown>
+): Promise<string> {
+  const metadata = (chargeObj.metadata ?? {}) as Record<string, string>;
+  if (metadata.subscription_id) {
+    return metadata.subscription_id;
+  }
+
+  const rawInvoice = chargeObj.invoice;
+  if (rawInvoice && typeof rawInvoice === "object") {
+    const subFromExpanded = extractSubIdFromInvoiceObject(
+      rawInvoice as Record<string, unknown>
+    );
+    if (subFromExpanded) return subFromExpanded;
+  }
+
+  const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+  const invoiceId =
+    typeof rawInvoice === "string"
+      ? rawInvoice
+      : rawInvoice && typeof (rawInvoice as { id?: string }).id === "string"
+        ? (rawInvoice as { id: string }).id
+        : "";
+
+  if (secretKey && invoiceId) {
+    try {
+      const invRes = await fetch(
+        `https://api.stripe.com/v1/invoices/${encodeURIComponent(invoiceId)}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${secretKey}` },
+          cache: "no-store",
+        }
+      );
+      if (invRes.ok) {
+        const invData = (await invRes.json()) as Record<string, unknown>;
+        const subId = extractSubIdFromInvoiceObject(invData);
+        if (subId) return subId;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Basil+ API: resolve invoice from payment_intent via /v1/invoice_payments
+  const rawPi = chargeObj.payment_intent;
+  const paymentIntentId =
+    typeof rawPi === "string"
+      ? rawPi
+      : rawPi && typeof (rawPi as { id?: string }).id === "string"
+        ? (rawPi as { id: string }).id
+        : "";
+
+  if (secretKey && paymentIntentId) {
+    try {
+      const ipUrl = new URL("https://api.stripe.com/v1/invoice_payments");
+      ipUrl.searchParams.set("payment[type]", "payment_intent");
+      ipUrl.searchParams.set("payment[payment_intent]", paymentIntentId);
+      ipUrl.searchParams.set("expand[]", "data.invoice");
+      const ipRes = await fetch(ipUrl.toString(), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+        cache: "no-store",
+      });
+      if (ipRes.ok) {
+        const ipData = (await ipRes.json()) as {
+          data?: Array<{
+            invoice?: string | Record<string, unknown>;
+          }>;
+        };
+        const firstInv = ipData.data?.[0]?.invoice;
+        if (firstInv && typeof firstInv === "object") {
+          const subId = extractSubIdFromInvoiceObject(firstInv);
+          if (subId) return subId;
+        } else if (typeof firstInv === "string" && firstInv) {
+          const invRes = await fetch(
+            `https://api.stripe.com/v1/invoices/${encodeURIComponent(firstInv)}`,
+            {
+              method: "GET",
+              headers: { Authorization: `Bearer ${secretKey}` },
+              cache: "no-store",
+            }
+          );
+          if (invRes.ok) {
+            const invData = (await invRes.json()) as Record<string, unknown>;
+            const subId = extractSubIdFromInvoiceObject(invData);
+            if (subId) return subId;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Fallback: look up stored entitlement by customerId
+  const rawCustomer = chargeObj.customer;
+  const customerId =
+    typeof rawCustomer === "string"
+      ? rawCustomer
+      : rawCustomer && typeof (rawCustomer as { id?: string }).id === "string"
+        ? (rawCustomer as { id: string }).id
+        : "";
+  if (customerId) {
+    const byCustomer = await getCustomerEntitlement(customerId);
+    if (byCustomer?.subscriptionId) {
+      return byCustomer.subscriptionId;
+    }
+  }
+
+  return "";
 }
 
 export async function POST(req: Request) {
@@ -142,21 +276,14 @@ export async function POST(req: Request) {
               referralCode: creatorCode,
               activateNow: true,
             });
-          } else {
+          } else if (isTrial) {
+            // Non-monetary trial start tracking only; paid commissions are credited strictly on invoice.paid (amount_paid > 0)
             const refKey = subscriptionId || sessionId;
-            if (isTrial) {
-              await recordStripeCreatorConversionOnce(
-                `trial:${refKey}`,
-                creatorCode,
-                "trial"
-              );
-            } else if (isPaid) {
-              await recordStripeCreatorConversionOnce(
-                `paid:${refKey}`,
-                creatorCode,
-                plan === "monthly" ? "paid_monthly" : "paid_annual"
-              );
-            }
+            await recordStripeCreatorConversionOnce(
+              `trial:${refKey}`,
+              creatorCode,
+              "trial"
+            );
           }
         }
         if (isTrial || isPaid) {
@@ -198,7 +325,7 @@ export async function POST(req: Request) {
         const customerId =
           typeof obj.customer === "string" ? obj.customer : undefined;
 
-        const updated = await updateSubscriptionEntitlement(subscriptionId, {
+        await updateSubscriptionEntitlement(subscriptionId, {
           status,
           plan,
           customerId,
@@ -207,17 +334,7 @@ export async function POST(req: Request) {
           deviceId,
           lastStripeEventCreated: eventCreated,
         });
-
-        // If subscription transitioned to active paid state and has a creator code, credit initial conversion once
-        const effectiveCreator = creatorCode || updated?.creatorCode;
-        const effectivePlan = plan || updated?.plan || "annual";
-        if (status === "active" && effectiveCreator) {
-          await recordStripeCreatorConversionOnce(
-            `paid:${subscriptionId}`,
-            effectiveCreator,
-            effectivePlan === "monthly" ? "paid_monthly" : "paid_annual"
-          );
-        }
+        // Paid creator commissions are credited strictly in invoice.paid (when amount_paid > 0)
         break;
       }
 
@@ -234,22 +351,17 @@ export async function POST(req: Request) {
           subscription?: string | { id?: string } | null;
           metadata?: Record<string, string>;
         };
-        const rawSub =
-          parentSubDetails.subscription ??
-          obj.subscription ??
-          subDetails.subscription;
-        const subscriptionId =
-          typeof rawSub === "string"
-            ? rawSub
-            : typeof (rawSub as { id?: string } | null)?.id === "string"
-              ? (rawSub as { id: string }).id
-              : "";
+        const subscriptionId = extractSubIdFromInvoiceObject(obj);
         if (!subscriptionId) break;
 
-        const billingReason =
-          typeof obj.billing_reason === "string" ? obj.billing_reason : "";
         const amountPaidCents =
           typeof obj.amount_paid === "number" ? obj.amount_paid : 0;
+        const customerId =
+          typeof obj.customer === "string"
+            ? obj.customer
+            : typeof (obj.customer as { id?: string } | null)?.id === "string"
+              ? (obj.customer as { id: string }).id
+              : undefined;
 
         const metadata = {
           ...((obj.metadata ?? {}) as Record<string, string>),
@@ -270,18 +382,15 @@ export async function POST(req: Request) {
         await updateSubscriptionEntitlement(subscriptionId, {
           status: "active",
           plan,
+          customerId,
           creatorCode,
           lastStripeEventCreated: eventCreated,
         });
 
-        // Credit recurring renewals (and initial paid invoices) to creator ledger
-        if (creatorCode && amountPaidCents > 0) {
-          const isRenewal = billingReason === "subscription_cycle";
-          const convKey = isRenewal && invoiceId
-            ? `invoice:${invoiceId}`
-            : `paid:${subscriptionId}`;
+        // Credit creators ONLY from invoice.paid with amount_paid > 0, key invoice:${id}
+        if (creatorCode && amountPaidCents > 0 && invoiceId) {
           await recordStripeCreatorConversionOnce(
-            convKey,
+            `invoice:${invoiceId}`,
             creatorCode,
             plan === "monthly" ? "paid_monthly" : "paid_annual"
           );
@@ -296,7 +405,8 @@ export async function POST(req: Request) {
         const amountCapturedCents =
           typeof obj.amount === "number" ? obj.amount : amountRefundedCents;
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
-        const subscriptionId = metadata.subscription_id || "";
+
+        const subscriptionId = await resolveSubscriptionFromCharge(obj);
         const existing = subscriptionId
           ? await getSubscriptionEntitlement(subscriptionId)
           : null;
@@ -307,20 +417,51 @@ export async function POST(req: Request) {
             ? "monthly"
             : existing?.plan || "annual";
 
-        if (subscriptionId && amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0) {
+        const isFullRefund =
+          amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0;
+        if (subscriptionId && isFullRefund) {
           await updateSubscriptionEntitlement(subscriptionId, {
             status: "canceled",
             lastStripeEventCreated: eventCreated,
           });
+          const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+          if (secretKey) {
+            fetch(
+              `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+              {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${secretKey}` },
+              }
+            ).catch(() => {});
+          }
         }
 
         if (creatorCode && amountRefundedCents > 0) {
-          await recordStripeCreatorRefundOnce(
-            `refund:${chargeId}`,
-            creatorCode,
-            plan,
-            amountRefundedCents / 100
-          );
+          const refundsObj = obj.refunds as
+            | { data?: Array<{ id?: string; amount?: number }> }
+            | undefined;
+          const refundList = Array.isArray(refundsObj?.data)
+            ? refundsObj.data.filter(
+                (r) => typeof r?.id === "string" && typeof r?.amount === "number" && r.amount > 0
+              )
+            : [];
+          if (refundList.length > 0) {
+            for (const r of refundList) {
+              await recordStripeCreatorRefundOnce(
+                `refund:${r.id!}`,
+                creatorCode,
+                plan,
+                r.amount! / 100
+              );
+            }
+          } else {
+            await recordStripeCreatorRefundOnce(
+              `refund:${chargeId}`,
+              creatorCode,
+              plan,
+              amountRefundedCents / 100
+            );
+          }
         }
         break;
       }

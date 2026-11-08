@@ -1293,18 +1293,24 @@ class MainActivity : Activity() {
 
         wrap.addView(accordionCard)
 
-        // Privacy Policy link at bottom
-        wrap.addView(label("Privacy Policy & Accessibility Data Disclosure ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+        // Privacy Policy, Terms of Service, and Manage / Cancel Subscription links at bottom
+        wrap.addView(label("Manage / Cancel Subscription ↗", 13f, 0xFF0F7A4A.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(12))
+            setPadding(0, dp(8), 0, dp(6))
+            setOnClickListener { openManageSubscription() }
+        })
+
+        wrap.addView(label("Terms of Service ↗   ·   Privacy Policy & Data Disclosure ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, dp(12))
             setOnClickListener {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
             }
         })
 
         wrap.addView(
             label(
-                "Independent Opinion & Non-Affiliation Notice: HeyBroc 0–100 scores represent subjective clean-label opinions for informational grocery comparison only and are not medical or regulatory advice. Most flagged additives are FDA-permitted/GRAS; always verify physical package labels. Retail swap links may earn an affiliate commission. HeyBroc is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Costco, Sam's Club, BJ's, ALDI, Kroger, Amazon, Whole Foods, DoorDash, Uber Eats, Shipt, or any food/beverage manufacturer.",
+                "Independent Opinion & Non-Affiliation Notice: HeyBroc 0–100 scores represent subjective clean-label opinions for informational grocery comparison only and are not medical or regulatory advice. Formulations vary by region and lot; always verify physical package labels. Retail swap links marked 'paid link' may earn an affiliate commission. HeyBroc is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Costco, Sam's Club, BJ's, ALDI, Kroger, Amazon, Whole Foods, DoorDash, Uber Eats, Shipt, or any food/beverage manufacturer.",
                 11f,
                 0xFF6B7280.toInt()
             ).apply {
@@ -1313,6 +1319,20 @@ class MainActivity : Activity() {
         )
 
         tabContentContainer.addView(wrap)
+    }
+
+    private fun openManageSubscription() {
+        Toast.makeText(this, "Opening subscription management…", Toast.LENGTH_SHORT).show()
+        io.execute {
+            val portalUrl = ScanApi.billingPortalUrl(this@MainActivity)
+            mainHandler.post {
+                if (isDestroyed || isFinishing) return@post
+                val targetUrl = portalUrl ?: "https://www.heybroc.com/login"
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                }
+            }
+        }
     }
 
     private fun buildYukaAccordionRow(
@@ -1570,11 +1590,13 @@ class MainActivity : Activity() {
         }
         val options = arrayOf(
             authOption,
+            "💳 Manage / Cancel Subscription",
             "🛡️ Allergies & Diabetes Alerts",
             "Manage Live Store Bubble",
             "Food Preferences (Family Watchlist)",
             "★ View Saved Favorites",
             "🗑️ Clear Scan History",
+            "📄 Terms of Service",
             "🔒 Privacy Policy & Data Disclosure"
         )
         AlertDialog.Builder(this)
@@ -1582,12 +1604,14 @@ class MainActivity : Activity() {
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> showGoCoCoLoginDialog()
-                    1 -> showAllergyAndDietModal()
-                    2 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
-                    3 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
-                    4 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
-                    5 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
-                    6 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+                    1 -> openManageSubscription()
+                    2 -> showAllergyAndDietModal()
+                    3 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
+                    4 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
+                    5 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
+                    6 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
+                    7 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+                    8 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
                 }
             }
             .show()
@@ -1720,6 +1744,24 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = dp(18) }
                 setOnClickListener { authDialog?.dismiss() }
+            })
+
+            card.addView(label("Manage / Cancel subscription ↗", 14.5f, 0xFF0F7A4A.toInt(), bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(13), dp(16), dp(13))
+                background = GradientDrawable().apply {
+                    setColor(0xFFECFDF5.toInt())
+                    setStroke(dp(1), 0xFFBBF7D0.toInt())
+                    cornerRadius = dp(999).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+                setOnClickListener {
+                    authDialog?.dismiss()
+                    openManageSubscription()
+                }
             })
 
             card.addView(label("Sign out", 14.5f, 0xFF374151.toInt(), bold = true).apply {
@@ -2328,29 +2370,25 @@ class MainActivity : Activity() {
         val nutScore = yb?.optInt("nutritionScore", 42) ?: 42
         val nutGrade = yb?.optString("nutriScoreGrade", "B") ?: "B"
         val addScore = yb?.optInt("additiveScore", if (flagCount == 0) 30 else 0) ?: 0
-        val orgScore = yb?.optInt("organicScore", if (title.contains("organic", true)) 10 else 0) ?: 0
+        val orgScore = yb?.optInt("organicScore", 0) ?: 0
 
         val hasHighGlycemicIng = Regex("\\b(high fructose corn syrup|corn syrup|maltodextrin|dextrose|glucose syrup|cane sugar|sucrose)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
         val hasStarchBase = Regex("\\b(enriched.*flour|corn\\s*starch|tapioca\\s*starch|potato\\s*starch|cassava\\s*flour|rice\\s*flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
         val defaultGlucoseImpact = when {
-            hasHighGlycemicIng || nutGrade == "E" -> "High Spike"
-            hasStarchBase || nutGrade == "C" || nutGrade == "D" -> "Moderate Spike"
-            else -> "Low Spike"
+            hasHighGlycemicIng || nutGrade == "E" -> "High Sugar / Refined Carbs"
+            hasStarchBase || nutGrade == "C" || nutGrade == "D" -> "Moderate Sugar"
+            else -> "Low / No Added Sugar"
         }
         val glucoseImpact = yb?.optString("glucoseImpact")?.takeIf { it.isNotBlank() } ?: defaultGlucoseImpact
         val glucoseNote = yb?.optString("glucoseNote")?.takeIf { it.isNotBlank() } ?: when (glucoseImpact) {
-            "High Spike" -> "Contains concentrated sugars, syrups, or refined starches."
-            "Moderate Spike" -> "Contains fast-digesting starches or added sugars; pair with protein or fiber."
+            "High Sugar / Refined Carbs" -> "Contains concentrated sugars, syrups, or refined starches."
+            "Moderate Sugar" -> "Contains added sugars or refined starches."
             else -> "Low added sugar and minimal refined starch."
         }
-        val calorieNote = yb?.optString("calorieNote")?.takeIf { it.isNotBlank() } ?: when (nutGrade) {
-            "A", "B" -> "Calorie-Smart"
-            "C" -> "Moderate Calories"
-            else -> "Calorie-Dense"
-        }
+        val calorieNote = yb?.optString("calorieNote")?.takeIf { it.isNotBlank() } ?: "Calories Not Provided"
         val glucoseBadgeColor = when (glucoseImpact) {
-            "High Spike" -> 0xFFD93025.toInt()
-            "Moderate Spike" -> 0xFFEA8600.toInt()
+            "High Sugar / Refined Carbs" -> 0xFFD93025.toInt()
+            "Moderate Sugar" -> 0xFFEA8600.toInt()
             else -> 0xFF16A34A.toInt()
         }
 
@@ -2478,6 +2516,7 @@ class MainActivity : Activity() {
             val swapUnlocked = ScanApi.isSwapUnlocked(this, title, swapTitle)
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
+            val isPaidLink = swap.optBoolean("isPaidLink", false)
 
             val swapCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -2532,7 +2571,12 @@ class MainActivity : Activity() {
                     "shipt" -> "Shipt"
                     else -> "Store"
                 }
-                swapCard.addView(label("🛒 Find Clean Swap in $storeDisplayName ↗", 13.5f, Color.WHITE, bold = true).apply {
+                val swapCtaText = if (isPaidLink) {
+                    "🛒 Find Clean Swap in $storeDisplayName ↗ · paid link"
+                } else {
+                    "🛒 Find Clean Swap in $storeDisplayName ↗"
+                }
+                swapCard.addView(label(swapCtaText, 13.5f, Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(12), dp(11), dp(12), dp(11))
                     background = GradientDrawable().apply {
@@ -2594,13 +2638,44 @@ class MainActivity : Activity() {
             sheet.addView(swapCard)
         }
 
+        val rawSource = item.optString("source").ifBlank { prod?.optString("source").orEmpty() }
+        val sourceUpdated = item.optString("sourceUpdatedAt").ifBlank { prod?.optString("sourceUpdatedAt").orEmpty() }
+        val sourceLabel = when (rawSource) {
+            "usda" -> "USDA FoodData Central"
+            "openfoodfacts" -> "Open Food Facts"
+            "catalog" -> "Representative formulation — verify physical label"
+            "screen" -> "On-screen package text"
+            else -> "Ingredient lookup"
+        }
+        val provenanceLine = buildString {
+            append("Source: $sourceLabel")
+            if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
+            append(" · Tap to report a mistake")
+        }
+        sheet.addView(
+            label(provenanceLine, 11f, 0xFF0F7A4A.toInt(), bold = true).apply {
+                setPadding(dp(4), dp(10), dp(4), dp(2))
+                setOnClickListener {
+                    runCatching {
+                        val subject = java.net.URLEncoder.encode("Ingredient label correction: $title", "UTF-8")
+                        startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("mailto:support@heybroc.com?subject=$subject")
+                            )
+                        )
+                    }
+                }
+            }
+        )
+
         sheet.addView(
             label(
-                "Informational opinion only — not medical or regulatory advice. Rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc's independent clean-label rubric.",
+                "Informational opinion only — not medical or regulatory advice. Scores reflect HeyBroc's independent clean-label rubric. Formulations vary by region and lot; always verify the physical package label.",
                 10.5f,
                 0xFF6B7280.toInt()
             ).apply {
-                setPadding(dp(4), dp(12), dp(4), dp(2))
+                setPadding(dp(4), dp(6), dp(4), dp(2))
             }
         )
 
@@ -2869,7 +2944,7 @@ class MainActivity : Activity() {
             "costco" -> "https://www.costco.com/CatalogSearch?keyword=$encoded"
             "kroger" -> "https://www.kroger.com/search?query=$encoded"
             "sams" -> "https://www.samsclub.com/s/$encoded"
-            "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh&tag=heybroc-20&linkCode=ll2"
+            "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh"
             "doordash" -> "https://www.doordash.com/search/store/$encoded/"
             "ubereats" -> "https://www.ubereats.com/search?q=$encoded"
             "shipt" -> "https://www.shipt.com/up/search?query=$encoded"
@@ -3017,7 +3092,7 @@ class MainActivity : Activity() {
                     "1) Detect when you view a grocery product page and read the visible product title and ingredient list, and\n" +
                     "2) Read visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
                     "• What is transmitted: Extracted grocery product titles, ingredient text, active store identifier, your selected additive watchlist categories, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
-                    "• What is NEVER read: HeyBroc never reads hardware identifiers, passwords, payment fields, messages, or any other apps on your device, and never sells or shares personal data."
+                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 12 supported grocery apps above, skips password fields, editable text inputs, and non-visible nodes, never reads hardware identifiers, and does not sell personal data."
             )
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->
