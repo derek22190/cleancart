@@ -207,7 +207,19 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     alt: CLEAN_ALTERNATIVES["Butter/Dairy"],
   },
 
-  // --- Milk (1-for-1 Milk: Chocolate, 2%, Whole/Skim/Lactose-Free, Plant Milks) ---
+  // --- Milk & Protein Shakes (1-for-1: Protein Shakes, Chocolate Milk, 2%, Whole/Skim/Lactose-Free, Plant Milks) ---
+  {
+    match: /\b(core\s+power|premier\s+protein|muscle\s+milk|fairlife\s+(?:elite|nutrition\s+plan|protein)|whey\s+protein|gold\s+standard\s+whey|ghost\s+whey|protein\s+shake|protein\s+milk\s+shake|protein\s+powder)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Orgain",
+      name: "Organic Grass-Fed Clean Protein Shake",
+      size: "4 pack (11 fl oz cartons)",
+      price: 9.98,
+      image: "/swaps/milk.png",
+      ingredients: "Filtered water, organic grass-fed milk protein concentrate, organic pea protein, organic alkalized cocoa, organic acacia, sea salt.",
+    },
+  },
   {
     match: /\b(chocolate\s+milk|fairlife\s+chocolate|nesquik|ooey\s+gooey.*milk|trumu)\b/i,
     alt: {
@@ -891,7 +903,43 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(soda|cola|coca-?cola|coke|pepsi|sprite|dr\.?\s*pepper|mountain\s+dew|fanta|root\s+beer|ginger\s+ale|7up|crush|sunkist)\b/i,
+    match: /\b(pre[- ]?workout|preworkout|c4\s+(?:original|ultimate|ripped|sport|dynasty)|cellucor|ghost\s+legend|gorilla\s+mode|ryse\s+loaded|bucked\s+up|woke\s+af|total\s+war|redcon1|nitraflex)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Ora Organic",
+      name: "Renewable Energy Clean Pre-Workout",
+      size: "9.5 oz tub (20 servings)",
+      price: 34.99,
+      image: "/swaps/drink.png",
+      ingredients: "Organic beet root, organic coconut water, organic green coffee bean, organic yerba mate, organic matcha green tea, organic maca root, organic panax ginseng.",
+    },
+  },
+  {
+    match: /\b(core\s+power|premier\s+protein|muscle\s+milk|fairlife\s+(?:elite|nutrition\s+plan|protein)|whey\s+protein|gold\s+standard\s+whey|ghost\s+whey|protein\s+shake|protein\s+powder)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Orgain",
+      name: "Organic Grass-Fed Clean Protein Shake",
+      size: "4 pack (11 fl oz cartons)",
+      price: 9.98,
+      image: "/swaps/milk.png",
+      ingredients: "Filtered water, organic grass-fed milk protein concentrate, organic pea protein, organic alkalized cocoa, organic acacia, sea salt.",
+    },
+  },
+  {
+    match: /\b(monster|red\s*bull|celsius|alani(?:\s+nu)?|ghost\s+energy|c4\s+(?:performance\s+|smart\s+)?energy|frozen\s+bombsicle|bang\s+energy|reign|rockstar|prime\s+energy|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|energy\s+drink)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Guayakí",
+      name: "Organic Yerba Mate Unsweetened Clean Energy Tea",
+      size: "15.5 fl oz can",
+      price: 2.98,
+      image: "/swaps/drink.png",
+      ingredients: "Purified water, organic brewed yerba mate, organic peppermint, organic lemon juice, organic stevia leaf.",
+    },
+  },
+  {
+    match: /\b(soda|cola|coca[- ]?cola|coke|pepsi|sprite|dr\.?\s*pepper|mountain\s+dew|mtn\s+dew|baja\s+blast|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|cream\s+soda)\b/i,
     alt: {
       category: "Snacks",
       brand: "OLIPOP",
@@ -903,7 +951,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(gatorade|powerade|bodyarmor|prime|red\s+bull|monster|celsius|sports\s+drink|energy\s+drink|electrolyte)\b/i,
+    match: /\b(gatorade|gatorlyte|powerade|body\s*armor|prime\s+hydration|\bprime\b|liquid\s+i\.?v\.?|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sports?\s+drink|electrolyte)\b/i,
     alt: {
       category: "Snacks",
       brand: "NOOMA",
@@ -915,7 +963,31 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(juice|lemonade|capri\s+sun|kool-?aid|sunnyd|minute\s+maid|tropicana|simply\s+orange|hi-?c|hawaiian\s+punch|fruit\s+punch|pouches)\b/i,
+    match: /\b(frappuccino|doubleshot|tripleshot|dunkin'?\s+iced\s+coffee|international\s+delight\s+iced\s+coffee|iced\s+coffee|draft\s+latte)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Stok",
+      name: "Organic Unsweetened Black Cold Brew Coffee",
+      size: "48 fl oz bottle",
+      price: 5.48,
+      image: "/swaps/drink.png",
+      ingredients: "Filtered water, organic Arabica coffee.",
+    },
+  },
+  {
+    match: /\b(arizona|arnold\s+palmer|mucho\s+mango|peace\s+tea|pure\s+leaf|gold\s+peak|snapple|brisk|lipton|milo'?s|sweet\s+tea|iced\s+tea)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Ito En",
+      name: "Oi Ocha Organic Unsweetened Green Tea",
+      size: "16.9 fl oz bottle",
+      price: 2.28,
+      image: "/swaps/drink.png",
+      ingredients: "Purified water, organic green tea, organic ascorbic acid.",
+    },
+  },
+  {
+    match: /\b(juice|lemonade|limeade|capri\s*sun|kool[- ]?aid|sunny\s*d|minute\s+maid|tropicana|simply\s+orange|simply\s+lemonade|florida'?s\s+natural|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|hi[- ]?c|hawaiian\s+punch|tampico|tang|fruit\s+punch|pouches|naked\s+juice|mighty\s+mango|green\s+machine|bolthouse|sparkling\s+ice|bai)\b/i,
     alt: {
       category: "Snacks",
       brand: "Spindrift",
@@ -949,7 +1021,7 @@ const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
   ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|kielbasa|lunch ?meat|roast beef|chicken breast|chicken patties|nuggets|tenders|beef|steak|pork)\b/i],
   ["Butter/Dairy", /\b(butter|margarine|spread|milk|eggnog|egg nog|cheese|velveeta|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
   ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza|hot pockets?)\b/i],
-  ["Snacks", /\b(bars?|cookies?|wafers?|knoppers|storck|merci|kinder|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|water|tea|coffee|peanut butter|almond butter|nutella|jam|jelly|cake\s+roll)\b/i],
+  ["Snacks", /\b(bars?|cookies?|wafers?|knoppers|storck|merci|kinder|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|monster|red\s*bull|celsius|pre[- ]?workout|water|tea|coffee|peanut butter|almond butter|nutella|jam|jelly|cake\s+roll)\b/i],
 ];
 
 export function detectCategory(productTitle = "", _ingredients = ""): SwapCategory {
@@ -1025,6 +1097,11 @@ function conciseClubQuery(q: string): string {
   if (/\b(yukon gold|potatoes)\b/.test(s)) return "Organic Yukon Gold Potatoes";
   if (/\b(yellow onions|fresh yellow onions)\b/.test(s)) return "Organic Yellow Onions";
   if (/\b(spindrift|sparkling water)\b/.test(s)) return "Spindrift Sparkling Water";
+  if (/\b(yerba mate|guayaki|guayakí)\b/.test(s)) return "Guayaki Organic Yerba Mate";
+  if (/\b(ora organic|pre[- ]?workout)\b/.test(s)) return "Ora Organic Pre Workout";
+  if (/\b(orgain|protein shake)\b/.test(s)) return "Orgain Organic Protein Shake";
+  if (/\b(stok|cold brew)\b/.test(s)) return "Stok Unsweetened Cold Brew";
+  if (/\b(ito en|oi ocha|green tea)\b/.test(s)) return "Ito En Unsweetened Green Tea";
   if (/\b(eggnog|egg nog)\b/.test(s)) return "Organic Eggnog";
   if (/\b(soup|chowder|bisque|stew|chili)\b/.test(s)) return "Amy's Organic Soup";
   if (/\b(broth|gravy|stock)\b/.test(s)) return "Organic Broth";

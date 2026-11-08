@@ -933,7 +933,9 @@ class OverlayWindowService : Service() {
 
         // Compact Header
         val cartAvgBadge = if (tripCart.isEmpty()) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG ${calcCartAvg()}/100"
-        val prodTitle = d.optJSONObject("product")?.optString("title").orEmpty()
+        val prodObj = d.optJSONObject("product")
+        val prodTitle = prodObj?.optString("title").orEmpty()
+        val prodDesc = prodObj?.optString("description").orEmpty()
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -969,10 +971,17 @@ class OverlayWindowService : Service() {
             })
         })
         if (prodTitle.isNotBlank()) {
-            sheet.addView(text(prodTitle, 12f, INK_2).apply {
+            sheet.addView(text(prodTitle, 12f, INK_2, bold = true).apply {
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setPadding(0, dp(3), 0, 0)
+            })
+        }
+        if (prodDesc.isNotBlank()) {
+            sheet.addView(text(prodDesc, 11f, INK_2).apply {
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(0, dp(2), 0, 0)
             })
         }
 

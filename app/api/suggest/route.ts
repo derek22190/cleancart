@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { DRINKS_CATALOG } from "@/lib/drinks-catalog";
 import { checkRateLimit } from "@/lib/scan";
-import { scoreProductYuka } from "@/lib/rubric";
+import { scoreProductYuka, type NutritionInput } from "@/lib/rubric";
 import { CLEAN_ALTERNATIVES, EXACT_PRODUCT_ALTERNATIVES } from "@/lib/swaps";
 
 export const runtime = "nodejs";
@@ -9,7 +10,11 @@ export const dynamic = "force-dynamic";
 interface SuggestEntry {
   title: string;
   brand: string;
+  category?: string;
+  description?: string;
   ingredients: string;
+  keywords?: string[];
+  nutrition?: NutritionInput;
 }
 
 const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
@@ -205,10 +210,25 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
   },
 ];
 
-// Merge clean alternatives into the autocomplete index
+// Merge comprehensive Drinks Catalog + popular grocery items + clean alternatives into the autocomplete index
 const FULL_INDEX: SuggestEntry[] = (() => {
   const seen = new Set<string>();
   const out: SuggestEntry[] = [];
+  for (const drink of DRINKS_CATALOG) {
+    const k = drink.title.toLowerCase();
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push({
+        title: drink.title,
+        brand: drink.brand,
+        category: drink.category,
+        description: drink.description,
+        ingredients: drink.ingredients,
+        keywords: drink.keywords,
+        nutrition: drink.nutrition,
+      });
+    }
+  }
   for (const item of POPULAR_GROCERY_INDEX) {
     const k = item.title.toLowerCase();
     if (!seen.has(k)) {
@@ -221,7 +241,7 @@ const FULL_INDEX: SuggestEntry[] = (() => {
     const k = title.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
-      out.push({ title, brand: alt.brand, ingredients: alt.ingredients });
+      out.push({ title, brand: alt.brand, category: alt.category, ingredients: alt.ingredients });
     }
   }
   for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
@@ -230,7 +250,7 @@ const FULL_INDEX: SuggestEntry[] = (() => {
     const k = title.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
-      out.push({ title, brand: alt.brand, ingredients: alt.ingredients });
+      out.push({ title, brand: alt.brand, category: alt.category, ingredients: alt.ingredients });
     }
   }
   return out;
@@ -253,26 +273,47 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, suggestions: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
   }
 
-  const tokens = q.split(/\s+/).filter(Boolean);
+  const tokens = q.split(/[^a-z0-9]+/).filter(Boolean);
+  if (tokens.length === 0) {
+    return NextResponse.json({ ok: true, suggestions: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
+  }
   const scored: Array<{ entry: SuggestEntry; rank: number }> = [];
 
   for (const entry of FULL_INDEX) {
-    const hay = `${entry.title} ${entry.brand}`.toLowerCase();
-    const matchedTokens = tokens.filter((t) => hay.includes(t));
-    if (matchedTokens.length === 0) continue;
-    let rank = matchedTokens.length * 10;
-    if (hay.startsWith(q) || entry.brand.toLowerCase().startsWith(q)) rank += 15;
-    if (matchedTokens.length === tokens.length) rank += 20;
+    const titleLower = entry.title.toLowerCase();
+    const brandLower = entry.brand.toLowerCase();
+    const catLower = (entry.category || "").toLowerCase();
+    const kwLower = (entry.keywords || []).join(" ").toLowerCase();
+    const hay = `${titleLower} ${brandLower} ${catLower} ${kwLower}`;
+    const hayWords = hay.split(/[^a-z0-9]+/).filter(Boolean);
+
+    // Every query token must match a word prefix (or 4+ char substring) — prevents "red" in "red bull" from matching "reduced" or "cultured"
+    const matchedTokens = tokens.filter((t) =>
+      hayWords.some((w) => w.startsWith(t) || (t.length >= 4 && w.includes(t))),
+    );
+    if (matchedTokens.length < tokens.length) continue;
+
+    let rank = matchedTokens.length * 15;
+    if (titleLower.startsWith(q) || brandLower.startsWith(q)) rank += 40;
+    else if (titleLower.includes(q) || brandLower.includes(q)) rank += 25;
+    else if (kwLower.includes(q)) rank += 18;
+    if (hayWords.some((w) => w === tokens[0])) rank += 12;
     scored.push({ entry, rank });
   }
 
   scored.sort((a, b) => b.rank - a.rank);
 
-  const suggestions = scored.slice(0, 8).map(({ entry }) => {
-    const res = scoreProductYuka(entry.ingredients, {}, [], { productTitle: entry.title });
+  const suggestions = scored.slice(0, 10).map(({ entry }) => {
+    const res = scoreProductYuka(entry.ingredients, {}, [], {
+      ...entry.nutrition,
+      productTitle: entry.title,
+    });
     return {
       title: entry.title,
       brand: entry.brand,
+      category: entry.category || "Grocery",
+      description: entry.description || "",
+      ingredients: entry.ingredients,
       score: res.score,
       rating: res.rating,
       color: res.color,

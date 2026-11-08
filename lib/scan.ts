@@ -29,6 +29,8 @@ export interface ScanResponse {
   product: {
     title: string;
     brand?: string;
+    category?: string;
+    description?: string;
     barcode?: string;
     imageUrl?: string;
     ingredients: string;
@@ -239,6 +241,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     product: {
       title,
       brand: found.brand,
+      category: found.category,
+      description: found.description,
       barcode: found.barcode,
       imageUrl: resolvedImageUrl,
       ingredients: found.ingredients,

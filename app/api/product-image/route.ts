@@ -1,3 +1,5 @@
+import { promises as fs } from "fs";
+import path from "path";
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/scan";
 
@@ -10,6 +12,28 @@ const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: strin
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+function localFallbackAssetForQuery(q: string): { relPath: string; contentType: string } {
+  const s = q.toLowerCase();
+  if (/\b(milk|lactaid|fairlife|oatly|malk|califia|silk|chobani\s+oat|ripple|darigold|core\s+power|premier\s+protein|muscle\s+milk|orgain|protein\s+shake|kefir|creamer|half\s+and\s+half|heavy\s+cream)\b/.test(s)) {
+    return { relPath: "public/swaps/milk.png", contentType: "image/png" };
+  }
+  if (/\b(monster|red\s*bull|celsius|alani|ghost|c4|bang|reign|rockstar|prime|5[- ]?hour|zoa|nos|yerba\s+mate|guayaki|guayakí|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|ora\s+organic|soda|cola|coke|coca[- ]?cola|pepsi|sprite|dr\.?\s*pepper|mountain\s+dew|mtn\s+dew|baja\s+blast|fanta|root\s+beer|a\s*&\s*w|barq|mug|ginger\s+ale|canada\s+dry|schweppes|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|olipop|poppi|zevia|culture\s+pop|water|fiji|evian|smartwater|dasani|aquafina|essentia|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spindrift|la\s*croix|waterloo|bubly|polar|nixie|hint|sparkling\s+ice|bai|juice|tropicana|simply|minute\s+maid|uncle\s+matt|mott|martinelli|welch|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|capri\s*sun|kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|naked\s+juice|bolthouse|suja|harmless\s+harvest|vita\s+coco|v8|lemonade|limeade|gatorade|powerade|bodyarmor|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|nooma|propel|vitaminwater|electrolyte|sports?\s+drink|energy\s+drink|coffee|frappuccino|cold\s+brew|stok|dunkin|la\s+colombe|tea|arizona|arnold\s+palmer|pure\s+leaf|gold\s+peak|snapple|brisk|ito\s+en|kombucha|gt'?s|health[- ]?ade)\b/.test(s)) {
+    return { relPath: "public/swaps/drink.png", contentType: "image/png" };
+  }
+  if (/\b(yogurt|yoghurt|skyr)\b/.test(s)) return { relPath: "public/swaps/yogurt.jpg", contentType: "image/jpeg" };
+  if (/\b(ice\s+cream|gelato|ben\s*&\s*jerry)\b/.test(s)) return { relPath: "public/swaps/icecream.png", contentType: "image/png" };
+  if (/\b(butter|ghee|margarine|cheese|cheddar|mozzarella)\b/.test(s)) return { relPath: "public/swaps/butter.jpg", contentType: "image/jpeg" };
+  if (/\b(chips|doritos|cheetos|takis|lays|ruffles|pringles|popcorn|pretzels)\b/.test(s)) return { relPath: "public/swaps/chips.jpg", contentType: "image/jpeg" };
+  if (/\b(crackers|cheez[- ]?it|goldfish|ritz|triscuit|wheat\s+thins)\b/.test(s)) return { relPath: "public/swaps/crackers.jpg", contentType: "image/jpeg" };
+  if (/\b(cereal|froot\s+loops|lucky\s+charms|cinnamon\s+toast|cheerios|oats|oatmeal|granola)\b/.test(s)) return { relPath: "public/swaps/cereal.jpg", contentType: "image/jpeg" };
+  if (/\b(cookie|cookies|oreo|wafer)\b/.test(s)) return { relPath: "public/swaps/cookies.png", contentType: "image/png" };
+  if (/\b(chocolate|hershey|reese|snickers|twix|m&m|kit\s*kat|brownie)\b/.test(s)) return { relPath: "public/swaps/chocolate.png", contentType: "image/png" };
+  if (/\b(bread|bagel|bun|roll|tortilla|waffle|pancake|muffin|pastry|donut)\b/.test(s)) return { relPath: "public/swaps/bread.jpg", contentType: "image/jpeg" };
+  if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|mustard|bbq|sauce|marinara|salsa|soup|chowder|broth)\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
+  if (/\b(turkey|chicken|beef|pork|bacon|sausage|hot\s*dog|salami|ham|deli|meat)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
+  return { relPath: "public/swaps/drink.png", contentType: "image/png" };
+}
+
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
   const clean = rawQuery
     .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|g|kg|ml|l|cup|bag|box|can|jar|bottle))\b/gi, " ")
@@ -21,7 +45,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
 
   // 1. Primary: Bing Product Image Thumbnail (fast, reliable, covers Walmart/Marketside/Great Value/national brands)
   try {
-    const searchQ = `${clean} grocery product package`;
+    const searchQ = `${clean} product package`;
     const bingUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(searchQ)}&qft=+filterui:aspect-square&form=IRFLTR`;
     const res = await fetch(bingUrl, {
       headers: {
@@ -120,9 +144,24 @@ export async function GET(request: Request) {
         }
       }
     } catch {
-      // Fall through
+      // Fall through to local fallback asset
     }
   }
 
-  return new NextResponse("Not found", { status: 404 });
+  // 3. Guaranteed local fallback image so product cards never show broken images
+  try {
+    const fallback = localFallbackAssetForQuery(q);
+    const buf = await fs.readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), fallback.relPath));
+    const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    return new NextResponse(arrayBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": fallback.contentType,
+        "Cache-Control": "public, max-age=86400",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch {
+    return new NextResponse("Not found", { status: 404 });
+  }
 }

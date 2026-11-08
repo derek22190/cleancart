@@ -12,6 +12,7 @@
 import "server-only";
 import { promises as fs } from "fs";
 import path from "path";
+import { matchDrinkCatalog } from "./drinks-catalog";
 import {
   ENGLISH_INGREDIENT_ANCHORS,
   isEnglishIngredientText,
@@ -32,6 +33,8 @@ export interface LookupInput {
 export interface LookupResult {
   productTitle: string;
   brand?: string;
+  category?: string;
+  description?: string;
   barcode?: string;
   ingredients: string;
   imageUrl?: string;
@@ -49,7 +52,7 @@ const CACHE_DIR =
   process.env.CLEANCART_CACHE_DIR ||
   (process.env.VERCEL ? "/tmp/cleancart-cache" : path.join(process.cwd(), ".cache"));
 const CACHE_FILE = path.join(CACHE_DIR, "lookup-cache.json");
-const TIMEOUT_MS = 900;
+const TIMEOUT_MS = 1800;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 1000;
 let offUnavailableUntil = 0;
@@ -1005,6 +1008,25 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     };
   }
 
+  // Check comprehensive Drinks & Beverages Catalog (Energy Drinks, Pre-Workouts, Sodas, Milks, Waters, Juices, Sports Drinks, Tea/Coffee)
+  const drinkHit = matchDrinkCatalog(query);
+  if (drinkHit) {
+    const fullDrinkTitle = drinkHit.title.toLowerCase().startsWith(drinkHit.brand.toLowerCase())
+      ? drinkHit.title
+      : `${drinkHit.brand} ${drinkHit.title}`;
+    const resolvedDrinkTitle = wordCount <= 3 ? fullDrinkTitle : cleanTitle;
+    return {
+      productTitle: resolvedDrinkTitle,
+      brand: drinkHit.brand,
+      category: drinkHit.category,
+      description: drinkHit.description,
+      ingredients: drinkHit.ingredients,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}`,
+      nutrition: { ...drinkHit.nutrition, isOrganic: drinkHit.nutrition?.isOrganic ?? isOrganic },
+      source: "catalog",
+    };
+  }
+
   for (const entry of INSTANT_GROCERY_CATALOG) {
     if (entry.match.test(query)) {
       const fullEntryTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
@@ -1101,8 +1123,8 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     }
   }
 
-  // Fast-path exact store-brand items verified directly from packaging (e.g. Marketside Clam Chowder, Ben & Jerry's, French's Fried Onions, Instant Mashed Potatoes)
-  if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
+  // Fast-path exact store-brand items and verified Drinks Catalog items (Energy Drinks, Pre-Workouts, Sodas, Milks, Waters, Juices, Sports Drinks, Tea/Coffee)
+  if (!input.barcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || Boolean(matchDrinkCatalog(title)))) {
     const direct = catalogFallback(title);
     if (direct) return { ...direct, ms: ms() };
   }

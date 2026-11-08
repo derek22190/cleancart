@@ -365,14 +365,14 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
 
   // ---------------- LOW RISK (-10) ----------------
   {
-    id: "ksorbate", name: "Potassium Sorbate", risk: "low", category: "preservatives",
-    patterns: ["potassium sorbate", "e ?202"],
-    explanation: "A common mold inhibitor that is generally low risk but signals a highly shelf-stabilized product.",
+    id: "ksorbate", name: "Potassium Sorbate / Sorbic Acid", risk: "low", category: "preservatives",
+    patterns: ["potassium sorbate", "sorbic acid", "e ?200", "e ?202"],
+    explanation: "A common synthetic mold and yeast inhibitor that signals a highly shelf-stabilized product.",
   },
   {
-    id: "nabenzoate", name: "Sodium Benzoate", risk: "low", category: "preservatives",
-    patterns: ["sodium benzoate", "e ?211"],
-    explanation: "A preservative that can form small amounts of benzene when combined with vitamin C.",
+    id: "nabenzoate", name: "Sodium / Potassium Benzoate", risk: "low", category: "preservatives",
+    patterns: ["(sodium|potassium) benzoate", "benzoic acid", "e ?210", "e ?211", "e ?212"],
+    explanation: "A synthetic beverage preservative that can form small amounts of benzene when combined with vitamin C (ascorbic acid).",
   },
   {
     id: "capropionate", name: "Calcium Propionate", risk: "low", category: "preservatives",
@@ -649,9 +649,9 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   if (/\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|fritter|danish|cinnamon roll|honey bun|eclair|strudel|turnover|cupcake|frosting|icing|glazed|cake|brownie|pie|pastry|pastries|pop[- ]?tart|toaster strudel|muffin|muffins|croissant)\b/.test(combined) && !/\b(sausage|bacon|ham|egg)\b/.test(combined)) {
     return { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0 };
   }
-  // 2b. Diet / Zero-Sugar Sodas, Sparkling Waters & Sugar-Free Beverages (must run BEFORE candy/caramel checks so "caramel color" in Diet Coke never matches candy!)
+  // 2b. Diet / Zero-Sugar Sodas, Sparkling Waters, Pre-Workouts & Sugar-Free Beverages (must run BEFORE candy/caramel checks so "caramel color" in Diet Coke never matches candy!)
   if (
-    /\b(diet\s+coke|coke\s+zero|pepsi\s+zero|diet\s+pepsi|diet\s+dr\.?\s*pepper|diet\s+mountain\s+dew|sprite\s+zero|zero\s+sugar|sugar[- ]?free|carbonated\s+water|sparkling\s+water|seltzer|club\s+soda|la\s*croix|spindrift|hint\s+water)\b/.test(combined) &&
+    /\b(diet\s+coke|coke\s+zero|pepsi\s+zero|diet\s+pepsi|diet\s+dr\.?\s*pepper|dr\.?\s*pepper\s+zero|diet\s+mountain\s+dew|mtn\s+dew\s+zero|sprite\s+zero|zero\s+sugar|sugar[- ]?free|monster\s+(?:energy\s+)?(?:zero|ultra)|white\s+monster|red\s*bull\s+(?:sugar\s*free|sugarfree|zero)|celsius|alani(?:\s+nu)?|ghost\s+(?:energy|legend|pre)|c4\s+(?:energy|performance|smart|pre|original|ultimate)|bang\s+energy|reign|rockstar\s+pure\s+zero|prime\s+(?:energy|hydration)|5[- ]?hour\s+energy|zoa|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|gatorade\s+zero|powerade\s+zero|propel|vitamin\s*water\s+zero|sparkling\s+ice|zevia|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|waterloo|bubly|polar\s+seltzer|nixie|ito\s+en|unsweetened\s+(?:tea|green\s+tea|black\s+tea|iced\s+tea|cold\s+brew|yerba\s+mate)|yerba\s+mate\s+unsweetened|stok.*unsweetened|lmnt|carbonated\s+water|sparkling\s+water|seltzer|club\s+soda|la\s*croix|spindrift|hint\s+water)\b/.test(combined) &&
     !/\b(cane\s+sugar|high\s+fructose\s+corn\s+syrup|corn\s+syrup|liquid\s+sugar)\b/.test(combined)
   ) {
     return { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 12, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0 };
@@ -659,19 +659,19 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   // 3. Cookies, Candy, Chocolate, Wafers (Knoppers, Storck/Merci, Kinder, Ferrero), Gummies, Ice Cream, Sweet Snacks
   // Strip "caramel color" / "caramel colour" before testing so beverages/sauces with caramel color never match candy
   const combinedWithoutCaramelColor = combined.replace(/\bcaramel\s+colou?r\b/g, "");
-  if (/\b(cookie|cookies|oreo|candy|gummies|chocolate|knoppers|storck|merci|kinder|ferrero|lindt|ghirardelli|hershey|reese'?s|snickers|twix|kit\s*kat|m&m'?s|wafer|wafers|truffle|truffles|praline|toffee|nutella|marshmallow|fudge|caramel|ice cream|gelato|popsicle)\b/.test(combinedWithoutCaramelColor) && !/\b(cashew cookie|larabar|lärabar|oats|cereal|puffs)\b/.test(combinedWithoutCaramelColor)) {
+  if (/\b(cookie|cookies|oreo|candy|gummies|chocolate|knoppers|storck|merci|kinder|ferrero|lindt|ghirardelli|hershey|reese'?s|snickers|twix|kit\s*kat|m&m'?s|wafer|wafers|truffle|truffles|praline|toffee|nutella|marshmallow|fudge|caramel|ice cream|gelato|popsicle)\b/.test(combinedWithoutCaramelColor) && !/\b(cashew cookie|larabar|lärabar|oats|cereal|puffs|chocolate\s+milk|protein\s+shake)\b/.test(combinedWithoutCaramelColor)) {
     return { caloriesKcal100g: 510, sugarsG100g: 38, saturatedFatG100g: 14.5, sodiumMg100g: 180, fiberG100g: 1.8, proteinG100g: 5.0, fruitsVegNutsPct: 0 };
   }
   // 3b. Pure Sugars, Maple Syrup, Honey, Agave & Molasses
-  if (/\b(maple\s+syrup|pure\s+honey|raw\s+honey|clover\s+honey|wildflower\s+honey|manuka\s+honey|agave\s+(?:nectar|syrup)|molasses|cane\s+sugar|granulated\s+sugar|brown\s+sugar|powdered\s+sugar|confectioners\s+sugar|coconut\s+sugar|turbinado\s+sugar)\b/.test(combined) && !/\b(cured|uncured|bacon|ham|turkey|sausage|jerky|salmon|beans|mustard|ketchup|bbq|sauce|cereal|granola|oats|yogurt|bread|chips|crackers)\b/.test(combined)) {
+  if (/\b(maple\s+syrup|pure\s+honey|raw\s+honey|clover\s+honey|wildflower\s+honey|manuka\s+honey|agave\s+(?:nectar|syrup)|molasses|cane\s+sugar|granulated\s+sugar|brown\s+sugar|powdered\s+sugar|confectioners\s+sugar|coconut\s+sugar|turbinado\s+sugar)\b/.test(combined) && !/\b(cured|uncured|bacon|ham|turkey|sausage|jerky|salmon|beans|mustard|ketchup|bbq|sauce|cereal|granola|oats|yogurt|bread|chips|crackers|tea|yerba\s+mate|kombucha|lemonade|coffee|latte)\b/.test(combined)) {
     return { caloriesKcal100g: 285, sugarsG100g: 68, saturatedFatG100g: 0, sodiumMg100g: 10, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0 };
   }
   // 4. Beverages: Sodas, Juice Drinks (Capri Sun, Hi-C, Kool-Aid, SunnyD), Lemonade, Sweet Tea, Sports Drinks, Energy Drinks
-  if (/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|lemonade|limeade|sweet\s+tea|soda|cola|pepsi|coke|mountain\s+dew|sprite|dr\.?\s*pepper|fanta|root\s+beer|ginger\s+ale|7up|crush|sunkist|gatorade|powerade|bodyarmor|sports?\s+drink|energy\s+drink)\b/.test(combined) && !/\b(unsweetened|zero\s+sugar|diet|spindrift|la\s*croix|hint\s+water|nooma|olipop|poppi)\b/.test(combined)) {
+  if (/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|lemonade|limeade|sweet\s+tea|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|soda|cola|pepsi|coke|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|jarritos|gatorade|powerade|bodyarmor|vitamin\s*water|electrolit|biolyte|liquid\s+i\.?v\.?|red\s*bull|monster|rockstar|nos\s+energy|full\s+throttle|frappuccino|doubleshot|dunkin'?\s+iced\s+coffee|sports?\s+drink|energy\s+drink)\b/.test(combined) && !/\b(unsweetened|zero\s+sugar|zero\s+ultra|sugar\s*free|sugarfree|diet|spindrift|la\s*croix|hint\s+water|nooma|olipop|poppi|ito\s+en|stok)\b/.test(combined)) {
     return { caloriesKcal100g: 42, sugarsG100g: 9.8, saturatedFatG100g: 0, sodiumMg100g: 15, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 10 };
   }
   // 4b. 100% Fruit Juices (Orange Juice, Apple Juice, Grape Juice, Cranberry Juice — ~9-10g natural liquid sugar/100ml with 0g fiber)
-  if (/\b(orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tropicana|simply\s+orange|minute\s+maid|uncle\s+matt'?s|welch'?s.*juice|ocean\s+spray|nature'?s\s+nectar|100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|fruit)\s+juice)\b/.test(combined)) {
+  if (/\b(orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s.*juice|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|nature'?s\s+nectar|100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|cranberry|pomegranate|fruit)\s+juice)\b/.test(combined)) {
     return { caloriesKcal100g: 45, sugarsG100g: 9.2, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0.2, proteinG100g: 0.7, fruitsVegNutsPct: 100 };
   }
   // 4c. Eggnog & Liquid Coffee Creamers
@@ -800,13 +800,13 @@ export function scoreProductYuka(
     /\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing|liquid sugar|invert sugar|sugar|cane sugar|brown sugar|coconut sugar|maple syrup|honey|agave|molasses)\b/.test(top3);
 
   const isBeverage =
-    /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tropicana|simply\s+orange|minute\s+maid|uncle\s+matt'?s|nature'?s\s+nectar|lemonade|limeade|sweet\s+tea|iced\s+tea|soda|cola|pepsi|coke|mountain\s+dew|sprite|dr\.?\s*pepper|fanta|root\s+beer|ginger\s+ale|7up|crush|sunkist|gatorade|powerade|bodyarmor|prime|red\s+bull|monster|celsius|sports?\s+drink|energy\s+drink|electrolyte|kombucha|olipop|poppi|spindrift|la\s*croix|sparkling\s+water|seltzer)\b/i.test(titleAndIng) &&
-    !/\b(gummies|gummy|bars?|chews?|crisps?|sauce|marinade|glaze|dressing|vinaigrette|extract|fruit\s+spread|jam|jelly)\b/i.test(titleAndIng);
+    /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|simply\s+lemonade|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|suja|v8|nature'?s\s+nectar|lemonade|limeade|sweet\s+tea|iced\s+tea|green\s+tea|black\s+tea|yerba\s+mate|guayaki|guayakí|clean\s+cause|guru|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|ito\s+en|just\s+ice\s+tea|cold\s+brew|stok|frappuccino|doubleshot|dunkin|la\s+colombe|soda|cola|pepsi|coke|coca[- ]?cola|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|zevia|culture\s+pop|gatorade|gatorlyte|powerade|bodyarmor|prime|red\s*bull|monster|celsius|alani|ghost\s+(?:energy|legend)|c4\s+(?:energy|performance|smart|original|ultimate|pre)|bang\s+energy|reign|rockstar|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|sports?\s+drink|energy\s+drink|electrolyte|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sparkling\s+ice|bai|kombucha|olipop|poppi|spindrift|la\s*croix|waterloo|bubly|polar\s+seltzer|nixie|hint\s+water|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spring\s+water|mineral\s+water|artesian\s+water|purified\s+water|alkaline\s+water|coconut\s+water|harmless\s+harvest|vita\s+coco|sparkling\s+water|seltzer|club\s+soda)\b/i.test(titleAndIng) &&
+    !/\b(gummies|gummy|bars?|chews?|crisps?|sauce|marinade|glaze|dressing|vinaigrette|vanilla\s+extract|almond\s+extract|lemon\s+extract|fruit\s+spread|jam|jelly)\b/i.test(nutrition.productTitle || "");
 
   const is100PctFruitJuice =
     isBeverage &&
     !hasTop3AddedSugar &&
-    /\b(100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|cranberry|grapefruit|pomegranate|pineapple|fruit)\s+juice|orange\s+juice|apple\s+juice|grape\s+juice|simply\s+orange|tropicana|uncle\s+matt'?s)\b/i.test(titleAndIng) &&
+    /\b(100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|cranberry|grapefruit|pomegranate|pineapple|tart\s+cherry|fruit)\s+juice|orange\s+juice|apple\s+juice|grape\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|simply\s+orange|tropicana|uncle\s+matt'?s|mott'?s|martinelli'?s|pom\s+wonderful|lakewood|knudsen)\b/i.test(titleAndIng) &&
     !/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|juice\s+drink|juice\s+pouch\w*|cocktail|blend\s+with\s+sugar|high\s+fructose|lemonade|limeade)\b/i.test(titleAndIng);
 
   const NON_WHOLE_FOOD =
@@ -880,15 +880,17 @@ export function scoreProductYuka(
     nutritionScore = 34;
     nutriGrade = "C";
   } else if (isBeverage && (sugars >= 5 || hasTop3AddedSugar)) {
-    // Sweetened beverages (Capri Sun, Soda, Hi-C, Kool-Aid, Lemonade, Sweet Tea, Sports Drinks) -> Nutri-Score E (6/60)
+    // Sweetened beverages (Capri Sun, Soda, Hi-C, Kool-Aid, Lemonade, Sweet Tea, Sports Drinks, Sugary Energy Drinks) -> Nutri-Score E (6/60)
     nutritionScore = sugars >= 7 ? 6 : 14;
     nutriGrade = sugars >= 7 ? "E" : "D";
   } else if (isBeverage && sugars <= 3.5 && kcal <= 25) {
-    // Unsweetened / low-sugar sparkling water, fruit-infused water, or prebiotic soda (Spindrift, LaCroix, Hint, Olipop, Nooma)
-    // vs. artificially-sweetened diet sodas (Diet Coke, Pepsi Zero, etc.)
-    if (base.flagged.some((f) => f.category === "sweeteners" || f.category === "dyes" || f.category === "preservatives")) {
-      nutritionScore = 18;
-      nutriGrade = "D";
+    // Nutri-Score (2024 beverage algorithm): artificially sweetened zero-sugar drinks (Sucralose, Aspartame, Ace-K)
+    // do not receive Nutri-Score A (60/60); they are capped at Nutri-Score C (36/60).
+    // Clean unsweetened waters, seltzers, teas & prebiotic sodas (Fiji, Spindrift, LaCroix, Olipop, Nooma, Guayakí) get 60/60 (A).
+    const hasArtificialSweetener = base.flagged.some((f) => f.category === "sweeteners");
+    if (hasArtificialSweetener) {
+      nutritionScore = 36;
+      nutriGrade = "C";
     } else {
       nutritionScore = 60;
       nutriGrade = "A";

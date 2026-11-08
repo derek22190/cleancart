@@ -47,6 +47,7 @@ interface Product {
   key: string;
   title: string;
   brand: string;
+  description?: string;
   size?: string;
   price?: number;
   image?: string;
@@ -64,6 +65,8 @@ interface ApiScan {
   product?: {
     title: string;
     brand?: string;
+    category?: string;
+    description?: string;
     barcode?: string;
     imageUrl?: string;
     ingredients: string;
@@ -879,6 +882,7 @@ export default function Simulator() {
               "",
             ) || data.product.title,
           brand: data.product.brand || "Open data",
+          description: data.product.description,
           image: data.product.imageUrl || fallbackImg,
           ingredients: data.product.ingredients,
           nutrition: data.product.nutrition,
@@ -1249,7 +1253,7 @@ export default function Simulator() {
                 id="live-search-input"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. Cheez-It original, Doritos nacho, Chobani…"
+                placeholder="e.g. Monster, Red Bull, Coke, C4 Pre-Workout, Milk, Water, Juice…"
                 aria-label="Search any grocery product"
               />
               <button id="live-search-submit" type="submit" disabled={liveState === "loading" || !query.trim()}>
@@ -1461,7 +1465,7 @@ export default function Simulator() {
                       <div><b>Delivery</b><span>As soon as 1 hr</span></div>
                       <div><b>Shipping</b><span>Not available</span></div>
                     </div>
-                    <div className="pdp-section"><h4>About this item</h4><p>Popular pick in {active.category ?? "Grocery"}. Customers frequently buy this together with other pantry staples.</p></div>
+                    <div className="pdp-section"><h4>About this item</h4><p>{active.description || `Popular pick in ${active.category ?? "Grocery"}. Customers frequently buy this together with other pantry staples.`}</p></div>
                     <div className="pdp-section"><h4>Specifications</h4><p>Brand: {active.brand}<br />Category: {active.category ?? "Grocery"}</p></div>
                     <div className="pdp-section"><h4>Ingredients</h4><p className="pdp-ingredients">{active.ingredients}</p><small className="no-scroll-note">HeyBroc already read this — no scrolling needed.</small></div>
                   </div>
@@ -1621,6 +1625,11 @@ export default function Simulator() {
                             <div className="yuka-hero-info">
                               <b className="yuka-hero-title">{active.title}</b>
                               <span className="yuka-hero-brand">{active.brand}</span>
+                              {active.description && (
+                                <p style={{ fontSize: 12, color: "#4b5563", margin: "4px 0 6px", lineHeight: 1.35 }}>
+                                  {active.description}
+                                </p>
+                              )}
                               <div className="yuka-hero-score">
                                 <span className={`yuka-dot tone-${score.color}`} />
                                 <div>

@@ -148,6 +148,52 @@ check("Measured nutrition emits verified numeric flag, while unmeasured estimati
     measured.flagged.some((f) => f.id === "nutri_satfat" && f.name.includes("11g / 100g"))
   );
 })());
+import { DRINKS_CATALOG, matchDrinkCatalog } from "../lib/drinks-catalog";
+
+check("DRINKS_CATALOG has >= 60 entries with descriptions & ingredients", DRINKS_CATALOG.length >= 60 && DRINKS_CATALOG.every((d) => d.description.length > 20 && d.ingredients.length > 10));
+check("Monster Energy lookup + Poor score + Guayaki swap", (() => {
+  const m = matchDrinkCatalog("monster");
+  if (!m) return false;
+  const s = scoreProductYuka(m.ingredients, {}, [], { ...m.nutrition, productTitle: m.title });
+  const sw = resolveSwap({ score: s.score, productTitle: m.title, store: "walmart" });
+  return m.brand === "Monster Energy" && s.score <= 25 && s.rating === "Poor" && Boolean(sw?.title.includes("Guayakí"));
+})());
+check("White Monster / Monster Zero Ultra lookup + Poor score + Guayaki swap", (() => {
+  const m = matchDrinkCatalog("white monster");
+  if (!m) return false;
+  const s = scoreProductYuka(m.ingredients, {}, [], { ...m.nutrition, productTitle: m.title });
+  const sw = resolveSwap({ score: s.score, productTitle: m.title, store: "walmart" });
+  return m.title.includes("Zero Ultra") && s.score <= 45 && s.rating === "Poor" && Boolean(sw?.title.includes("Guayakí"));
+})());
+check("Red Bull lookup + Poor score + Guayaki swap", (() => {
+  const m = matchDrinkCatalog("red bull");
+  if (!m) return false;
+  const s = scoreProductYuka(m.ingredients, {}, [], { ...m.nutrition, productTitle: m.title });
+  const sw = resolveSwap({ score: s.score, productTitle: m.title, store: "walmart" });
+  return m.brand === "Red Bull" && s.score <= 25 && s.rating === "Poor" && Boolean(sw?.title.includes("Guayakí"));
+})());
+check("C4 Pre-Workout lookup + Poor score + Ora Organic Pre-Workout swap", (() => {
+  const m = matchDrinkCatalog("c4 pre workout");
+  if (!m) return false;
+  const s = scoreProductYuka(m.ingredients, {}, [], { ...m.nutrition, productTitle: m.title });
+  const sw = resolveSwap({ score: s.score, productTitle: m.title, store: "walmart" });
+  return m.category === "Pre-Workouts & Fitness" && s.score <= 45 && Boolean(sw?.title.includes("Ora Organic"));
+})());
+check("Core Power Protein Shake lookup + Orgain Protein Shake swap", (() => {
+  const m = matchDrinkCatalog("core power");
+  if (!m) return false;
+  const s = scoreProductYuka(m.ingredients, {}, [], { ...m.nutrition, productTitle: m.title });
+  const sw = resolveSwap({ score: s.score, productTitle: m.title, store: "walmart" });
+  return s.score < 75 && Boolean(sw?.title.includes("Orgain"));
+})());
+check("Fiji Water & Spindrift score >= 90 Excellent", (() => {
+  const fiji = matchDrinkCatalog("fiji water")!;
+  const spin = matchDrinkCatalog("spindrift")!;
+  const sf = scoreProductYuka(fiji.ingredients, {}, [], { ...fiji.nutrition, productTitle: fiji.title });
+  const ss = scoreProductYuka(spin.ingredients, {}, [], { ...spin.nutrition, productTitle: spin.title });
+  return sf.score >= 90 && ss.score === 100;
+})());
+
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
 console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
 process.exit(fail ? 1 : 0);

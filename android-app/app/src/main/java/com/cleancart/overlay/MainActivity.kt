@@ -1008,11 +1008,15 @@ class MainActivity : Activity() {
         // Category Rows with pastel rounded-square icons and › chevrons
         data class TopCat(val title: String, val icon: String, val bgColor: Int)
         val categories = listOf(
+            TopCat("Energy Drinks & Pre-Workouts", "⚡", 0xFFFEF3C7.toInt()),
+            TopCat("Sodas & Prebiotic Drinks", "🥤", 0xFFFDECEC.toInt()),
+            TopCat("Waters, Seltzers & Hydration", "💧", 0xFFEFF6FF.toInt()),
+            TopCat("Juices, Smoothies & Tea", "🧃", 0xFFFEF0E6.toInt()),
+            TopCat("Milk & Dairy", "🥛", 0xFFE8F5EC.toInt()),
             TopCat("Peanut Butter", "🥜", 0xFFFEF9E7.toInt()),
             TopCat("Cereals & Granolas", "🥣", 0xFFFEF0E6.toInt()),
             TopCat("Soups & Chowders", "🍲", 0xFFFDECEC.toInt()),
             TopCat("Salads & Dressings", "🥗", 0xFFE8F5EC.toInt()),
-            TopCat("Milk & Dairy", "🥛", 0xFFEFF6FF.toInt()),
             TopCat("Chips & Snacks", "🍪", 0xFFFEF3C7.toInt()),
             TopCat("Bread & Bakery", "🍞", 0xFFF5F3FF.toInt()),
             TopCat("Dark Chocolate & Treats", "🍫", 0xFFF3F4F6.toInt())
@@ -1080,7 +1084,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val searchInput = EditText(this).apply {
-            hint = "e.g. Doritos, Clam Chowder, Ranch, Milk…"
+            hint = "e.g. Monster, Red Bull, Coke, C4, Milk, Water, Juice…"
             setText(lastSearchQuery)
             setSelection(lastSearchQuery.length)
             textSize = 14.5f
@@ -1406,7 +1410,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, dp(12))
         })
         val input = EditText(this).apply {
-            hint = "e.g. Doritos, Clam Chowder, Oreos, Milk…"
+            hint = "e.g. Monster, Red Bull, Coke, C4, Milk, Water, Juice…"
             textSize = 15f
             setSingleLine(true)
             setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -1969,6 +1973,7 @@ class MainActivity : Activity() {
         val title = ScanHistoryStore.extractTitle(item)
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
+        val description = prod?.optString("description").orEmpty().ifBlank { item.optString("description") }
         val ingredients = prod?.optString("ingredients").orEmpty().ifBlank { item.optString("ingredients") }
         val flagged = res?.optJSONArray("flagged") ?: JSONArray()
         val flagCount = flagged.length()
@@ -2032,6 +2037,12 @@ class MainActivity : Activity() {
         }
         topHeader.addView(favBtn)
         sheet.addView(topHeader)
+
+        if (description.isNotBlank()) {
+            sheet.addView(label(description, 12.5f, 0xFF374151.toInt()).apply {
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
 
         // 3-Pillar Score Breakdown Box
         val nutScore = yb?.optInt("nutritionScore", 42) ?: 42
@@ -2401,8 +2412,13 @@ class MainActivity : Activity() {
         val box = FrameLayout(this)
         val fallback = label(
             when {
+                title.contains("monster", true) || title.contains("red bull", true) || title.contains("energy", true) || title.contains("celsius", true) || title.contains("c4", true) || title.contains("pre-workout", true) || title.contains("alani", true) || title.contains("ghost", true) -> "⚡"
+                title.contains("coca-cola", true) || title.contains("coke", true) || title.contains("pepsi", true) || title.contains("soda", true) || title.contains("mountain dew", true) || title.contains("olipop", true) || title.contains("poppi", true) -> "🥤"
+                title.contains("water", true) || title.contains("seltzer", true) || title.contains("spindrift", true) || title.contains("lacroix", true) || title.contains("fiji", true) || title.contains("gatorade", true) || title.contains("prime", true) -> "💧"
+                title.contains("juice", true) || title.contains("orange", true) || title.contains("lemonade", true) || title.contains("sunnyd", true) || title.contains("smoothie", true) -> "🧃"
+                title.contains("coffee", true) || title.contains("frappuccino", true) || title.contains("tea", true) || title.contains("mate", true) || title.contains("kombucha", true) -> "☕"
                 title.contains("ranch", true) || title.contains("salad", true) -> "🥗"
-                title.contains("milk", true) || title.contains("butter", true) || title.contains("oat", true) -> "🥛"
+                title.contains("milk", true) || title.contains("butter", true) || title.contains("oat", true) || title.contains("protein", true) -> "🥛"
                 title.contains("soup", true) || title.contains("chowder", true) -> "🍲"
                 title.contains("cereal", true) || title.contains("granola", true) -> "🥣"
                 title.contains("peanut", true) -> "🥜"
