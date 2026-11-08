@@ -313,6 +313,7 @@
         </div>
         ${explain}
         ${swap}
+        <p style="margin:8px 0 0;font-size:10px;line-height:1.4;color:#64748b">Informational clean-label opinion only — not medical advice. Flagged ingredients are FDA-permitted/GRAS; always verify physical package label. Swap links may earn an affiliate commission. HeyBroc is not affiliated with any store or brand.</p>
       </div></div>`;
   }
 

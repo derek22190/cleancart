@@ -1219,6 +1219,16 @@ class MainActivity : Activity() {
             }
         })
 
+        wrap.addView(
+            label(
+                "Independent Opinion & Non-Affiliation Notice: HeyBroc 0–100 scores represent subjective clean-label opinions for informational grocery comparison only and are not medical or regulatory advice. Most flagged additives are FDA-permitted/GRAS; always verify physical package labels. Retail swap links may earn an affiliate commission. HeyBroc is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Costco, Sam's Club, BJ's, ALDI, Kroger, Amazon, Whole Foods, DoorDash, Uber Eats, Shipt, or any food/beverage manufacturer.",
+                11f,
+                0xFF6B7280.toInt()
+            ).apply {
+                setPadding(dp(18), dp(14), dp(18), dp(10))
+            }
+        )
+
         tabContentContainer.addView(wrap)
     }
 

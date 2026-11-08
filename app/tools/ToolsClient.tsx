@@ -409,6 +409,22 @@ export default function ToolsClient() {
           ))}
         </div>
       </section>
+
+      <footer
+        style={{
+          marginTop: 24,
+          padding: "14px 16px",
+          background: "#f8fafc",
+          border: "1px solid #e2e8f0",
+          borderRadius: 14,
+          fontSize: 12,
+          color: "#64748b",
+          lineHeight: 1.55,
+        }}
+      >
+        <strong style={{ color: "#334155" }}>Independent Opinion &amp; Non-Affiliation Disclaimer:</strong>{" "}
+        HeyBroc scores, risk tiers, and additive summaries represent HeyBroc&apos;s subjective clean-label opinion for informational comparison only and are not medical, nutritional, or regulatory safety advice. Most flagged additives and oils are FDA-permitted or GRAS in the United States. Always verify the physical product package label before purchasing or consuming any food or beverage. HeyBroc is not affiliated with, endorsed by, or sponsored by any grocery retailer or food/beverage manufacturer.
+      </footer>
     </div>
   );
 }

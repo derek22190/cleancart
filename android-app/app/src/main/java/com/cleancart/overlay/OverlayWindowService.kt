@@ -1237,7 +1237,7 @@ class OverlayWindowService : Service() {
         sheet.addView(swapBox)
         sheet.addView(
             text(
-                "Informational opinion only — not medical advice. Rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc's independent clean-label rubric.",
+                "Informational opinion only — not medical advice. Rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc's independent clean-label rubric. Always verify physical package label. Swap links may earn an affiliate commission. HeyBroc is independent and not affiliated with any store or brand.",
                 9.5f,
                 INK_3
             ).apply {

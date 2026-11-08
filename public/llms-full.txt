@@ -48,9 +48,15 @@ Every product scanned by HeyBroc receives a score from 0 to 100:
 - **Sweeteners & Syrups:** High Fructose Corn Syrup (HFCS), Corn Syrup, Sucralose, Aspartame, Acesulfame Potassium (Ace-K), Saccharin, Neotame.
 - **Emulsifiers & Thickeners:** Carrageenan, Polysorbate 80, Carboxymethylcellulose (CMC), Mono- and Diglycerides, Brominated Vegetable Oil (BVO — FDA revoked food additive authorization in 2024).
 
-## 5. Example 1-for-1 Clean Swaps
-- **Doritos Nacho Cheese / Cool Ranch (0/100 Poor)** → **Siete Grain-Free Tortilla Chips** or **LesserEvil Organic Popcorn / Paleo Puffs**
-- **Hidden Valley Original Ranch (0/100 Poor)** → **Primal Kitchen Ranch Dressing with Avocado Oil (100/100 Excellent)**
-- **Yoplait Original Strawberry Yogurt (35/100 Poor)** → **Stonyfield Organic Whole Milk Yogurt (100/100 Excellent)**
-- **Oscar Mayer Deli Turkey (35/100 Poor)** → **Applegate Organics Oven Roasted Turkey Breast (100/100 Excellent)**
-- **Cheez-It Original Crackers (10/100 Poor)** → **Simple Mills Organic Seed & Nut Flour Cheddar Crackers (100/100 Excellent)**
+## 5. Example 1-for-1 Clean Swaps (Representative Formulations)
+- **Doritos Nacho Cheese / Cool Ranch** → **Siete Grain-Free Tortilla Chips** or **LesserEvil Organic Popcorn / Paleo Puffs**
+- **Hidden Valley Original Ranch** → **Primal Kitchen Ranch Dressing with Avocado Oil**
+- **Yoplait Original Strawberry Yogurt** → **Stonyfield Organic Whole Milk Yogurt**
+- **Oscar Mayer Deli Turkey** → **Applegate Organics Oven Roasted Turkey Breast**
+- **Cheez-It Original Crackers** → **Simple Mills Organic Seed & Nut Flour Cheddar Crackers**
+
+## 6. Legal, Regulatory & Non-Affiliation Disclaimers
+- **Subjective Clean-Label Opinion:** All HeyBroc 0–100 scores, color tiers, and additive explanations represent HeyBroc's subjective clean-label opinion and educational commentary. They do not constitute medical advice or a claim that any product is adulterated, unsafe, or unlawful. Many flagged ingredients are permitted for food use or recognized as GRAS by the U.S. FDA.
+- **Representative Formulations — Verify Physical Labels:** Ingredient lists in HeyBroc's catalog are representative snapshots from public databases (Open Food Facts, USDA FoodData Central) and may not reflect recent manufacturer reformulations or regional variations. Consumers must always verify the physical product package.
+- **Independent & Unaffiliated:** HeyBroc is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. Store and brand names are used strictly for nominative fair-use identification. HeyBroc may earn an affiliate commission on qualifying retail links at no extra cost to the user.
+

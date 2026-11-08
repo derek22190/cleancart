@@ -115,7 +115,7 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
 };
 
 const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accentFg: string; mark: string }> = {
-  walmart: { bg: "#0071dc", fg: "#ffffff", accent: "#0071dc", accentFg: "#fff", mark: "✳" },
+  walmart: { bg: "#0071dc", fg: "#ffffff", accent: "#0071dc", accentFg: "#fff", mark: "🏬" },
   instacart: { bg: "#003d29", fg: "#ffffff", accent: "#0aad0a", accentFg: "#fff", mark: "🥕" },
   target: { bg: "#cc0000", fg: "#ffffff", accent: "#cc0000", accentFg: "#fff", mark: "🎯" },
   kroger: { bg: "#0f2d7f", fg: "#ffffff", accent: "#0f2d7f", accentFg: "#fff", mark: "🛒" },
@@ -129,36 +129,8 @@ const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accen
   shipt: { bg: "#2b0c3d", fg: "#ffffff", accent: "#008248", accentFg: "#fff", mark: "⚡" },
 };
 
-/** Renders the signature blue-and-yellow Walmart Spark icon (or colorful store mark). */
-function StoreBadge({ store, inHeader = false }: { store: Store; inHeader?: boolean }) {
-  if (store === "walmart") {
-    return (
-      <span
-        className="walmart-spark-badge"
-        style={{
-          display: "inline-grid",
-          placeItems: "center",
-          width: inHeader ? 24 : 20,
-          height: inHeader ? 24 : 20,
-          borderRadius: 6,
-          background: inHeader ? "rgba(255,255,255,0.16)" : "#0071dc",
-          flex: "none",
-        }}
-        aria-hidden
-      >
-        <svg viewBox="0 0 24 24" width={inHeader ? 17 : 14} height={inHeader ? 17 : 14}>
-          <g stroke="#ffc220" strokeWidth="2.8" strokeLinecap="round">
-            <line x1="12" y1="2.5" x2="12" y2="7.2" />
-            <line x1="12" y1="16.8" x2="12" y2="21.5" />
-            <line x1="3.8" y1="7.2" x2="7.8" y2="9.6" />
-            <line x1="16.2" y1="14.4" x2="20.2" y2="16.8" />
-            <line x1="20.2" y1="7.2" x2="16.2" y2="9.6" />
-            <line x1="7.8" y1="14.4" x2="3.8" y2="16.8" />
-          </g>
-        </svg>
-      </span>
-    );
-  }
+/** Renders a generic store mark for the selected retailer (nominative text + generic emoji only; no third-party trademarked logos). */
+function StoreBadge({ store }: { store: Store; inHeader?: boolean }) {
   return <span className="store-chip-mark">{STORE_THEME[store].mark}</span>;
 }
 
@@ -2363,9 +2335,24 @@ export default function Simulator() {
             <div style={{ marginTop: 16, display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
               <a href="/tools" style={{ color: "#15803d", fontWeight: 700 }}>🧪 Free Ingredient &amp; Seed Oil Tools</a>
               <a href="/swaps" style={{ color: "#15803d", fontWeight: 700 }}>⇄ Clean Grocery Swaps Directory</a>
-              <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy</a>
+              <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy &amp; Disclaimers</a>
               <a href="/llms.txt" style={{ color: "#15803d", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
               <a href="/sitemap.xml" style={{ color: "#15803d", fontWeight: 600 }}>Sitemap</a>
+            </div>
+            <div
+              style={{
+                marginTop: 16,
+                padding: "12px 14px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 12,
+                fontSize: 11.5,
+                lineHeight: 1.55,
+                color: "#64748b",
+              }}
+            >
+              <strong style={{ color: "#334155" }}>Independent Opinion, Label Verification, Pricing &amp; Non-Affiliation Notice:</strong>{" "}
+              HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists and sample prices shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
             </div>
           </div>
         </div>

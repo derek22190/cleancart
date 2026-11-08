@@ -514,8 +514,8 @@ interface CatalogEntry {
 const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   {
     match: /\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|fritter|danish|cinnamon roll|honey bun|eclair|strudel|turnover|glazed donut|jelly donut|raspberry filled)\b/i,
-    brand: "Freshness Guaranteed",
-    title: "Bakery Donuts / Filled Bismarks",
+    brand: "Representative Bakery Formulation",
+    title: "Bakery Donuts / Filled Pastries (Representative Formulation)",
     ingredients: "Enriched Wheat Flour Bleached (Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Fruit Filling (High Fructose Corn Syrup, Water, Raspberries, Modified Food Starch, Sugar, Citric Acid, Salt, Potassium Sorbate, Sodium Benzoate, Red 40, Blue 1, Artificial Flavor), Palm and/or Soybean Oil, Sugar, Dextrose, Contains 2% or Less of: Yeast, Soy Flour, Whey, Salt, Mono- and Diglycerides, Sodium Acid Pyrophosphate, Baking Soda, Sodium Stearoyl Lactylate, Soy Lecithin, Calcium Propionate, DATEM, Artificial Flavor, Yellow 5, Yellow 6, Titanium Dioxide (Color).",
     imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
@@ -542,10 +542,18 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/crackers.jpg",
   },
   {
-    match: /\b(oreo\s+puffs?|oreo\s+o'?s|cocoa\s+puffs?|reese'?s\s+puffs?|cookie\s+crisp|cocoa\s+pebbles|fruity\s+pebbles|cap'?n\s+crunch|apple\s+jacks|frosted\s+flakes|krave|pops\s+cereal|honey\s+smacks|golden\s+grahams|trix)\b/i,
-    brand: "Post / Sweetened Cereal",
-    title: "Sweetened Breakfast Cereal",
-    ingredients: "Corn Flour, Sugar, Marshmallows (Sugar, Modified Corn Starch, Corn Syrup, Dextrose, Gelatin, Sodium Hexametaphosphate, Artificial Flavor, Blue 1), Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, High Fructose Corn Syrup, Salt, Baking Soda, Soy Lecithin, Natural and Artificial Flavor, BHT Added to Preserve Freshness.",
+    match: /\b(oreo\s+puffs?|oreo\s+o'?s)\b/i,
+    brand: "Post",
+    title: "Oreo O's / Oreo Puffs Cereal",
+    ingredients: "Corn Flour, Sugar, Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, Corn Syrup, Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Salt, Degerminated Corn Meal, Natural and Artificial Flavor, Cornstarch, Palm Oil, Soy Lecithin, Chocolate, BHT Added to Preserve Freshness.",
+    imageUrl: "/products/cereal.jpg",
+    nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(cocoa\s+puffs?|reese'?s\s+puffs?|cookie\s+crisp|cocoa\s+pebbles|fruity\s+pebbles|cap'?n\s+crunch|apple\s+jacks|frosted\s+flakes|krave|pops\s+cereal|honey\s+smacks|golden\s+grahams|trix)\b/i,
+    brand: "Representative Category Formulation",
+    title: "Sweetened Breakfast Cereal (Representative Formulation)",
+    ingredients: "Whole Grain Corn or Corn Flour, Sugar, Corn Syrup, Canola and/or Soybean Oil, Salt, Trisodium Phosphate, Natural and Artificial Flavor, BHT Added to Preserve Freshness.",
     imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
   },
@@ -616,7 +624,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(yoplait|gogurt)\b(?!.*\bplain\b)/i,
     brand: "Yoplait",
     title: "Original Strawberry Lowfat Yogurt",
-    ingredients: "Cultured Grade A Reduced Fat Milk, Sugar, Strawberries, Modified Corn Starch, High Fructose Corn Syrup, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
+    ingredients: "Cultured Pasteurized Grade A Lowfat Milk, Sugar, Strawberries, Modified Corn Starch, Nonfat Milk, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
     imageUrl: "/products/yogurt.jpg",
   },
   {
@@ -682,9 +690,9 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(hot pocket|hot pockets|lean pocket|lean pockets|pizza rolls|totino'?s|bagel bites|stouffer'?s)\b/i,
-    brand: "Hot Pockets",
-    title: "Stuffed Sandwich Pockets",
-    ingredients: "Enriched Flour (Wheat Flour, Malted Barley Flour, Niacin, Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Cooked White Meat Chicken, Reduced Fat Cheddar Cheese, Soybean Oil, Bacon (Cured with Water, Salt, Sugar, Smoke Flavoring, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite), 2% or Less of Modified Food Starch, Sugar, Salt, Buttermilk, Potassium Chloride, Autolyzed Yeast Extract, Disodium Phosphate, Xanthan Gum, Monosodium Glutamate, Natural Flavors, Titanium Dioxide.",
+    brand: "Representative Category Formulation",
+    title: "Frozen Stuffed Sandwich / Entree (Representative Formulation)",
+    ingredients: "Enriched Flour (Wheat Flour, Malted Barley Flour, Niacin, Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Cooked White Meat Chicken, Reduced Fat Cheddar Cheese, Soybean Oil, Bacon (Cured with Water, Salt, Sugar, Smoke Flavoring, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite), 2% or Less of Modified Food Starch, Sugar, Salt, Buttermilk, Potassium Chloride, Autolyzed Yeast Extract, Disodium Phosphate, Xanthan Gum, Monosodium Glutamate, Natural Flavors.",
     imageUrl: "/products/snacks.jpg",
   },
   {
@@ -772,7 +780,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|kraft\s+mac|velveeta\s+shells)\b/i,
     brand: "Kraft / Conventional",
     title: "Original Macaroni & Cheese Dinner",
-    ingredients: "Enriched Macaroni Product (Wheat Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Milk Protein Concentrate, Salt, Sodium Tripolyphosphate, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, Yellow 5, Yellow 6, Enzymes, Cheese Culture).",
+    ingredients: "Enriched Macaroni Product (Wheat Flour, Durum Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Salt, Milk Protein Concentrate, Sodium Triphosphate, Contains Less than 2% of Tapioca Flour, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, with Paprika, Turmeric, and Annatto Added for Color, Enzymes, Cheese Culture).",
     imageUrl: "/products/snacks.jpg",
   },
   {
@@ -803,7 +811,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Sweetened Dried Berries",
     ingredients: "Berries (Blueberries / Cranberries), Cane Sugar, Refined Sunflower Oil (Used as a Processing Aid).",
     imageUrl: "/products/snacks.jpg",
-    nutrition: { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.2, sodiumMg100g: 5, fiberG100g: 5.3, proteinG100g: 0.4, fruitsVegNutsPct: 60, isWholeFood: false },
+    nutrition: { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.2, sodiumMg100g: 5, fiberG100g: 5.3, proteinG100g: 0.4, fruitsVegNutsPct: 60, nutriScoreGrade: "d", isWholeFood: false },
   },
   {
     match: /\b(freeze[- ]?dried)\b.*\b(blueberr\w*|strawberr\w*|raspberr\w*|bananas?|apples?|mangos?|peaches|fruit|crisps?)\b|\b(blueberry|strawberry|raspberry|berry|fruit)\s+powder\b/i,
@@ -811,7 +819,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Dehydrated / Freeze-Dried Fruit",
     ingredients: "Dehydrated / Freeze-Dried Fruit (Concentrated Natural Fruit Sugars).",
     imageUrl: "/swaps/snacks.jpg",
-    nutrition: { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85, isWholeFood: false },
+    nutrition: { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85, nutriScoreGrade: "c", isWholeFood: false },
   },
   {
     match: /^(?!.*\b(canola|olive|soybean|vegetable|oil|spread|margarine|peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|butterfinger|popcorn|croissant|biscuit|crackers|bread|rolls|buns|sauce|chicken)\b).*\b(kerrygold)\b/i,
@@ -846,16 +854,16 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(panera(\s+bread)?.*broccoli\s+cheddar|broccoli\s+cheddar\s+soup)\b/i,
-    brand: "Panera Bread",
-    title: "Broccoli Cheddar Soup",
+    brand: "Panera Bread / Representative Deli Soup Formulation",
+    title: "Broccoli Cheddar Soup (Representative Formulation)",
     ingredients: "Water, Milk, Broccoli, Pasteurized Process Cheddar Cheese (Cheddar Cheese [Pasteurized Milk, Cheese Culture, Salt, Enzymes], Water, Sodium Phosphate, Milkfat, Salt, Apocarotenal [Color]), Heavy Cream, Carrots, Seasoning (Modified Corn Starch, Wheat Flour, Salt, Chicken Base [Chicken Meat Including Chicken Juices, Salt, Chicken Fat, Sugar, Maltodextrin, Hydrolyzed Corn Protein, Dried Whey, Natural Flavor, Turmeric], Spices, Paprika), Onions, Butter (Cream, Salt), Soybean Oil, Dijon Mustard (Water, Vinegar, Mustard Seed, Salt, White Wine, Fruit Pectin, Tartaric Acid, Citric Acid, Sugar, Spice), Nisin Preparation, Annatto Extract (Color).",
     imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 135, sugarsG100g: 2.0, saturatedFatG100g: 5.5, sodiumMg100g: 430, fiberG100g: 1.0, proteinG100g: 4.5, fruitsVegNutsPct: 20, nutriScoreGrade: "c", isWholeFood: false },
   },
   {
     match: /\b(clam\s+chowder|new\s+england.*chowder|corn\s+chowder|potato\s+chowder|seafood\s+chowder|lobster\s+bisque|tomato\s+bisque|loaded\s+baked\s+potato\s+soup)\b/i,
-    brand: "Marketside",
-    title: "New England Style Clam Chowder",
+    brand: "Representative Deli Soup Formulation",
+    title: "New England Style Clam Chowder (Representative Formulation)",
     ingredients: "Light Cream (Milk, Cream), Potatoes, Fish Stock (Water, Cod Bones, Haddock Bones, Onions, Celery, Black Pepper, Thyme, Mustard Seed, Bay Leaves), Sea Clams (Sea Clams, Water), Chopped Cockle (Clam Meat), Onions, Wheat Flour, Soybean Oil, Butter (Cream, Salt), Clam Broth (Dehydrated Clam Broth, Maltodextrin), Sea Salt, Celery, Salt Pork (Pork, Sea Salt), Black Pepper, Worcestershire Sauce (Distilled White Vinegar, Molasses, Sugar, Water, Salt, Onions, Anchovies, Garlic, Cloves, Tamarind Extract, Natural Flavorings, Chili Pepper Extract), Garlic.",
     imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 115, sugarsG100g: 1.5, saturatedFatG100g: 3.5, sodiumMg100g: 350, fiberG100g: 0.9, proteinG100g: 5.2, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
@@ -870,8 +878,8 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(salad\s+kit|chopped\s+kit|caesar\s+salad\s+kit|ranch\s+salad\s+kit|southwest\s+salad\s+kit|asian\s+salad\s+kit|sweet\s+kale\s+kit)\b/i,
-    brand: "Marketside / Taylor Farms",
-    title: "Salad Kit with Dressing Packet",
+    brand: "Representative Salad Kit Formulation",
+    title: "Salad Kit with Dressing Packet (Representative Formulation)",
     ingredients: "Romaine Lettuce, Dressing (Soybean and/or Canola Oil, Water, Parmesan Cheese, Egg Yolk, Distilled Vinegar, Salt, Sugar, Garlic, Lemon Juice Concentrate, Natural Flavor, Xanthan Gum), Croutons (Enriched Wheat Flour, Sunflower Oil, Salt, Yeast, Garlic Powder), Parmesan Cheese.",
     imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 140, sugarsG100g: 3.0, saturatedFatG100g: 2.5, sodiumMg100g: 310, fiberG100g: 2.0, proteinG100g: 3.5, fruitsVegNutsPct: 65, nutriScoreGrade: "b", isWholeFood: false },
@@ -886,8 +894,8 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(instant\s+mashed\s+potato\w*|potato\s+flakes?|mashed\s+potato\w*\s+mix|idahoan|betty\s+crocker.*potato\w*|great\s+value.*instant\s+mashed|au\s+gratin\s+potato\w*|scalloped\s+potato\w*)\b/i,
-    brand: "Great Value / Idahoan",
-    title: "Instant Mashed Potatoes",
+    brand: "Instant Mashed Potatoes",
+    title: "Instant Mashed Potatoes (Representative Formulation)",
     ingredients: "Potatoes, Mono- and Diglycerides, Sodium Acid Pyrophosphate (Preservative), Sodium Bisulfite (Preservative), Citric Acid (Preservative), BHT (Added to Preserve Freshness).",
     imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 355, sugarsG100g: 2.5, saturatedFatG100g: 1.2, sodiumMg100g: 490, fiberG100g: 5.5, proteinG100g: 7.5, fruitsVegNutsPct: 60, nutriScoreGrade: "c", isWholeFood: false },
@@ -934,8 +942,8 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(cake\s+roll|pumpkin\s+cake|swiss\s+roll|snack\s+cakes?|little\s+debbie|hostess|twinkies?|ding\s+dongs?|ho\s*hos?|zebra\s+cakes?|entenmann'?s|freshness\s+guaranteed.*(cake|pie|cupcake|brownie|cookie|muffin|roll)|bake\s+shop.*(cake|pie|cupcake|brownie|cookie|muffin))\b/i,
-    brand: "Freshness Guaranteed / Bakery",
-    title: "Bakery Cake Roll with Creme Filling",
+    brand: "Representative Bakery Formulation",
+    title: "Bakery Cake Roll with Creme Filling (Representative Formulation)",
     ingredients: "Sugar, Enriched Wheat Flour Bleached (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Eggs, Water, Pumpkin/Fruit Puree, High Fructose Corn Syrup, Soybean Oil, Palm Oil, Corn Syrup, Contains 2% or Less of: Modified Corn Starch, Mono- and Diglycerides, Polysorbate 60, Sodium Propionate (Preservative), Potassium Sorbate (Preservative), Sodium Acid Pyrophosphate, Soy Lecithin, Natural and Artificial Flavor, Spices, Yellow 5, Yellow 6, Red 40.",
     imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 375, sugarsG100g: 36, saturatedFatG100g: 7.5, sodiumMg100g: 330, fiberG100g: 1.0, proteinG100g: 3.8, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
@@ -974,7 +982,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   },
   {
     match: /\b(golden\s+sweet.*corn|whole\s+kernel\s+corn|sweet\s+corn.*can|del\s+monte.*corn|green\s+giant.*corn|great\s+value.*corn|happy\s+harvest.*corn)\b/i,
-    brand: "Great Value / Canned Vegetables",
+    brand: "Canned Vegetables",
     title: "Golden Sweet Whole Kernel Corn",
     ingredients: "Corn, Water, Sugar, Salt.",
     imageUrl: "/swaps/snacks.jpg",
@@ -1080,7 +1088,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(eggo|homestyle\s+waffles?|buttermilk\s+waffles?|blueberry\s+waffles?|thick\s*&\s*fluffy\s+waffles?|kellogg'?s\s+eggo)\b/i,
     brand: "Kellogg's Eggo",
     title: "Eggo Homestyle Waffles",
-    ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola, and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Contains 2% or Less of Salt, Dextrose, Spice, Whey, Eggs, Soy Lecithin, Yellow 5, Yellow 6, Calcium Carbonate, Iron, Vitamin A Palmitate, Vitamin B6, Vitamin B12.",
+    ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola, and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Contains 2% or Less of Salt, Dextrose, Spice, Whey, Eggs, Soy Lecithin, Beta-Carotene for Color, Calcium Carbonate, Iron, Vitamin A Palmitate, Vitamin B6, Vitamin B12.",
     imageUrl: "https://www.heybroc.com/api/product-image?q=Kellogg's%20Eggo%20Homestyle%20Waffles",
     nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 514, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
   },
@@ -1425,9 +1433,11 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       !isDietaryOrVariantMismatch(query, cat.brand, cat.ingredients, cat.nutrition)
     ) {
       return {
-        productTitle: cleanTitle,
-        brand: cat.brand,
-        ingredients: cat.ingredients,
+        productTitle: `${cleanTitle} (Category Estimate)`,
+        brand: `${cat.brand} (Category Estimate — Verify Package Label)`,
+        description:
+          "Representative category formulation shown because an exact product/UPC label was not returned by Open Food Facts or USDA. Formulations vary by brand and batch; always verify the physical package label.",
+        ingredients: `${cat.ingredients} [Representative Category Formulation — Verify Physical Package Label]`,
         imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
         nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic ?? isOrganic },
         source: "catalog",

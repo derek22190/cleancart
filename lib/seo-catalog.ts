@@ -45,7 +45,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     category: "Yogurt & Dairy",
     searchVolumeTag: "High-Sugar Dairy Search",
     ingredients:
-      "Cultured Grade A Reduced Fat Milk, Sugar, Strawberries, Modified Corn Starch, High Fructose Corn Syrup, Corn Starch, Citric Acid, Tricalcium Phosphate, Natural Flavor, Potassium Sorbate Added to Maintain Freshness, Red 40, Vitamin A Acetate, Vitamin D3.",
+      "Cultured Pasteurized Grade A Lowfat Milk, Sugar, Strawberries, Modified Corn Starch, Nonfat Milk, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
   },
   {
     slug: "oscar-mayer-deli-fresh-turkey",

@@ -186,6 +186,14 @@ export default function Scorecard({
     ctx.font = `700 28px ${font}`;
     ctx.fillText(`7-Day Free Trial Code: ${activeCode}`, textX, H - 105);
 
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = `500 18px ${font}`;
+    ctx.fillText(
+      "Independent clean-label opinion · Not affiliated with any store or brand · Always verify physical package label",
+      84,
+      H - 42,
+    );
+
     const a = document.createElement("a");
     a.download = `heybroc-${store}-scorecard-${cartAvg}.png`;
     a.href = canvas.toDataURL("image/png");

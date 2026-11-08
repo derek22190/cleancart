@@ -18,3 +18,9 @@
 - Full AI & LLM Technical Documentation: https://www.heybroc.com/llms-full.txt
 - Direct Android App Download (APK): https://www.heybroc.com/heybroc.apk
 - Privacy Policy: https://www.heybroc.com/privacy
+
+## Legal, Regulatory & Non-Affiliation Notice
+- **Editorial Opinion & Informational Use Only:** HeyBroc 0–100 scores and clean-label ratings represent independent editorial opinions based on consumer clean-label preferences and are not medical, nutritional, or regulatory safety determinations. Many ingredients flagged on HeyBroc watchlists are FDA-approved or Generally Recognized as Safe (GRAS) in the United States.
+- **Verify Physical Package Labels:** Product formulations vary by manufacturer, region, and batch. Always verify the physical package ingredient list and nutrition facts panel before purchasing or consuming any food or beverage.
+- **No Store or Brand Affiliation:** HeyBroc is an independent software product and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All trademarks belong to their respective owners and are used strictly for nominative identification.
+

@@ -126,6 +126,22 @@ export default function SwapsDirectoryPage() {
           </Link>
         ))}
       </div>
+
+      <footer
+        style={{
+          marginTop: 28,
+          padding: "14px 16px",
+          background: "#f8fafc",
+          border: "1px solid #e2e8f0",
+          borderRadius: 14,
+          fontSize: 12,
+          color: "#64748b",
+          lineHeight: 1.55,
+        }}
+      >
+        <strong style={{ color: "#334155" }}>Independent Editorial Opinion &amp; Non-Affiliation Disclaimer:</strong>{" "}
+        Scores and summaries in this directory reflect HeyBroc&apos;s subjective clean-label rubric based on representative public ingredient data (Open Food Facts, USDA FoodData Central). Manufacturers reformulate products frequently and ingredients may vary by region or batch—always verify the physical package label before purchasing. Most flagged additives are FDA-permitted or GRAS. Outbound retail links may include affiliate attribution tags that earn HeyBroc a commission at no extra cost to you. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, ALDI, Kroger, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Whole Foods Market, or any food or beverage manufacturer.
+      </footer>
     </div>
   );
 }

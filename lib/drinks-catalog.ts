@@ -118,11 +118,11 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "monster-ultra-flavors",
-    title: "Monster Energy Ultra Peachy Keen / Strawberry Dreams / Sunrise (Zero Sugar), 16 fl oz",
+    title: "Monster Energy Ultra Flavored Series (Zero Sugar — Representative Formulation), 16 fl oz",
     brand: "Monster Energy",
     category: "Energy Drinks",
     description:
-      "Zero-sugar flavored Monster Ultra energy drink (150mg caffeine) sweetened with sucralose and acesulfame potassium, plus synthetic preservatives and flavorings.",
+      "Zero-sugar flavored Monster Ultra energy drink (150mg caffeine) sweetened with sucralose and acesulfame potassium, plus synthetic preservatives and flavorings (some varieties also contain synthetic colors; verify physical can label).",
     keywords: [
       "monster",
       "monster ultra",
@@ -136,7 +136,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "energy drink",
     ],
     ingredients:
-      "Carbonated Water, Citric Acid, Erythritol, Taurine, Sodium Citrate, Natural and Artificial Flavors, Panax Ginseng Flavor, L-Carnitine L-Tartrate, Potassium Sorbate (Preservative), Caffeine, Sucralose, Acesulfame Potassium, Sodium Benzoate (Preservative), Niacinamide (Vitamin B3), D-Calcium Pantothenate (Vitamin B5), Inositol, Pyridoxine Hydrochloride (Vitamin B6), Red 40, Yellow 5, Cyanocobalamin (Vitamin B12).",
+      "Carbonated Water, Citric Acid, Erythritol, Taurine, Sodium Citrate, Natural and Artificial Flavors, Panax Ginseng Flavor, L-Carnitine L-Tartrate, Potassium Sorbate (Preservative), Caffeine, Sucralose, Acesulfame Potassium, Sodium Benzoate (Preservative), Niacinamide (Vitamin B3), D-Calcium Pantothenate (Vitamin B5), Inositol, Pyridoxine Hydrochloride (Vitamin B6), Cyanocobalamin (Vitamin B12).",
     nutrition: {
       caloriesKcal100g: 2,
       sugarsG100g: 0,
@@ -233,11 +233,11 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "red-bull-editions",
-    title: "Red Bull Editions (Watermelon / Strawberry Apricot / Juneberry / Tropical), 12 fl oz",
+    title: "Red Bull Editions (Flavored Series — Representative Formulation), 12 fl oz",
     brand: "Red Bull",
     category: "Energy Drinks",
     description:
-      "Flavored Red Bull Edition energy drink (114mg caffeine, 38g sugar per 12 oz can) made with sucrose, glucose, citric acid, natural and artificial flavors, and synthetic dyes (Red 40, Blue 1, Yellow 5).",
+      "Flavored Red Bull Edition energy drink (114mg caffeine, 38g sugar per 12 oz can) made with sucrose, glucose, citric acid, and natural and artificial flavors (color additives vary by flavor edition; verify physical can label).",
     keywords: [
       "red bull",
       "redbull",
@@ -252,7 +252,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "energy drink",
     ],
     ingredients:
-      "Carbonated Water, Sucrose, Glucose, Citric Acid, Taurine, Sodium Citrate, Caffeine, Niacinamide, Pantothenic Acid, Pyridoxine HCl, Vitamin B12, Natural and Artificial Flavors, Sucrose Acetate Isobutyrate, Glycerol Ester of Wood Rosin, Red 40, Blue 1, Yellow 5.",
+      "Carbonated Water, Sucrose, Glucose, Citric Acid, Taurine, Sodium Citrate, Caffeine, Niacinamide, Pantothenic Acid, Pyridoxine HCl, Vitamin B12, Natural and Artificial Flavors, Colors.",
     nutrition: {
       caloriesKcal100g: 46,
       sugarsG100g: 11.0,
@@ -1201,7 +1201,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Sodas & Prebiotic Sodas",
     description:
       "Sweetened orange soda (44g–52g sugar per 12 oz can) containing high fructose corn syrup, sodium benzoate, and petroleum-derived synthetic dyes Yellow 6 and Red 40.",
-    keywords: ["fanta", "fanta orange", "sunkist", "crush orange", "orange soda", "jarritos", "soda"],
+    keywords: ["fanta", "fanta orange", "sunkist", "crush orange", "orange soda", "soda"],
     ingredients:
       "Carbonated Water, High Fructose Corn Syrup, Citric Acid, Sodium Benzoate (To Protect Taste), Natural Flavors, Modified Food Starch, Sodium Polyphosphates, Glycerol Ester of Rosin, Yellow 6, Red 40.",
     nutrition: {
@@ -1215,7 +1215,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(fanta|sunkist|crush\s+(?:orange|grape|strawberry)|orange\s+soda|jarritos)\b/i,
+    match: /\b(fanta|sunkist|crush\s+(?:orange|grape|strawberry)|orange\s+soda)\b/i,
   },
   {
     id: "root-beer-aw-barqs-mug",
@@ -2067,7 +2067,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|\btang\b\s+orange|goya\s+nectar|jumex)\b/i,
+    match: /\b(kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|\btang\b\s+orange)\b/i,
   },
   {
     id: "honest-kids-organic-juice",

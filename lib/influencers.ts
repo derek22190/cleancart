@@ -52,7 +52,7 @@ const CREATORS_SEEDED_KEY = "heybroc:creators:seeded:v2";
 
 const SEED: Array<Pick<Creator, "code" | "name">> = [
   { code: "CLEANMOM", name: "Clean Mom Club" },
-  { code: "WALMARTHAUL", name: "Walmart Haul Daily" },
+  { code: "GROCERYHAUL", name: "Grocery Haul Daily" },
   { code: "SARAHHAULS", name: "Sarah Grocery Hauls" },
   { code: "PARENTMAXX", name: "ParentMaxxing Official" },
 ];

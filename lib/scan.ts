@@ -324,13 +324,18 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     !found.productTitle.toLowerCase().includes(found.brand.toLowerCase());
   const isAllLowerQuery = productTitle === productTitle.toLowerCase();
   const isCatalogPrefix = found.productTitle.toLowerCase().startsWith(productTitle.toLowerCase());
-  const title = (
+  const isCategoryEstimate = Boolean(found.brand && /category estimate/i.test(found.brand));
+  const baseTitle = (
     callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
       ? productTitle
       : shouldPrependBrand
         ? `${found.brand} ${found.productTitle}`
         : found.productTitle
   ).trim();
+  const title =
+    isCategoryEstimate && !/category estimate/i.test(baseTitle)
+      ? `${baseTitle} (Category Estimate)`
+      : baseTitle;
   const result = scoreProductYuka(found.ingredients, watchlist, familyWatchlist, {
     ...found.nutrition,
     productTitle: `${productTitle} ${title}`.trim(),

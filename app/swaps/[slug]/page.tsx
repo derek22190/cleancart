@@ -48,7 +48,7 @@ export default async function SwapReportPage({
       name: entry.brand,
     },
     category: entry.category,
-    description: `Ingredient safety analysis and 0–100 health score for ${entry.title}. Ingredients: ${entry.ingredients}`,
+    description: `Independent clean-label opinion and 0–100 ingredient analysis for ${entry.title} (representative formulation — verify physical package label). Ingredients: ${entry.ingredients}`,
     review: {
       "@type": "Review",
       author: {
@@ -61,7 +61,7 @@ export default async function SwapReportPage({
         bestRating: 100,
         worstRating: 0,
       },
-      reviewBody: `${entry.title} scores ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) on HeyBroc's 3-Pillar Rubric (Nutrition ${yb?.nutritionScore}/60, Additives ${yb?.additiveScore}/30, Organic ${yb?.organicScore}/10). ${yb?.glucoseNote || ""}`,
+      reviewBody: `Editorial Clean-Label Opinion: ${entry.title} scores ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) on HeyBroc's 3-Pillar Rubric (Nutrition ${yb?.nutritionScore}/60, Additives ${yb?.additiveScore}/30, Organic ${yb?.organicScore}/10) based on a representative public database formulation. Formulations vary by batch and region; always check the physical package label. ${yb?.glucoseNote || ""}`,
     },
   };
 
@@ -96,7 +96,7 @@ export default async function SwapReportPage({
       {/* Main Product Hero Card */}
       <article style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 22, padding: "24px", boxShadow: "0 10px 28px rgba(15,23,42,0.05)" }}>
         <span style={{ fontSize: 11.5, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          {entry.category} · {entry.brand} · Independent Ingredient Report
+          {entry.category} · {entry.brand} · Independent Editorial Report
         </span>
         <h1 style={{ fontSize: 28, fontWeight: 900, margin: "6px 0 12px", lineHeight: 1.2 }}>
           {entry.title} — Ingredients, Score &amp; Clean Swap
@@ -152,7 +152,7 @@ export default async function SwapReportPage({
               {swap.title} — {swap.score}/100 (Excellent)
             </h2>
             <p style={{ fontSize: 13.5, color: "#065f46", margin: "4px 0 10px" }}>
-              <b>Clean Ingredients:</b> {swap.ingredients}
+              <b>Representative Ingredients:</b> {swap.ingredients}
             </p>
             <a
               href={swap.webUrl}
@@ -162,6 +162,9 @@ export default async function SwapReportPage({
             >
               Shop Clean Swap on Walmart ↗
             </a>
+            <span style={{ display: "block", fontSize: 11, color: "#047857", marginTop: 6 }}>
+              Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. Not affiliated with Walmart or any brand shown.
+            </span>
           </div>
         )}
 
@@ -210,11 +213,11 @@ export default async function SwapReportPage({
         {/* Full Ingredients Text */}
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
           <b style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
-            Full Published Ingredients List:
+            Representative Ingredient List (Verify Physical Package Label):
           </b>
           <p style={{ fontSize: 13, color: "#334155", margin: 0, lineHeight: 1.55 }}>{entry.ingredients}</p>
           <p style={{ fontSize: 11.5, color: "#64748b", margin: "8px 0 0", lineHeight: 1.45 }}>
-            Informational opinion only — not medical or regulatory advice. All rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc&apos;s independent clean-label rubric.
+            <strong>Editorial Opinion &amp; Label Verification Notice:</strong> Scores and explanations reflect HeyBroc&apos;s subjective clean-label rubric for informational comparison only and are not medical, nutritional, or regulatory safety determinations. Most flagged ingredients are permitted for food use or recognized as GRAS by the U.S. FDA. Manufacturers reformulate products periodically and ingredients may vary by region or batch—always check the physical product package. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by {entry.brand}, Walmart, or any retailer or manufacturer.
           </p>
         </div>
 
