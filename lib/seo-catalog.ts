@@ -119,6 +119,114 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     ingredients:
       "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
   },
+  {
+    slug: "eggo-homestyle-waffles",
+    title: "Eggo Homestyle Frozen Waffles",
+    brand: "Eggo",
+    category: "Frozen Breakfast",
+    searchVolumeTag: "#1 Frozen Breakfast Search",
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1, Vitamin B2, Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Eggs, Salt, Whey, Soy Lecithin, Beta-Carotene for Color.",
+  },
+  {
+    slug: "pepperidge-farm-goldfish-cheddar",
+    title: "Pepperidge Farm Goldfish Cheddar Crackers",
+    brand: "Pepperidge Farm",
+    category: "Crackers",
+    searchVolumeTag: "#1 Toddler Snack Search",
+    ingredients:
+      "Made with Smiles and Enriched Wheat Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Cheddar Cheese ([Cultured Milk, Salt, Enzymes], Annatto), Vegetable Oils (Canola, Sunflower and/or Soybean), Salt, Contains 2% or Less of: Yeast, Sugar, Autolyzed Yeast Extract, Paprika, Spices, Celery, Onion Powder, Monocalcium Phosphate, Baking Soda.",
+  },
+  {
+    slug: "smuckers-uncrustables-pbj",
+    title: "Smucker's Uncrustables Peanut Butter & Grape Jelly Sandwich",
+    brand: "Smucker's",
+    category: "Frozen Lunchbox",
+    searchVolumeTag: "#1 School Lunchbox Search",
+    ingredients:
+      "Peanut Butter (Peanuts, Sugar, Contains 2% or Less of: Molasses, Fully Hydrogenated Vegetable Oils [Rapeseed and Soybean], Mono- and Diglycerides, Salt), Bread (Unbleached Enriched Flour [Wheat Flour, Malted Barley Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid], Water, Sugar, Soybean Oil, Salt, Yeast, Cultured Wheat Flour, Distilled Vinegar, Enzymes, Ascorbic Acid), Grape Spread (Sugar, Concord Grape Juice, Pectin, Citric Acid, Potassium Sorbate as Preservative, Sodium Citrate).",
+  },
+  {
+    slug: "kraft-macaroni-and-cheese-original",
+    title: "Kraft Original Macaroni & Cheese Dinner",
+    brand: "Kraft",
+    category: "Pantry & Pasta",
+    searchVolumeTag: "#1 Boxed Mac & Cheese Search",
+    ingredients:
+      "Enriched Macaroni (Wheat Flour, Durum Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Salt, Milk Protein Concentrate, Sodium Triphosphate, Contains Less than 2% of Tapioca Flour, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, with Paprika, Turmeric, and Annatto Added for Color, Enzymes, Cheese Culture).",
+  },
+  {
+    slug: "capri-sun-strawberry-kiwi",
+    title: "Capri Sun Strawberry Kiwi Flavored Juice Drink",
+    brand: "Capri Sun",
+    category: "Kids Drinks",
+    searchVolumeTag: "#1 Kids Juice Pouch Search",
+    ingredients:
+      "Water, Sugar, Pear and Grape Juice Concentrate, Citric Acid, Strawberry and Kiwi Juice Concentrate, Natural Flavor, Monk Fruit Concentrate.",
+  },
+  {
+    slug: "monster-energy-zero-ultra-white",
+    title: "Monster Energy Zero Ultra (White Monster)",
+    brand: "Monster Energy",
+    category: "Energy Drinks",
+    searchVolumeTag: "#1 Zero Sugar Energy Drink Search",
+    ingredients:
+      "Carbonated Water, Citric Acid, Erythritol, Taurine, Sodium Citrate, Panax Ginseng Flavor, Natural and Artificial Flavors, L-Carnitine L-Tartrate, Potassium Sorbate, Caffeine, Sucralose, Sorbic Acid, Acesulfame Potassium, Niacinamide, D-Calcium Pantothenate, Inositol, Pyridoxine Hydrochloride, Cyanocobalamin.",
+  },
+  {
+    slug: "fairlife-core-power-chocolate-protein",
+    title: "Fairlife Core Power 26g Chocolate Protein Shake",
+    brand: "Fairlife",
+    category: "Protein Shakes",
+    searchVolumeTag: "#1 RTD Protein Shake Search",
+    ingredients:
+      "Filtered Lowfat Grade A Milk, Alkalized Cocoa, Natural Flavors, Cellulose Gel, Cellulose Gum, Salt, Carrageenan, Acesulfame Potassium, Sucralose, Lactase Enzyme, Vitamin A Palmitate, Vitamin D3.",
+  },
+  {
+    slug: "celsius-sparkling-orange-energy",
+    title: "Celsius Live Fit Sparkling Orange Energy Drink",
+    brand: "Celsius",
+    category: "Energy Drinks",
+    searchVolumeTag: "Top Fitness Energy Drink Search",
+    ingredients:
+      "Carbonated Filtered Water, Citric Acid, Taurine, Guarana Seed Extract, Green Tea Extract, Caffeine, Ascorbic Acid, Sucralose, Glucuronolactone, Ginger Root Extract, Calcium Pantothenate, Niacinamide, Beta-Carotene for Color, Natural Flavor, Pyridoxine Hydrochloride, Riboflavin, Chromium Chelate, Biotin, Cyanocobalamin.",
+  },
+  {
+    slug: "takis-fuego-rolled-tortilla-chips",
+    title: "Takis Fuego Hot Chili Pepper & Lime Tortilla Chips",
+    brand: "Takis",
+    category: "Chips & Snacks",
+    searchVolumeTag: "#1 Red 40 Spicy Chip Search",
+    ingredients:
+      "Corn Masa Flour (Processed with Lime), Vegetable Oil (Palm and/or Soybean and/or Canola and/or Rice Bran Oil), Seasoning (Salt, Maltodextrin, Citric Acid, Sugar, Monosodium Glutamate, Hydrolyzed Soy Protein, Onion Powder, Yeast Extract, Red 40 Lake, Yellow 6 Lake, Natural and Artificial Flavors, Baking Soda, Soybean Oil, Chili Pepper, Disodium Inosinate, Disodium Guanylate, TBHQ).",
+  },
+  {
+    slug: "ore-ida-golden-crinkles-french-fries",
+    title: "Ore-Ida Golden Crinkles Frozen French Fries",
+    brand: "Ore-Ida",
+    category: "Frozen Potatoes",
+    searchVolumeTag: "#1 Frozen French Fry Seed Oil Check",
+    ingredients:
+      "Potatoes, Vegetable Oil (Soybean, Canola, and/or Cottonseed Oils), Disodium Dihydrogen Pyrophosphate (to Retain Natural Color), Dextrose.",
+  },
+  {
+    slug: "skippy-creamy-peanut-butter",
+    title: "Skippy Creamy Peanut Butter",
+    brand: "Skippy",
+    category: "Spreads & Nut Butters",
+    searchVolumeTag: "#1 Hydrogenated Oil Peanut Butter Check",
+    ingredients:
+      "Roasted Peanuts, Sugar, Hydrogenated Vegetable Oil (Cottonseed, Soybean and Rapeseed Oil) to Prevent Separation, Salt.",
+  },
+  {
+    slug: "prego-traditional-italian-pasta-sauce",
+    title: "Prego Traditional Italian Tomato Pasta Sauce",
+    brand: "Prego",
+    category: "Dressings & Sauces",
+    searchVolumeTag: "#1 Jarred Pasta Sauce Canola Check",
+    ingredients:
+      "Tomato Puree (Water, Tomato Paste), Diced Tomatoes in Tomato Juice, Sugar, Canola Oil, Contains Less than 1% of: Salt, Dehydrated Onions, Spices, Citric Acid, Dehydrated Garlic, Onion Extract, Natural Flavoring.",
+  },
 ];
 
 export interface EvaluatedSeoProduct {

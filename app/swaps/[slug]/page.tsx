@@ -208,7 +208,7 @@ export default async function SwapReportPage({
         )}
 
         {/* Full Ingredients Text */}
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px" }}>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
           <b style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
             Full Published Ingredients List:
           </b>
@@ -217,7 +217,126 @@ export default async function SwapReportPage({
             Informational opinion only — not medical or regulatory advice. All rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc&apos;s independent clean-label rubric.
           </p>
         </div>
+
+        {/* Mid-Page Reader-Stop App Conversion CTA (Vaultaire SEO Playbook) */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, #064e3b 0%, #0f766e 100%)",
+            color: "#ffffff",
+            borderRadius: 18,
+            padding: "20px 22px",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <div style={{ flex: "1 1 320px" }}>
+            <span style={{ fontSize: 11, fontWeight: 900, color: "#86efac", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              🥦 Auto-Grade Your Online Grocery App
+            </span>
+            <h3 style={{ fontSize: 19, fontWeight: 900, margin: "4px 0 6px" }}>
+              Stop Googling ingredients one by one.
+            </h3>
+            <p style={{ fontSize: 13.5, color: "#d1fae5", margin: 0, lineHeight: 1.45 }}>
+              HeyBroc floats over Walmart, Sam&apos;s Club, Target, Costco, BJ&apos;s, ALDI, Amazon Fresh &amp; Instacart to grade every item (0–100) and find 1-for-1 Clean Swaps in 1 tap.
+            </p>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <a
+              href="/heybroc.apk"
+              style={{
+                padding: "11px 18px",
+                borderRadius: 999,
+                background: "#22c55e",
+                color: "#052e16",
+                fontWeight: 900,
+                fontSize: 13.5,
+                textDecoration: "none",
+              }}
+            >
+              📲 Download Android App (.APK)
+            </a>
+            <Link
+              href="/"
+              style={{
+                padding: "11px 18px",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.14)",
+                border: "1px solid rgba(255,255,255,0.28)",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: 13.5,
+                textDecoration: "none",
+              }}
+            >
+              Open Web &amp; iOS Scanner →
+            </Link>
+          </div>
+        </div>
       </article>
+
+      {/* Internal SEO Link Mesh — Related Product Reports */}
+      <section style={{ marginTop: 28 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>
+          More Grocery Ingredient Reports &amp; 1-for-1 Clean Swaps
+        </h2>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {SEO_PRODUCTS.filter((p) => p.slug !== entry.slug)
+            .slice(0, 9)
+            .map((rel) => {
+              const evalRel = evaluateSeoProduct(rel);
+              return (
+                <Link
+                  key={rel.slug}
+                  href={`/swaps/${rel.slug}`}
+                  style={{
+                    display: "block",
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 14,
+                    padding: "14px 16px",
+                    textDecoration: "none",
+                    color: "#0f172a",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase" }}>
+                      {rel.category}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 900,
+                        padding: "2px 9px",
+                        borderRadius: 999,
+                        background: evalRel.result.score >= 70 ? "#dcfce7" : "#fee2e2",
+                        color: evalRel.result.score >= 70 ? "#166534" : "#991b1b",
+                      }}
+                    >
+                      {evalRel.result.score}/100
+                    </span>
+                  </div>
+                  <b style={{ display: "block", fontSize: 14.5, marginTop: 6, lineHeight: 1.3 }}>
+                    {rel.title}
+                  </b>
+                  {evalRel.swap && (
+                    <span style={{ display: "block", fontSize: 12, color: "#059669", fontWeight: 700, marginTop: 4 }}>
+                      ⇄ Swap: {evalRel.swap.title} ({evalRel.swap.score}/100)
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+        </div>
+      </section>
     </div>
   );
 }

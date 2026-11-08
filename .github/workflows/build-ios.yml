@@ -1,8 +1,15 @@
-name: Build HeyBroc iOS & Safari Extension
+name: Build HeyBroc iOS & Safari Extension (No-Mac Cloud Builder)
 
-# Manual trigger (workflow_dispatch) — run after confirming D-U-N-S number & LLC status on Apple Developer!
+# Manual trigger (workflow_dispatch) — builds on GitHub's cloud macOS runner (no Mac needed!).
+# If App Store Connect API secrets (ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY_BASE64, APPLE_TEAM_ID)
+# are configured in GitHub Settings -> Secrets, it also signs and uploads the .ipa directly to TestFlight!
 on:
   workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: "Sign & upload .ipa directly to TestFlight (requires ASC_* secrets)"
+        required: false
+        default: "false"
 
 jobs:
   build-ios:
@@ -11,10 +18,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Convert Safari Web Extension into Xcode Project
         run: |
@@ -34,6 +41,9 @@ jobs:
           cp store-assets/apple-app-store/icon-1024x1024.png ios-app/build/HeyBroc/
 
       - name: Build unsigned iOS Release Archive (Verification)
+        if: ${{ github.event.inputs.upload_to_testflight != 'true' || env.ASC_KEY_ID == '' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: |
           xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
             -scheme "HeyBroc" \
@@ -44,9 +54,60 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
+      - name: Cloud-Sign & Upload .ipa to TestFlight (No Mac Required)
+        if: ${{ github.event.inputs.upload_to_testflight == 'true' && env.ASC_KEY_ID != '' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          cat > ios-app/build/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
+            -scheme "HeyBroc" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath "ios-app/build/HeyBroc.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive
+          xcodebuild -exportArchive \
+            -archivePath "ios-app/build/HeyBroc.xcarchive" \
+            -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
+            -exportPath "ios-app/build/ipa" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          xcrun altool --upload-app \
+            --type ios \
+            --file "ios-app/build/ipa/HeyBroc.ipa" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
       - name: Upload Xcode Project & Built App Artifact
         uses: actions/upload-artifact@v4
         with:
           name: heybroc-ios-xcode-bundle
-          path: ios-app/build/HeyBroc
+          path: ios-app/build
           if-no-files-found: error
