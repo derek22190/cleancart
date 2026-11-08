@@ -24,6 +24,15 @@ export async function POST(req: NextRequest) {
     const plan: PlanId = body.plan === "monthly" ? "monthly" : "annual";
     const rawCreatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
     const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
+    const rawEmail =
+      typeof body.email === "string"
+        ? body.email
+        : typeof body.customerEmail === "string"
+          ? body.customerEmail
+          : "";
+    const customerEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(rawEmail.trim())
+      ? rawEmail.trim().toLowerCase()
+      : "";
 
     const isFriendCodeFormat = /^BROC-[A-Z0-9]{4,10}$/.test(rawCreatorCode);
     let verifiedCode = "";
@@ -102,6 +111,11 @@ export async function POST(req: NextRequest) {
       params.set("client_reference_id", deviceId);
       params.set("metadata[device_id]", deviceId);
       params.set("subscription_data[metadata][device_id]", deviceId);
+    }
+    if (customerEmail) {
+      params.set("customer_email", customerEmail);
+      params.set("metadata[customer_email]", customerEmail);
+      params.set("subscription_data[metadata][customer_email]", customerEmail);
     }
     if (trialDays > 0) {
       params.set("subscription_data[trial_period_days]", String(trialDays));

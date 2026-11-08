@@ -187,9 +187,12 @@ object ScanApi {
     }
 
     fun upgradeUrl(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val id = URLEncoder.encode(deviceId(ctx), "UTF-8")
         val ref = referredByCode(ctx)?.let { "&code=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
-        return "https://heybroc.com/?upgrade=1&deviceId=$id$ref"
+        val email = prefs.getString("auth_email", null)?.trim()?.takeIf { it.isNotBlank() }
+            ?.let { "&email=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
+        return "https://heybroc.com/?upgrade=1&deviceId=$id$ref$email"
     }
 
     /** Returns the server-issued BROC-XXXXXXXX invite code if available. */

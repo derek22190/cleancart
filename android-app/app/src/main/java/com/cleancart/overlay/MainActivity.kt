@@ -1912,6 +1912,7 @@ class MainActivity : Activity() {
                     put("provider", provider)
                     put("email", email)
                     put("displayName", fallbackName)
+                    put("deviceId", ScanApi.deviceId(this@MainActivity))
                     if (!password.isNullOrBlank()) put("password", password)
                 }.toString()
                 conn.outputStream.use { it.write(payload.toByteArray()) }
@@ -1921,6 +1922,7 @@ class MainActivity : Activity() {
                     val tok = json.optString("token", "")
                     val usr = json.optJSONObject("user")
                     val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
+                    ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
                     prefs.edit()
                         .putString("auth_token", tok)
                         .putString("auth_name", resolvedName)

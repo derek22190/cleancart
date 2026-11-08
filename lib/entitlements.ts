@@ -106,7 +106,13 @@ export async function getEmailEntitlement(
 ): Promise<EntitlementRecord | null> {
   const cleanEmail = (email || "").trim().toLowerCase();
   if (!cleanEmail) return null;
-  return kvGet<EntitlementRecord>(`${EMAIL_KEY_PREFIX}${cleanEmail}`);
+  const rec = await kvGet<EntitlementRecord>(`${EMAIL_KEY_PREFIX}${cleanEmail}`);
+  if (!rec) return null;
+  if (rec.subscriptionId) {
+    const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
+    if (latestSub) return latestSub;
+  }
+  return rec;
 }
 
 export async function getSubscriptionEntitlement(
@@ -135,6 +141,7 @@ export async function updateSubscriptionEntitlement(
     status: EntitlementStatus;
     plan?: PlanId;
     customerId?: string;
+    customerEmail?: string;
     creatorCode?: string;
     deviceId?: string;
     lastStripeEventCreated?: number;
@@ -156,7 +163,7 @@ export async function updateSubscriptionEntitlement(
     sessionId: existing?.sessionId || `sub_${subscriptionId}`,
     subscriptionId,
     customerId: patch.customerId ?? existing?.customerId,
-    customerEmail: existing?.customerEmail,
+    customerEmail: patch.customerEmail ?? existing?.customerEmail,
     deviceId: patch.deviceId ?? existing?.deviceId,
     plan: patch.plan ?? existing?.plan ?? "annual",
     creatorCode: patch.creatorCode ?? existing?.creatorCode,
@@ -185,6 +192,16 @@ export async function updateSubscriptionEntitlement(
       updated,
       ENTITLEMENT_TTL_SECONDS
     );
+  }
+  if (updated.customerEmail) {
+    const cleanEmail = updated.customerEmail.trim().toLowerCase();
+    if (cleanEmail) {
+      await kvSet(
+        `${EMAIL_KEY_PREFIX}${cleanEmail}`,
+        updated,
+        ENTITLEMENT_TTL_SECONDS
+      );
+    }
   }
   return updated;
 }

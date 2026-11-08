@@ -102,7 +102,7 @@ export async function POST(req: Request) {
           sessionId,
           subscriptionId,
           customerId,
-          customerEmail: customerDetails?.email || undefined,
+          customerEmail: customerDetails?.email || metadata.customer_email || undefined,
           deviceId,
           plan,
           creatorCode,
@@ -155,6 +155,7 @@ export async function POST(req: Request) {
               : undefined;
         const creatorCode = metadata.creator_code || undefined;
         const deviceId = metadata.device_id || undefined;
+        const customerEmail = metadata.customer_email || undefined;
         const customerId =
           typeof obj.customer === "string" ? obj.customer : undefined;
 
@@ -162,6 +163,7 @@ export async function POST(req: Request) {
           status,
           plan,
           customerId,
+          customerEmail,
           creatorCode,
           deviceId,
           lastStripeEventCreated: eventCreated,

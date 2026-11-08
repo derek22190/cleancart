@@ -1,7 +1,11 @@
 import "server-only";
 import crypto from "node:crypto";
 import { kvGet, kvSet } from "./storage";
-import { getEmailEntitlement } from "./entitlements";
+import {
+  getDevicePaidEntitlement,
+  getEmailEntitlement,
+  saveEntitlement,
+} from "./entitlements";
 import { codeFromDeviceId, getOrCreateDevice, saveDevice } from "./referrals";
 
 export type AuthProvider = "email" | "google" | "apple";
@@ -176,10 +180,35 @@ export async function toPublicProfile(
   let proUntil = user.proUntil || 0;
   let isStripePro = Boolean(user.isStripePro);
 
-  // Check if Stripe has an active subscription under this email
-  const stripeEnt = await getEmailEntitlement(user.email).catch(() => null);
-  if (stripeEnt?.active) {
+  // Check if Stripe has an active subscription under this email or this deviceId
+  const stripeEmailEnt = await getEmailEntitlement(user.email).catch(() => null);
+  const stripeDeviceEnt = deviceId
+    ? await getDevicePaidEntitlement(deviceId).catch(() => null)
+    : null;
+  const activeStripeEnt =
+    (stripeEmailEnt?.active ? stripeEmailEnt : null) ??
+    (stripeDeviceEnt?.active ? stripeDeviceEnt : null);
+
+  if (activeStripeEnt) {
     isStripePro = true;
+    const minProUntil =
+      now + (activeStripeEnt.plan === "annual" ? 365 : 31) * DAY_MS;
+    if (minProUntil > proUntil) {
+      proUntil = minProUntil;
+    }
+    // Ensure both the user's email and current deviceId are indexed on the Stripe entitlement
+    if (
+      activeStripeEnt.customerEmail?.toLowerCase() !== user.email ||
+      (deviceId && activeStripeEnt.deviceId !== deviceId)
+    ) {
+      await saveEntitlement({
+        ...activeStripeEnt,
+        customerEmail: user.email,
+        deviceId: deviceId || activeStripeEnt.deviceId,
+      }).catch(() => {});
+    }
+  } else if (stripeEmailEnt && !stripeEmailEnt.active) {
+    isStripePro = false;
   }
 
   // Merge guest device entitlement if present so earned referral Pro days carry over

@@ -162,12 +162,31 @@ export default function Paywall({
     setCheckoutBusy(true);
     setCodeError("");
     try {
+      const sp =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const devId =
+        sp?.get("deviceId") ||
+        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) ||
+        "";
+      let userEmail = sp?.get("email") || "";
+      if (!userEmail && typeof window !== "undefined") {
+        try {
+          const cachedUser = JSON.parse(
+            window.localStorage.getItem("heybroc_user") || "null"
+          ) as { email?: string } | null;
+          if (cachedUser?.email) userEmail = cachedUser.email;
+        } catch {
+          /* ignore */
+        }
+      }
       const checkoutRes = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: selectedPlan,
           creatorCode: appliedCreator?.code,
+          deviceId: devId || undefined,
+          email: userEmail || undefined,
           origin: typeof window !== "undefined" ? window.location.origin : "https://heybroc.com",
         }),
       });
