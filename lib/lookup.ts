@@ -154,6 +154,23 @@ function relevance(query: string, candidate: string): number {
         x === t || x === `${t}s` || x === `${t}es` || t === `${x}s` || t === `${x}es`,
     );
 
+  // Prevent cross-category novel spin-offs (e.g. "Oatmeal Creme Pies" matching "Oatmeal Creme Pies Cereal" or "Nutty Bars Ice Cream")
+  const FORM_FACTOR_TOKENS = ["cereal", "ice", "cream", "seasoning", "syrup", "creamer", "frosting", "powder", "supplement", "K-cup", "pods"];
+  for (const ff of FORM_FACTOR_TOKENS) {
+    if (hasIn(c, ff) && !hasIn(all, ff)) {
+      return 0;
+    }
+  }
+
+  // If the query has >= 3 tokens (e.g. "Little Debbie Nutty Bars"), the candidate MUST match at least one of the last 2 product noun tokens,
+  // never just the leading 1–2 brand tokens ("Little Debbie Pound Cake")!
+  if (pool.length >= 3) {
+    const tail = pool.slice(-2);
+    if (!tail.some((t) => hasIn(c, t))) {
+      return 0;
+    }
+  }
+
   // If the query explicitly asks for "plain"/"unsweetened", reject candidates with added flavor tokens
   const queryWantsPlain = all.some((t) => PLAIN_TOKENS.has(t));
   const queryFlavors = all.filter((t) => FLAVOR_TOKENS.has(t));
@@ -172,7 +189,7 @@ function relevance(query: string, candidate: string): number {
 
   const ratio = pool.filter((t) => hasIn(c, t)).length / pool.length;
   if (pool.length <= 2 && ratio < 1 && ratio < 0.5) return 0;
-  if (ratio < 0.5) return 0;
+  if (ratio < 0.55) return 0;
   const base = pool.length <= 2 && ratio === 1 ? 1 : ratio;
   const extraTokensPenalty = Math.max(0, c.length - all.length) * 0.015;
   return Math.max(0, base - extraFlavorPenalty - extraTokensPenalty);
@@ -252,11 +269,14 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
   return ENGLISH_INGREDIENT_ANCHORS.test(s) || isSingleWholeDeclaration;
 }
 
+const OCR_NUTRITION_GARBAGE =
+  /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|gredients?\b|itamin\s+[a-d]|alcium\s+\d)/i;
+
 function englishIngredients(p: OffProduct): string {
   const en = p.ingredients_text_en?.trim() || "";
-  if (en && isEnglishIngredientText(en)) return en;
+  if (en && !OCR_NUTRITION_GARBAGE.test(en) && isEnglishIngredientText(en)) return en;
   const raw = p.ingredients_text?.trim() || "";
-  if (raw && (!p.lang || p.lang === "en") && isEnglishIngredientText(raw)) return raw;
+  if (raw && (!p.lang || p.lang === "en") && !OCR_NUTRITION_GARBAGE.test(raw) && isEnglishIngredientText(raw)) return raw;
   return "";
 }
 
@@ -295,7 +315,9 @@ function extractOffNutrition(p: OffProduct): NutritionInput | undefined {
   const satFat = numVal(n["saturated-fat_100g"]);
   const sodiumG = numVal(n["sodium_100g"]);
   const saltG = numVal(n["salt_100g"]);
-  const sodiumMg = sodiumG !== undefined ? sodiumG * 1000 : saltG !== undefined ? saltG * 400 : undefined;
+  // If a crowdsourced contributor entered sodium_100g in mg instead of g (e.g. 106 instead of 0.106g), normalize it
+  const rawSodiumMg = sodiumG !== undefined ? (sodiumG > 10 ? sodiumG : sodiumG * 1000) : saltG !== undefined ? (saltG > 25 ? saltG * 0.4 : saltG * 400) : undefined;
+  const sodiumMg = rawSodiumMg !== undefined && rawSodiumMg <= 40000 ? rawSodiumMg : undefined;
   const fiber = numVal(n["fiber_100g"]);
   const protein = numVal(n["proteins_100g"]);
   const fvn = numVal(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]);
@@ -398,29 +420,71 @@ async function openFactsVerticalSearch(title: string): Promise<Omit<LookupResult
   return null;
 }
 
+interface OffSearchHit {
+  code?: string;
+  product_name?: string;
+  product_name_en?: string;
+  brands?: string | string[];
+  states_tags?: string[];
+  image_front_url?: string;
+  image_url?: string;
+  image_front_small_url?: string;
+}
+
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
   const q = encodeURIComponent(title);
-  // 1. Run US Open Food Facts v2, Global Open Food Facts v2, and vertical search (Beauty/Products/Pet) concurrently
-  const [v2Us, v2Global, vertical] = await Promise.all([
-    getJson<{ products?: OffProduct[] }>(
-      `https://world.openfoodfacts.org/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=24&countries_tags_en=united-states`,
-    ),
-    getJson<{ products?: OffProduct[] }>(
-      `https://world.openfoodfacts.org/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=24`,
+  // 1. Run Open Food Facts Search-a-licious v3 full-text search + vertical search concurrently
+  // (Note: world.openfoodfacts.org/api/v2/search ignores search_terms and returns random French products;
+  //  search.openfoodfacts.org/search is Open Food Facts' actual full-text search index.)
+  const [searchRes, vertical] = await Promise.all([
+    getJson<{ hits?: OffSearchHit[] }>(
+      `https://search.openfoodfacts.org/search?q=${q}&page_size=16&fields=code,product_name,product_name_en,brands,states_tags,image_front_url,image_url,image_front_small_url`,
     ),
     openFactsVerticalSearch(title),
   ]);
   if (vertical) return vertical;
-  let best = pickBestOff(title, v2Us?.products) || pickBestOff(title, v2Global?.products);
 
-  // 2. Fallback: classic full-text search endpoint only when both v2 endpoints returned no products
-  if (!best && !v2Us?.products?.length && !v2Global?.products?.length) {
-    const v1 = await getJson<{ products?: OffProduct[] }>(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=24&fields=${OFF_FIELDS}`,
-    );
-    best = pickBestOff(title, v1?.products);
+  const hits = searchRes?.hits || [];
+  const ranked = hits
+    .filter(
+      (h) =>
+        h.code &&
+        (!Array.isArray(h.states_tags) || h.states_tags.includes("en:ingredients-completed")),
+    )
+    .map((h) => {
+      const brandStr = Array.isArray(h.brands) ? h.brands.join(" ") : h.brands || "";
+      const name = `${brandStr} ${h.product_name_en || h.product_name || ""}`.trim();
+      if (!passesVariantGuard(title, name)) return { h, score: 0 };
+      const r = relevance(title, name);
+      if (r < 0.55) return { h, score: 0 };
+      const hasImg = Boolean(h.image_front_url || h.image_url || h.image_front_small_url);
+      return { h, score: r + (hasImg ? 0.03 : 0) };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2);
+
+  if (!ranked.length) return null;
+
+  const productDetails = await Promise.all(
+    ranked.map(({ h }) =>
+      getJson<{ product?: OffProduct }>(
+        `https://world.openfoodfacts.org/api/v2/product/${h.code}?fields=${OFF_FIELDS}`,
+      ),
+    ),
+  );
+
+  for (const detail of productDetails) {
+    const p = detail?.product;
+    if (!p) continue;
+    const ing = englishIngredients(p);
+    if (!ing) continue;
+    const name = `${p.brands || ""} ${p.product_name_en || p.product_name || ""}`.trim();
+    if (!passesVariantGuard(title, name)) continue;
+    if (isDietaryOrVariantMismatch(title, name, ing, extractOffNutrition(p))) continue;
+    return offToResult(p, title);
   }
-  return best ? offToResult(best, title) : null;
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
