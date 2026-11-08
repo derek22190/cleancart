@@ -885,8 +885,17 @@ export function scoreProductYuka(
     nutriGrade = sugars >= 7 ? "E" : "D";
   } else if (isBeverage && sugars <= 3.5 && kcal <= 25) {
     // Unsweetened / low-sugar sparkling water, fruit-infused water, or prebiotic soda (Spindrift, LaCroix, Hint, Olipop, Nooma)
-    nutritionScore = 60;
-    nutriGrade = "A";
+    // vs. artificially-sweetened diet sodas (Diet Coke, Pepsi Zero, etc.)
+    if (base.flagged.some((f) => f.category === "sweeteners" || f.category === "dyes" || f.category === "preservatives")) {
+      nutritionScore = 18;
+      nutriGrade = "D";
+    } else {
+      nutritionScore = 60;
+      nutriGrade = "A";
+    }
+  } else if (/\byogurt\b/i.test(titleAndIng) && hasTop3AddedSugar) {
+    nutritionScore = 28;
+    nutriGrade = "C";
   } else if (isPureButterOrGhee) {
     // Pure grass-fed/dairy butter has 0 chemical additives (30/30) and Tier 3 natural fat,
     // but high saturated fat (51g/100g) and calories (717 kcal/100g) -> Mediocre (~52-68/100), never 100/100.
