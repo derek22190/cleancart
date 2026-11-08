@@ -193,6 +193,11 @@ check("Fiji Water & Spindrift score >= 90 Excellent", (() => {
   const ss = scoreProductYuka(spin.ingredients, {}, [], { ...spin.nutrition, productTitle: spin.title });
   return sf.score >= 90 && ss.score === 100;
 })());
+check("1-for-1 cheese tortilla chips -> Siete Tortilla Chips (not block cheese)", Boolean(resolveSwap({ score: 12, productTitle: "Clancy's Nacho Cheese Tortilla Chips", store: "aldi" })?.title.includes("Tortilla Chips")));
+check("1-for-1 Park Street Deli Hummus -> Hope Foods Organic Hummus (not turkey)", Boolean(resolveSwap({ score: 49, productTitle: "Park Street Deli Classic Hummus", store: "aldi" })?.title.includes("Hummus")));
+check("1-for-1 Ore-Ida French Fries -> Organic Yukon Gold Potatoes (not fruit bar)", Boolean(resolveSwap({ score: 49, productTitle: "Ore-Ida Golden Crinkles French Fries", store: "aldi" })?.title.includes("Potatoes")));
+check("1-for-1 A.1. Steak Sauce -> Primal Kitchen Steak & BBQ Sauce (not roast beef)", Boolean(resolveSwap({ score: 18, productTitle: "A.1. Original Steak Sauce", store: "aldi" })?.title.includes("Sauce")));
+check("1-for-1 Oreo Puffs Cereal -> Nature's Path Organic Heritage Flakes (not cookies)", Boolean(resolveSwap({ score: 6, productTitle: "Oreo Puffs Cereal", store: "aldi" })?.title.includes("Heritage Flakes")));
 
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
 console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

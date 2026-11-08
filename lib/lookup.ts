@@ -188,19 +188,18 @@ async function getJson<T>(url: string): Promise<T | null> {
       cache: "no-store",
     });
     if (!res.ok) {
-      if (isOff && res.status >= 500) {
-        offUnavailableUntil = Date.now() + 3 * 60 * 1000;
+      if (isOff && res.status >= 502) {
+        offUnavailableUntil = Date.now() + 60 * 1000;
       }
       return null;
     }
     const type = res.headers.get("content-type") || "";
     if (!type.includes("json")) {
-      if (isOff) offUnavailableUntil = Date.now() + 3 * 60 * 1000;
+      if (isOff) offUnavailableUntil = Date.now() + 60 * 1000;
       return null;
     }
     return (await res.json()) as T;
   } catch {
-    if (isOff) offUnavailableUntil = Date.now() + 60 * 1000;
     return null;
   }
 }
@@ -389,26 +388,21 @@ async function openFactsVerticalSearch(title: string): Promise<Omit<LookupResult
 
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
   const q = encodeURIComponent(title);
-  // 1. Primary: US Open Food Facts API v2 search + vertical search (Beauty/Products/Pet) when applicable
-  const [v2Us, vertical] = await Promise.all([
+  // 1. Run US Open Food Facts v2, Global Open Food Facts v2, and vertical search (Beauty/Products/Pet) concurrently
+  const [v2Us, v2Global, vertical] = await Promise.all([
     getJson<{ products?: OffProduct[] }>(
       `https://world.openfoodfacts.org/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=24&countries_tags_en=united-states`,
+    ),
+    getJson<{ products?: OffProduct[] }>(
+      `https://world.openfoodfacts.org/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=24`,
     ),
     openFactsVerticalSearch(title),
   ]);
   if (vertical) return vertical;
-  let best = pickBestOff(title, v2Us?.products);
+  let best = pickBestOff(title, v2Us?.products) || pickBestOff(title, v2Global?.products);
 
-  // 2. Worldwide Open Food Facts API v2 search (catches millions of untagged US/imported products)
-  if (!best) {
-    const v2Global = await getJson<{ products?: OffProduct[] }>(
-      `https://world.openfoodfacts.org/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=24`,
-    );
-    best = pickBestOff(title, v2Global?.products);
-  }
-
-  // 3. Fallback: classic full-text search endpoint
-  if (!best) {
+  // 2. Fallback: classic full-text search endpoint only when both v2 endpoints returned no products
+  if (!best && !v2Us?.products?.length && !v2Global?.products?.length) {
     const v1 = await getJson<{ products?: OffProduct[] }>(
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=24&fields=${OFF_FIELDS}`,
     );
@@ -462,7 +456,7 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   );
   let best: UsdaFood | null = null;
   let bestScore = 0;
-  const PROCESSED_USDA_DESC = /\b(cookie|cookies|cracker|crackers|chip|chips|cereal|puffs|bar|bars|bread|bun|roll|cake|pie|pastry|donut|doughnut|bismark|muffin|waffle|pancake|candy|chocolate|gummy|gummies|soda|cola|pop|drink|beverage|dressing|mayo|mayonnaise|ketchup|sauce|sausage|hot dog|frankfurter|bologna|salami|pepperoni|bacon|nugget|pizza|fries|ice cream|yogurt|spread|dip|soup|ramen|noodle|macaroni|pretzel|popcorn|frosting|syrup|creamer|margarine)\b/i;
+  const PROCESSED_USDA_DESC = /\b(cookie|cookies|cracker|crackers|chip|chips|crisps|crispy|fried|battered|breaded|rings|cereal|puffs|bar|bars|bread|bun|roll|cake|pie|pastry|donut|doughnut|bismark|muffin|waffle|pancake|candy|chocolate|gummy|gummies|soda|cola|pop|drink|beverage|dressing|mayo|mayonnaise|ketchup|sauce|sausage|hot dog|frankfurter|bologna|salami|pepperoni|bacon|nugget|tenders|strips|pizza|fries|tots|instant|mashed|flakes|dehydrated|dried|canned|pickled|cured|smoked|salted|sweetened|candied|glazed|frosted|flavored|ice cream|gelato|sorbet|yogurt|spread|dip|soup|chowder|ramen|noodle|macaroni|pretzel|popcorn|frosting|syrup|creamer|margarine)\b/i;
   for (const f of data?.foods || []) {
     const isTrueWholeFood =
       (f.dataType === "Foundation" || f.dataType === "SR Legacy") &&
@@ -928,7 +922,15 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 375, sugarsG100g: 36, saturatedFatG100g: 7.5, sodiumMg100g: 330, fiberG100g: 1.0, proteinG100g: 3.8, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
   },
   {
-    match: /\b(ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|chunky\s+monkey|phish\s+food|tonight\s+dough|americone\s+dream|breyers|blue\s+bell|haagen[- ]?dazs|häagen[- ]?dazs|talenti|edy'?s|dreyer'?s|klondike|drumstick|sundae\s+shoppe|belmont.*ice\s+cream|great\s+value.*ice\s+cream|ice\s+cream|gelato)\b(?!.*\b(alec'?s|cosmic\s+bliss|organic\s+tahitian)\b)/i,
+    match: /\b(cherry\s+garcia)\b/i,
+    brand: "Ben & Jerry's",
+    title: "Cherry Garcia Ice Cream",
+    ingredients: "Cream, Skim Milk, Liquid Sugar (Sugar, Water), Water, Cherries, Sugar, Egg Yolks, Coconut Oil, Cocoa (Processed with Alkali), Fruit and Vegetable Concentrates (Color), Cocoa Powder, Guar Gum, Natural Flavors, Lemon Juice Concentrate, Carrageenan, Milk Fat, Soy Lecithin.",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 256, sugarsG100g: 24.0, saturatedFatG100g: 10.0, sodiumMg100g: 60, fiberG100g: 0.9, proteinG100g: 4.1, fruitsVegNutsPct: 12, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(ben\s*&\s*jerry'?s?|half[- ]?baked|chunky\s+monkey|phish\s+food|tonight\s+dough|americone\s+dream|breyers|blue\s+bell|haagen[- ]?dazs|häagen[- ]?dazs|talenti|edy'?s|dreyer'?s|klondike|drumstick|sundae\s+shoppe|belmont.*ice\s+cream|great\s+value.*ice\s+cream|ice\s+cream|gelato)\b(?!.*\b(alec'?s|cosmic\s+bliss|organic\s+tahitian)\b)/i,
     brand: "Ben & Jerry's / Ice Cream",
     title: "Premium Dairy Ice Cream",
     ingredients: "Cream, Skim Milk, Liquid Sugar (Sugar, Water), Water, Sugar, Wheat Flour, Brown Sugar, Egg Yolks, Butter, Soybean Oil, Coconut Oil, Cocoa (Processed with Alkali), Eggs, Guar Gum, Salt, Vanilla Extract, Carrageenan, Soy Lecithin, Natural Flavor.",
@@ -988,11 +990,187 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
 const UI_NOISE_QUERY =
   /\b(bought \d+\+?\s*times?|stay stocked|last purchased|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
-const NON_FOOD_OR_PROCESSED_GUARD =
-  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
+const NON_FOOD_GUARD =
+  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue)\b/i;
+
+const PROCESSED_FOOD_GUARD =
+  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
+
+const CATEGORY_FALLBACK_CATALOG: Array<{
+  match: RegExp;
+  brand: string;
+  ingredients: string;
+  nutrition: NutritionInput & { isWholeFood?: boolean };
+}> = [
+  {
+    match: /\b(potato\s+chips?|kettle\s+chips?|wavy\s+chips?|ridged\s+chips?|tortilla\s+chips?|corn\s+chips?|pita\s+chips?|veggie\s+straws?|veggie\s+chips?|cheese\s+curls?|cheese\s+puffs?|pretzels?|popcorn|clancy'?s|lay'?s|ruffles|pringles|fritos|tostitos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop)\b/i,
+    brand: "Salty Snacks",
+    ingredients: "Potatoes or Whole Corn, Vegetable Oil (Canola, Corn, Soybean, and/or Sunflower Oil), Salt, Dextrose, Maltodextrin, Yeast Extract, Natural Flavors.",
+    nutrition: { caloriesKcal100g: 515, sugarsG100g: 2.0, saturatedFatG100g: 4.5, sodiumMg100g: 520, fiberG100g: 4.0, proteinG100g: 6.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(uncured|no\s+nitrates?|applegate|never\s+any)\b.*\b(hot\s*dogs?|franks?|frankfurters?|wieners?|sausage|kielbasa|bratwurst|salami|pepperoni|ham|turkey|roast\s+beef|deli)\b/i,
+    brand: "Uncured Meats",
+    ingredients: "Beef, Pork, or Poultry, Water, Contains Less than 2% of Sea Salt, Cane Sugar, Cultured Celery Powder, Organic Spices, Garlic Powder, Onion Powder.",
+    nutrition: { caloriesKcal100g: 235, sugarsG100g: 1.0, saturatedFatG100g: 7.5, sodiumMg100g: 740, fiberG100g: 0, proteinG100g: 14.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(hot\s*dogs?|franks?|frankfurters?|wieners?|bologna|salami|pepperoni|pastrami|deli\s+(ham|turkey|chicken|roast\s+beef)|sliced\s+(ham|turkey|chicken)|lunch\s*meat|lunchables?|beef\s+jerky|turkey\s+jerky|oscar\s+mayer|ball\s+park|nathan'?s|hebrew\s+national|parkview|appleton\s+farms)\b/i,
+    brand: "Deli & Cured Meats",
+    ingredients: "Beef, Pork, or Poultry, Water, Corn Syrup, Contains 2% or Less of Salt, Dextrose, Sodium Phosphates, Sodium Propionate, Sodium Diacetate, Sodium Benzoate, Flavorings, Sodium Erythorbate, Sodium Nitrite.",
+    nutrition: { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 8.5, sodiumMg100g: 980, fiberG100g: 0, proteinG100g: 13.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(ketchup|catsup|bbq\s+sauce|barbecue\s+sauce|teriyaki\s+sauce|cocktail\s+sauce|sweet\s*(&|and)\s*sour\s+sauce|hoisin\s+sauce|heinz.*ketchup|sweet\s+baby\s+ray'?s|stubb'?s|burman'?s.*(ketchup|bbq|barbecue))\b/i,
+    brand: "Condiments & Sauces",
+    ingredients: "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
+    nutrition: { caloriesKcal100g: 112, sugarsG100g: 22.8, saturatedFatG100g: 0.1, sodiumMg100g: 905, fiberG100g: 0.5, proteinG100g: 1.1, fruitsVegNutsPct: 45, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(mayo|mayonnaise|miracle\s+whip|salad\s+dressing|caesar\s+dressing|italian\s+dressing|thousand\s+island|blue\s+cheese\s+dressing|vinaigrette|tartar\s+sauce|aioli|french\s+onion\s+dip|spinach\s+dip|hellmann'?s|best\s+foods|wish[- ]?bone|ken'?s|briannas|marzetti|tuscan\s+garden)\b/i,
+    brand: "Dressings & Spreads",
+    ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors, Xanthan Gum.",
+    nutrition: { caloriesKcal100g: 640, sugarsG100g: 1.8, saturatedFatG100g: 10.0, sodiumMg100g: 620, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(pasta\s+sauce|marinara|spaghetti\s+sauce|tomato\s+sauce|pizza\s+sauce|vodka\s+sauce|meat\s+sauce|salsa|picante|pico\s+de\s+gallo|rao'?s|prego|ragu|classico|bertolli|newman'?s\s+own|muir\s+glen|hunt'?s|pace|herdez|mateo'?s|priano.*sauce)\b/i,
+    brand: "Tomato Sauce & Salsa",
+    ingredients: "Tomato Puree (Water, Tomato Paste), Diced Tomatoes in Tomato Juice, Onions, Olive Oil, Salt, Garlic, Basil, Oregano, Black Pepper, Citric Acid.",
+    nutrition: { caloriesKcal100g: 55, sugarsG100g: 4.5, saturatedFatG100g: 0.4, sodiumMg100g: 360, fiberG100g: 1.8, proteinG100g: 1.5, fruitsVegNutsPct: 85, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(mustard|dijon|yellow\s+mustard|hot\s+sauce|buffalo\s+sauce|wing\s+sauce|sriracha|tabasco|cholula|frank'?s\s+redhot|tapatio|valentina|soy\s+sauce|tamari|worcestershire|grey\s+poupon)\b/i,
+    brand: "Condiments",
+    ingredients: "Distilled Vinegar, Water, Mustard Seed or Aged Cayenne Red Peppers, Salt, Turmeric, Paprika, Spice, Garlic Powder, Xanthan Gum.",
+    nutrition: { caloriesKcal100g: 60, sugarsG100g: 1.0, saturatedFatG100g: 0.2, sodiumMg100g: 1120, fiberG100g: 3.0, proteinG100g: 3.8, fruitsVegNutsPct: 20, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(pancake\s+syrup|breakfast\s+syrup|table\s+syrup|mrs\.?\s*butterworth'?s|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+    brand: "Breakfast Syrup",
+    ingredients: "Corn Syrup, High Fructose Corn Syrup, Water, Cellulose Gum, Caramel Color, Salt, Natural and Artificial Flavor, Sodium Benzoate and Sorbic Acid (Preservatives), Sodium Hexametaphosphate.",
+    nutrition: { caloriesKcal100g: 270, sugarsG100g: 53.0, saturatedFatG100g: 0, sodiumMg100g: 165, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(pure\s+maple\s+syrup|organic\s+maple\s+syrup|maple\s+syrup|raw\s+honey|unfiltered\s+honey|pure\s+honey|clover\s+honey|\bhoney\b)\b/i,
+    brand: "Natural Sweeteners",
+    ingredients: "100% Pure Maple Syrup or Raw Honey (Concentrated Natural Sugars).",
+    nutrition: { caloriesKcal100g: 290, sugarsG100g: 68.0, saturatedFatG100g: 0, sodiumMg100g: 10, fiberG100g: 0, proteinG100g: 0.2, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(jam|jelly|preserves|marmalade|fruit\s+spread|grape\s+jelly|strawberry\s+jam|smucker'?s|bonne\s+maman)\b/i,
+    brand: "Jams & Preserves",
+    ingredients: "Fruit, High Fructose Corn Syrup or Cane Sugar, Corn Syrup, Fruit Pectin, Citric Acid.",
+    nutrition: { caloriesKcal100g: 250, sugarsG100g: 48.0, saturatedFatG100g: 0, sodiumMg100g: 25, fiberG100g: 1.0, proteinG100g: 0.3, fruitsVegNutsPct: 45, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|jif|skippy|peter\s+pan|justin'?s)\b/i,
+    brand: "Nut Butter",
+    ingredients: "Roasted Peanuts, Sugar, Hydrogenated Vegetable Oil (Rapeseed, Cottonseed, and Soybean Oils) to Prevent Separation, Molasses, Mono- and Diglycerides, Salt.",
+    nutrition: { caloriesKcal100g: 588, sugarsG100g: 9.2, saturatedFatG100g: 10.3, sodiumMg100g: 425, fiberG100g: 6.0, proteinG100g: 24.0, fruitsVegNutsPct: 90, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(country\s+crock|blue\s+bonnet|i\s+can'?t\s+believe\s+it'?s\s+not\s+butter|earth\s+balance|margarine|buttery\s+spread|vegetable\s+oil\s+spread)\b/i,
+    brand: "Buttery Spread",
+    ingredients: "Vegetable Oil Blend (Soybean Oil, Palm Oil, Palm Kernel Oil, Canola Oil), Water, Salt, Whey, Mono- and Diglycerides, Soy Lecithin, Potassium Sorbate and Calcium Disodium EDTA (to Preserve Freshness), Natural and Artificial Flavor, Vitamin A Palmitate, Beta Carotene (Color).",
+    nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 14.0, sodiumMg100g: 680, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(salted\s+butter|unsalted\s+butter|sweet\s+cream\s+butter|irish\s+butter|land\s+o'?\s*lakes.*butter|great\s+value.*butter|kirkland.*butter|wellsley\s+farms.*butter|country\s+side\s+creamery.*butter|\bbutter\b)\b/i,
+    brand: "Creamery Butter",
+    ingredients: "Pasteurized Cream, Salt.",
+    nutrition: { caloriesKcal100g: 717, sugarsG100g: 0.1, saturatedFatG100g: 51.0, sodiumMg100g: 640, fiberG100g: 0, proteinG100g: 0.9, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(greek\s+yogurt|plain\s+yogurt|sour\s+cream|cottage\s+cheese|fage|oikos|siggi'?s)\b(?!.*\b(strawberry|vanilla|blueberry|peach|cherry|flip|cookie)\b)/i,
+    brand: "Cultured Dairy",
+    ingredients: "Cultured Pasteurized Grade A Milk and Cream, Live and Active Cultures.",
+    nutrition: { caloriesKcal100g: 95, sugarsG100g: 3.5, saturatedFatG100g: 2.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false },
+  },
+  {
+    match: /\b(yogurt|chobani|dannon|activia|stonyfield|friendly\s+farms.*yogurt)\b/i,
+    brand: "Dairy Yogurt",
+    ingredients: "Cultured Grade A Lowfat Milk, Cane Sugar, Fruit Puree, Modified Corn Starch, Natural Flavors, Pectin, Citric Acid, Fruit & Vegetable Juice (for Color), Vitamin D3.",
+    nutrition: { caloriesKcal100g: 88, sugarsG100g: 11.5, saturatedFatG100g: 1.0, sodiumMg100g: 50, fiberG100g: 0.2, proteinG100g: 4.5, fruitsVegNutsPct: 8, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(cheddar|mozzarella|parmesan|provolone|swiss\s+cheese|gouda|feta|ricotta|colby\s+jack|pepper\s+jack|monterey\s+jack|american\s+cheese|string\s+cheese|shredded\s+cheese|sliced\s+cheese|cream\s+cheese|sargento|tillamook|philadelphia|kraft\s+singles|babybel|laughing\s+cow|happy\s+farms)\b/i,
+    brand: "Dairy Cheese",
+    ingredients: "Pasteurized Milk, Cheese Culture, Salt, Enzymes, Annatto (Vegetable Color), Potato Starch and Powdered Cellulose (to Prevent Caking), Natamycin (a Natural Mold Inhibitor).",
+    nutrition: { caloriesKcal100g: 380, sugarsG100g: 1.0, saturatedFatG100g: 18.5, sodiumMg100g: 620, fiberG100g: 0, proteinG100g: 23.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(dave'?s\s+killer|ezekiel|sprouted\s+grain)\b.*\b(bread|bagels?|buns?|english\s+muffins?)\b/i,
+    brand: "Dave's Killer Bread",
+    ingredients: "Organic Whole Wheat, Water, Organic Cracked Wheat, Organic Cane Sugar, Organic Grain & Seed Mix (Organic Flax, Organic Sesame, Organic Quinoa), Sea Salt, Organic Yeast.",
+    nutrition: { caloriesKcal100g: 245, sugarsG100g: 5.0, saturatedFatG100g: 0.5, sodiumMg100g: 340, fiberG100g: 7.0, proteinG100g: 10.5, fruitsVegNutsPct: 15, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
+  },
+  {
+    match: /\b(bread|loaf|bagels?|buns?|hamburger\s+buns?|hot\s+dog\s+buns?|dinner\s+rolls?|hawaiian\s+rolls?|english\s+muffins?|tortillas?|wraps?|pita|naan|flatbread|waffles?|pancakes?|eggo|biscuits?|croissants?|l'?oven\s+fresh|nature'?s\s+own|sara\s+lee|wonder\s+bread|thomas'?|mission\s+tortillas?|king'?s\s+hawaiian)\b/i,
+    brand: "Bakery & Bread",
+    ingredients: "Enriched Wheat Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, Sugar, Soybean and/or Canola Oil, Yeast, Salt, Mono- and Diglycerides, Calcium Propionate (Preservative), DATEM, Sodium Stearoyl Lactylate, Soy Lecithin.",
+    nutrition: { caloriesKcal100g: 265, sugarsG100g: 5.5, saturatedFatG100g: 1.0, sodiumMg100g: 460, fiberG100g: 2.2, proteinG100g: 8.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(rolled\s+oats|old\s+fashioned\s+oats|steel\s+cut\s+oats|quick\s+oats)\b(?!.*\b(maple|brown\s+sugar|apple\s+cinnamon|peaches|strawberries)\b)/i,
+    brand: "Whole Grain Oats",
+    ingredients: "100% Whole Grain Rolled Oats.",
+    nutrition: { caloriesKcal100g: 379, sugarsG100g: 1.0, saturatedFatG100g: 1.2, sodiumMg100g: 5, fiberG100g: 10.1, proteinG100g: 13.2, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true },
+  },
+  {
+    match: /\b(cereal|honey\s+bunches|raisin\s+bran|rice\s+krispies|chex|special\s+k|granola|oatmeal|instant\s+oats|granola\s+bars?|protein\s+bars?|chewy\s+bars?|nutri[- ]?grain|belvita|millville|elevation|nature\s+valley|clif\s+bar|kind\s+bar|rxbar|larabar|quaker)\b/i,
+    brand: "Cereal & Bars",
+    ingredients: "Whole Grain Oats, Sugar, Corn Syrup, Enriched Flour, Canola and/or Palm Kernel Oil, Honey, Brown Sugar Syrup, Salt, Soy Lecithin, Trisodium Phosphate, Natural Flavor, BHT (Added to Preserve Freshness).",
+    nutrition: { caloriesKcal100g: 410, sugarsG100g: 24.0, saturatedFatG100g: 3.5, sodiumMg100g: 350, fiberG100g: 4.5, proteinG100g: 7.0, fruitsVegNutsPct: 10, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(cookies?|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|wafers?|brownies?|muffins?|donuts?|doughnuts?|bismarks?|pastries|pastry|danish|cinnamon\s+rolls?|cupcakes?|cake|pie|strudel|turnover|benton'?s|bake\s+shop|candy|chocolate|gummies|gummy|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|fruit\s+snacks?|welch'?s\s+fruit\s+snacks?|mott'?s\s+fruit\s+snacks?|choceur|moser\s+roth|sorbet|sherbet|popsicle|ice\s+pop|outshine)\b/i,
+    brand: "Bakery & Sweets",
+    ingredients: "Sugar, Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Palm and/or Soybean Oil, Corn Syrup, High Fructose Corn Syrup, Cocoa, Cornstarch, Dextrose, Salt, Soy Lecithin, Baking Soda, Artificial Flavor, Citric Acid, Red 40, Yellow 5, Blue 1.",
+    nutrition: { caloriesKcal100g: 445, sugarsG100g: 36.0, saturatedFatG100g: 8.5, sodiumMg100g: 260, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(frozen\s+pizza|rising\s+crust|thin\s+crust|pepperoni\s+pizza|cheese\s+pizza|supreme\s+pizza|pizza|digiorno|red\s+baron|mama\s+cozzi|burritos?|chimichangas?|taquitos?|quesadillas?|enchiladas?|egg\s+rolls?|spring\s+rolls?|potstickers?|dumplings?|lean\s+cuisine|marie\s+callender'?s|banquet|amy'?s|casserole|hamburger\s+helper|tuna\s+helper|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|breakfast\s+sandwich)\b/i,
+    brand: "Prepared Meals & Pizza",
+    ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Low-Moisture Part-Skim Mozzarella and Cheddar Cheese, Tomato Paste, Soybean and/or Palm Oil, Sugar, Salt, Modified Corn Starch, Whey, Sodium Phosphate, Yeast, Spices, Sodium Nitrite, Artificial Flavor.",
+    nutrition: { caloriesKcal100g: 255, sugarsG100g: 4.2, saturatedFatG100g: 5.5, sodiumMg100g: 610, fiberG100g: 2.0, proteinG100g: 10.5, fruitsVegNutsPct: 15, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(pickles?|dill\s+pickles?|olives?|kalamata|mt\.?\s*olive|vlasic|claussen|pickled)\b/i,
+    brand: "Pickles & Olives",
+    ingredients: "Cucumbers or Olives, Water, Distilled Vinegar, Salt, Calcium Chloride, Garlic, Spices, Polysorbate 80, Sodium Benzoate (Preservative), Yellow 5.",
+    nutrition: { caloriesKcal100g: 35, sugarsG100g: 1.0, saturatedFatG100g: 0.2, sodiumMg100g: 780, fiberG100g: 1.2, proteinG100g: 0.5, fruitsVegNutsPct: 80, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(hummus|guacamole|tzatziki|sabra|wholly\s+guacamole|park\s+street\s+deli)\b/i,
+    brand: "Deli Dips",
+    ingredients: "Cooked Chickpeas or Hass Avocados, Water, Tahini (Ground Sesame), Olive and/or Soybean Oil, Salt, Citric Acid, Garlic, Cumin, Guar Gum, Potassium Sorbate (to Maintain Freshness).",
+    nutrition: { caloriesKcal100g: 210, sugarsG100g: 1.5, saturatedFatG100g: 2.2, sodiumMg100g: 410, fiberG100g: 5.0, proteinG100g: 6.5, fruitsVegNutsPct: 70, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(baked\s+beans|bush'?s|refried\s+beans)\b/i,
+    brand: "Pantry Beans",
+    ingredients: "Prepared Beans, Water, Brown Sugar, Sugar, Salt, Mustard, Modified Corn Starch, Onion Powder, Caramel Color, Spice, Garlic Powder.",
+    nutrition: { caloriesKcal100g: 115, sugarsG100g: 9.2, saturatedFatG100g: 0.3, sodiumMg100g: 420, fiberG100g: 5.0, proteinG100g: 5.5, fruitsVegNutsPct: 75, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(fruit\s+cups?|applesauce|mott'?s.*applesauce|sweet\s+harvest|canned\s+(peaches|pears|pineapple|fruit|mandarin\s+oranges))\b/i,
+    brand: "Packaged Fruit",
+    ingredients: "Fruit, Water, Sugar or Pear Juice Concentrate, Ascorbic Acid (Vitamin C) to Promote Color Retention, Citric Acid.",
+    nutrition: { caloriesKcal100g: 68, sugarsG100g: 14.5, saturatedFatG100g: 0, sodiumMg100g: 8, fiberG100g: 1.2, proteinG100g: 0.4, fruitsVegNutsPct: 80, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(spaghetti|penne|fettuccine|linguine|rigatoni|rotini|elbows?|farfalle|lasagna|pasta|noodles?|white\s+rice|brown\s+rice|jasmine\s+rice|basmati\s+rice|quinoa|black\s+beans|pinto\s+beans|kidney\s+beans|chickpeas|garbanzo\s+beans|cannellini\s+beans|lentils|diced\s+tomatoes|crushed\s+tomatoes|tomato\s+paste|tofu|tempeh|almonds?|cashews?|walnuts?|pecans?|pistachios?|peanuts?|mixed\s+nuts|trail\s+mix|chia\s+seeds?|flax\s+seeds?|hemp\s+seeds?|pumpkin\s+seeds?|sunflower\s+seeds?|olive\s+oil|avocado\s+oil|coconut\s+oil|barilla|dakota'?s\s+pride|southern\s+grove)\b/i,
+    brand: "Clean Pantry Staple",
+    ingredients: "100% Whole Grain Pasta, Rice, Beans, Raw Nuts/Seeds, or Cold-Pressed Oil (Zero Artificial Additives).",
+    nutrition: { caloriesKcal100g: 165, sugarsG100g: 1.5, saturatedFatG100g: 0.8, sodiumMg100g: 45, fiberG100g: 5.5, proteinG100g: 8.5, fruitsVegNutsPct: 60, nutriScoreGrade: "a", isWholeFood: true },
+  },
+];
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
-  const cleanTitle = query.trim().replace(/,\s*(now|was)$/i, "").replace(/\b\w/g, (c) => c.toUpperCase());
+  const cleanTitle = query
+    .trim()
+    .replace(/,\s*(now|was)$/i, "")
+    .replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const wordCount = cleanTitle.split(/\s+/).filter(Boolean).length;
   const isOrganic = /\b(organic|usda organic)\b/i.test(query);
 
@@ -1044,7 +1222,24 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     }
   }
   const s = query.toLowerCase();
-  if (NON_FOOD_OR_PROCESSED_GUARD.test(s)) {
+  if (NON_FOOD_GUARD.test(s)) {
+    return null;
+  }
+
+  for (const cat of CATEGORY_FALLBACK_CATALOG) {
+    if (cat.match.test(query)) {
+      return {
+        productTitle: cleanTitle,
+        brand: cat.brand,
+        ingredients: cat.ingredients,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+        nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic ?? isOrganic },
+        source: "catalog",
+      };
+    }
+  }
+
+  if (PROCESSED_FOOD_GUARD.test(s)) {
     return null;
   }
 

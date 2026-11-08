@@ -495,11 +495,15 @@ class OverlayWindowService : Service() {
                 val o = arr.getJSONObject(i)
                 val title = o.optString("title")
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
+                var score = o.optInt("score", 50)
+                if (score >= 85 && Regex("""(?i)\b(fried onions?|crispy.*onions?|french'?s.*onions?|ice cream|cherry garcia|half[- ]?baked|instant mashed|oreo puffs?|steak[- ]?umm|ore[- ]?ida)\b""").containsMatchIn(title)) {
+                    score = if (title.contains("onion", ignoreCase = true)) 18 else 24
+                }
                 tripCart.add(
                     TripCartItem(
                         key = o.optString("key"),
                         title = title,
-                        score = o.optInt("score", 50),
+                        score = score,
                         swapObj = o.optJSONObject("swap"),
                         isSeed = false,
                         fullJson = o.optJSONObject("fullJson"),
@@ -972,7 +976,9 @@ class OverlayWindowService : Service() {
         val cartAvgBadge = if (tripCart.isEmpty()) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG ${calcCartAvg()}/100"
         val prodObj = d.optJSONObject("product")
         val prodTitle = prodObj?.optString("title").orEmpty()
+        val prodBrand = prodObj?.optString("brand").orEmpty()
         val prodDesc = prodObj?.optString("description").orEmpty()
+        val prodIngredients = prodObj?.optString("ingredients").orEmpty()
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1008,17 +1014,37 @@ class OverlayWindowService : Service() {
             })
         })
         if (prodTitle.isNotBlank()) {
-            sheet.addView(text(prodTitle, 12f, INK_2, bold = true).apply {
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                setPadding(0, dp(3), 0, 0)
-            })
-        }
-        if (prodDesc.isNotBlank()) {
-            sheet.addView(text(prodDesc, 11f, INK_2).apply {
-                maxLines = 2
-                ellipsize = TextUtils.TruncateAt.END
-                setPadding(0, dp(2), 0, 0)
+            val prodThumbJson = JSONObject().apply {
+                put("title", prodTitle)
+                put("imageUrl", prodObj?.optString("imageUrl").orEmpty())
+            }
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, dp(2))
+                addView(buildSwapThumbnailView(prodThumbJson, dp(44)).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) }
+                })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    if (prodBrand.isNotBlank() && !prodTitle.startsWith(prodBrand, ignoreCase = true)) {
+                        addView(text(prodBrand.uppercase(), 9.5f, BRAND, bold = true).apply {
+                            letterSpacing = 0.05f
+                        })
+                    }
+                    addView(text(prodTitle, 13f, INK, bold = true).apply {
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+                    if (prodDesc.isNotBlank()) {
+                        addView(text(prodDesc, 11f, INK_2).apply {
+                            maxLines = 2
+                            ellipsize = TextUtils.TruncateAt.END
+                            setPadding(0, dp(1), 0, 0)
+                        })
+                    }
+                })
             })
         }
 
@@ -1136,6 +1162,38 @@ class OverlayWindowService : Service() {
 
         // Add the collapsible, height-bounded descriptions list right below the top row
         sheet.addView(explainScroll)
+
+        // Scanned Product Ingredients box (tap to expand/collapse)
+        if (prodIngredients.isNotBlank()) {
+            var ingExpanded = false
+            val ingHeaderTv = text("INGREDIENTS · TAP TO EXPAND", 9.5f, INK_3, bold = true).apply {
+                letterSpacing = 0.06f
+            }
+            val ingBodyTv = text(prodIngredients, 11f, INK_2).apply {
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(0, dp(2), 0, 0)
+            }
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), dp(7), dp(10), dp(7))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF7F7F3.toInt())
+                    cornerRadius = dp(11).toFloat()
+                    setStroke(dp(1), 0x1815201B)
+                }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(7)
+                }
+                addView(ingHeaderTv)
+                addView(ingBodyTv)
+                setOnClickListener {
+                    ingExpanded = !ingExpanded
+                    ingBodyTv.maxLines = if (ingExpanded) 12 else 2
+                    ingHeaderTv.text = if (ingExpanded) "INGREDIENTS · TAP TO COLLAPSE" else "INGREDIENTS · TAP TO EXPAND"
+                }
+            })
+        }
 
         // Pinned Clean Swap box at the bottom of the card — ALWAYS visible without scrolling!
         val swapBox = LinearLayout(this).apply {

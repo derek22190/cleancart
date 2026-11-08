@@ -369,7 +369,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs|bagels?|pizza|pretzels?)\b).*\b(cheese|cheddar|velveeta|kraft\s+singles|american\s+singles|queso|colby|monterey\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\b/i,
+    match: /^(?!.*\b(mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(cheese|cheddar|velveeta|kraft\s+singles|american\s+singles|queso|colby|monterey\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\b/i,
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -481,9 +481,9 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
 
-  // --- Instant Mashed Potatoes & Crispy Fried Onions ---
+  // --- Instant Mashed Potatoes, French Fries & Crispy Fried Onions ---
   {
-    match: /\b(instant\s+mashed|mashed\s+potato(?:es)?|potato\s+flakes?|idahoan|betty\s+crocker.*potato(?:es)?|hungry\s+jack.*potato(?:es)?)\b/i,
+    match: /\b(instant\s+mashed|mashed\s+potato(?:es)?|potato\s+flakes?|idahoan|betty\s+crocker.*potato(?:es)?|hungry\s+jack.*potato(?:es)?|ore[- ]?ida|french\s+fries|crinkle\s+cut|waffle\s+fries|steak\s+fries|curly\s+fries|shoestring\s+fries|tater\s+tots?|hash\s*browns?|golden\s+crinkles)\b/i,
     alt: {
       category: "Snacks",
       brand: "USDA Organic",
@@ -607,7 +607,19 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
 
-  // --- Dressings, Condiments, Sauces & Broth ---
+  // --- Dressings, Condiments, Sauces, Dips & Broth ---
+  {
+    match: /\b(hummus|guacamole|tzatziki|sabra|wholly\s+guacamole|park\s+street\s+deli.*(hummus|guac|dip))\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Hope Foods",
+      name: "Organic Original Sea Salt Hummus with Extra Virgin Olive Oil",
+      size: "8 oz tub",
+      price: 4.49,
+      image: "/swaps/salsa.png",
+      ingredients: "Organic garbanzo beans, water, organic tahini (ground sesame), organic extra virgin olive oil, sea salt, organic lemon juice, organic garlic, organic cumin.",
+    },
+  },
   {
     match: /\b(gravy|broth|stock|bouillon)\b/i,
     alt: {
@@ -657,11 +669,11 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(bbq|barbecue|sweet\s+baby\s+ray'?s|kc\s+masterpiece|bull'?s-?eye)\b/i,
+    match: /\b(bbq|barbecue|sweet\s+baby\s+ray'?s|kc\s+masterpiece|bull'?s-?eye|steak\s+sauce|a\.?1\.?|heinz\s+57|worcestershire)\b/i,
     alt: {
       category: "Dressings",
       brand: "Primal Kitchen",
-      name: "Organic Unsweetened Classic BBQ Sauce",
+      name: "Organic Unsweetened Classic Steak & BBQ Sauce",
       size: "8.5 oz bottle",
       price: 5.49,
       image: "/swaps/bbq.png",
@@ -767,7 +779,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(roast\s+beef|ground\s+beef|beef\s+patties|burger\s+patties|steak|sirloin|ribeye)\b/i,
+    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning)\b).*\b(roast\s+beef|ground\s+beef|beef\s+patties|burger\s+patties|steak|sirloin|ribeye)\b/i,
     alt: {
       category: "Deli Meat",
       brand: "Applegate Organics",
@@ -867,7 +879,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Snacks, Cookies, Candy, Chocolate, Soda, Sports Drinks, Juice ---
   {
-    match: /\b(cookies?|oreos?|chips\s+ahoy|nutter\s+butter|keebler|wafers?|knoppers|biscuits?|biscoff|cake\s+rolls?|swiss\s+rolls?|snack\s+cakes?|little\s+debbie|hostess|twinkies?|cupcakes?|donuts?|doughnuts?|danish|cinnamon\s+rolls?|honey\s+buns?)\b/i,
+    match: /^(?!.*\b(cereal|puffs?|o'?s)\b).*\b(cookies?|oreos?|chips\s+ahoy|nutter\s+butter|keebler|wafers?|knoppers|biscuits?|biscoff|cake\s+rolls?|swiss\s+rolls?|snack\s+cakes?|little\s+debbie|hostess|twinkies?|cupcakes?|donuts?|doughnuts?|danish|cinnamon\s+rolls?|honey\s+buns?)\b/i,
     alt: {
       category: "Snacks",
       brand: "Simple Mills",
@@ -1015,9 +1027,9 @@ export const DIRTY_FALLBACK_IMAGES: Record<SwapCategory, string> = {
 const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
   ["Yogurt", /\b(yogh?urt|skyr|kefir|chobani|yoplait|dannon|fage|siggi)\b/i],
   ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat thins|graham)\b/i],
-  ["Chips", /\b(chips|crisps|tortilla chips|doritos|pringles|cheetos|cheese puffs|puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
-  ["Cereal", /\b(cereal|flakes|granola|loops|o's|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran|syrup)\b/i],
-  ["Dressings", /\b(gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|bbq|barbecue|sauce|salsa|marinara)\b/i],
+  ["Chips", /\b(chips|crisps|tortilla chips|doritos|pringles|cheetos|cheese puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
+  ["Cereal", /\b(cereal|flakes|granola|loops|o'?s|oreo\s+puffs?|reese'?s\s+puffs?|cocoa\s+puffs?|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran|syrup)\b/i],
+  ["Dressings", /\b(gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|bbq|barbecue|sauce|salsa|marinara|hummus|guacamole|tzatziki)\b/i],
   ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|kielbasa|lunch ?meat|roast beef|chicken breast|chicken patties|nuggets|tenders|beef|steak|pork)\b/i],
   ["Butter/Dairy", /\b(butter|margarine|spread|milk|eggnog|egg nog|cheese|velveeta|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
   ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza|hot pockets?)\b/i],

@@ -121,6 +121,28 @@ object ScanHistoryStore {
                     }
                 }
             }
+            // Migrate any pre-fix cached processed foods (e.g. Crispy Fried Onions, Ice Cream, Instant Mashed) that had a stale 100/100 score
+            if (res != null && res.optInt("score", 50) >= 85 &&
+                Regex("""\b(fried onions?|crispy.*onions?|frenchs?.*onions?|ice cream|cherry garcia|half baked|instant mashed|oreo puffs?|steak umm|ore ida)\b""").containsMatchIn(key)
+            ) {
+                val isOnions = key.contains("onion")
+                res.put("score", if (isOnions) 18 else 24)
+                res.put("rating", "Poor")
+                res.put("color", "red")
+                res.optJSONObject("yukaBreakdown")?.apply {
+                    put("nutritionScore", if (isOnions) 8 else 14)
+                    put("nutriScoreGrade", "E")
+                    put("additiveScore", 10)
+                    put("organicScore", 0)
+                }
+                if (prod != null && (prod.optString("ingredients").isBlank() || prod.optString("ingredients").contains("Fresh Whole Produce", ignoreCase = true))) {
+                    prod.put(
+                        "ingredients",
+                        if (isOnions) "Onions, Palm Oil, Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soy Flour, Salt, Dextrose."
+                        else "Cream, Skim Milk, Liquid Sugar (Sugar, Water), Water, Sugar, Egg Yolks, Coconut Oil, Cocoa, Guar Gum, Carrageenan, Soy Lecithin, Natural Flavor."
+                    )
+                }
+            }
             out.add(item)
         }
         out

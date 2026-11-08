@@ -102,7 +102,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|rolls|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|syrup|honey|jam|jelly|peanut butter|almond butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|hummus|guacamole|olive oil|avocado oil|canola oil|vegetable oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|pork|bacon|sausage|kielbasa|bratwurst|meatballs|patties|fillets|cutlets|strip|strips|ham|deli|salami|pepperoni|hot dog|jerky|salmon|tuna|shrimp|cod|tilapia|fish|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|pop|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang|reign|rockstar|prime|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|gummies|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|half-baked|half baked|ben & jerry|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|tomato|tomatoes|potato|potatoes|mashed|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|corn|peas|orange|oranges|grape|grapes|peach|peaches|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|pineapple|pear|pears|plum|plums|beans|lentils|chickpeas|rice|pasta|spaghetti|penne|shells|noodles|ramen|soup|broth|stock|bouillon|pizza|burrito|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|ice cream|gelato|sorbet|popsicle|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|siete|cheez-it|goldfish|ritz|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|wheat thins|triscuit|oreo|chips ahoy|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|health-ade|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|huggies|pampers|vitamin|protein|collagen|creatine|electrolyte|purina|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts)\b""",
+            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|rolls|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|queso|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|vinegar|turkey|chicken|beef|steak|ribeye|sirloin|roast|brisket|pork|bacon|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets|cutlets|strip|strips|ham|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dog|hot dogs|franks|frankfurters|wieners|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|pop|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang|reign|rockstar|prime|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|mashed|idahoan|ore-ida|tater|tots|hashbrowns|hash browns|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichoke|beet|beets|radish|turnip|eggplant|okra|corn|peas|green beans|brussels|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|egg roll|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|ice pop|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|health-ade|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|barilla|rao'?s|prego|ragu|classico|bertolli|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|banana boat|huggies|pampers|vitamin|protein|collagen|creatine|electrolyte|purina|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2})?|\b\d+\s*dollars?\s*and\s*\d+\s*cents?\b)""", RegexOption.IGNORE_CASE)
@@ -405,7 +405,8 @@ class GroceryScreenReaderService : AccessibilityService() {
             val hasOptionsButtons = nodes.any { it.text.trim().equals("options", ignoreCase = true) }
 
             val hasHomeOrAisleBanners = primaryNodes.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
-            val hasSinglePdpCta = nodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) } ||
+            val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) } ||
+                nodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) } ||
                 allNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
             val hasSinglePdpDetails = ingredients != null ||
                 nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) } ||
@@ -420,7 +421,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     (hasClubItemNumber && tileAddCount < 3) ||
                     (hasSinglePdpCta && tileAddCount <= 1)
 
-            if (hasHomeOrAisleBanners || tileAddCount >= 2) {
+            if (!isConfirmedSinglePdp && (hasHomeOrAisleBanners || tileAddCount >= 2)) {
                 lastConfirmedPdpTitle = null
             }
 
@@ -696,13 +697,26 @@ class GroceryScreenReaderService : AccessibilityService() {
             val txt = nodes[i].text.trim()
             if (SPONSORED_BADGE.matches(txt) && i <= 28) {
                 dropIndices.add(i)
+                // If "Sponsored" is next to or after "Items to add next" (CAROUSEL_BOUNDARY) or "Product information" /
+                // "Details" / "Ingredients" (SINGLE_PDP_DETAILS), it is a bottom carousel label, NOT a top banner ad!
+                val isAfterPdpOrCarousel = (0 until i).any { prevIdx ->
+                    val p = nodes[prevIdx].text.trim()
+                    CAROUSEL_BOUNDARY.containsMatchIn(p) ||
+                        SINGLE_PDP_DETAILS.containsMatchIn(p) ||
+                        PRICE_PATTERN.containsMatchIn(p)
+                }
+                if (isAfterPdpOrCarousel) continue
+
                 for (back in 1..4) {
                     val prevIdx = i - back
                     if (prevIdx < 0) break
                     val prevNode = nodes[prevIdx]
                     val prev = prevNode.text.trim()
                     if (prev.startsWith("Search", ignoreCase = true) ||
+                        CAROUSEL_BOUNDARY.containsMatchIn(prev) ||
+                        SINGLE_PDP_DETAILS.containsMatchIn(prev) ||
                         SINGLE_PDP_CTA.containsMatchIn(prev) ||
+                        PRICE_PATTERN.containsMatchIn(prev) ||
                         TITLE_ID_HINTS.any { prevNode.viewId.contains(it) }
                     ) break
                     dropIndices.add(prevIdx)
@@ -712,7 +726,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                     if (nextIdx >= nodes.size) break
                     val nextNode = nodes[nextIdx]
                     val next = nextNode.text.trim()
-                    if (SINGLE_PDP_CTA.containsMatchIn(next) ||
+                    if (CAROUSEL_BOUNDARY.containsMatchIn(next) ||
+                        SINGLE_PDP_DETAILS.containsMatchIn(next) ||
+                        SINGLE_PDP_CTA.containsMatchIn(next) ||
                         TITLE_ID_HINTS.any { nextNode.viewId.contains(it) } ||
                         FOOD_HINTS.containsMatchIn(next)
                     ) break
@@ -877,7 +893,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
         }
 
-        // 6. Accessibility heading or tapped/cached product title on a confirmed single-product page
+        // 6. Accessibility heading or prominent top candidate on a confirmed single-product page
         if (isConfirmedSinglePdp) {
             searchNodes.firstOrNull { n ->
                 val c = cleanTitleCandidate(n.text)
@@ -887,6 +903,18 @@ class GroceryScreenReaderService : AccessibilityService() {
             allNodes.firstOrNull { n ->
                 val c = cleanTitleCandidate(n.text)
                 n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
+            }?.let { return cleanTitleCandidate(it.text) }
+
+            // On ALDI/Walmart/BJ's PDPs where the title TextView does not set `isHeading = true`,
+            // pick the first valid multi-word product title candidate at the top of the PDP.
+            searchNodes.take(25).firstOrNull { n ->
+                val c = cleanTitleCandidate(n.text)
+                isCandidateProductTitle(c) && c.split(' ').size >= 2 && c.length in 6..120
+            }?.let { return cleanTitleCandidate(it.text) }
+
+            allNodes.take(50).firstOrNull { n ->
+                val c = cleanTitleCandidate(n.text)
+                isCandidateProductTitle(c) && c.split(' ').size >= 2 && c.length in 6..120
             }?.let { return cleanTitleCandidate(it.text) }
 
             // 7. Fallback to the product card title the user just tapped to open this PDP (or the PDP title captured moments earlier)
