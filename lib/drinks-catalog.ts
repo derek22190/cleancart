@@ -1192,7 +1192,109 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(sprite|starry|7\s*up|seven\s+up|squirt|fresca)\b/i,
+    match: /\b(sprite|starry|7\s*up|seven\s+up|squirt)\b/i,
+  },
+  {
+    id: "fresca-original-citrus-soda",
+    title: "Fresca Original Citrus Sparkling Flavored Soda Water (Zero Sugar), 12 fl oz Cans",
+    brand: "Fresca",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Zero-sugar grapefruit citrus sparkling soda sweetened with aspartame and acesulfame potassium, preserved with potassium sorbate, potassium benzoate, and calcium disodium EDTA, and stabilized with glycerol ester of rosin.",
+    keywords: ["fresca", "fresca soda", "grapefruit soda", "zero sugar citrus soda", "soda"],
+    ingredients:
+      "Carbonated Water, Citric Acid, Concentrated Grapefruit Juice, Potassium Citrate, Aspartame, Potassium Sorbate (To Protect Taste), Acacia Gum, Acesulfame Potassium, Natural Flavors, Glycerol Ester of Rosin, Potassium Benzoate (To Protect Taste), Calcium Disodium EDTA (To Protect Flavor).",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 10,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 1,
+      nutriScoreGrade: "c",
+      isWholeFood: false,
+    },
+    match: /\b(fresca)\b/i,
+  },
+  {
+    id: "olipop-prebiotic-soda",
+    title: "OLIPOP Prebiotic Soda (Vintage Cola / Strawberry Vanilla / Classic Root Beer), 12 fl oz",
+    brand: "OLIPOP",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Clean prebiotic botanical soda with 9g plant fiber and only 2g–5g sugar per can — free of HFCS, caramel color, artificial sweeteners, and synthetic preservatives.",
+    keywords: [
+      "olipop",
+      "vintage cola",
+      "strawberry vanilla",
+      "classic root beer",
+      "prebiotic soda",
+      "healthy soda",
+      "clean soda",
+      "soda",
+    ],
+    ingredients:
+      "Carbonated Water, OLISMART (Cassava Root Fiber, Chicory Root Inulin, Jerusalem Artichoke Inulin, Nopal Cactus, Marshmallow Root, Calendula Flower, Kudzu Root), Organic Apple Juice Concentrate, Lime Juice, Cassava Root Syrup, Stevia Leaf, Cinnamon, Vanilla Bean, Cola Nut Extract.",
+    nutrition: {
+      caloriesKcal100g: 10,
+      sugarsG100g: 0.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 8,
+      fiberG100g: 2.5,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 35,
+      nutriScoreGrade: "a",
+      isOrganic: true,
+      isWholeFood: false,
+    },
+    match: /\b(olipop)\b/i,
+  },
+  {
+    id: "poppi-prebiotic-soda",
+    title: "Poppi Prebiotic Soda (Strawberry Lemon / Orange / Doc Pop / Cherry Limeade), 12 fl oz",
+    brand: "Poppi",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Low-sugar prebiotic sparkling soda made with organic apple cider vinegar, organic agave inulin, fruit juice, and stevia (25 kcal and ≤5g sugar per can).",
+    keywords: ["poppi", "doc pop", "prebiotic soda", "apple cider vinegar soda", "culture pop", "soda"],
+    ingredients:
+      "Sparkling Water, Organic Cane Sugar, Organic Apple Cider Vinegar, Organic Agave Inulin, Lemon Juice, Strawberry Juice, Natural Flavors, Stevia.",
+    nutrition: {
+      caloriesKcal100g: 7,
+      sugarsG100g: 1.4,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 2,
+      fiberG100g: 0.6,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 15,
+      nutriScoreGrade: "a",
+      isOrganic: true,
+      isWholeFood: false,
+    },
+    match: /\b(poppi|culture\s+pop)\b/i,
+  },
+  {
+    id: "zevia-zero-sugar-soda",
+    title: "Zevia Zero Sugar Soda (Cola / Ginger Root Beer / Creamy Root Beer / Black Cherry), 12 fl oz Cans",
+    brand: "Zevia",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Clear zero-sugar carbonated soda naturally sweetened with stevia leaf extract — zero calories, zero sugar, zero caramel color, and zero synthetic preservatives.",
+    keywords: ["zevia", "zevia cola", "zevia root beer", "stevia soda", "zero sugar soda", "soda"],
+    ingredients: "Carbonated Water, Stevia Leaf Extract, Citric Acid, Natural Flavors.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 0,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(zevia)\b/i,
   },
   {
     id: "fanta-sunkist-crush-orange",
@@ -1263,75 +1365,18 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     match: /\b(canada\s+dry|schweppes|seagram'?s|vernors|ginger\s+ale)\b/i,
   },
-  {
-    id: "olipop-prebiotic-soda",
-    title: "OLIPOP Prebiotic Soda (Vintage Cola / Strawberry Vanilla / Classic Root Beer), 12 fl oz",
-    brand: "OLIPOP",
-    category: "Sodas & Prebiotic Sodas",
-    description:
-      "Clean prebiotic botanical soda with 9g plant fiber and only 2g–5g sugar per can — free of HFCS, caramel color, artificial sweeteners, and synthetic preservatives.",
-    keywords: [
-      "olipop",
-      "vintage cola",
-      "strawberry vanilla",
-      "classic root beer",
-      "prebiotic soda",
-      "healthy soda",
-      "clean soda",
-      "soda",
-    ],
-    ingredients:
-      "Carbonated Water, OLISMART (Cassava Root Fiber, Chicory Root Inulin, Jerusalem Artichoke Inulin, Nopal Cactus, Marshmallow Root, Calendula Flower, Kudzu Root), Organic Apple Juice Concentrate, Lime Juice, Cassava Root Syrup, Stevia Leaf, Cinnamon, Vanilla Bean, Cola Nut Extract.",
-    nutrition: {
-      caloriesKcal100g: 10,
-      sugarsG100g: 0.8,
-      saturatedFatG100g: 0,
-      sodiumMg100g: 8,
-      fiberG100g: 2.5,
-      proteinG100g: 0,
-      fruitsVegNutsPct: 35,
-      nutriScoreGrade: "a",
-      isOrganic: true,
-      isWholeFood: false,
-    },
-    match: /\b(olipop)\b/i,
-  },
-  {
-    id: "poppi-prebiotic-soda",
-    title: "Poppi Prebiotic Soda (Strawberry Lemon / Orange / Doc Pop / Cherry Limeade), 12 fl oz",
-    brand: "Poppi",
-    category: "Sodas & Prebiotic Sodas",
-    description:
-      "Low-sugar prebiotic sparkling soda made with organic apple cider vinegar, organic agave inulin, fruit juice, and stevia (25 kcal and ≤5g sugar per can).",
-    keywords: ["poppi", "doc pop", "prebiotic soda", "apple cider vinegar soda", "culture pop", "zevia", "soda"],
-    ingredients:
-      "Sparkling Water, Organic Cane Sugar, Organic Apple Cider Vinegar, Organic Agave Inulin, Lemon Juice, Strawberry Juice, Natural Flavors, Stevia.",
-    nutrition: {
-      caloriesKcal100g: 7,
-      sugarsG100g: 1.4,
-      saturatedFatG100g: 0,
-      sodiumMg100g: 2,
-      fiberG100g: 0.6,
-      proteinG100g: 0,
-      fruitsVegNutsPct: 15,
-      nutriScoreGrade: "a",
-      isOrganic: true,
-      isWholeFood: false,
-    },
-    match: /\b(poppi|culture\s+pop|zevia)\b/i,
-  },
 
   /* ======================================================================== */
   /* 4. MILK, PLANT MILKS & DAIRY DRINKS                                      */
   /* ======================================================================== */
   {
     id: "organic-valley-grassmilk-whole",
-    title: "Organic Valley Organic 100% Grassmilk Whole Milk, 64 fl oz",
-    brand: "Organic Valley",
+    title: "Organic Valley / Horizon Organic Grade A Whole Milk, 64 fl oz",
+    brand: "Organic Valley / Horizon Organic",
     category: "Milk & Dairy Drinks",
     description:
-      "USDA Organic 100% grass-fed whole dairy milk from pasture-raised cows with naturally higher omega-3 and CLA fatty acids and zero synthetic hormones or antibiotics.",
-    keywords: ["organic valley", "grassmilk", "whole milk", "organic milk", "grass fed milk", "milk"],
+      "USDA Organic pasture-raised whole dairy milk fortified with Vitamin D3 and free of synthetic hormones, antibiotics, and chemical pesticides.",
+    keywords: ["organic valley", "grassmilk", "horizon organic", "whole milk", "organic milk", "grass fed milk", "milk"],
     ingredients: "Organic Grade A Whole Milk, Vitamin D3.",
     nutrition: {
       caloriesKcal100g: 62,
@@ -1345,7 +1390,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    match: /\b(organic\s+valley.*(?:whole|grassmilk)|maple\s+hill.*milk|kalona.*milk)\b/i,
+    match: /\b(organic\s+valley.*(?:whole|grassmilk)|horizon\s+organic.*milk|maple\s+hill.*milk|kalona.*milk)\b/i,
   },
   {
     id: "organic-valley-2pct-milk",
@@ -1441,14 +1486,14 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "nesquik-trumoo-chocolate-milk",
-    title: "Nesquik / TruMoo / Great Value Chocolate Milk",
+    title: "Nesquik / TruMoo Sweetened Lowfat Chocolate Milk",
     brand: "Nesquik / TruMoo",
     category: "Milk & Dairy Drinks",
     description:
-      "Conventional sweetened chocolate dairy milk formulated with sugar or high fructose corn syrup, carrageenan, guar gum, and artificial flavors.",
+      "Conventional sweetened chocolate dairy milk formulated with lowfat milk, sugar, alkalized cocoa, carrageenan, and guar gum.",
     keywords: ["nesquik", "trumoo", "chocolate milk", "strawberry milk", "promised land chocolate milk", "milk"],
     ingredients:
-      "Lowfat Milk, Sugar, Less than 2% of Cocoa Processed with Alkali, High Fructose Corn Syrup, Calcium Carbonate, Cellulose Gel, Natural and Artificial Flavor, Carrageenan, Salt, Guar Gum, Cellulose Gum, Vitamin A Palmitate, Vitamin D3.",
+      "Lowfat Milk, Sugar, Less than 2% of Cocoa Processed with Alkali, Calcium Carbonate, Cellulose Gel, Natural Flavor, Carrageenan, Salt, Guar Gum, Cellulose Gum, Vitamin A Palmitate, Vitamin D3.",
     nutrition: {
       caloriesKcal100g: 78,
       sugarsG100g: 10.2,
@@ -1486,12 +1531,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "great-value-dairy-milk",
-    title: "Great Value / Conventional Grade A Milk (Whole / 2% Reduced Fat / Skim), 1 Gallon",
-    brand: "Great Value",
+    title: "Grade A Pasteurized Milk (Whole / 2% Reduced Fat / Skim), 1 Gallon",
+    brand: "Grade A Dairy Milk",
     category: "Milk & Dairy Drinks",
     description:
       "Pasteurized Grade A dairy milk fortified with Vitamin D3 (and Vitamin A in reduced-fat and skim varieties) with zero chemical preservatives.",
-    keywords: ["milk", "whole milk", "2% milk", "1% milk", "skim milk", "vitamin d milk", "great value milk", "horizon milk", "raw milk"],
+    keywords: ["milk", "whole milk", "2% milk", "1% milk", "skim milk", "vitamin d milk", "great value milk", "raw milk"],
     ingredients: "Grade A Milk, Vitamin D3.",
     nutrition: {
       caloriesKcal100g: 60,
@@ -1504,16 +1549,39 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
-    match: /\b(great\s+value.*milk|horizon\s+organic.*milk|raw\s+farm.*milk|whole\s+(?:vitamin\s+d\s+)?milk|2%\s+(?:reduced\s+fat\s+)?milk|1%\s+(?:lowfat\s+)?milk|skim\s+milk|fat\s+free\s+milk|vitamin\s+d\s+milk)\b/i,
+    match: /\b(great\s+value.*milk|raw\s+farm.*milk|whole\s+(?:vitamin\s+d\s+)?milk|2%\s+(?:reduced\s+fat\s+)?milk|1%\s+(?:lowfat\s+)?milk|skim\s+milk|fat\s+free\s+milk|vitamin\s+d\s+milk)\b/i,
+  },
+  {
+    id: "planet-oat-milk",
+    title: "Planet Oat Oatmilk (Original / Unsweetened Original), 52–86 fl oz",
+    brand: "Planet Oat",
+    category: "Milk & Dairy Drinks",
+    description:
+      "Commercial oat milk formulated with filtered water and oats, fortified with vitamins and minerals, and stabilized with dipotassium phosphate, guar gum, and gellan gum (no added vegetable oil in Original).",
+    keywords: ["planet oat", "planet oat oatmilk", "planet oat original", "oat milk", "oatmilk", "milk"],
+    ingredients:
+      "Oatmilk (Filtered Water, Oats), Calcium Carbonate, Dipotassium Phosphate (Stabilizer), Sea Salt, Guar Gum, Gellan Gum, Vitamin A Palmitate, Vitamin D2, Riboflavin (Vitamin B2), Vitamin B12.",
+    nutrition: {
+      caloriesKcal100g: 38,
+      sugarsG100g: 1.7,
+      saturatedFatG100g: 0.1,
+      sodiumMg100g: 48,
+      fiberG100g: 0.8,
+      proteinG100g: 0.8,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "b",
+      isWholeFood: false,
+    },
+    match: /\b(planet\s+oat)\b/i,
   },
   {
     id: "oatly-planet-oat-milk",
-    title: "Oatly / Planet Oat / Chobani Oatmilk (Original / Extra Creamy / Barista), 52–64 fl oz",
-    brand: "Oatly / Planet Oat",
+    title: "Oatly / Chobani / Califia Farms Oatmilk (Original / Extra Creamy / Barista), 52–64 fl oz",
+    brand: "Oatly / Chobani Oat",
     category: "Milk & Dairy Drinks",
     description:
       "Commercial oat milk formulated with oat base, low-erucic acid rapeseed (canola) or sunflower oil for frothiness, dipotassium phosphate, and gums.",
-    keywords: ["oatly", "planet oat", "chobani oat", "califia oat", "oat milk", "oatmilk", "barista oat milk", "milk"],
+    keywords: ["oatly", "chobani oat", "califia oat", "oat milk", "oatmilk", "barista oat milk", "milk"],
     ingredients:
       "Oatmilk (Water, Oats), Low Erucic Acid Rapeseed Oil (Canola Oil), Contains 2% or Less of: Dipotassium Phosphate, Calcium Carbonate, Tricalcium Phosphate, Sea Salt, Dicalcium Phosphate, Riboflavin, Vitamin A, Vitamin D2, Vitamin B12.",
     nutrition: {
@@ -1527,7 +1595,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
-    match: /\b(oatly|planet\s+oat|chobani\s+oat|califia.*oat|oat\s*milk)\b(?!.*\bmalk\b)/i,
+    match: /\b(oatly|chobani\s+oat|califia.*oat|oat\s*milk)\b(?!.*\b(malk|planet\s+oat)\b)/i,
   },
   {
     id: "malk-organic-oat-almond",
@@ -1799,19 +1867,61 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(la\s*croix|waterloo\s+sparkling|bubly|polar\s+seltzer|hint\s+water|sparkling\s+water|seltzer\s+water|club\s+soda)\b/i,
   },
   {
-    id: "vitaminwater-propel-bai-sparkling-ice",
-    title: "Vitaminwater / Propel Electrolyte Water / Bai / Sparkling Ice Flavored Water",
-    brand: "Vitaminwater / Propel / Sparkling Ice",
+    id: "bai-antioxidant-infusion",
+    title: "Bai Antioxidant Infusion Flavored Water (Brasilia Blueberry / Molokai Coconut / Kula Watermelon), 18 fl oz",
+    brand: "Bai",
     category: "Waters & Seltzers",
     description:
-      "Enhanced flavored water containing citric acid, natural flavors, preservatives (potassium sorbate / sodium benzoate / EDTA), and either crystalline fructose/cane sugar or sucralose/acesulfame potassium.",
+      "Low-calorie antioxidant-infused flavored water (10 kcal, 1g sugar per bottle) sweetened with erythritol and stevia leaf extract, with coffeefruit and white tea extracts (55mg caffeine) and zero synthetic sweeteners or preservatives.",
+    keywords: ["bai", "bai water", "bai antioxidant", "bai cocofusion", "brasilia blueberry", "molokai coconut", "flavored water", "water"],
+    ingredients:
+      "Filtered Water, Erythritol, Juice Concentrates (Clarified Pineapple Juice Concentrate, Blueberry Juice Concentrate, Blackberry Juice Concentrate, Strawberry Juice Concentrate), Citric Acid, Coffeefruit Extract, Stevia Leaf Extract, Fruit and Vegetable Juice (for Color), White Tea Extract, Natural Flavors, Malic Acid, Ascorbic Acid (Vitamin C), Sodium Citrate.",
+    nutrition: {
+      caloriesKcal100g: 2,
+      sugarsG100g: 0.2,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 3,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 3,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(bai\s+(?:antioxidant|water|cocofusion|brasilia|molokai|kula|zambia|sumatra|malawi)|\bbai\b)\b/i,
+  },
+  {
+    id: "vitaminwater-enhanced-water",
+    title: "Glacéau Vitaminwater / Vitaminwater Zero Sugar Nutrient-Enhanced Water, 20 fl oz",
+    brand: "Vitaminwater",
+    category: "Waters & Seltzers",
+    description:
+      "Nutrient-enhanced flavored water beverage fortified with B-vitamins and Vitamin C, sweetened with erythritol and stevia leaf extract (in Zero Sugar varieties) or crystalline fructose and cane sugar (in original varieties), with zero synthetic preservatives.",
+    keywords: ["vitaminwater", "vitamin water", "vitaminwater zero", "xxx vitaminwater", "dragonfruit vitaminwater", "water"],
+    ingredients:
+      "Reverse Osmosis Water, Erythritol, Less than 0.5% of: Citric Acid, Vitamin C (Ascorbic Acid), Fruit and Vegetable Juice (for Color), Natural Flavors, Stevia Leaf Extract, Magnesium Lactate and Calcium Lactate and Potassium Phosphate (Electrolyte Sources), Vitamin B5 (Calcium Pantothenate), Zinc Gluconate, Vitamin B3 (Niacinamide), Vitamin E (Alpha-Tocopheryl Acetate), Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B12 (Cyanocobalamin), Beta-Carotene.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 0,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "b",
+      isWholeFood: false,
+    },
+    match: /\b(vitamin\s*water)\b/i,
+  },
+  {
+    id: "vitaminwater-propel-bai-sparkling-ice",
+    title: "Propel Electrolyte Water / Sparkling Ice Zero-Sugar Flavored Water",
+    brand: "Propel / Sparkling Ice",
+    category: "Waters & Seltzers",
+    description:
+      "Zero-sugar flavored electrolyte or sparkling water containing citric acid, natural flavors, preservatives (potassium sorbate / calcium disodium EDTA), and artificial sweeteners sucralose and acesulfame potassium.",
     keywords: [
-      "vitaminwater",
-      "vitamin water",
       "propel",
       "propel water",
-      "bai",
-      "bai water",
       "sparkling ice",
       "flavored water",
       "water",
@@ -1828,7 +1938,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(vitamin\s*water|propel\s+(?:water|electrolyte|immune)|bai\s+(?:antioxidant|water|cocofusion)|sparkling\s+ice)\b/i,
+    match: /\b(propel\s+(?:water|electrolyte|immune)|sparkling\s+ice)\b/i,
   },
 
   /* ======================================================================== */
@@ -2380,7 +2490,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     brand: "Starbucks",
     category: "Coffee, Tea & Kombucha",
     description:
-      "Bottled sweetened dairy coffee drink (45g–47g sugar and 290–300 kcal per 13.7 oz bottle) containing sugar, carrageenan, pectin, and natural & artificial flavors.",
+      "Bottled sweetened dairy coffee drink (45g–47g sugar and 290–300 kcal per 13.7 oz bottle) containing brewed coffee, reduced-fat milk, sugar, maltodextrin, dextrose, pectin, and natural flavors.",
     keywords: [
       "starbucks",
       "frappuccino",
@@ -2392,7 +2502,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "coffee",
     ],
     ingredients:
-      "Brewed Starbucks Coffee (Water, Coffee), Reduced-Fat Milk, Sugar, Cocoa (Processed with Alkali), Maltodextrin, Dextrose, Natural Flavors, Pectin, Carrageenan, Ascorbic Acid.",
+      "Brewed Starbucks Coffee (Water, Coffee), Reduced-Fat Milk, Sugar, Cocoa (Processed with Alkali), Maltodextrin, Dextrose, Natural Flavors, Pectin, Ascorbic Acid.",
     nutrition: {
       caloriesKcal100g: 71,
       sugarsG100g: 11.2,
