@@ -35,6 +35,10 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   if (/\b(monster|red\s*bull|celsius|alani|ghost|c4|bang|reign|rockstar|prime|5[- ]?hour|zoa|nos|yerba\s+mate|guayaki|guayakí|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|ora\s+organic|soda|cola|coke|coca[- ]?cola|pepsi|sprite|dr\.?\s*pepper|mountain\s+dew|mtn\s+dew|baja\s+blast|fanta|root\s+beer|a\s*&\s*w|barq|mug|ginger\s+ale|canada\s+dry|schweppes|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|olipop|poppi|zevia|culture\s+pop|water|fiji|evian|smartwater|dasani|aquafina|essentia|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spindrift|la\s*croix|waterloo|bubly|polar|nixie|hint|sparkling\s+ice|bai|juice|tropicana|simply|minute\s+maid|uncle\s+matt|mott|martinelli|welch|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|capri\s*sun|kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|naked\s+juice|bolthouse|suja|harmless\s+harvest|vita\s+coco|v8|lemonade|limeade|gatorade|powerade|bodyarmor|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|nooma|propel|vitaminwater|electrolyte|sports?\s+drink|energy\s+drink|coffee|frappuccino|cold\s+brew|stok|dunkin|la\s+colombe|tea|arizona|arnold\s+palmer|pure\s+leaf|gold\s+peak|snapple|brisk|ito\s+en|kombucha|gt'?s|health[- ]?ade)\b/.test(s)) {
     return { relPath: "public/swaps/drink.png", contentType: "image/png" };
   }
+  if (/\b(syrup|maple|honey)\b/.test(s)) return { relPath: "public/swaps/syrup.png", contentType: "image/png" };
+  if (/\b(eggs?|vital\s+farms)\b/.test(s)) return { relPath: "public/swaps/eggs.png", contentType: "image/png" };
+  if (/\b(mac\s*(&|and)\s*cheese|macaroni)\b/.test(s)) return { relPath: "public/swaps/mac.png", contentType: "image/png" };
+  if (/\b(pasta|spaghetti|penne|rigatoni|rotini|fettuccine|linguine|noodles?|ramen)\b/.test(s)) return { relPath: "public/swaps/pasta.png", contentType: "image/png" };
   if (/\b(yogurt|yoghurt|skyr)\b/.test(s)) return { relPath: "public/swaps/yogurt.jpg", contentType: "image/jpeg" };
   if (/\b(ice\s+cream|gelato|ben\s*&\s*jerry)\b/.test(s)) return { relPath: "public/swaps/icecream.png", contentType: "image/png" };
   if (/\b(butter|ghee|margarine|cheese|cheddar|mozzarella)\b/.test(s)) return { relPath: "public/swaps/butter.jpg", contentType: "image/jpeg" };
@@ -51,7 +55,9 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
 
 const STOP_TOKENS = new Set([
   "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack",
-  "original", "classic", "organic", "natural", "flavored", "flavor",
+  "original", "classic", "organic", "natural", "flavored", "flavor", "pure",
+  "grade", "category", "estimate", "verify", "package", "label", "rating", "ratings",
+  "sweeteners", "sweetener", "creamery", "fresh", "each", "average", "price",
 ]);
 
 function distinctiveTokens(s: string): string[] {
@@ -62,22 +68,33 @@ function distinctiveTokens(s: string): string[] {
     .filter((t) => t.length >= 3 && !STOP_TOKENS.has(t) && !/^\d+$/.test(t));
 }
 
-function hasProductIdentityMatch(query: string, candidateName: string): boolean {
+function hasProductIdentityMatch(query: string, candidateName: string, candidateBrands = ""): boolean {
   const qTokens = distinctiveTokens(query);
-  const cTokens = distinctiveTokens(candidateName);
-  if (!qTokens.length || !cTokens.length) return false;
+  const cTokens = distinctiveTokens(`${candidateBrands} ${candidateName}`);
+  // Require at least 3 distinctive tokens (brand + specific product words) so generic category
+  // labels like "Maple Syrup" never pull a random brand's bottle photo from Open Food Facts.
+  if (qTokens.length < 3 || !cTokens.length) return false;
+  const leadBrandToken = qTokens[0];
+  const hasBrandMatch = cTokens.some(
+    (ct) => ct === leadBrandToken || ct === `${leadBrandToken}s` || leadBrandToken === `${ct}s`
+  );
+  if (!hasBrandMatch) return false;
   const matched = qTokens.filter((qt) =>
     cTokens.some((ct) => ct === qt || ct === `${qt}s` || qt === `${ct}s`)
   );
-  return matched.length / qTokens.length >= 0.5;
+  return matched.length / qTokens.length >= 0.7;
 }
 
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
   const clean = rawQuery
+    .replace(/\(category\s+estimate[^)]*\)/gi, " ")
+    .replace(/\b(natural\s+sweeteners|creamery\s+butter|conventional\s+grocery)\b/gi, " ")
+    .replace(/\s*,\s*ratings?\b/gi, " ")
     .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|g|kg|ml|l|cup|bag|box|can|jar|bottle))\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
   const cacheKey = clean.toLowerCase();
+  if (distinctiveTokens(clean).length < 3) return null;
   const cached = imageUrlCache.get(cacheKey);
   if (cached) return cached;
 
@@ -100,7 +117,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
       const hit = (data.products || []).find(
         (p) =>
           (p.image_front_small_url || p.image_front_url) &&
-          hasProductIdentityMatch(clean, `${p.brands || ""} ${p.product_name || ""}`)
+          hasProductIdentityMatch(clean, p.product_name || "", p.brands || "")
       );
       const url = hit?.image_front_small_url || hit?.image_front_url;
       if (url && isAllowedImageUrl(url)) {

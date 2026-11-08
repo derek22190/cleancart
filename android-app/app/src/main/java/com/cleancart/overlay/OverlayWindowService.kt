@@ -348,8 +348,14 @@ class OverlayWindowService : Service() {
 
     private fun normalizeCartKey(raw: String): String =
         raw.lowercase()
+            .replace(Regex("\\(category\\s+estimate[^)]*\\)"), " ")
             .replace(Regex("^(conventional grocery|organic|natural)\\s+"), "")
-            .replace(Regex("[,•|\\-–—.…]+"), " ")
+            .replace(Regex("\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
+            .replace(Regex("\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
+            .replace(Regex("\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93 7 lean fat")
+            .replace(Regex("\\b80?%\\s*lean\\s*/?\\s*20?%\\s*fat\\b"), "80 20 lean fat")
+            .replace(Regex("\\b85?%\\s*lean\\s*/?\\s*15?%\\s*fat\\b"), "85 15 lean fat")
+            .replace(Regex("[,•|\\-–—.…*]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
 
@@ -357,7 +363,9 @@ class OverlayWindowService : Service() {
         if (a.equals(b, ignoreCase = true)) return true
         val na = normalizeCartKey(a)
         val nb = normalizeCartKey(b)
-        return na == nb
+        if (na == nb) return true
+        if (na.length >= 18 && nb.length >= 18 && (na.startsWith(nb.take(22)) || nb.startsWith(na.take(22)))) return true
+        return false
     }
 
     private fun matchesPendingSwap(rawTitle: String): Boolean {
@@ -496,11 +504,15 @@ class OverlayWindowService : Service() {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val title = o.optString("title")
+                    .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
+                    .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
+                    .trim()
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
+                if (tripCart.any { isSameCartItem(it.key, title) || isSameCartItem(it.title, title) }) continue
                 val score = o.optInt("score", 50)
                 tripCart.add(
                     TripCartItem(
-                        key = o.optString("key"),
+                        key = o.optString("key").ifBlank { title },
                         title = title,
                         score = score,
                         swapObj = o.optJSONObject("swap"),
@@ -853,35 +865,61 @@ class OverlayWindowService : Service() {
             })
         }
 
-        val dirtyItems = tripCart.filter { it.score < 75 }
-        val firstDirtyWithSwap = dirtyItems.firstOrNull { it.swapObj != null }
-        if (firstDirtyWithSwap?.swapObj != null) {
-            val firstSwap = firstDirtyWithSwap.swapObj!!
-            val swapTitle = firstSwap.optString("title", "Clean Alternative")
-            val swapScore = firstSwap.optInt("score", 90)
-            val swapUnlocked = ScanApi.isSwapUnlocked(this, firstDirtyWithSwap.title, swapTitle)
+        val dirtyWithSwaps = tripCart.filter { it.score < 75 && it.swapObj != null }
+        if (dirtyWithSwaps.isNotEmpty()) {
+            val projectedAvg = if (tripCart.isEmpty()) 100 else {
+                tripCart.sumOf { item ->
+                    if (item.score < 75 && item.swapObj != null) {
+                        item.swapObj!!.optInt("score", 90).coerceAtLeast(item.score)
+                    } else {
+                        item.score
+                    }
+                } / tripCart.size
+            }
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
+            val count = dirtyWithSwaps.size
             val ctaText = when {
-                swapUnlocked -> "Find Clean Swap: $swapTitle ($swapScore/100)"
-                rem > 0 -> "🔓 Reveal Clean Swap ($swapScore/100) · $rem/$lim Free Left"
-                else -> "🔒 Unlock Clean Swap ($swapScore/100) — Go Pro"
+                count == 1 -> {
+                    val onlyItem = dirtyWithSwaps[0]
+                    val swapObj = onlyItem.swapObj!!
+                    val swapTitle = swapObj.optString("title", "Clean Alternative")
+                    val swapScore = swapObj.optInt("score", 90)
+                    val unlocked = ScanApi.isSwapUnlocked(this, onlyItem.title, swapTitle)
+                    when {
+                        unlocked -> "🔁 Swap Flagged Item → $swapTitle ($swapScore/100)"
+                        rem > 0 -> "🔓 Reveal Clean Swap ($swapScore/100) · $rem/$lim Free Left"
+                        else -> "🔒 Unlock Clean Swap ($swapScore/100) — Go Pro"
+                    }
+                }
+                ScanApi.isProActive(this) || rem > 0 ->
+                    "🔁 Swap All $count Flagged Items (Cart Avg $avg → $projectedAvg/100)"
+                else ->
+                    "🔒 Swap All $count Flagged Items (Avg $avg → $projectedAvg/100) — Go Pro"
             }
-            sheet.addView(text(ctaText, 14f, Color.WHITE, bold = true).apply {
+            sheet.addView(text(ctaText, 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
                 setOnClickListener {
-                    if (!swapUnlocked && rem <= 0) {
-                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (count == 1) {
+                        val onlyItem = dirtyWithSwaps[0]
+                        val firstSwap = onlyItem.swapObj!!
+                        val swapTitle = firstSwap.optString("title", "Clean Alternative")
+                        val swapUnlocked = ScanApi.isSwapUnlocked(this@OverlayWindowService, onlyItem.title, swapTitle)
+                        if (!swapUnlocked && rem <= 0) {
+                            val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            removeCard()
+                            showPill()
+                            runCatching { startActivity(i) }
+                        } else {
+                            openSwap(firstSwap, onlyItem)
                         }
-                        removeCard()
-                        showPill()
-                        runCatching { startActivity(i) }
                     } else {
-                        openSwap(firstSwap, firstDirtyWithSwap)
+                        showSwapAllModal(dirtyWithSwaps, avg, projectedAvg)
                     }
                 }
             })
@@ -912,6 +950,124 @@ class OverlayWindowService : Service() {
                 showPill()
                 runCatching { startActivity(chooser) }
             }
+        })
+
+        val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
+        backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+            setMargins(dp(10), dp(10), dp(10), dp(24))
+        })
+        if (runCatching { wm.addView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)) }.isSuccess) {
+            card = backdrop
+            isAuditorOpen = true
+        }
+    }
+
+    /**
+     * Whole-Cart "Swap All Flagged Items" modal: shows every <75 cart item paired with its 1-for-1 Clean Swap
+     * so the shopper sees exactly which items are being replaced and can swap them all or start with the lowest score.
+     */
+    private fun showSwapAllModal(dirtyWithSwaps: List<TripCartItem>, currentAvg: Int, projectedAvg: Int) {
+        removeCard()
+        removePill()
+        val storeName = storeDisplayName(currentStoreKey)
+        val sortedDirty = dirtyWithSwaps.sortedBy { it.score }
+
+        val backdrop = object : FrameLayout(this) {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    showAuditorDrawer(); return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
+        }.apply {
+            setBackgroundColor(0x660C100E)
+            isFocusableInTouchMode = true
+            requestFocus()
+            setOnClickListener { showAuditorDrawer() }
+        }
+
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            background = GradientDrawable().apply { setColor(Color.WHITE); cornerRadius = dp(26).toFloat() }
+            elevation = dp(16).toFloat()
+            isClickable = true
+        }
+
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(text("HEYBROC · WHOLE-CART CLEAN UP", 11f, BRAND, bold = true).apply { letterSpacing = 0.06f })
+                addView(text("Swap All ${sortedDirty.size} Flagged Items", 19f, INK, bold = true))
+                addView(text("Boost your $storeName Cart Avg from $currentAvg/100 → $projectedAvg/100", 12.5f, 0xFF16A34A.toInt(), bold = true).apply {
+                    setPadding(0, dp(2), 0, 0)
+                })
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(text("×", 22f, INK_2).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
+                layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+                setOnClickListener { showAuditorDrawer() }
+            })
+        })
+
+        for (item in sortedDirty) {
+            val swapObj = item.swapObj ?: continue
+            val swapTitle = swapObj.optString("title", "Clean Alternative")
+            val swapScore = swapObj.optInt("score", 90)
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF7F7F3.toInt())
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), 0x2215201B)
+                }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+
+                addView(text("Replace: ${item.title} (${item.score}/100)", 12f, 0xFFB91C1C.toInt(), bold = true).apply {
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(5), 0, 0)
+                    addView(text("➔ $swapTitle ($swapScore/100)", 13f, 0xFF0B5E39.toInt(), bold = true).apply {
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                    addView(text("Swap ↗", 12f, Color.WHITE, bold = true).apply {
+                        setPadding(dp(12), dp(7), dp(12), dp(7))
+                        background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
+                        setOnClickListener { openSwap(swapObj, item) }
+                    })
+                })
+            })
+        }
+
+        val worstItem = sortedDirty.firstOrNull()
+        if (worstItem?.swapObj != null) {
+            sheet.addView(text("⚡ Start with Lowest Score (${worstItem.score}/100) in $storeName ↗", 13.5f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(13), dp(16), dp(13))
+                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
+                setOnClickListener { openSwap(worstItem.swapObj!!, worstItem) }
+            })
+        }
+
+        sheet.addView(text("← Back to Cart Check", 13f, INK_2, bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(999).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+            setOnClickListener { showAuditorDrawer() }
         })
 
         val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
@@ -1247,6 +1403,7 @@ class OverlayWindowService : Service() {
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Alternative")
             val swapScore = swap.optInt("score", 100)
+            val swapRatingLabel = if (swapScore >= 75) "Excellent" else "Good"
             val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
             val swapUnlocked = ScanApi.isSwapUnlocked(this, prodTitle, swapTitle)
             val rem = ScanApi.swapsRemaining(this)
@@ -1277,7 +1434,7 @@ class OverlayWindowService : Service() {
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END
                     })
-                    addView(text("$swapScore/100 Excellent", 11f, 0xFF16A34A.toInt(), bold = true))
+                    addView(text("$swapScore/100 $swapRatingLabel", 11f, 0xFF16A34A.toInt(), bold = true))
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
 
@@ -1300,7 +1457,7 @@ class OverlayWindowService : Service() {
                 }
             } else if (rem > 0) {
                 // Free user with remaining weekly swaps: hide brand/product name until they tap Reveal!
-                swapBox.addView(text("🔒 CLEAN SWAP FOUND · $swapScore/100 EXCELLENT", 9.5f, BRAND, bold = true).apply {
+                swapBox.addView(text("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRatingLabel.uppercase()}", 9.5f, BRAND, bold = true).apply {
                     letterSpacing = 0.05f
                 })
                 swapBox.addView(text("Verified 1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
@@ -1322,7 +1479,7 @@ class OverlayWindowService : Service() {
                 })
             } else {
                 // Free user out of weekly swaps (0/3 left): keep brand/product name locked behind Pro / Referral!
-                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · $swapScore/100 EXCELLENT", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
+                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · $swapScore/100 ${swapRatingLabel.uppercase()}", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
                     letterSpacing = 0.05f
                 })
                 swapBox.addView(text("100/100 Clean Replacement Available", 12.5f, INK, bold = true).apply {
@@ -1376,7 +1533,7 @@ class OverlayWindowService : Service() {
                 })
             }
         } else {
-            swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 12.5f, 0xFF0B5E39.toInt(), bold = true))
+            swapBox.addView(text("✓ Great pick — 0 Watchlist Additives ($score/100).", 12.5f, 0xFF0B5E39.toInt(), bold = true))
         }
         sheet.addView(swapBox)
         val rawSource = d.optString("source").ifBlank { prodObj?.optString("source").orEmpty() }
@@ -1442,6 +1599,7 @@ class OverlayWindowService : Service() {
         removePill()
         val swapTitle = swap.optString("title", "Clean Alternative")
         val swapScore = swap.optInt("score", 100)
+        val swapRatingLabel = if (swapScore >= 75) "Excellent" else "Good"
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
         val storeName = storeDisplayName(currentStoreKey)
@@ -1499,7 +1657,7 @@ class OverlayWindowService : Service() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(14), 0, dp(10))
-            addView(GaugeView(context, swapScore, "Excellent", 0xFF16A34A.toInt()), LinearLayout.LayoutParams(dp(92), dp(92)).apply { marginEnd = dp(14) })
+            addView(GaugeView(context, swapScore, swapRatingLabel, 0xFF16A34A.toInt()), LinearLayout.LayoutParams(dp(92), dp(92)).apply { marginEnd = dp(14) })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text("✓ 0 Watchlist Additives", 14f, 0xFF16A34A.toInt(), bold = true))

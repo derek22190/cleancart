@@ -100,7 +100,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val BRAND_OR_UNIT_ONLY = Regex(
-            """^(unbranded|cheerios|panera( bread)?|blount( clam shack)?|campbell'?s|progresso|amy'?s|pacific foods|rao'?s|barilla|martin'?s|gorton'?s|arih|great value|freshness guaranteed|marketside|sam'?s choice|bettergoods|kirkland( signature)?|wellsley farms|berkley jensen|member'?s mark|good\s*&\s*gather|favorite day|market pantry|simple truth|private selection|simply nature|millville|clancy'?s|365( by whole foods market)?|amazon grocery|happy belly|wickedly prime|chobani|yoplait|dannon|stonyfield|horizon|fairlife|hood|lactaid|coffee-mate|kraft|sargento|tillamook|philadelphia|velveeta|heinz|hellmann'?s|hidden valley|primal kitchen|kellogg'?s?|general mills|post|quaker|nature'?s own|sara lee|wonder|dave'?s killer( bread)?|canyon bakehouse|thomas'?|applegate|boar'?s head|oscar mayer|hillshire( farm)?|hormel|jimmy dean|tyson|perdue|foster farms|kerrygold|land o'?lakes|country crock|blue bonnet|dairypure|dairy pure|birds eye|green giant|mccormick|pompeian|de cecco|ball park|oreo|doritos|cheetos|lay'?s|ruffles|pringles|fritos|tostitos|cheez-it|goldfish|ritz|triscuit|wheat thins|keebler|\d+(\.\d+)?\s*(fl\s*oz|oz|lb|lbs|ct|count|pack|gal|gallon|qt|pt|ml|g|kg|ea|dozen)|half gallon|dairy\s*&\s*eggs|bread\s*&\s*bakery|meat\s*&\s*seafood|fresh produce|snacks\s*&\s*candy|beverages|frozen foods?|pantry)$""",
+            """^(unbranded|cheerios|panera( bread)?|blount( clam shack)?|campbell'?s|progresso|amy'?s|pacific foods|rao'?s|barilla|martin'?s|gorton'?s|arih|great value|freshness guaranteed|marketside|sam'?s choice|bettergoods|kirkland( signature)?|wellsley farms|berkley jensen|member'?s mark|good\s*&\s*gather|favorite day|market pantry|simple truth|private selection|simply nature|millville|clancy'?s|365( by whole foods market)?|amazon grocery|happy belly|wickedly prime|chobani|yoplait|dannon|stonyfield|horizon|fairlife|hood|lactaid|coffee-mate|kraft|sargento|tillamook|philadelphia|velveeta|heinz|hellmann'?s|hidden valley|primal kitchen|kellogg'?s?|general mills|post|quaker|nature'?s own|sara lee|wonder|dave'?s killer( bread)?|canyon bakehouse|thomas'?|applegate|boar'?s head|oscar mayer|hillshire( farm)?|hormel|jimmy dean|tyson|perdue|foster farms|kerrygold|land o'?lakes|country crock|blue bonnet|dairypure|dairy pure|birds eye|green giant|mccormick|pompeian|de cecco|ball park|oreo|doritos|cheetos|lay'?s|ruffles|pringles|fritos|tostitos|cheez-it|goldfish|ritz|triscuit|wheat thins|keebler|maple syrup|pancake syrup|specialty syrup|\d+(\.\d+)?\s*(fl\s*oz|oz|lb|lbs|ct|count|pack|gal|gallon|qt|pt|ml|g|kg|ea|dozen)|half gallon|dairy\s*&\s*eggs|bread\s*&\s*bakery|meat\s*&\s*seafood|fresh produce|snacks\s*&\s*candy|beverages|frozen foods?|pantry)$""",
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_WORD_PRODUCE = Regex(
@@ -661,7 +661,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 return
             }
 
-            val inCartOnPdp = pendingAddToCartClick || nodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) }
+            val inCartOnPdp = pendingAddToCartClick || (isConfirmedSinglePdp && nodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) })
             pendingAddToCartClick = false
 
             val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
@@ -974,6 +974,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\b\d+[km]?\+?\s*bought\s+since\s+yesterday(?:\s*,?\s*try\s+a\s+subscription)?\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\btry\s+a\s+subscription\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\b(best\s+seller|overall\s+pick|popular\s+pick|rollback|save\s+for\s+later|subscribe\s+to\s+save|instant\s+savings|shop\s+similar|final\s+cost\s+by\s+weight|avg\s+price)(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:average|avg)\s+price\b.*$"""), "")
         s = s.replace(Regex("""(?i)\bprice\s+may\s+vary(?:\s+in\s+club\s+and\s+online)?(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\bmax\s+\d+\s+per\s+order\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\bends\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:\s*,\s*\d{4})?(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
@@ -983,10 +984,11 @@ class GroceryScreenReaderService : AccessibilityService() {
         // Strip ratings, review counts, ". Based on ..." rating accessibility suffixes, image carousel counters, EBT badges, item numbers, and prices
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\b(item|model|sku)\s*:?\s*#?\d+\b"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\bsnap\s+ebt(\s+eligible)?\b"""), " ")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:[★☆⭐]+\s*)?(?:rated\s+)?\d+(?:\.\d+)?\s*out\s+of\s*5(?:\s*stars?)?(?:\s*[,•|\-.]?\s*\bbased\s+on\b.*|\s*[,•|\-]?\s*\d[\d,]*\s*(?:reviews?|ratings?))?"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:[★☆⭐]+\s*)?(?:rating\s*,?\s*|rated\s+)?\d+(?:\.\d+)?\s*out\s+of\s*5(?:\s*stars?)?(?:\s*[,•|\-.]?\s*\bbased\s+on\b.*|\s*[,•|\-]?\s*\d[\d,]*\s*(?:reviews?|ratings?))?"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:[★☆⭐]+\s*)?\(\d+(?:\.\d+)?\)\s*(?:\|\s*)?\d[\d,]*(?:\s*(?:reviews?|ratings?))?"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\b\d[\d,]*\s*(?:reviews?|ratings?)\b"""), " ")
         s = s.replace(Regex("""(?i)\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\b.*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]\s*ratings?\s*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:product\s+)?(?:image|photo)\s+\d+\s+(?:of|/)\s+\d+"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:current\s+price\s*|price\s*|now\s*|was\s*)?\$\s*\d+(?:\.\d{2}|\s+\d{2})?(?:\s+off\b|\s*/\s*(?:ea|oz|fl\s*oz|lb|ct|pt|qt|gal))?"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:current\s+price\s*|price\s*|now\s*|was\s*)?\b\d+\s*dollars?(?:\s*(?:and\s*)?\d+\s*cents?)?(?:\s*(?:/|per)\s*(?:ea|each|oz|fl\s*oz|lb|ct|count|pt|qt|gal))?\b"""), " ")

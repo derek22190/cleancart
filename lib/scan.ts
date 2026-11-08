@@ -417,7 +417,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   // (e.g. "Cheerios" from top Sponsored banner ads, or standalone "Martin's" / "Velveeta" / "Great Value" brand links above titles)
   // so the app's candidate loop immediately advances to the full multi-word product title!
   const STANDALONE_BRAND_BANNER_LOGO =
-    /^(?:cheerios|velveeta|martin'?s|thomas'?|dairypure|dairy\s+pure|great\s+value|marketside|freshness\s+guaranteed|bettergoods|sam'?s\s+choice|kirkland(?:\s+signature)?|wellsley\s+farms|berkley\s+jensen|member'?s\s+mark|good\s*&\s*gather|favorite\s+day|simple\s+truth|private\s+selection|kellogg'?s?|general\s+mills|post|quaker|nabisco|kraft|heinz|campbell'?s|progresso|rao'?s|barilla|prego|ragu|chobani|yoplait|dannon|stonyfield|fairlife|lactaid|sargento|tillamook|philadelphia|kerrygold|tyson|perdue|hormel|oscar\s+mayer|applegate|boar'?s\s+head|sara\s+lee|wonder|nature'?s\s+own)$/i;
+    /^(?:cheerios|velveeta|martin'?s|thomas'?|dairypure|dairy\s+pure|great\s+value|marketside|freshness\s+guaranteed|bettergoods|sam'?s\s+choice|kirkland(?:\s+signature)?|wellsley\s+farms|berkley\s+jensen|member'?s\s+mark|good\s*&\s*gather|favorite\s+day|simple\s+truth|private\s+selection|kellogg'?s?|general\s+mills|post|quaker|nabisco|kraft|heinz|campbell'?s|progresso|rao'?s|barilla|prego|ragu|chobani|yoplait|dannon|stonyfield|fairlife|lactaid|sargento|tillamook|philadelphia|kerrygold|tyson|perdue|hormel|oscar\s+mayer|applegate|boar'?s\s+head|sara\s+lee|wonder|nature'?s\s+own|maple\s+syrup|pancake\s+syrup|specialty\s+syrup)$/i;
   const isMobileOverlayScan = typeof req.deviceId === "string" && req.deviceId.trim().length >= 4;
   if (
     !rawIngredients &&
@@ -439,8 +439,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       .replace(/^(?:[✓✔]?\s*bought\s+\d+\+?\s*times?(?:\s*,\s*stay\s+stocked(?:\s+and\s+subscribe)?)?|best\s+seller|overall\s+pick|popular\s+pick|rollback|sponsored)\s*[,•|\-]?\s*/gi, "")
       .replace(/^\$\s*\d+(?:\.\d{2})?(?:\s*[,•|\-]?\s*\$\s*\d+(?:\.\d{2})?\s*\/?\s*(?:ea|oz|fl\s*oz|lb|ct)?)?\s*[,•|\-]?\s*/i, "")
       .replace(/\s*[,•|\-]?\s*(?:free\s+\d+-day\s+returns|free\s+holiday\s+returns.*|snap\s+ebt\s+eligible|gift\s+eligible.*|subscribe)$/gi, "")
-      .replace(/\s*[.,•|\-]?\s*(?:rated\s+)?\d+(?:\.\d+)?\s*out\s+of\s*5(?:\s*stars?)?(?:\s*[,•|\-.]?\s*\d[\d,]*\s*(?:reviews?|ratings?))?/gi, "")
+      .replace(/\s*[.,•|\-]?\s*(?:rating|rated)?\s*\d+(?:\.\d+)?\s*out\s+of\s*5(?:\s*stars?)?(?:\s*[,•|\-.]?\s*\d[\d,]*\s*(?:reviews?|ratings?))?/gi, "")
       .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/gi, "")
+      .replace(/\s*[,•|\-]\s*ratings?\s*$/gi, "")
+      .replace(/\s*[,•|\-]?\s*(?:average|avg)\s+price\b.*$/gi, "")
       .replace(/\s*,\s*\d+\s*\.\.\.+$/, "")
       .replace(/\.\.\.+$/, "")
       .replace(/\s*[.,•|\-]+\s*$/, "")
@@ -499,7 +501,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       error: `No ingredient list found for "${productTitle || barcode}" on Open Food Facts or USDA. Try adding the brand name.`,
     };
   }
-  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food)$/i;
+  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food|.*category estimate.*)$/i;
   const callerWords = productTitle.split(/\s+/).filter(Boolean);
   // If the caller/screen-reader provided a full store product title (3+ words), preserve it
   // so a store brand (e.g. "Great Value", "Wellsley Farms") is never overwritten by a different brand ("Dairy Pure").

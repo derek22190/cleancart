@@ -1330,6 +1330,9 @@ export function buildLinks(
 const NON_FOOD_SWAP_GUARD =
   /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue)\b/i;
 
+const ALREADY_PURE_MAPLE_SYRUP_GUARD =
+  /\b(100%\s*(?:pure\s*)?(?:organic\s*)?(?:grade\s+a\s+)?maple\s+syrup|pure\s+maple\s+syrup|organic\s+(?:grade\s+a\s+)?maple\s+syrup|grade\s+a\s+(?:golden|amber|dark|very\s+dark)\b.*\bmaple\s+syrup|crown\s+maple|coombs\s+family|sapjack)\b/i;
+
 /**
  * Returns a verified 1-for-1 clean swap when a product scores < 75, else null.
  * The alternative is verified against the deterministic additive rubric (with active watchlist)
@@ -1346,7 +1349,10 @@ export function resolveSwap(params: {
   surface?: ScanSurface;
 }): SwapResult | null {
   if (params.score >= 75) return null;
-  if (params.productTitle && NON_FOOD_SWAP_GUARD.test(params.productTitle)) {
+  if (
+    params.productTitle &&
+    (NON_FOOD_SWAP_GUARD.test(params.productTitle) || ALREADY_PURE_MAPLE_SYRUP_GUARD.test(params.productTitle))
+  ) {
     return null;
   }
   const store = params.store && STORES.includes(params.store) ? params.store : "walmart";
