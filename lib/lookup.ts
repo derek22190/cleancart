@@ -985,16 +985,88 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/bread.jpg",
     nutrition: { caloriesKcal100g: 290, sugarsG100g: 2.0, saturatedFatG100g: 1.5, sodiumMg100g: 330, fiberG100g: 5.0, proteinG100g: 9.0, fruitsVegNutsPct: 45, nutriScoreGrade: "b", isWholeFood: false },
   },
+  {
+    match: /\b(crunchmaster|mary'?s\s+gone|simple\s+mills.*crackers|\d+-seed.*crackers|seed\s+crackers|multi[- ]?grain\s+crackers)\b/i,
+    brand: "Crunchmaster",
+    title: "6-Seed Multi-Grain Baked Crackers",
+    ingredients: "Brown Rice Flour, Whole Grain Yellow Corn, Potato Starch, Safflower Oil, Oat Fiber, Cane Sugar, Sesame Seeds, Flax Seeds, Millet, Quinoa Seeds, Amaranth Seeds, Chia Seeds, Sea Salt, Tamari Soy Sauce Powder (Tamari Soy Sauce [Soybeans, Salt], Maltodextrin, Salt).",
+    imageUrl: "/swaps/crackers.jpg",
+    nutrition: { caloriesKcal100g: 465, sugarsG100g: 3.5, saturatedFatG100g: 1.8, sodiumMg100g: 450, fiberG100g: 7.0, proteinG100g: 7.0, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(crackers|saltines|graham\s+crackers|oyster\s+crackers|animal\s+crackers|snack\s+crackers|water\s+crackers|woven\s+wheats?)\b/i,
+    brand: "Baked Crackers",
+    title: "Enriched Baked Snack Crackers",
+    ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soybean and/or Canola Oil, Palm Oil, Sugar, Salt, Leavening (Calcium Phosphate, Baking Soda), Soy Lecithin, Natural Flavor.",
+    imageUrl: "/products/crackers.jpg",
+    nutrition: { caloriesKcal100g: 480, sugarsG100g: 6.5, saturatedFatG100g: 7.0, sodiumMg100g: 720, fiberG100g: 2.0, proteinG100g: 7.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(birds\s+eye|green\s+giant|steamfresh|frozen\s+vegetables?)\b.*\b(sauced|cheesy|cheese\s+sauce|alfredo|garlic\s+butter|butter\s+sauce|teriyaki|glaze|seasoned\s+asian)\b/i,
+    brand: "Birds Eye",
+    title: "Sauced Frozen Vegetables",
+    ingredients: "Vegetables (Broccoli, Carrots, Corn), Water, Cheddar Cheese (Cultured Milk, Salt, Enzymes, Annatto), Modified Corn Starch, Skim Milk, Whey, Butter (Cream, Salt), Soybean Oil, Salt, Sodium Phosphate, Xanthan Gum, Natural Flavor, Annatto and Paprika Extract (Color).",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 85, sugarsG100g: 3.0, saturatedFatG100g: 2.5, sodiumMg100g: 340, fiberG100g: 2.0, proteinG100g: 3.5, fruitsVegNutsPct: 70, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(birds\s+eye|green\s+giant|steamfresh|asian\s+medley|stir[- ]?fry\s+vegetables?|california\s+blend|normandy\s+blend|mixed\s+vegetables?|frozen\s+vegetables?|peas\s+and\s+carrots|broccoli\s+florets)\b/i,
+    brand: "Birds Eye Steamfresh",
+    title: "Steamfresh Frozen Vegetables",
+    ingredients: "100% Flash-Frozen Whole Vegetables: Broccoli, Carrots, Baby Cob Corn, Sugar Snap Peas (Zero Sauces, Preservatives, or Chemical Additives).",
+    imageUrl: "/swaps/ranch.jpg",
+    nutrition: { caloriesKcal100g: 42, sugarsG100g: 3.5, saturatedFatG100g: 0.1, sodiumMg100g: 20, fiberG100g: 2.8, proteinG100g: 2.0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true },
+  },
+  {
+    match: /\b(ball\s+park|nathan'?s|hebrew\s+national|oscar\s+mayer.*(wieners?|franks?|hot\s+dogs?)|kirkland.*(franks?|hot\s+dogs?)|member'?s\s+mark.*(franks?|hot\s+dogs?)|beef\s+franks?|meat\s+franks?|turkey\s+franks?|hot\s+dogs?|frankfurters?)\b/i,
+    brand: "Ball Park",
+    title: "Beef Franks / Hot Dogs",
+    ingredients: "Beef, Water, Corn Syrup, Contains 2% or Less of: Salt, Potassium Lactate, Hydrolyzed Beef Stock, Sodium Phosphate, Flavorings, Sodium Diacetate, Sodium Erythorbate, Sodium Nitrite, Extractives of Paprika.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 315, sugarsG100g: 3.8, saturatedFatG100g: 11.5, sodiumMg100g: 980, fiberG100g: 0, proteinG100g: 11.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(mccormick.*bac'?n|bac'?n\s+(bits|pieces)|bacon\s+bits|imitation\s+bacon)\b/i,
+    brand: "McCormick",
+    title: "Bac'n Pieces Bacon Flavored Bits",
+    ingredients: "Textured Soy Flour, Canola Oil, Salt, Caramel Color, Maltodextrin, Natural and Artificial Flavor, Lactic Acid, Yeast Extract, Disodium Inosinate and Disodium Guanylate (Flavor Enhancers), Red 40.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 428, sugarsG100g: 0, saturatedFatG100g: 2.0, sodiumMg100g: 2280, fiberG100g: 14.0, proteinG100g: 42.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(rotisserie\s+chicken|seasoned\s+rotisserie\s+chicken|member'?s\s+mark.*rotisserie|kirkland.*rotisserie)\b/i,
+    brand: "Rotisserie Deli",
+    title: "Seasoned Rotisserie Whole Chicken",
+    ingredients: "Whole Chicken, Water, Salt, Sodium Phosphate, Sugar, Spices, Garlic Powder, Onion Powder, Natural Flavor.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 165, sugarsG100g: 0.5, saturatedFatG100g: 3.2, sodiumMg100g: 390, fiberG100g: 0, proteinG100g: 21.0, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(gnocchi|potato\s+gnocchi|de\s+cecco.*gnocchi)\b/i,
+    brand: "De Cecco",
+    title: "Potato Gnocchi Pasta",
+    ingredients: "Potato Puree (Water, Dehydrated Potato Flakes), Wheat Flour, Potato Starch, Rice Flour, Salt, Acidity Regulator (Lactic Acid), Preservative (Potassium Sorbate).",
+    imageUrl: "/swaps/bread.jpg",
+    nutrition: { caloriesKcal100g: 160, sugarsG100g: 1.0, saturatedFatG100g: 0.2, sodiumMg100g: 410, fiberG100g: 2.2, proteinG100g: 4.5, fruitsVegNutsPct: 65, nutriScoreGrade: "a", isWholeFood: false },
+  },
+  {
+    match: /\b(extra\s+virgin\s+olive\s+oil|olive\s+oil|pompeian|bertolli.*olive\s+oil|california\s+olive\s+ranch|chosen\s+foods.*avocado\s+oil|avocado\s+oil)\b/i,
+    brand: "Pompeian / Pure Culinary Oil",
+    title: "100% Extra Virgin Olive Oil",
+    ingredients: "100% Extra Virgin Olive Oil (Cold-Pressed Single-Ingredient Fruit Oil).",
+    imageUrl: "/swaps/ranch.jpg",
+    nutrition: { caloriesKcal100g: 884, sugarsG100g: 0, saturatedFatG100g: 14.0, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "b", isWholeFood: true },
+  },
 ];
 
 const UI_NOISE_QUERY =
-  /\b(bought \d+\+?\s*times?|stay stocked|last purchased|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
+  /\b(bought \d+\+?\s*times?|stay stocked|last purchased|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|usual items in stock|out of stock|replace with best match|add note for shopper|item instructions|visit the store|freshness guarantee|see customer images|from the manufacturer|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
 const NON_FOOD_GUARD =
   /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue)\b/i;
 
 const PROCESSED_FOOD_GUARD =
-  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
+  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
 
 const CATEGORY_FALLBACK_CATALOG: Array<{
   match: RegExp;
@@ -1172,7 +1244,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     .replace(/,\s*(now|was)$/i, "")
     .replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const wordCount = cleanTitle.split(/\s+/).filter(Boolean).length;
-  const isOrganic = /\b(organic|usda organic)\b/i.test(query);
+  const isOrganic = /\b(organic|usda organic|\bog\b)\b/i.test(query);
 
   // Check Just Bare before generic breaded poultry
   if (/\bjust\s+bare\b/i.test(query)) {
@@ -1243,9 +1315,9 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     return null;
   }
 
-  // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly unolah / single-ingredient)
+  // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly single-ingredient)
   if (
-    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomatoes?|potatoes?|sweet\s+potatoes?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|mint|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|green\s+beans|brussels\s+sprouts|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|bok\s+choy|chard|collards?|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|papayas?|pomegranates?|figs?|dates?|berries|fresh\s+produce)\b/.test(s)
+    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomatoes?|potatoes?|sweet\s+potatoes?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|mint|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|green\s+beans|brussels\s+sprouts|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|bok\s+choy|chard|collards?|edamame|peas|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|papayas?|pomegranates?|figs?|dates?|berries|vegetables?|veggies|fresh\s+produce)\b/.test(s)
   ) {
     return {
       productTitle: cleanTitle,
@@ -1257,14 +1329,14 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     };
   }
 
-  // 2. Plain Fresh Meat, Poultry, Seafood & Shell Eggs (unbreaded, uncured, unbasted)
+  // 2. Plain Fresh / Frozen Meat, Poultry (Whole Turkey, Chicken Breast Fillets, etc.), Seafood & Shell Eggs (unbreaded, uncured)
   if (
-    /\b(chicken\s+(breast|thighs?|drumsticks?|wings?|tenderloins?)|ground\s+(beef|turkey|chicken|pork|bison|lamb)|ribeye|sirloin|filet|pork\s+(chops?|loin|tenderloin)|salmon|cod|tilapia|haddock|halibut|trout|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+a\s+eggs?|\beggs\b)\b/.test(s)
+    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|turkey|chicken|pork|bison|lamb)|beef\s+(stew|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+.*eggs?|\beggs\b)\b/.test(s)
   ) {
     return {
       productTitle: cleanTitle,
       brand: isOrganic ? "Organic Pasture-Raised" : "Fresh Meat & Eggs",
-      ingredients: "100% Fresh Whole Food Protein (Zero Chemical Additives, Nitrates, or Preservatives).",
+      ingredients: "100% Whole Food Protein (Single-Ingredient Unprocessed Meat/Poultry/Eggs — Zero Nitrates, Preservatives, or Chemical Additives).",
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 145, sugarsG100g: 0, saturatedFatG100g: 2.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 22.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
       source: "catalog",
@@ -1274,13 +1346,14 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   return null;
 }
 
-/** Strips club-store pack counts, decimal weights, and Walmart promo suffixes (e.g. `, 16.5 oz Box, Now`, `, Fresh Deli Soup, 16 oz Cup`) for cleaner external API queries. */
+/** Strips club-store pack counts, decimal weights, and Walmart/Amazon/Whole Foods promo suffixes for cleaner external API queries. */
 function cleanSearchQuery(title: string): string {
   return title
     .replace(/[®™©]/g, "")
-    .replace(/,\s*(fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|party\s+size|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch)\b).*$/i, "")
-    .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack)\b.*$/i, "")
-    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(pk|pack|ct|count|oz|lb|lbs)\b.*$/i, "")
+    .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:lbs?|oz|fl\s*oz|ct|count|pk|pack|g|kg)\b.*$/i, "")
+    .replace(/,\s*(fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\b).*$/i, "")
+    .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack|dozen)\b.*$/i, "")
+    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|dozen)\b.*$/i, "")
     .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
     .replace(/\.\.\.+$/, "")
@@ -1292,7 +1365,7 @@ function cleanSearchQuery(title: string): string {
 /* ------------------------------------------------------------------ */
 
 const DIRECT_CATALOG_PRIORITY =
-  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|kirkwood.*(ground\s+turkey|turkey\s+breast|chicken\s+breast|chicken\s+tenderloins?)|fresh\s+ground\s+(turkey|chicken|beef)|parkview.*(sausage|kielbasa|hot\s*dog|franks?)|smoked\s+sausage|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|golden\s+sweet.*corn|capri\s*sun|a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|steak[- ]?umm\w*|in\s+(heavy|light)\s+syrup|ore[- ]?ida|oreo\s+puffs?)\b/i;
+  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|kirkwood.*(ground\s+turkey|turkey\s+breast|chicken\s+breast|chicken\s+tenderloins?)|fresh\s+ground\s+(turkey|chicken|beef)|parkview.*(sausage|kielbasa|hot\s*dog|franks?)|smoked\s+sausage|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|crunchmaster|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|365.*frozen\s+turkey|birds\s+eye.*steamfresh|ball\s+park.*franks?|mccormick.*bac'?n|rotisserie\s+chicken|golden\s+sweet.*corn|capri\s*sun|a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|steak[- ]?umm\w*|in\s+(heavy|light)\s+syrup|ore[- ]?ida|oreo\s+puffs?)\b/i;
 
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();
