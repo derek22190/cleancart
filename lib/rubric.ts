@@ -394,17 +394,17 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   {
     id: "xanthan", name: "Xanthan Gum", risk: "low", category: "gums",
     patterns: ["xanthan( gum)?", "e ?415"],
-    explanation: "A fermented thickener that is mostly benign but can cause bloating in sensitive guts.",
+    explanation: "Fermented polysaccharide thickener (FDA-GRAS) that is generally well tolerated, though large amounts may cause mild digestive fullness in sensitive individuals.",
   },
   {
     id: "soylecithin", name: "Soy Lecithin", risk: "low", category: "gums",
     patterns: ["soy(a|bean)? lecithin", "lecithin soy(a|bean)?"],
-    explanation: "A solvent-extracted emulsifier by-product of soybean oil refining.",
+    explanation: "FDA-GRAS phospholipid emulsifier extracted from soybeans and commonly used in chocolate, baked goods, and dressings.",
   },
   {
     id: "naturalflavor", name: "Natural Flavors", risk: "low", category: "flavors",
     patterns: ["natural( and artificial)? flavou?r(s|ing|ings)?"],
-    explanation: "A catch-all label that can hide dozens of undisclosed processing solvents and carriers.",
+    explanation: "FDA-permitted umbrella term (21 CFR 101.22) for plant- or animal-derived flavor extracts, which may include permitted carrier solvents or preservatives.",
   },
   {
     id: "citricacid", name: "Citric Acid (manufactured)", risk: "low", category: "flavors",
@@ -419,52 +419,47 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   {
     id: "quats", name: "Quaternary Ammonium Compounds (Quats)", risk: "high", category: "preservatives",
     patterns: ["quaternary ammonium", "alkyl[a-z0-9 ]*dimethyl[a-z0-9 ]*ammonium chloride", "benzalkonium chloride", "didecyldimethylammonium chloride"],
-    explanation: "Harsh chemical disinfectant ('Quats') linked to asthma, airway irritation, skin sensitization, and indoor surface residue.",
+    explanation: "EPA-registered antimicrobial disinfectant surfactants ('Quats'); concentrated or unventilated spray exposure has been studied for potential respiratory and skin irritation.",
   },
   {
     id: "sles", name: "Sodium Laureth Sulfate (Ethoxylated)", risk: "high", category: "emulsifiers",
     patterns: ["sodium laureth sulfate", "linear alkylbenzene sulfonate"],
-    explanation: "Ethoxylated surfactant that can carry trace 1,4-dioxane (a probable carcinogen) and harsh skin/respiratory irritants.",
+    explanation: "Ethoxylated cleansing surfactant that can cause skin dryness or irritation in sensitive users and requires vacuum-stripping during manufacturing to minimize trace 1,4-dioxane by-products.",
   },
   {
     id: "mit", name: "Methylisothiazolinone (MIT)", risk: "high", category: "preservatives",
     patterns: ["methylisothiazolinone", "methylchloroisothiazolinone", "benzisothiazolinone"],
-    explanation: "High-risk synthetic biocide and potent contact allergen linked to severe skin sensitization and dermatitis.",
-  },
-  {
-    id: "parabens", name: "Parabens (Endocrine Disruptor)", risk: "high", category: "preservatives",
-    patterns: ["methylparaben", "propylparaben", "butylparaben", "ethylparaben", "isobutylparaben"],
-    explanation: "Synthetic cosmetic preservatives shown to mimic estrogen and disrupt hormone signaling.",
+    explanation: "Synthetic isothiazolinone preservative restricted in leave-on cosmetics in the EU due to contact skin sensitization risk in sensitive individuals.",
   },
   {
     id: "chem_sunscreen", name: "Chemical UV Filters (Oxybenzone / Homosalate)", risk: "high", category: "preservatives",
     patterns: ["oxybenzone", "octinoxate", "homosalate", "octocrylene", "avobenzone"],
-    explanation: "Chemical sunscreen filters that absorb through skin into the bloodstream and are linked to hormone disruption.",
+    explanation: "Organic (chemical) UV filters evaluated by the FDA for systemic skin absorption; several clean-beauty standards prefer mineral zinc oxide or titanium dioxide lotions.",
   },
   {
     id: "formaldehyde_releaser", name: "DMDM Hydantoin (Formaldehyde Releaser)", risk: "high", category: "preservatives",
     patterns: ["dmdm hydantoin", "imidazolidinyl urea", "diazolidinyl urea", "quaternium 15", "bronopol"],
-    explanation: "Preservative that slowly releases formaldehyde, a known human carcinogen and scalp/skin sensitizer.",
+    explanation: "Antimicrobial preservative that slowly releases trace formaldehyde over time to prevent microbial growth and may trigger contact dermatitis in formaldehyde-sensitive individuals.",
   },
   {
     id: "triclosan", name: "Triclosan / Synthetic Antibacterial", risk: "high", category: "preservatives",
     patterns: ["triclosan", "triclocarban", "chlorhexidine"],
-    explanation: "Halogenated antibacterial agent linked to thyroid hormone disruption and antibiotic resistance.",
+    explanation: "Synthetic antibacterial agents (several restricted by the FDA in consumer hand soaps in 2016) evaluated in scientific literature for endocrine and microbiome effects.",
   },
   {
     id: "synfragrance", name: "Synthetic Fragrance / Parfum", risk: "moderate", category: "flavors",
     patterns: ["synthetic (lemon )?fragrance", "parfum"],
-    explanation: "Undisclosed chemical scent mixture and solvent carriers that can trigger allergies, migraines, and airway irritation.",
+    explanation: "Umbrella 'fragrance/parfum' term covering proprietary scent blends that may trigger sensitivity in fragrance-reactive individuals.",
   },
   {
     id: "opticalbrightener", name: "Optical Brighteners", risk: "moderate", category: "dyes",
     patterns: ["optical brighteners?", "disodium distyrylbiphenyl disulfonate"],
-    explanation: "Synthetic UV-reflecting chemical dyes designed to remain bound to fabric against skin; non-biodegradable.",
+    explanation: "Synthetic UV-reflecting agents designed to remain on fabric fibers to make laundry appear whiter; flagged in sensitive-skin laundry rubrics.",
   },
   {
     id: "aluminum_salts", name: "Aluminum Zirconium / Chlorohydrate", risk: "moderate", category: "preservatives",
     patterns: ["aluminum zirconium[a-z0-9 ]*", "aluminum chlorohydrate", "aluminum sesquichlorohydrate"],
-    explanation: "Synthetic aluminum salts used in antiperspirants to plug sweat ducts.",
+    explanation: "FDA-permitted antiperspirant aluminum compounds that form temporary superficial plugs in sweat ducts; avoided by shoppers seeking aluminum-free deodorants.",
   },
   {
     id: "wetstrengthresin", name: "Bleached Pulp & Wet-Strength Resin", risk: "low", category: "emulsifiers",
@@ -987,7 +982,7 @@ export function scoreProductYuka(
         risk: "moderate",
         category: "hfcs",
         penalty: 35,
-        explanation: "Sugary beverages spike blood glucose rapidly with zero dietary fiber, receiving the lowest Nutri-Score beverage grade (E).",
+        explanation: "Sugary beverages deliver rapidly absorbed liquid sugars with zero dietary fiber, receiving the lowest Nutri-Score beverage grade (E).",
         matched: "sugar",
       });
     } else if (hasMeasuredSugars && (sugars >= 18 || (hasTop3AddedSugar && sugars >= 12))) {

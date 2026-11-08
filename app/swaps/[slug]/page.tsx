@@ -20,7 +20,7 @@ export async function generateMetadata({
 
   return {
     title: `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`,
-    description: `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
+    description: `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${result.rating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
     alternates: {
       canonical: `https://www.heybroc.com/swaps/${entry.slug}`,
     },
@@ -61,7 +61,7 @@ export default async function SwapReportPage({
         bestRating: 100,
         worstRating: 0,
       },
-      reviewBody: `Editorial Clean-Label Opinion: ${entry.title} scores ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) on HeyBroc's 3-Pillar Rubric (Nutrition ${yb?.nutritionScore}/60, Additives ${yb?.additiveScore}/30, Organic ${yb?.organicScore}/10) based on a representative public database formulation. Formulations vary by batch and region; always check the physical package label. ${yb?.glucoseNote || ""}`,
+      reviewBody: `Editorial Clean-Label Opinion: ${entry.title} scores ${result.score}/100 (${result.rating}) on HeyBroc's 3-Pillar Rubric (Nutrition ${yb?.nutritionScore}/60, Additives ${yb?.additiveScore}/30, Organic ${yb?.organicScore}/10) based on a representative public database formulation. Formulations vary by batch and region; always check the physical package label. ${yb?.glucoseNote || ""}`,
     },
   };
 
@@ -114,7 +114,7 @@ export default async function SwapReportPage({
               color: result.score >= 70 ? "#166534" : "#991b1b",
             }}
           >
-            {result.score}/100 · {result.score < 25 ? "Bad" : result.rating}
+            {result.score}/100 · {result.rating}
           </span>
           {yb?.glucoseImpact && (
             <span

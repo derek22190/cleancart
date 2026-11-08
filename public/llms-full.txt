@@ -34,7 +34,7 @@ Every product scanned by HeyBroc receives a score from 0 to 100:
 - **75–100 (Excellent — Green):** Clean ingredients, high nutritional value, zero high-risk additives.
 - **50–74 (Good — Light Green):** Clean additive profile with moderate nutritional density (e.g., grain-free avocado oil tortilla chips).
 - **25–49 (Mediocre — Yellow/Orange):** Contains moderate-risk additives, refined seed oils, or elevated sugar/sodium.
-- **0–24 (Poor / Bad — Red):** Contains high-risk synthetic dyes, chemical preservatives, nitrites, or multiple ultra-processed additives.
+- **0–24 (Poor — Red):** Contains high-risk synthetic dyes, chemical preservatives, nitrites, or multiple ultra-processed additives.
 
 ### Pillar Breakdown:
 1. **Nutritional Quality (0–60 Points, 60% Weight):** Computed using Nutri-Score grades A through E (assessing calories, saturated fat, sugars, sodium, fiber, protein, and fruit/vegetable/legume content).

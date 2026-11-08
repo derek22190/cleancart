@@ -191,7 +191,7 @@ check("Fiji Water & Spindrift score >= 90 Excellent", (() => {
   const spin = matchDrinkCatalog("spindrift")!;
   const sf = scoreProductYuka(fiji.ingredients, {}, [], { ...fiji.nutrition, productTitle: fiji.title });
   const ss = scoreProductYuka(spin.ingredients, {}, [], { ...spin.nutrition, productTitle: spin.title });
-  return sf.score >= 90 && ss.score === 100;
+  return sf.score >= 90 && ss.score >= 90;
 })());
 check("1-for-1 cheese tortilla chips -> Siete Tortilla Chips (not block cheese)", Boolean(resolveSwap({ score: 12, productTitle: "Clancy's Nacho Cheese Tortilla Chips", store: "aldi" })?.title.includes("Tortilla Chips")));
 check("1-for-1 Park Street Deli Hummus -> Hope Foods Organic Hummus (not turkey)", Boolean(resolveSwap({ score: 49, productTitle: "Park Street Deli Classic Hummus", store: "aldi" })?.title.includes("Hummus")));

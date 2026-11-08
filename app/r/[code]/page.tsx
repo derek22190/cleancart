@@ -102,7 +102,7 @@ export default function ReferralLandingPage({
           }}
         >
           HeyBroc floats over <b>Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh, Instacart, ALDI &amp; more</b> on
-          your phone to grade food &amp; beverage ingredients (0–100) and swap dirty
+          your phone to grade food &amp; beverage ingredients (0–100) and swap flagged
           items for clean 1-for-1 alternatives in 1 tap. Start a free trial with this code to unlock +7 Free Pro Days!
         </p>
 
@@ -196,6 +196,16 @@ export default function ReferralLandingPage({
           <b>How it works:</b> Install HeyBroc, enable the store screen reader, and view
           any item in Walmart or Target on your phone. Both you and your friend
           automatically unlock <b>+7 Free Days of HeyBroc Pro</b>!
+        </p>
+        <p
+          style={{
+            fontSize: 11,
+            color: "#828e88",
+            marginTop: 12,
+            lineHeight: 1.4,
+          }}
+        >
+          Independent consumer tool. Not affiliated with, endorsed by, or sponsored by Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Instacart, ALDI, or any manufacturer.
         </p>
       </div>
     </main>

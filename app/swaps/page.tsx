@@ -88,7 +88,7 @@ export default function SwapsDirectoryPage() {
                     color: result.score >= 70 ? "#166534" : "#991b1b",
                   }}
                 >
-                  {result.score}/100 · {result.score < 25 ? "Bad" : result.rating}
+                  {result.score}/100 · {result.rating}
                 </span>
                 {result.yukaBreakdown?.glucoseImpact && (
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>

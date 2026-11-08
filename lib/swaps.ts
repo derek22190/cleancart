@@ -431,7 +431,31 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|sunbutter|jif|skippy|peter\s+pan)\b/i,
+    match: /\b(sunflower\s+(seed\s+)?butter|sunbutter)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Once Again",
+      name: "Organic Unsweetened Creamy Sunflower Seed Butter (Nut-Free)",
+      size: "16 oz jar",
+      price: 7.49,
+      image: "/swaps/peanutbutter.png",
+      ingredients: "Organic roasted sunflower seeds, salt.",
+    },
+  },
+  {
+    match: /\b(almond\s+butter|cashew\s+butter|maranatha|justin'?s\s+almond)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Artisana Organics",
+      name: "Organic Raw Almond Butter (Peanut-Free)",
+      size: "14 oz jar",
+      price: 11.49,
+      image: "/swaps/peanutbutter.png",
+      ingredients: "Organic raw almonds.",
+    },
+  },
+  {
+    match: /\b(peanut\s+butter|jif|skippy|peter\s+pan)\b/i,
     alt: {
       category: "Snacks",
       brand: "Santa Cruz Organic",
@@ -609,7 +633,19 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Dressings, Condiments, Sauces, Dips & Broth ---
   {
-    match: /\b(hummus|guacamole|tzatziki|sabra|wholly\s+guacamole|park\s+street\s+deli.*(hummus|guac|dip))\b/i,
+    match: /\b(guacamole|wholly\s+guacamole|park\s+street\s+deli.*guac)\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Wholly Guacamole",
+      name: "Organic Classic Guacamole (Sesame-Free)",
+      size: "7.5 oz tub",
+      price: 4.49,
+      image: "/swaps/salsa.png",
+      ingredients: "Organic Hass avocados, organic white vinegar, organic jalapeno puree, organic dehydrated onion, sea salt, organic granulated garlic.",
+    },
+  },
+  {
+    match: /\b(hummus|tzatziki|sabra|park\s+street\s+deli.*(hummus|dip))\b/i,
     alt: {
       category: "Dressings",
       brand: "Hope Foods",
@@ -1003,11 +1039,11 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     alt: {
       category: "Snacks",
       brand: "Spindrift",
-      name: "Organic Sparkling Water with Real Squeezed Fruit",
+      name: "Sparkling Water with Real Squeezed Fruit",
       size: "8 pack (12 fl oz cans)",
       price: 5.98,
       image: "/swaps/drink.png",
-      ingredients: "Carbonated water, organic strawberry puree, organic lemon juice.",
+      ingredients: "Carbonated water, raspberry puree, lemon juice.",
     },
   },
 ];
