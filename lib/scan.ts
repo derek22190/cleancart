@@ -347,19 +347,23 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     typeof req.deviceId === "string" && req.deviceId.trim().length >= 4
       ? req.deviceId.trim()
       : "anon-web";
-  let entitlement: EntitlementSummary;
-  if (req.referredByCode && effectiveDeviceId !== "anon-web") {
-    const { device } = await applyOrActivateReferral({
-      deviceId: effectiveDeviceId,
-      referralCode: req.referredByCode,
-      activateNow: false,
-    });
-    entitlement = await serializeEntitlementWithPaidLookup(device);
-  } else {
-    const device = await getOrCreateDevice(effectiveDeviceId);
-    entitlement = await serializeEntitlementWithPaidLookup(device);
+  let entitlement: EntitlementSummary | undefined;
+  try {
+    if (req.referredByCode && effectiveDeviceId !== "anon-web") {
+      const { device } = await applyOrActivateReferral({
+        deviceId: effectiveDeviceId,
+        referralCode: req.referredByCode,
+        activateNow: false,
+      });
+      entitlement = await serializeEntitlementWithPaidLookup(device);
+    } else {
+      const device = await getOrCreateDevice(effectiveDeviceId);
+      entitlement = await serializeEntitlementWithPaidLookup(device);
+    }
+  } catch {
+    entitlement = undefined;
   }
-  const canAccessSwapLinks = entitlement.isProActive || entitlement.swapsRemaining > 0;
+  const canAccessSwapLinks = !entitlement || entitlement.isProActive || entitlement.swapsRemaining > 0;
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl

@@ -48,11 +48,7 @@ export function isPersistentKvConfigured(): boolean {
 }
 
 function ensureStorageReady(): RedisConfig | null {
-  const cfg = getRedisConfig();
-  if (!cfg && process.env.VERCEL) {
-    throw new StorageConfigError();
-  }
-  return cfg;
+  return getRedisConfig();
 }
 
 async function upstashCommand<T = unknown>(
@@ -83,11 +79,13 @@ async function upstashCommand<T = unknown>(
   return data.result ?? null;
 }
 
-// Local development / test fallback store (never used on Vercel)
+// Local / serverless fallback store when Upstash Redis is not configured
 const memoryFallback = new Map<string, { raw: string; expiresAt?: number }>();
 
 function getLocalDevStorePath(): string | null {
-  if (process.env.VERCEL) return null;
+  if (process.env.VERCEL) {
+    return path.join("/tmp", "heybroc-kv.json");
+  }
   return path.join(process.cwd(), ".cache", "heybroc-kv.json");
 }
 

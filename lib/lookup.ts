@@ -837,7 +837,23 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/yogurt.jpg",
   },
   {
-    match: /\b(clam\s+chowder|new\s+england.*chowder|corn\s+chowder|potato\s+chowder|seafood\s+chowder|lobster\s+bisque|tomato\s+bisque|broccoli\s+cheddar\s+soup|loaded\s+baked\s+potato\s+soup)\b/i,
+    match: /\b(blount|clam\s+shack)\b.*\b(clam\s+chowder|chowder)\b|\b(clam\s+chowder|new\s+england.*chowder)\b.*\bgluten[\s-]*free\b/i,
+    brand: "Blount Clam Shack",
+    title: "New England Clam Chowder (Gluten Free)",
+    ingredients: "Clam Broth (Water, Clam Juice Concentrate), Potatoes, Clams (Clams, Clam Juice, Salt), Light Cream (Milk, Cream), Onions, Butter (Cream, Salt), Corn Starch, Salt, Spice, Garlic Powder.",
+    imageUrl: "/products/ranch.jpg",
+    nutrition: { caloriesKcal100g: 110, sugarsG100g: 1.5, saturatedFatG100g: 3.5, sodiumMg100g: 330, fiberG100g: 0.8, proteinG100g: 4.8, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(panera(\s+bread)?.*broccoli\s+cheddar|broccoli\s+cheddar\s+soup)\b/i,
+    brand: "Panera Bread",
+    title: "Broccoli Cheddar Soup",
+    ingredients: "Water, Milk, Broccoli, Pasteurized Process Cheddar Cheese (Cheddar Cheese [Pasteurized Milk, Cheese Culture, Salt, Enzymes], Water, Sodium Phosphate, Milkfat, Salt, Apocarotenal [Color]), Heavy Cream, Carrots, Seasoning (Modified Corn Starch, Wheat Flour, Salt, Chicken Base [Chicken Meat Including Chicken Juices, Salt, Chicken Fat, Sugar, Maltodextrin, Hydrolyzed Corn Protein, Dried Whey, Natural Flavor, Turmeric], Spices, Paprika), Onions, Butter (Cream, Salt), Soybean Oil, Dijon Mustard (Water, Vinegar, Mustard Seed, Salt, White Wine, Fruit Pectin, Tartaric Acid, Citric Acid, Sugar, Spice), Nisin Preparation, Annatto Extract (Color).",
+    imageUrl: "/products/ranch.jpg",
+    nutrition: { caloriesKcal100g: 135, sugarsG100g: 2.0, saturatedFatG100g: 5.5, sodiumMg100g: 430, fiberG100g: 1.0, proteinG100g: 4.5, fruitsVegNutsPct: 20, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\b(clam\s+chowder|new\s+england.*chowder|corn\s+chowder|potato\s+chowder|seafood\s+chowder|lobster\s+bisque|tomato\s+bisque|loaded\s+baked\s+potato\s+soup)\b/i,
     brand: "Marketside",
     title: "New England Style Clam Chowder",
     ingredients: "Light Cream (Milk, Cream), Potatoes, Fish Stock (Water, Cod Bones, Haddock Bones, Onions, Celery, Black Pepper, Thyme, Mustard Seed, Bay Leaves), Sea Clams (Sea Clams, Water), Chopped Cockle (Clam Meat), Onions, Wheat Flour, Soybean Oil, Butter (Cream, Salt), Clam Broth (Dehydrated Clam Broth, Maltodextrin), Sea Salt, Celery, Salt Pork (Pork, Sea Salt), Black Pepper, Worcestershire Sauce (Distilled White Vinegar, Molasses, Sugar, Water, Salt, Onions, Anchovies, Garlic, Cloves, Tamarind Extract, Natural Flavorings, Chili Pepper Extract), Garlic.",
@@ -1506,6 +1522,16 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   }
 
   let found: Omit<LookupResult, "ms"> | null = null;
+  const DIRECT_CATALOG_PRIORITY =
+    /\b(velveeta|lactaid|fairlife|marketside|freshness guaranteed|bettergoods|sam'?s choice|wellsley farms|berkley jensen|kirkland|kirkwood|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|parkview|appleton farms|fremont fish|never any|earth grown|knoppers|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
+
+  if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
+    const directCat = catalogFallback(title);
+    if (directCat && !directCat.productTitle.startsWith("Conventional Grocery")) {
+      return { ...directCat, ms: ms() };
+    }
+  }
+
   if (input.barcode) {
     const [offRes, usdaRes] = await Promise.all([offByBarcode(input.barcode), usdaSearch(input.barcode)]);
     found = offRes || usdaRes;
@@ -1515,7 +1541,6 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
     found = offRes || usdaRes;
   }
-  // Catalog fallback is strictly last-resort when screen, cache, Open Food Facts, and USDA return no match
   if (!found && title) found = catalogFallback(title);
   if (!found) return null;
 
