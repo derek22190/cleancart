@@ -169,8 +169,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     found.brand &&
     !genericBrand.test(found.brand) &&
     !found.productTitle.toLowerCase().includes(found.brand.toLowerCase());
+  const isAllLowerQuery = productTitle === productTitle.toLowerCase();
+  const isCatalogPrefix = found.productTitle.toLowerCase().startsWith(productTitle.toLowerCase());
   const title = (
-    callerWords.length >= 3
+    callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
       ? productTitle
       : shouldPrependBrand
         ? `${found.brand} ${found.productTitle}`
@@ -206,6 +208,15 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
       : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}`;
+  const resolvedSwap = swap
+    ? {
+        ...swap,
+        image:
+          swap.image && swap.image.startsWith("http")
+            ? swap.image
+            : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}`,
+      }
+    : null;
   return {
     ok: true,
     product: {
@@ -218,7 +229,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     },
     lookup: { source: found.source, origin: found.origin, ms: found.ms },
     result,
-    swap,
+    swap: resolvedSwap,
     store,
     pill: `${result.score}/100 • Tap to Inspect`,
     ...(entitlement ? { entitlement } : {}),

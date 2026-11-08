@@ -2,11 +2,13 @@
 // Content scripts can't reliably call our API from store pages (page CORS + mixed content),
 // so they message this worker, which has host_permissions to reach the API.
 
-const DEFAULT_API = "https://heybroc.com";
+const DEFAULT_API = "https://www.heybroc.com";
 
 async function getSettings() {
   const { apiBase, watchlist } = await chrome.storage.sync.get(["apiBase", "watchlist"]);
-  return { apiBase: (apiBase || DEFAULT_API).replace(/\/+$/, ""), watchlist: watchlist || undefined };
+  const rawBase = (apiBase || DEFAULT_API).replace(/\/+$/, "");
+  const normalizedBase = rawBase === "https://heybroc.com" ? "https://www.heybroc.com" : rawBase;
+  return { apiBase: normalizedBase, watchlist: watchlist || undefined };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

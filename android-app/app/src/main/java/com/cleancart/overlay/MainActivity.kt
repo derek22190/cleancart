@@ -2269,7 +2269,7 @@ class MainActivity : Activity() {
 
             for (item in localItems) {
                 val t = ScanHistoryStore.extractTitle(item)
-                val key = t.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                val key = ScanHistoryStore.canonicalKey(t)
                 if (key.isNotBlank() && seen.add(key)) {
                     val prod = item.optJSONObject("product")
                     val res = item.optJSONObject("result")
@@ -2284,7 +2284,7 @@ class MainActivity : Activity() {
             }
             for (rem in remoteItems) {
                 val t = rem.optString("title").trim()
-                val key = t.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                val key = ScanHistoryStore.canonicalKey(t)
                 if (key.isNotBlank() && seen.add(key)) {
                     merged.add(rem to null)
                 }
@@ -2426,7 +2426,7 @@ class MainActivity : Activity() {
         box.addView(iv)
 
         val fallbackApiUrl = ScanHistoryStore.productImageUrl(title)
-        val primaryUrl = if (imgUrl.startsWith("http")) imgUrl else fallbackApiUrl
+        val primaryUrl = if (imgUrl.startsWith("http") && !imgUrl.contains("/swaps/") && !imgUrl.contains("/products/")) imgUrl else fallbackApiUrl
         loadThumbnailAsync(primaryUrl, fallbackApiUrl, iv, fallback)
         return box
     }

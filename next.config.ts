@@ -36,6 +36,24 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/(products|swaps|presets)/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/broc-mascot.jpg",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
     ];
   },
 };

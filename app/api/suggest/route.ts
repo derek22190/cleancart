@@ -34,7 +34,23 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     title: "Doritos Spicy Nacho Tortilla Chips",
     brand: "Doritos",
     ingredients:
-      "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Cheddar Cheese, Corn Starch, Onion Powder, Garlic Powder, Dextrose, Spices, Natural and Artificial Flavor, Artificial Color (Yellow 6 Lake, Red 40 Lake, Yellow 6, Red 40, Yellow 5, Blue 1), Disodium Inosinate, Disodium Guanylate.",
+      "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Whey, Cheddar Cheese, Monosodium Glutamate, Buttermilk, Romano Cheese, Onion Powder, Garlic Powder, Spices, Dextrose, Natural and Artificial Flavors, Artificial Color (Red 40 Lake, Yellow 6, Yellow 5, Red 40), Disodium Inosinate, Disodium Guanylate.",
+  },
+  {
+    title: "Doritos Tapatio Tortilla Chips",
+    brand: "Doritos",
+    ingredients:
+      "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Spices, Garlic Powder, Monosodium Glutamate, Tomato Powder, Onion Powder, Sugar, Natural and Artificial Flavors, Dextrose, Malic Acid, Sodium Diacetate, Artificial Color (Red 40 Lake, Yellow 6 Lake, Red 40, Yellow 6, Yellow 5), Disodium Inosinate, Disodium Guanylate.",
+  },
+  {
+    title: "Kirkwood 99% Fat Free Fresh Ground Turkey Breast",
+    brand: "Kirkwood",
+    ingredients: "Ground Turkey Breast (99% Fat Free, 1% Fat), Natural Rosemary Extract.",
+  },
+  {
+    title: "Parkview USDA Beef Smoked Sausage",
+    brand: "Parkview",
+    ingredients: "Beef, Water, Corn Syrup, Salt, Dextrose, Spices, Sodium Phosphate, Monosodium Glutamate, Garlic Powder, Sodium Erythorbate, Sodium Nitrite.",
   },
   {
     title: "Siete Grain-Free Sea Salt Tortilla Chips",

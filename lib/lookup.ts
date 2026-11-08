@@ -226,7 +226,7 @@ const OFF_FIELDS =
   "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,nutriments";
 
 const SCREEN_UI_NON_INGREDIENTS =
-  /\b(items to add next|frequently bought together|customers also (bought|viewed|considered)|you may also like|you might also like|similar items|related products|sponsored|add to cart|buy now|many in stock|out of stock|product information|product details|nutrition facts|shipping|delivery|pickup|reviews|ratings|select a store|return policy|disclaimer|warnings?|tap to expand|show more|see more)\b/i;
+  /\b(items to add next|frequently bought together|customers also (bought|viewed|considered)|you may also like|you might also like|similar items|related products|sponsored|add to cart|buy now|many in stock|out of stock|product information|product details|nutrition facts|shipping|delivery|pickup|reviews|ratings|select a store|return policy|disclaimer|warnings?|tap to expand|show more|see more|velveeta\s+original|frito[- ]?lay|doritos|cheetos|bold\s+snack)\b/i;
 
 /**
  * Verifies that rawIngredients captured from a store screen is a genuine ingredient list
@@ -236,6 +236,10 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
   const s = raw.trim();
   if (s.length < 10 || s.length > 10_000) return false;
   if (SCREEN_UI_NON_INGREDIENTS.test(s)) return false;
+  if (/\$\s*\d+|\b\d+(?:\.\d+)?\s*(?:oz|fl\s*oz|lb|lbs|ct|pk|pack)\b/i.test(s) && !s.includes(",")) return false;
+  const hasComma = s.includes(",") || s.includes(";");
+  const isSingleWholeDeclaration = /\b(100%|ingredients?\s*:|contains\b|cultured\b|pasteurized\b|organic\b|filtered\s+water|carbonated\s+water)\b/i.test(s);
+  if (!hasComma && !isSingleWholeDeclaration) return false;
   if (!isEnglishIngredientText(s)) return false;
   return ENGLISH_INGREDIENT_ANCHORS.test(s);
 }
@@ -1071,7 +1075,7 @@ function cleanSearchQuery(title: string): string {
 /* ------------------------------------------------------------------ */
 
 const DIRECT_CATALOG_PRIORITY =
-  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|golden\s+sweet.*corn|capri\s*sun|a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|steak[- ]?umm\w*|in\s+(heavy|light)\s+syrup|ore[- ]?ida|oreo\s+puffs?)\b/i;
+  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|kirkwood.*(ground\s+turkey|turkey\s+breast|chicken\s+breast|chicken\s+tenderloins?)|fresh\s+ground\s+(turkey|chicken|beef)|parkview.*(sausage|kielbasa|hot\s*dog|franks?)|smoked\s+sausage|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|golden\s+sweet.*corn|capri\s*sun|a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|steak[- ]?umm\w*|in\s+(heavy|light)\s+syrup|ore[- ]?ida|oreo\s+puffs?)\b/i;
 
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();

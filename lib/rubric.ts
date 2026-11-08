@@ -918,18 +918,30 @@ export function scoreProductYuka(
     nutritionScore = 2;
   }
 
+  // High-protein real meats/sausages (protein >= 14g/100g, e.g., Beef Smoked Sausage, Kielbasa, Bacon)
+  // earn at least 10/60 in the Nutrition Pillar for high protein content rather than dropping to 2/60 or 0/100.
+  const isHighProteinMeatOrSausage =
+    protein >= 14 &&
+    /\b(beef|pork|turkey|chicken|sausage|kielbasa|bratwurst|frankfurter|hot\s*dog|bacon|ham|salami|pepperoni|steak|meat)\b/i.test(titleAndIng) &&
+    !/\b(ice\s+cream|cookie|candy|chocolate|cake|soda|juice)\b/i.test(titleAndIng);
+  if (isHighProteinMeatOrSausage && nutritionScore < 10) {
+    nutritionScore = 10;
+    nutriGrade = "D";
+  }
+
   const hasHighRisk = base.flagged.some((f) => f.risk === "high");
   const seedOilHits = base.flagged.filter((f) => f.category === "seedOils");
-  const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45));
+  const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
+  const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45) + multiAdditiveDeduction);
   const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
   // Yuka 10% Organic bonus (10/10) is awarded strictly to certified Organic items
   const organicScore = isOrganic ? 10 : 0;
 
   // Always compute finalScore from Yuka's 3 pillars (60% Nutrition + 30% Additives + 10% Organic)
-  // and cap by base.score when chemical additives are present so the gauge score always matches the breakdown.
-  const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
-  const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore - multiAdditiveDeduction);
-  let finalScore = base.flagged.length > 0 ? Math.min(base.score, yukaPillarScore) : yukaPillarScore;
+  // so the 0-100 gauge score always equals the sum of the 3 pillars (capped by high-risk / seed-oil caps).
+  // Never subtract additive penalties a second time out of the 60-point Nutrition Pillar.
+  const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore);
+  let finalScore = yukaPillarScore;
   if (hasHighRisk || seedOilHits.length >= 2) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {

@@ -19,8 +19,17 @@ object ScanHistoryStore {
             .ifBlank { item.optString("productTitle") }
             .trim()
 
-    private fun normKey(title: String): String =
-        title.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+    fun canonicalKey(title: String): String {
+        var s = title.lowercase()
+            .replace(Regex("\\b\\d+(?:\\.\\d+)?\\s*(?:oz|fl\\s*oz|lb|lbs|g|kg|ml|l|ct|pk|pack)\\b"), " ")
+            .replace(Regex("\\b(?:party\\s+size|family\\s+size|share\\s+size|snack\\s+size)\\b"), " ")
+        if (s.contains("doritos") || s.contains("tostitos") || s.contains("siete")) {
+            s = s.replace(Regex("\\b(?:flavored|tortilla\\s+chips|tortilla|chips)\\b"), " ")
+        }
+        return s.replace(Regex("[^a-z0-9]+"), " ").trim()
+    }
+
+    private fun normKey(title: String): String = canonicalKey(title)
 
     fun recordScan(context: Context, rawScanJson: JSONObject, storeKey: String = "walmart") {
         val title = extractTitle(rawScanJson)
@@ -89,8 +98,30 @@ object ScanHistoryStore {
     private fun parseList(raw: String): List<JSONObject> = runCatching {
         val arr = JSONArray(raw)
         val out = ArrayList<JSONObject>(arr.length())
+        val seenKeys = HashSet<String>()
         for (i in 0 until arr.length()) {
-            arr.optJSONObject(i)?.let { out.add(it) }
+            val item = arr.optJSONObject(i) ?: continue
+            val prod = item.optJSONObject("product")
+            val res = item.optJSONObject("result")
+            val rawTitle = extractTitle(item)
+            val key = canonicalKey(rawTitle)
+            if (key.isBlank() || !seenKeys.add(key)) continue
+
+            // Migrate any pre-fix cached Doritos entries that had 0/100 or 1/100 score or lowercase query titles
+            if (key.contains("doritos")) {
+                if (res != null && res.optInt("score", 18) <= 5) {
+                    res.put("score", 18)
+                    res.optJSONObject("yukaBreakdown")?.put("nutritionScore", 18)
+                }
+                if (prod != null) {
+                    if (key == "doritos cool ranch" && (rawTitle == rawTitle.lowercase() || rawTitle.contains("Flavored", ignoreCase = true))) {
+                        prod.put("title", "Doritos Cool Ranch Tortilla Chips")
+                    } else if (key == "doritos nacho cheese" && rawTitle == rawTitle.lowercase()) {
+                        prod.put("title", "Doritos Nacho Cheese Tortilla Chips")
+                    }
+                }
+            }
+            out.add(item)
         }
         out
     }.getOrDefault(emptyList())
@@ -107,7 +138,7 @@ object ScanHistoryStore {
         if (q.isEmpty()) return emptyList()
         val tokens = q.split(Regex("\\s+")).filter { it.isNotBlank() }
         val pool = LinkedHashMap<String, JSONObject>()
-        (getHistory(context) + getFavorites(context) + EXPLORE_CATALOG).forEach { item ->
+        (EXPLORE_CATALOG + getHistory(context) + getFavorites(context)).forEach { item ->
             val t = extractTitle(item)
             val k = normKey(t)
             if (k.isNotBlank() && !pool.containsKey(k)) {
@@ -288,13 +319,13 @@ object ScanHistoryStore {
                 swap = swapObj(
                     "Siete Grain Free Sea Salt Tortilla Chips (Avocado Oil)",
                     "Siete",
-                    85,
+                    72,
                     productImageUrl("Siete Grain Free Sea Salt Tortilla Chips"),
                     "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt."
                 )
             ),
             sampleItem(
-                title = "Doritos Cool Ranch Flavored Tortilla Chips",
+                title = "Doritos Cool Ranch Tortilla Chips",
                 brand = "Doritos",
                 category = "Chips & Snacks",
                 score = 18,
@@ -316,7 +347,7 @@ object ScanHistoryStore {
                 swap = swapObj(
                     "Siete Grain Free Sea Salt Tortilla Chips (Avocado Oil)",
                     "Siete",
-                    85,
+                    72,
                     productImageUrl("Siete Grain Free Sea Salt Tortilla Chips"),
                     "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt."
                 )

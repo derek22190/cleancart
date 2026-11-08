@@ -1,4 +1,4 @@
-const DEFAULT_API = "https://heybroc.com";
+const DEFAULT_API = "https://www.heybroc.com";
 const input = document.getElementById("api");
 const status = document.getElementById("status");
 

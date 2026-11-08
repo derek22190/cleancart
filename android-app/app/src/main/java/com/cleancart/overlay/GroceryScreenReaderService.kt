@@ -408,11 +408,14 @@ class GroceryScreenReaderService : AccessibilityService() {
             } else {
                 allNodes
             }
-            val ingredients = findIngredients(nodes) ?: findIngredients(allNodes)
-
-            // Slice off "Similar items / Customers also bought / Related items" bottom carousels when evaluating PDP vs. Aisle
+            // Slice off "Items to add next / Similar items / Customers also bought" bottom carousels BEFORE
+            // extracting ingredients so a collapsed "Ingredients v" pill in ALDI never reads "Velveeta Original" from the carousel below!
             val carouselIdx = nodes.indexOfFirst { it.index >= 4 && CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
             val primaryNodes = if (carouselIdx >= 4) nodes.subList(0, carouselIdx) else nodes
+            val allCarouselIdx = allNodes.indexOfFirst { it.index >= 4 && CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
+            val primaryAllNodes = if (allCarouselIdx >= 4) allNodes.subList(0, allCarouselIdx) else allNodes
+
+            val ingredients = findIngredients(primaryNodes) ?: findIngredients(primaryAllNodes)
 
             val tileAddCount = primaryNodes.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
             val hasOptionsButtons = primaryNodes.any { it.text.trim().equals("options", ignoreCase = true) }
@@ -802,16 +805,33 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (NOISE.containsMatchIn(cleaned)) return null
             if (NON_INGREDIENT_TEXT.containsMatchIn(cleaned)) return null
             if (SINGLE_PDP_DETAILS.matches(cleaned)) return null
-            if (CAROUSEL_BOUNDARY.matches(cleaned)) return null
+            if (CAROUSEL_BOUNDARY.containsMatchIn(cleaned)) return null
             if (HOME_OR_AISLE_BANNERS.containsMatchIn(cleaned)) return null
-            if (!cleaned.contains(",") && !realIngredientHint.containsMatchIn(cleaned)) return null
+            if (PRICE_PATTERN.containsMatchIn(cleaned)) return null
+            if (BRAND_OR_UNIT_ONLY.matches(cleaned)) return null
+            // Require comma-separated ingredients (or explicit single-ingredient label like "100% ...", "Contains ...", "Pasteurized ...")
+            // so product titles in carousels ("Velveeta Original") are never mistaken for an ingredient list!
+            val hasComma = cleaned.contains(",") || cleaned.contains(";")
+            val isSingleIngredientLabel = Regex("""(?i)\b(100%|ingredients?\s*:|contains\b|cultured\b|pasteurized\b|filtered\s+water|carbonated\s+water)\b""").containsMatchIn(cleaned)
+            if (!hasComma && !isSingleIngredientLabel) return null
+            if (!realIngredientHint.containsMatchIn(cleaned)) return null
             return cleaned
         }
-        for (n in nodes) {
-            val t = n.text
-            if (t.matches(Regex("""(?i)^ingredients\s*:?$"""))) {
-                for (offset in 1..3) {
-                    val candidate = nodes.getOrNull(n.index + offset)?.text ?: continue
+        for ((idx, n) in nodes.withIndex()) {
+            val t = n.text.trim()
+            if (t.matches(Regex("""(?i)^ingredients\s*[v▼▾⌄+]?\s*:?$"""))) {
+                for (offset in 1..2) {
+                    val nextNode = nodes.getOrNull(idx + offset) ?: break
+                    val candidate = nextNode.text.trim()
+                    // If the "Ingredients" accordion is collapsed and followed by "Items to add next" or another section header, STOP immediately!
+                    if (
+                        CAROUSEL_BOUNDARY.containsMatchIn(candidate) ||
+                        SINGLE_PDP_DETAILS.matches(candidate) ||
+                        SINGLE_PDP_CTA.containsMatchIn(candidate) ||
+                        PRICE_PATTERN.containsMatchIn(candidate)
+                    ) {
+                        break
+                    }
                     validIngredientList(candidate)?.let { return it }
                 }
             }

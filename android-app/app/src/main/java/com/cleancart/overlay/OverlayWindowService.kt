@@ -976,7 +976,7 @@ class OverlayWindowService : Service() {
             })
         }
 
-        // Flagged additive description list (bounded scroll area so the Clean Swap at the bottom is ALWAYS visible)
+        // Flagged additive description list
         val flagCount = flagged?.length() ?: 0
         val explain = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         if (flagged != null && flagCount > 0) {
@@ -987,7 +987,7 @@ class OverlayWindowService : Service() {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(10), dp(7), dp(10), dp(7))
                     background = GradientDrawable().apply { setColor(bg); cornerRadius = dp(11).toFloat() }
-                    addView(text("${f.optString("name")}  ·  −${f.optInt("penalty")} pts", 12f, fg, bold = true))
+                    addView(text("${i + 1}. ${f.optString("name")}  ·  −${f.optInt("penalty")} pts", 12f, fg, bold = true))
                     val expText = f.optString("explanation")
                     if (expText.isNotBlank()) {
                         addView(text(expText, 11f, INK).apply {
@@ -1003,27 +1003,38 @@ class OverlayWindowService : Service() {
             }
         }
 
-        // Bounded ScrollView for the flagged descriptions so they never push the bottom Clean Swap off-screen
+        // Expandable ScrollView: starts compact (3 items visible) when flagCount > 3 so Clean Swap is visible,
+        // and expands to show ALL flagged items when the user taps the header button.
+        var showAllFlags = flagCount <= 3
         val explainScroll = object : ScrollView(this) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                val maxH = dp(185)
+                val maxH = if (showAllFlags) dp(540) else dp(185)
                 val cappedSpec = MeasureSpec.makeMeasureSpec(maxH, MeasureSpec.AT_MOST)
                 super.onMeasure(widthMeasureSpec, cappedSpec)
             }
         }.apply {
             addView(explain)
             isVerticalScrollBarEnabled = true
+            isScrollbarFadingEnabled = false
             visibility = if (flagCount > 0) View.VISIBLE else View.GONE
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(6)
             }
         }
 
-        // Compact Gauge + Dropdown Toggle header (replaces the duplicate top pill list!)
-        var issuesExpanded = true
+        // Compact Gauge + Dropdown Toggle header
+        var issuesState = if (flagCount > 3) 1 else 2 // 1 = compact (3 visible), 2 = all expanded, 0 = hidden
+        fun toggleLabelForState(st: Int): String = when {
+            flagCount == 0 -> "✓ No Watchlist Additives Found"
+            flagCount <= 3 -> if (st == 0) "▶ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to show"
+                              else "▼ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to hide"
+            st == 1 -> "▼ Showing 3 of $flagCount Flagged Issues · Tap to see all $flagCount"
+            st == 2 -> "▲ Showing all $flagCount Flagged Issues · Tap to hide"
+            else -> "▶ $flagCount Flagged Issues · Tap to show all $flagCount"
+        }
+
         val toggleBtn = text(
-            if (flagCount == 0) "✓ No Watchlist Additives Found"
-            else "▼ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to hide/show",
+            toggleLabelForState(issuesState),
             12f,
             if (flagCount == 0) 0xFF16A34A.toInt() else 0xFFB91C1C.toInt(),
             bold = true
@@ -1035,13 +1046,16 @@ class OverlayWindowService : Service() {
             }
             if (flagCount > 0) {
                 setOnClickListener {
-                    issuesExpanded = !issuesExpanded
-                    explainScroll.visibility = if (issuesExpanded) View.VISIBLE else View.GONE
-                    text = if (issuesExpanded) {
-                        "▼ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to hide"
-                    } else {
-                        "▶ $flagCount Flagged Issue${if (flagCount == 1) "" else "s"} · Tap to show"
+                    issuesState = when {
+                        flagCount <= 3 -> if (issuesState == 0) 2 else 0
+                        issuesState == 1 -> 2 // compact -> expand all 6
+                        issuesState == 2 -> 0 // expanded -> hide
+                        else -> 2             // hidden -> expand all 6
                     }
+                    showAllFlags = (issuesState == 2)
+                    explainScroll.visibility = if (issuesState == 0) View.GONE else View.VISIBLE
+                    explainScroll.requestLayout()
+                    text = toggleLabelForState(issuesState)
                 }
             }
         }
@@ -1088,7 +1102,6 @@ class OverlayWindowService : Service() {
             val swapTitle = swap.optString("title", "Clean Alternative")
             val swapScore = swap.optInt("score", 100)
             val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
-            val storeName = storeDisplayName(currentStoreKey)
 
             val topRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1133,16 +1146,17 @@ class OverlayWindowService : Service() {
                     setOnClickListener { showSwapPreviewModal(swap) }
                 })
             }
-            swapBox.addView(text("👁 Tap to Preview Photo & Ingredients", 10.5f, BRAND, bold = true).apply {
-                setPadding(0, dp(4), 0, 0)
-                setOnClickListener { showSwapPreviewModal(swap) }
-            })
         } else {
             swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 12.5f, 0xFF0B5E39.toInt(), bold = true))
         }
         sheet.addView(swapBox)
 
-        backdrop.addView(sheet, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+        val outerScroll = ScrollView(this).apply {
+            addView(sheet)
+            isFillViewport = false
+            isVerticalScrollBarEnabled = false
+        }
+        backdrop.addView(outerScroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             setMargins(dp(10), dp(10), dp(10), dp(20))
         })
 
@@ -1269,11 +1283,11 @@ class OverlayWindowService : Service() {
     }
 
     private fun buildSwapThumbnailView(swap: JSONObject, sizePx: Int): FrameLayout {
-        val rawImage = swap.optString("image", "/swaps/butter.jpg")
+        val swapTitle = swap.optString("title", "Clean Alternative")
+        val rawImage = swap.optString("image", "").ifBlank { swap.optString("imageUrl", "") }
         val fullUrl = when {
-            rawImage.startsWith("https://") -> rawImage
-            rawImage.startsWith("/") -> "https://www.heybroc.com$rawImage"
-            else -> "https://www.heybroc.com/swaps/butter.jpg"
+            rawImage.startsWith("https://") && !rawImage.contains("/swaps/") && !rawImage.contains("/products/") -> rawImage
+            else -> ScanHistoryStore.productImageUrl(swapTitle)
         }
         val radius = dp(14).toFloat()
         val box = FrameLayout(this).apply {
@@ -1291,14 +1305,14 @@ class OverlayWindowService : Service() {
         }
         val iv = ImageView(this).apply {
             setImageResource(R.drawable.broc_mascot)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.FIT_CENTER
             setPadding(dp(6), dp(6), dp(6), dp(6))
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
         box.addView(iv)
 
         swapBitmapCache.get(fullUrl)?.let { cached ->
-            iv.setPadding(0, 0, 0, 0)
+            iv.setPadding(dp(2), dp(2), dp(2), dp(2))
             iv.setImageBitmap(cached)
             return box
         }
