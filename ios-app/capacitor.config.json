@@ -1,0 +1,18 @@
+{
+  "appId": "com.heybroc.app",
+  "appName": "HeyBroc",
+  "webDir": "www",
+  "server": {
+    "url": "https://www.heybroc.com",
+    "cleartext": false,
+    "allowNavigation": [
+      "heybroc.com",
+      "*.heybroc.com"
+    ]
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#f8fafc",
+    "preferredContentMode": "mobile"
+  }
+}

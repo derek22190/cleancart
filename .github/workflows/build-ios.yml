@@ -1,0 +1,52 @@
+name: Build HeyBroc iOS & Safari Extension
+
+# Manual trigger (workflow_dispatch) — run after confirming D-U-N-S number & LLC status on Apple Developer!
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Convert Safari Web Extension into Xcode Project
+        run: |
+          xcrun safari-web-extension-converter ios-app/SafariExtension/Resources \
+            --project-location ios-app/build \
+            --app-name "HeyBroc" \
+            --bundle-identifier "com.heybroc.app" \
+            --swift \
+            --ios-only \
+            --no-open \
+            --no-prompt \
+            --force
+
+      - name: Copy Apple Privacy Manifest & App Store Icon
+        run: |
+          cp ios-app/App/PrivacyInfo.xcprivacy ios-app/build/HeyBroc/
+          cp store-assets/apple-app-store/icon-1024x1024.png ios-app/build/HeyBroc/
+
+      - name: Build unsigned iOS Release Archive (Verification)
+        run: |
+          xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
+            -scheme "HeyBroc" \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Upload Xcode Project & Built App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: heybroc-ios-xcode-bundle
+          path: ios-app/build/HeyBroc
+          if-no-files-found: error

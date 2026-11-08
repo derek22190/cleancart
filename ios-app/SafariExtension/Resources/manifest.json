@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "HeyBroc — CleanCart PureOverlay",
+  "short_name": "HeyBroc",
+  "version": "1.3.0",
+  "description": "Ingredient-only grocery grader with 1-tap clean swaps on Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco & Shipt.",
+  "icons": {
+    "16": "broc-mascot.png",
+    "48": "broc-mascot.png",
+    "128": "broc-mascot.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://heybroc.com/*",
+    "https://www.heybroc.com/*",
+    "https://cleancart-teal.vercel.app/*",
+    "http://localhost:3000/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "HeyBroc settings", "default_popup": "popup.html", "default_icon": "broc-mascot.png" },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.walmart.com/*",
+        "*://*.instacart.com/*",
+        "*://*.target.com/*",
+        "*://*.kroger.com/*",
+        "*://*.aldi.us/*",
+        "*://*.doordash.com/*",
+        "*://*.ubereats.com/*",
+        "*://*.amazon.com/*",
+        "*://*.samsclub.com/*",
+        "*://*.bjs.com/*",
+        "*://*.costco.com/*",
+        "*://*.shipt.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["overlay.css", "broc-mascot.png"],
+      "matches": [
+        "*://*.walmart.com/*",
+        "*://*.instacart.com/*",
+        "*://*.target.com/*",
+        "*://*.kroger.com/*",
+        "*://*.aldi.us/*",
+        "*://*.doordash.com/*",
+        "*://*.ubereats.com/*",
+        "*://*.amazon.com/*",
+        "*://*.samsclub.com/*",
+        "*://*.bjs.com/*",
+        "*://*.costco.com/*",
+        "*://*.shipt.com/*"
+      ]
+    }
+  ]
+}
