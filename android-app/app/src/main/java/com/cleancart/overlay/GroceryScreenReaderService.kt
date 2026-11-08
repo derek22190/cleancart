@@ -108,11 +108,11 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val PROSE_OR_BULLET_NOISE = Regex(
-            """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care)\b""",
+            """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list)\b|&\s*more\.?$""",
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock.*|many in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee.*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|\?$""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock.*|many in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee.*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|\?$""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
@@ -719,11 +719,16 @@ class GroceryScreenReaderService : AccessibilityService() {
                         }
                     } else if (lastKey == key) {
                         // Reset lastKey to the scroll hint / idle key so the very next scroll event re-scans immediately!
-                        lastKey = if (isConfirmedSinglePdp) "$pkg|PDP_SCROLL_HINT" else "$pkg|IDLE_CART_AVG"
-                        sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
-                            putExtra(OverlayWindowService.EXTRA_JSON, finalJson)
-                            putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
-                            putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
+                        if (isConfirmedSinglePdp) {
+                            lastKey = "$pkg|PDP_SCROLL_HINT"
+                            sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
+                                putExtra(OverlayWindowService.EXTRA_JSON, finalJson)
+                                putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                                putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, true)
+                            }
+                        } else {
+                            lastKey = "$pkg|IDLE_CART_AVG"
+                            sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
                         }
                     }
                 }
@@ -781,8 +786,8 @@ class GroceryScreenReaderService : AccessibilityService() {
         val density = dm.density.coerceAtLeast(1f)
         val screenW = dm.widthPixels.coerceAtLeast(720)
         val screenH = dm.heightPixels.coerceAtLeast(1280)
-        val edgeMarginPx = (8f * density).toInt()
-        val minCardTextWidthPx = (82f * density).toInt()
+        val edgeMarginPx = (14f * density).toInt()
+        val minCardTextWidthPx = (92f * density).toInt()
         val belowFoldThresholdY = (screenH * 0.52f).toInt()
         val rect = Rect()
 
@@ -1053,10 +1058,39 @@ class GroceryScreenReaderService : AccessibilityService() {
                 isCandidateProductTitle(c) && c.split(' ').size >= 2 && c.length >= 10
             }
         } else false
-        val searchNodes = if (orphanedTopCtaIdx >= 0 && !hasTitleBeforeOrphanCta && orphanedTopCtaIdx + 1 < preBodyNodes.size) {
+        val postOrphanNodes = if (orphanedTopCtaIdx >= 0 && !hasTitleBeforeOrphanCta && orphanedTopCtaIdx + 1 < preBodyNodes.size) {
             preBodyNodes.subList(orphanedTopCtaIdx + 1, preBodyNodes.size)
         } else {
             preBodyNodes
+        }
+
+        // On home/aisle/carousel feeds (`!isConfirmedSinglePdp`), if a section header link ("View all", "See all",
+        // "Shop the list", "Shop all") appears in the first 20 nodes with no product card (`+ Add` or `Options`)
+        // before it, any text above that link is a promotional section title/subtitle (e.g. "Thanksgiving feast for 4" /
+        // "A full Thanksgiving meal, Turkey, classic sides & more."), NOT a product card!
+        val sectionHeaderLinkIdx = if (!isConfirmedSinglePdp) {
+            postOrphanNodes.take(20).indexOfFirst {
+                val t = it.text.trim()
+                t.equals("view all", ignoreCase = true) ||
+                    t.equals("see all", ignoreCase = true) ||
+                    t.equals("shop the list", ignoreCase = true) ||
+                    t.equals("shop all", ignoreCase = true)
+            }
+        } else -1
+        val hasCardBeforeHeaderLink = if (sectionHeaderLinkIdx > 0) {
+            postOrphanNodes.subList(0, sectionHeaderLinkIdx).any {
+                val t = it.text.trim()
+                ADD_TILE_BUTTON.matches(t) || t.equals("options", ignoreCase = true)
+            }
+        } else false
+        val searchNodes = if (sectionHeaderLinkIdx >= 0 && !hasCardBeforeHeaderLink) {
+            if (sectionHeaderLinkIdx + 1 < postOrphanNodes.size) {
+                postOrphanNodes.subList(sectionHeaderLinkIdx + 1, postOrphanNodes.size)
+            } else {
+                emptyList()
+            }
+        } else {
+            postOrphanNodes
         }
 
         // 1. Explicit product title viewId on the visible product page
@@ -1085,7 +1119,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
             }
         } else {
-            val density = resources.displayMetrics.density.coerceAtLeast(1f)
+            val dm = resources.displayMetrics
+            val density = dm.density.coerceAtLeast(1f)
+            val screenW = dm.widthPixels.coerceAtLeast(720)
             val rowBandPx = (140f * density).toInt().coerceAtLeast(1)
             data class CarouselCandidate(val node: TextNode, val cleaned: String, val width: Int, val rowBand: Int)
             val rawCandidates = ArrayList<CarouselCandidate>()
@@ -1107,11 +1143,13 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 fun isPartiallyClippedInRow(rc: CarouselCandidate): Boolean {
                     if (rc.node.isEdgeClipped) return true
+                    // If a card's right edge doesn't even reach 36% of the screen width, it's a departing left-edge card!
+                    if (rc.node.right in 1 until (screenW * 0.36f).toInt()) return true
                     val maxW = maxWidthByBand[rc.rowBand] ?: 0
                     // When a card in a horizontal carousel slides partially off the left or right edge,
                     // Android clamps getBoundsInScreen(rect) to the viewport so its visible width shrinks
                     // compared to the full card next to it!
-                    return maxW >= (110f * density).toInt() && rc.width < (maxW * 0.82f).toInt()
+                    return maxW >= (100f * density).toInt() && rc.width < (maxW * 0.90f).toInt()
                 }
                 val sorted = rawCandidates.sortedWith(
                     compareBy<CarouselCandidate> { isPartiallyClippedInRow(it) }
@@ -1120,23 +1158,30 @@ class GroceryScreenReaderService : AccessibilityService() {
                         .thenBy { it.node.index }
                 ).toMutableList()
 
-                // If 2 unclipped cards sit side-by-side in the top visual row and the left card (`c0`) was ALREADY
-                // graded while the user just scrolled right (or `c0` shifted left), promote `c1` (the right card)
-                // so sliding across a 2-up carousel immediately grades the newly revealed item!
+                // When 2 unclipped cards sit side-by-side in the top visual row (`c0` on the left, `c1` on the right
+                // directly under the right-aligned HeyBroc pill), promote `c1` immediately whenever:
+                // 1) A 3rd clipped card sits on the far left edge of the same row (proving the carousel has been scrolled), OR
+                // 2) The user scrolled horizontally within the last 5 seconds, OR
+                // 3) `c0` shifted left compared to the previous scan, OR
+                // 4) `c0` was already graded and sits on the left half of the screen while `c1` is under the pill!
                 if (sorted.size >= 2) {
                     val c0 = sorted[0]
                     val c1 = sorted[1]
                     val sameTopRow = c0.rowBand == c1.rowBand && !isPartiallyClippedInRow(c0) && !isPartiallyClippedInRow(c1)
-                    if (sameTopRow && c1.node.left > c0.node.left + (48f * density).toInt()) {
+                    if (sameTopRow && c1.node.left > c0.node.left + (44f * density).toInt()) {
                         val now = System.currentTimeMillis()
-                        val scrolledRightRecently = lastHorizontalScrollDir > 0 && now - lastHorizontalScrollAtMs <= 2600L
+                        val hasClippedLeftSibling = rawCandidates.any {
+                            it.rowBand == c0.rowBand && it.node.left < c0.node.left - (12f * density).toInt()
+                        }
+                        val scrolledHorizontallyRecently = now - lastHorizontalScrollAtMs <= 5000L && lastHorizontalScrollDir >= 0
                         val shiftedLeft = lastRowLeadTitle != null &&
                             lastRowLeadTitle.equals(c0.cleaned, ignoreCase = true) &&
                             lastRowLeadLeftX > 0 &&
-                            c0.node.left < lastRowLeadLeftX - (16f * density).toInt()
-                        if ((scrolledRightRecently || shiftedLeft) &&
-                            lastRowGradedTitle != null &&
+                            c0.node.left < lastRowLeadLeftX - (10f * density).toInt()
+                        val leftAlreadyGraded = lastRowGradedTitle != null &&
                             lastRowGradedTitle.equals(c0.cleaned, ignoreCase = true)
+                        if (hasClippedLeftSibling ||
+                            ((scrolledHorizontallyRecently || shiftedLeft) && leftAlreadyGraded)
                         ) {
                             sorted[0] = c1
                             sorted[1] = c0

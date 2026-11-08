@@ -209,8 +209,53 @@ check("Monster Energy Zero Sugar / Monster Ultra Zero / Sugar Free Monster never
     );
   });
 })());
+check("1-for-1 Maruchan Ramen Noodle Soup -> Lotus Foods Organic Millet & Brown Rice Ramen", Boolean(resolveSwap({ score: 0, productTitle: "Maruchan Ramen Noodle Soup, Chicken Flavor, 3 oz", store: "walmart" })?.title.includes("Lotus Foods")));
 
-console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
-console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
-process.exit(fail ? 1 : 0);
+import Module from "module";
+const origLoad = (Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown })._load;
+(Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown })._load = function (request: string, parent: unknown, isMain: boolean) {
+  if (request === "server-only") return {};
+  return origLoad.call(this, request, parent, isMain);
+};
 
+(async () => {
+  const { runScan } = await import("../lib/scan");
+  const ramenScan = await runScan({
+    productTitle: "Maruchan Ramen Noodle Soup, Chicken Flavor, 3 oz, 12 Count",
+    store: "walmart",
+    dietaryWatchlist: ["wheat_gluten", "soy", "high_sodium"],
+  });
+  check(
+    "Maruchan Ramen Noodle Soup scores Poor (<= 15) and triggers checked Wheat/Soy/Sodium alerts",
+    Boolean(
+      ramenScan.ok &&
+      (ramenScan.result?.score ?? 100) <= 15 &&
+      ramenScan.result?.rating === "Poor" &&
+      (ramenScan.dietaryAlerts?.length ?? 0) >= 3 &&
+      ramenScan.swap?.title.includes("Lotus Foods")
+    )
+  );
+
+  const ramenUncheckedScan = await runScan({
+    productTitle: "Maruchan Ramen Noodle Soup, Chicken Flavor, 3 oz, 12 Count",
+    store: "walmart",
+    dietaryWatchlist: [],
+  });
+  check(
+    "Dietary alerts are empty when user has not checked any allergy/diabetes boxes",
+    Boolean(ramenUncheckedScan.ok && (ramenUncheckedScan.dietaryAlerts?.length ?? 0) === 0)
+  );
+
+  const promoBannerScan = await runScan({
+    productTitle: "A full Thanksgiving meal, Turkey, classic sides & more.",
+    store: "walmart",
+  });
+  check(
+    "Promotional Thanksgiving meal banner is ignored (422 status)",
+    Boolean(!promoBannerScan.ok && promoBannerScan.status === 422)
+  );
+
+  console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
+  console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
+  process.exit(fail ? 1 : 0);
+})();

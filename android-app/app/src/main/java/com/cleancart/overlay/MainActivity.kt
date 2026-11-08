@@ -310,24 +310,53 @@ class MainActivity : Activity() {
             })
         }
 
-        // Account / Log in pill button
+        // Personal Allergies & Diabetes Watch header pill button
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
+        val hasDietaryAlerts = activeDietaryCount > 0
+        val allergyHeaderLabel = if (hasDietaryAlerts) {
+            "🛡️ $activeDietaryCount Alert${if (activeDietaryCount == 1) "" else "s"}"
+        } else {
+            "🛡️ Allergies"
+        }
+        topBarContainer.addView(label(
+            allergyHeaderLabel,
+            11.5f,
+            if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF1F2937.toInt(),
+            bold = true
+        ).apply {
+            setPadding(dp(10), dp(5), dp(10), dp(5))
+            background = GradientDrawable().apply {
+                setColor(if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFEFF1F0.toInt())
+                setStroke(dp(1), if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFFE4E7E5.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dp(6) }
+            setOnClickListener {
+                showAllergyAndDietModal()
+            }
+        })
+
+        // Account / Log in pill button
         val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
         val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
         val isLoggedIn = !savedEmail.isNullOrBlank()
         val displayAccountLabel = if (isLoggedIn) {
-            "👤 ${(savedName ?: savedEmail!!.substringBefore("@")).take(10)}"
+            "👤 ${(savedName ?: savedEmail!!.substringBefore("@")).take(8)}"
         } else {
             "👤 Log in"
         }
 
         topBarContainer.addView(label(
             displayAccountLabel,
-            12f,
+            11.5f,
             if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
             bold = true
         ).apply {
-            setPadding(dp(11), dp(5), dp(11), dp(5))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             background = GradientDrawable().apply {
                 setColor(if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt())
                 setStroke(dp(1), if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt())
@@ -1194,7 +1223,26 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         })
 
-        // Row 2: Food preferences (Family Watchlist)
+        // Row 2: Allergies & Diabetes Alerts (Opt-in pill overlay warnings)
+        accordionCard.addView(buildYukaAccordionRow(
+            key = "allergies",
+            icon = "🛡️",
+            title = "Allergies & Diabetes Alerts",
+            subtitle = "Check Dairy, Wheat/Gluten, Sugar/Diabetes, Soy, Peanuts/Nuts, Egg, Shellfish, or High Sodium to get instant warnings right on the floating pill overlay."
+        ) {
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), 0, dp(16), dp(16))
+                addView(dietaryWatchlistControls())
+            }
+        })
+
+        accordionCard.addView(View(this).apply {
+            setBackgroundColor(0xFFE5E7EB.toInt())
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+        })
+
+        // Row 3: Food preferences (Family Watchlist)
         accordionCard.addView(buildYukaAccordionRow(
             key = "prefs",
             icon = "🎚️",
@@ -1487,6 +1535,7 @@ class MainActivity : Activity() {
         }
         val options = arrayOf(
             authOption,
+            "🛡️ Allergies & Diabetes Alerts",
             "Manage Live Store Bubble",
             "Food Preferences (Family Watchlist)",
             "★ View Saved Favorites",
@@ -1498,11 +1547,12 @@ class MainActivity : Activity() {
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> showGoCoCoLoginDialog()
-                    1 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
-                    2 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
-                    3 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
-                    4 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
-                    5 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+                    1 -> showAllergyAndDietModal()
+                    2 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
+                    3 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
+                    4 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
+                    5 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
+                    6 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
                 }
             }
             .show()
@@ -2212,6 +2262,33 @@ class MainActivity : Activity() {
             })
         }
 
+        // Personal Allergy & Diabetes Watch Alert Banner (only shown when user checked corresponding box)
+        val dietaryAlerts = ScanApi.evaluateDietaryAlerts(this, prod, res, item)
+        if (dietaryAlerts.isNotEmpty()) {
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = GradientDrawable().apply {
+                    setColor(0xFFFEF2F2.toInt())
+                    setStroke(dp(1), 0xFFFCA5A5.toInt())
+                    cornerRadius = dp(12).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10) }
+
+                addView(label("⚠️ PERSONAL ALLERGY & DIET ALERT", 10.5f, 0xFF991B1B.toInt(), bold = true).apply {
+                    letterSpacing = 0.05f
+                })
+                dietaryAlerts.forEach { alert ->
+                    addView(label("${alert.icon} ${alert.label}: ${alert.matchedDetail}", 12.5f, 0xFF7F1D1D.toInt(), bold = true).apply {
+                        setPadding(0, dp(4), 0, 0)
+                    })
+                }
+            })
+        }
+
         // 3-Pillar Score Breakdown Box
         val nutScore = yb?.optInt("nutritionScore", 42) ?: 42
         val nutGrade = yb?.optString("nutriScoreGrade", "B") ?: "B"
@@ -2902,6 +2979,92 @@ class MainActivity : Activity() {
                 })
             }
         }
+    }
+
+    private fun dietaryWatchlistControls(onChanged: (() -> Unit)? = null): LinearLayout {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val selected = prefs.getStringSet("dietaryWatchlist", emptySet())?.toMutableSet() ?: mutableSetOf()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                label(
+                    "Only checked boxes trigger warnings on your floating HeyBroc pill overlay and product cards. Unchecked boxes never appear.",
+                    12f,
+                    0xFF4B5563.toInt()
+                ).apply {
+                    setPadding(0, 0, 0, dp(8))
+                }
+            )
+            ScanApi.DIETARY_OPTIONS.forEach { opt ->
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(8), dp(6), dp(8), dp(6))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF9FAFB.toInt())
+                        setStroke(dp(1), 0xFFE5E7EB.toInt())
+                        cornerRadius = dp(10).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(6) }
+
+                    addView(CheckBox(this@MainActivity).apply {
+                        text = "${opt.icon} ${opt.label}"
+                        textSize = 13.5f
+                        setTextColor(0xFF111827.toInt())
+                        typeface = Typeface.DEFAULT_BOLD
+                        isChecked = opt.key in selected
+                        setOnCheckedChangeListener { _, checked ->
+                            val next = (prefs.getStringSet("dietaryWatchlist", emptySet()) ?: emptySet()).toMutableSet()
+                            if (checked) {
+                                next.add(opt.key)
+                            } else {
+                                next.remove(opt.key)
+                            }
+                            prefs.edit().putStringSet("dietaryWatchlist", next).apply()
+                            runCatching {
+                                startService(
+                                    Intent(this@MainActivity, OverlayWindowService::class.java).apply {
+                                        action = OverlayWindowService.ACTION_REFRESH_PILL
+                                    }
+                                )
+                            }
+                            onChanged?.invoke()
+                        }
+                    })
+                    addView(label(opt.subtitle, 11.5f, 0xFF6B7280.toInt()).apply {
+                        setPadding(dp(32), 0, dp(4), dp(2))
+                    })
+                })
+            }
+        }
+    }
+
+    private fun showAllergyAndDietModal() {
+        val scroll = ScrollView(this).apply {
+            setPadding(dp(18), dp(12), dp(18), dp(8))
+            addView(dietaryWatchlistControls())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🛡️ Personal Allergies & Diabetes Watch")
+            .setView(scroll)
+            .setPositiveButton("Save & Apply") { _, _ ->
+                renderScreen()
+            }
+            .setNeutralButton("Clear All") { _, _ ->
+                val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+                prefs.edit().putStringSet("dietaryWatchlist", emptySet()).apply()
+                runCatching {
+                    startService(
+                        Intent(this, OverlayWindowService::class.java).apply {
+                            action = OverlayWindowService.ACTION_REFRESH_PILL
+                        }
+                    )
+                }
+                renderScreen()
+            }
+            .show()
     }
 
     private fun isInstalledFromPlayStore(): Boolean {

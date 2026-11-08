@@ -69,6 +69,7 @@ class OverlayWindowService : Service() {
         const val ACTION_RESET_HIDDEN = "com.cleancart.overlay.RESET_HIDDEN"
         const val ACTION_SHOW_SETUP_GUIDE = "com.cleancart.overlay.SHOW_SETUP_GUIDE"
         const val ACTION_HIDE_SETUP_GUIDE = "com.cleancart.overlay.HIDE_SETUP_GUIDE"
+        const val ACTION_REFRESH_PILL = "com.cleancart.overlay.REFRESH_PILL"
         const val EXTRA_SETUP_STEP = "setup_step"
         const val EXTRA_JSON = "json"
         const val EXTRA_TITLE = "title"
@@ -95,7 +96,7 @@ class OverlayWindowService : Service() {
             "grass-fed salted butter"
         )
         private val VARIANT_NOISE_TITLE = Regex(
-            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*,\s*was|.*\?)$"""
+            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list)\b.*|.*&\s*more\.?$|.*,\s*was|.*\?)$"""
         )
     }
 
@@ -314,6 +315,11 @@ class OverlayWindowService : Service() {
                 removeCard()
                 removeHideTarget()
                 removePill()
+            }
+            ACTION_REFRESH_PILL -> {
+                if (!hiddenForCurrentScreen && card == null && pill != null) {
+                    showPill()
+                }
             }
         }
         return START_NOT_STICKY
@@ -571,11 +577,17 @@ class OverlayWindowService : Service() {
         val ok = data?.optBoolean("ok") == true && result != null
         val effectiveScore = result?.optInt("score") ?: 50
         val avg = displayedCartAvg
+        val dietaryAlerts = if (ok && !isCartAvgMode && loadingText == null && !isPdpScrollHint) {
+            ScanApi.evaluateDietaryAlerts(this, data?.optJSONObject("product"), result, data)
+        } else {
+            emptyList()
+        }
         val tone = when {
             loadingText != null || isPdpScrollHint -> Color.GRAY
             isCartAvgMode && tripCart.isEmpty() -> BRAND
             isCartAvgMode -> toneColor(colorNameForScore(avg))
             !ok -> Color.GRAY
+            dietaryAlerts.isNotEmpty() -> 0xFFEF4444.toInt()
             else -> toneColor(colorNameForScore(effectiveScore))
         }
         val label = when {
@@ -583,6 +595,11 @@ class OverlayWindowService : Service() {
             isPdpScrollHint -> "Scroll down to grade item"
             isCartAvgMode && tripCart.isEmpty() -> "🛒 Cart: Open Cart to Grade"
             isCartAvgMode -> "🛒 Cart Avg: $avg/100"
+            ok && dietaryAlerts.isNotEmpty() -> {
+                val badgeSummary = dietaryAlerts.take(2).joinToString(" + ") { it.shortBadge }
+                val extraCount = if (dietaryAlerts.size > 2) " +${dietaryAlerts.size - 2}" else ""
+                "⚠️ $badgeSummary$extraCount  •  $effectiveScore/100"
+            }
             ok -> "$effectiveScore/100  •  Tap to Inspect"
             else -> data?.optString("error")?.take(48) ?: "HeyBroc"
         }
@@ -1026,6 +1043,33 @@ class OverlayWindowService : Service() {
                         })
                     }
                 })
+            })
+        }
+
+        // Personal Allergy & Diabetes Watch Alert Banner (only shown when user checked corresponding box)
+        val dietaryAlerts = ScanApi.evaluateDietaryAlerts(this, prodObj, result, d)
+        if (dietaryAlerts.isNotEmpty()) {
+            root.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = GradientDrawable().apply {
+                    setColor(0xFFFEF2F2.toInt())
+                    setStroke(dp(1), 0xFFFCA5A5.toInt())
+                    cornerRadius = dp(12).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(8) }
+
+                addView(text("⚠️ PERSONAL ALLERGY & DIET ALERT", 10.5f, 0xFF991B1B.toInt(), bold = true).apply {
+                    letterSpacing = 0.05f
+                })
+                dietaryAlerts.forEach { alert ->
+                    addView(text("${alert.icon} ${alert.label}: ${alert.matchedDetail}", 12f, 0xFF7F1D1D.toInt(), bold = true).apply {
+                        setPadding(0, dp(4), 0, 0)
+                    })
+                }
             })
         }
 

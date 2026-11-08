@@ -307,12 +307,297 @@ object ScanApi {
         return """{"ok":true,"offlineSaved":true}"""
     }
 
+    data class DietaryOption(
+        val id: String,
+        val emoji: String,
+        val title: String,
+        val subtitle: String,
+        val shortBadge: String,
+    )
+
+    data class DietaryAlert(
+        val id: String,
+        val label: String,
+        val shortBadge: String,
+        val reason: String,
+    )
+
+    val DIETARY_OPTIONS = listOf(
+        DietaryOption(
+            id = "sugar_diabetes",
+            emoji = "🩸",
+            title = "Sugar / Diabetes Watch",
+            subtitle = "Flags added sugars, corn syrup/HFCS, >=10g sugar/100g, or refined starch spikes",
+            shortBadge = "SUGAR"
+        ),
+        DietaryOption(
+            id = "dairy",
+            emoji = "🥛",
+            title = "Dairy / Lactose Allergy",
+            subtitle = "Flags milk, cream, butter, whey, casein, lactose, cheese & yogurt",
+            shortBadge = "DAIRY"
+        ),
+        DietaryOption(
+            id = "wheat_gluten",
+            emoji = "🌾",
+            title = "Wheat / Gluten Allergy",
+            subtitle = "Flags wheat, enriched flour, barley, malt, rye, spelt & semolina",
+            shortBadge = "WHEAT"
+        ),
+        DietaryOption(
+            id = "peanuts_nuts",
+            emoji = "🥜",
+            title = "Peanut & Tree Nut Allergy",
+            subtitle = "Flags peanuts, almonds, cashews, walnuts, pecans, hazelnuts & pistachios",
+            shortBadge = "NUTS"
+        ),
+        DietaryOption(
+            id = "soy",
+            emoji = "🫘",
+            title = "Soy Allergy",
+            subtitle = "Flags soy, soybean oil, soy lecithin, soy protein, tofu & edamame",
+            shortBadge = "SOY"
+        ),
+        DietaryOption(
+            id = "egg",
+            emoji = "🥚",
+            title = "Egg Allergy",
+            subtitle = "Flags whole egg, egg whites/yolks, albumin & mayonnaise",
+            shortBadge = "EGG"
+        ),
+        DietaryOption(
+            id = "shellfish_fish",
+            emoji = "🐟",
+            title = "Shellfish & Fish Allergy",
+            subtitle = "Flags shrimp, crab, lobster, clams, anchovies, salmon, tuna & cod",
+            shortBadge = "FISH"
+        ),
+        DietaryOption(
+            id = "high_sodium",
+            emoji = "🧂",
+            title = "High Sodium / Blood Pressure",
+            subtitle = "Flags >=400mg sodium/100g, MSG, sodium phosphate & added brine",
+            shortBadge = "SODIUM"
+        ),
+    )
+
+    /**
+     * Evaluates the user's opt-in Personal Allergy & Diabetes Watchlist against a scanned product.
+     * Returns an empty list when no boxes are checked (all unchecked by default).
+     */
+    fun evaluateDietaryAlerts(
+        ctx: Context,
+        productJson: JSONObject?,
+        resultJson: JSONObject? = null,
+        rootDataJson: JSONObject? = null,
+    ): List<DietaryAlert> {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val selected = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
+        if (selected.isEmpty()) return emptyList()
+
+        val title = productJson?.optString("title").orEmpty()
+        val ingredients = productJson?.optString("ingredients").orEmpty()
+        val nutrition = productJson?.optJSONObject("nutrition")
+        val combined = "$title $ingredients"
+        if (combined.isBlank()) {
+            // Fall back to server-computed dietaryAlerts if product JSON has no local ingredients
+            val serverArr = rootDataJson?.optJSONArray("dietaryAlerts")
+            if (serverArr != null && serverArr.length() > 0) {
+                val list = ArrayList<DietaryAlert>()
+                for (i in 0 until serverArr.length()) {
+                    val o = serverArr.optJSONObject(i) ?: continue
+                    val id = o.optString("id")
+                    if (id in selected) {
+                        list.add(
+                            DietaryAlert(
+                                id = id,
+                                label = o.optString("label", "⚠️ Dietary Alert"),
+                                shortBadge = o.optString("shortBadge", "ALERT"),
+                                reason = o.optString("reason", "Flagged by your personal watchlist")
+                            )
+                        )
+                    }
+                }
+                return list
+            }
+            return emptyList()
+        }
+
+        val alerts = ArrayList<DietaryAlert>()
+
+        if ("sugar_diabetes" in selected &&
+            !Regex("\\b(zero\\s+sugar|sugar[\\s-]*free|unsweetened|\\bdiet\\b)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        ) {
+            val sugarsG = nutrition?.optDouble("sugarsG100g", 0.0) ?: 0.0
+            val sugarMatch = Regex(
+                "\\b(high\\s+fructose\\s+corn\\s+syrup|corn\\s+syrup|cane\\s+sugar|brown\\s+sugar|sugar|sucrose|dextrose|maltose|fructose|glucose\\s+syrup|honey|maple\\s+syrup|molasses|agave|invert\\s+sugar|fruit\\s+juice\\s+concentrate)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(ingredients)
+            val refinedCarbMatch = Regex(
+                "\\b(enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|maltodextrin|modified\\s+(?:corn|food)\\s+starch|instant\\s+mashed|white\\s+rice\\s+flour)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(ingredients)
+            if (sugarsG >= 10.0 || sugarMatch != null || refinedCarbMatch != null) {
+                val reasons = ArrayList<String>()
+                if (sugarsG >= 10.0) reasons.add("${sugarsG.toInt()}g sugar/100g")
+                if (sugarMatch != null) {
+                    reasons.add("Added sweetener (${sugarMatch.value.lowercase()})")
+                } else if (refinedCarbMatch != null) {
+                    reasons.add("Refined glycemic starch (${refinedCarbMatch.value.lowercase()})")
+                }
+                alerts.add(
+                    DietaryAlert(
+                        id = "sugar_diabetes",
+                        label = "🩸 Sugar / Diabetes Watch",
+                        shortBadge = "SUGAR",
+                        reason = reasons.joinToString(" • ")
+                    )
+                )
+            }
+        }
+
+        if ("dairy" in selected &&
+            !Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|plant[\\s-]*based|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        ) {
+            val cleanedDairyText = combined.replace(
+                Regex("\\b(coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|rice\\s+milk|cashew\\s+milk|peanut\\s+butter|cocoa\\s+butter|shea\\s+butter|apple\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|cream\\s+of\\s+tartar)\\b", RegexOption.IGNORE_CASE),
+                " "
+            )
+            val m = Regex(
+                "\\b(milk|cream|butter|buttermilk|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|sour\\s+cream|half\\s+and\\s+half|lactalbumin)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(cleanedDairyText)
+            if (m != null) {
+                alerts.add(
+                    DietaryAlert(
+                        id = "dairy",
+                        label = "🥛 Dairy / Lactose Alert",
+                        shortBadge = "DAIRY",
+                        reason = "Contains ${m.value.lowercase()}"
+                    )
+                )
+            }
+        }
+
+        if ("wheat_gluten" in selected &&
+            !Regex("\\b(gluten[\\s-]*free|grain[\\s-]*free|celiac)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        ) {
+            val m = Regex(
+                "\\b(wheat|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|graham\\s+flour|vital\\s+wheat\\s+gluten)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(combined)
+            if (m != null) {
+                alerts.add(
+                    DietaryAlert(
+                        id = "wheat_gluten",
+                        label = "🌾 Wheat / Gluten Alert",
+                        shortBadge = "WHEAT",
+                        reason = "Contains ${m.value.lowercase()}"
+                    )
+                )
+            }
+        }
+
+        if ("peanuts_nuts" in selected) {
+            val m = Regex(
+                "\\b(peanuts?|peanut\\s+butter|peanut\\s+oil|peanut\\s+flour|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\\s+nuts?|pine\\s+nuts?|praline|marzipan|nougat|gianduja)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(combined)
+            if (m != null) {
+                alerts.add(
+                    DietaryAlert(
+                        id = "peanuts_nuts",
+                        label = "🥜 Peanut & Tree Nut Alert",
+                        shortBadge = "NUTS",
+                        reason = "Contains ${m.value.lowercase()}"
+                    )
+                )
+            }
+        }
+
+        if ("soy" in selected) {
+            val m = Regex(
+                "\\b(soy|soya|soybeans?|soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\\s+vegetable\\s+protein)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(combined)
+            if (m != null) {
+                alerts.add(
+                    DietaryAlert(
+                        id = "soy",
+                        label = "🫘 Soy Alert",
+                        shortBadge = "SOY",
+                        reason = "Contains ${m.value.lowercase()}"
+                    )
+                )
+            }
+        }
+
+        if ("egg" in selected) {
+            val cleanedEggText = combined.replace(Regex("\\beggplants?\\b", RegexOption.IGNORE_CASE), " ")
+            val m = Regex(
+                "\\b(eggs?|egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(cleanedEggText)
+            if (m != null) {
+                alerts.add(
+                    DietaryAlert(
+                        id = "egg",
+                        label = "🥚 Egg Alert",
+                        shortBadge = "EGG",
+                        reason = "Contains ${m.value.lowercase()}"
+                    )
+                )
+            }
+        }
+
+        if ("shellfish_fish" in selected) {
+            val m = Regex(
+                "\\b(shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\\s+sauce|fish\\s+oil)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(combined)
+            if (m != null) {
+                alerts.add(
+                    DietaryAlert(
+                        id = "shellfish_fish",
+                        label = "🐟 Shellfish & Fish Alert",
+                        shortBadge = "FISH",
+                        reason = "Contains ${m.value.lowercase()}"
+                    )
+                )
+            }
+        }
+
+        if ("high_sodium" in selected) {
+            val sodiumMg = nutrition?.optDouble("sodiumMg100g", 0.0) ?: 0.0
+            val sodiumAddMatch = Regex(
+                "\\b(monosodium\\s+glutamate|sodium\\s+phosphate|disodium\\s+inosinate|disodium\\s+guanylate|sodium\\s+tripolyphosphate|sodium\\s+nitrite|sodium\\s+nitrate|sodium\\s+benzoate|sodium\\s+caseinate|brine|saline\\s+solution)\\b",
+                RegexOption.IGNORE_CASE
+            ).find(ingredients)
+            if (sodiumMg >= 400.0 || sodiumAddMatch != null) {
+                val reasons = ArrayList<String>()
+                if (sodiumMg >= 400.0) reasons.add("${sodiumMg.toInt()}mg sodium/100g")
+                if (sodiumAddMatch != null) reasons.add("Contains ${sodiumAddMatch.value.lowercase()}")
+                alerts.add(
+                    DietaryAlert(
+                        id = "high_sodium",
+                        label = "🧂 High Sodium Watch",
+                        shortBadge = "SODIUM",
+                        reason = reasons.joinToString(" • ")
+                    )
+                )
+            }
+        }
+
+        return alerts
+    }
+
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
             .map { if (it == "nitrites") "nitrates" else it }
             .toSet()
+        val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
         val refCode = referredByCode(ctx)
         val body = JSONObject().apply {
             put("productTitle", productTitle)
@@ -320,6 +605,9 @@ object ScanApi {
             put("store", store)
             if (familyWatchlist.isNotEmpty()) {
                 put("familyWatchlist", JSONArray(familyWatchlist.toList().sorted()))
+            }
+            if (dietaryWatchlist.isNotEmpty()) {
+                put("dietaryWatchlist", JSONArray(dietaryWatchlist.toList().sorted()))
             }
             put("deviceId", deviceId(ctx))
             if (!refCode.isNullOrBlank()) {

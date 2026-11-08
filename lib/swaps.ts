@@ -619,6 +619,18 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
+    match: /\b(ramen|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban)\b/i,
+    alt: {
+      category: "Cereal",
+      brand: "Lotus Foods",
+      name: "Organic Millet & Brown Rice Ramen",
+      size: "10 oz (4 pack)",
+      price: 5.99,
+      image: "/swaps/soup.png",
+      ingredients: "Organic brown rice flour, organic millet flour, water.",
+    },
+  },
+  {
     match: /\b(clam\s+chowder|chowder|soup|bisque|stew|chili|campbell'?s|progresso)\b/i,
     alt: {
       category: "Dressings",

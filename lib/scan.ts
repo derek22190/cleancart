@@ -12,6 +12,13 @@ import {
 import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
 import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
 
+export interface DietaryAlert {
+  id: string;
+  label: string;
+  shortBadge: string;
+  reason: string;
+}
+
 export interface ScanRequest {
   productTitle?: string;
   rawIngredients?: string;
@@ -19,6 +26,7 @@ export interface ScanRequest {
   store?: string;
   watchlist?: Watchlist;
   familyWatchlist?: Category[];
+  dietaryWatchlist?: string[];
   deviceId?: string;
   referredByCode?: string;
   format?: "json" | "ios_text";
@@ -38,10 +46,150 @@ export interface ScanResponse {
   };
   lookup: { source: LookupResult["source"]; origin?: LookupResult["origin"]; ms: number };
   result: ScoreResult;
+  dietaryAlerts?: DietaryAlert[];
   swap: SwapResult | null;
   store: Store;
   pill: string;
   entitlement?: EntitlementSummary;
+}
+
+export function evaluateDietaryAlerts(
+  dietaryWatchlist: string[] | undefined,
+  productTitle: string,
+  ingredients: string,
+  nutrition?: NutritionInput,
+): DietaryAlert[] {
+  if (!Array.isArray(dietaryWatchlist) || dietaryWatchlist.length === 0) return [];
+  const selected = new Set(dietaryWatchlist.map((s) => String(s).trim().toLowerCase()));
+  const text = `${productTitle} ${ingredients}`.toLowerCase();
+  const ing = ingredients.toLowerCase();
+  const alerts: DietaryAlert[] = [];
+
+  if (selected.has("sugar_diabetes")) {
+    const sugarsG = nutrition?.sugarsG100g ?? 0;
+    const sugarMatch = ing.match(
+      /\b(high\s+fructose\s+corn\s+syrup|corn\s+syrup|cane\s+sugar|brown\s+sugar|sugar|sucrose|dextrose|maltose|fructose|glucose\s+syrup|honey|maple\s+syrup|molasses|agave|invert\s+sugar|fruit\s+juice\s+concentrate)\b/i,
+    );
+    const refinedCarbMatch = ing.match(
+      /\b(enriched\s+(?:wheat\s+)?flour|bleached\s+(?:wheat\s+)?flour|maltodextrin|modified\s+(?:corn|food)\s+starch|instant\s+mashed|white\s+rice\s+flour)\b/i,
+    );
+    if (sugarsG >= 10 || sugarMatch || refinedCarbMatch) {
+      const reasons: string[] = [];
+      if (sugarsG >= 10) reasons.push(`${sugarsG}g sugar per 100g`);
+      if (sugarMatch) reasons.push(`Added sweetener (${sugarMatch[0]})`);
+      else if (refinedCarbMatch) reasons.push(`Refined glycemic starch (${refinedCarbMatch[0]})`);
+      alerts.push({
+        id: "sugar_diabetes",
+        label: "🩸 Sugar / Diabetes Watch",
+        shortBadge: "SUGAR",
+        reason: reasons.join(" • "),
+      });
+    }
+  }
+
+  if (selected.has("dairy") && !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/i.test(productTitle)) {
+    const m = text.match(
+      /\b(milk|cream|butter|buttermilk|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|sour\s+cream|half\s+and\s+half|lactalbumin)\b/i,
+    );
+    if (m && !/\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|peanut\s+butter|cocoa\s+butter|shea\s+butter|apple\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|cream\s+of\s+tartar)\b/i.test(m[0])) {
+      alerts.push({
+        id: "dairy",
+        label: "🥛 Dairy / Lactose Alert",
+        shortBadge: "DAIRY",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
+  if (selected.has("wheat_gluten") && !/\b(gluten[\s-]*free|grain[\s-]*free|celiac)\b/i.test(productTitle)) {
+    const m = text.match(
+      /\b(wheat|enriched\s+flour|bleached\s+flour|unbleached\s+flour|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|graham\s+flour|vital\s+wheat\s+gluten)\b/i,
+    );
+    if (m) {
+      alerts.push({
+        id: "wheat_gluten",
+        label: "🌾 Wheat / Gluten Alert",
+        shortBadge: "WHEAT",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
+  if (selected.has("peanuts_nuts")) {
+    const m = text.match(
+      /\b(peanuts?|peanut\s+butter|peanut\s+oil|peanut\s+flour|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
+    );
+    if (m) {
+      alerts.push({
+        id: "peanuts_nuts",
+        label: "🥜 Peanut & Tree Nut Alert",
+        shortBadge: "NUTS",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
+  if (selected.has("soy")) {
+    const m = text.match(
+      /\b(soy|soya|soybeans?|soybean\s+oil|soy\s+lecithin|soy\s+protein|soy\s+flour|soy\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\s+vegetable\s+protein)\b/i,
+    );
+    if (m) {
+      alerts.push({
+        id: "soy",
+        label: "🫘 Soy Alert",
+        shortBadge: "SOY",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
+  if (selected.has("egg")) {
+    const m = text.match(
+      /\b(eggs?|egg\s+whites?|egg\s+yolks?|dried\s+egg|powdered\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\b/i,
+    );
+    if (m && !/\beggplants?\b/i.test(m[0])) {
+      alerts.push({
+        id: "egg",
+        label: "🥚 Egg Alert",
+        shortBadge: "EGG",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
+  if (selected.has("shellfish_fish")) {
+    const m = text.match(
+      /\b(shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\s+sauce|fish\s+oil)\b/i,
+    );
+    if (m) {
+      alerts.push({
+        id: "shellfish_fish",
+        label: "🐟 Shellfish & Fish Alert",
+        shortBadge: "FISH",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
+  if (selected.has("high_sodium")) {
+    const sodiumMg = nutrition?.sodiumMg100g ?? 0;
+    const sodiumAddMatch = ing.match(
+      /\b(monosodium\s+glutamate|sodium\s+phosphate|disodium\s+inosinate|disodium\s+guanylate|sodium\s+tripolyphosphate|sodium\s+nitrite|sodium\s+nitrate|sodium\s+benzoate|sodium\s+caseinate|brine|saline\s+solution)\b/i,
+    );
+    if (sodiumMg >= 400 || sodiumAddMatch) {
+      const reasons: string[] = [];
+      if (sodiumMg >= 400) reasons.push(`${sodiumMg}mg sodium per 100g`);
+      if (sodiumAddMatch) reasons.push(`Contains ${sodiumAddMatch[0].toLowerCase()}`);
+      alerts.push({
+        id: "high_sodium",
+        label: "🧂 High Sodium Watch",
+        shortBadge: "SODIUM",
+        reason: reasons.join(" • "),
+      });
+    }
+  }
+
+  return alerts;
 }
 
 export interface ScanError {
@@ -244,9 +392,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
 
   // Reject pure store UI controls, quantity +/- steppers, variant labels ("Flavor: Blueberry"), cart headers ("Cart, (12 items)"),
   // addresses ("1034 Elmwood Dr", "Change delivery address...", "This isn't your preferred address..."),
-  // barcode scanner buttons ("Opens barcode scanner"), and delivery time slots ("Express, 68-98 min...", "Today, 3 hr or less...", "Today, 6pm-8pm, Free with Walmart+")
+  // barcode scanner buttons ("Opens barcode scanner"), delivery time slots ("Express, 68-98 min..."),
+  // and promotional section headers/subtitles ("A full Thanksgiving meal, Turkey, classic sides & more.", "Thanksgiving feast for 4")
   const CART_CONTROL_OR_UI_NOISE =
-    /^(?:[✓✔☑•·\s]*(?:bought\s+\d+\+?\s*times?.*|stay\s+stocked.*|last\s+purchased.*)|(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|(?:get\s+\$?\d+(?:\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|tasty\s+os\b.*|.*\bmade\s+with\s+care$|unbranded|panera(?:\s+bread)?|blount(?:\s+clam\s+shack)?|(?:increase|decrease)\s+quantity\b.*|reserve\s+a\s+time.*|choose\s+a\s+time.*|select\s+a\s+time.*|book\s+a\s+time.*|hide\s+details.*|show\s+details.*|view\s+details.*|see\s+details.*|don'?t\s+forget.*|delivery\s+from\s+store.*|pickup\s+from\s+store.*|pickup\s+and\s+delivery.*|available\s+for\s+\d+\s+of\s+\d+\s+items.*|free\s+\d+-day\s+returns$|free\s+holiday\s+returns.*|gift\s+eligible.*|sold\s+by\s+.+|fulfilled\s+by\s+.+|sold\s+and\s+shipped\s+by\s+.+|arrives\s+(?:between|by)\s+.+|fees\s+may\s+apply.*|add\s+\$\d+.*|skip\s+the\s+order\s+min\s+fee.*|bought\s+\d+\+?\s*times?.*|.*stay\s+stocked\s+and\s+subscribe.*|.*last\s+purchased\s+on.*|.*(?:straight\s+talk|google\s+pixel|pixel\s+\d+a?|tracfone|boost\s+mobile|cricket\s+wireless|total\s+wireless).*|choose\s+substitution.*|say\s+thanks\s+with\s+a\s+tip.*|product\s+information.*|items\s+to\s+add\s+next.*|many\s+in\s+stock.*|out\s+of\s+stock.*|snap\s+ebt\s+eligible$|pro\s+seller$|save\s+for\s+later$|move\s+to\s+cart$|remove$|delete$|opens?\s+barcode\s+scanner.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(?:delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(?:express|today|tomorrow|asap)\s*,?\s*(?:\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)).*|.*,\s*was$|.*\b(?:\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm))\b.*|.*\bfree\s+with\s+(?:walmart\+?|\bw\+).*|.*\?)$/i;
+    /^(?:[✓✔☑•·\s]*(?:bought\s+\d+\+?\s*times?.*|stay\s+stocked.*|last\s+purchased.*)|(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|(?:get\s+\$?\d+(?:\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|tasty\s+os\b.*|.*\bmade\s+with\s+care$|unbranded|panera(?:\s+bread)?|blount(?:\s+clam\s+shack)?|(?:increase|decrease)\s+quantity\b.*|reserve\s+a\s+time.*|choose\s+a\s+time.*|select\s+a\s+time.*|book\s+a\s+time.*|hide\s+details.*|show\s+details.*|view\s+details.*|see\s+details.*|don'?t\s+forget.*|delivery\s+from\s+store.*|pickup\s+from\s+store.*|pickup\s+and\s+delivery.*|available\s+for\s+\d+\s+of\s+\d+\s+items.*|free\s+\d+-day\s+returns$|free\s+holiday\s+returns.*|gift\s+eligible.*|sold\s+by\s+.+|fulfilled\s+by\s+.+|sold\s+and\s+shipped\s+by\s+.+|arrives\s+(?:between|by)\s+.+|fees\s+may\s+apply.*|add\s+\$\d+.*|skip\s+the\s+order\s+min\s+fee.*|bought\s+\d+\+?\s*times?.*|.*stay\s+stocked\s+and\s+subscribe.*|.*last\s+purchased\s+on.*|.*(?:straight\s+talk|google\s+pixel|pixel\s+\d+a?|tracfone|boost\s+mobile|cricket\s+wireless|total\s+wireless).*|choose\s+substitution.*|say\s+thanks\s+with\s+a\s+tip.*|product\s+information.*|items\s+to\s+add\s+next.*|many\s+in\s+stock.*|out\s+of\s+stock.*|snap\s+ebt\s+eligible$|pro\s+seller$|save\s+for\s+later$|move\s+to\s+cart$|remove$|delete$|opens?\s+barcode\s+scanner.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(?:delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(?:express|today|tomorrow|asap)\s*,?\s*(?:\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)).*|.*,\s*was$|.*\b(?:\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm))\b.*|.*\bfree\s+with\s+(?:walmart\+?|\bw\+).*|.*\b(?:thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list)\b.*|.*&\s*more\.?$|.*\?)$/i;
   // On mobile accessibility overlay scans (where deviceId is supplied), reject standalone 1-word packaged brand logos
   // (e.g. "Cheerios" from top Sponsored banner ads, or standalone "Martin's" / "Velveeta" / "Great Value" brand links above titles)
   // so the app's candidate loop immediately advances to the full multi-word product title!
@@ -360,6 +509,12 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     ...found.nutrition,
     productTitle: `${productTitle} ${title}`.trim(),
   });
+  const dietaryAlerts = evaluateDietaryAlerts(
+    req.dietaryWatchlist,
+    `${productTitle} ${title}`.trim(),
+    found.ingredients,
+    found.nutrition,
+  );
   const swap = resolveSwap({
     score: result.score,
     productTitle: `${productTitle} ${title}`,
@@ -426,6 +581,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     )
     .catch(() => {});
 
+  const pillText =
+    dietaryAlerts.length > 0
+      ? `⚠️ ${dietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")} • ${result.score}/100`
+      : `${result.score}/100 • Tap to Inspect`;
+
   return {
     ok: true,
     product: {
@@ -440,9 +600,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     },
     lookup: { source: found.source, origin: found.origin, ms: found.ms },
     result,
+    ...(dietaryAlerts.length > 0 ? { dietaryAlerts } : {}),
     swap: resolvedSwap,
     store,
-    pill: `${result.score}/100 • Tap to Inspect`,
+    pill: pillText,
     entitlement,
   };
 }
