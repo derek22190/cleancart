@@ -3,7 +3,7 @@
   "name": "HeyBroc — CleanCart PureOverlay",
   "short_name": "HeyBroc",
   "version": "1.3.0",
-  "description": "Ingredient-only grocery grader with 1-tap clean swaps on Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco & Shipt.",
+  "description": "Ingredient-only grocery grader with 1-tap clean swaps across 12 grocery stores.",
   "icons": {
     "16": "broc-mascot.png",
     "48": "broc-mascot.png",
