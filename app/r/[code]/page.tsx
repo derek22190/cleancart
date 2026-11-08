@@ -102,8 +102,8 @@ export default function ReferralLandingPage({
           }}
         >
           HeyBroc floats over <b>Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh, Instacart, ALDI &amp; more</b> on
-          your phone to grade food &amp; household ingredients (0–100) and swap dirty
-          items for clean 1-for-1 alternatives in 1 tap.
+          your phone to grade food &amp; beverage ingredients (0–100) and swap dirty
+          items for clean 1-for-1 alternatives in 1 tap. Start a free trial with this code to unlock +7 Free Pro Days!
         </p>
 
         <div

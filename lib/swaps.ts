@@ -78,11 +78,11 @@ export interface SwapResult {
   image: string;
   score: number;
   store: Store;
-  webUrl: string;
-  deepLink: string;
+  webUrl?: string;
+  deepLink?: string;
   androidPackage: string;
   /** Android browser intent URL that opens the store app if installed, else falls back to web. */
-  androidIntentUrl: string;
+  androidIntentUrl?: string;
 }
 
 export const STORE_META: Record<Store, { label: string; host: string; androidPackage: string; scheme: string }> = {
@@ -1235,6 +1235,9 @@ export function buildLinks(alt: CleanAlternative, store: Store, clickId = impact
   return { searchQuery, webUrl, deepLink, androidIntentUrl, androidPackage: meta.androidPackage };
 }
 
+const NON_FOOD_SWAP_GUARD =
+  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue)\b/i;
+
 /**
  * Returns a verified 1-for-1 clean swap when a product scores < 75, else null.
  * The alternative is verified against the deterministic additive rubric (with active watchlist)
@@ -1250,6 +1253,9 @@ export function resolveSwap(params: {
   familyWatchlist?: import("./rubric").Category[];
 }): SwapResult | null {
   if (params.score >= 75) return null;
+  if (params.productTitle && NON_FOOD_SWAP_GUARD.test(params.productTitle)) {
+    return null;
+  }
   const store = params.store && STORES.includes(params.store) ? params.store : "walmart";
   const alt = resolveCleanAlternative(params.productTitle, params.category);
   const category = alt.category;
@@ -1259,8 +1265,7 @@ export function resolveSwap(params: {
   const yukaRes = scoreProductYuka(alt.ingredients, params.watchlist, params.familyWatchlist, {
     productTitle: fullTitle,
   });
-  const isOrg = /\borganic\b/i.test(`${fullTitle} ${alt.ingredients}`);
-  const altScore = Math.max(yukaRes.score, isOrg ? 92 : 90);
+  const altScore = yukaRes.score;
   if (altScore <= params.score) return null;
   return {
     category,
@@ -1277,3 +1282,4 @@ export function resolveSwap(params: {
     ...buildLinks(alt, store),
   };
 }
+

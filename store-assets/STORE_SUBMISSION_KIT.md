@@ -38,17 +38,17 @@ Instant 0–100 ingredient health scores & 1-Tap Clean Swaps while you shop!
 ```text
 Shop clean and skip hidden food additives, seed oils, and artificial dyes—automatically while you browse your favorite grocery stores.
 
-HeyBroc grades over 7.5 million food, cosmetic, and household products on a transparent 0–100 scale and recommends healthier 1-for-1 Clean Swaps in a single tap.
+HeyBroc grades grocery foods and beverages across our curated grocery catalog, Open Food Facts, and USDA FoodData Central on a transparent 0–100 scale and recommends healthier 1-for-1 Clean Swaps in a single tap.
 
 HOW HEYBROC WORKS:
 • Transparent 3-Pillar Score (0–100): Every product is graded across Nutritional Quality (60%), Additive & Chemical Safety (30%), and Organic Bonus (10%).
 • Instant Flagged Ingredient Breakdown: Immediately see high-risk and moderate-risk additives like Red 40, Yellow 5 & 6, Titanium Dioxide, Potassium Bromate, BHA/BHT, High Fructose Corn Syrup, Nitrites, Carrageenan, and Refined Seed Oils—with plain-English explanations and scientific citations.
 • 1-Tap Clean Swaps: Whenever a product scores poorly, HeyBroc shows a real, same-category healthier alternative (like swapping conventional chips or dressings for avocado-oil or organic picks) so you never have to guess what to buy instead.
 • Live Store Bubble & Safari Extension: Floats right alongside your grocery shopping on Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh, DoorDash, Uber Eats, and Shipt.
-• Custom Family Watchlist: Toggle the exact categories your household avoids (Seed Oils, Artificial Dyes, Artificial Sweeteners, Preservatives, Emulsifiers, or High Sodium/Sugar).
+• Custom Family Watchlist: Toggle the exact categories your household avoids (Seed Oils, Artificial Dyes, Artificial Sweeteners, Preservatives & Nitrites, Emulsifiers, Thickening Gums, or Artificial Flavors & MSG).
 
 100% INDEPENDENT RATING:
-HeyBroc never accepts payments from food or cosmetic brands to boost product scores. Every score is calculated deterministically from the ingredient list and nutrition facts.
+HeyBroc never accepts payments from food brands to boost product scores. Every score is calculated deterministically from the ingredient list and nutrition data.
 
 Privacy Policy: https://www.heybroc.com/privacy
 ```
@@ -67,9 +67,9 @@ In Google Play Console → **Policy and programs → App content → Accessibili
 - **Category / Purpose:** Utility / Shopping Assistant triggered by user opt-in
 - **Explanation (Copy-paste into Play Console):**
 ```text
-HeyBroc uses the Android AccessibilityService API solely after explicit user opt-in via our prominent in-app disclosure modal to read the visible product title text on supported grocery shopping apps (Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon, DoorDash, Uber Eats, and Shipt) so HeyBroc can display the product's 0–100 ingredient health score and cleaner swap suggestions in a floating pill.
+HeyBroc uses the Android AccessibilityService API solely after explicit user opt-in via our prominent in-app disclosure modal to read the visible product title text, visible ingredient text, and visible cart item titles (up to 20 items on Cart screens) on supported grocery shopping apps (Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh / Whole Foods, DoorDash, Uber Eats, and Shipt) so HeyBroc can display the product's 0–100 ingredient health score, Whole-Cart Health Check, and cleaner swap suggestions in a floating pill.
 
-HeyBroc never reads passwords, payment inputs, messages, or text outside the allowlisted grocery shopping packages, never modifies user settings without permission, and never stores or transmits personal user data. Users can disable the Live Store Reader or snooze the floating bubble with one tap at any time.
+Extracted product titles, ingredient text, active store identifier, watchlist preferences, referral code, and an install-scoped random UUID (retained up to 1 year for Pro entitlement and weekly swap accounting) are transmitted over HTTPS to heybroc.com/api/scan. HeyBroc never reads passwords, payment inputs, messages, or text outside the allowlisted grocery shopping packages, and never sells personal user data. Users can pause or disable the Live Store Bubble with one tap at any time.
 ```
 
 ---
@@ -77,7 +77,10 @@ HeyBroc never reads passwords, payment inputs, messages, or text outside the all
 ## 4. Google Play Data Safety & Apple App Privacy Answers
 
 - **Does your app collect or share any of the required user data types?**
-  - **No** (Scan history and family watchlist preferences are stored locally on the user's device via `SharedPreferences` / `UserDefaults`).
+  - **Yes**:
+    - **App-scoped Device ID (`deviceId`)**: Install-scoped random UUID transmitted for free weekly swap accounting, referral credit, and Pro entitlement verification (App Functionality).
+    - **Product Browsing Queries (`productTitle`, `rawIngredients`, visible cart item titles)**: Transmitted over HTTPS to `heybroc.com/api/scan` to compute 0–100 ingredient scores and Clean Swaps (App Functionality).
+    - **Email Address & Name (Optional)**: Collected only if the user voluntarily creates an account or subscribes via web checkout, with full in-app account deletion (*Menu → Account → Delete Account & All Saved Data*).
 - **Does your app track users across other companies' apps or websites (Apple ATT)?**
   - **No** (`NSPrivacyTracking = false` in `ios-app/App/PrivacyInfo.xcprivacy`).
 - **Is all network traffic encrypted in transit (HTTPS)?**

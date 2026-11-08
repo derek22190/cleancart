@@ -68,7 +68,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(white\s+monster|monster\s+(?:energy\s+)?zero\s+ultra|monster\s+ultra\s+white|zero\s+ultra\s+monster)\b/i,
+    match: /\b(white\s+monster|monster\s+(?:energy\s+)?zero\s+ultra|monster\s+(?:energy\s+)?zero\s+sugar|monster\s+ultra\s+zero|monster\s+ultra\s+white|zero\s+ultra\s+monster|sugar[\s-]*free\s+monster)\b/i,
   },
   {
     id: "monster-mango-loco",
@@ -2565,16 +2565,30 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
 ];
 
+function isZeroOrDietDrink(item: DrinkCatalogEntry): boolean {
+  if ((item.nutrition.sugarsG100g ?? 0) > 0) return false;
+  const zeroModifier =
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer)\b/i;
+  if (zeroModifier.test(item.title)) return true;
+  return item.keywords.some((k) => zeroModifier.test(k));
+}
+
 /**
  * Matches a user or screen-reader query against the comprehensive Beverage & Drink Encyclopedia.
  */
 export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
   const q = query.trim();
   if (!q) return null;
+  const requiresZeroOrDiet =
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|unsweetened)\b/i.test(q);
   for (const item of DRINKS_CATALOG) {
     if (item.match.test(q)) {
+      if (requiresZeroOrDiet && !isZeroOrDietDrink(item)) {
+        continue;
+      }
       return item;
     }
   }
   return null;
 }
+

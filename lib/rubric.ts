@@ -1,9 +1,11 @@
 /**
- * CleanCart — Deterministic Additive Rubric
- * -----------------------------------------
- * Scores a product 100% on INGREDIENT QUALITY. Calories, carbs, natural fat and
- * sodium are never considered. The same ingredient string always produces the
- * exact same score: no AI, no randomness, no network.
+ * CleanCart — Deterministic Ingredient & 3-Pillar Nutrition Rubric
+ * ----------------------------------------------------------------
+ * - `scoreIngredients`: pure additive & ingredient safety rubric (0–100).
+ * - `scoreProductYuka`: 3-pillar Yuka-style rubric combining Nutritional Quality
+ *   (0–60 pts, Nutri-Score A–E), Additive Safety (0–30 pts), and Certified Organic
+ *   / Whole-Food Bonus (0–10 pts), with a 49/100 ceiling when any high-risk additive
+ *   is present.
  *
  * This file is dependency-free and isomorphic (server + browser).
  */
@@ -52,7 +54,7 @@ export interface YukaBreakdown {
   organicScore: number;
   /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
   highRiskCapped: boolean;
-  /** Blood sugar / glycemic impact tier for Diabetes & PCOS awareness. */
+  /** Sugar & refined-carb impact tier. */
   glucoseImpact?: "Low Spike" | "Moderate Spike" | "High Spike";
   glucoseColor?: RatingColor;
   glucoseNote?: string;
@@ -1057,7 +1059,7 @@ export function scoreProductYuka(
     }
   }
 
-  // Compute Blood Sugar / Glucose Spike & Calorie Smart insight (for Diabetes, PCOS & metabolic clarity)
+  // Compute Sugar & refined-carb note and Calorie Smart insight
   const hasRapidGlycemicAdditive =
     base.flagged.some((f) => f.category === "hfcs") ||
     /\b(maltodextrin|dextrose|corn syrup|glucose syrup|cane sugar|brown sugar|invert sugar)\b/i.test(base.normalizedIngredients);
@@ -1067,7 +1069,7 @@ export function scoreProductYuka(
   let glucoseImpact: "Low Spike" | "Moderate Spike" | "High Spike" = "Low Spike";
   let glucoseColor: RatingColor = "green";
   let glucoseNote =
-    "Steady glycemic profile — low added sugar and minimal glucose spike risk (PCOS & blood-sugar friendly).";
+    "Sugar & refined-carb note: Steady glycemic profile — low added sugar and minimal refined-carbohydrate load.";
 
   if (
     (isBeverage && sugars >= 5) ||
@@ -1078,12 +1080,12 @@ export function scoreProductYuka(
     glucoseImpact = "High Spike";
     glucoseColor = "red";
     glucoseNote =
-      "High glucose spike risk — concentrated sugars or fast-absorbing syrups can rapidly elevate blood glucose and insulin (watch for Type 2 Diabetes & PCOS).";
+      "Sugar & refined-carb note: High free-sugar or fast-absorbing syrup content — best enjoyed mindfully or paired with fiber and protein.";
   } else if (sugars >= 6 || hasRapidGlycemicAdditive || (hasRefinedCarbBase && fiber < 4)) {
     glucoseImpact = "Moderate Spike";
     glucoseColor = "yellow";
     glucoseNote =
-      "Moderate glucose impact — contains fast-digesting starches or sugars; pair with protein or healthy fats to steady blood sugar.";
+      "Sugar & refined-carb note: Contains fast-digesting starches or added sugars; pair with protein, fiber, or healthy fats.";
   }
 
   const calorieSuffix = hasMeasuredCalories ? ` (${Math.round(kcal)} kcal/100g)` : "";

@@ -11,6 +11,7 @@
 import "server-only";
 import { PRICING, commissionFor, type PlanId } from "./pricing";
 import {
+  kvAtomicHashUpdateOnce,
   kvDel,
   kvGet,
   kvHGetAll,
@@ -297,9 +298,9 @@ export async function trackEvent(
 }
 
 /**
- * Idempotently records a creator conversion from a verified Stripe webhook event.
- * IMPORTANT: The idempotency key is written ONLY AFTER `trackEvent` succeeds so
- * a failed write never permanently loses a sale.
+ * Idempotently records a creator conversion from a verified Stripe/RevenueCat webhook event.
+ * Uses `kvAtomicHashUpdateOnce` so concurrent webhook deliveries (e.g. `checkout.session.completed`,
+ * `customer.subscription.updated`, `invoice.paid`) cannot double-credit the creator ledger.
  */
 export async function recordStripeCreatorConversionOnce(
   idempotencyKey: string,
@@ -312,12 +313,48 @@ export async function recordStripeCreatorConversionOnce(
   if (!creator) return null;
 
   const markerKey = `heybroc:creator:conv:${idempotencyKey}`;
-  const alreadyDone = await kvGet<string>(markerKey);
-  if (alreadyDone === "1") return creator;
+  const key = creatorKey(norm);
+  const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
 
-  const updated = await trackEvent(norm, event);
-  await kvSet(markerKey, "1", 60 * 60 * 24 * 365);
-  return updated;
+  if (event === "click") {
+    deltas.push({ field: "clicks", delta: 1 });
+  } else if (event === "trial") {
+    deltas.push({ field: "trials", delta: 1 });
+  } else if (event === "paid_annual") {
+    deltas.push(
+      { field: "paidAnnual", delta: 1 },
+      { field: "grossRevenue", delta: PRICING.annual, isFloat: true },
+      {
+        field: "commissionOwed",
+        delta: commissionFor("annual", creator.commissionPct),
+        isFloat: true,
+      }
+    );
+  } else if (event === "checkout_annual") {
+    deltas.push(
+      { field: "trials", delta: 1 },
+      { field: "paidAnnual", delta: 1 },
+      { field: "grossRevenue", delta: PRICING.annual, isFloat: true },
+      {
+        field: "commissionOwed",
+        delta: commissionFor("annual", creator.commissionPct),
+        isFloat: true,
+      }
+    );
+  } else if (event === "paid_monthly") {
+    deltas.push(
+      { field: "paidMonthly", delta: 1 },
+      { field: "grossRevenue", delta: PRICING.monthly, isFloat: true },
+      {
+        field: "commissionOwed",
+        delta: commissionFor("monthly", creator.commissionPct),
+        isFloat: true,
+      }
+    );
+  }
+
+  await kvAtomicHashUpdateOnce(markerKey, key, deltas, 60 * 60 * 24 * 365);
+  return getCreator(norm);
 }
 
 /**
@@ -335,9 +372,6 @@ export async function recordStripeCreatorRefundOnce(
   if (!creator) return null;
 
   const markerKey = `heybroc:creator:refund:${idempotencyKey}`;
-  const alreadyRefunded = await kvGet<string>(markerKey);
-  if (alreadyRefunded === "1") return creator;
-
   const fullPrice = plan === "annual" ? PRICING.annual : PRICING.monthly;
   const grossDelta =
     refundAmountUsd !== undefined && refundAmountUsd > 0
@@ -346,9 +380,15 @@ export async function recordStripeCreatorRefundOnce(
   const commDelta = round2(grossDelta * (creator.commissionPct / 100));
 
   const key = creatorKey(norm);
-  await kvHIncrByFloat(key, "grossRevenue", -grossDelta);
-  await kvHIncrByFloat(key, "commissionOwed", -commDelta);
-  await kvSet(markerKey, "1", 60 * 60 * 24 * 365);
+  await kvAtomicHashUpdateOnce(
+    markerKey,
+    key,
+    [
+      { field: "grossRevenue", delta: -grossDelta, isFloat: true },
+      { field: "commissionOwed", delta: -commDelta, isFloat: true },
+    ],
+    60 * 60 * 24 * 365
+  );
 
   return getCreator(norm);
 }

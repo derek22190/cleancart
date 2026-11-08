@@ -150,14 +150,12 @@ export async function getDeviceIdByReferralCode(
 ): Promise<string | null> {
   const code = (rawCode || "").trim().toUpperCase();
   if (!/^BROC-[A-Z0-9]{4,10}$/.test(code)) return null;
-  const cached = codeToDevice.get(code);
-  if (cached) return cached;
   const stored = await kvGet<string>(`heybroc:refcode:${code}`);
   if (stored) {
     codeToDevice.set(code, stored);
     return stored;
   }
-  return null;
+  return codeToDevice.get(code) ?? null;
 }
 
 export async function isValidReferralCode(rawCode: string): Promise<boolean> {
@@ -170,15 +168,15 @@ export async function getExistingDevice(
 ): Promise<DeviceEntitlement | null> {
   const deviceId = (rawDeviceId || "").trim().slice(0, 128);
   if (!deviceId) return null;
-  let entry = devices.get(deviceId) ?? null;
-  if (!entry) {
-    const persisted = await kvGet<DeviceEntitlement>(
-      `heybroc:device:${deviceId}`
-    );
-    if (persisted && typeof persisted.deviceId === "string") {
-      entry = persisted;
-      setMemCache(entry);
-    }
+  const persisted = await kvGet<DeviceEntitlement>(
+    `heybroc:device:${deviceId}`
+  );
+  let entry: DeviceEntitlement | null = null;
+  if (persisted && typeof persisted.deviceId === "string") {
+    entry = persisted;
+    setMemCache(entry);
+  } else {
+    entry = devices.get(deviceId) ?? null;
   }
   if (!entry) return null;
   const now = Date.now();

@@ -9,8 +9,23 @@ export const dynamic = "force-dynamic";
 const imageUrlCache = new Map<string, string>();
 const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
 
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const ALLOWED_IMAGE_HOST_SUFFIXES = [".openfoodfacts.org", ".openfoodfacts.net"];
+
+function isAllowedImageUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "openfoodfacts.org" ||
+      host === "openfoodfacts.net" ||
+      ALLOWED_IMAGE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
+    );
+  } catch {
+    return false;
+  }
+}
 
 function localFallbackAssetForQuery(q: string): { relPath: string; contentType: string } {
   const s = q.toLowerCase();
@@ -43,32 +58,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
   const cached = imageUrlCache.get(cacheKey);
   if (cached) return cached;
 
-  // 1. Primary: Bing Product Image Thumbnail (fast, reliable, covers Walmart/Marketside/Great Value/national brands)
-  try {
-    const searchQ = `${clean} product package`;
-    const bingUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(searchQ)}&qft=+filterui:aspect-square&form=IRFLTR`;
-    const res = await fetch(bingUrl, {
-      headers: {
-        "User-Agent": BROWSER_UA,
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      signal: AbortSignal.timeout(4500),
-    });
-    if (res.ok) {
-      const html = await res.text();
-      const match = html.match(/https:\/\/th\.bing\.com\/th\/id\/OIP\.[A-Za-z0-9_-]+/);
-      if (match?.[0]) {
-        const resolved = `${match[0]}?w=260&h=260&c=7&r=0&o=5&pid=1.7`;
-        if (imageUrlCache.size > 1000) imageUrlCache.clear();
-        imageUrlCache.set(cacheKey, resolved);
-        return resolved;
-      }
-    }
-  } catch {
-    // Fall through to OpenFoodFacts
-  }
-
-  // 2. Fallback: OpenFoodFacts search
+  // OpenFoodFacts open-licensed product image lookup (ODbL / CC-BY-SA)
   try {
     const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(clean)}&search_simple=1&action=process&json=1&page_size=3&fields=image_front_small_url,image_front_url`;
     const res = await fetch(offUrl, {
@@ -81,13 +71,17 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
       };
       const hit = (data.products || []).find((p) => p.image_front_small_url || p.image_front_url);
       const url = hit?.image_front_small_url || hit?.image_front_url;
-      if (url) {
+      if (url && isAllowedImageUrl(url)) {
+        if (imageUrlCache.size >= 1000) {
+          const oldest = imageUrlCache.keys().next().value;
+          if (oldest !== undefined) imageUrlCache.delete(oldest);
+        }
         imageUrlCache.set(cacheKey, url);
         return url;
       }
     }
   } catch {
-    // Ignore
+    // Ignore and fall through to local category asset
   }
 
   return null;
@@ -121,26 +115,32 @@ export async function GET(request: Request) {
   }
 
   const targetUrl = await resolveRealProductImageUrl(q);
-  if (targetUrl) {
+  if (targetUrl && isAllowedImageUrl(targetUrl)) {
     try {
       const imgRes = await fetch(targetUrl, {
-        headers: { "User-Agent": BROWSER_UA },
+        headers: { "User-Agent": "HeyBroc/2.0 (https://www.heybroc.com)" },
         signal: AbortSignal.timeout(4500),
       });
       if (imgRes.ok) {
         const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-        const bytes = await imgRes.arrayBuffer();
-        if (bytes.byteLength > 200) {
-          if (imageBytesCache.size > 400) imageBytesCache.clear();
-          imageBytesCache.set(key, { bytes, contentType });
-          return new NextResponse(bytes, {
-            status: 200,
-            headers: {
-              "Content-Type": contentType,
-              "Cache-Control": "public, max-age=604800, immutable",
-              "Access-Control-Allow-Origin": "*",
-            },
-          });
+        const contentLength = Number(imgRes.headers.get("content-length") || "0");
+        if (contentType.startsWith("image/") && contentLength <= MAX_IMAGE_BYTES) {
+          const bytes = await imgRes.arrayBuffer();
+          if (bytes.byteLength > 200 && bytes.byteLength <= MAX_IMAGE_BYTES) {
+            if (imageBytesCache.size >= 250) {
+              const oldest = imageBytesCache.keys().next().value;
+              if (oldest !== undefined) imageBytesCache.delete(oldest);
+            }
+            imageBytesCache.set(key, { bytes, contentType });
+            return new NextResponse(bytes, {
+              status: 200,
+              headers: {
+                "Content-Type": contentType,
+                "Cache-Control": "public, max-age=604800, immutable",
+                "Access-Control-Allow-Origin": "*",
+              },
+            });
+          }
         }
       }
     } catch {

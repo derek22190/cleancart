@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import {
   confirmPasswordReset,
   deleteUserAccount,
-  getUserByEmail,
+  getAuthenticatedUser,
   loginWithOAuth,
   registerOrLoginEmail,
   requestPasswordReset,
+  resendVerificationCode,
   saveUser,
   toPublicProfile,
-  verifySessionToken,
+  verifyEmailCode,
 } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/scan";
 
@@ -44,8 +45,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const authHeader = request.headers.get("authorization") || "";
   const tokenParam =
+    (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "") ||
     searchParams.get("token") ||
-    (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "");
+    "";
   const deviceId = searchParams.get("deviceId") || undefined;
 
   if (!tokenParam) {
@@ -55,18 +57,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const decoded = verifySessionToken(tokenParam);
-  if (!decoded) {
-    return NextResponse.json(
-      { ok: false, authenticated: false, error: "Invalid or expired session token." },
-      { status: 401, headers: CORS }
-    );
-  }
-
-  const stored = await getUserByEmail(decoded.email);
+  const stored = await getAuthenticatedUser(tokenParam);
   if (!stored) {
     return NextResponse.json(
-      { ok: false, authenticated: false, error: "Account not found." },
+      { ok: false, authenticated: false, error: "Invalid or expired session token." },
       { status: 401, headers: CORS }
     );
   }
@@ -94,6 +88,8 @@ export async function POST(request: Request) {
         | "oauth"
         | "forgot_password"
         | "reset_password"
+        | "verify_email"
+        | "resend_verification"
         | "sync"
         | "delete_account";
       email?: string;
@@ -101,6 +97,7 @@ export async function POST(request: Request) {
       currentPassword?: string;
       newPassword?: string;
       resetCode?: string;
+      verificationCode?: string;
       idToken?: string;
       displayName?: string;
       provider?: "google" | "apple";
@@ -165,38 +162,63 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "verify_email") {
+      const res = await verifyEmailCode({
+        email: body.email || "",
+        code: body.verificationCode || body.resetCode || "",
+        deviceId: body.deviceId,
+      });
+      return NextResponse.json(res, {
+        status: res.ok ? 200 : 400,
+        headers: CORS,
+      });
+    }
+
+    if (action === "resend_verification") {
+      const res = await resendVerificationCode(body.email || "");
+      return NextResponse.json(res, {
+        status: res.ok ? 200 : 400,
+        headers: CORS,
+      });
+    }
+
     if (action === "sync") {
-      const decoded = verifySessionToken(body.token || "");
-      if (!decoded) {
+      const authHeader = request.headers.get("authorization") || "";
+      const tokenCandidate =
+        body.token || (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "");
+      const user = await getAuthenticatedUser(tokenCandidate);
+      if (!user) {
         return NextResponse.json(
           { ok: false, error: "Not authenticated." },
           { status: 401, headers: CORS }
         );
       }
-      const user = await getUserByEmail(decoded.email);
-      if (user && body.watchlist) {
+      if (body.watchlist) {
         user.watchlist = body.watchlist;
         await saveUser(user);
       }
-      if (user) {
-        const profile = await toPublicProfile(user, body.deviceId);
-        return NextResponse.json({ ok: true, user: profile }, { headers: CORS });
-      }
-      return NextResponse.json({ ok: true }, { headers: CORS });
+      const profile = await toPublicProfile(user, body.deviceId);
+      return NextResponse.json({ ok: true, user: profile }, { headers: CORS });
     }
 
     if (action === "delete_account") {
       const authHeader = request.headers.get("authorization") || "";
       const tokenCandidate =
         body.token || (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "");
-      const decoded = tokenCandidate ? verifySessionToken(tokenCandidate) : null;
-      if (!decoded?.email) {
+      const stored = await getAuthenticatedUser(tokenCandidate);
+      if (!stored) {
         return NextResponse.json(
           { ok: false, error: "Authentication required to delete account." },
           { status: 401, headers: CORS }
         );
       }
-      await deleteUserAccount(decoded.email);
+      const deleted = await deleteUserAccount(stored.email);
+      if (!deleted) {
+        return NextResponse.json(
+          { ok: false, error: "Could not complete account deletion. Please retry." },
+          { status: 500, headers: CORS }
+        );
+      }
       return NextResponse.json(
         { ok: true, message: "Your account and saved cloud data have been permanently deleted." },
         { headers: CORS }
@@ -214,3 +236,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

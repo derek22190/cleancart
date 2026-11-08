@@ -60,7 +60,16 @@ export function checkRateLimit(ip: string, limitPerMin = 90): boolean {
   const now = Date.now();
   const entry = ipHits.get(ip);
   if (!entry || now > entry.resetAt) {
-    if (ipHits.size > 5000) ipHits.clear();
+    if (ipHits.size > 5000) {
+      for (const [k, v] of ipHits) {
+        if (now > v.resetAt) ipHits.delete(k);
+        if (ipHits.size <= 4000) break;
+      }
+      if (ipHits.size > 5000) {
+        const oldest = ipHits.keys().next().value;
+        if (oldest !== undefined) ipHits.delete(oldest);
+      }
+    }
     ipHits.set(ip, { count: 1, resetAt: now + 60_000 });
     return true;
   }
@@ -334,31 +343,41 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     watchlist,
     familyWatchlist,
   });
-  let entitlement: EntitlementSummary | undefined;
-  if (typeof req.deviceId === "string" && req.deviceId.trim().length >= 4) {
-    if (req.referredByCode) {
-      const { device } = await applyOrActivateReferral({
-        deviceId: req.deviceId,
-        referralCode: req.referredByCode,
-        activateNow: false,
-      });
-      entitlement = await serializeEntitlementWithPaidLookup(device);
-    } else {
-      const device = await getOrCreateDevice(req.deviceId);
-      entitlement = await serializeEntitlementWithPaidLookup(device);
-    }
+  const effectiveDeviceId =
+    typeof req.deviceId === "string" && req.deviceId.trim().length >= 4
+      ? req.deviceId.trim()
+      : "anon-web";
+  let entitlement: EntitlementSummary;
+  if (req.referredByCode && effectiveDeviceId !== "anon-web") {
+    const { device } = await applyOrActivateReferral({
+      deviceId: effectiveDeviceId,
+      referralCode: req.referredByCode,
+      activateNow: false,
+    });
+    entitlement = await serializeEntitlementWithPaidLookup(device);
+  } else {
+    const device = await getOrCreateDevice(effectiveDeviceId);
+    entitlement = await serializeEntitlementWithPaidLookup(device);
   }
+  const canAccessSwapLinks = entitlement.isProActive || entitlement.swapsRemaining > 0;
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
       : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}`;
-  const resolvedSwap = swap
+  const resolvedSwap: SwapResult | null = swap
     ? {
         ...swap,
         image:
           swap.image && swap.image.startsWith("http")
             ? swap.image
             : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}`,
+        ...(canAccessSwapLinks
+          ? {}
+          : {
+              webUrl: undefined,
+              deepLink: undefined,
+              androidIntentUrl: undefined,
+            }),
       }
     : null;
   void import("./analytics")
@@ -395,7 +414,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     swap: resolvedSwap,
     store,
     pill: `${result.score}/100 • Tap to Inspect`,
-    ...(entitlement ? { entitlement } : {}),
+    entitlement,
   };
 }
 
@@ -412,7 +431,8 @@ export function toIosText(scan: ScanResponse): string {
     lines.push("", "✅ No watchlist additives found.");
   }
   if (scan.swap) {
-    lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}: ${scan.swap.title} (${scan.swap.score}/100)`, scan.swap.webUrl);
+    lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}: ${scan.swap.title} (${scan.swap.score}/100)`);
+    if (scan.swap.webUrl) lines.push(scan.swap.webUrl);
   }
   return lines.join("\n");
 }

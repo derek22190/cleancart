@@ -11,15 +11,13 @@ export const metadata: Metadata = {
     template: "%s | HeyBroc",
   },
   description:
-    "Instant 0–100 online food, cosmetic & grocery ingredient scanner with blood sugar / glucose spike insights and 1-Tap Clean Swaps across Walmart, Instacart, Target, Kroger, ALDI, Costco & 12 stores.",
+    "Instant 0–100 online food & grocery ingredient scanner with sugar & refined-carb notes and 1-Tap Clean Swaps across Walmart, Instacart, Target, Kroger, ALDI, Costco & 12 stores.",
   keywords: [
     "online food scanner",
     "clean food scanner",
     "ingredient scanner app",
     "seed oil scanner",
-    "glucose spike food scanner",
-    "PCOS food scanner",
-    "diabetic grocery scanner",
+    "grocery ingredient checker",
     "healthy grocery swaps",
     "food additive checker",
     "Red 40 scanner",
@@ -28,7 +26,6 @@ export const metadata: Metadata = {
     "Instacart healthy food scanner",
     "Target clean groceries",
     "ALDI clean food scanner",
-    "non-toxic cosmetic scanner",
     "HeyBroc",
   ],
   alternates: {
@@ -40,7 +37,7 @@ export const metadata: Metadata = {
     siteName: "HeyBroc",
     title: "HeyBroc - Online Food Scanner | Shop Clean. Skip the Junk.",
     description:
-      "Grades 7.5M+ grocery, cosmetic & household products from 0–100 with blood sugar impact & 1-Tap Clean Swaps on Walmart, Target, Instacart, ALDI, Kroger & Costco.",
+      "Grades grocery food & beverage products from 0–100 with sugar & refined-carb notes and 1-Tap Clean Swaps on Walmart, Target, Instacart, ALDI, Kroger & Costco.",
     images: [
       {
         url: "/og-banner.png",
@@ -55,7 +52,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "HeyBroc - Online Food Scanner + 1-Tap Clean Swaps",
     description:
-      "Instant 0–100 ingredient health scores, blood sugar insights & 1-Tap Clean Swaps across Walmart, Target, Instacart, Kroger, ALDI & 12 stores.",
+      "Instant 0–100 ingredient health scores, sugar & refined-carb notes & 1-Tap Clean Swaps across Walmart, Target, Instacart, Kroger, ALDI & 12 stores.",
     images: ["/og-banner.png"],
   },
   robots: {
@@ -98,7 +95,7 @@ const jsonLd = {
       url: "https://www.heybroc.com",
       logo: "https://www.heybroc.com/broc-mascot.jpg",
       description:
-        "Independent 0–100 online food, cosmetic, and household ingredient grading engine and floating grocery shopping assistant.",
+        "Independent 0–100 online food and grocery ingredient grading engine and floating grocery shopping assistant.",
     },
     {
       "@type": "SoftwareApplication",
@@ -118,8 +115,7 @@ const jsonLd = {
         "3-Pillar 0–100 Ingredient & Nutrition Score (60% Nutrition, 30% Additives, 10% Organic)",
         "Live Store Floating Bubble on Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh, DoorDash, Uber Eats & Shipt",
         "1-Tap Clean Swaps in the exact same grocery sub-category",
-        "Flags Seed Oils, Red 40, Titanium Dioxide, BHA/BHT, Nitrites, Carrageenan, HFCS & Parabens",
-        "7.5M+ Food, Cosmetic & Household Products Indexed",
+        "Flags Seed Oils, Red 40, Titanium Dioxide, BHA/BHT, Nitrites, Carrageenan & HFCS",
       ],
     },
     {
@@ -147,7 +143,7 @@ const jsonLd = {
           name: "What ingredients and additives does HeyBroc flag?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), emulsifiers (Carrageenan, Polysorbate 80), and cosmetic endocrine disruptors (Parabens, Phthalates, PFAS).",
+            text: "HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), and emulsifiers (Carrageenan, Polysorbate 80).",
           },
         },
         {

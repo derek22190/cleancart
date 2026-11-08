@@ -22,6 +22,7 @@ export interface EntitlementRecord {
   creatorCode?: string;
   status: EntitlementStatus;
   active: boolean;
+  expiresAtMs?: number;
   lastStripeEventCreated?: number;
   updatedAt: string;
 }
@@ -42,31 +43,60 @@ export function isEntitlementStatusActive(status: string): boolean {
   return status === "active" || status === "trialing";
 }
 
+function withCurrentExpiry(rec: EntitlementRecord | null): EntitlementRecord | null {
+  if (!rec) return null;
+  if (
+    typeof rec.expiresAtMs === "number" &&
+    Number.isFinite(rec.expiresAtMs) &&
+    rec.expiresAtMs <= Date.now()
+  ) {
+    return {
+      ...rec,
+      status: "canceled",
+      active: false,
+    };
+  }
+  return {
+    ...rec,
+    active: isEntitlementStatusActive(rec.status),
+  };
+}
+
 export async function saveEntitlement(record: EntitlementRecord): Promise<void> {
   const existingBySub = record.subscriptionId
-    ? await getSubscriptionEntitlement(record.subscriptionId)
+    ? await kvGet<EntitlementRecord>(`${SUB_KEY_PREFIX}${record.subscriptionId}`)
     : null;
   const existingBySession = await kvGet<EntitlementRecord>(
     `${SESSION_KEY_PREFIX}${record.sessionId}`
   );
   const existing = existingBySub ?? existingBySession;
 
-  // Guard against out-of-order Stripe webhook events overwriting a newer subscription status
-  if (
-    existing?.lastStripeEventCreated &&
-    record.lastStripeEventCreated &&
-    record.lastStripeEventCreated < existing.lastStripeEventCreated
-  ) {
-    return;
+  // Guard against out-of-order webhook events or unversioned saves overwriting a newer webhook state
+  if (existing?.lastStripeEventCreated) {
+    if (
+      !record.lastStripeEventCreated ||
+      record.lastStripeEventCreated < existing.lastStripeEventCreated
+    ) {
+      return;
+    }
   }
+
+  const expiresAtMs = record.expiresAtMs ?? existing?.expiresAtMs;
+  const isExpired =
+    typeof expiresAtMs === "number" &&
+    Number.isFinite(expiresAtMs) &&
+    expiresAtMs <= Date.now();
+  const effectiveStatus: EntitlementStatus = isExpired ? "canceled" : record.status;
 
   const normalized: EntitlementRecord = {
     ...existing,
     ...record,
     deviceId: record.deviceId || existing?.deviceId,
+    expiresAtMs,
     lastStripeEventCreated:
       record.lastStripeEventCreated ?? existing?.lastStripeEventCreated,
-    active: isEntitlementStatusActive(record.status),
+    status: effectiveStatus,
+    active: !isExpired && isEntitlementStatusActive(effectiveStatus),
     updatedAt: new Date().toISOString(),
   };
 
@@ -112,14 +142,15 @@ export async function getEmailEntitlement(
     const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
     if (latestSub) return latestSub;
   }
-  return rec;
+  return withCurrentExpiry(rec);
 }
 
 export async function getSubscriptionEntitlement(
   subscriptionId: string
 ): Promise<EntitlementRecord | null> {
   if (!subscriptionId) return null;
-  return kvGet<EntitlementRecord>(`${SUB_KEY_PREFIX}${subscriptionId}`);
+  const rec = await kvGet<EntitlementRecord>(`${SUB_KEY_PREFIX}${subscriptionId}`);
+  return withCurrentExpiry(rec);
 }
 
 export async function getDevicePaidEntitlement(
@@ -132,7 +163,7 @@ export async function getDevicePaidEntitlement(
     const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
     if (latestSub) return latestSub;
   }
-  return rec;
+  return withCurrentExpiry(rec);
 }
 
 export async function updateSubscriptionEntitlement(
@@ -144,11 +175,14 @@ export async function updateSubscriptionEntitlement(
     customerEmail?: string;
     creatorCode?: string;
     deviceId?: string;
+    expiresAtMs?: number;
     lastStripeEventCreated?: number;
   }
 ): Promise<EntitlementRecord | null> {
   if (!subscriptionId) return null;
-  const existing = await getSubscriptionEntitlement(subscriptionId);
+  const existing = await kvGet<EntitlementRecord>(
+    `${SUB_KEY_PREFIX}${subscriptionId}`
+  );
 
   // Guard against older webhook events overwriting newer state
   if (
@@ -156,8 +190,15 @@ export async function updateSubscriptionEntitlement(
     patch.lastStripeEventCreated &&
     patch.lastStripeEventCreated < existing.lastStripeEventCreated
   ) {
-    return existing;
+    return withCurrentExpiry(existing);
   }
+
+  const expiresAtMs = patch.expiresAtMs ?? existing?.expiresAtMs;
+  const isExpired =
+    typeof expiresAtMs === "number" &&
+    Number.isFinite(expiresAtMs) &&
+    expiresAtMs <= Date.now();
+  const effectiveStatus: EntitlementStatus = isExpired ? "canceled" : patch.status;
 
   const updated: EntitlementRecord = {
     sessionId: existing?.sessionId || `sub_${subscriptionId}`,
@@ -167,8 +208,9 @@ export async function updateSubscriptionEntitlement(
     deviceId: patch.deviceId ?? existing?.deviceId,
     plan: patch.plan ?? existing?.plan ?? "annual",
     creatorCode: patch.creatorCode ?? existing?.creatorCode,
-    status: patch.status,
-    active: isEntitlementStatusActive(patch.status),
+    status: effectiveStatus,
+    active: !isExpired && isEntitlementStatusActive(effectiveStatus),
+    expiresAtMs,
     lastStripeEventCreated:
       patch.lastStripeEventCreated ?? existing?.lastStripeEventCreated,
     updatedAt: new Date().toISOString(),

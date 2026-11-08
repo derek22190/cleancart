@@ -221,7 +221,6 @@ class OverlayWindowService : Service() {
             }
             ACTION_SHOW_RESULT -> {
                 isTestMode = false
-                hiddenForCurrentScreen = false
                 val incoming = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
                 if (incoming?.optBoolean("ok") == true) {
                     data = incoming
@@ -232,7 +231,7 @@ class OverlayWindowService : Service() {
                         recordScannedItem(data)
                     }
                     openFlag = null
-                    if (card == null) {
+                    if (!hiddenForCurrentScreen && card == null) {
                         showPill()
                     }
                 } else if (intent.getBooleanExtra(EXTRA_IS_SINGLE_PDP, false)) {
@@ -241,7 +240,7 @@ class OverlayWindowService : Service() {
                     openFlag = null
                     isCartAvgMode = false
                     isPdpScrollHint = true
-                    if (card == null) {
+                    if (!hiddenForCurrentScreen && card == null) {
                         showPill(loadingText = "Scroll down to grade item")
                     }
                 } else {
@@ -250,7 +249,7 @@ class OverlayWindowService : Service() {
                     openFlag = null
                     isPdpScrollHint = false
                     isCartAvgMode = true
-                    if (card == null) {
+                    if (!hiddenForCurrentScreen && card == null) {
                         showPill()
                     }
                 }
@@ -267,7 +266,6 @@ class OverlayWindowService : Service() {
             }
             ACTION_SYNC_CART -> {
                 isTestMode = false
-                hiddenForCurrentScreen = false
                 isPdpScrollHint = false
                 val prevSize = tripCart.size
                 val prevAvg = displayedCartAvg
@@ -280,7 +278,7 @@ class OverlayWindowService : Service() {
                     if (tripCart.size != prevSize || displayedCartAvg != prevAvg) {
                         showAuditorDrawer()
                     }
-                } else if (card == null) {
+                } else if (!hiddenForCurrentScreen && card == null) {
                     showPill()
                 }
             }
@@ -353,9 +351,7 @@ class OverlayWindowService : Service() {
         if (a.equals(b, ignoreCase = true)) return true
         val na = normalizeCartKey(a)
         val nb = normalizeCartKey(b)
-        if (na == nb) return true
-        if (na.length >= 16 && nb.length >= 16 && (na.startsWith(nb) || nb.startsWith(na))) return true
-        return false
+        return na == nb
     }
 
     private fun matchesPendingSwap(rawTitle: String): Boolean {
@@ -495,10 +491,7 @@ class OverlayWindowService : Service() {
                 val o = arr.getJSONObject(i)
                 val title = o.optString("title")
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
-                var score = o.optInt("score", 50)
-                if (score >= 85 && Regex("""(?i)\b(fried onions?|crispy.*onions?|french'?s.*onions?|ice cream|cherry garcia|half[- ]?baked|instant mashed|oreo puffs?|steak[- ]?umm|ore[- ]?ida)\b""").containsMatchIn(title)) {
-                    score = if (title.contains("onion", ignoreCase = true)) 18 else 24
-                }
+                val score = o.optInt("score", 50)
                 tripCart.add(
                     TripCartItem(
                         key = o.optString("key"),
@@ -576,13 +569,7 @@ class OverlayWindowService : Service() {
         if (!isCartAvgMode) climbAnimator?.cancel()
         val result = data?.optJSONObject("result")
         val ok = data?.optBoolean("ok") == true && result != null
-        val ybPill = result?.optJSONObject("yukaBreakdown")
-        val pillFlagCount = result?.optJSONArray("flagged")?.length() ?: 0
-        val effectiveScore = if (ok && ybPill != null && pillFlagCount == 0) {
-            (ybPill.optInt("nutritionScore", 42) + ybPill.optInt("additiveScore", 30) + ybPill.optInt("organicScore", 0)).coerceIn(0, 100)
-        } else {
-            result?.optInt("score") ?: 50
-        }
+        val effectiveScore = result?.optInt("score") ?: 50
         val avg = displayedCartAvg
         val tone = when {
             loadingText != null || isPdpScrollHint -> Color.GRAY
@@ -932,13 +919,7 @@ class OverlayWindowService : Service() {
         val d = data ?: return
         val result = d.optJSONObject("result") ?: return
         val flagged = result.optJSONArray("flagged")
-        val ybInit = result.optJSONObject("yukaBreakdown")
-        val rawScore = result.optInt("score")
-        val score = if (ybInit != null && (flagged?.length() ?: 0) == 0) {
-            (ybInit.optInt("nutritionScore", 42) + ybInit.optInt("additiveScore", 30) + ybInit.optInt("organicScore", 0)).coerceIn(0, 100)
-        } else {
-            rawScore
-        }
+        val score = result.optInt("score")
         val ratingLabel = when {
             score >= 75 -> "Excellent"
             score >= 50 -> "Good"
@@ -1496,15 +1477,9 @@ class OverlayWindowService : Service() {
         if (!ScanApi.canUseSwap(this)) {
             Toast.makeText(
                 this,
-                "All 5 free weekly swaps used — upgrade to HeyBroc Pro for unlimited 1-tap swaps!",
+                "All 5 free weekly swaps used — invite a friend in the HeyBroc app for +7 free Pro days!",
                 Toast.LENGTH_LONG
             ).show()
-            runCatching {
-                startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this)))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            }
             removeCard()
             showPill()
             return

@@ -90,14 +90,25 @@ export default function PrivacyPage() {
             and can be disassociated from your device at any time by clearing app storage or browser local storage.
           </li>
           <li>
-            <strong>Subscription &amp; billing records (400 days):</strong> When you subscribe via Stripe Checkout, our server stores your Stripe checkout
-            session ID, subscription status, linked <code>deviceId</code>, and checkout email address (<code>customerEmail</code>) in encrypted key-value
-            storage with an automatic 400-day expiration TTL to verify annual and monthly Pro entitlements.
+            <strong>Subscription &amp; billing records (400 days):</strong> When you subscribe via Stripe Checkout or RevenueCat (App Store / Google Play),
+            our server stores your checkout session ID, subscription status, linked <code>deviceId</code>, and checkout email address (<code>customerEmail</code>)
+            in encrypted key-value storage with an automatic 400-day expiration TTL to verify annual and monthly Pro entitlements.
+          </li>
+          <li>
+            <strong>Optional user accounts (up to 400 days or until deleted):</strong> If you create a HeyBroc account to sync your Family Watchlist and Pro
+            entitlement across devices, we store your normalized email address, optional display name, scrypt-hashed password, SHA-256 hashed session token,
+            linked <code>deviceId</code>, and watchlist preferences. Transactional verification and password-reset emails are delivered via Resend. You can
+            permanently delete your account and associated server records at any time from the Account menu in the web or Android app.
           </li>
           <li>
             <strong>On-device preferences &amp; trip history:</strong> Your ingredient watchlist preferences, floating bubble position, and recently
             graded items for your current shopping trip are stored locally on your device (<code>SharedPreferences</code> / <code>localStorage</code>) and
             can be cleared at any time by clearing app data or uninstalling the app.
+          </li>
+          <li>
+            <strong>Product analytics &amp; third-party processors:</strong> Aggregate funnel events (such as scan, swap, and checkout counts) are stored in
+            our key-value store and, when configured, forwarded to PostHog using your pseudonymous <code>deviceId</code> (never raw ingredient text or personal
+            contact details). Product lookups query Open Food Facts and USDA FoodData Central.
           </li>
           <li>
             <strong>No sale of personal data:</strong> HeyBroc does not sell, rent, or share personal user data with data brokers or ad networks.
@@ -110,23 +121,24 @@ export default function PrivacyPage() {
         <p>
           When you explicitly tap a Clean Swap link to view an alternative product in your grocery store app or browser, the link may route through or
           include retail affiliate attribution parameters (such as Walmart Impact or Amazon Associates tags) at no additional cost to you. Subscription
-          payments are processed by Stripe; HeyBroc never receives or stores your raw credit card number.
+          payments are processed by Stripe (web) or Apple App Store / Google Play via RevenueCat; HeyBroc never receives or stores your raw credit card number.
         </p>
       </section>
 
       <section style={{ marginTop: 28 }}>
         <h2 style={{ fontSize: 20 }}>4. Non-Medical Disclaimer</h2>
         <p>
-          HeyBroc scores reflect deterministic ingredient preferences (flagging synthetic dyes, industrial seed oils, high-fructose corn syrup,
+          HeyBroc scores reflect deterministic ingredient and nutrition preferences (flagging synthetic dyes, industrial seed oils, high-fructose corn syrup,
           synthetic preservatives, nitrites, and artificial sweeteners). Scores are for informational grocery comparison only and do not constitute
-          medical, nutritional, or allergen-safety advice. Always verify the physical product package before consumption.
+          medical, nutritional, diagnostic, or allergen-safety advice. Always verify the physical product package before consumption.
         </p>
       </section>
 
       <section style={{ marginTop: 28 }}>
         <h2 style={{ fontSize: 20 }}>5. Contact &amp; Data Deletion Requests</h2>
         <p>
-          For privacy questions, data inquiries, or support, contact the HeyBroc team at{" "}
+          Signed-in users can delete their account and saved data directly in the app&apos;s Account menu. For privacy questions, device-record deletion, or support,
+          contact the HeyBroc team at{" "}
           <a href="mailto:privacy@heybroc.com" style={{ color: "#0F7A4A", fontWeight: 600 }}>
             privacy@heybroc.com
           </a>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { STORE_META, type Store } from "@/lib/swaps";
 
 export interface SwapRecord {
@@ -39,16 +39,23 @@ export default function Scorecard({
   const [refCode, setRefCode] = useState(defaultReferralCode || "PARENTMAXX");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  useEffect(() => {
+    if (defaultReferralCode) {
+      setRefCode(defaultReferralCode);
+    }
+  }, [defaultReferralCode]);
+
   if (!open) return null;
 
+  const hasSwaps = swaps.length > 0;
   const activeCode = (refCode || defaultReferralCode || "HEYBROC").toUpperCase();
   const dodgedList = Array.from(
     new Set(
-      (swaps.length > 0 ? swaps.flatMap((s) => s.dodged) : fallbackDodged).filter(Boolean),
+      (hasSwaps ? swaps.flatMap((s) => s.dodged) : fallbackDodged).filter(Boolean),
     ),
   ).slice(0, 6);
 
-  const displayedSwaps = (swaps.length > 0 ? swaps : fallbackSwaps).slice(0, 3);
+  const displayedSwaps = (hasSwaps ? swaps : fallbackSwaps).slice(0, 3);
   const gradeLabel =
     cartAvg >= 75
       ? "Clean Cart Approved"
@@ -109,10 +116,16 @@ export default function Scorecard({
     ctx.font = `800 42px ${font}`;
     ctx.fillText(gradeLabel, 130, 435);
 
-    // Section 1: Toxic Additives Dodged Today
+    // Section 1: Toxic Additives Dodged Today (or Flagged in Cart)
     ctx.fillStyle = "#86efac";
     ctx.font = `800 28px ${font}`;
-    ctx.fillText(`TOXIC ADDITIVES DODGED TODAY (${dodgedList.length})`, 84, 575);
+    ctx.fillText(
+      hasSwaps
+        ? `TOXIC ADDITIVES DODGED TODAY (${dodgedList.length})`
+        : `FLAGGED ADDITIVES IN CART (${dodgedList.length})`,
+      84,
+      575,
+    );
 
     let y = 610;
     dodgedList.slice(0, 6).forEach((name) => {
@@ -125,11 +138,11 @@ export default function Scorecard({
       y += 90;
     });
 
-    // Section 2: Top Clean Swaps Made
+    // Section 2: Top Clean Swaps Made (or Available)
     y += 30;
     ctx.fillStyle = "#86efac";
     ctx.font = `800 28px ${font}`;
-    ctx.fillText("TOP 1-TAP CLEAN SWAPS", 84, y);
+    ctx.fillText(hasSwaps ? "TOP 1-TAP CLEAN SWAPS MADE" : "AVAILABLE 1-TAP CLEAN SWAPS", 84, y);
     y += 28;
 
     displayedSwaps.slice(0, 3).forEach((sw) => {
@@ -228,7 +241,7 @@ export default function Scorecard({
 
             <div className="story-section">
               <h4>
-                Toxic Additives Dodged Today <span>{dodgedList.length}</span>
+                {hasSwaps ? "Toxic Additives Dodged Today" : "Flagged Additives in Cart"} <span>{dodgedList.length}</span>
               </h4>
               <div className="story-dodged-pills">
                 {dodgedList.map((name) => (
@@ -240,7 +253,7 @@ export default function Scorecard({
             </div>
 
             <div className="story-section">
-              <h4>Top Clean Swaps Made</h4>
+              <h4>{hasSwaps ? "Top Clean Swaps Made" : "Available 1-Tap Clean Swaps"}</h4>
               <ul className="story-swaps">
                 {displayedSwaps.map((sw, idx) => (
                   <li key={`${sw.fromTitle}-${idx}`}>

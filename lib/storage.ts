@@ -356,3 +356,77 @@ export async function kvHIncrByFloat(
   await kvSet(key, current);
   return nextVal;
 }
+
+let localAtomicQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Atomically claims `markerKey` (SET NX EX) and applies all hash field increments
+ * on `hashKey` in a single Redis Lua script (or serialized local mutex in dev/test).
+ * Returns `true` if applied for the first time, or `false` if `markerKey` already existed.
+ */
+export async function kvAtomicHashUpdateOnce(
+  markerKey: string,
+  hashKey: string,
+  deltas: Array<{ field: string; delta: number; isFloat?: boolean }>,
+  ttlSeconds = 60 * 60 * 24 * 365
+): Promise<boolean> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    const lua = [
+      'if redis.call("SET", KEYS[1], "1", "NX", "EX", tonumber(ARGV[1])) == false then return 0 end',
+      "for i = 2, #ARGV, 3 do",
+      "  local f = ARGV[i]",
+      "  local d = ARGV[i + 1]",
+      "  local k = ARGV[i + 2]",
+      '  if k == "float" then',
+      '    redis.call("HINCRBYFLOAT", KEYS[2], f, d)',
+      "  else",
+      '    redis.call("HINCRBY", KEYS[2], f, tonumber(d))',
+      "  end",
+      "end",
+      "return 1",
+    ].join("\n");
+
+    const args: (string | number)[] = [
+      "EVAL",
+      lua,
+      2,
+      markerKey,
+      hashKey,
+      Math.floor(ttlSeconds),
+    ];
+    for (const item of deltas) {
+      args.push(
+        item.field,
+        item.isFloat
+          ? String(Math.round(item.delta * 100) / 100)
+          : String(Math.trunc(item.delta)),
+        item.isFloat ? "float" : "int"
+      );
+    }
+    const res = await upstashCommand<number>(args);
+    return Number(res) === 1;
+  }
+
+  const runLocal = async (): Promise<boolean> => {
+    const existing = await kvGet<string>(markerKey);
+    if (existing !== null) return false;
+    for (const item of deltas) {
+      if (item.isFloat) {
+        await kvHIncrByFloat(hashKey, item.field, item.delta);
+      } else {
+        await kvHIncrBy(hashKey, item.field, item.delta);
+      }
+    }
+    await kvSet(markerKey, "1", ttlSeconds);
+    return true;
+  };
+
+  const next = localAtomicQueue.then(runLocal, runLocal);
+  localAtomicQueue = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+

@@ -577,14 +577,7 @@ class MainActivity : Activity() {
         val title = ScanHistoryStore.extractTitle(item)
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
-        val yb = res?.optJSONObject("yukaBreakdown")
-        val flagLen = res?.optJSONArray("flagged")?.length() ?: 0
-        val rawScore = res?.optInt("score") ?: item.optInt("score", 50)
-        val score = if (yb != null && flagLen == 0) {
-            (yb.optInt("nutritionScore", 42) + yb.optInt("additiveScore", 30) + yb.optInt("organicScore", 0)).coerceIn(0, 100)
-        } else {
-            rawScore
-        }
+        val score = res?.optInt("score") ?: item.optInt("score", 50)
         val rating = ratingForScore(score)
         val dotColor = yukaDotColor(score)
         val scannedAt = item.optLong("scannedAtMs", 0L)
@@ -1082,7 +1075,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(16) }
         }
-        searchCard.addView(label("SEARCH 4M+ FOODS & USDA CATALOG", 11f, 0xFF2E9E5B.toInt(), bold = true).apply {
+        searchCard.addView(label("SEARCH GROCERY & USDA CATALOG", 11f, 0xFF2E9E5B.toInt(), bold = true).apply {
             letterSpacing = 0.08f
         })
         searchCard.addView(label("Search for any product", 20f, 0xFF111814.toInt(), bold = true).apply {
@@ -1480,7 +1473,7 @@ class MainActivity : Activity() {
         val authOption = if (!savedEmail.isNullOrBlank()) {
             "👤 Account & Cloud Sync ($savedEmail)"
         } else {
-            "👤 Log in / Sign up (Email, Google, Apple)"
+            "👤 Log in / Sign up (Email)"
         }
         val options = arrayOf(
             authOption,
@@ -1672,32 +1665,50 @@ class MainActivity : Activity() {
                         .setPositiveButton("Delete Account") { _, _ ->
                             val tok = prefs.getString("auth_token", "") ?: ""
                             io.execute {
-                                runCatching {
+                                val deleted = runCatching {
                                     val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
                                         requestMethod = "POST"
                                         doOutput = true
                                         setRequestProperty("Content-Type", "application/json")
+                                        if (tok.isNotBlank()) setRequestProperty("Authorization", "Bearer $tok")
                                         connectTimeout = 6000
                                         readTimeout = 6000
                                     }
-                                    val payload = JSONObject()
-                                        .put("action", "delete_account")
-                                        .put("email", savedEmail)
-                                        .put("token", tok)
-                                        .toString()
-                                    conn.outputStream.use { it.write(payload.toByteArray()) }
-                                    conn.responseCode
+                                    try {
+                                        val payload = JSONObject()
+                                            .put("action", "delete_account")
+                                            .put("email", savedEmail)
+                                            .put("token", tok)
+                                            .toString()
+                                        conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                                        val ok = conn.responseCode in 200..299
+                                        val stream = if (ok) conn.inputStream else conn.errorStream
+                                        val result = stream?.bufferedReader()?.use { JSONObject(it.readText()) }
+                                        ok && result?.optBoolean("ok") == true
+                                    } finally {
+                                        conn.disconnect()
+                                    }
+                                }.getOrDefault(false)
+                                mainHandler.post {
+                                    if (isDestroyed || isFinishing) return@post
+                                    if (deleted) {
+                                        prefs.edit()
+                                            .remove("auth_email")
+                                            .remove("auth_name")
+                                            .remove("auth_provider")
+                                            .remove("auth_token")
+                                            .apply()
+                                        ScanHistoryStore.clearHistory(this@MainActivity)
+                                        authDialog?.dismiss()
+                                        renderScreen()
+                                    }
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        if (deleted) "Account deleted." else "Deletion was not confirmed. Please retry.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
                             }
-                            prefs.edit()
-                                .remove("auth_email")
-                                .remove("auth_name")
-                                .remove("auth_provider")
-                                .remove("auth_token")
-                                .apply()
-                            authDialog?.dismiss()
-                            renderScreen()
-                            Toast.makeText(this@MainActivity, "Account deleted.", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("Cancel", null)
                         .show()
@@ -1755,62 +1766,33 @@ class MainActivity : Activity() {
                 card.addView(buildTopHeader({ authDialog?.dismiss() }, showBackArrow = false))
                 card.addView(label("Welcome to HeyBroc", 26f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Sign in to save your scans, Family Watchlist & Clean Swaps across all your devices.",
+                    "Sign in with email or create an account to save your scans, Family Watchlist & Clean Swaps across all your devices.",
                     14.5f,
                     0xFF6B7280.toInt()
                 ).apply { setPadding(0, dp(6), 0, dp(22)) })
 
-                // 1. Official White Button with Exact 5-Color Gmail 'M' Symbol
-                card.addView(buildIconPillButton(
-                    iconRes = R.drawable.ic_gmail_logo,
-                    iconWidthDp = 22,
-                    iconHeightDp = 17,
-                    text = "Continue with Gmail",
-                    bgColor = Color.WHITE,
-                    borderColor = 0xFFDADCE0.toInt(),
-                    textColor = 0xFF1F1F1F.toInt(),
-                    onClick = { renderStep("gmail") }
-                ))
-
-                // 2. Official Black Button with Exact White Apple Symbol
-                card.addView(buildIconPillButton(
-                    iconRes = R.drawable.ic_apple_logo,
-                    iconWidthDp = 20,
-                    iconHeightDp = 20,
-                    text = "Continue with Apple",
-                    bgColor = 0xFF000000.toInt(),
-                    borderColor = null,
-                    textColor = Color.WHITE,
-                    onClick = { renderStep("apple") }
-                ))
-
-                // Subtle "or" divider
-                val dividerRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(4), 0, dp(14))
-                    addView(View(this@MainActivity).apply {
-                        setBackgroundColor(0xFFE5E7EB.toInt())
-                        layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
-                    })
-                    addView(label("  or  ", 12.5f, 0xFF9CA3AF.toInt(), bold = true))
-                    addView(View(this@MainActivity).apply {
-                        setBackgroundColor(0xFFE5E7EB.toInt())
-                        layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
-                    })
-                }
-                card.addView(dividerRow)
-
-                // 3. Clean Email Button (expands Email & Password only when tapped)
+                // 1. Sign In with Email Button
                 card.addView(buildIconPillButton(
                     iconRes = R.drawable.ic_email_logo,
                     iconWidthDp = 19,
                     iconHeightDp = 19,
-                    text = "Continue with Email",
+                    text = "Sign in with Email",
+                    bgColor = 0xFF16A34A.toInt(),
+                    borderColor = null,
+                    textColor = Color.WHITE,
+                    onClick = { renderStep("email_login") }
+                ))
+
+                // 2. Create Account Button
+                card.addView(buildIconPillButton(
+                    iconRes = R.drawable.ic_email_logo,
+                    iconWidthDp = 19,
+                    iconHeightDp = 19,
+                    text = "Create Free Account",
                     bgColor = 0xFFF3F4F6.toInt(),
                     borderColor = 0xFFE5E7EB.toInt(),
                     textColor = 0xFF1F2937.toInt(),
-                    onClick = { renderStep("email") }
+                    onClick = { renderStep("email_register") }
                 ))
 
                 // Subtle Guest Mode link at the bottom
@@ -1822,99 +1804,25 @@ class MainActivity : Activity() {
                 return
             }
 
-            if (step == "gmail" || step == "apple") {
-                val isGmail = step == "gmail"
-                card.addView(buildTopHeader({ renderStep("welcome") }, showBackArrow = true))
-
-                // Brand badge
-                card.addView(LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(2), 0, dp(10))
-                    addView(FrameLayout(this@MainActivity).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) }
-                        background = GradientDrawable().apply {
-                            setColor(if (isGmail) Color.WHITE else 0xFF000000.toInt())
-                            if (isGmail) setStroke(dp(1), 0xFFDADCE0.toInt())
-                            cornerRadius = dp(14).toFloat()
-                        }
-                        addView(ImageView(this@MainActivity).apply {
-                            setImageResource(if (isGmail) R.drawable.ic_gmail_logo else R.drawable.ic_apple_logo)
-                            layoutParams = FrameLayout.LayoutParams(
-                                dp(if (isGmail) 24 else 22),
-                                dp(if (isGmail) 18 else 22),
-                                Gravity.CENTER
-                            )
-                            scaleType = ImageView.ScaleType.FIT_CENTER
-                        })
-                    })
-                    addView(label(
-                        if (isGmail) "Continue with Gmail" else "Continue with Apple",
-                        22f,
-                        0xFF111814.toInt(),
-                        bold = true
-                    ))
-                })
-
-                card.addView(label(
-                    if (isGmail) {
-                        "Enter your Gmail address to link your HeyBroc account and sync across devices."
-                    } else {
-                        "Enter your Apple ID email to link your HeyBroc account and sync across devices."
-                    },
-                    14f,
-                    0xFF6B7280.toInt()
-                ).apply { setPadding(0, 0, 0, dp(16)) })
-
-                val oauthInput = EditText(this).apply {
-                    hint = if (isGmail) "yourname@gmail.com" else "yourname@icloud.com"
-                    setHintTextColor(0xFF9CA3AF.toInt())
-                    setTextColor(0xFF111814.toInt())
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-                    setSingleLine(true)
-                    setPadding(dp(18), dp(16), dp(18), dp(16))
-                    background = GradientDrawable().apply {
-                        setColor(0xFFF9FAFB.toInt())
-                        setStroke(dp(1), 0xFFD1D5DB.toInt())
-                        cornerRadius = dp(16).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(14) }
-                }
-                card.addView(oauthInput)
-
-                card.addView(label("Continue  →", 16f, Color.WHITE, bold = true).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(dp(16), dp(15), dp(16), dp(15))
-                    background = GradientDrawable().apply {
-                        setColor(0xFF16A34A.toInt())
-                        cornerRadius = dp(999).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    setOnClickListener {
-                        val em = oauthInput.text.toString().trim().lowercase()
-                        if (!em.contains("@") || !em.contains(".")) {
-                            Toast.makeText(this@MainActivity, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
-                            return@setOnClickListener
-                        }
-                        completeMobileAuth(em, em.substringBefore("@"), if (isGmail) "google" else "apple", null)
-                        authDialog?.dismiss()
-                    }
-                })
-                return
-            }
-
-            // step == "email"
-            card.addView(buildTopHeader({ renderStep("welcome") }, showBackArrow = true))
-            card.addView(label("Continue with Email", 23f, 0xFF111814.toInt(), bold = true))
+            val isRegister = step == "email_register"
+            val isReset = step == "email_reset"
+            card.addView(buildTopHeader({ renderStep(if (isReset) "email_login" else "welcome") }, showBackArrow = true))
             card.addView(label(
-                "Sign in to your existing account or create a new one automatically.",
+                when {
+                    isRegister -> "Create Account"
+                    isReset -> "Reset Password"
+                    else -> "Sign in with Email"
+                },
+                23f,
+                0xFF111814.toInt(),
+                bold = true
+            ))
+            card.addView(label(
+                when {
+                    isRegister -> "Create a free HeyBroc account to sync your Watchlist & Clean Swaps across devices."
+                    isReset -> "Enter your email, 6-digit reset code, and a new password (8+ characters)."
+                    else -> "Enter your email and password (8+ characters) to sign in."
+                },
                 14f,
                 0xFF6B7280.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(16)) })
@@ -1939,6 +1847,27 @@ class MainActivity : Activity() {
             }
             card.addView(emailInput)
 
+            val resetCodeInput = EditText(this).apply {
+                hint = "6-digit reset code"
+                setHintTextColor(0xFF9CA3AF.toInt())
+                setTextColor(0xFF111814.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setSingleLine(true)
+                setPadding(dp(18), dp(15), dp(18), dp(15))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF9FAFB.toInt())
+                    setStroke(dp(1), 0xFFD1D5DB.toInt())
+                    cornerRadius = dp(16).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
+                visibility = if (isReset) View.VISIBLE else View.GONE
+            }
+            card.addView(resetCodeInput)
+
             val passRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -1955,7 +1884,7 @@ class MainActivity : Activity() {
             }
             var passVisible = false
             val passInput = EditText(this).apply {
-                hint = "Password (6+ characters)"
+                hint = if (isReset) "New password (8+ characters)" else "Password (8+ characters)"
                 setHintTextColor(0xFF9CA3AF.toInt())
                 setTextColor(0xFF111814.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
@@ -1982,20 +1911,53 @@ class MainActivity : Activity() {
             passRow.addView(showHideToggle)
             card.addView(passRow)
 
-            // Subtle right-aligned "Forgot password?" link (never a giant full-width button)
-            card.addView(label("Forgot password?", 12.5f, 0xFF6B7280.toInt(), bold = true).apply {
-                gravity = Gravity.END
-                setPadding(dp(4), dp(2), dp(4), dp(14))
-                setOnClickListener {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Enter your email and a new 6+ character password above, then tap Continue → to reset.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            })
+            // Subtle right-aligned "Forgot password?" link
+            if (!isRegister && !isReset) {
+                card.addView(label("Forgot password?", 12.5f, 0xFF6B7280.toInt(), bold = true).apply {
+                    gravity = Gravity.END
+                    setPadding(dp(4), dp(2), dp(4), dp(14))
+                    setOnClickListener {
+                        val em = emailInput.text.toString().trim().lowercase()
+                        renderStep("email_reset")
+                        if (em.contains("@") && em.contains(".")) {
+                            io.execute {
+                                runCatching {
+                                    val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                        requestMethod = "POST"
+                                        doOutput = true
+                                        setRequestProperty("Content-Type", "application/json")
+                                        connectTimeout = 7000
+                                        readTimeout = 7000
+                                    }
+                                    try {
+                                        val payload = JSONObject().apply {
+                                            put("action", "forgot_password")
+                                            put("email", em)
+                                        }.toString()
+                                        conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                                        val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
+                                        val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                                        val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                                        val msg = json.optString("message", "If an account exists for $em, a 6-digit reset code has been emailed.")
+                                        mainHandler.post {
+                                            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    } finally {
+                                        conn.disconnect()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+            }
 
-            card.addView(label("Continue  →", 16f, Color.WHITE, bold = true).apply {
+            val submitLabel = when {
+                isRegister -> "Create Account  →"
+                isReset -> "Save New Password  →"
+                else -> "Sign In  →"
+            }
+            card.addView(label(submitLabel, 16f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(15), dp(16), dp(15))
                 background = GradientDrawable().apply {
@@ -2009,16 +1971,43 @@ class MainActivity : Activity() {
                 setOnClickListener {
                     val em = emailInput.text.toString().trim().lowercase()
                     val pw = passInput.text.toString()
+                    val rc = resetCodeInput.text.toString().trim()
                     if (!em.contains("@") || !em.contains(".")) {
                         Toast.makeText(this@MainActivity, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
-                    if (pw.length < 6) {
-                        Toast.makeText(this@MainActivity, "Password must be at least 6 characters.", Toast.LENGTH_SHORT).show()
+                    if (isReset && rc.length < 6) {
+                        Toast.makeText(this@MainActivity, "Please enter your 6-digit reset code.", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
-                    completeMobileAuth(em, em.substringBefore("@"), "email", pw)
-                    authDialog?.dismiss()
+                    if (pw.length < 8) {
+                        Toast.makeText(this@MainActivity, "Password must be at least 8 characters.", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    completeMobileAuth(
+                        email = em,
+                        fallbackName = em.substringBefore("@"),
+                        action = when {
+                            isRegister -> "register"
+                            isReset -> "reset_password"
+                            else -> "login"
+                        },
+                        password = pw,
+                        resetCode = if (isReset) rc else null
+                    )
+                }
+            })
+
+            card.addView(label(
+                if (isRegister) "Already have an account? Sign in" else "New to HeyBroc? Create a free account",
+                13.5f,
+                0xFF4B5563.toInt(),
+                bold = true
+            ).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(12), dp(8), dp(2))
+                setOnClickListener {
+                    renderStep(if (isRegister) "email_login" else "email_register")
                 }
             })
         }
@@ -2031,21 +2020,14 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun completeMobileAuth(email: String, fallbackName: String, provider: String, password: String?) {
+    private fun completeMobileAuth(
+        email: String,
+        fallbackName: String,
+        action: String,
+        password: String?,
+        resetCode: String? = null
+    ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString("auth_email", email)
-            .putString("auth_name", fallbackName)
-            .putString("auth_provider", provider)
-            .apply()
-        renderScreen()
-        ScanApi.trackEvent(
-            this,
-            "auth_completed",
-            properties = JSONObject().put("provider", provider)
-        )
-        Toast.makeText(this, "👋 Welcome, $fallbackName! Account synced.", Toast.LENGTH_LONG).show()
-
         io.execute {
             runCatching {
                 val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
@@ -2055,27 +2037,62 @@ class MainActivity : Activity() {
                     connectTimeout = 7000
                     readTimeout = 7000
                 }
-                val payload = JSONObject().apply {
-                    put("action", if (provider == "email") "login" else "oauth")
-                    put("provider", provider)
-                    put("email", email)
-                    put("displayName", fallbackName)
-                    put("deviceId", ScanApi.deviceId(this@MainActivity))
-                    if (!password.isNullOrBlank()) put("password", password)
-                }.toString()
-                conn.outputStream.use { it.write(payload.toByteArray()) }
-                val raw = conn.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(raw)
-                if (json.optBoolean("ok")) {
-                    val tok = json.optString("token", "")
-                    val usr = json.optJSONObject("user")
-                    val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
-                    ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
-                    prefs.edit()
-                        .putString("auth_token", tok)
-                        .putString("auth_name", resolvedName)
-                        .apply()
-                    mainHandler.post { renderScreen() }
+                try {
+                    val payload = JSONObject().apply {
+                        put("action", action)
+                        put("provider", "email")
+                        put("email", email)
+                        put("displayName", fallbackName)
+                        put("deviceId", ScanApi.deviceId(this@MainActivity))
+                        if (!password.isNullOrBlank()) {
+                            put("password", password)
+                            put("newPassword", password)
+                        }
+                        if (!resetCode.isNullOrBlank()) {
+                            put("resetCode", resetCode)
+                        }
+                    }.toString()
+                    conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                    val okHttp = conn.responseCode in 200..299
+                    val stream = if (okHttp) conn.inputStream else conn.errorStream
+                    val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                    if (okHttp && json.optBoolean("ok")) {
+                        val tok = json.optString("token", "")
+                        val usr = json.optJSONObject("user")
+                        val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
+                        ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
+                        prefs.edit()
+                            .putString("auth_email", email)
+                            .putString("auth_name", resolvedName)
+                            .putString("auth_provider", "email")
+                            .putString("auth_token", tok)
+                            .apply()
+                        ScanApi.trackEvent(
+                            this@MainActivity,
+                            "auth_completed",
+                            properties = JSONObject().put("provider", "email")
+                        )
+                        mainHandler.post {
+                            if (isDestroyed || isFinishing) return@post
+                            authDialog?.dismiss()
+                            renderScreen()
+                            Toast.makeText(this@MainActivity, "👋 Welcome, $resolvedName! Account synced.", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        val errMsg = json.optString("error", "Could not sign in. Please check your credentials.")
+                        mainHandler.post {
+                            if (isDestroyed || isFinishing) return@post
+                            Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            }.onFailure {
+                mainHandler.post {
+                    if (isDestroyed || isFinishing) return@post
+                    Toast.makeText(this@MainActivity, "Network error connecting to HeyBroc. Please try again.", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -2122,12 +2139,7 @@ class MainActivity : Activity() {
         val flagged = res?.optJSONArray("flagged") ?: JSONArray()
         val flagCount = flagged.length()
         val yb = res?.optJSONObject("yukaBreakdown")
-        val rawScore = res?.optInt("score") ?: item.optInt("score", 50)
-        val score = if (yb != null && flagCount == 0) {
-            (yb.optInt("nutritionScore", 42) + yb.optInt("additiveScore", 30) + yb.optInt("organicScore", 0)).coerceIn(0, 100)
-        } else {
-            rawScore
-        }
+        val score = res?.optInt("score") ?: item.optInt("score", 50)
         val rating = ratingForScore(score)
         val tone = yukaDotColor(score)
         val swap = item.optJSONObject("swap")
@@ -2203,9 +2215,9 @@ class MainActivity : Activity() {
         }
         val glucoseImpact = yb?.optString("glucoseImpact")?.takeIf { it.isNotBlank() } ?: defaultGlucoseImpact
         val glucoseNote = yb?.optString("glucoseNote")?.takeIf { it.isNotBlank() } ?: when (glucoseImpact) {
-            "High Spike" -> "High glucose spike risk — concentrated sugars or fast-absorbing syrups can rapidly elevate blood sugar (watch for Type 2 Diabetes & PCOS)."
-            "Moderate Spike" -> "Moderate glucose impact — contains fast-digesting starches or sugars; pair with protein or fiber to steady blood sugar."
-            else -> "Steady glycemic profile — low added sugar and minimal glucose spike risk (PCOS & blood-sugar friendly)."
+            "High Spike" -> "Contains concentrated sugars, syrups, or refined starches."
+            "Moderate Spike" -> "Contains fast-digesting starches or added sugars; pair with protein or fiber."
+            else -> "Low added sugar and minimal refined starch."
         }
         val calorieNote = yb?.optString("calorieNote")?.takeIf { it.isNotBlank() } ?: when (nutGrade) {
             "A", "B" -> "Calorie-Smart"
@@ -2244,8 +2256,8 @@ class MainActivity : Activity() {
                     bottomMargin = dp(8)
                 }
             })
-            addView(label("BLOOD SUGAR, PCOS & CALORIE INSIGHT", 10.5f, 0xFF6B7280.toInt(), bold = true).apply { letterSpacing = 0.06f })
-            addView(label("🩸 Glucose Impact: $glucoseImpact  ·  🔥 $calorieNote", 12.5f, glucoseBadgeColor, bold = true).apply {
+            addView(label("SUGAR, REFINED CARB & CALORIE INSIGHT", 10.5f, 0xFF6B7280.toInt(), bold = true).apply { letterSpacing = 0.06f })
+            addView(label("🩸 Sugar / Starch Indicator: $glucoseImpact  ·  🔥 $calorieNote", 12.5f, glucoseBadgeColor, bold = true).apply {
                 setPadding(0, dp(3), 0, 0)
             })
             addView(label(glucoseNote, 11.5f, 0xFF4B5563.toInt()).apply {
@@ -2376,6 +2388,7 @@ class MainActivity : Activity() {
             swapCard.addView(swapHeaderRow)
             val itemStoreKey = item.optString("storeKey").ifBlank { item.optString("store", "walmart") }
             val storeDisplayName = when (itemStoreKey.lowercase()) {
+                "walmart" -> "Walmart"
                 "target" -> "Target"
                 "instacart" -> "Instacart"
                 "aldi" -> "ALDI"
@@ -2384,6 +2397,9 @@ class MainActivity : Activity() {
                 "kroger" -> "Kroger"
                 "sams" -> "Sam's Club"
                 "amazon" -> "Amazon Fresh"
+                "doordash" -> "DoorDash"
+                "ubereats" -> "Uber Eats"
+                "shipt" -> "Shipt"
                 else -> "Store"
             }
             swapCard.addView(label("🛒 Find Clean Swap in $storeDisplayName ↗", 13.5f, Color.WHITE, bold = true).apply {
@@ -2510,7 +2526,7 @@ class MainActivity : Activity() {
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
                 })
             }
-            suggestionsBox.addView(label("🔍  Grade \"$query\" across 4M+ foods →", 13.5f, 0xFF2E9E5B.toInt(), bold = true).apply {
+            suggestionsBox.addView(label("🔍  Grade \"$query\" across all foods →", 13.5f, 0xFF2E9E5B.toInt(), bold = true).apply {
                 setPadding(dp(14), dp(11), dp(14), dp(11))
                 setOnClickListener {
                     suggestionsBox.visibility = View.GONE
@@ -2619,20 +2635,22 @@ class MainActivity : Activity() {
         if (!ScanApi.canUseSwap(this)) {
             ScanApi.trackEvent(this, "paywall_viewed")
             val limit = ScanApi.weeklySwapsLimit(this)
-            AlertDialog.Builder(this)
+            val builder = AlertDialog.Builder(this)
                 .setTitle(ScanApi.paywallHeadline(this))
                 .setMessage(
                     "You've used all $limit free single-item swaps this week.\n\n" +
-                        "Product scores (0–100) and Cart Avg stay 100% free forever. Upgrade to HeyBroc Family Pro for unlimited 1-tap clean swaps across all 12 stores."
+                        "Product scores (0–100) and Cart Avg stay 100% free forever. Invite friends for free Pro weeks or sign in to an existing Pro account."
                 )
-                .setPositiveButton("Upgrade to Pro") { _, _ ->
+                .setNegativeButton("Close", null)
+            if (!isInstalledFromPlayStore()) {
+                builder.setPositiveButton("Upgrade to Pro") { _, _ ->
                     ScanApi.trackEvent(this, "checkout_started")
                     runCatching {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this))))
                     }
                 }
-                .setNegativeButton("Not Now", null)
-                .show()
+            }
+            builder.show()
             return
         }
 
@@ -2662,6 +2680,9 @@ class MainActivity : Activity() {
             "kroger" -> "https://www.kroger.com/search?query=$encoded"
             "sams" -> "https://www.samsclub.com/s/$encoded"
             "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh&tag=heybroc-20&linkCode=ll2"
+            "doordash" -> "https://www.doordash.com/search/store/$encoded/"
+            "ubereats" -> "https://www.ubereats.com/search?q=$encoded"
+            "shipt" -> "https://www.shipt.com/up/search?query=$encoded"
             else -> "https://www.walmart.com/search?q=$encoded"
         }
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -2843,10 +2864,16 @@ class MainActivity : Activity() {
                         val next = (prefs.getStringSet("familyWatchlist", emptySet()) ?: emptySet()).toMutableSet()
                         if (checked) {
                             next.add(key)
-                            if (key == "preservatives") next.add("nitrites")
+                            if (key == "preservatives") {
+                                next.add("nitrates")
+                                next.remove("nitrites")
+                            }
                         } else {
                             next.remove(key)
-                            if (key == "preservatives") next.remove("nitrites")
+                            if (key == "preservatives") {
+                                next.remove("nitrates")
+                                next.remove("nitrites")
+                            }
                         }
                         prefs.edit().putStringSet("familyWatchlist", next).apply()
                     }

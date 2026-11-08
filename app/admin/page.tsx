@@ -438,8 +438,8 @@ export default function AdminPage() {
                     }
                     style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #d4dbd6", fontSize: 14, background: "#fff" }}
                   >
-                    <option value="annual">Annual ($39/yr — Best Value)</option>
-                    <option value="monthly">Monthly ($7.99/mo)</option>
+                    <option value="annual">Annual ($49.99/yr — Best Value)</option>
+                    <option value="monthly">Monthly ($9.99/mo)</option>
                   </select>
                 </label>
 

@@ -109,10 +109,10 @@ export default function ToolsClient() {
           100% Free Online Tools · Zero Paywall
         </span>
         <h1 style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.15, marginBottom: 10 }}>
-          Free Ingredient Label Grader, Seed Oil Detector &amp; Blood Sugar Spike Checker
+          Free Ingredient Label Grader, Seed Oil Detector &amp; Sugar / Refined-Carb Checker
         </h1>
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 760, lineHeight: 1.5 }}>
-          Paste any food, drink, supplement, or cosmetic ingredient label below for an instant <b>0–100 health score</b>, <b>3-Pillar Breakdown</b>, <b>Seed Oil &amp; Red 40 check</b>, and <b>Diabetes / PCOS Glucose Impact</b> analysis.
+          Paste any food or beverage ingredient label below for an instant <b>0–100 health score</b>, <b>3-Pillar Breakdown</b>, <b>Seed Oil &amp; Red 40 check</b>, and <b>Sugar &amp; refined-carb note</b>.
         </p>
       </section>
 
@@ -248,17 +248,17 @@ export default function ToolsClient() {
             </div>
           </div>
 
-          {/* 3-Pillar + Blood Sugar Insight */}
+          {/* 3-Pillar + Sugar & Refined-Carb Note */}
           {liveScore.yukaBreakdown && (
             <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.05em" }}>
-                3-PILLAR SCORE BREAKDOWN &amp; METABOLIC INSIGHT
+                3-PILLAR SCORE BREAKDOWN &amp; SUGAR / REFINED-CARB NOTE
               </div>
               <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 4 }}>
                 🥗 Nutritional Quality: {liveScore.yukaBreakdown.nutritionScore}/60 (Nutri-Score {liveScore.yukaBreakdown.nutriScoreGrade}) &nbsp;·&nbsp; 🧪 Additive Safety: {liveScore.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {liveScore.yukaBreakdown.organicScore}/10
               </div>
               <p style={{ fontSize: 12.5, color: "#475569", marginTop: 6, marginBottom: 0 }}>
-                <b>🩸 Diabetes, PCOS &amp; Blood Sugar Note:</b> {liveScore.yukaBreakdown.glucoseNote} ({liveScore.yukaBreakdown.calorieNote})
+                <b>🩸 Sugar &amp; refined-carb note:</b> {liveScore.yukaBreakdown.glucoseNote} ({liveScore.yukaBreakdown.calorieNote})
               </p>
             </div>
           )}
@@ -359,16 +359,16 @@ export default function ToolsClient() {
         </div>
       </section>
 
-      {/* TOOL 3: Complete A-Z Food & Cosmetic Additive Encyclopedia */}
+      {/* TOOL 3: Complete A-Z Food Additive Encyclopedia */}
       <section id="additive-encyclopedia" style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "22px" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Tool #3 · Scientific Ingredient Database ({ADDITIVE_RULES.length} Tracked Additives &amp; Toxins)
+          Tool #3 · Scientific Ingredient Database ({ADDITIVE_RULES.length} Tracked Food Additives)
         </span>
         <h2 style={{ fontSize: 22, fontWeight: 900, marginTop: 2, marginBottom: 8 }}>
-          A–Z Food &amp; Cosmetic Additive Safety Encyclopedia
+          A–Z Food Additive Safety Encyclopedia
         </h2>
         <p style={{ fontSize: 13.5, color: "#475569", marginBottom: 14 }}>
-          Search every chemical preservative, synthetic food dye, refined seed oil, artificial sweetener, and cosmetic endocrine disruptor flagged by HeyBroc—complete with EFSA, FDA, WHO/IARC, and NIH citations.
+          Search every chemical preservative, synthetic food dye, refined seed oil, artificial sweetener, and emulsifier flagged by HeyBroc—complete with EFSA, FDA, WHO/IARC, and NIH citations.
         </p>
 
         <input

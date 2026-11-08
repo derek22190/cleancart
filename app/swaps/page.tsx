@@ -50,7 +50,7 @@ export default function SwapsDirectoryPage() {
           Clean Grocery Swaps &amp; Ingredient Safety Reports (0–100)
         </h1>
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 740, lineHeight: 1.5 }}>
-          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Blood Sugar / PCOS Impact</b>, flagged chemical additives, and verified <b>1-Tap Clean Swap</b>.
+          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, flagged chemical additives, and verified <b>1-Tap Clean Swap</b>.
         </p>
       </section>
 

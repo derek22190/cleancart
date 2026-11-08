@@ -101,48 +101,9 @@ object ScanHistoryStore {
         val seenKeys = HashSet<String>()
         for (i in 0 until arr.length()) {
             val item = arr.optJSONObject(i) ?: continue
-            val prod = item.optJSONObject("product")
-            val res = item.optJSONObject("result")
             val rawTitle = extractTitle(item)
             val key = canonicalKey(rawTitle)
             if (key.isBlank() || !seenKeys.add(key)) continue
-
-            // Migrate any pre-fix cached Doritos entries that had 0/100 or 1/100 score or lowercase query titles
-            if (key.contains("doritos")) {
-                if (res != null && res.optInt("score", 18) <= 5) {
-                    res.put("score", 18)
-                    res.optJSONObject("yukaBreakdown")?.put("nutritionScore", 18)
-                }
-                if (prod != null) {
-                    if (key == "doritos cool ranch" && (rawTitle == rawTitle.lowercase() || rawTitle.contains("Flavored", ignoreCase = true))) {
-                        prod.put("title", "Doritos Cool Ranch Tortilla Chips")
-                    } else if (key == "doritos nacho cheese" && rawTitle == rawTitle.lowercase()) {
-                        prod.put("title", "Doritos Nacho Cheese Tortilla Chips")
-                    }
-                }
-            }
-            // Migrate any pre-fix cached processed foods (e.g. Crispy Fried Onions, Ice Cream, Instant Mashed) that had a stale 100/100 score
-            if (res != null && res.optInt("score", 50) >= 85 &&
-                Regex("""\b(fried onions?|crispy.*onions?|frenchs?.*onions?|ice cream|cherry garcia|half baked|instant mashed|oreo puffs?|steak umm|ore ida)\b""").containsMatchIn(key)
-            ) {
-                val isOnions = key.contains("onion")
-                res.put("score", if (isOnions) 18 else 24)
-                res.put("rating", "Poor")
-                res.put("color", "red")
-                res.optJSONObject("yukaBreakdown")?.apply {
-                    put("nutritionScore", if (isOnions) 8 else 14)
-                    put("nutriScoreGrade", "E")
-                    put("additiveScore", 10)
-                    put("organicScore", 0)
-                }
-                if (prod != null && (prod.optString("ingredients").isBlank() || prod.optString("ingredients").contains("Fresh Whole Produce", ignoreCase = true))) {
-                    prod.put(
-                        "ingredients",
-                        if (isOnions) "Onions, Palm Oil, Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soy Flour, Salt, Dextrose."
-                        else "Cream, Skim Milk, Liquid Sugar (Sugar, Water), Water, Sugar, Egg Yolks, Coconut Oil, Cocoa, Guar Gum, Carrageenan, Soy Lecithin, Natural Flavor."
-                    )
-                }
-            }
             out.add(item)
         }
         out

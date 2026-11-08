@@ -9,16 +9,24 @@ import {
   type AnalyticsEventName,
   type PlatformType,
 } from "@/lib/analytics";
+import { checkRateLimit } from "@/lib/scan";
 
 const ALLOWED_EVENTS = new Set<AnalyticsEventName>([
   "product_scanned",
   "clean_swap_clicked",
   "paywall_viewed",
   "checkout_started",
-  "pro_subscribed",
   "onboarding_step",
   "auth_completed",
 ]);
+
+function clientIp(req: Request): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "anon"
+  );
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -26,6 +34,9 @@ export async function GET(req: Request) {
   const deviceId = (searchParams.get("deviceId") || "").trim();
 
   if (mode === "paywall") {
+    if (!checkRateLimit(`analytics:get:${clientIp(req)}`, 60)) {
+      return NextResponse.json({ ok: false, error: "Too many requests." }, { status: 429 });
+    }
     const paywall = await getPaywallConfig();
     const assignedVariant = assignPaywallVariant(deviceId, paywall.abTestEnabled);
     const activeHeadline =
@@ -54,6 +65,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  if (!checkRateLimit(`analytics:post:${clientIp(req)}`, 40)) {
+    return NextResponse.json({ ok: false, error: "Too many requests." }, { status: 429 });
+  }
   let body: Record<string, unknown>;
   try {
     body = (await req.json()) as Record<string, unknown>;

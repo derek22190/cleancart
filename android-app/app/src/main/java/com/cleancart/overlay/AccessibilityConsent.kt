@@ -7,7 +7,7 @@ import android.content.Context
  * Screen reading is active only after the user explicitly accepts the in-app disclosure.
  */
 object AccessibilityConsent {
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val PREFS = "heybroc_consent"
     private const val KEY = "accessibility_disclosure_version"
     private const val KEY_REVOKED = "accessibility_revoked"

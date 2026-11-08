@@ -59,7 +59,7 @@ function verifyBearerSecret(authHeader: string | null, secret: string): boolean 
 
 function inferPlanFromProductId(productId?: string): PlanId {
   const id = (productId || "").toLowerCase();
-  if (id.includes("month") || id.includes("mo") || id.endsWith("_m")) {
+  if (/(?:^|[_\-.])(month|monthly|mo|m)(?:$|[_\-.])/i.test(id)) {
     return "monthly";
   }
   return "annual";
@@ -176,6 +176,8 @@ export async function POST(req: Request) {
     creatorCode,
     status,
     active: status === "active" || status === "trialing",
+    expiresAtMs:
+      typeof ev.expiration_at_ms === "number" ? ev.expiration_at_ms : undefined,
     lastStripeEventCreated: eventCreatedSec,
     updatedAt: new Date().toISOString(),
   });

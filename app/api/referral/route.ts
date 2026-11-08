@@ -129,6 +129,21 @@ export async function POST(request: Request) {
 
     if (action === "record_swap" && body.productKey) {
       const normKey = body.productKey.trim().toLowerCase().slice(0, 120);
+      const currentEnt = await serializeEntitlementWithPaidLookup(device);
+      if (
+        !currentEnt.isProActive &&
+        currentEnt.swapsRemaining <= 0 &&
+        (!normKey || !device.weeklySwapsUsed.includes(normKey))
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Weekly free swap limit reached. Upgrade to HeyBroc Pro for unlimited swaps.",
+            entitlement: currentEnt,
+          },
+          { status: 402, headers: CORS }
+        );
+      }
       if (normKey && !device.weeklySwapsUsed.includes(normKey)) {
         device.weeklySwapsUsed.push(normKey);
         await saveDevice(device);

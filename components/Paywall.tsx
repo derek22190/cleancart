@@ -130,8 +130,8 @@ export default function Paywall({
     setCodeError("");
     try {
       if (target.startsWith("BROC-")) {
-        if (!/^BROC-[A-Z0-9]{4,8}$/.test(target)) {
-          setCodeError("Invalid friend invite code format (expected BROC-XXXXX).");
+        if (!/^BROC-[A-Z0-9]{4,10}$/.test(target)) {
+          setCodeError("Invalid friend invite code format (expected BROC-XXXXXXXX).");
           return;
         }
         const devId =
@@ -228,24 +228,15 @@ export default function Paywall({
         return;
       }
 
-      if (!checkoutRes.ok || !checkoutData?.ok || checkoutData?.mode !== "preview") {
+      if (!checkoutRes.ok || !checkoutData?.ok) {
         setCodeError(checkoutData?.error || "Checkout is currently unavailable. Please try again.");
         return;
       }
 
-      setReceipt({
-        plan: selectedPlan,
-        trialDays: selectedPlan === "annual" ? trialDays : 0,
-        creator: appliedCreator,
-      });
-      onConversionComplete({
-        plan: selectedPlan,
-        creator: appliedCreator,
-        trialDays: selectedPlan === "annual" ? trialDays : 0,
-      });
-      setTimeout(() => {
-        onClose();
-      }, 950);
+      if (checkoutData?.mode === "preview") {
+        setCodeError("Live Stripe checkout is not configured in this environment. Set STRIPE_SECRET_KEY to enable subscriptions.");
+        return;
+      }
     } catch {
       setCodeError("Network error starting checkout. Please try again.");
     } finally {
@@ -348,10 +339,10 @@ export default function Paywall({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div>
               <strong style={{ display: "block", fontSize: 13.5, color: "#0b4f30" }}>
-                🎁 Invite Friends → Get +7 Free Pro Days Per Friend (No Limit!)
+                🎁 Invite Friends → Get +7 Free Pro Days Per Friend (Up to 70 Days!)
               </strong>
               <span style={{ fontSize: 12, color: "#3d5949" }}>
-                Every friend who installs HeyBroc and scans 1 grocery item unlocks <b>+7 Free Days of Pro</b> for both of you.
+                Every friend who installs HeyBroc and starts a trial unlocks <b>+7 Free Days of Pro</b> for both of you (up to 10 friends).
               </span>
             </div>
             <button

@@ -108,7 +108,16 @@
     return true;
   }
 
+  function activeDialogScope() {
+    const dialogs = document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-testid*="modal" i], [data-testid*="quick-view" i]');
+    for (const d of dialogs) {
+      if (d.offsetParent !== null && (d.textContent || "").trim().length > 20) return d;
+    }
+    return document;
+  }
+
   function readTitle() {
+    const scope = activeDialogScope();
     const selectors = [
       '[data-testid*="item-details" i] h1',
       '[data-testid*="item-details" i] h2',
@@ -124,9 +133,10 @@
       "#title",
       "main h1",
       "h1",
+      'h2[data-testid*="title" i]',
     ];
     for (const sel of selectors) {
-      const el = document.querySelector(sel);
+      const el = scope.querySelector(sel) || document.querySelector(sel);
       const t = (el?.textContent || "").replace(/\s+/g, " ").trim();
       if (t && !NON_TITLE_RE.test(t)) return t;
     }
@@ -134,7 +144,8 @@
   }
 
   function readIngredients() {
-    const candidates = document.querySelectorAll("h2, h3, h4, dt, strong, b, span, div, p, button");
+    const scope = activeDialogScope();
+    const candidates = scope.querySelectorAll("h2, h3, h4, dt, strong, b, span, div, p, button");
     for (const el of candidates) {
       const own = (el.childNodes.length <= 2 ? el.textContent : "").trim();
       if (!/^ingredients\s*:?$/i.test(own)) continue;
@@ -147,7 +158,7 @@
       const stripped = parentText.replace(/^ingredients\s*:?\s*/i, "");
       if (isValidIngredientText(stripped)) return stripped;
     }
-    const inline = [...document.querySelectorAll("p, div, span")].find((n) =>
+    const inline = [...scope.querySelectorAll("p, div, span")].find((n) =>
       n.children.length === 0 && /^ingredients\s*:/i.test(n.textContent.trim()));
     const inlineText = inline ? inline.textContent.replace(/^ingredients\s*:\s*/i, "").trim() : "";
     return isValidIngredientText(inlineText) ? inlineText : "";
@@ -409,7 +420,7 @@
       // Do NOT mutate cartItems until the next screen scan or Add-to-Cart detects the swap item in cart.
       const currentKey = state.data.product?.title || readTitle();
       state.pendingSwap = { fromKey: currentKey, toTitle: state.data.swap.title };
-      window.open(state.data.swap.webUrl, "_blank", "noopener");
+      if (state.data.swap.webUrl) window.open(state.data.swap.webUrl, "_blank", "noopener");
       state.expanded = false;
       render();
     }
@@ -477,6 +488,10 @@
 
     if (!isProductPage()) {
       scanSeq++;
+<<<<<<< HEAD
+=======
+      lastKey = "";
+>>>>>>> 7662c86 (fix(security,billing,catalog): complete 7-step audit remediation (C01, H02-H15, M01-M17))
       state.mode = "cart_avg";
       state.expanded = false;
       render();
@@ -486,13 +501,17 @@
     const productTitle = readTitle();
     if (!productTitle) {
       scanSeq++;
+<<<<<<< HEAD
+=======
+      lastKey = "";
+>>>>>>> 7662c86 (fix(security,billing,catalog): complete 7-step audit remediation (C01, H02-H15, M01-M17))
       state.mode = "cart_avg";
       render();
       return;
     }
     const rawIngredients = readIngredients();
     const inCart = isCurrentProductInCart();
-    const key = `${location.pathname}|${productTitle}|${rawIngredients.length}|${inCart ? 1 : 0}`;
+    const key = `${location.pathname}|${productTitle}|${rawIngredients}|${inCart ? 1 : 0}`;
     if (key === lastKey) return;
     lastKey = key;
     const reqId = ++scanSeq;
@@ -500,6 +519,7 @@
       { type: "CLEANCART_SCAN", payload: { productTitle, rawIngredients: rawIngredients || undefined, store: STORE } },
       (resp) => {
         if (reqId !== scanSeq || !isProductPage()) return;
+<<<<<<< HEAD
         if (!resp?.ok) {
           state = {
             ...state,
@@ -510,6 +530,8 @@
           render();
           return;
         }
+=======
+>>>>>>> 7662c86 (fix(security,billing,catalog): complete 7-step audit remediation (C01, H02-H15, M01-M17))
         state = {
           ...state,
           mode: "product",

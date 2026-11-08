@@ -37,7 +37,13 @@ export async function POST(request: Request) {
   if (!Array.isArray(body.items) || body.items.length === 0) {
     return NextResponse.json({ ok: false, error: "Provide a non-empty items array." }, { status: 400, headers: CORS });
   }
-  const items = body.items.slice(0, 20);
+  if (body.items.length > 20) {
+    return NextResponse.json(
+      { ok: false, error: "Cart audit accepts at most 20 items per request." },
+      { status: 400, headers: CORS },
+    );
+  }
+  const items = body.items;
   const memo = new Map<string, Promise<ScanResponse | ScanError>>();
 
   // Process in bounded batches of 3 with per-request deduplication to avoid flooding Open Food Facts / USDA
@@ -63,8 +69,23 @@ export async function POST(request: Request) {
         if (!item || typeof item !== "object" || Array.isArray(item)) {
           return Promise.resolve<ScanError>({ ok: false, status: 400, error: "Each item must be an object or string." });
         }
+        const rawObj = item as Record<string, unknown>;
+        if (
+          (rawObj.barcode !== undefined && typeof rawObj.barcode !== "string") ||
+          (rawObj.productTitle !== undefined && typeof rawObj.productTitle !== "string") ||
+          (rawObj.rawIngredients !== undefined && typeof rawObj.rawIngredients !== "string")
+        ) {
+          return Promise.resolve<ScanError>({
+            ok: false,
+            status: 400,
+            error: "Item barcode, productTitle, and rawIngredients must be strings when provided.",
+          });
+        }
         const reqItem = item as ScanRequest;
-        const dedupKey = `obj:${(reqItem.barcode || "").trim()}|${(reqItem.productTitle || "").trim().toLowerCase()}|${(reqItem.rawIngredients || "").trim().slice(0, 64)}`;
+        const barcodeStr = typeof reqItem.barcode === "string" ? reqItem.barcode.trim() : "";
+        const titleStr = typeof reqItem.productTitle === "string" ? reqItem.productTitle.trim().toLowerCase() : "";
+        const ingStr = typeof reqItem.rawIngredients === "string" ? reqItem.rawIngredients.trim().toLowerCase() : "";
+        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}`;
         let pending = memo.get(dedupKey);
         if (!pending) {
           pending = runScan({

@@ -16,10 +16,27 @@ import { verifyStripeWebhookSignature } from "@/lib/stripe-webhook";
 interface StripeEventPayload {
   id: string;
   type: string;
+  api_version?: string;
   created?: number;
   data?: {
     object?: Record<string, unknown>;
   };
+}
+
+function normalizeStripeSubStatus(raw: unknown): EntitlementStatus {
+  switch (raw) {
+    case "active":
+    case "trialing":
+    case "past_due":
+    case "unpaid":
+    case "canceled":
+    case "paused":
+    case "incomplete":
+    case "incomplete_expired":
+      return raw;
+    default:
+      return "incomplete";
+  }
 }
 
 export async function POST(req: Request) {
@@ -50,6 +67,12 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+
+  console.info("[stripe-webhook]", {
+    id: event.id,
+    type: event.type,
+    api_version: event.api_version ?? "unknown",
+  });
 
   const obj = event.data?.object ?? {};
   const eventCreated =
@@ -161,9 +184,7 @@ export async function POST(req: Request) {
         const subscriptionId = typeof obj.id === "string" ? obj.id : "";
         if (!subscriptionId) break;
 
-        const status = (
-          typeof obj.status === "string" ? obj.status : "incomplete"
-        ) as EntitlementStatus;
+        const status = normalizeStripeSubStatus(obj.status);
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
         const plan: PlanId | undefined =
           metadata.plan === "monthly"
@@ -202,11 +223,26 @@ export async function POST(req: Request) {
 
       case "invoice.paid": {
         const invoiceId = typeof obj.id === "string" ? obj.id : "";
+        const parentObj = (obj.parent ?? {}) as {
+          subscription_details?: {
+            subscription?: string | { id?: string } | null;
+            metadata?: Record<string, string>;
+          };
+        };
+        const parentSubDetails = parentObj.subscription_details ?? {};
+        const subDetails = (obj.subscription_details ?? {}) as {
+          subscription?: string | { id?: string } | null;
+          metadata?: Record<string, string>;
+        };
+        const rawSub =
+          parentSubDetails.subscription ??
+          obj.subscription ??
+          subDetails.subscription;
         const subscriptionId =
-          typeof obj.subscription === "string"
-            ? obj.subscription
-            : typeof (obj.subscription as { id?: string } | null)?.id === "string"
-              ? (obj.subscription as { id: string }).id
+          typeof rawSub === "string"
+            ? rawSub
+            : typeof (rawSub as { id?: string } | null)?.id === "string"
+              ? (rawSub as { id: string }).id
               : "";
         if (!subscriptionId) break;
 
@@ -215,12 +251,10 @@ export async function POST(req: Request) {
         const amountPaidCents =
           typeof obj.amount_paid === "number" ? obj.amount_paid : 0;
 
-        const subDetails = (obj.subscription_details ?? {}) as {
-          metadata?: Record<string, string>;
-        };
         const metadata = {
           ...((obj.metadata ?? {}) as Record<string, string>),
           ...(subDetails.metadata ?? {}),
+          ...(parentSubDetails.metadata ?? {}),
         };
 
         const existing = await getSubscriptionEntitlement(subscriptionId);

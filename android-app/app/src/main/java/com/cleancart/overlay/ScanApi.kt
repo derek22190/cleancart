@@ -180,7 +180,7 @@ object ScanApi {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val proFlag = prefs.getBoolean(KEY_PRO_ACTIVE, false)
         val proUntil = prefs.getLong(KEY_PRO_UNTIL, 0L)
-        return proFlag || proUntil > System.currentTimeMillis()
+        return if (proUntil > 0L) proUntil > System.currentTimeMillis() else proFlag
     }
 
     fun swapsRemaining(ctx: Context): Int {
@@ -311,6 +311,8 @@ object ScanApi {
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
+            .map { if (it == "nitrites") "nitrates" else it }
+            .toSet()
         val refCode = referredByCode(ctx)
         val body = JSONObject().apply {
             put("productTitle", productTitle)
@@ -410,7 +412,7 @@ object ScanApi {
         "com.kroger.mobile" -> "kroger"
         "de.apptiv.business.android.aldi_us" -> "aldi"
         "com.dd.doordash" -> "doordash"
-        "com.ubercab.eats" -> "ubercab"
+        "com.ubercab.eats" -> "ubereats"
         "com.amazon.mShop.android.shopping", "com.wholefoods.wholefoodsmarket" -> "amazon"
         "com.rfi.sams.android", "com.samsclub.app" -> "sams"
         "com.brandingbrand.reactnative.and.bjs", "com.bjs.mobile" -> "bjs"

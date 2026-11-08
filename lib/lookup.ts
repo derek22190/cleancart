@@ -236,14 +236,17 @@ const SCREEN_UI_NON_INGREDIENTS =
  */
 export function isPlausibleScreenIngredients(raw: string): boolean {
   const s = raw.trim();
-  if (s.length < 10 || s.length > 10_000) return false;
+  if (s.length < 3 || s.length > 10_000) return false;
   if (SCREEN_UI_NON_INGREDIENTS.test(s)) return false;
   if (/\$\s*\d+|\b\d+(?:\.\d+)?\s*(?:oz|fl\s*oz|lb|lbs|ct|pk|pack)\b/i.test(s) && !s.includes(",")) return false;
   const hasComma = s.includes(",") || s.includes(";");
-  const isSingleWholeDeclaration = /\b(100%|ingredients?\s*:|contains\b|cultured\b|pasteurized\b|organic\b|filtered\s+water|carbonated\s+water)\b/i.test(s);
+  const isSingleWholeDeclaration =
+    /\b(100%|ingredients?\s*:|contains\b|cultured\b|pasteurized\b|organic\b|filtered\s+water|carbonated\s+water|purified\s+water|spring\s+water|rice|oats|rolled\s+oats|quinoa|honey|maple\s+syrup|almonds?|cashews?|walnuts?|peanuts?|pecans?|milk|cream|butter|eggs?|chicken|beef|pork|turkey|salmon|potatoes?|beans|lentils|chickpeas|olive\s+oil|avocado\s+oil|coconut\s+oil|sea\s+salt|salt)\b/i.test(
+      s
+    );
   if (!hasComma && !isSingleWholeDeclaration) return false;
   if (!isEnglishIngredientText(s)) return false;
-  return ENGLISH_INGREDIENT_ANCHORS.test(s);
+  return ENGLISH_INGREDIENT_ANCHORS.test(s) || isSingleWholeDeclaration;
 }
 
 function englishIngredients(p: OffProduct): string {
@@ -1135,8 +1138,8 @@ const CATEGORY_FALLBACK_CATALOG: Array<{
     nutrition: { caloriesKcal100g: 250, sugarsG100g: 48.0, saturatedFatG100g: 0, sodiumMg100g: 25, fiberG100g: 1.0, proteinG100g: 0.3, fruitsVegNutsPct: 45, nutriScoreGrade: "d", isWholeFood: false },
   },
   {
-    match: /\b(peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|jif|skippy|peter\s+pan|justin'?s)\b/i,
-    brand: "Nut Butter",
+    match: /\b(peanut\s+butter|jif|skippy|peter\s+pan)\b(?!.*\b(natural|organic|unsweetened|no\s+sugar|almond|cashew|sunflower)\b)/i,
+    brand: "Peanut Butter",
     ingredients: "Roasted Peanuts, Sugar, Hydrogenated Vegetable Oil (Rapeseed, Cottonseed, and Soybean Oils) to Prevent Separation, Molasses, Mono- and Diglycerides, Salt.",
     nutrition: { caloriesKcal100g: 588, sugarsG100g: 9.2, saturatedFatG100g: 10.3, sodiumMg100g: 425, fiberG100g: 6.0, proteinG100g: 24.0, fruitsVegNutsPct: 90, nutriScoreGrade: "c", isWholeFood: false },
   },
@@ -1230,13 +1233,76 @@ const CATEGORY_FALLBACK_CATALOG: Array<{
     ingredients: "Fruit, Water, Sugar or Pear Juice Concentrate, Ascorbic Acid (Vitamin C) to Promote Color Retention, Citric Acid.",
     nutrition: { caloriesKcal100g: 68, sugarsG100g: 14.5, saturatedFatG100g: 0, sodiumMg100g: 8, fiberG100g: 1.2, proteinG100g: 0.4, fruitsVegNutsPct: 80, nutriScoreGrade: "b", isWholeFood: false },
   },
-  {
-    match: /\b(spaghetti|penne|fettuccine|linguine|rigatoni|rotini|elbows?|farfalle|lasagna|pasta|noodles?|white\s+rice|brown\s+rice|jasmine\s+rice|basmati\s+rice|quinoa|black\s+beans|pinto\s+beans|kidney\s+beans|chickpeas|garbanzo\s+beans|cannellini\s+beans|lentils|diced\s+tomatoes|crushed\s+tomatoes|tomato\s+paste|tofu|tempeh|almonds?|cashews?|walnuts?|pecans?|pistachios?|peanuts?|mixed\s+nuts|trail\s+mix|chia\s+seeds?|flax\s+seeds?|hemp\s+seeds?|pumpkin\s+seeds?|sunflower\s+seeds?|olive\s+oil|avocado\s+oil|coconut\s+oil|barilla|dakota'?s\s+pride|southern\s+grove)\b/i,
-    brand: "Clean Pantry Staple",
-    ingredients: "100% Whole Grain Pasta, Rice, Beans, Raw Nuts/Seeds, or Cold-Pressed Oil (Zero Artificial Additives).",
-    nutrition: { caloriesKcal100g: 165, sugarsG100g: 1.5, saturatedFatG100g: 0.8, sodiumMg100g: 45, fiberG100g: 5.5, proteinG100g: 8.5, fruitsVegNutsPct: 60, nutriScoreGrade: "a", isWholeFood: true },
-  },
 ];
+
+/**
+ * Rejects a catalog fallback candidate when the user query specifies a dietary, allergen,
+ * or nutrition modifier (e.g. "Gluten Free Oreo", "Zero Sugar", "Dairy Free", "2%") that
+ * contradicts the static catalog entry's ingredients or nutrition profile.
+ */
+function isDietaryOrVariantMismatch(
+  query: string,
+  entryTitle: string,
+  entryIngredients: string,
+  entryNutrition?: NutritionInput
+): boolean {
+  const q = query.toLowerCase();
+  const t = entryTitle.toLowerCase();
+  const ing = entryIngredients.toLowerCase();
+
+  // 1. Gluten-free / grain-free query vs gluten-containing ingredients
+  if (
+    /\b(gluten[\s-]*free|grain[\s-]*free|celiac)\b/.test(q) &&
+    !/\b(gluten[\s-]*free|grain[\s-]*free)\b/.test(t) &&
+    /\b(wheat|barley|rye|malt|triticale|spelt|graham\s+flour|enriched\s+flour)\b/.test(ing)
+  ) {
+    return true;
+  }
+
+  // 2. Dairy-free / plant-based / vegan query vs dairy or animal ingredients
+  if (
+    /\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/.test(q) &&
+    !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/.test(t) &&
+    /\b(milk|cream|whey|casein|butter|cheese|yogurt|lactose|egg|beef|pork|chicken|turkey|fish|anchov\w*|gelatin)\b/.test(
+      ing
+    )
+  ) {
+    return true;
+  }
+
+  // 3. Zero-sugar / sugar-free / unsweetened / diet query vs caloric sugars
+  if (
+    /\b(zero\s+sugar|sugar[\s-]*free|sugarfree|no\s+sugar|unsweetened|\bdiet\b)\b/.test(q) &&
+    !/\b(zero|sugar[\s-]*free|sugarfree|no\s+sugar|unsweetened|\bdiet\b)\b/.test(t)
+  ) {
+    if (
+      (entryNutrition?.sugarsG100g ?? 0) > 0.5 ||
+      /\b(sugar|cane\s+sugar|sucrose|glucose|fructose|corn\s+syrup|high\s+fructose\s+corn\s+syrup|dextrose|maltose|honey|maple\s+syrup|molasses|agave)\b/.test(
+        ing
+      )
+    ) {
+      return true;
+    }
+  }
+
+  // 4. Tree-nut / seed butter query vs peanut ingredients
+  if (
+    /\b(almond|cashew|sunflower|walnut|pecan|hazelnut)\s+butter\b/.test(q) &&
+    /\bpeanut\b/.test(ing)
+  ) {
+    return true;
+  }
+
+  // 5. Fat-free / nonfat / skim / 2% / reduced-fat query vs full-fat entry
+  if (
+    /\b(fat[\s-]*free|non[\s-]*fat|skim|2%|1%|reduced[\s-]*fat|low[\s-]*fat)\b/.test(q) &&
+    /\bwhole\s+milk\b/.test(t)
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query
@@ -1248,19 +1314,23 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 
   // Check Just Bare before generic breaded poultry
   if (/\bjust\s+bare\b/i.test(query)) {
-    return {
-      productTitle: cleanTitle,
-      brand: "Just Bare",
-      ingredients: "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Contains 2% or Less of: Yellow Corn Flour, Sea Salt, Rice Starch, Spices, Dried Garlic, Dried Onion, Paprika, Yeast, Cream of Tartar, Sodium Bicarbonate.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false, isOrganic },
-      source: "catalog",
-    };
+    const jbIng =
+      "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Contains 2% or Less of: Yellow Corn Flour, Sea Salt, Rice Starch, Spices, Dried Garlic, Dried Onion, Paprika, Yeast, Cream of Tartar, Sodium Bicarbonate.";
+    if (!isDietaryOrVariantMismatch(query, "Just Bare Lightly Breaded Chicken Breast Strips", jbIng)) {
+      return {
+        productTitle: cleanTitle,
+        brand: "Just Bare",
+        ingredients: jbIng,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+        nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false, isOrganic },
+        source: "catalog",
+      };
+    }
   }
 
   // Check comprehensive Drinks & Beverages Catalog (Energy Drinks, Pre-Workouts, Sodas, Milks, Waters, Juices, Sports Drinks, Tea/Coffee)
   const drinkHit = matchDrinkCatalog(query);
-  if (drinkHit) {
+  if (drinkHit && !isDietaryOrVariantMismatch(query, drinkHit.title, drinkHit.ingredients, drinkHit.nutrition)) {
     const fullDrinkTitle = drinkHit.title.toLowerCase().startsWith(drinkHit.brand.toLowerCase())
       ? drinkHit.title
       : `${drinkHit.brand} ${drinkHit.title}`;
@@ -1278,7 +1348,10 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   }
 
   for (const entry of INSTANT_GROCERY_CATALOG) {
-    if (entry.match.test(query)) {
+    if (
+      entry.match.test(query) &&
+      !isDietaryOrVariantMismatch(query, entry.title, entry.ingredients, entry.nutrition)
+    ) {
       const fullEntryTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
         ? entry.title
         : `${entry.brand} ${entry.title}`;
@@ -1299,7 +1372,10 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   }
 
   for (const cat of CATEGORY_FALLBACK_CATALOG) {
-    if (cat.match.test(query)) {
+    if (
+      cat.match.test(query) &&
+      !isDietaryOrVariantMismatch(query, cat.brand, cat.ingredients, cat.nutrition)
+    ) {
       return {
         productTitle: cleanTitle,
         brand: cat.brand,
@@ -1364,9 +1440,6 @@ function cleanSearchQuery(title: string): string {
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
-const DIRECT_CATALOG_PRIORITY =
-  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|kirkwood.*(ground\s+turkey|turkey\s+breast|chicken\s+breast|chicken\s+tenderloins?)|fresh\s+ground\s+(turkey|chicken|beef)|parkview.*(sausage|kielbasa|hot\s*dog|franks?)|smoked\s+sausage|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|crunchmaster|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|365.*frozen\s+turkey|birds\s+eye.*steamfresh|ball\s+park.*franks?|mccormick.*bac'?n|rotisserie\s+chicken|golden\s+sweet.*corn|capri\s*sun|a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|steak[- ]?umm\w*|in\s+(heavy|light)\s+syrup|ore[- ]?ida|oreo\s+puffs?)\b/i;
-
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
@@ -1391,12 +1464,6 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     }
   }
 
-  // Fast-path exact store-brand items and verified Drinks Catalog items (Energy Drinks, Pre-Workouts, Sodas, Milks, Waters, Juices, Sports Drinks, Tea/Coffee)
-  if (!input.barcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || Boolean(matchDrinkCatalog(title)))) {
-    const direct = catalogFallback(title);
-    if (direct) return { ...direct, ms: ms() };
-  }
-
   const key = cacheKey(input);
   if (!key) return null;
   const cache = await loadCache();
@@ -1416,6 +1483,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
     found = offRes || usdaRes;
   }
+  // Catalog fallback is strictly last-resort when screen, cache, Open Food Facts, and USDA return no match
   if (!found && title) found = catalogFallback(title);
   if (!found) return null;
 

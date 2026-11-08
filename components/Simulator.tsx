@@ -17,8 +17,9 @@ const gradeProduct = (
   ingredients: string,
   watchlist: Record<Category, boolean>,
   nutrition?: NutritionInput,
+  familyWatchlist: Category[] = [],
 ): ScoreResult =>
-  scoreProductYuka(ingredients, watchlist, [], { ...nutrition, productTitle: title });
+  scoreProductYuka(ingredients, watchlist, familyWatchlist, { ...nutrition, productTitle: title });
 import { PRESETS } from "@/lib/presets";
 import {
   CLEAN_ALTERNATIVES,
@@ -420,8 +421,8 @@ export default function Simulator() {
         let authenticatedPro = false;
         if (storedToken) {
           const authRes = await fetch(
-            `/api/auth?token=${encodeURIComponent(storedToken)}&deviceId=${encodeURIComponent(deviceId)}`,
-            { cache: "no-store" }
+            `/api/auth?deviceId=${encodeURIComponent(deviceId)}`,
+            { cache: "no-store", headers: { Authorization: `Bearer ${storedToken}` } }
           ).catch(() => null);
           const authData = (authRes ? await authRes.json().catch(() => null) : null) as {
             ok?: boolean;
@@ -445,7 +446,7 @@ export default function Simulator() {
         }
 
         const refParam = (params.get("ref") || "").trim().toUpperCase();
-        if (refParam && /^BROC-[A-Z0-9]{4,8}$/.test(refParam)) {
+        if (refParam && /^BROC-[A-Z0-9]{4,10}$/.test(refParam)) {
           window.localStorage.setItem("heybroc_referred_by", refParam);
         }
 
@@ -465,15 +466,20 @@ export default function Simulator() {
           entitlement?: {
             referralCode?: string;
             isProActive?: boolean;
+            weeklySwapsUsedCount?: number;
           };
         } | null;
+
+        if (!cancelled && typeof refData?.entitlement?.weeklySwapsUsedCount === "number") {
+          setSwapsUsedThisWeek(refData.entitlement.weeklySwapsUsedCount);
+        }
 
         if (!cancelled && refData?.entitlement?.referralCode) {
           setPersonalReferralCode(refData.entitlement.referralCode);
           window.localStorage.setItem("heybroc_my_referral_code", refData.entitlement.referralCode);
         } else {
           const cachedServerCode = window.localStorage.getItem("heybroc_my_referral_code") || "";
-          if (!cancelled && /^BROC-[A-Z0-9]{8}$/.test(cachedServerCode)) {
+          if (!cancelled && /^BROC-[A-Z0-9]{4,10}$/.test(cachedServerCode)) {
             setPersonalReferralCode(cachedServerCode);
           }
         }
@@ -481,7 +487,7 @@ export default function Simulator() {
         if (!cancelled && refParam && refData?.ok) {
           setToast({
             title: `🎁 Friend Invite Saved (${refParam})`,
-            body: refData.message || "Scan any grocery item so you and your friend both unlock +7 Free Pro Days!",
+            body: refData.message || "Invite saved! Start a trial to unlock +7 Free Pro Days for both of you.",
           });
         }
 
@@ -560,12 +566,12 @@ export default function Simulator() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const score = useMemo(
-    () => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch, active.nutrition),
-    [active, watch],
+    () => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch, active.nutrition, familyWatchlist),
+    [active, watch, familyWatchlist],
   );
   const swap = useMemo(
-    () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store, watchlist: watch }),
-    [score.score, active, store, watch],
+    () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store, watchlist: watch, familyWatchlist }),
+    [score.score, active, store, watch, familyWatchlist],
   );
   const theme = STORE_THEME[store];
 
@@ -573,7 +579,7 @@ export default function Simulator() {
   const cartScored = useMemo(
     () =>
       cart.map((item) => {
-        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition);
+        const s = gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${item.brand} ${item.title}`,
@@ -581,10 +587,11 @@ export default function Simulator() {
           category: item.category,
           store,
           watchlist: watch,
+          familyWatchlist,
         });
         return { item, s, sw };
       }),
-    [cart, watch, store],
+    [cart, watch, store, familyWatchlist],
   );
   const cartAvg = cartScored.length
     ? Math.round(cartScored.reduce((a, r) => a + r.s.score, 0) / cartScored.length)
@@ -597,16 +604,16 @@ export default function Simulator() {
     () =>
       Array.from(
         new Set(
-          PRESETS.flatMap((p) => gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch).flagged.map((f) => f.name)),
+          PRESETS.flatMap((p) => gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist).flagged.map((f) => f.name)),
         ),
       ),
-    [watch],
+    [watch, familyWatchlist],
   );
 
   const fallbackSwaps = useMemo<SwapRecord[]>(
     () =>
       PRESETS.map((p): SwapRecord | null => {
-        const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
+        const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
         const sw = resolveSwap({
           score: s.score,
           productTitle: `${p.brand} ${p.title}`,
@@ -614,6 +621,7 @@ export default function Simulator() {
           category: p.category,
           store,
           watchlist: watch,
+          familyWatchlist,
         });
         if (!sw) return null;
         return {
@@ -624,7 +632,7 @@ export default function Simulator() {
           dodged: s.flagged.map((f) => f.name),
         };
       }).filter((x): x is SwapRecord => Boolean(x)),
-    [watch, store],
+    [watch, store, familyWatchlist],
   );
 
   useEffect(() => {
@@ -705,6 +713,7 @@ export default function Simulator() {
         itemToAdd.ingredients,
         watch,
         itemToAdd.nutrition,
+        familyWatchlist,
       );
       const replacedDirty =
         itemToAdd.origin === "swap"
@@ -720,6 +729,7 @@ export default function Simulator() {
           replacedDirty.ingredients,
           watch,
           replacedDirty.nutrition,
+          familyWatchlist,
         );
         setCart((c) => {
           if (c.some((i) => i.key === itemToAdd.key)) return c;
@@ -753,7 +763,7 @@ export default function Simulator() {
         body: `${itemToAdd.brand} ${itemToAdd.title} (${cleanScore.score}/100)`,
       });
     },
-    [watch, previousDirtyItem, store, triggerClimbFlash],
+    [watch, familyWatchlist, previousDirtyItem, store, triggerClimbFlash],
   );
 
   /* ---------------- Swap (single item or from auditor) ---------------- */
@@ -769,6 +779,7 @@ export default function Simulator() {
         targetItem.ingredients,
         watch,
         targetItem.nutrition,
+        familyWatchlist,
       );
       const targetSwap = resolveSwap({
         score: itemScore.score,
@@ -777,9 +788,22 @@ export default function Simulator() {
         category: targetItem.category,
         store,
         watchlist: watch,
+        familyWatchlist,
       });
       if (!targetSwap) return;
       setSwapsUsedThisWeek((n) => n + 1);
+      if (typeof window !== "undefined") {
+        const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+        void fetch("/api/referral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "record_swap",
+            deviceId: devId,
+            productKey: targetItem.key || `${targetItem.brand} ${targetItem.title}`,
+          }),
+        }).catch(() => {});
+      }
       const clean = cleanToProduct(targetSwap.category, targetItem);
       setPreviousDirtyItem(targetItem);
       setActive(clean);
@@ -795,7 +819,7 @@ export default function Simulator() {
         href: targetSwap.deepLink || targetSwap.webUrl,
       });
     },
-    [watch, store, isPro, swapsUsedThisWeek, courtesyRefillAvailable],
+    [watch, familyWatchlist, store, isPro, swapsUsedThisWeek, courtesyRefillAvailable],
   );
 
   const doSwap = useCallback(() => {
@@ -855,7 +879,7 @@ export default function Simulator() {
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) || undefined;
         const referredByCode =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
-        const payload = { productTitle: q, store, watchlist: watch, deviceId, referredByCode };
+        const payload = { productTitle: q, store, watchlist: watch, familyWatchlist, deviceId, referredByCode };
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -872,7 +896,7 @@ export default function Simulator() {
         const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
         const liveScore =
           data.result?.score ??
-          gradeProduct(data.product.title, data.product.ingredients, watch, data.product.nutrition).score;
+          gradeProduct(data.product.title, data.product.ingredients, watch, data.product.nutrition, familyWatchlist).score;
         const fallbackImg = liveScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
         const p: Product = {
           key: `live-${data.product.barcode || q}`,
@@ -905,7 +929,7 @@ export default function Simulator() {
         setLiveError("Network error — is the server reachable?");
       }
     },
-    [query, store, watch, showProduct],
+    [query, store, watch, familyWatchlist, showProduct],
   );
 
   /* ---------------- Whole-Cart Audit ---------------- */
@@ -920,6 +944,7 @@ export default function Simulator() {
         body: JSON.stringify({
           store,
           watchlist: watch,
+          familyWatchlist,
           items: cart.map((i) => ({ productTitle: `${i.brand} ${i.title}`, rawIngredients: i.ingredients })),
         }),
       });
@@ -931,7 +956,7 @@ export default function Simulator() {
     } finally {
       setAuditBusy(false);
     }
-  }, [cart, store, watch]);
+  }, [cart, store, watch, familyWatchlist]);
 
   const swapAll = useCallback(() => {
     const n = dirty.length;
@@ -942,6 +967,20 @@ export default function Simulator() {
       return;
     }
     setSwapsUsedThisWeek((prev) => prev + n);
+    if (typeof window !== "undefined") {
+      const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+      for (const d of dirty) {
+        void fetch("/api/referral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "record_swap",
+            deviceId: devId,
+            productKey: d.item.key || `${d.item.brand} ${d.item.title}`,
+          }),
+        }).catch(() => {});
+      }
+    }
     const records: SwapRecord[] = dirty.map((d) => ({
       fromTitle: `${d.item.brand} ${d.item.title}`,
       toTitle: d.sw!.title,
@@ -960,7 +999,7 @@ export default function Simulator() {
           nextCart.reduce(
             (sum, item) =>
               sum +
-              gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition).score,
+              gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist).score,
             0,
           ) / nextCart.length,
         )
@@ -972,7 +1011,7 @@ export default function Simulator() {
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
       body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, cart, watch, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, courtesyRefillAvailable]);
+  }, [dirty, cart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, courtesyRefillAvailable]);
 
   const resetCartPresets = useCallback(() => {
     setCart(PRESETS.map(presetToProduct));
@@ -1272,7 +1311,7 @@ export default function Simulator() {
             <div className="card-head"><h2>Popular Grocery Items</h2></div>
             <ul className="preset-list">
               {PRESETS.map((p) => {
-                const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
+                const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
                 const on = active.key === p.id && viewMode === "product";
                 return (
                   <li key={p.id}>
@@ -1354,7 +1393,7 @@ export default function Simulator() {
                   </li>
                 ))}
               </ul>
-              <p className="meta">Calories, carbs, natural fat and sodium are never scored.</p>
+              <p className="meta">Scored on our 3-pillar rubric: 60% Nutritional Quality, 30% Additive Safety &amp; 10% Organic Bonus.</p>
             </div>
           )}
         </section>
@@ -1679,7 +1718,7 @@ export default function Simulator() {
                             </div>
                           ) : null}
 
-                          {/* 3-Pillar Score & Blood Sugar / PCOS / Calorie Insight Card */}
+                          {/* 3-Pillar Score & Sugar / Refined Carb / Calorie Insight Card */}
                           {score.yukaBreakdown && (
                             <div
                               style={{
@@ -1702,7 +1741,7 @@ export default function Simulator() {
                               {score.yukaBreakdown.glucoseImpact && (
                                 <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 8, paddingTop: 8 }}>
                                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "#64748b", textTransform: "uppercase" }}>
-                                    BLOOD SUGAR, PCOS &amp; CALORIE INSIGHT
+                                    SUGAR, REFINED CARB &amp; CALORIE INSIGHT
                                   </div>
                                   <div
                                     style={{
@@ -1824,7 +1863,7 @@ export default function Simulator() {
                                 ? scanHistory.filter((h) => favorites.includes(h.product.key))
                                 : scanHistory
                               ).map(({ product: hp, timeLabel }) => {
-                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch, hp.nutrition);
+                                const hs = gradeProduct(`${hp.brand} ${hp.title}`, hp.ingredients, watch, hp.nutrition, familyWatchlist);
                                 return (
                                   <li key={hp.key}>
                                     <button
@@ -1860,12 +1899,14 @@ export default function Simulator() {
                           <div className="yuka-recs-grid">
                             {PRESETS.map((p) => {
                               const dirtyProd = presetToProduct(p);
-                              const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch);
+                              const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
                               const cleanProd = cleanToProduct(p.category, dirtyProd);
                               const cleanScore = gradeProduct(
                                 `${cleanProd.brand} ${cleanProd.title}`,
                                 cleanProd.ingredients,
                                 watch,
+                                undefined,
+                                familyWatchlist,
                               );
                               return (
                                 <div key={p.id} className="yuka-rec-pair">
@@ -1992,8 +2033,8 @@ export default function Simulator() {
                             <input
                               value={query}
                               onChange={(e) => setQuery(e.target.value)}
-                              placeholder="Search 7.5M+ food, cosmetic & household items…"
-                              aria-label="Search any grocery, cosmetic, or household product"
+                              placeholder="Search any grocery or beverage item…"
+                              aria-label="Search any grocery or beverage product"
                             />
                             <button type="submit" disabled={liveState === "loading" || !query.trim()}>
                               {liveState === "loading" ? "…" : "Scan"}
@@ -2004,7 +2045,7 @@ export default function Simulator() {
                             <img src="/broc-mascot.jpg" alt="Broc" className="yuka-member-mascot" />
                             <span className="yuka-member-eyebrow">MEMBER ACCESS</span>
                             <h4>Search for any product</h4>
-                            <p>7.5 million+ food, cosmetic, personal care &amp; household products scored 100% on ingredient &amp; chemical safety via Open Food Facts, Open Beauty Facts, Open Products Facts &amp; USDA.</p>
+                            <p>Packaged food and beverage products scored on our 3-pillar rubric (60% Nutritional Quality, 30% Additive Safety, 10% Organic Bonus) via Open Food Facts &amp; USDA FoodData Central.</p>
                             {!isPro && (
                               <button
                                 type="button"
@@ -2183,7 +2224,7 @@ export default function Simulator() {
           <div className="compare-head">
             <span className="eyebrow eyebrow--green">THE MISSING LINK IN CLEAN GROCERIES</span>
             <h2>Why Parents Switch to HeyBroc</h2>
-            <p>Combine the effortless floating bubble of coupon apps with deep, 100% ingredient-only food grading.</p>
+            <p>Combine the effortless floating bubble of coupon apps with transparent, deterministic food &amp; ingredient grading.</p>
           </div>
 
           <div className="compare-grid" role="table" aria-label="HeyBroc vs Coupon and Barcode Apps">
@@ -2304,7 +2345,7 @@ export default function Simulator() {
                   What ingredients and additives does HeyBroc flag?
                 </summary>
                 <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-                  HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), emulsifiers (Carrageenan, Polysorbate 80), and cosmetic endocrine disruptors (Parabens, Phthalates, PFAS).
+                  HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), and synthetic emulsifiers or gums (Carrageenan, Polysorbate 80).
                 </p>
               </details>
               <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>

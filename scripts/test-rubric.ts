@@ -83,7 +83,7 @@ check("tier 2 sunflower oil capped <= 59 Mediocre in Yuka", scoreProductYuka("Or
 check("tier 3 avocado oil scores Green >= 80 in Yuka", scoreProductYuka("Organic potatoes, avocado oil, sea salt").score >= 80 && scoreProductYuka("Organic potatoes, avocado oil, sea salt").rating === "Excellent");
 check("adding citric acid never increases Yuka score", scoreProductYuka("Sugar, water, citric acid", {}, [], { nutriScoreGrade: "e" }).score <= scoreProductYuka("Sugar, water", {}, [], { nutriScoreGrade: "e" }).score);
 check("tripotassium & tricalcium phosphate", scoreIngredients("Whole grain oats, tripotassium phosphate, tricalcium phosphate").flagged.some((f) => f.id === "naphosphate"));
-check("swap deepLink uses https universal link", Boolean(resolveSwap({ score: 40, productTitle: "Strawberry Yogurt", store: "walmart" })?.deepLink.startsWith("https://")));
+check("swap deepLink uses https universal link", Boolean(resolveSwap({ score: 40, productTitle: "Strawberry Yogurt", store: "walmart" })?.deepLink?.startsWith("https://")));
 check("Capri Sun scores Poor <= 24 and swaps to Spindrift with drink.png", (() => {
   const s = scoreProductYuka("Water, sugar, pear and grape juice concentrate, citric acid, strawberry and kiwi juice concentrate, natural flavor.", {}, [], { productTitle: "Capri Sun Strawberry Kiwi Juice Pouches" });
   const sw = resolveSwap({ score: s.score, productTitle: "Capri Sun Strawberry Kiwi Juice Pouches", store: "aldi" });
@@ -198,7 +198,19 @@ check("1-for-1 Park Street Deli Hummus -> Hope Foods Organic Hummus (not turkey)
 check("1-for-1 Ore-Ida French Fries -> Organic Yukon Gold Potatoes (not fruit bar)", Boolean(resolveSwap({ score: 49, productTitle: "Ore-Ida Golden Crinkles French Fries", store: "aldi" })?.title.includes("Potatoes")));
 check("1-for-1 A.1. Steak Sauce -> Primal Kitchen Steak & BBQ Sauce (not roast beef)", Boolean(resolveSwap({ score: 18, productTitle: "A.1. Original Steak Sauce", store: "aldi" })?.title.includes("Sauce")));
 check("1-for-1 Oreo Puffs Cereal -> Nature's Path Organic Heritage Flakes (not cookies)", Boolean(resolveSwap({ score: 6, productTitle: "Oreo Puffs Cereal", store: "aldi" })?.title.includes("Heritage Flakes")));
+check("Monster Energy Zero Sugar / Monster Ultra Zero / Sugar Free Monster never return sucrose or glucose", (() => {
+  const queries = ["Monster Energy Zero Sugar", "Monster Ultra Zero", "Sugar Free Monster"];
+  return queries.every((q) => {
+    const m = matchDrinkCatalog(q);
+    return (
+      Boolean(m) &&
+      (m!.nutrition.sugarsG100g ?? 0) === 0 &&
+      !/\b(sucrose|glucose)\b/i.test(m!.ingredients)
+    );
+  });
+})());
 
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
 console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
 process.exit(fail ? 1 : 0);
+

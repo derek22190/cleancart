@@ -20,7 +20,7 @@ export async function generateMetadata({
 
   return {
     title: `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`,
-    description: `Is ${entry.title} healthy? HeyBroc scores it ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) with ${result.flagged.length} ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Blood Sugar & PCOS impact.`,
+    description: `Is ${entry.title} healthy? HeyBroc scores it ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) with ${result.flagged.length} ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
     alternates: {
       canonical: `https://www.heybroc.com/swaps/${entry.slug}`,
     },
@@ -137,7 +137,7 @@ export default async function SwapReportPage({
                       : "#991b1b",
               }}
             >
-              🩸 Blood Sugar Impact: {yb.glucoseImpact} · 🔥 {yb.calorieNote}
+              🩸 Sugar &amp; refined-carb note: {yb.glucoseImpact} · 🔥 {yb.calorieNote}
             </span>
           )}
         </div>
@@ -165,7 +165,7 @@ export default async function SwapReportPage({
           </div>
         )}
 
-        {/* 3-Pillar + Blood Sugar & PCOS Breakdown */}
+        {/* 3-Pillar + Sugar & Refined-Carb Note */}
         {yb && (
           <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 16, padding: "16px 18px", marginBottom: 20 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -176,7 +176,7 @@ export default async function SwapReportPage({
             </div>
             <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                BLOOD SUGAR, PCOS &amp; METABOLIC INSIGHT
+                SUGAR &amp; REFINED-CARB NOTE
               </div>
               <p style={{ fontSize: 13.5, color: "#334155", margin: "4px 0 0", lineHeight: 1.5 }}>
                 {yb.glucoseNote}
