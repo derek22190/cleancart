@@ -675,9 +675,14 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   }
   // 6. Chips, Crackers (Ritz, Cheez-It, Goldfish), Pretzels, Macaroni & Cheese, Salty Snacks
   if (
-    /\b(doritos|cheetos|takis|chips|crisps|ritz|cheez[- ]?it|goldfish|triscuit|wheat thins|saltines|crackers|pretzels|macaroni|mac\s*&\s*cheese|mac and cheese|shells and cheese|velveeta|ramen)\b/.test(combined) &&
-    !/\b(mary'?s gone crackers|boulder canyon|avocado oil|extra virgin olive oil|siete|lesserevil|quinn|annie'?s|goodles)\b/.test(combined)
+    /\b(doritos|cheetos|takis|chips|crisps|ritz|cheez[- ]?it|goldfish|triscuit|wheat thins|saltines|crackers|pretzels|macaroni|mac\s*&\s*cheese|mac and cheese|shells and cheese|velveeta|ramen)\b/.test(combined)
   ) {
+    if (/\b(mary'?s gone crackers|boulder canyon|avocado oil|extra virgin olive oil|siete|lesserevil|quinn|annie'?s|goodles|simple mills)\b/.test(combined)) {
+      const hasOrganicTag = /\borganic\b/.test(combined);
+      return hasOrganicTag
+        ? { caloriesKcal100g: 430, sugarsG100g: 1.0, saturatedFatG100g: 2.2, sodiumMg100g: 250, fiberG100g: 5.5, proteinG100g: 6.5, fruitsVegNutsPct: 65 }
+        : { caloriesKcal100g: 464, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 265, fiberG100g: 6.5, proteinG100g: 3.6, fruitsVegNutsPct: 0 };
+    }
     return { caloriesKcal100g: 485, sugarsG100g: 5.5, saturatedFatG100g: 6.5, sodiumMg100g: 680, fiberG100g: 2.0, proteinG100g: 6.5, fruitsVegNutsPct: 0 };
   }
   // 7. Bacon, Sausage, Kielbasa, Hot Dogs, Salami, Pepperoni, Processed Deli Meat (excluding Deli Soups & Salads)
@@ -977,7 +982,7 @@ export function scoreProductYuka(
         explanation: "High sodium content increases blood-pressure load and lowers the 60% Nutritional Quality score.",
         matched: "sodium",
       });
-    } else if (sodium >= 280 && nutritionScore <= 42) {
+    } else if (sodium >= 280 && nutritionScore <= 42 && /\b(turkey|chicken|poultry|pork|ham|roast)\b/i.test(titleAndIng)) {
       flagged.push({
         id: "nutri_moderate_sodium",
         name: `Added Sodium Solution (${Math.round(sodium)}mg / 100g)`,

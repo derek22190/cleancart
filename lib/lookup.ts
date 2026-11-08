@@ -1023,15 +1023,28 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     };
   }
 
-  // 5. Breads, Bagels, Buns, Dinner Rolls, Tortillas, Waffles, Pancakes
-  if (/\b(bread|loaf|bagel|buns?|rolls?|tortillas?|wraps?|pita|naan|english\s+muffin|waffles?|pancakes?|biscuits?)\b/.test(s)) {
-    if (isOrganic || /\b(ezekiel|dave'?s\s+killer|siete|canyon\s+bakehouse)\b/.test(s)) {
+  // 5. Breads, Bagels, Buns, Dinner Rolls, Tortillas (excluding Tortilla Chips), Waffles, Pancakes
+  if (
+    /\b(bread|loaf|bagel|buns?|rolls?|tortillas?|wraps?|pita|naan|english\s+muffin|waffles?|pancakes?|biscuits?)\b/.test(s) &&
+    !/\b(chips?|crisps?|strips?|tostadas?)\b/.test(s)
+  ) {
+    if (isOrganic || /\b(ezekiel|dave'?s\s+killer|canyon\s+bakehouse)\b/.test(s)) {
       return {
         productTitle: cleanTitle,
         brand: "Organic Bakery",
         ingredients: "Organic Whole Wheat Flour, Water, Organic Cracked Wheat, Organic Cane Sugar, Organic Grain & Seed Blend, Yeast, Sea Salt.",
         imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
         nutrition: { caloriesKcal100g: 245, sugarsG100g: 4.0, saturatedFatG100g: 0.5, sodiumMg100g: 310, fiberG100g: 6.5, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
+        source: "catalog",
+      };
+    }
+    if (/\bsiete\b/.test(s)) {
+      return {
+        productTitle: cleanTitle,
+        brand: "Siete",
+        ingredients: "Almond Flour, Tapioca Flour, Water, Xanthan Gum, Sea Salt.",
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+        nutrition: { caloriesKcal100g: 290, sugarsG100g: 2.0, saturatedFatG100g: 1.5, sodiumMg100g: 330, fiberG100g: 5.0, proteinG100g: 9.0, fruitsVegNutsPct: 45, nutriScoreGrade: "b", isWholeFood: false, isOrganic },
         source: "catalog",
       };
     }
@@ -1068,6 +1081,16 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         ingredients: "Roasted Nuts, Sea Salt.",
         imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
         nutrition: { caloriesKcal100g: 580, sugarsG100g: 4.0, saturatedFatG100g: 4.5, sodiumMg100g: 180, fiberG100g: 9.0, proteinG100g: 20.0, fruitsVegNutsPct: 95, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
+        source: "catalog",
+      };
+    }
+    if (/\b(siete|lesserevil|lesser\s+evil|boulder\s+canyon|jackson'?s|simple\s+mills|mary'?s\s+gone|hu\s+kitchen|avocado\s+oil)\b/.test(s)) {
+      return {
+        productTitle: cleanTitle,
+        brand: /\bsiete\b/.test(s) ? "Siete" : "Clean Snack Brand",
+        ingredients: "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+        nutrition: { caloriesKcal100g: 464, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 265, fiberG100g: 6.5, proteinG100g: 3.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic },
         source: "catalog",
       };
     }

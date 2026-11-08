@@ -108,6 +108,14 @@ check("Butterball Whole Turkey scores 72 Mediocre (42 + 30 + 0)", (() => {
   const s = scoreProductYuka("Whole young turkey, water, salt.", {}, [], { productTitle: "Butterball Frozen Whole Turkey" });
   return s.score === 72 && s.rating === "Mediocre";
 })());
+check("Siete Grain-Free Sea Salt Tortilla Chips scores 72 (42 + 30 + 0) with Glucose Insight", (() => {
+  const s = scoreProductYuka("Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.", {}, [], {
+    productTitle: "Siete Grain-Free Sea Salt Tortilla Chips, 5 oz",
+    nutriScoreGrade: "c",
+    isOrganic: false,
+  });
+  return s.score === 72 && s.yukaBreakdown?.nutritionScore === 42 && s.yukaBreakdown?.additiveScore === 30 && s.yukaBreakdown?.organicScore === 0 && Boolean(s.yukaBreakdown?.glucoseImpact);
+})());
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
 console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
 process.exit(fail ? 1 : 0);

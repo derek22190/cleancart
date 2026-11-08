@@ -390,6 +390,51 @@ class MainActivity : Activity() {
 
     /* ---------------- TAB 0: MY SCANS ---------------- */
 
+    private fun buildDarkGreenStep2Card(subStep: String): View {
+        val stepTitle = when (subStep) {
+            "2B" -> "Step 2B of 2: Unlock Restricted Settings"
+            "2C" -> "Step 2C of 2: Flip HeyBroc Switch ON"
+            else -> "Step 2A of 2: Tap Greyed-Out HeyBroc Once"
+        }
+        val stepBody = when (subStep) {
+            "2B" -> "Tap below to open App Info → tap ⋮ (3 dots in top-right corner) → tap 'Allow restricted settings'."
+            "2C" -> "Restricted settings unlocked! Tap below → Installed apps → HeyBroc → flip the switch ON."
+            else -> "Android requires tapping the greyed-out 'HeyBroc' in Accessibility → Installed apps once before the ⋮ 3-dot unlock menu appears."
+        }
+        val btnText = when (subStep) {
+            "2B" -> "⚡ Open App Info (Tap ⋮ Top-Right 3 Dots) →"
+            "2C" -> "⚡ Open Accessibility & Turn ON HeyBroc →"
+            else -> "⚡ Step 2A: Open Installed Apps →"
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                setColor(0xFF064E3B.toInt())
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), 0xFF10B981.toInt())
+            }
+            addView(label("LIVE STORE BUBBLE SETUP · 1 OF 2 DONE", 10.5f, 0xFFA7F3D0.toInt(), bold = true).apply {
+                letterSpacing = 0.06f
+            })
+            addView(label(stepTitle, 15.5f, Color.WHITE, bold = true).apply {
+                setPadding(0, dp(4), 0, dp(3))
+            })
+            addView(label(stepBody, 12.5f, 0xFFD1FAE5.toInt()).apply {
+                setPadding(0, 0, 0, dp(10))
+            })
+            addView(label(btnText, 13.5f, 0xFF064E3B.toInt(), bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                background = GradientDrawable().apply {
+                    setColor(0xFF6EE7B7.toInt())
+                    cornerRadius = dp(999).toFloat()
+                }
+                setOnClickListener { runGuidedSetupStep() }
+            })
+        }
+    }
+
     private fun renderHistoryTab() {
         val overlayOk = Settings.canDrawOverlays(this)
         val a11yServiceEnabled = isAccessibilityEnabled()
