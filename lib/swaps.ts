@@ -1056,7 +1056,7 @@ export function impactClickId(): string {
 export function amazonPartnerTag(): string {
   return (
     (typeof process !== "undefined" && (process.env?.NEXT_PUBLIC_AMAZON_TAG || process.env?.AMAZON_PARTNER_TAG)) ||
-    ""
+    "heybroc-20"
   ).trim();
 }
 

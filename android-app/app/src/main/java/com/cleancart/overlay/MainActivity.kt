@@ -2517,7 +2517,7 @@ class MainActivity : Activity() {
             "costco" -> "https://www.costco.com/CatalogSearch?keyword=$encoded"
             "kroger" -> "https://www.kroger.com/search?query=$encoded"
             "sams" -> "https://www.samsclub.com/s/$encoded"
-            "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh"
+            "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh&tag=heybroc-20&linkCode=ll2"
             else -> "https://www.walmart.com/search?q=$encoded"
         }
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
