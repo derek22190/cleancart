@@ -1066,7 +1066,7 @@ class OverlayWindowService : Service() {
                     letterSpacing = 0.05f
                 })
                 dietaryAlerts.forEach { alert ->
-                    addView(text("${alert.icon} ${alert.label}: ${alert.matchedDetail}", 12f, 0xFF7F1D1D.toInt(), bold = true).apply {
+                    addView(text("${alert.label}: ${alert.reason}", 12f, 0xFF7F1D1D.toInt(), bold = true).apply {
                         setPadding(0, dp(4), 0, 0)
                     })
                 }

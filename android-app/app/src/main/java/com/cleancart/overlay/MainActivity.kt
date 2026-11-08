@@ -290,9 +290,42 @@ class MainActivity : Activity() {
             else -> "Search"
         }
 
-        topBarContainer.addView(label(titleText, 27f, 0xFF111814.toInt(), bold = true).apply {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
+        val hasDietaryAlerts = activeDietaryCount > 0
+        val allergyHeaderLabel = if (hasDietaryAlerts) {
+            "🛡️ $activeDietaryCount Allergy/Diet Alert${if (activeDietaryCount == 1) "" else "s"} ▾"
+        } else {
+            "🛡️ Allergies & Diabetes ▾"
+        }
+
+        // Left Header Column: Page Title + One-Tap "🛡️ Allergies & Diabetes" Pill Button
+        val leftHeaderCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
+            addView(label(titleText, 26f, 0xFF111814.toInt(), bold = true))
+            addView(label(
+                allergyHeaderLabel,
+                11.5f,
+                if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF065F46.toInt(),
+                bold = true
+            ).apply {
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                background = GradientDrawable().apply {
+                    setColor(if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFECFDF5.toInt())
+                    setStroke(dp(1), if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFF86EFAC.toInt())
+                    cornerRadius = dp(999).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(4) }
+                setOnClickListener {
+                    showAllergyAndDietModal()
+                }
+            })
+        }
+        topBarContainer.addView(leftHeaderCol)
 
         // On My Scans tab, show the ★ (Favorites filter) icon
         if (activeTab == 0) {
@@ -309,36 +342,6 @@ class MainActivity : Activity() {
                 }
             })
         }
-
-        // Personal Allergies & Diabetes Watch header pill button
-        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
-        val hasDietaryAlerts = activeDietaryCount > 0
-        val allergyHeaderLabel = if (hasDietaryAlerts) {
-            "🛡️ $activeDietaryCount Alert${if (activeDietaryCount == 1) "" else "s"}"
-        } else {
-            "🛡️ Allergies"
-        }
-        topBarContainer.addView(label(
-            allergyHeaderLabel,
-            11.5f,
-            if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF1F2937.toInt(),
-            bold = true
-        ).apply {
-            setPadding(dp(10), dp(5), dp(10), dp(5))
-            background = GradientDrawable().apply {
-                setColor(if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFEFF1F0.toInt())
-                setStroke(dp(1), if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFFE4E7E5.toInt())
-                cornerRadius = dp(999).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = dp(6) }
-            setOnClickListener {
-                showAllergyAndDietModal()
-            }
-        })
 
         // Account / Log in pill button
         val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
@@ -2282,7 +2285,7 @@ class MainActivity : Activity() {
                     letterSpacing = 0.05f
                 })
                 dietaryAlerts.forEach { alert ->
-                    addView(label("${alert.icon} ${alert.label}: ${alert.matchedDetail}", 12.5f, 0xFF7F1D1D.toInt(), bold = true).apply {
+                    addView(label("${alert.label}: ${alert.reason}", 12.5f, 0xFF7F1D1D.toInt(), bold = true).apply {
                         setPadding(0, dp(4), 0, 0)
                     })
                 }

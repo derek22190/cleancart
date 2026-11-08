@@ -313,14 +313,20 @@ object ScanApi {
         val title: String,
         val subtitle: String,
         val shortBadge: String,
-    )
+    ) {
+        val key: String get() = id
+        val icon: String get() = emoji
+        val label: String get() = title
+    }
 
     data class DietaryAlert(
         val id: String,
         val label: String,
         val shortBadge: String,
         val reason: String,
-    )
+    ) {
+        val matchedDetail: String get() = reason
+    }
 
     val DIETARY_OPTIONS = listOf(
         DietaryOption(
