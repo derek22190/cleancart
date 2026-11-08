@@ -35,6 +35,7 @@ import {
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import Scorecard, { type SwapRecord } from "./Scorecard";
+import WatchlistMiniFunnel from "./WatchlistMiniFunnel";
 
 /* ------------------------------------------------------------------ */
 /* Types & helpers                                                     */
@@ -365,6 +366,8 @@ export default function Simulator() {
   const [isPro, setIsPro] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [watchlistFunnelOpen, setWatchlistFunnelOpen] = useState(false);
+  const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>(["seedOils", "dyes", "hfcs"]);
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
   const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
@@ -383,11 +386,30 @@ export default function Simulator() {
         }
         if (!cancelled) setDeviceIdState(deviceId);
 
+        try {
+          const savedWl = JSON.parse(
+            window.localStorage.getItem("heybroc_family_watchlist") || "null"
+          ) as Category[] | null;
+          if (Array.isArray(savedWl) && savedWl.length > 0 && !cancelled) {
+            setFamilyWatchlist(savedWl);
+          }
+        } catch {
+          /* ignore */
+        }
+
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
         if (params.get("login") === "1") {
           setAuthOpen(true);
+        } else if (params.get("onboarding") === "1") {
+          setWatchlistFunnelOpen(true);
+        } else if (
+          !params.get("pro") &&
+          !params.get("upgrade") &&
+          !window.localStorage.getItem("heybroc_onboarding_done")
+        ) {
+          setWatchlistFunnelOpen(true);
         }
 
         // Restore authenticated user session if present
@@ -1048,6 +1070,16 @@ export default function Simulator() {
         </div>
 
         <div className="topbar-actions">
+          <button
+            id="open-watchlist-funnel"
+            type="button"
+            className="topbar-btn"
+            onClick={() => setWatchlistFunnelOpen(true)}
+            title="Personalize your family's 2x additive watchlist"
+          >
+            🛡️ Avoid ({familyWatchlist.length})
+          </button>
+
           <button
             id="open-auth-modal"
             type="button"
@@ -2287,6 +2319,58 @@ export default function Simulator() {
       </section>
 
       {/* ============ PHASE 6 MODALS ============ */}
+      <WatchlistMiniFunnel
+        open={watchlistFunnelOpen}
+        initialSelected={familyWatchlist}
+        onClose={() => {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("heybroc_onboarding_done", "1");
+          }
+          setWatchlistFunnelOpen(false);
+        }}
+        onApplyAndGuest={(selected) => {
+          setFamilyWatchlist(selected);
+          setWatch((prev) => {
+            const next = { ...prev };
+            for (const c of ALL_CATEGORIES) {
+              next[c] = selected.includes(c) ? true : prev[c];
+            }
+            return next;
+          });
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              "heybroc_family_watchlist",
+              JSON.stringify(selected)
+            );
+            window.localStorage.setItem("heybroc_onboarding_done", "1");
+          }
+          setWatchlistFunnelOpen(false);
+          setToast({
+            title: `✓ Family Watchlist Applied (${selected.length} active)`,
+            body: "2x strictness enabled — scan any product or tap Swap ↗ as a Guest anytime.",
+          });
+        }}
+        onApplyAndSignIn={(selected) => {
+          setFamilyWatchlist(selected);
+          setWatch((prev) => {
+            const next = { ...prev };
+            for (const c of ALL_CATEGORIES) {
+              next[c] = selected.includes(c) ? true : prev[c];
+            }
+            return next;
+          });
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              "heybroc_family_watchlist",
+              JSON.stringify(selected)
+            );
+            window.localStorage.setItem("heybroc_onboarding_done", "1");
+          }
+          setWatchlistFunnelOpen(false);
+          setAuthOpen(true);
+        }}
+      />
+
       <AuthModal
         open={authOpen}
         onClose={() => setAuthOpen(false)}
