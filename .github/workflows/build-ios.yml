@@ -62,15 +62,17 @@ jobs:
           ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
+          mkdir -p ~/.appstoreconnect/private_keys ~/.private_keys ~/private_keys
           echo "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          cp ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 ~/.private_keys/
+          cp ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 ~/private_keys/
           cat > ios-app/build/ExportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store-connect</string>
+            <string>app-store</string>
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
             <key>signingStyle</key>
