@@ -136,6 +136,24 @@ export async function POST(req: Request) {
             }
           }
         }
+        if (isTrial || isPaid) {
+          void import("@/lib/analytics")
+            .then(({ assignPaywallVariant, trackServerEvent }) =>
+              trackServerEvent({
+                event: "pro_subscribed",
+                distinctId: deviceId || customerDetails?.email || sessionId,
+                platform: "web",
+                variant: assignPaywallVariant(deviceId, true),
+                properties: {
+                  plan,
+                  status: isTrial ? "trialing" : "active",
+                  source: "stripe",
+                  creatorCode: creatorCode || null,
+                },
+              }),
+            )
+            .catch(() => {});
+        }
         break;
       }
 

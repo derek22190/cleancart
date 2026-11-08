@@ -45,6 +45,8 @@ object ScanApi {
     private const val KEY_PRO_UNTIL = "entitlement_pro_until"
     private const val KEY_SWAPS_REMAINING = "entitlement_swaps_remaining"
     private const val KEY_SWAPS_LIMIT = "entitlement_swaps_limit"
+    private const val KEY_PAYWALL_HEADLINE = "entitlement_paywall_headline"
+    private const val KEY_PAYWALL_VARIANT = "entitlement_paywall_variant"
     private const val DEFAULT_FREE_WEEKLY_SWAPS = 5
 
     /** Blocking call — returns up to 8 live product suggestions from GET /api/suggest?q=<query>. */
@@ -125,11 +127,50 @@ object ScanApi {
         if (ent.has("weeklySwapsLimit")) {
             edit.putInt(KEY_SWAPS_LIMIT, ent.optInt("weeklySwapsLimit", DEFAULT_FREE_WEEKLY_SWAPS))
         }
+        val pwHeadline = ent.optString("paywallHeadline").trim()
+        if (pwHeadline.isNotBlank() && pwHeadline != "null") {
+            edit.putString(KEY_PAYWALL_HEADLINE, pwHeadline)
+        }
+        val pwVariant = ent.optString("paywallVariant").trim()
+        if (pwVariant == "A" || pwVariant == "B") {
+            edit.putString(KEY_PAYWALL_VARIANT, pwVariant)
+        }
         val refCode = ent.optString("referralCode").trim()
         if (refCode.startsWith("BROC-")) {
             edit.putString(KEY_SERVER_REF_CODE, refCode)
         }
         edit.apply()
+    }
+
+    fun paywallHeadline(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_PAYWALL_HEADLINE, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: "Unlock Unlimited Clean Swaps"
+    }
+
+    fun weeklySwapsLimit(ctx: Context): Int {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_SWAPS_LIMIT, DEFAULT_FREE_WEEKLY_SWAPS).coerceAtLeast(1)
+    }
+
+    /** Non-blocking first-party funnel event ping to /api/analytics (forwarded server-side to PostHog). */
+    fun trackEvent(ctx: Context, eventName: String) {
+        val appCtx = ctx.applicationContext
+        Thread {
+            runCatching {
+                val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val variant = prefs.getString(KEY_PAYWALL_VARIANT, "A") ?: "A"
+                val body = JSONObject().apply {
+                    put("action", "track")
+                    put("event", eventName)
+                    put("deviceId", deviceId(appCtx))
+                    put("platform", "android")
+                    put("variant", variant)
+                }.toString()
+                postFollowingRedirects("https://www.heybroc.com/api/analytics", body, maxRedirects = 2)
+            }
+        }.start()
     }
 
     fun isProActive(ctx: Context): Boolean {

@@ -142,6 +142,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    void import("@/lib/analytics")
+      .then(({ assignPaywallVariant, trackServerEvent }) =>
+        trackServerEvent({
+          event: "checkout_started",
+          distinctId: deviceId || customerEmail || "anon-web",
+          platform: "web",
+          variant: assignPaywallVariant(deviceId, true),
+          properties: {
+            plan,
+            creatorCode: verifiedCode || null,
+          },
+        }),
+      )
+      .catch(() => {});
+
     return NextResponse.json({
       ok: true,
       mode: "stripe",

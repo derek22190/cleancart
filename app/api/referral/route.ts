@@ -133,6 +133,16 @@ export async function POST(request: Request) {
         device.weeklySwapsUsed.push(normKey);
         await saveDevice(device);
       }
+      void import("@/lib/analytics")
+        .then(({ trackServerEvent }) =>
+          trackServerEvent({
+            event: "clean_swap_clicked",
+            distinctId: deviceId,
+            platform: deviceId === "anon-web" ? "web" : "android",
+            properties: { product: normKey },
+          }),
+        )
+        .catch(() => {});
     }
 
     return NextResponse.json(

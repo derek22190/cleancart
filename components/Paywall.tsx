@@ -58,10 +58,40 @@ export default function Paywall({
     trialDays: number;
     creator: AppliedCreator | null;
   } | null>(null);
+  const [remoteHeadline, setRemoteHeadline] = useState<string>(
+    "Scores & Ingredient Breakdowns Are Always Free. Unlock Unlimited 1-Tap Clean Swaps & Swap All.",
+  );
 
   useEffect(() => {
     if (appliedCreator?.code) setCodeInput(appliedCreator.code);
   }, [appliedCreator]);
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+    fetch(`/api/analytics?mode=paywall&deviceId=${encodeURIComponent(devId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && typeof d.activeHeadline === "string" && d.activeHeadline.trim()) {
+          setRemoteHeadline(d.activeHeadline.trim());
+        }
+        if (d?.paywall?.defaultPlan === "monthly" || d?.paywall?.defaultPlan === "annual") {
+          setSelectedPlan(d.paywall.defaultPlan);
+        }
+        void fetch("/api/analytics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "track",
+            event: "paywall_viewed",
+            deviceId: devId,
+            platform: "web",
+            variant: d?.assignedVariant === "B" ? "B" : "A",
+          }),
+        }).catch(() => {});
+      })
+      .catch(() => {});
+  }, [open]);
 
   if (!open) return null;
 
@@ -236,7 +266,7 @@ export default function Paywall({
                   ? `Weekly Free Swap Allowance Reached (${scanCount}/${freeScanLimit})`
                   : "HeyBroc Family Pro · Unlimited Cart Swaps"}
               </span>
-              <h2>Scores &amp; Ingredient Breakdowns Are Always Free. Unlock Unlimited 1-Tap Clean Swaps &amp; Swap All.</h2>
+              <h2>{remoteHeadline}</h2>
             </div>
           </div>
           <button className="close" onClick={onClose} aria-label="Close paywall">×</button>

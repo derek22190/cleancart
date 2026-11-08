@@ -2457,13 +2457,16 @@ class MainActivity : Activity() {
 
     private fun openStoreSwap(query: String, storeKey: String = "walmart", swapObj: JSONObject? = null) {
         if (!ScanApi.canUseSwap(this)) {
+            ScanApi.trackEvent(this, "paywall_viewed")
+            val limit = ScanApi.weeklySwapsLimit(this)
             AlertDialog.Builder(this)
-                .setTitle("Unlock Unlimited Clean Swaps")
+                .setTitle(ScanApi.paywallHeadline(this))
                 .setMessage(
-                    "You've used all 5 free single-item swaps this week.\n\n" +
+                    "You've used all $limit free single-item swaps this week.\n\n" +
                         "Product scores (0–100) and Cart Avg stay 100% free forever. Upgrade to HeyBroc Family Pro for unlimited 1-tap clean swaps across all 12 stores."
                 )
                 .setPositiveButton("Upgrade to Pro") { _, _ ->
+                    ScanApi.trackEvent(this, "checkout_started")
                     runCatching {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this))))
                     }

@@ -217,6 +217,23 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
             : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}`,
       }
     : null;
+  void import("./analytics")
+    .then(({ trackServerEvent }) =>
+      trackServerEvent({
+        event: "product_scanned",
+        distinctId: req.deviceId || "anon",
+        platform: req.format === "ios_text" ? "ios" : req.deviceId ? "android" : "web",
+        store,
+        properties: {
+          title: title.slice(0, 60),
+          score: result.score,
+          rating: result.rating,
+          hasSwap: Boolean(resolvedSwap),
+        },
+      }),
+    )
+    .catch(() => {});
+
   return {
     ok: true,
     product: {

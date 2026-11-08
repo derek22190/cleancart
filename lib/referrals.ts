@@ -329,7 +329,12 @@ export async function applyOrActivateReferral(params: {
 }
 
 export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
-  const base = serializeEntitlement(d);
+  const { assignPaywallVariant, getPaywallConfig } = await import("./analytics");
+  const pwConfig = await getPaywallConfig();
+  const variant = assignPaywallVariant(d.deviceId, pwConfig.abTestEnabled);
+  const paywallHeadline =
+    variant === "B" && pwConfig.abTestEnabled ? pwConfig.variantBHeadline : pwConfig.headline;
+  const base = serializeEntitlement(d, pwConfig.freeWeeklySwapsLimit, paywallHeadline, variant);
   if (base.isProActive) return base;
   const paid = await getDevicePaidEntitlement(d.deviceId);
   if (paid && paid.active) {
@@ -343,12 +348,17 @@ export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
   return base;
 }
 
-export function serializeEntitlement(d: DeviceEntitlement) {
+export function serializeEntitlement(
+  d: DeviceEntitlement,
+  remoteFreeWeeklySwaps: number = PRICING.freeWeeklySwaps,
+  paywallHeadline?: string,
+  paywallVariant: "A" | "B" = "A",
+) {
   const now = Date.now();
   const proDaysRemaining = Math.max(0, Math.ceil((d.proUntil - now) / DAY_MS));
   const isProActive = d.proUntil > now;
   const maxWeeklySwaps =
-    PRICING.freeWeeklySwaps +
+    remoteFreeWeeklySwaps +
     (d.courtesyRefillUsedThisWeek ? PRICING.courtesyRefillSwaps : 0);
   const swapsRemaining = Math.max(0, maxWeeklySwaps - d.weeklySwapsUsed.length);
   return {
@@ -365,6 +375,8 @@ export function serializeEntitlement(d: DeviceEntitlement) {
     swapsRemaining,
     courtesyRefillAvailable: !d.courtesyRefillUsedThisWeek,
     weekResetAt: d.weekResetAt,
+    paywallHeadline: paywallHeadline || null,
+    paywallVariant,
   };
 }
 
