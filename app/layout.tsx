@@ -80,9 +80,6 @@ export const metadata: Metadata = {
     title: "HeyBroc",
     statusBarStyle: "default",
   },
-  other: {
-    "impact-site-verification": "dd34dc80-a3ee-41d1-8a59-ee030cf929f9",
-  },
 };
 
 export const viewport: Viewport = {
@@ -172,7 +169,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <meta
           name="impact-site-verification"
-          content="dd34dc80-a3ee-41d1-8a59-ee030cf929f9"
           {...({ value: "dd34dc80-a3ee-41d1-8a59-ee030cf929f9" } as Record<string, string>)}
         />
         <link rel="preconnect" href="https://images.openfoodfacts.org" crossOrigin="anonymous" />
@@ -181,7 +177,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
+          Impact-Site-Verification: dd34dc80-a3ee-41d1-8a59-ee030cf929f9
+        </span>
+        {children}
+      </body>
     </html>
   );
 }
