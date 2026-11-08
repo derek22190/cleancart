@@ -80,6 +80,9 @@ export const metadata: Metadata = {
     title: "HeyBroc",
     statusBarStyle: "default",
   },
+  other: {
+    "impact-site-verification": "dd34dc80-a3ee-41d1-8a59-ee030cf929f9",
+  },
 };
 
 export const viewport: Viewport = {
@@ -167,6 +170,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={jakarta.variable}>
       <head>
+        <meta
+          name="impact-site-verification"
+          content="dd34dc80-a3ee-41d1-8a59-ee030cf929f9"
+          {...({ value: "dd34dc80-a3ee-41d1-8a59-ee030cf929f9" } as Record<string, string>)}
+        />
         <link rel="preconnect" href="https://images.openfoodfacts.org" crossOrigin="anonymous" />
         <script
           type="application/ld+json"
