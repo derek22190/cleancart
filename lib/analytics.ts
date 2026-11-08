@@ -80,7 +80,7 @@ export const DEFAULT_PAYWALL_CONFIG: PaywallExperimentConfig = {
   subheadline:
     "Product health scores (0–100) are 100% free forever. Unlock unlimited 1-tap Clean Swaps and Whole-Cart Health Checks across all 12 stores.",
   ctaLabel: "Start Free Trial — $0 Today",
-  freeWeeklySwapsLimit: 5,
+  freeWeeklySwapsLimit: 3,
   defaultPlan: "annual",
   abTestEnabled: true,
   variantBHeadline: "Protect your family from hidden seed oils & synthetic dyes in 1 tap",

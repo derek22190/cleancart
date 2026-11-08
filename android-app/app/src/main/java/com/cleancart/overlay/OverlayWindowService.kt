@@ -859,13 +859,30 @@ class OverlayWindowService : Service() {
             val firstSwap = firstDirtyWithSwap.swapObj!!
             val swapTitle = firstSwap.optString("title", "Clean Alternative")
             val swapScore = firstSwap.optInt("score", 90)
-            sheet.addView(text("Find Clean Swap: $swapTitle ($swapScore/100)", 14f, Color.WHITE, bold = true).apply {
+            val swapUnlocked = ScanApi.isSwapUnlocked(this, firstDirtyWithSwap.title, swapTitle)
+            val rem = ScanApi.swapsRemaining(this)
+            val lim = ScanApi.weeklySwapsLimit(this)
+            val ctaText = when {
+                swapUnlocked -> "Find Clean Swap: $swapTitle ($swapScore/100)"
+                rem > 0 -> "🔓 Reveal Clean Swap ($swapScore/100) · $rem/$lim Free Left"
+                else -> "🔒 Unlock Clean Swap ($swapScore/100) — Go Pro"
+            }
+            sheet.addView(text(ctaText, 14f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
                 setOnClickListener {
-                    openSwap(firstSwap, firstDirtyWithSwap)
+                    if (!swapUnlocked && rem <= 0) {
+                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        removeCard()
+                        showPill()
+                        runCatching { startActivity(i) }
+                    } else {
+                        openSwap(firstSwap, firstDirtyWithSwap)
+                    }
                 }
             })
         }
@@ -1231,48 +1248,129 @@ class OverlayWindowService : Service() {
             val swapTitle = swap.optString("title", "Clean Alternative")
             val swapScore = swap.optInt("score", 100)
             val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
+            val swapUnlocked = ScanApi.isSwapUnlocked(this, prodTitle, swapTitle)
+            val rem = ScanApi.swapsRemaining(this)
+            val lim = ScanApi.weeklySwapsLimit(this)
 
-            val topRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
+            if (swapUnlocked) {
+                val topRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
 
-            // Product photo thumbnail (46dp x 46dp rounded) — tapping opens full Swap Preview
-            val thumbView = buildSwapThumbnailView(swap, dp(46)).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(9) }
-                setOnClickListener { showSwapPreviewModal(swap) }
-            }
-            topRow.addView(thumbView)
-
-            // Title + score + "Tap to preview" — tapping opens full Swap Preview
-            topRow.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                isClickable = true
-                setOnClickListener { showSwapPreviewModal(swap) }
-                addView(text("CLEAN SWAP · TAP TO PREVIEW", 9.5f, BRAND, bold = true).apply { letterSpacing = 0.05f })
-                addView(text(swapTitle, 12.5f, INK, bold = true).apply {
-                    maxLines = 2
-                    ellipsize = TextUtils.TruncateAt.END
-                })
-                addView(text("$swapScore/100 Excellent", 11f, 0xFF16A34A.toInt(), bold = true))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-
-            // Action button — opens directly in the store app
-            topRow.addView(text("Swap ↗", 12.5f, Color.WHITE, bold = true).apply {
-                setPadding(dp(13), dp(9), dp(13), dp(9))
-                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
-                setOnClickListener { openSwap(swap) }
-            })
-            swapBox.addView(topRow)
-
-            if (swapIngredients.isNotBlank()) {
-                swapBox.addView(text("✓ Clean Ingredients: $swapIngredients", 11f, 0xFF0B5E39.toInt()).apply {
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
-                    setPadding(0, dp(5), 0, 0)
+                // Product photo thumbnail (46dp x 46dp rounded) — tapping opens full Swap Preview
+                val thumbView = buildSwapThumbnailView(swap, dp(46)).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(9) }
                     setOnClickListener { showSwapPreviewModal(swap) }
+                }
+                topRow.addView(thumbView)
+
+                // Title + score + "Tap to preview" — tapping opens full Swap Preview
+                topRow.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    isClickable = true
+                    setOnClickListener { showSwapPreviewModal(swap) }
+                    addView(text("CLEAN SWAP · TAP TO PREVIEW", 9.5f, BRAND, bold = true).apply { letterSpacing = 0.05f })
+                    addView(text(swapTitle, 12.5f, INK, bold = true).apply {
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+                    addView(text("$swapScore/100 Excellent", 11f, 0xFF16A34A.toInt(), bold = true))
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+
+                // Action button — opens directly in the store app
+                topRow.addView(text("Swap ↗", 12.5f, Color.WHITE, bold = true).apply {
+                    setPadding(dp(13), dp(9), dp(13), dp(9))
+                    background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
+                    setOnClickListener { openSwap(swap) }
+                })
+                swapBox.addView(topRow)
+
+                if (swapIngredients.isNotBlank()) {
+                    swapBox.addView(text("✓ Clean Ingredients: $swapIngredients", 11f, 0xFF0B5E39.toInt()).apply {
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, dp(5), 0, 0)
+                        setOnClickListener { showSwapPreviewModal(swap) }
+                    })
+                }
+            } else if (rem > 0) {
+                // Free user with remaining weekly swaps: hide brand/product name until they tap Reveal!
+                swapBox.addView(text("🔒 CLEAN SWAP FOUND · $swapScore/100 EXCELLENT", 9.5f, BRAND, bold = true).apply {
+                    letterSpacing = 0.05f
+                })
+                swapBox.addView(text("Verified 1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
+                    setPadding(0, dp(3), 0, 0)
+                })
+                swapBox.addView(text("You have $rem of $lim free weekly Clean Swaps remaining.", 11f, 0xFF0B5E39.toInt()).apply {
+                    setPadding(0, dp(2), 0, dp(7))
+                })
+                swapBox.addView(text("🔓 Reveal Clean Swap ($rem/$lim Free)", 12.5f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    setOnClickListener {
+                        if (ScanApi.unlockSwapForProduct(this@OverlayWindowService, prodTitle, swapTitle)) {
+                            showCard()
+                        }
+                    }
+                })
+            } else {
+                // Free user out of weekly swaps (0/3 left): keep brand/product name locked behind Pro / Referral!
+                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · $swapScore/100 EXCELLENT", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
+                    letterSpacing = 0.05f
+                })
+                swapBox.addView(text("100/100 Clean Replacement Available", 12.5f, INK, bold = true).apply {
+                    setPadding(0, dp(3), 0, 0)
+                })
+                swapBox.addView(text("All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 11f, INK_2).apply {
+                    setPadding(0, dp(2), 0, dp(8))
+                })
+                swapBox.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(text("⚡ Go Pro — Unlimited ↗", 12f, Color.WHITE, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(10), dp(9), dp(10), dp(9))
+                        background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) }
+                        setOnClickListener {
+                            val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            removeCard()
+                            showPill()
+                            runCatching { startActivity(i) }
+                        }
+                    })
+                    addView(text("🎁 Invite (+7d Free)", 12f, BRAND, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(10), dp(9), dp(10), dp(9))
+                        background = GradientDrawable().apply {
+                            setColor(Color.WHITE)
+                            cornerRadius = dp(999).toFloat()
+                            setStroke(dp(1), BRAND)
+                        }
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        setOnClickListener {
+                            val myRefCode = ScanApi.myReferralCode(this@OverlayWindowService)
+                            val url = "https://www.heybroc.com/r/$myRefCode"
+                            val msg = "Check out HeyBroc — this little broccoli floats over Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart & more to grade ingredients (0–100) and swap dirty items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: $url"
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "7 Free Days of HeyBroc Pro")
+                                putExtra(Intent.EXTRA_TEXT, msg)
+                            }
+                            val chooser = Intent.createChooser(sendIntent, "Share your HeyBroc invite link").apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            removeCard()
+                            showPill()
+                            runCatching { startActivity(chooser) }
+                        }
+                    })
                 })
             }
         } else {
@@ -1524,13 +1622,14 @@ class OverlayWindowService : Service() {
      * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
      */
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
-        val prodTitle = data?.optJSONObject("product")?.optString("title").orEmpty()
+        val prodTitle = explicitItem?.title?.takeIf { it.isNotBlank() }
+            ?: data?.optJSONObject("product")?.optString("title").orEmpty()
         val swapTitle = swap.optString("title").ifBlank { prodTitle }
 
-        if (!ScanApi.canUseSwap(this)) {
+        if (!ScanApi.isSwapUnlocked(this, prodTitle, swapTitle) && !ScanApi.canUseSwap(this)) {
             Toast.makeText(
                 this,
-                "All 5 free weekly swaps used — invite a friend in the HeyBroc app for +7 free Pro days!",
+                "All 3 free weekly Clean Swaps used — upgrade to HeyBroc Pro or invite a friend for +7 free Pro days!",
                 Toast.LENGTH_LONG
             ).show()
             removeCard()
@@ -1538,7 +1637,7 @@ class OverlayWindowService : Service() {
             return
         }
 
-        ScanApi.consumeSwap(this, swapTitle)
+        ScanApi.consumeSwap(this, swapTitle, prodTitle)
 
         val target = explicitItem ?: tripCart.firstOrNull { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
         pendingSwapFromKey = target?.key ?: prodTitle.takeIf { it.isNotBlank() }

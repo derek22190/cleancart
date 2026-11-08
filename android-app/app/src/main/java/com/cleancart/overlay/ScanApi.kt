@@ -47,7 +47,8 @@ object ScanApi {
     private const val KEY_SWAPS_LIMIT = "entitlement_swaps_limit"
     private const val KEY_PAYWALL_HEADLINE = "entitlement_paywall_headline"
     private const val KEY_PAYWALL_VARIANT = "entitlement_paywall_variant"
-    private const val DEFAULT_FREE_WEEKLY_SWAPS = 5
+    private const val KEY_UNLOCKED_SWAP_PRODUCTS = "unlocked_swap_products_v1"
+    private const val DEFAULT_FREE_WEEKLY_SWAPS = 3
 
     /** Blocking call — returns up to 8 live product suggestions from GET /api/suggest?q=<query>. */
     fun suggest(rawQuery: String): List<JSONObject> {
@@ -186,28 +187,54 @@ object ScanApi {
     fun swapsRemaining(ctx: Context): Int {
         if (isProActive(ctx)) return Int.MAX_VALUE
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceAtLeast(0)
+        return prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceIn(0, DEFAULT_FREE_WEEKLY_SWAPS)
     }
 
     fun canUseSwap(ctx: Context): Boolean {
         return isProActive(ctx) || swapsRemaining(ctx) > 0
     }
 
+    private fun normalizeSwapKey(raw: String): String =
+        raw.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim().take(80)
+
+    fun isSwapUnlocked(ctx: Context, productTitle: String, swapTitle: String = ""): Boolean {
+        if (isProActive(ctx)) return true
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val unlocked = prefs.getStringSet(KEY_UNLOCKED_SWAP_PRODUCTS, emptySet()).orEmpty()
+        val pKey = normalizeSwapKey(productTitle)
+        val sKey = normalizeSwapKey(swapTitle)
+        return (pKey.isNotBlank() && pKey in unlocked) || (sKey.isNotBlank() && sKey in unlocked)
+    }
+
+    fun unlockSwapForProduct(ctx: Context, productTitle: String, swapTitle: String): Boolean {
+        if (isSwapUnlocked(ctx, productTitle, swapTitle)) return true
+        if (!canUseSwap(ctx)) return false
+        consumeSwap(ctx, swapTitle, productTitle)
+        return true
+    }
+
     /** Decrements local swap counter when on free tier and records the swap asynchronously on the server. */
-    fun consumeSwap(ctx: Context, productTitle: String) {
+    fun consumeSwap(ctx: Context, swapTitle: String, productTitle: String = "") {
         val appCtx = ctx.applicationContext
-        if (!isProActive(appCtx)) {
-            val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val current = prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS)
-            prefs.edit().putInt(KEY_SWAPS_REMAINING, (current - 1).coerceAtLeast(0)).apply()
+        val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val alreadyUnlocked = isSwapUnlocked(appCtx, productTitle, swapTitle)
+        val nextUnlocked = prefs.getStringSet(KEY_UNLOCKED_SWAP_PRODUCTS, emptySet()).orEmpty().toMutableSet()
+        normalizeSwapKey(productTitle).takeIf { it.isNotBlank() }?.let { nextUnlocked.add(it) }
+        normalizeSwapKey(swapTitle).takeIf { it.isNotBlank() }?.let { nextUnlocked.add(it) }
+        val editor = prefs.edit().putStringSet(KEY_UNLOCKED_SWAP_PRODUCTS, nextUnlocked)
+        if (!isProActive(appCtx) && !alreadyUnlocked) {
+            val current = prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceIn(0, DEFAULT_FREE_WEEKLY_SWAPS)
+            editor.putInt(KEY_SWAPS_REMAINING, (current - 1).coerceAtLeast(0))
         }
+        editor.apply()
+        if (alreadyUnlocked) return
         Thread {
             runCatching {
                 val body = JSONObject().apply {
                     put("action", "record_swap")
                     put("deviceId", deviceId(appCtx))
                     put("deviceSecret", deviceSecret(appCtx))
-                    put("productKey", productTitle.trim().take(120))
+                    put("productKey", swapTitle.trim().take(120))
                 }.toString()
                 for (endpoint in REFERRAL_ENDPOINTS) {
                     try {

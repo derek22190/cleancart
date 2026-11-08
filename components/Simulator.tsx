@@ -82,7 +82,7 @@ type Watch = Record<Category, boolean>;
 type OverlayState = "pill" | "card" | "min";
 type ViewMode = "product" | "search";
 
-const FREE_SCAN_LIMIT = 5;
+const FREE_SCAN_LIMIT = 3;
 
 const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   key: p.id,
