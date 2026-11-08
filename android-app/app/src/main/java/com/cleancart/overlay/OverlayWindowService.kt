@@ -63,6 +63,7 @@ class OverlayWindowService : Service() {
         const val ACTION_SHOW_TEST = "com.cleancart.overlay.SHOW_TEST"
         const val ACTION_HIDE_IF_TEST = "com.cleancart.overlay.HIDE_IF_TEST"
         const val ACTION_IDLE_CART_AVG = "com.cleancart.overlay.IDLE_CART_AVG"
+        const val ACTION_PDP_SCROLL_HINT = "com.cleancart.overlay.PDP_SCROLL_HINT"
         const val ACTION_SYNC_CART = "com.cleancart.overlay.SYNC_CART"
         const val ACTION_HIDE = "com.cleancart.overlay.HIDE"
         const val ACTION_RESET_HIDDEN = "com.cleancart.overlay.RESET_HIDDEN"
@@ -72,6 +73,7 @@ class OverlayWindowService : Service() {
         const val EXTRA_JSON = "json"
         const val EXTRA_TITLE = "title"
         const val EXTRA_IN_CART = "in_cart"
+        const val EXTRA_IS_SINGLE_PDP = "is_single_pdp"
         const val EXTRA_CART_ARRAY = "cart_array"
         const val EXTRA_REPLACE_CART = "replace_cart"
         const val EXTRA_REMOVED_TITLES = "removed_titles"
@@ -93,7 +95,7 @@ class OverlayWindowService : Service() {
             "grass-fed salted butter"
         )
         private val VARIANT_NOISE_TITLE = Regex(
-            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*,\s*was|.*\?)$"""
+            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*,\s*was|.*\?)$"""
         )
     }
 
@@ -120,6 +122,7 @@ class OverlayWindowService : Service() {
     private var openFlag: String? = null
 
     private var isCartAvgMode = false
+    private var isPdpScrollHint = false
     private var isAuditorOpen = false
     private var isTestMode = false
     private var hiddenForCurrentScreen = false
@@ -210,6 +213,7 @@ class OverlayWindowService : Service() {
                 hiddenForCurrentScreen = false
                 data = null
                 openFlag = null
+                isPdpScrollHint = false
                 if (card == null) {
                     isCartAvgMode = false
                     showPill(loadingText = "Scanning…")
@@ -222,24 +226,49 @@ class OverlayWindowService : Service() {
                 if (incoming?.optBoolean("ok") == true) {
                     data = incoming
                     isCartAvgMode = false
+                    isPdpScrollHint = false
                     runCatching { ScanHistoryStore.recordScan(this, incoming, currentStoreKey) }
                     if (intent.getBooleanExtra(EXTRA_IN_CART, false)) {
                         recordScannedItem(data)
                     }
                     openFlag = null
+                    if (card == null) {
+                        showPill()
+                    }
+                } else if (intent.getBooleanExtra(EXTRA_IS_SINGLE_PDP, false)) {
+                    // On a confirmed Single Product Detail Page, never switch to Cart Avg mode if a scan fails — prompt to scroll down slightly
+                    data = null
+                    openFlag = null
+                    isCartAvgMode = false
+                    isPdpScrollHint = true
+                    if (card == null) {
+                        showPill(loadingText = "Scroll down to grade item")
+                    }
                 } else {
                     // Never keep a stale previous product (e.g. Oreo Puffs) if a scan fails — clear data and fall back to Cart Avg mode
                     data = null
                     openFlag = null
+                    isPdpScrollHint = false
                     isCartAvgMode = true
+                    if (card == null) {
+                        showPill()
+                    }
                 }
-                if (card == null) {
-                    showPill()
+            }
+            ACTION_PDP_SCROLL_HINT -> {
+                isTestMode = false
+                if (!hiddenForCurrentScreen && card == null) {
+                    data = null
+                    openFlag = null
+                    isCartAvgMode = false
+                    isPdpScrollHint = true
+                    showPill(loadingText = "Scroll down to grade item")
                 }
             }
             ACTION_SYNC_CART -> {
                 isTestMode = false
                 hiddenForCurrentScreen = false
+                isPdpScrollHint = false
                 val prevSize = tripCart.size
                 val prevAvg = displayedCartAvg
                 val arrRaw = intent.getStringExtra(EXTRA_CART_ARRAY) ?: "[]"
@@ -257,6 +286,7 @@ class OverlayWindowService : Service() {
             }
             ACTION_IDLE_CART_AVG -> {
                 isTestMode = false
+                isPdpScrollHint = false
                 if (!hiddenForCurrentScreen && card == null) {
                     isCartAvgMode = true
                     showPill()
@@ -265,6 +295,7 @@ class OverlayWindowService : Service() {
             ACTION_SHOW_TEST -> {
                 hiddenForCurrentScreen = false
                 isCartAvgMode = false
+                isPdpScrollHint = false
                 isTestMode = true
                 data = JSONObject(intent.getStringExtra(EXTRA_JSON) ?: ScanApi.SAMPLE_JSON)
                 openFlag = null
@@ -550,7 +581,7 @@ class OverlayWindowService : Service() {
         }
         val avg = displayedCartAvg
         val tone = when {
-            loadingText != null -> Color.GRAY
+            loadingText != null || isPdpScrollHint -> Color.GRAY
             isCartAvgMode && tripCart.isEmpty() -> BRAND
             isCartAvgMode -> toneColor(colorNameForScore(avg))
             !ok -> Color.GRAY
@@ -558,6 +589,7 @@ class OverlayWindowService : Service() {
         }
         val label = when {
             loadingText != null -> loadingText
+            isPdpScrollHint -> "Scroll down to grade item"
             isCartAvgMode && tripCart.isEmpty() -> "🛒 Cart: Open Cart to Grade"
             isCartAvgMode -> "🛒 Cart Avg: $avg/100"
             ok -> "$effectiveScore/100  •  Tap to Inspect"
@@ -652,12 +684,17 @@ class OverlayWindowService : Service() {
                         runCatching { wm.updateViewLayout(v, params) }
                         if (!moved) {
                             val currentlyOk = data?.optBoolean("ok") == true && data?.optJSONObject("result") != null
-                            if (isCartAvgMode) {
+                            if (isPdpScrollHint) {
+                                Toast.makeText(
+                                    this,
+                                    "Scroll down slightly so the product title is visible on screen",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else if (isCartAvgMode) {
                                 showAuditorDrawer()
                             } else if (currentlyOk) {
                                 showCard()
                             } else {
-                                // If scan hadn't finished or had an error, open sample/auditor drawer so tap always responds
                                 showAuditorDrawer()
                             }
                         }

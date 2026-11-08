@@ -98,7 +98,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+ times|stay stocked|last purchased|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail))\b|,\s*was$|\?$""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail))\b|,\s*was$|\?$""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
@@ -113,7 +113,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val WHITESPACE = Regex("""\s+""")
-        private val SPONSORED_BADGE = Regex("""^(sponsored|ad|advertisement)$""", RegexOption.IGNORE_CASE)
+        private val SPONSORED_BADGE = Regex("""^(sponsored(\s+(ad|item|product|brand|result))?|ad|advertisement)(\s*[ⓘℹ(•\-].*)?$""", RegexOption.IGNORE_CASE)
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -125,13 +125,21 @@ class GroceryScreenReaderService : AccessibilityService() {
     private var wasOnCartScreen = false
     private var pendingAddToCartClick = false
     private var nullPkgCount = 0
+    private var lastClickedProductTitle: String? = null
+    private var lastClickedProductPkg = ""
+    private var lastClickedProductAtMs = 0L
+    private var lastConfirmedPdpTitle: String? = null
+    private var lastConfirmedPdpPkg = ""
+    private var lastConfirmedPdpAtMs = 0L
+    private var inFlightScanKey = ""
+    private var inFlightAtMs = 0L
 
     private val scanRunnable = Runnable {
         pendingSinceMs = 0L
         readAndScan()
     }
     private val followUpScanRunnable = Runnable {
-        if (lastKey.isEmpty() || lastKey.endsWith("|IDLE_CART_AVG") || lastKey.endsWith("|CART_EMPTY")) {
+        if (lastKey.isEmpty() || lastKey.endsWith("|IDLE_CART_AVG") || lastKey.endsWith("|CART_EMPTY") || lastKey.endsWith("|PDP_SCROLL_HINT")) {
             readAndScan()
         }
     }
@@ -167,7 +175,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     overlayVisible = false
                     lastKey = ""
                     wasOnCartScreen = false
-                } else if (pkg in STORE_PACKAGES && (lastKey.isEmpty() || lastKey.endsWith("|IDLE_CART_AVG") || lastKey.endsWith("|CART_EMPTY"))) {
+                } else if (pkg in STORE_PACKAGES && (lastKey.isEmpty() || lastKey.endsWith("|IDLE_CART_AVG") || lastKey.endsWith("|CART_EMPTY") || lastKey.endsWith("|PDP_SCROLL_HINT"))) {
                     // Automatically re-check if a Product Detail Page finished loading asynchronously without firing an AccessibilityEvent
                     readAndScan()
                 }
@@ -205,26 +213,74 @@ class GroceryScreenReaderService : AccessibilityService() {
             currentPackage = pkg
             lastKey = ""
             wasOnCartScreen = false
+            lastClickedProductTitle = null
+            lastConfirmedPdpTitle = null
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val src = runCatching { event.source }.getOrNull()
+            val candidateClickStrings = ArrayList<String>()
+            event.text?.forEach { if (!it.isNullOrBlank()) candidateClickStrings.add(it.toString()) }
+            event.contentDescription?.let { if (it.isNotBlank()) candidateClickStrings.add(it.toString()) }
             val clickedText = buildString {
                 event.text?.forEach { append(it).append(' ') }
                 event.contentDescription?.let { append(it).append(' ') }
                 if (src != null) {
-                    src.text?.let { append(it).append(' ') }
-                    src.contentDescription?.let { append(it).append(' ') }
-                    for (i in 0 until minOf(src.childCount, 4)) {
+                    src.text?.let {
+                        append(it).append(' ')
+                        candidateClickStrings.add(it.toString())
+                    }
+                    src.contentDescription?.let {
+                        append(it).append(' ')
+                        candidateClickStrings.add(it.toString())
+                    }
+                    for (i in 0 until minOf(src.childCount, 8)) {
                         val ch = runCatching { src.getChild(i) }.getOrNull() ?: continue
-                        ch.text?.let { append(it).append(' ') }
-                        ch.contentDescription?.let { append(it).append(' ') }
+                        ch.text?.let {
+                            append(it).append(' ')
+                            candidateClickStrings.add(it.toString())
+                        }
+                        ch.contentDescription?.let {
+                            append(it).append(' ')
+                            candidateClickStrings.add(it.toString())
+                        }
                         recycleNode(ch)
+                    }
+                    val parent = runCatching { src.parent }.getOrNull()
+                    if (parent != null) {
+                        parent.text?.let { candidateClickStrings.add(it.toString()) }
+                        parent.contentDescription?.let { candidateClickStrings.add(it.toString()) }
+                        for (i in 0 until minOf(parent.childCount, 8)) {
+                            val pch = runCatching { parent.getChild(i) }.getOrNull() ?: continue
+                            pch.text?.let { candidateClickStrings.add(it.toString()) }
+                            pch.contentDescription?.let { candidateClickStrings.add(it.toString()) }
+                            recycleNode(pch)
+                        }
+                        recycleNode(parent)
                     }
                 }
             }.trim()
             val srcViewId = src?.viewIdResourceName?.lowercase().orEmpty()
             recycleNode(src)
+
+            if (Regex("""(?i)^(back|navigate up|close|dismiss|cancel|search|clear|cart|view cart)\b""").containsMatchIn(clickedText) ||
+                srcViewId.contains("back") || srcViewId.contains("close") || srcViewId.contains("toolbar_navigation")
+            ) {
+                lastConfirmedPdpTitle = null
+                lastClickedProductTitle = null
+            } else {
+                // Capture the product title from the tapped product card in case the PDP opens with a tall
+                // photo + "Bought 5+ times" banner that pushes the PDP title TextView below the fold!
+                val clickedProduct = candidateClickStrings
+                    .map { cleanTitleCandidate(it) }
+                    .firstOrNull { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) }
+                if (clickedProduct != null) {
+                    lastClickedProductTitle = clickedProduct
+                    lastClickedProductPkg = pkg
+                    lastClickedProductAtMs = System.currentTimeMillis()
+                }
+            }
+
             val isRemoveOrCartEditClick =
                 Regex("""(?i)\b(remove|delete|save for later|decrease quantity|undo)\b""").containsMatchIn(clickedText) ||
                     srcViewId.contains("remove") ||
@@ -331,8 +387,11 @@ class GroceryScreenReaderService : AccessibilityService() {
 
             val hasHomeOrAisleBanners = primaryNodes.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
             val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
-            val hasSinglePdpDetails = ingredients != null || nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
-            val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
+            val hasSinglePdpDetails = ingredients != null ||
+                nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) } ||
+                primaryAllNodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
+            val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } } ||
+                primaryAllNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
             val hasClubItemNumber = primaryNodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
             val isConfirmedSinglePdp =
@@ -340,6 +399,10 @@ class GroceryScreenReaderService : AccessibilityService() {
                     hasSinglePdpDetails ||
                     (hasClubItemNumber && tileAddCount < 3) ||
                     (hasSinglePdpCta && tileAddCount <= 1)
+
+            if (hasHomeOrAisleBanners || tileAddCount >= 2) {
+                lastConfirmedPdpTitle = null
+            }
 
             // 1. Check if the user is viewing their actual Cart or Checkout screen (only when NOT on a confirmed Single Product Detail Page)
             val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text.trim()) }
@@ -360,6 +423,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
             if (isCartScreen) {
                 wasOnCartScreen = true
+                lastConfirmedPdpTitle = null
                 val cartTitles = extractCartScreenTitles(nodes)
                 val removedTitles = extractRemovedCartTitles(nodes)
                 if (cartTitles.isNotEmpty() || removedTitles.isNotEmpty()) {
@@ -406,9 +470,38 @@ class GroceryScreenReaderService : AccessibilityService() {
                 isConfirmedSinglePdp ||
                     (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons))
 
-            val title = if (isProductView) findTitle(primaryNodes, isConfirmedSinglePdp) else null
+            val title = if (isProductView) {
+                findTitle(primaryNodes, primaryAllNodes, isConfirmedSinglePdp, pkg)
+            } else null
 
             if (!isProductView || title == null) {
+                // If we are on a confirmed Single Product Detail Page (e.g. sticky "$2.78 Add to cart" bar is visible),
+                // NEVER fall back to "🛒 Cart: Open Cart to Grade"!
+                if (isConfirmedSinglePdp) {
+                    val now = System.currentTimeMillis()
+                    if (inFlightScanKey.isNotEmpty() && now - inFlightAtMs < 4000L) {
+                        // A scan is already in flight on this PDP; don't clobber lastKey while an async ad banner settles.
+                        return
+                    }
+                    if (lastKey.startsWith("$pkg|") &&
+                        !lastKey.endsWith("|IDLE_CART_AVG") &&
+                        !lastKey.endsWith("|CART_EMPTY") &&
+                        !lastKey.endsWith("|PDP_SCROLL_HINT") &&
+                        !lastKey.contains("|CART|") &&
+                        !lastKey.contains("|AISLE_CART|")
+                    ) {
+                        // Keep the already-graded PDP pill visible even if the user scrolled past the title.
+                        return
+                    }
+                    val scrollHintKey = "$pkg|PDP_SCROLL_HINT"
+                    if (lastKey != scrollHintKey) {
+                        lastKey = scrollHintKey
+                        sendToOverlay(OverlayWindowService.ACTION_PDP_SCROLL_HINT)
+                        markVisible()
+                    }
+                    return
+                }
+
                 // If the user added items to cart directly on a Search Results aisle (which renders "1 in cart - <Product>"),
                 // sync those added items into Cart Check immediately even before they open the Cart screen.
                 val aisleInCartRe = Regex("""(?i)^\d+\s+in\s+(?:cart|bag|basket|order)\s*[-–—:,]\s*(.+)$""")
@@ -451,12 +544,20 @@ class GroceryScreenReaderService : AccessibilityService() {
                 return
             }
 
+            if (isConfirmedSinglePdp) {
+                lastConfirmedPdpTitle = title
+                lastConfirmedPdpPkg = pkg
+                lastConfirmedPdpAtMs = System.currentTimeMillis()
+            }
+
             val inCartOnPdp = pendingAddToCartClick || primaryNodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) }
             pendingAddToCartClick = false
 
             val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
             if (key == lastKey) return
             lastKey = key
+            inFlightScanKey = key
+            inFlightAtMs = System.currentTimeMillis()
 
             sendToOverlay(OverlayWindowService.ACTION_LOADING) { putExtra(OverlayWindowService.EXTRA_TITLE, title) }
             markVisible()
@@ -469,10 +570,14 @@ class GroceryScreenReaderService : AccessibilityService() {
                     """{"ok":false,"error":"HeyBroc connection error (${e.javaClass.simpleName})"}"""
                 }
                 handler.post {
+                    if (inFlightScanKey == key) {
+                        inFlightScanKey = ""
+                    }
                     if (overlayVisible && lastKey == key && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
                         sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
                             putExtra(OverlayWindowService.EXTRA_JSON, json)
                             putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                            putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
                         }
                     }
                 }
@@ -509,6 +614,12 @@ class GroceryScreenReaderService : AccessibilityService() {
                 if (!isSearchInput) {
                     val t1 = node.text?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
                     val t2 = node.contentDescription?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
+                    val t3 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        node.paneTitle?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
+                    } else ""
+                    val t4 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        node.tooltipText?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
+                    } else ""
                     val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
                     val visible = node.isVisibleToUser
                     if (t1.isNotEmpty()) {
@@ -516,6 +627,12 @@ class GroceryScreenReaderService : AccessibilityService() {
                     }
                     if (t2.isNotEmpty() && t2 != t1) {
                         out.add(TextNode(t2, viewId, heading, visible, out.size))
+                    }
+                    if (t3.isNotEmpty() && t3 != t1 && t3 != t2) {
+                        out.add(TextNode(t3, viewId, true, visible, out.size))
+                    }
+                    if (t4.isNotEmpty() && t4 != t1 && t4 != t2 && t4 != t3) {
+                        out.add(TextNode(t4, viewId, heading, visible, out.size))
                     }
                 }
                 for (i in 0 until node.childCount) {
@@ -533,24 +650,37 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     /**
-     * Strips top Sponsored banner ad text (e.g., "Cheerios" / "Tasty Os made with care" / "Sponsored"
-     * or "Dairy Pure" / "Sponsored" right below the search bar on Walmart PDPs) so banner ads are
-     * never mistaken for the product being viewed.
+     * Strips top Sponsored banner ad text (e.g., "Straight Talk" / "Google Pixel 10a for $199" / "Sponsored" / "Google Pixel 10a",
+     * or "Cheerios" / "Tasty Os made with care" / "Sponsored", or "Dairy Pure" / "Sponsored" right below the search bar on Walmart PDPs)
+     * so banner ads are never mistaken for the product being viewed.
      */
     private fun stripSponsoredAdNodes(nodes: List<TextNode>): List<TextNode> {
         val dropIndices = HashSet<Int>()
         for (i in nodes.indices) {
             val txt = nodes[i].text.trim()
-            if (SPONSORED_BADGE.matches(txt) && i <= 20) {
+            if (SPONSORED_BADGE.matches(txt) && i <= 28) {
                 dropIndices.add(i)
-                for (back in 1..3) {
+                for (back in 1..4) {
                     val prevIdx = i - back
                     if (prevIdx < 0) break
-                    val prev = nodes[prevIdx].text.trim()
-                    if (prev.startsWith("Search", ignoreCase = true) || PRICE_PATTERN.matches(prev)) break
-                    if (!SINGLE_PDP_CTA.containsMatchIn(prev)) {
-                        dropIndices.add(prevIdx)
-                    }
+                    val prevNode = nodes[prevIdx]
+                    val prev = prevNode.text.trim()
+                    if (prev.startsWith("Search", ignoreCase = true) ||
+                        SINGLE_PDP_CTA.containsMatchIn(prev) ||
+                        TITLE_ID_HINTS.any { prevNode.viewId.contains(it) }
+                    ) break
+                    dropIndices.add(prevIdx)
+                }
+                for (fwd in 1..3) {
+                    val nextIdx = i + fwd
+                    if (nextIdx >= nodes.size) break
+                    val nextNode = nodes[nextIdx]
+                    val next = nextNode.text.trim()
+                    if (SINGLE_PDP_CTA.containsMatchIn(next) ||
+                        TITLE_ID_HINTS.any { nextNode.viewId.contains(it) } ||
+                        FOOD_HINTS.containsMatchIn(next)
+                    ) break
+                    dropIndices.add(nextIdx)
                 }
             }
         }
@@ -571,13 +701,22 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (s.matches(Regex("""(?i)^(removed|moved to saved for later|saved for later)\s*:.*"""))) {
             return ""
         }
+        // Strip leading checkmarks/bullets (e.g. "✓ Bought 5+ times, stay stocked and subscribe")
+        s = s.replace(Regex("""^[✓✔☑•·]\s*"""), "")
+        if (s.matches(Regex("""(?i)^bought\s+\d+\+?\s*times?\b.*"""))) {
+            return ""
+        }
+        // Unwrap action/image contentDescriptions on PDP buttons & hero images (e.g. "Add Great Value Whole Vitamin D Milk to cart", "Product image 1 of 6, Great Value Whole Vitamin D Milk")
+        s = s.replace(Regex("""(?i)^(?:add|save)\s+(.{5,}?)\s+to\s+(?:cart|bag|basket|order|favorites|list|my\s+items|registry).*$"""), "$1")
+        s = s.replace(Regex("""(?i)^(?:add\s+to\s+(?:cart|bag|basket|order|favorites|list)|save\s+to\s+(?:list|favorites)|share)\s*[,:•|\-–—]\s*(?=[a-zA-Z]{2,})"""), "")
+        s = s.replace(Regex("""(?i)^(?:product\s+)?(?:image|photo)\s*(?:\d+\s*(?:of|/)\s*\d+)?\s*[,:•|\-–—]\s*(?=[a-zA-Z]{2,})"""), "")
         // Strip leading/embedded favorite/badge/quantity prefixes from compound container contentDescriptions
         s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(remove|delete)\s+(?=[a-z0-9].*\s+[a-z0-9])"""), "")
         s = s.replace(Regex("""(?i)^\d+\s+in\s+(cart|bag|basket|order)\s*[-–—:,]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*"""), "")
         s = s.replace(
-            Regex("""(?i)^((bought\s+\d+\s+times|\d+[km]?\+?\s*bought[^,•|\-]*|best seller|overall pick|popular pick|rollback|sponsored|save for later|subscribe to save|(current\s+price\s*|price\s*|now\s*)?\$\s*\d+(\.\d{2})?(\s*/\s*(ea|oz|fl oz|lb|ct))?|\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct|\d+\s*ct))\s*[,•|\-]\s*)+(?=[a-zA-Z]{2,})"""),
+            Regex("""(?i)^(([✓✔]?\s*bought\s+\d+\+?\s*times?(?:\s*,\s*stay\s+stocked(?:\s+and\s+subscribe)?)?|\d+[km]?\+?\s*bought[^,•|\-]*|best seller|overall pick|popular pick|rollback|sponsored|save for later|subscribe to save|(current\s+price\s*|price\s*|now\s*)?\$\s*\d+(\.\d{2})?(\s*/\s*(ea|oz|fl oz|lb|ct))?|\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct|\d+\s*ct))\s*[,•|\-]\s*)+(?=[a-zA-Z]{2,})"""),
             ""
         )
         // Strip trailing club item numbers, ratings, review counts, image carousel counters, EBT badges, and prices
@@ -616,7 +755,12 @@ class GroceryScreenReaderService : AccessibilityService() {
             !BRAND_OR_UNIT_ONLY.matches(t.trim()) &&
             !PRICE_PATTERN.containsMatchIn(t)
 
-    private fun findTitle(nodes: List<TextNode>, isConfirmedSinglePdp: Boolean = false): String? {
+    private fun findTitle(
+        nodes: List<TextNode>,
+        allNodes: List<TextNode> = nodes,
+        isConfirmedSinglePdp: Boolean = false,
+        pkg: String = "",
+    ): String? {
         // If a previous product card is 90% scrolled off the top of the screen, its trailing "Options" or
         // "Add to cart" button appears in the first few nodes with no product title above it. Skip past
         // that orphaned button so we always scan the top-most complete product card on screen.
@@ -636,41 +780,79 @@ class GroceryScreenReaderService : AccessibilityService() {
             nodes
         }
 
-        // 1. Explicit product title viewId on the product page
+        // 1. Explicit product title viewId on the visible product page
         searchNodes.firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 2. Accessibility heading on the page that matches food/product hints (including 1-word produce like "Raspberries")
+        // 2. Accessibility heading on the visible page that matches food/product hints (including 1-word produce like "Raspberries")
         searchNodes.firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             n.isHeading && isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 3. Accessibility heading on a confirmed single-product page
-        searchNodes.firstOrNull { n ->
-            val c = cleanTitleCandidate(n.text)
-            n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
-        }?.let { return cleanTitleCandidate(it.text) }
-
-        // 4. First multi-word node in top-to-bottom order containing recognizable grocery/household keywords
+        // 3. First visible multi-word node in top-to-bottom order containing recognizable grocery/household keywords
         searchNodes.take(85).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 5. Single-word produce/food title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados", "Parsley" in ALDI)
+        // 4. Single-word produce/food title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados", "Parsley" in ALDI)
         searchNodes.take(65).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
-        // 6. Fallback to the first descriptive product title in top-to-bottom order
-        val minWords = if (isConfirmedSinglePdp) 2 else 3
-        val minLen = if (isConfirmedSinglePdp) 7 else 12
-        return searchNodes.take(85).map { cleanTitleCandidate(it.text) }
-            .firstOrNull { isCandidateProductTitle(it) && it.length in minLen..140 && it.split(' ').size >= minWords }
+        // 5. Below-the-fold PDP nodes (`allNodes` includes `isVisible == false` nodes inside the PDP ScrollView/RecyclerView
+        // that were pushed just below the sticky "$2.78 Add to cart" bar by a tall 1:1 product photo and "Bought 5+ times" banner!)
+        if (allNodes.isNotEmpty()) {
+            allNodes.firstOrNull { n ->
+                val c = cleanTitleCandidate(n.text)
+                isCandidateProductTitle(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }
+            }?.let { return cleanTitleCandidate(it.text) }
+
+            allNodes.firstOrNull { n ->
+                val c = cleanTitleCandidate(n.text)
+                n.isHeading && isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
+            }?.let { return cleanTitleCandidate(it.text) }
+
+            if (isConfirmedSinglePdp) {
+                allNodes.take(160).firstOrNull { n ->
+                    val c = cleanTitleCandidate(n.text)
+                    isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
+                }?.let { return cleanTitleCandidate(it.text) }
+
+                allNodes.take(120).firstOrNull { n ->
+                    val c = cleanTitleCandidate(n.text)
+                    isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
+                }?.let { return cleanTitleCandidate(it.text) }
+            }
+        }
+
+        // 6. Accessibility heading on a confirmed single-product page (visible or below-the-fold)
+        if (isConfirmedSinglePdp) {
+            searchNodes.firstOrNull { n ->
+                val c = cleanTitleCandidate(n.text)
+                n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
+            }?.let { return cleanTitleCandidate(it.text) }
+
+            allNodes.take(120).firstOrNull { n ->
+                val c = cleanTitleCandidate(n.text)
+                n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
+            }?.let { return cleanTitleCandidate(it.text) }
+
+            // 7. Fallback to the product card title the user just tapped to open this PDP (or the PDP title captured moments earlier)
+            val now = System.currentTimeMillis()
+            if (lastClickedProductTitle != null && lastClickedProductPkg == pkg && now - lastClickedProductAtMs <= 20_000L) {
+                return lastClickedProductTitle
+            }
+            if (lastConfirmedPdpTitle != null && lastConfirmedPdpPkg == pkg && now - lastConfirmedPdpAtMs <= 90_000L) {
+                return lastConfirmedPdpTitle
+            }
+        }
+
+        return null
     }
 
     /**
