@@ -542,6 +542,22 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/crackers.jpg",
   },
   {
+    match: /\bmartin'?s\b.*\b(potato|rolls?|buns?|bread)\b/i,
+    brand: "Martin's",
+    title: "Martin's Famous Pastry Shoppe Potato Sandwich Rolls",
+    ingredients: "Unbleached Enriched Wheat Flour (Flour, Ferrous Sulfate, Niacin, Thiamin, Riboflavin, Folic Acid), Nonfat Milk, Reconstituted Potatoes (from Potato Flour), Yeast, Sugar, Wheat Gluten, Sunflower Oil, Contains 2 Percent or Less of Each of the Following: Salt, Butter, Dough Conditioners (Sodium Stearoyl Lactylate, Monoglycerides and Diglycerides, Ascorbic Acid), Monocalcium Phosphate, Cultured Wheat Flour, Calcium Propionate (a Preservative), Guar Gum, Datem, Enzymes, Sesame Seeds, Turmeric Color, Annatto Color.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Martin's%20Potato%20Sandwich%20Rolls",
+    nutrition: { caloriesKcal100g: 281, sugarsG100g: 6.2, saturatedFatG100g: 0.8, sodiumMg100g: 390, fiberG100g: 3.1, proteinG100g: 10.9, fruitsVegNutsPct: 12, nutriScoreGrade: "b", isWholeFood: false },
+  },
+  {
+    match: /\b(great\s+value|wonder|sara\s+lee|nature'?s\s+own|l'?oven\s+fresh)\b.*\b(white\s+sandwich\s+bread|white\s+bread|enriched\s+bread|sandwich\s+bread)\b/i,
+    brand: "Representative Category Formulation",
+    title: "White Enriched Sandwich Bread (Representative Formulation)",
+    ingredients: "Unbleached Enriched Wheat Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, High Fructose Corn Syrup, Yeast, Contains 2% or Less of: Soybean Oil, Salt, Wheat Gluten, Calcium Sulfate, Sodium Stearoyl Lactylate, Monoglycerides, Calcium Propionate (to Preserve Freshness), DATEM, Ascorbic Acid, Enzymes.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Great%20Value%20White%20Sandwich%20Bread",
+    nutrition: { caloriesKcal100g: 259, sugarsG100g: 5.8, saturatedFatG100g: 0.7, sodiumMg100g: 480, fiberG100g: 1.9, proteinG100g: 7.8, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
     match: /\b(oreo\s+puffs?|oreo\s+o'?s)\b/i,
     brand: "Post",
     title: "Oreo O's / Oreo Puffs Cereal",
@@ -1464,7 +1480,10 @@ function isDietaryOrVariantMismatch(
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query
     .trim()
+    .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
+    .replace(/\s*,\s*\d+\s*\.\.\.+$/, "")
     .replace(/,\s*(now|was)$/i, "")
+    .replace(/\s*[.,•|\-]+\s*$/, "")
     .replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const wordCount = cleanTitle.split(/\s+/).filter(Boolean).length;
   const isOrganic = /\b(organic|usda organic|\bog\b)\b/i.test(query);
@@ -1585,13 +1604,16 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 function cleanSearchQuery(title: string): string {
   return title
     .replace(/[®™©]/g, "")
+    .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
     .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:lbs?|oz|fl\s*oz|ct|count|pk|pack|g|kg)\b.*$/i, "")
     .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\b).*$/i, "")
     .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack|dozen)\b.*$/i, "")
     .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|dozen)\b.*$/i, "")
     .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
+    .replace(/\s*,\s*\d+\s*\.\.\.+$/, "")
     .replace(/\.\.\.+$/, "")
+    .replace(/\s*[.,•|\-]+\s*$/, "")
     .trim();
 }
 
@@ -1634,7 +1656,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   let found: Omit<LookupResult, "ms"> | null = null;
   const DIRECT_CATALOG_PRIORITY =
-    /\b(velveeta|lactaid|fairlife|marketside|freshness guaranteed|bettergoods|sam'?s choice|wellsley farms|berkley jensen|kirkland|kirkwood|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|parkview|appleton farms|fremont fish|never any|earth grown|knoppers|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
+    /\b(velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|ritz\s+original|marketside|freshness guaranteed|bettergoods|sam'?s choice|wellsley farms|berkley jensen|kirkland|kirkwood|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|parkview|appleton farms|fremont fish|never any|earth grown|knoppers|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
 
   if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
     const directCat = catalogFallback(title);
