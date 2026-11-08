@@ -14,7 +14,7 @@
     : HOST.includes("aldi") ? "aldi"
     : HOST.includes("doordash") ? "doordash"
     : HOST.includes("ubereats") ? "ubereats"
-    : HOST.includes("amazon") ? "amazon"
+    : (HOST.includes("amazon") || HOST.includes("wholefoods")) ? "amazon"
     : HOST.includes("samsclub") ? "sams"
     : HOST.includes("bjs") ? "bjs"
     : HOST.includes("costco") ? "costco"
@@ -96,7 +96,7 @@
   }
 
   /* ---------------- DOM reading ---------------- */
-  const NON_TITLE_RE = /^(search|your cart|shopping cart|cart|checkout|items to add next|product information|similar items|customers also.*)$/i;
+  const NON_TITLE_RE = /^(search|your cart|shopping cart|cart|checkout|items to add next|product information|similar items|customers also.*|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|uber\s*eats|shipt|departments|grocery|savings|deals|weekly\s+ad)$/i;
   const NON_INGREDIENT_RE = /\b(items to add next|product information|similar items|customers also|you might also|related items|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
   const REAL_ING_HINT_RE = /\b(water|milk|cream|sugar|salt|flour|wheat|corn|soy|oil|butter|egg|cheese|cocoa|chocolate|vanilla|syrup|starch|acid|lecithin|gum|flavor|natural|organic|vitamin|potassium|sodium|calcium|turkey|chicken|beef|pork|apple|berry|oat|rice|potato|tomato|onion|garlic|spice|vinegar|yeast|honey|almond|peanut|hazelnut|extract|culture|enzyme)\b/i;
 
@@ -109,10 +109,28 @@
   }
 
   function readTitle() {
-    const h1 = document.querySelector('h1[itemprop="name"], h1[data-testid*="title" i], main h1, h1');
-    const t = (h1?.textContent || "").replace(/\s+/g, " ").trim();
-    if (!t || NON_TITLE_RE.test(t)) return "";
-    return t;
+    const selectors = [
+      '[data-testid*="item-details" i] h1',
+      '[data-testid*="item-details" i] h2',
+      '[role="dialog"] h1',
+      '[aria-modal="true"] h1',
+      '[role="dialog"] [data-testid*="title" i]',
+      'h1[itemprop="name"]',
+      'h1[data-testid*="title" i]',
+      '[data-automation-id*="product-title" i]',
+      "#productTitle",
+      "h1#title",
+      "#title_feature_div h1",
+      "#title",
+      "main h1",
+      "h1",
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      const t = (el?.textContent || "").replace(/\s+/g, " ").trim();
+      if (t && !NON_TITLE_RE.test(t)) return t;
+    }
+    return "";
   }
 
   function readIngredients() {
@@ -136,16 +154,20 @@
   }
 
   function isAmazonGroceryPage() {
+    if (HOST.includes("wholefoods")) return true;
     const crumbText = (
       document.querySelector(
-        "#wayfinding-breadcrumbs_feature_div, #nav-subnav, #brandByline_feature_div, #almDetailPagePoi, #fresh-merchant-info"
+        "#wayfinding-breadcrumbs_feature_div, #nav-subnav, #brandByline_feature_div, #bylineInfo, #almDetailPagePoi, #fresh-merchant-info, #alm-cards-link, a[href*='almBrandId']"
       )?.textContent || ""
     );
-    if (/\b(grocery|gourmet food|amazon fresh|whole foods|pantry|food\s*&\s*beverage|snacks|beverages)\b/i.test(crumbText)) {
+    if (/\b(grocery|gourmet food|amazon fresh|whole foods|365 by whole foods|happy belly|amazon grocery|pantry|food\s*&\s*beverage|snacks|beverages)\b/i.test(crumbText)) {
       return true;
     }
     const searchAlias = document.querySelector("#searchDropdownBox option[selected], #nav-search-label-id")?.textContent || "";
     if (/\b(grocery|amazon fresh|whole foods|prime pantry)\b/i.test(searchAlias)) {
+      return true;
+    }
+    if (REAL_ING_HINT_RE.test(readTitle())) {
       return true;
     }
     return Boolean(readIngredients());
@@ -153,18 +175,23 @@
 
   function isProductPage() {
     const p = location.pathname;
+    const s = location.search;
+    const hasModalTitle = !!document.querySelector('[data-testid*="item-details" i] h1, [role="dialog"] h1, [aria-modal="true"] h1');
     if (STORE === "walmart") return /\/ip\//.test(p);
-    if (STORE === "instacart") return /\/products?\//.test(p) || !!document.querySelector('[data-testid*="item-details" i]');
+    if (STORE === "instacart") return /\/products?\//.test(p) || /item_id=|product_id=/i.test(s) || hasModalTitle;
     if (STORE === "target") return /\/p\//.test(p);
     if (STORE === "kroger") return /\/p\//.test(p);
-    if (STORE === "aldi") return /\/products?\//.test(p);
-    if (STORE === "doordash") return /\/products?\//.test(p) || /item-details/i.test(location.search);
-    if (STORE === "ubereats") return /\/product\//.test(p) || /mod=quickView/i.test(location.search);
-    if (STORE === "amazon") return /\/(dp|gp\/product)\//.test(p) && isAmazonGroceryPage();
-    if (STORE === "sams") return /\/(p|product|ip)\//.test(p);
+    if (STORE === "aldi") return /\/products?\//.test(p) || /\/detail\/ps\/p\//.test(p);
+    if (STORE === "doordash") return /\/products?\//.test(p) || /item-details|product_id|item_id/i.test(s) || hasModalTitle;
+    if (STORE === "ubereats") return /\/product\//.test(p) || /mod=quickView|item/i.test(s) || hasModalTitle;
+    if (STORE === "amazon") {
+      if (HOST.includes("wholefoods")) return /\/products?\//.test(p);
+      return /\/(dp|gp\/product|gp\/aw\/d)\//.test(p) && isAmazonGroceryPage();
+    }
+    if (STORE === "sams") return /\/(p|product|ip|sams\/shop\/product)\//.test(p);
     if (STORE === "bjs") return /\/product\//.test(p);
     if (STORE === "costco") return /\/p\/|\.product\./i.test(p);
-    if (STORE === "shipt") return /\/products?\//.test(p);
+    if (STORE === "shipt") return /\/products?\//.test(p) || hasModalTitle;
     return !!readTitle();
   }
 
@@ -449,6 +476,7 @@
     if (!host.isConnected) document.documentElement.appendChild(host);
 
     if (!isProductPage()) {
+      scanSeq++;
       state.mode = "cart_avg";
       state.expanded = false;
       render();
@@ -457,6 +485,7 @@
 
     const productTitle = readTitle();
     if (!productTitle) {
+      scanSeq++;
       state.mode = "cart_avg";
       render();
       return;
@@ -470,15 +499,25 @@
     chrome.runtime.sendMessage(
       { type: "CLEANCART_SCAN", payload: { productTitle, rawIngredients: rawIngredients || undefined, store: STORE } },
       (resp) => {
-        if (reqId !== scanSeq) return;
+        if (reqId !== scanSeq || !isProductPage()) return;
+        if (!resp?.ok) {
+          state = {
+            ...state,
+            mode: "cart_avg",
+            expanded: false,
+            openFlag: null,
+          };
+          render();
+          return;
+        }
         state = {
           ...state,
           mode: "product",
-          data: resp || { ok: false, error: "No response from CleanCart" },
+          data: resp,
           expanded: false,
           openFlag: null,
         };
-        if (resp?.ok && resp.result && isCurrentProductInCart()) {
+        if (resp.result && isCurrentProductInCart()) {
           recordProductInCart(resp, productTitle);
         }
         render();

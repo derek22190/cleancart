@@ -42,20 +42,23 @@ https://www.walmart.com/search?q=Stonyfield%20Organic%20Yogurt
 ## Step 2 — Use it from the Share Sheet
 
 1. In the Shortcut's **ⓘ Details**, enable **Show in Share Sheet**.
-2. In the Walmart / Instacart / Target / Kroger / ALDI / Amazon / Sam's Club / BJ's / Costco app, open a product → **Share** → **CleanCart Scan**.
-3. The score card appears in ~1 s (cached repeat scans return in < 5 ms server-side).
+2. In the Walmart / Instacart / Target / Kroger / ALDI / Amazon / Whole Foods / Sam's Club / BJ's / Costco app, open a product → **Share** → **CleanCart Scan**.
+3. Even if the store app only shares a product URL (e.g., `https://www.target.com/p/...` or `https://www.walmart.com/ip/...`) or share boilerplate, `/api/scan` automatically extracts the product slug and detects the store for the Clean Swap link.
+4. The score card appears in ~1 s (cached repeat scans return in < 5 ms server-side).
 
 ---
 
-## Step 3 — Trigger hands-free with Back Tap or the Action Button
+## Step 3 — Trigger hands-free with Back Tap or the Action Button (Screenshot OCR or Clipboard)
+
+You can set up a 1-tap **Screen Scanner Shortcut** (`Take Screenshot` → `Extract Text from Image` → send `Text from Image` as `productTitle` to `https://heybroc.com/api/scan`):
 
 **Back Tap (iPhone 8 and later)**
 Settings → **Accessibility** → **Touch** → **Back Tap** → **Double Tap** → choose **CleanCart Scan**.
-Copy a product title, then double-tap the back of your phone.
+Double-tap the back of your iPhone on any grocery app product page to scan the screen (or clipboard) automatically.
 
 **Action Button (iPhone 15 Pro / 16 / 17)**
 Settings → **Action Button** → swipe to **Shortcut** → choose **CleanCart Scan**.
-Copy a product title, then press and hold the Action Button.
+Press and hold the Action Button on any product page.
 
 ---
 
