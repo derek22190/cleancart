@@ -259,16 +259,17 @@ class GroceryScreenReaderService : AccessibilityService() {
                     var ancestor = runCatching { src.parent }.getOrNull()
                     var depth = 0
                     while (ancestor != null && depth < 4) {
-                        addCandidateStrings(candidateClickStrings, ancestor.text)
-                        addCandidateStrings(candidateClickStrings, ancestor.contentDescription)
-                        for (i in 0 until minOf(ancestor.childCount, 10)) {
-                            val pch = runCatching { ancestor.getChild(i) }.getOrNull() ?: continue
+                        val curAncestor = ancestor
+                        addCandidateStrings(candidateClickStrings, curAncestor.text)
+                        addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
+                        for (i in 0 until minOf(curAncestor.childCount, 10)) {
+                            val pch = runCatching { curAncestor.getChild(i) }.getOrNull() ?: continue
                             addCandidateStrings(candidateClickStrings, pch.text)
                             addCandidateStrings(candidateClickStrings, pch.contentDescription)
                             recycleNode(pch)
                         }
-                        val nextParent = runCatching { ancestor.parent }.getOrNull()
-                        recycleNode(ancestor)
+                        val nextParent = runCatching { curAncestor.parent }.getOrNull()
+                        recycleNode(curAncestor)
                         ancestor = nextParent
                         depth++
                     }

@@ -155,7 +155,7 @@ object ScanApi {
     }
 
     /** Non-blocking first-party funnel event ping to /api/analytics (forwarded server-side to PostHog). */
-    fun trackEvent(ctx: Context, eventName: String) {
+    fun trackEvent(ctx: Context, eventName: String, properties: JSONObject? = null) {
         val appCtx = ctx.applicationContext
         Thread {
             runCatching {
@@ -167,6 +167,9 @@ object ScanApi {
                     put("deviceId", deviceId(appCtx))
                     put("platform", "android")
                     put("variant", variant)
+                    if (properties != null) {
+                        put("properties", properties)
+                    }
                 }.toString()
                 postFollowingRedirects("https://www.heybroc.com/api/analytics", body, maxRedirects = 2)
             }
