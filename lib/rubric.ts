@@ -101,6 +101,12 @@ export const PENALTIES: Record<RiskLevel, number> = {
   low: 10,
 };
 
+export const RISK_LABEL: Record<RiskLevel, string> = {
+  high: "High Risk",
+  moderate: "Moderate Risk",
+  low: "Limited Risk",
+};
+
 export const CATEGORY_LABELS: Record<Category, string> = {
   dyes: "Synthetic Dyes",
   preservatives: "Preservatives",

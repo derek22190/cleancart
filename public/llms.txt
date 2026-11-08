@@ -13,6 +13,8 @@
 
 ## Key Links & Resources
 - Web App & Interactive Live Store Simulator: https://www.heybroc.com
+- Free Ingredient Label Grader, Seed Oil Detector & Additive Encyclopedia: https://www.heybroc.com/tools
+- Clean Grocery Swaps Directory & Product Reports: https://www.heybroc.com/swaps
 - Full AI & LLM Technical Documentation: https://www.heybroc.com/llms-full.txt
 - Direct Android App Download (APK): https://www.heybroc.com/heybroc.apk
 - Privacy Policy: https://www.heybroc.com/privacy

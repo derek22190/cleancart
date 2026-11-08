@@ -1,8 +1,16 @@
 import type { MetadataRoute } from "next";
+import { SEO_PRODUCTS } from "@/lib/seo-catalog";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://www.heybroc.com";
   const lastModified = new Date();
+
+  const productUrls: MetadataRoute.Sitemap = SEO_PRODUCTS.map((p) => ({
+    url: `${baseUrl}/swaps/${p.slug}`,
+    lastModified,
+    changeFrequency: "weekly",
+    priority: 0.85,
+  }));
 
   return [
     {
@@ -11,6 +19,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 1.0,
     },
+    {
+      url: `${baseUrl}/tools`,
+      lastModified,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/swaps`,
+      lastModified,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
+    ...productUrls,
     {
       url: `${baseUrl}/privacy`,
       lastModified,

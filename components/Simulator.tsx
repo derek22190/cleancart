@@ -2222,6 +2222,8 @@ export default function Simulator() {
               </details>
             </div>
             <div style={{ marginTop: 16, display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
+              <a href="/tools" style={{ color: "#15803d", fontWeight: 700 }}>🧪 Free Ingredient &amp; Seed Oil Tools</a>
+              <a href="/swaps" style={{ color: "#15803d", fontWeight: 700 }}>⇄ Clean Grocery Swaps Directory</a>
               <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy</a>
               <a href="/llms.txt" style={{ color: "#15803d", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
               <a href="/sitemap.xml" style={{ color: "#15803d", fontWeight: 600 }}>Sitemap</a>
