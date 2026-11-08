@@ -172,7 +172,9 @@ export default function Paywall({
       if (!userEmail && typeof window !== "undefined") {
         try {
           const cachedUser = JSON.parse(
-            window.localStorage.getItem("heybroc_user") || "null"
+            window.localStorage.getItem("heybroc_auth_user") ||
+              window.localStorage.getItem("heybroc_user") ||
+              "null"
           ) as { email?: string } | null;
           if (cachedUser?.email) userEmail = cachedUser.email;
         } catch {
