@@ -98,7 +98,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|reviews?|ratings?)\b|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail))\b|,\s*was$|\?$""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock|many in stock|low in stock|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free delivery as soon as.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items|frequently bought.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|how do you want your items?.*|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+|\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,3}\s+(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail))\b|,\s*was$|\?$""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
@@ -113,6 +113,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val WHITESPACE = Regex("""\s+""")
+        private val LINE_SPLIT = Regex("""[\r\n]+""")
         private val SPONSORED_BADGE = Regex("""^(sponsored(\s+(ad|item|product|brand|result))?|ad|advertisement)(\s*[ⓘℹ(•\-].*)?$""", RegexOption.IGNORE_CASE)
     }
 
@@ -197,6 +198,18 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
     }
 
+    private fun addCandidateStrings(target: MutableList<String>, raw: CharSequence?) {
+        val str = raw?.toString()?.trim().orEmpty()
+        if (str.isEmpty()) return
+        if (str.contains('\n') || str.contains('\r')) {
+            for (line in str.split(LINE_SPLIT)) {
+                val trimmed = line.trim()
+                if (trimmed.isNotEmpty()) target.add(trimmed)
+            }
+        }
+        target.add(str)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!AccessibilityConsent.granted(this) || !isDeviceInteractiveAndUnlocked()) {
             if (overlayVisible) {
@@ -220,44 +233,46 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val src = runCatching { event.source }.getOrNull()
             val candidateClickStrings = ArrayList<String>()
-            event.text?.forEach { if (!it.isNullOrBlank()) candidateClickStrings.add(it.toString()) }
-            event.contentDescription?.let { if (it.isNotBlank()) candidateClickStrings.add(it.toString()) }
+            event.text?.forEach { addCandidateStrings(candidateClickStrings, it) }
+            addCandidateStrings(candidateClickStrings, event.contentDescription)
             val clickedText = buildString {
                 event.text?.forEach { append(it).append(' ') }
                 event.contentDescription?.let { append(it).append(' ') }
                 if (src != null) {
                     src.text?.let {
                         append(it).append(' ')
-                        candidateClickStrings.add(it.toString())
+                        addCandidateStrings(candidateClickStrings, it)
                     }
                     src.contentDescription?.let {
                         append(it).append(' ')
-                        candidateClickStrings.add(it.toString())
+                        addCandidateStrings(candidateClickStrings, it)
                     }
-                    for (i in 0 until minOf(src.childCount, 8)) {
+                    for (i in 0 until minOf(src.childCount, 10)) {
                         val ch = runCatching { src.getChild(i) }.getOrNull() ?: continue
-                        ch.text?.let {
-                            append(it).append(' ')
-                            candidateClickStrings.add(it.toString())
-                        }
-                        ch.contentDescription?.let {
-                            append(it).append(' ')
-                            candidateClickStrings.add(it.toString())
-                        }
+                        addCandidateStrings(candidateClickStrings, ch.text)
+                        addCandidateStrings(candidateClickStrings, ch.contentDescription)
+                        ch.text?.let { append(it).append(' ') }
+                        ch.contentDescription?.let { append(it).append(' ') }
                         recycleNode(ch)
                     }
-                    val parent = runCatching { src.parent }.getOrNull()
-                    if (parent != null) {
-                        parent.text?.let { candidateClickStrings.add(it.toString()) }
-                        parent.contentDescription?.let { candidateClickStrings.add(it.toString()) }
-                        for (i in 0 until minOf(parent.childCount, 8)) {
-                            val pch = runCatching { parent.getChild(i) }.getOrNull() ?: continue
-                            pch.text?.let { candidateClickStrings.add(it.toString()) }
-                            pch.contentDescription?.let { candidateClickStrings.add(it.toString()) }
+                    // Walk up to 4 ancestor levels so tapping a product photo inside a nested CardView/Compose node captures the product card's title
+                    var ancestor = runCatching { src.parent }.getOrNull()
+                    var depth = 0
+                    while (ancestor != null && depth < 4) {
+                        addCandidateStrings(candidateClickStrings, ancestor.text)
+                        addCandidateStrings(candidateClickStrings, ancestor.contentDescription)
+                        for (i in 0 until minOf(ancestor.childCount, 10)) {
+                            val pch = runCatching { ancestor.getChild(i) }.getOrNull() ?: continue
+                            addCandidateStrings(candidateClickStrings, pch.text)
+                            addCandidateStrings(candidateClickStrings, pch.contentDescription)
                             recycleNode(pch)
                         }
-                        recycleNode(parent)
+                        val nextParent = runCatching { ancestor.parent }.getOrNull()
+                        recycleNode(ancestor)
+                        ancestor = nextParent
+                        depth++
                     }
+                    if (ancestor != null) recycleNode(ancestor)
                 }
             }.trim()
             val srcViewId = src?.viewIdResourceName?.lowercase().orEmpty()
@@ -321,14 +336,18 @@ class GroceryScreenReaderService : AccessibilityService() {
             handler.postDelayed(followUpScanRunnable, 900L)
             return
         }
+        // When waiting on "Scroll down to grade item" (or before any item has been graded), scan rapidly during scroll!
+        val waitingForPdpTitle = lastKey.isEmpty() || lastKey.endsWith("|PDP_SCROLL_HINT")
+        val debounceMs = if (waitingForPdpTitle) 180L else DEBOUNCE_MS
+        val maxWaitMs = if (waitingForPdpTitle) 400L else MAX_DEBOUNCE_WAIT_MS
         if (pendingSinceMs == 0L) pendingSinceMs = now
-        if (now - pendingSinceMs >= MAX_DEBOUNCE_WAIT_MS) {
+        if (now - pendingSinceMs >= maxWaitMs) {
             handler.removeCallbacks(scanRunnable)
             scanRunnable.run()
             return
         }
         handler.removeCallbacks(scanRunnable)
-        handler.postDelayed(scanRunnable, DEBOUNCE_MS)
+        handler.postDelayed(scanRunnable, debounceMs)
     }
 
     override fun onInterrupt() = Unit
@@ -383,16 +402,17 @@ class GroceryScreenReaderService : AccessibilityService() {
             val ingredients = findIngredients(primaryNodes) ?: findIngredients(primaryAllNodes)
 
             val tileAddCount = primaryNodes.count { ADD_TILE_BUTTON.matches(it.text.trim()) }
-            val hasOptionsButtons = primaryNodes.any { it.text.trim().equals("options", ignoreCase = true) }
+            val hasOptionsButtons = nodes.any { it.text.trim().equals("options", ignoreCase = true) }
 
             val hasHomeOrAisleBanners = primaryNodes.take(35).any { HOME_OR_AISLE_BANNERS.containsMatchIn(it.text.trim()) }
-            val hasSinglePdpCta = primaryNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
+            val hasSinglePdpCta = nodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) } ||
+                allNodes.any { SINGLE_PDP_CTA.containsMatchIn(it.text) }
             val hasSinglePdpDetails = ingredients != null ||
                 nodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) } ||
-                primaryAllNodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
-            val hasExplicitPdpViewId = primaryNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } } ||
-                primaryAllNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
-            val hasClubItemNumber = primaryNodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
+                allNodes.any { SINGLE_PDP_DETAILS.containsMatchIn(it.text.trim()) }
+            val hasExplicitPdpViewId = nodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } } ||
+                allNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
+            val hasClubItemNumber = nodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
             val isConfirmedSinglePdp =
                 hasExplicitPdpViewId ||
@@ -472,6 +492,9 @@ class GroceryScreenReaderService : AccessibilityService() {
 
             val title = if (isProductView) {
                 findTitle(primaryNodes, primaryAllNodes, isConfirmedSinglePdp, pkg)
+                    ?: if (primaryNodes.size < nodes.size || primaryAllNodes.size < allNodes.size) {
+                        findTitle(nodes, allNodes, isConfirmedSinglePdp, pkg)
+                    } else null
             } else null
 
             if (!isProductView || title == null) {
@@ -550,7 +573,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 lastConfirmedPdpAtMs = System.currentTimeMillis()
             }
 
-            val inCartOnPdp = pendingAddToCartClick || primaryNodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) }
+            val inCartOnPdp = pendingAddToCartClick || nodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) }
             pendingAddToCartClick = false
 
             val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
@@ -595,13 +618,39 @@ class GroceryScreenReaderService : AccessibilityService() {
         val index: Int,
     )
 
+    private fun emitSplitAndCombinedNodes(
+        out: MutableList<TextNode>,
+        raw: CharSequence?,
+        viewId: String,
+        heading: Boolean,
+        visible: Boolean,
+        alreadyEmitted: MutableSet<String>,
+    ) {
+        val rawStr = raw?.toString().orEmpty()
+        if (rawStr.isBlank()) return
+        if (rawStr.contains('\n') || rawStr.contains('\r')) {
+            for (line in rawStr.split(LINE_SPLIT)) {
+                val cleanLine = line.replace(WHITESPACE, " ").trim()
+                if (cleanLine.isNotEmpty() && alreadyEmitted.add(cleanLine)) {
+                    out.add(TextNode(cleanLine, viewId, heading, visible, out.size))
+                }
+            }
+        }
+        val combined = rawStr.replace(WHITESPACE, " ").trim()
+        if (combined.isNotEmpty() && alreadyEmitted.add(combined)) {
+            out.add(TextNode(combined, viewId, heading, visible, out.size))
+        }
+    }
+
     private fun collectTextNodes(root: AccessibilityNodeInfo): List<TextNode> {
         val out = ArrayList<TextNode>()
-        val queue = ArrayDeque<AccessibilityNodeInfo>()
-        queue.add(root)
+        // Use Pre-order DFS (stack) so nodes are visited in true top-to-bottom document layout order!
+        // (BFS visited shallow bottom-of-page section headers before deeply nested PDP title TextViews.)
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addFirst(root)
         var seen = 0
-        while (queue.isNotEmpty() && seen < MAX_NODES) {
-            val node = queue.pollFirst() ?: break
+        while (stack.isNotEmpty() && seen < MAX_NODES) {
+            val node = stack.pollFirst() ?: break
             seen++
             try {
                 if (node.isPassword) continue
@@ -612,38 +661,25 @@ class GroceryScreenReaderService : AccessibilityService() {
                     viewId.endsWith("search_box") ||
                     viewId.endsWith("search_edit_text")
                 if (!isSearchInput) {
-                    val t1 = node.text?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
-                    val t2 = node.contentDescription?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
-                    val t3 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        node.paneTitle?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
-                    } else ""
-                    val t4 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        node.tooltipText?.toString()?.replace(WHITESPACE, " ")?.trim().orEmpty()
-                    } else ""
                     val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
                     val visible = node.isVisibleToUser
-                    if (t1.isNotEmpty()) {
-                        out.add(TextNode(t1, viewId, heading, visible, out.size))
-                    }
-                    if (t2.isNotEmpty() && t2 != t1) {
-                        out.add(TextNode(t2, viewId, heading, visible, out.size))
-                    }
-                    if (t3.isNotEmpty() && t3 != t1 && t3 != t2) {
-                        out.add(TextNode(t3, viewId, true, visible, out.size))
-                    }
-                    if (t4.isNotEmpty() && t4 != t1 && t4 != t2 && t4 != t3) {
-                        out.add(TextNode(t4, viewId, heading, visible, out.size))
+                    val emittedForNode = HashSet<String>(6)
+                    emitSplitAndCombinedNodes(out, node.text, viewId, heading, visible, emittedForNode)
+                    emitSplitAndCombinedNodes(out, node.contentDescription, viewId, heading, visible, emittedForNode)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        emitSplitAndCombinedNodes(out, node.paneTitle, viewId, true, visible, emittedForNode)
+                        emitSplitAndCombinedNodes(out, node.tooltipText, viewId, heading, visible, emittedForNode)
                     }
                 }
-                for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let(queue::add)
+                for (i in node.childCount - 1 downTo 0) {
+                    node.getChild(i)?.let(stack::addFirst)
                 }
             } finally {
                 if (node !== root) recycleNode(node)
             }
         }
-        while (queue.isNotEmpty()) {
-            val leftover = queue.pollFirst() ?: break
+        while (stack.isNotEmpty()) {
+            val leftover = stack.pollFirst() ?: break
             if (leftover !== root) recycleNode(leftover)
         }
         return out
@@ -703,32 +739,42 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
         // Strip leading checkmarks/bullets (e.g. "✓ Bought 5+ times, stay stocked and subscribe")
         s = s.replace(Regex("""^[✓✔☑•·]\s*"""), "")
-        if (s.matches(Regex("""(?i)^bought\s+\d+\+?\s*times?\b.*"""))) {
+        if (s.matches(Regex("""(?i)^(bought\s+\d+\+?\s*times?|last\s+purchased\s+on)\b.*"""))) {
             return ""
         }
         // Unwrap action/image contentDescriptions on PDP buttons & hero images (e.g. "Add Great Value Whole Vitamin D Milk to cart", "Product image 1 of 6, Great Value Whole Vitamin D Milk")
-        s = s.replace(Regex("""(?i)^(?:add|save)\s+(.{5,}?)\s+to\s+(?:cart|bag|basket|order|favorites|list|my\s+items|registry).*$"""), "$1")
-        s = s.replace(Regex("""(?i)^(?:add\s+to\s+(?:cart|bag|basket|order|favorites|list)|save\s+to\s+(?:list|favorites)|share)\s*[,:•|\-–—]\s*(?=[a-zA-Z]{2,})"""), "")
+        s = s.replace(Regex("""(?i)^(?:add|save|remove|delete)\s+(.{5,}?)\s+(?:to|from)\s+(?:cart|bag|basket|order|favorites|list|my\s+items|registry).*$"""), "$1")
+        s = s.replace(Regex("""(?i)^(?:add\s+to\s+(?:cart|bag|basket|order|favorites|list)|save\s+to\s+(?:list|favorites|my\s+items)|saved\s+to\s+(?:list|favorites|my\s+items)|favorited|share)\s*[,:•|\-–—]\s*(?=[a-zA-Z]{2,})"""), "")
         s = s.replace(Regex("""(?i)^(?:product\s+)?(?:image|photo)\s*(?:\d+\s*(?:of|/)\s*\d+)?\s*[,:•|\-–—]\s*(?=[a-zA-Z]{2,})"""), "")
         // Strip leading/embedded favorite/badge/quantity prefixes from compound container contentDescriptions
-        s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites)\s*[,•|\-]?\s*"""), "")
+        s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites|remove from my items|add to my items)\s*[,•|\-]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(remove|delete)\s+(?=[a-z0-9].*\s+[a-z0-9])"""), "")
         s = s.replace(Regex("""(?i)^\d+\s+in\s+(cart|bag|basket|order)\s*[-–—:,]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*"""), "")
-        s = s.replace(
-            Regex("""(?i)^(([✓✔]?\s*bought\s+\d+\+?\s*times?(?:\s*,\s*stay\s+stocked(?:\s+and\s+subscribe)?)?|\d+[km]?\+?\s*bought[^,•|\-]*|best seller|overall pick|popular pick|rollback|sponsored|save for later|subscribe to save|(current\s+price\s*|price\s*|now\s*)?\$\s*\d+(\.\d{2})?(\s*/\s*(ea|oz|fl oz|lb|ct))?|\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct|\d+\s*ct))\s*[,•|\-]\s*)+(?=[a-zA-Z]{2,})"""),
-            ""
-        )
-        // Strip trailing club item numbers, ratings, review counts, image carousel counters, EBT badges, and prices
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\b(item|model|sku)\s*:?\s*#?\d+.*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\bsnap\s+ebt.*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(rated\s+)?\d+(\.\d+)?\s*out of\s*5(\s*stars?)?.*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d[\d,]*\s*(reviews?|ratings?).*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(product\s+)?image\s+\d+\s+of\s+\d+.*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(current\s+price\s*|price\s*|now\s*)?\$\s*\d+(\.\d{2})?.*$"""), "")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(\.\d+)?\s*¢\s*/\s*(oz|fl oz|lb|ea|ct|\d+\s*ct).*$"""), "")
+        // Strip embedded reorder/popularity/badge tokens whether separated by commas, bullets, periods, or spaces
+        s = s.replace(Regex("""(?i)[✓✔☑]?\s*\bbought\s+\d+\+?\s*times?(?:\s*,?\s*stay\s+stocked(?:\s+and\s+subscribe)?)?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\blast\s+purchased\s+on\s+[a-z]+\s+\d{1,2}(?:\s*,\s*\d{4})?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\b\d+[km]?\+?\s*bought\s+since\s+yesterday(?:\s*,?\s*try\s+a\s+subscription)?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\btry\s+a\s+subscription\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\b(best\s+seller|overall\s+pick|popular\s+pick|rollback|sponsored|save\s+for\s+later|subscribe\s+to\s+save)(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\b(get\s+\$?\d+(?:\.\d{2})?\s+)?walmart\s+cash\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\bmanufacturer\s+offer\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\bfree\s+\d+-day\s+returns(?:\s*[ⓘℹ>])?\s*[,•|\-.]?"""), " ")
+        // Strip ratings, review counts, image carousel counters, EBT badges, item numbers, and prices WITHOUT eating subsequent title words!
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\b(item|model|sku)\s*:?\s*#?\d+\b"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\bsnap\s+ebt(\s+eligible)?\b"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:[★☆⭐]+\s*)?(?:rated\s+)?\d+(?:\.\d+)?\s*out\s+of\s*5(?:\s*stars?)?(?:\s*[,•|\-]?\s*\d[\d,]*\s*(?:reviews?|ratings?))?"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:[★☆⭐]+\s*)?\(\d+(?:\.\d+)?\)\s*\d[\d,]*(?:\s*(?:reviews?|ratings?))?"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\b\d[\d,]*\s*(?:reviews?|ratings?)\b"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:product\s+)?(?:image|photo)\s+\d+\s+(?:of|/)\s+\d+"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:current\s+price\s*|price\s*|now\s*|was\s*)?\$\s*\d+(?:\.\d{2})?(?:\s*/\s*(?:ea|oz|fl\s*oz|lb|ct|pt|qt|gal))?"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\bprice\s+when\s+purchased\s+online(?:\s*[ⓘℹ])?"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(?:\.\d+)?\s*¢\s*/\s*(?:oz|fl\s*oz|lb|ea|ct|pt|qt|gal|\d+\s*ct)\b"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]\s*(now|was|current\s+price|price)\s*$"""), "")
-        return s.trim(' ', ',', '•', '|', '-')
+        s = s.replace(WHITESPACE, " ").trim(' ', ',', '•', '|', '-', '.', 'ⓘ', 'ℹ')
+        // Deduplicate repeated leading 1–3 word brand prefix when a merged PDP header includes both the brand link ("Great Value") and the full title ("Great Value Whole Vitamin D Milk, Gallon")
+        s = s.replace(Regex("""(?i)^([a-z0-9'&]+(?:\s+[a-z0-9'&]+){0,2})\s*[,•|\-]?\s+\1\b"""), "$1")
+        return s.trim(' ', ',', '•', '|', '-', '.', 'ⓘ', 'ℹ')
     }
 
     private fun extractRemovedCartTitles(nodes: List<TextNode>): List<String> {
@@ -793,13 +839,14 @@ class GroceryScreenReaderService : AccessibilityService() {
         }?.let { return cleanTitleCandidate(it.text) }
 
         // 3. First visible multi-word node in top-to-bottom order containing recognizable grocery/household keywords
-        searchNodes.take(85).firstOrNull { n ->
+        val maxSearchNodes = if (isConfirmedSinglePdp) searchNodes.size else minOf(searchNodes.size, 110)
+        searchNodes.take(maxSearchNodes).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
 
         // 4. Single-word produce/food title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados", "Parsley" in ALDI)
-        searchNodes.take(65).firstOrNull { n ->
+        searchNodes.take(maxSearchNodes).firstOrNull { n ->
             val c = cleanTitleCandidate(n.text)
             isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
         }?.let { return cleanTitleCandidate(it.text) }
@@ -818,36 +865,36 @@ class GroceryScreenReaderService : AccessibilityService() {
             }?.let { return cleanTitleCandidate(it.text) }
 
             if (isConfirmedSinglePdp) {
-                allNodes.take(160).firstOrNull { n ->
+                allNodes.firstOrNull { n ->
                     val c = cleanTitleCandidate(n.text)
                     isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)
                 }?.let { return cleanTitleCandidate(it.text) }
 
-                allNodes.take(120).firstOrNull { n ->
+                allNodes.firstOrNull { n ->
                     val c = cleanTitleCandidate(n.text)
                     isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
                 }?.let { return cleanTitleCandidate(it.text) }
             }
         }
 
-        // 6. Accessibility heading on a confirmed single-product page (visible or below-the-fold)
+        // 6. Accessibility heading or tapped/cached product title on a confirmed single-product page
         if (isConfirmedSinglePdp) {
             searchNodes.firstOrNull { n ->
                 val c = cleanTitleCandidate(n.text)
                 n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
             }?.let { return cleanTitleCandidate(it.text) }
 
-            allNodes.take(120).firstOrNull { n ->
+            allNodes.firstOrNull { n ->
                 val c = cleanTitleCandidate(n.text)
                 n.isHeading && isCandidateProductTitle(c) && c.split(' ').size >= 2
             }?.let { return cleanTitleCandidate(it.text) }
 
             // 7. Fallback to the product card title the user just tapped to open this PDP (or the PDP title captured moments earlier)
             val now = System.currentTimeMillis()
-            if (lastClickedProductTitle != null && lastClickedProductPkg == pkg && now - lastClickedProductAtMs <= 20_000L) {
+            if (lastClickedProductTitle != null && lastClickedProductPkg == pkg && now - lastClickedProductAtMs <= 35_000L) {
                 return lastClickedProductTitle
             }
-            if (lastConfirmedPdpTitle != null && lastConfirmedPdpPkg == pkg && now - lastConfirmedPdpAtMs <= 90_000L) {
+            if (lastConfirmedPdpTitle != null && lastConfirmedPdpPkg == pkg && now - lastConfirmedPdpAtMs <= 120_000L) {
                 return lastConfirmedPdpTitle
             }
         }
