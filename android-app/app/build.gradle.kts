@@ -34,21 +34,29 @@ android {
             out.writeBytes(Base64.getMimeDecoder().decode(keystoreBase64Env))
             out
         }
-        file("heybroc.keystore").exists() -> file("heybroc.keystore")
         else -> null
     }
-    val hasCustomEnvSigning = (keystoreFileEnv != null || keystoreBase64Env != null) &&
+    val hasValidReleaseSigning = resolvedKeystoreFile != null &&
         keystorePasswordEnv != null &&
         keyAliasEnv != null &&
         keyPasswordEnv != null
 
+    val isReleaseTaskRequested = gradle.startParameter.taskNames.any {
+        it.contains("Release", ignoreCase = true) || it.contains("bundle", ignoreCase = true)
+    }
+    if (isReleaseTaskRequested && !hasValidReleaseSigning) {
+        throw GradleException(
+            "Release build requires KEYSTORE_FILE (or KEYSTORE_BASE64), KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD environment variables."
+        )
+    }
+
     signingConfigs {
         create("release") {
-            if (resolvedKeystoreFile != null) {
+            if (hasValidReleaseSigning) {
                 storeFile = resolvedKeystoreFile
-                storePassword = if (hasCustomEnvSigning) keystorePasswordEnv else "android"
-                keyAlias = if (hasCustomEnvSigning) keyAliasEnv else "androiddebugkey"
-                keyPassword = if (hasCustomEnvSigning) keyPasswordEnv else "android"
+                storePassword = keystorePasswordEnv
+                keyAlias = keyAliasEnv
+                keyPassword = keyPasswordEnv
             }
         }
     }
@@ -57,16 +65,13 @@ android {
 
     lint {
         abortOnError = true
-        checkOnly.add("NewApi")
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (resolvedKeystoreFile != null) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

@@ -395,6 +395,21 @@
     }
   });
 
+  root.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target.closest('[role="button"][data-act]');
+    if (!t) return;
+    e.preventDefault();
+    const act = t.dataset.act;
+    if (act === "open-auditor") {
+      state.auditorOpen = true;
+      render();
+    } else if (act === "expand") {
+      state.expanded = true;
+      render();
+    }
+  });
+
   function bindPillDrag(pill, targetMode) {
     if (!pill) return;
     let startY = 0, startX = 0, startPct = 0, moved = false;
@@ -435,11 +450,14 @@
   }
 
   /* ---------------- Scan loop ---------------- */
+  let scanSeq = 0;
+
   function scan() {
     if (sessionStorage.getItem(HIDE_SESSION_KEY) === "1") return;
     if (!host.isConnected) document.documentElement.appendChild(host);
 
     if (!isProductPage()) {
+      scanSeq++;
       state.mode = "cart_avg";
       state.expanded = false;
       render();
@@ -448,6 +466,7 @@
 
     const productTitle = readTitle();
     if (!productTitle) {
+      scanSeq++;
       state.mode = "cart_avg";
       render();
       return;
@@ -457,9 +476,11 @@
     const key = `${location.pathname}|${productTitle}|${rawIngredients.length}|${inCart ? 1 : 0}`;
     if (key === lastKey) return;
     lastKey = key;
+    const reqSeq = ++scanSeq;
     chrome.runtime.sendMessage(
       { type: "CLEANCART_SCAN", payload: { productTitle, rawIngredients: rawIngredients || undefined, store: STORE } },
       (resp) => {
+        if (reqSeq !== scanSeq || !isProductPage()) return;
         state = {
           ...state,
           mode: "product",

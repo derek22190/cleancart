@@ -1,5 +1,5 @@
-import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { isAdminAuthorized } from "@/lib/admin-auth";
 import {
   createCreator,
   deleteCreator,
@@ -22,16 +22,6 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
-
-export function isAdminAuthorized(req: Request): boolean {
-  const secret = process.env.HEYBROC_ADMIN_SECRET?.trim();
-  if (!secret) return false;
-  const authHeader = req.headers.get("authorization") || "";
-  const expected = Buffer.from(`Bearer ${secret}`, "utf8");
-  const actual = Buffer.from(authHeader, "utf8");
-  if (expected.length !== actual.length) return false;
-  return crypto.timingSafeEqual(expected, actual);
-}
 
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });

@@ -3,7 +3,12 @@
  */
 import "server-only";
 import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
-import { applyOrActivateReferral, serializeEntitlement, type EntitlementSummary } from "./referrals";
+import {
+  applyOrActivateReferral,
+  getOrCreateDevice,
+  serializeEntitlementWithPaidLookup,
+  type EntitlementSummary,
+} from "./referrals";
 import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
 import { resolveSwap, STORES, STORE_META, type Store, type SwapResult } from "./swaps";
 
@@ -73,10 +78,33 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     return { ok: false, status: 400, error: "productTitle, rawIngredients, and barcode must be strings." };
   }
 
-  const rawTitleInput = typeof req.productTitle === "string" ? req.productTitle.trim().slice(0, 300) : "";
-  const rawIngredients = typeof req.rawIngredients === "string" ? req.rawIngredients.trim().slice(0, 12_000) : "";
+  if (typeof req.rawIngredients === "string" && req.rawIngredients.length > 12_000) {
+    return {
+      ok: false,
+      status: 413,
+      error: "rawIngredients exceeds maximum length of 12,000 characters.",
+    };
+  }
+  if (typeof req.productTitle === "string" && req.productTitle.length > 500) {
+    return {
+      ok: false,
+      status: 413,
+      error: "productTitle exceeds maximum length of 500 characters.",
+    };
+  }
+
+  const rawTitleInput = typeof req.productTitle === "string" ? req.productTitle.trim() : "";
+  const rawIngredients = typeof req.rawIngredients === "string" ? req.rawIngredients.trim() : "";
   const barcode =
     typeof req.barcode === "string" || typeof req.barcode === "number" ? String(req.barcode).trim().slice(0, 32) : "";
+
+  if (rawIngredients && !/[a-zA-Z]{2,}/.test(rawIngredients)) {
+    return {
+      ok: false,
+      status: 422,
+      error: "rawIngredients must contain valid alphabetic ingredient names.",
+    };
+  }
 
   // Reject pure store UI controls, quantity +/- steppers, variant labels ("Flavor: Blueberry"), cart headers ("Cart, (12 items)"),
   // addresses ("1034 Elmwood Dr", "Change delivery address...", "This isn't your preferred address..."),
@@ -160,14 +188,19 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     watchlist,
     familyWatchlist,
   });
-  let entitlement: ReturnType<typeof serializeEntitlement> | undefined;
+  let entitlement: EntitlementSummary | undefined;
   if (typeof req.deviceId === "string" && req.deviceId.trim().length >= 4) {
-    const { device } = await applyOrActivateReferral({
-      deviceId: req.deviceId,
-      referralCode: req.referredByCode,
-      activateNow: true,
-    });
-    entitlement = serializeEntitlement(device);
+    if (req.referredByCode) {
+      const { device } = await applyOrActivateReferral({
+        deviceId: req.deviceId,
+        referralCode: req.referredByCode,
+        activateNow: false,
+      });
+      entitlement = await serializeEntitlementWithPaidLookup(device);
+    } else {
+      const device = await getOrCreateDevice(req.deviceId);
+      entitlement = await serializeEntitlementWithPaidLookup(device);
+    }
   }
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")

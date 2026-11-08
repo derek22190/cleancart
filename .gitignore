@@ -24,7 +24,6 @@
 .DS_Store
 *.pem
 *.keystore
-!android-app/app/heybroc.keystore
 *.jks
 
 # debug

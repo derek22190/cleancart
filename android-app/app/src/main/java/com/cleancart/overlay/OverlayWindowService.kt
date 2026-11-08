@@ -288,6 +288,7 @@ class OverlayWindowService : Service() {
 
     override fun onDestroy() {
         climbAnimator?.cancel()
+        runCatching { imageExecutor.shutdownNow() }
         removeSetupGuide()
         removeCard()
         removeHideTarget()
@@ -1360,6 +1361,27 @@ class OverlayWindowService : Service() {
      */
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
         val prodTitle = data?.optJSONObject("product")?.optString("title").orEmpty()
+        val swapTitle = swap.optString("title").ifBlank { prodTitle }
+
+        if (!ScanApi.canUseSwap(this)) {
+            Toast.makeText(
+                this,
+                "All 5 free weekly swaps used — upgrade to HeyBroc Pro for unlimited 1-tap swaps!",
+                Toast.LENGTH_LONG
+            ).show()
+            runCatching {
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+            removeCard()
+            showPill()
+            return
+        }
+
+        ScanApi.consumeSwap(this, swapTitle)
+
         val target = explicitItem ?: tripCart.firstOrNull { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
         pendingSwapFromKey = target?.key ?: prodTitle.takeIf { it.isNotBlank() }
         pendingSwapTitle = swap.optString("title").takeIf { it.isNotBlank() }

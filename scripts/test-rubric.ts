@@ -116,6 +116,38 @@ check("Siete Grain-Free Sea Salt Tortilla Chips scores 72 (42 + 30 + 0) with Glu
   });
   return s.score === 72 && s.yukaBreakdown?.nutritionScore === 42 && s.yukaBreakdown?.additiveScore === 30 && s.yukaBreakdown?.organicScore === 0 && Boolean(s.yukaBreakdown?.glucoseImpact);
 })());
+check("Diet Coke never claims High Sugar, High Saturated Fat, or High Calorie Density", (() => {
+  const s = scoreProductYuka(
+    "Carbonated water, caramel color, aspartame, phosphoric acid, potassium benzoate (to protect taste), natural flavors, citric acid, caffeine.",
+    {},
+    [],
+    { productTitle: "Diet Coke, 12 fl oz Cans" },
+  );
+  const hasFalseNutrition = s.flagged.some((f) =>
+    f.id === "nutri_sugar" || f.id === "nutri_satfat" || f.id === "nutri_calories" || /\bg\s*\/\s*100g\b|\bkcal\s*\/\s*100g\b/i.test(f.name),
+  );
+  return !hasFalseNutrition && s.flagged.some((f) => f.id === "aspartame") && s.flagged.some((f) => f.id === "caramelcolor");
+})());
+check("Pure maple syrup, honey, Kerrygold butter, and organic cane sugar never score 100", (() => {
+  const maple = scoreProductYuka("100% Pure Organic Grade A Dark Robust Maple Syrup.", {}, [], { productTitle: "100% Pure Organic Maple Syrup" });
+  const honey = scoreProductYuka("100% Pure Raw Unfiltered Honey.", {}, [], { productTitle: "Raw Unfiltered Honey" });
+  const butter = scoreProductYuka("Pasteurized Cream, Salt.", {}, [], { productTitle: "Kerrygold Pure Irish Salted Butter" });
+  const orgSugar = scoreProductYuka("Organic Cane Sugar, Water.", {}, [], { productTitle: "Organic Simple Syrup" });
+  return maple.score <= 65 && honey.score <= 65 && butter.score < 60 && orgSugar.score <= 65;
+})());
+check("Measured nutrition emits verified numeric flag, while unmeasured estimation never emits numeric g/100g claim", (() => {
+  const unmeasured = scoreProductYuka("Cream, skim milk, cane sugar, egg yolks, vanilla extract.", {}, [], { productTitle: "Vanilla Ice Cream" });
+  const measured = scoreProductYuka("Cream, skim milk, cane sugar, egg yolks, vanilla extract.", {}, [], {
+    productTitle: "Vanilla Ice Cream",
+    sugarsG100g: 24,
+    saturatedFatG100g: 11,
+  });
+  return (
+    !unmeasured.flagged.some((f) => /\bg\s*\/\s*100g\b/.test(f.name)) &&
+    measured.flagged.some((f) => f.id === "nutri_sugar" && f.name.includes("24g / 100g")) &&
+    measured.flagged.some((f) => f.id === "nutri_satfat" && f.name.includes("11g / 100g"))
+  );
+})());
 console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
 console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
 process.exit(fail ? 1 : 0);

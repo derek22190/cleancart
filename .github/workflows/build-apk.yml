@@ -42,26 +42,22 @@ jobs:
       - name: Prepare release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/heybroc-release.jks"
-          elif [ -f "app/heybroc.keystore" ]; then
-            cp app/heybroc.keystore "$RUNNER_TEMP/heybroc-release.jks"
-          else
-            keytool -genkeypair -v \
-              -keystore "$RUNNER_TEMP/heybroc-release.jks" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias androiddebugkey \
-              -storepass android -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US"
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "ERROR: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD secrets must all be configured." >&2
+            exit 1
           fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/heybroc-release.jks"
 
       - name: Build release APK & App Bundle
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/heybroc-release.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD != '' && secrets.KEYSTORE_PASSWORD || 'android' }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS != '' && secrets.KEY_ALIAS || 'androiddebugkey' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD != '' && secrets.KEY_PASSWORD || 'android' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
           API_BASE="${{ vars.CLEANCART_API_BASE }}"

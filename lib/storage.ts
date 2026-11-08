@@ -6,9 +6,20 @@ import path from "node:path";
  *
  * Uses `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (or Vercel KV aliases
  * `KV_REST_API_URL` + `KV_REST_API_TOKEN`) over standard HTTPS fetch with zero
- * native dependencies. Falls back to a local `.cache/kv-store.json` file + in-memory
- * map during local development and offline test runs when Redis env vars are unset.
+ * native dependencies.
+ *
+ * IMPORTANT: On Vercel (`process.env.VERCEL`), missing Upstash/KV credentials throw
+ * immediately (`StorageConfigError`) rather than silently falling back to ephemeral
+ * per-instance memory. Local development and offline test runs use `.cache/heybroc-kv.json`
+ * + in-memory map when `process.env.VERCEL` is not set.
  */
+
+export class StorageConfigError extends Error {
+  constructor(message = "Persistent Upstash Redis / Vercel KV is not configured on Vercel.") {
+    super(message);
+    this.name = "StorageConfigError";
+  }
+}
 
 interface RedisConfig {
   url: string;
@@ -36,10 +47,18 @@ export function isPersistentKvConfigured(): boolean {
   return getRedisConfig() !== null;
 }
 
+function ensureStorageReady(): RedisConfig | null {
+  const cfg = getRedisConfig();
+  if (!cfg && process.env.VERCEL) {
+    throw new StorageConfigError();
+  }
+  return cfg;
+}
+
 async function upstashCommand<T = unknown>(
   args: (string | number)[]
 ): Promise<T | null> {
-  const cfg = getRedisConfig();
+  const cfg = ensureStorageReady();
   if (!cfg) return null;
 
   const res = await fetch(cfg.url, {
@@ -64,7 +83,7 @@ async function upstashCommand<T = unknown>(
   return data.result ?? null;
 }
 
-// Local development / test fallback store (never uses /tmp on Vercel)
+// Local development / test fallback store (never used on Vercel)
 const memoryFallback = new Map<string, { raw: string; expiresAt?: number }>();
 
 function getLocalDevStorePath(): string | null {
@@ -100,13 +119,16 @@ function writeLocalDevStore(
 }
 
 export async function kvGet<T>(key: string): Promise<T | null> {
-  if (getRedisConfig()) {
+  const cfg = ensureStorageReady();
+  if (cfg) {
     const raw = await upstashCommand<string>(["GET", key]);
     if (raw === null || raw === undefined) return null;
     try {
       return JSON.parse(raw) as T;
-    } catch {
-      return null;
+    } catch (err) {
+      throw new Error(
+        `Corrupted JSON in KV for key "${key}": ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
@@ -122,8 +144,10 @@ export async function kvGet<T>(key: string): Promise<T | null> {
   }
   try {
     return JSON.parse(entry.raw) as T;
-  } catch {
-    return null;
+  } catch (err) {
+    throw new Error(
+      `Corrupted JSON in local KV for key "${key}": ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 }
 
@@ -132,8 +156,9 @@ export async function kvSet<T>(
   value: T,
   ttlSeconds?: number
 ): Promise<void> {
+  const cfg = ensureStorageReady();
   const raw = JSON.stringify(value);
-  if (getRedisConfig()) {
+  if (cfg) {
     if (ttlSeconds && ttlSeconds > 0) {
       await upstashCommand(["SET", key, raw, "EX", Math.floor(ttlSeconds)]);
     } else {
@@ -151,20 +176,34 @@ export async function kvSet<T>(
   writeLocalDevStore(localObj);
 }
 
+export async function kvDel(key: string): Promise<void> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    await upstashCommand(["DEL", key]);
+    return;
+  }
+  memoryFallback.delete(key);
+  const localObj = readLocalDevStore();
+  if (key in localObj) {
+    delete localObj[key];
+    writeLocalDevStore(localObj);
+  }
+}
+
 /**
  * Atomic SET If Not Exists (SET key value NX EX ttlSeconds).
- * Used for Stripe webhook event idempotency so replayed events never double-count commissions.
  */
 export async function kvSetNx(
   key: string,
   value: string,
   ttlSeconds = 60 * 60 * 24 * 30
 ): Promise<boolean> {
-  if (getRedisConfig()) {
+  const cfg = ensureStorageReady();
+  if (cfg) {
     const result = await upstashCommand<string>([
       "SET",
       key,
-      value,
+       JSON.stringify(value),
       "NX",
       "EX",
       Math.floor(ttlSeconds),
@@ -176,4 +215,144 @@ export async function kvSetNx(
   if (existing !== null) return false;
   await kvSet(key, value, ttlSeconds);
   return true;
+}
+
+/**
+ * Redis Set helpers (SADD / SREM / SMEMBERS) for atomic index tracking.
+ */
+export async function kvSAdd(key: string, member: string): Promise<void> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    await upstashCommand(["SADD", key, member]);
+    return;
+  }
+  const current = (await kvGet<string[]>(key)) ?? [];
+  if (!current.includes(member)) {
+    current.push(member);
+    await kvSet(key, current);
+  }
+}
+
+export async function kvSRem(key: string, member: string): Promise<void> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    await upstashCommand(["SREM", key, member]);
+    return;
+  }
+  const current = (await kvGet<string[]>(key)) ?? [];
+  const filtered = current.filter((m) => m !== member);
+  await kvSet(key, filtered);
+}
+
+export async function kvSMembers(key: string): Promise<string[]> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    const res = await upstashCommand<string[]>(["SMEMBERS", key]);
+    return Array.isArray(res) ? res : [];
+  }
+  const current = await kvGet<string[]>(key);
+  return Array.isArray(current) ? current : [];
+}
+
+/**
+ * Redis Hash helpers (HSET / HGETALL / HINCRBY / HINCRBYFLOAT) for atomic per-record counters.
+ */
+export async function kvHSet(
+  key: string,
+  fields: Record<string, string | number>
+): Promise<void> {
+  const cfg = ensureStorageReady();
+  const entries = Object.entries(fields);
+  if (entries.length === 0) return;
+
+  if (cfg) {
+    const args: (string | number)[] = ["HSET", key];
+    for (const [k, v] of entries) {
+      args.push(k, String(v));
+    }
+    await upstashCommand(args);
+    return;
+  }
+
+  const current = (await kvGet<Record<string, string>>(key)) ?? {};
+  for (const [k, v] of entries) {
+    current[k] = String(v);
+  }
+  await kvSet(key, current);
+}
+
+export async function kvHGetAll(
+  key: string
+): Promise<Record<string, string> | null> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    const raw = await upstashCommand<string[] | Record<string, string>>([
+      "HGETALL",
+      key,
+    ]);
+    if (!raw) return null;
+    if (Array.isArray(raw)) {
+      if (raw.length === 0) return null;
+      const out: Record<string, string> = {};
+      for (let i = 0; i < raw.length; i += 2) {
+        out[String(raw[i])] = String(raw[i + 1] ?? "");
+      }
+      return out;
+    }
+    if (typeof raw === "object" && Object.keys(raw).length > 0) {
+      return raw;
+    }
+    return null;
+  }
+
+  const current = await kvGet<Record<string, string>>(key);
+  if (!current || Object.keys(current).length === 0) return null;
+  return current;
+}
+
+export async function kvHIncrBy(
+  key: string,
+  field: string,
+  increment: number
+): Promise<number> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    const res = await upstashCommand<number | string>([
+      "HINCRBY",
+      key,
+      field,
+      Math.trunc(increment),
+    ]);
+    return Number(res ?? 0);
+  }
+
+  const current = (await kvGet<Record<string, string>>(key)) ?? {};
+  const nextVal = Math.trunc(Number(current[field] ?? 0)) + Math.trunc(increment);
+  current[field] = String(nextVal);
+  await kvSet(key, current);
+  return nextVal;
+}
+
+export async function kvHIncrByFloat(
+  key: string,
+  field: string,
+  increment: number
+): Promise<number> {
+  const cfg = ensureStorageReady();
+  if (cfg) {
+    const res = await upstashCommand<number | string>([
+      "HINCRBYFLOAT",
+      key,
+      field,
+      increment,
+    ]);
+    return Math.round(Number(res ?? 0) * 100) / 100;
+  }
+
+  const current = (await kvGet<Record<string, string>>(key)) ?? {};
+  const nextVal =
+    Math.round((Number(current[field] ?? 0) + increment) * 100) / 100;
+  current[field] = String(nextVal);
+  await kvSet(key, current);
+  return nextVal;
 }

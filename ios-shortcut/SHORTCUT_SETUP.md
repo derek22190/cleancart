@@ -16,7 +16,7 @@ Open the **Shortcuts** app → **+** → name it **CleanCart Scan**, then add th
 | 2 | **Text** | `Shortcut Input` (the shared product title / page title) |
 | 3 | **Get Contents of URL** | URL: `https://heybroc.com/api/scan` · Method: **POST** · Request Body: **JSON** |
 |   |   | `productTitle` → *Text* (from step 2) |
-|   |   | `store` → `walmart` *(or instacart / sams / bjs)* |
+|   |   | `store` → `walmart` *(or instacart / target / kroger / aldi / doordash / ubereats / amazon / sams / bjs / costco / shipt)* |
 |   |   | `format` → `ios_text` |
 | 4 | **Show Result** | *Contents of URL* |
 
@@ -30,10 +30,10 @@ The `ios_text` response is a ready-to-read summary:
 • High Fructose Corn Syrup (-20): A highly refined industrial sweetener…
 
 🔁 Clean Swap at Walmart: Stonyfield Organic Whole Milk Plain Yogurt (100/100)
-https://www.walmart.com/search?q=Stonyfield…&irgwc=1&clickid=YOUR_IMPACT_ID
+https://www.walmart.com/search?q=Stonyfield%20Organic%20Yogurt
 ```
 
-**Optional — 1-tap Swap:** add a second **Get Contents of URL** (same as step 3 but `format` = `json`) → **Get Dictionary Value** for key `swap.webUrl` → **Choose from Menu** with "Swap Item" / "Close" → under *Swap Item* add **Open URLs**. The affiliate link only opens when you tap "Swap Item".
+**Optional — 1-tap Swap:** add a second **Get Contents of URL** (same as step 3 but `format` = `json`) → **Get Dictionary Value** for key `swap.webUrl` → **Choose from Menu** with "Swap Item" / "Close" → under *Swap Item* add **Open URLs**. The swap link only opens when you tap "Swap Item".
 
 **Optional — rich card:** replace step 4 with **Quick Look** on `https://heybroc.com`, or **Show Web View**, for the full Health Insights card.
 
@@ -42,7 +42,7 @@ https://www.walmart.com/search?q=Stonyfield…&irgwc=1&clickid=YOUR_IMPACT_ID
 ## Step 2 — Use it from the Share Sheet
 
 1. In the Shortcut's **ⓘ Details**, enable **Show in Share Sheet**.
-2. In the Walmart / Instacart / Sam's Club / BJ's app, open a product → **Share** → **CleanCart Scan**.
+2. In the Walmart / Instacart / Target / Kroger / ALDI / Amazon / Sam's Club / BJ's / Costco app, open a product → **Share** → **CleanCart Scan**.
 3. The score card appears in ~1 s (cached repeat scans return in < 5 ms server-side).
 
 ---
@@ -67,9 +67,12 @@ Content-Type: application/json
 
 {
   "productTitle": "Cheez-It Original",
-  "rawIngredients": "optional — skips lookup if provided",
-  "store": "walmart | instacart | sams | bjs",
+  "rawIngredients": "optional — skips lookup if provided (must be 10–10,000 chars of English ingredient text)",
+  "barcode": "optional — UPC/EAN barcode string",
+  "store": "walmart | instacart | target | kroger | aldi | doordash | ubereats | amazon | sams | bjs | costco | shipt",
   "watchlist": { "seedOils": false },
+  "familyWatchlist": ["dyes", "seedOils", "hfcs", "preservatives", "nitrites", "sweeteners"],
+  "deviceId": "optional — install-scoped random UUID for Pro & free weekly swap tracking",
   "format": "ios_text | json"
 }
 ```

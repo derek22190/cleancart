@@ -1,12 +1,12 @@
 package com.cleancart.overlay
 
 import android.content.Context
-import android.provider.Settings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.UUID
 
 /** Minimal HTTP client for POST /api/scan and /api/referral (no third-party dependencies). */
@@ -37,11 +37,21 @@ object ScanApi {
         "cleancart-teal.vercel.app",
     )
 
+    private const val PREFS_NAME = "ingredient_preferences"
+    private const val KEY_INSTALL_UUID = "install_uuid_v2"
+    private const val KEY_DEVICE_SECRET = "device_secret_v1"
+    private const val KEY_SERVER_REF_CODE = "server_referral_code"
+    private const val KEY_PRO_ACTIVE = "entitlement_pro_active"
+    private const val KEY_PRO_UNTIL = "entitlement_pro_until"
+    private const val KEY_SWAPS_REMAINING = "entitlement_swaps_remaining"
+    private const val KEY_SWAPS_LIMIT = "entitlement_swaps_limit"
+    private const val DEFAULT_FREE_WEEKLY_SWAPS = 5
+
     /** Blocking call — returns up to 8 live product suggestions from GET /api/suggest?q=<query>. */
     fun suggest(rawQuery: String): List<JSONObject> {
         val q = rawQuery.trim()
         if (q.isEmpty()) return emptyList()
-        val encoded = java.net.URLEncoder.encode(q, "UTF-8")
+        val encoded = URLEncoder.encode(q, "UTF-8")
         for (base in SUGGEST_ENDPOINTS) {
             try {
                 val url = URL("$base?q=$encoded")
@@ -77,20 +87,116 @@ object ScanApi {
             size > MAX_CACHE_SIZE
     }
 
+    /**
+     * Install-scoped random UUID (never reads hardware Settings.Secure.ANDROID_ID).
+     */
     fun deviceId(ctx: Context): String {
-        val prefs = ctx.getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val cached = prefs.getString("deviceId", null)
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cached = prefs.getString(KEY_INSTALL_UUID, null)
         if (!cached.isNullOrBlank()) return cached
-        val androidId = runCatching {
-            Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ANDROID_ID)
-        }.getOrNull()?.takeIf { it.length >= 6 }
-        val resolved = androidId ?: UUID.randomUUID().toString()
-        prefs.edit().putString("deviceId", resolved).apply()
-        return resolved
+        val generated = UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_INSTALL_UUID, generated).apply()
+        return generated
     }
 
-    /** Generates the user's personal BROC-XXXXX invite code (matches lib/referrals.ts). */
+    fun deviceSecret(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cached = prefs.getString(KEY_DEVICE_SECRET, null)
+        if (!cached.isNullOrBlank()) return cached
+        val generated = UUID.randomUUID().toString() + "-" + UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_DEVICE_SECRET, generated).apply()
+        return generated
+    }
+
+    /** Persists server-authoritative entitlement fields returned by /api/scan or /api/referral. */
+    fun saveEntitlementSnapshot(ctx: Context, ent: JSONObject?) {
+        if (ent == null) return
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val edit = prefs.edit()
+        if (ent.has("isProActive")) {
+            edit.putBoolean(KEY_PRO_ACTIVE, ent.optBoolean("isProActive", false))
+        }
+        if (ent.has("proUntil")) {
+            edit.putLong(KEY_PRO_UNTIL, ent.optLong("proUntil", 0L))
+        }
+        if (ent.has("swapsRemaining")) {
+            edit.putInt(KEY_SWAPS_REMAINING, ent.optInt("swapsRemaining", DEFAULT_FREE_WEEKLY_SWAPS))
+        }
+        if (ent.has("weeklySwapsLimit")) {
+            edit.putInt(KEY_SWAPS_LIMIT, ent.optInt("weeklySwapsLimit", DEFAULT_FREE_WEEKLY_SWAPS))
+        }
+        val refCode = ent.optString("referralCode").trim()
+        if (refCode.startsWith("BROC-")) {
+            edit.putString(KEY_SERVER_REF_CODE, refCode)
+        }
+        edit.apply()
+    }
+
+    fun isProActive(ctx: Context): Boolean {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val proFlag = prefs.getBoolean(KEY_PRO_ACTIVE, false)
+        val proUntil = prefs.getLong(KEY_PRO_UNTIL, 0L)
+        return proFlag || proUntil > System.currentTimeMillis()
+    }
+
+    fun swapsRemaining(ctx: Context): Int {
+        if (isProActive(ctx)) return Int.MAX_VALUE
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceAtLeast(0)
+    }
+
+    fun canUseSwap(ctx: Context): Boolean {
+        return isProActive(ctx) || swapsRemaining(ctx) > 0
+    }
+
+    /** Decrements local swap counter when on free tier and records the swap asynchronously on the server. */
+    fun consumeSwap(ctx: Context, productTitle: String) {
+        val appCtx = ctx.applicationContext
+        if (!isProActive(appCtx)) {
+            val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val current = prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS)
+            prefs.edit().putInt(KEY_SWAPS_REMAINING, (current - 1).coerceAtLeast(0)).apply()
+        }
+        Thread {
+            runCatching {
+                val body = JSONObject().apply {
+                    put("action", "record_swap")
+                    put("deviceId", deviceId(appCtx))
+                    put("deviceSecret", deviceSecret(appCtx))
+                    put("productKey", productTitle.trim().take(120))
+                }.toString()
+                for (endpoint in REFERRAL_ENDPOINTS) {
+                    try {
+                        val res = postFollowingRedirects(
+                            endpoint,
+                            body,
+                            maxRedirects = 4,
+                            extraHeaders = mapOf("X-Device-Secret" to deviceSecret(appCtx))
+                        )
+                        if (res.startsWith("{")) {
+                            val json = JSONObject(res)
+                            saveEntitlementSnapshot(appCtx, json.optJSONObject("entitlement"))
+                            break
+                        }
+                    } catch (_: Exception) {
+                        // try next endpoint
+                    }
+                }
+            }
+        }.start()
+    }
+
+    fun upgradeUrl(ctx: Context): String {
+        val id = URLEncoder.encode(deviceId(ctx), "UTF-8")
+        val ref = referredByCode(ctx)?.let { "&code=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
+        return "https://heybroc.com/?upgrade=1&deviceId=$id$ref"
+    }
+
+    /** Returns the server-issued BROC-XXXXXXXX invite code if available. */
     fun myReferralCode(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val serverCode = prefs.getString(KEY_SERVER_REF_CODE, null)
+        if (!serverCode.isNullOrBlank()) return serverCode
         val clean = deviceId(ctx).replace(Regex("[^a-zA-Z0-9]"), "").uppercase()
         var hash = 2166136261.toInt()
         for (ch in clean) {
@@ -100,15 +206,15 @@ object ScanApi {
         val alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
         var v = hash.toLong() and 0xFFFFFFFFL
         val suffix = StringBuilder()
-        for (i in 0 until 5) {
-            suffix.append(alphabet[(v % alphabet.length).toInt()])
-            v /= alphabet.length
+        for (i in 0 until 8) {
+            suffix.append(alphabet[((v xor (i * 31L)) and 0x7FFFFFFFL).toInt() % alphabet.length])
+            v = (v shr 4) xor (v * 33L)
         }
         return "BROC-$suffix"
     }
 
     fun referredByCode(ctx: Context): String? {
-        val prefs = ctx.getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString("referredByCode", null)?.takeIf { it.isNotBlank() }
     }
 
@@ -117,7 +223,7 @@ object ScanApi {
             .substringAfterLast("/R/")
             .substringAfterLast("REF=")
             .replace(Regex("[^A-Z0-9-]"), "")
-        val prefs = ctx.getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString("referredByCode", clean).apply()
         return clean
     }
@@ -125,16 +231,28 @@ object ScanApi {
     /** Blocking call — claims a friend's invite code on /api/referral. */
     fun claimReferral(ctx: Context, rawCode: String): String {
         val clean = saveReferredByCode(ctx, rawCode)
+        val secret = deviceSecret(ctx)
         val body = JSONObject().apply {
             put("action", "claim")
             put("deviceId", deviceId(ctx))
+            put("deviceSecret", secret)
             put("referralCode", clean)
             put("referredByCode", clean)
         }.toString()
         for (endpoint in REFERRAL_ENDPOINTS) {
             try {
-                val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
-                if (res.startsWith("{")) return res
+                val res = postFollowingRedirects(
+                    endpoint,
+                    body,
+                    maxRedirects = 4,
+                    extraHeaders = mapOf("X-Device-Secret" to secret)
+                )
+                if (res.startsWith("{")) {
+                    runCatching {
+                        saveEntitlementSnapshot(ctx, JSONObject(res).optJSONObject("entitlement"))
+                    }
+                    return res
+                }
             } catch (_: Exception) {
                 // try next endpoint
             }
@@ -144,7 +262,7 @@ object ScanApi {
 
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
-        val prefs = ctx.getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
         val refCode = referredByCode(ctx)
         val body = JSONObject().apply {
@@ -171,6 +289,9 @@ object ScanApi {
                 val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
                 if (res.startsWith("{") && (res.contains("\"ok\":true") || res.contains("\"ok\":false") || res.contains("\"result\""))) {
                     if (res.contains("\"ok\":true")) {
+                        runCatching {
+                            saveEntitlementSnapshot(ctx, JSONObject(res).optJSONObject("entitlement"))
+                        }
                         synchronized(responseCache) {
                             responseCache[body] = res
                         }
@@ -185,7 +306,12 @@ object ScanApi {
         return lastErr
     }
 
-    private fun postFollowingRedirects(urlStr: String, jsonBody: String, maxRedirects: Int): String {
+    private fun postFollowingRedirects(
+        urlStr: String,
+        jsonBody: String,
+        maxRedirects: Int,
+        extraHeaders: Map<String, String> = emptyMap()
+    ): String {
         var currentUrl = urlStr
         var remaining = maxRedirects
         while (true) {
@@ -201,6 +327,9 @@ object ScanApi {
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")
+                for ((k, v) in extraHeaders) {
+                    setRequestProperty(k, v)
+                }
             }
             try {
                 conn.outputStream.use { it.write(jsonBody.toByteArray(Charsets.UTF_8)) }
@@ -234,7 +363,7 @@ object ScanApi {
         "com.kroger.mobile" -> "kroger"
         "de.apptiv.business.android.aldi_us" -> "aldi"
         "com.dd.doordash" -> "doordash"
-        "com.ubercab.eats" -> "ubereats"
+        "com.ubercab.eats" -> "ubercab"
         "com.amazon.mShop.android.shopping", "com.wholefoods.wholefoodsmarket" -> "amazon"
         "com.rfi.sams.android", "com.samsclub.app" -> "sams"
         "com.brandingbrand.reactnative.and.bjs", "com.bjs.mobile" -> "bjs"

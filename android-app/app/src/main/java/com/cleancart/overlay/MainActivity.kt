@@ -913,8 +913,7 @@ class MainActivity : Activity() {
             val catItems = ScanHistoryStore.EXPLORE_CATALOG
                 .filter {
                     val c = it.optString("category")
-                    c.equals(activeCat, ignoreCase = true) ||
-                        (it.optJSONObject("result")?.optInt("score") ?: 0) >= 85
+                    c.equals(activeCat, ignoreCase = true)
                 }
                 .sortedByDescending { it.optJSONObject("result")?.optInt("score") ?: 0 }
 
@@ -1734,14 +1733,26 @@ class MainActivity : Activity() {
                 }
             })
             swapCard.addView(swapHeaderRow)
-            swapCard.addView(label("🛒 Find Clean Swap in Walmart ↗", 13.5f, Color.WHITE, bold = true).apply {
+            val itemStoreKey = item.optString("storeKey").ifBlank { item.optString("store", "walmart") }
+            val storeDisplayName = when (itemStoreKey.lowercase()) {
+                "target" -> "Target"
+                "instacart" -> "Instacart"
+                "aldi" -> "ALDI"
+                "bjs" -> "BJ's"
+                "costco" -> "Costco"
+                "kroger" -> "Kroger"
+                "sams" -> "Sam's Club"
+                "amazon" -> "Amazon Fresh"
+                else -> "Store"
+            }
+            swapCard.addView(label("🛒 Find Clean Swap in $storeDisplayName ↗", 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(12), dp(11), dp(12), dp(11))
                 background = GradientDrawable().apply {
                     setColor(0xFF2E9E5B.toInt())
                     cornerRadius = dp(999).toFloat()
                 }
-                setOnClickListener { openWalmartSearch(swapTitle) }
+                setOnClickListener { openStoreSwap(swapTitle, itemStoreKey, swap) }
             })
             sheet.addView(swapCard)
         }
@@ -1958,22 +1969,57 @@ class MainActivity : Activity() {
         return "$base$storeSuffix"
     }
 
-    private fun openWalmartSearch(query: String) {
-        if (query.isBlank()) {
-            val launch = packageManager.getLaunchIntentForPackage("com.walmart.android")
-            if (launch != null) {
-                runCatching { startActivity(launch) }
+    private fun openStoreSwap(query: String, storeKey: String = "walmart", swapObj: JSONObject? = null) {
+        if (!ScanApi.canUseSwap(this)) {
+            AlertDialog.Builder(this)
+                .setTitle("Unlock Unlimited Clean Swaps")
+                .setMessage(
+                    "You've used all 5 free single-item swaps this week.\n\n" +
+                        "Product scores (0–100) and Cart Avg stay 100% free forever. Upgrade to HeyBroc Family Pro for unlimited 1-tap clean swaps across all 12 stores."
+                )
+                .setPositiveButton("Upgrade to Pro") { _, _ ->
+                    runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this))))
+                    }
+                }
+                .setNegativeButton("Not Now", null)
+                .show()
+            return
+        }
+
+        if (query.isNotBlank()) {
+            ScanApi.consumeSwap(this, query)
+        }
+
+        val explicitDeepLink = swapObj?.optString("deepLink").orEmpty().ifBlank { swapObj?.optString("webUrl").orEmpty() }
+        val explicitPkg = swapObj?.optString("androidPackage").orEmpty()
+        if (explicitDeepLink.startsWith("http")) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(explicitDeepLink))
+            try {
+                startActivity(Intent(intent).apply { if (explicitPkg.isNotBlank()) setPackage(explicitPkg) })
                 return
+            } catch (_: Exception) {
+                if (runCatching { startActivity(intent) }.isSuccess) return
             }
         }
+
         val encoded = Uri.encode(query)
-        val deepLink = Intent(Intent.ACTION_VIEW, Uri.parse("walmart://search?query=$encoded")).apply {
-            setPackage("com.walmart.android")
+        val url = when (storeKey.lowercase()) {
+            "target" -> "https://www.target.com/s?searchTerm=$encoded"
+            "instacart" -> "https://www.instacart.com/store/s?k=$encoded"
+            "aldi" -> "https://new.aldi.us/results?q=$encoded"
+            "bjs" -> "https://www.bjs.com/search/$encoded"
+            "costco" -> "https://www.costco.com/CatalogSearch?keyword=$encoded"
+            "kroger" -> "https://www.kroger.com/search?query=$encoded"
+            "sams" -> "https://www.samsclub.com/s/$encoded"
+            "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh"
+            else -> "https://www.walmart.com/search?q=$encoded"
         }
-        val webFallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.walmart.com/search?q=$encoded"))
-        runCatching { startActivity(deepLink) }.onFailure {
-            runCatching { startActivity(webFallback) }
-        }
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    private fun openWalmartSearch(query: String) {
+        openStoreSwap(query, "walmart", null)
     }
 
     private fun fetchBitmapFromUrl(urlStr: String): Bitmap? = runCatching {
@@ -2110,8 +2156,8 @@ class MainActivity : Activity() {
                     "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
                     "1) Detect when you view a grocery product page and read the visible product title and ingredient list, and\n" +
                     "2) Read visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
-                    "• What is transmitted: Only extracted grocery product titles, ingredient text, and active store identifier are sent over HTTPS to heybroc.com/api/scan to compute your 0–100 ingredient score.\n" +
-                    "• What is NEVER read: HeyBroc never reads passwords, payment fields, messages, or any other apps on your device, and never sells or shares personal data."
+                    "• What is transmitted: Extracted grocery product titles, ingredient text, active store identifier, your selected additive watchlist categories, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
+                    "• What is NEVER read: HeyBroc never reads hardware identifiers, passwords, payment fields, messages, or any other apps on your device, and never sells or shares personal data."
             )
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->
@@ -2146,7 +2192,13 @@ class MainActivity : Activity() {
                     isChecked = key in selected
                     setOnCheckedChangeListener { _, checked ->
                         val next = (prefs.getStringSet("familyWatchlist", emptySet()) ?: emptySet()).toMutableSet()
-                        if (checked) next.add(key) else next.remove(key)
+                        if (checked) {
+                            next.add(key)
+                            if (key == "preservatives") next.add("nitrites")
+                        } else {
+                            next.remove(key)
+                            if (key == "preservatives") next.remove("nitrites")
+                        }
                         prefs.edit().putStringSet("familyWatchlist", next).apply()
                     }
                 })

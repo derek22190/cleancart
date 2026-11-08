@@ -445,7 +445,8 @@ function extractUsdaNutrition(f: UsdaFood): NutritionInput | undefined {
 }
 
 async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | null> {
-  const key = process.env.USDA_API_KEY || "DEMO_KEY";
+  const key = (process.env.USDA_API_KEY || "").trim();
+  if (!key) return null;
   const numericBarcode = query.replace(/\D/g, "");
   const isBarcodeQuery = numericBarcode.length >= 8 && numericBarcode === query.trim().replace(/[-\s]/g, "");
   // Search across USDA food types
@@ -537,7 +538,15 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/crackers.jpg",
   },
   {
-    match: /\b(oreo|oreos)\b/i,
+    match: /\b(oreo\s+puffs?|oreo\s+o'?s|cocoa\s+puffs?|reese'?s\s+puffs?|cookie\s+crisp|cocoa\s+pebbles|fruity\s+pebbles|cap'?n\s+crunch|apple\s+jacks|frosted\s+flakes|krave|pops\s+cereal|honey\s+smacks|golden\s+grahams|trix)\b/i,
+    brand: "Post / Sweetened Cereal",
+    title: "Sweetened Breakfast Cereal",
+    ingredients: "Corn Flour, Sugar, Marshmallows (Sugar, Modified Corn Starch, Corn Syrup, Dextrose, Gelatin, Sodium Hexametaphosphate, Artificial Flavor, Blue 1), Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, High Fructose Corn Syrup, Salt, Baking Soda, Soy Lecithin, Natural and Artificial Flavor, BHT Added to Preserve Freshness.",
+    imageUrl: "/products/cereal.jpg",
+    nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(oreo|oreos)\b(?!\s+(puffs?|o'?s|cereal))/i,
     brand: "OREO",
     title: "Chocolate Sandwich Cookies",
     ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm and/or Canola Oil, Cocoa (Processed with Alkali), High Fructose Corn Syrup, Leavening (Baking Soda and/or Calcium Phosphate), Salt, Soy Lecithin, Chocolate, Artificial Flavor.",
@@ -680,6 +689,14 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Smoked Sausage / Kielbasa",
     ingredients: "Mechanically Separated Turkey, Turkey, Pork, Water, Corn Syrup, Modified Food Starch, Contains 2% or Less of Salt, Dextrose, Sodium Citrate, Sodium Phosphate, Monosodium Glutamate, Sodium Diacetate, Sodium Erythorbate, Flavorings, Sodium Nitrite.",
     imageUrl: "/products/turkey.jpg",
+  },
+  {
+    match: /\b(grilled|roasted|rotisserie|unbreaded|naked)\b.*\b(chicken\s+(breast\s+)?(strips?|bites?|cuts?|diced|chunks?))\b|\b(chicken\s+(breast\s+)?(strips?|bites?|cuts?))\b.*\b(grilled|roasted|rotisserie|unbreaded)\b/i,
+    brand: "Grilled Poultry",
+    title: "Fully Cooked Grilled Chicken Breast Strips",
+    ingredients: "Boneless, Skinless Chicken Breast with Rib Meat, Water, Contains 2% or Less of Salt, Vinegar, Natural Flavor, Garlic Powder, Onion Powder, Spices.",
+    imageUrl: "/swaps/turkey.jpg",
+    nutrition: { caloriesKcal100g: 135, sugarsG100g: 0.5, saturatedFatG100g: 0.8, sodiumMg100g: 410, fiberG100g: 0, proteinG100g: 23.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false },
   },
   {
     match: /\b(crispy chicken|breaded chicken|chicken patties|chicken patty|chicken nuggets|chicken tenders|chicken strips|popcorn chicken|chicken fries|perdue.*breaded|tyson.*chicken|wellsley farms.*crispy chicken|wellsley farms.*chicken patties)\b/i,
@@ -832,14 +849,6 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 55, sugarsG100g: 1.0, saturatedFatG100g: 0.6, sodiumMg100g: 390, fiberG100g: 0.6, proteinG100g: 2.5, fruitsVegNutsPct: 10, nutriScoreGrade: "c", isWholeFood: false },
   },
   {
-    match: /\b(oreo\s+puffs?|oreo\s+o'?s|cocoa\s+puffs?|reese'?s\s+puffs?|cookie\s+crisp|cocoa\s+pebbles|fruity\s+pebbles|cap'?n\s+crunch|apple\s+jacks|frosted\s+flakes|krave|pops\s+cereal|honey\s+smacks|golden\s+grahams|trix)\b/i,
-    brand: "Post / Sweetened Cereal",
-    title: "Sweetened Breakfast Cereal",
-    ingredients: "Corn Flour, Sugar, Marshmallows (Sugar, Modified Corn Starch, Corn Syrup, Dextrose, Gelatin, Sodium Hexametaphosphate, Artificial Flavor, Blue 1), Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, High Fructose Corn Syrup, Salt, Baking Soda, Soy Lecithin, Natural and Artificial Flavor, BHT Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
-    nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
-  },
-  {
     match: /\b(salad\s+kit|chopped\s+kit|caesar\s+salad\s+kit|ranch\s+salad\s+kit|southwest\s+salad\s+kit|asian\s+salad\s+kit|sweet\s+kale\s+kit)\b/i,
     brand: "Marketside / Taylor Farms",
     title: "Salad Kit with Dressing Packet",
@@ -864,12 +873,44 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 355, sugarsG100g: 2.5, saturatedFatG100g: 1.2, sodiumMg100g: 490, fiberG100g: 5.5, proteinG100g: 7.5, fruitsVegNutsPct: 60, nutriScoreGrade: "c", isWholeFood: false },
   },
   {
+    match: /\b(ore[- ]?ida|french\s+fries|crinkle\s+cut\s+fries|waffle\s+fries|steak\s+fries|shoestring\s+fries|curly\s+fries|seasoned\s+fries|tater\s+tots?|golden\s+crinkles|hash\s*browns?|crispy\s+crowns)\b/i,
+    brand: "Ore-Ida",
+    title: "Golden Crinkles French Fried Potatoes",
+    ingredients: "Potatoes, Vegetable Oil (Canola, Soybean, and/or Sunflower Oil), Salt, Disodium Dihydrogen Pyrophosphate (to Retain Natural Color), Dextrose.",
+    imageUrl: "/products/chips.jpg",
+    nutrition: { caloriesKcal100g: 155, sugarsG100g: 0.8, saturatedFatG100g: 1.2, sodiumMg100g: 340, fiberG100g: 2.4, proteinG100g: 2.4, fruitsVegNutsPct: 75, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
     match: /\b(crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|fried\s+onions?|onion\s+rings?)\b/i,
     brand: "French's",
     title: "Original Crispy Fried Onions",
     ingredients: "Onions, Palm Oil, Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soy Flour, Salt, Dextrose.",
     imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 571, sugarsG100g: 5.0, saturatedFatG100g: 15.5, sodiumMg100g: 800, fiberG100g: 2.8, proteinG100g: 5.2, fruitsVegNutsPct: 20, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|heinz\s+57)\b/i,
+    brand: "A.1.",
+    title: "Original Steak Sauce",
+    ingredients: "Tomato Puree (Water, Tomato Paste), Vinegar, Corn Syrup, Salt, Raisin Paste, Crushed Orange Puree, Spice, Dried Garlic, Caramel Color, Dried Onions, Potassium Sorbate (To Preserve Freshness), Xanthan Gum, Celery Seed.",
+    imageUrl: "/products/ranch.jpg",
+    nutrition: { caloriesKcal100g: 88, sugarsG100g: 17.6, saturatedFatG100g: 0, sodiumMg100g: 1470, fiberG100g: 0.5, proteinG100g: 1.0, fruitsVegNutsPct: 30, nutriScoreGrade: "e", isWholeFood: false },
+  },
+  {
+    match: /\b(steak[- ]?umm\w*|philly\s+steak|shaved\s+beef\s+steak)\b/i,
+    brand: "Steak-umm",
+    title: "100% Beef Sliced Steaks",
+    ingredients: "Beef, Water, Salt, Sodium Phosphate.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 280, sugarsG100g: 0, saturatedFatG100g: 9.5, sodiumMg100g: 310, fiberG100g: 0, proteinG100g: 17.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b((peaches|pears|mandarin\s+oranges|pineapple|fruit\s+cocktail|mixed\s+fruit|cherries|apricots)\s+in\s+(heavy|light|extra\s+light)\s+syrup|dole.*syrup|del\s+monte.*(peaches|syrup|fruit\s+cup))\b/i,
+    brand: "Del Monte / Dole",
+    title: "Sliced Peaches in Heavy Syrup",
+    ingredients: "Peaches, Water, High Fructose Corn Syrup, Corn Syrup, Sugar.",
+    imageUrl: "/products/snacks.jpg",
+    nutrition: { caloriesKcal100g: 74, sugarsG100g: 17.5, saturatedFatG100g: 0, sodiumMg100g: 6, fiberG100g: 1.2, proteinG100g: 0.4, fruitsVegNutsPct: 55, nutriScoreGrade: "d", isWholeFood: false },
   },
   {
     match: /\b(cake\s+roll|pumpkin\s+cake|swiss\s+roll|snack\s+cakes?|little\s+debbie|hostess|twinkies?|ding\s+dongs?|ho\s*hos?|zebra\s+cakes?|entenmann'?s|freshness\s+guaranteed.*(cake|pie|cupcake|brownie|cookie|muffin|roll)|bake\s+shop.*(cake|pie|cupcake|brownie|cookie|muffin))\b/i,
@@ -919,10 +960,29 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/drink.png",
     nutrition: { caloriesKcal100g: 45, sugarsG100g: 9.2, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0.2, proteinG100g: 0.7, fruitsVegNutsPct: 100, nutriScoreGrade: "c", isWholeFood: false },
   },
+  {
+    match: /\bsiete\b.*\b(chips?|crisps?|tostadas?|tortilla\s+chips)\b/i,
+    brand: "Siete",
+    title: "Grain-Free Sea Salt Tortilla Chips",
+    ingredients: "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
+    imageUrl: "/swaps/chips.jpg",
+    nutrition: { caloriesKcal100g: 464, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 265, fiberG100g: 6.5, proteinG100g: 3.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
+  },
+  {
+    match: /\bsiete\b.*\b(tortillas?|wraps?)\b/i,
+    brand: "Siete",
+    title: "Almond Flour Tortillas",
+    ingredients: "Almond Flour, Tapioca Flour, Water, Xanthan Gum, Sea Salt.",
+    imageUrl: "/swaps/bread.jpg",
+    nutrition: { caloriesKcal100g: 290, sugarsG100g: 2.0, saturatedFatG100g: 1.5, sodiumMg100g: 330, fiberG100g: 5.0, proteinG100g: 9.0, fruitsVegNutsPct: 45, nutriScoreGrade: "b", isWholeFood: false },
+  },
 ];
 
 const UI_NOISE_QUERY =
   /\b(gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
+
+const NON_FOOD_OR_PROCESSED_GUARD =
+  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const cleanTitle = query.trim().replace(/,\s*(now|was)$/i, "").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -958,11 +1018,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     }
   }
   const s = query.toLowerCase();
+  if (NON_FOOD_OR_PROCESSED_GUARD.test(s)) {
+    return null;
+  }
 
-  // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (excluding fried, crispy, instant, mashed, canned, sweetened)
+  // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly unolah / single-ingredient)
   if (
-    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomatoes?|potatoes?|sweet\s+potatoes?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|mint|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|green\s+beans|brussels\s+sprouts|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|bok\s+choy|chard|collards?|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|papayas?|pomegranates?|figs?|dates?|berries|fresh\s+produce)\b/.test(s) &&
-    !/\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread)\b/.test(s)
+    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomatoes?|potatoes?|sweet\s+potatoes?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|mint|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|green\s+beans|brussels\s+sprouts|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|bok\s+choy|chard|collards?|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|papayas?|pomegranates?|figs?|dates?|berries|fresh\s+produce)\b/.test(s)
   ) {
     return {
       productTitle: cleanTitle,
@@ -976,8 +1038,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 
   // 2. Plain Fresh Meat, Poultry, Seafood & Shell Eggs (unbreaded, uncured, unbasted)
   if (
-    /\b(chicken\s+(breast|thighs?|drumsticks?|wings?|tenderloins?)|ground\s+(beef|turkey|chicken|pork|bison|lamb)|steak|ribeye|sirloin|filet|roast|pork\s+(chops?|loin|tenderloin)|salmon|cod|tilapia|haddock|halibut|trout|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+a\s+eggs?|\beggs\b)\b/.test(s) &&
-    !/\b(breaded|crispy|nuggets?|tenders?|strips?|patties|patty|popcorn|bacon|sausage|hot\s*dog|salami|pepperoni|bologna|deli|lunch|ham|jerky|soup|chowder|flavou?red|marinated|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/.test(s)
+    /\b(chicken\s+(breast|thighs?|drumsticks?|wings?|tenderloins?)|ground\s+(beef|turkey|chicken|pork|bison|lamb)|ribeye|sirloin|filet|pork\s+(chops?|loin|tenderloin)|salmon|cod|tilapia|haddock|halibut|trout|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+a\s+eggs?|\beggs\b)\b/.test(s)
   ) {
     return {
       productTitle: cleanTitle,
@@ -985,169 +1046,6 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       ingredients: "100% Fresh Whole Food Protein (Zero Chemical Additives, Nitrates, or Preservatives).",
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
       nutrition: { caloriesKcal100g: 145, sugarsG100g: 0, saturatedFatG100g: 2.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 22.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
-      source: "catalog",
-    };
-  }
-
-  // 3. Soups, Chowders, Bisques, Stews & Chilis
-  if (/\b(soup|chowder|bisque|stew|chili|gumbo)\b/.test(s)) {
-    if (isOrganic || /\b(amy'?s|pacific\s+foods|kettle\s*&\s*fire)\b/.test(s)) {
-      return {
-        productTitle: cleanTitle,
-        brand: "Organic Soup",
-        ingredients: "Filtered Water, Organic Vegetables (Onions, Carrots, Celery, Potatoes, Tomatoes), Organic Beans/Lentils, Organic Extra Virgin Olive Oil, Sea Salt, Organic Garlic, Organic Spices.",
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-        nutrition: { caloriesKcal100g: 68, sugarsG100g: 1.8, saturatedFatG100g: 0.4, sodiumMg100g: 260, fiberG100g: 3.2, proteinG100g: 3.8, fruitsVegNutsPct: 65, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
-        source: "catalog",
-      };
-    }
-    return {
-      productTitle: cleanTitle,
-      brand: "Prepared Soup",
-      ingredients: "Stock/Broth, Potatoes, Vegetables (Carrots, Celery, Onions), Cooked Protein/Clams/Chicken, Enriched Wheat Flour, Soybean Oil, Modified Food Starch, Salt, Yeast Extract, Natural Flavor.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 95, sugarsG100g: 1.5, saturatedFatG100g: 2.2, sodiumMg100g: 360, fiberG100g: 1.1, proteinG100g: 4.5, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-
-  // 4. Bakery Cakes, Pies, Muffins, Cookies, Brownies, Pastries & Sweet Rolls
-  if (/\b(cake|cupcake|pie|brownie|muffin|pastry|pastries|croissant|cookie|cookies|biscotti|scone|cobbler|tart|frosting|icing)\b/.test(s)) {
-    return {
-      productTitle: cleanTitle,
-      brand: "Bakery",
-      ingredients: "Sugar, Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soybean and/or Palm Oil, Eggs, Water, Corn Syrup, Mono- and Diglycerides, Soy Lecithin, Baking Powder, Salt, Natural and Artificial Flavor, Potassium Sorbate.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 390, sugarsG100g: 32, saturatedFatG100g: 8.5, sodiumMg100g: 320, fiberG100g: 1.2, proteinG100g: 4.2, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false, isOrganic },
-      source: "catalog",
-    };
-  }
-
-  // 5. Breads, Bagels, Buns, Dinner Rolls, Tortillas (excluding Tortilla Chips), Waffles, Pancakes
-  if (
-    /\b(bread|loaf|bagel|buns?|rolls?|tortillas?|wraps?|pita|naan|english\s+muffin|waffles?|pancakes?|biscuits?)\b/.test(s) &&
-    !/\b(chips?|crisps?|strips?|tostadas?)\b/.test(s)
-  ) {
-    if (isOrganic || /\b(ezekiel|dave'?s\s+killer|canyon\s+bakehouse)\b/.test(s)) {
-      return {
-        productTitle: cleanTitle,
-        brand: "Organic Bakery",
-        ingredients: "Organic Whole Wheat Flour, Water, Organic Cracked Wheat, Organic Cane Sugar, Organic Grain & Seed Blend, Yeast, Sea Salt.",
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-        nutrition: { caloriesKcal100g: 245, sugarsG100g: 4.0, saturatedFatG100g: 0.5, sodiumMg100g: 310, fiberG100g: 6.5, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
-        source: "catalog",
-      };
-    }
-    if (/\bsiete\b/.test(s)) {
-      return {
-        productTitle: cleanTitle,
-        brand: "Siete",
-        ingredients: "Almond Flour, Tapioca Flour, Water, Xanthan Gum, Sea Salt.",
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-        nutrition: { caloriesKcal100g: 290, sugarsG100g: 2.0, saturatedFatG100g: 1.5, sodiumMg100g: 330, fiberG100g: 5.0, proteinG100g: 9.0, fruitsVegNutsPct: 45, nutriScoreGrade: "b", isWholeFood: false, isOrganic },
-        source: "catalog",
-      };
-    }
-    return {
-      productTitle: cleanTitle,
-      brand: "Commercial Bakery",
-      ingredients: "Enriched Wheat Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Sugar, Soybean Oil, Yeast, Salt, Mono- and Diglycerides, Calcium Propionate (Preservative), DATEM, Soy Lecithin.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 265, sugarsG100g: 6.5, saturatedFatG100g: 1.2, sodiumMg100g: 460, fiberG100g: 2.2, proteinG100g: 8.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
-      source: "catalog",
-    };
-  }
-
-  // 6. Cheese, Butter, Cream, Sour Cream, Cottage Cheese & Yogurt
-  if (/\b(cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|colby|jack|feta|ricotta|brie|cream\s+cheese|cottage\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|half\s*(&|and)\s*half|butter|margarine|spread|yogurt|kefir|skyr)\b/.test(s)) {
-    return {
-      productTitle: cleanTitle,
-      brand: isOrganic ? "Organic Dairy" : "Dairy",
-      ingredients: isOrganic
-        ? "Organic Pasteurized Cultured Milk, Sea Salt, Vegetarian Enzymes."
-        : "Pasteurized Cultured Milk, Salt, Microbial Enzymes, Annatto (Color).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 350, sugarsG100g: 1.5, saturatedFatG100g: 16.0, sodiumMg100g: 620, fiberG100g: 0, proteinG100g: 21.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false, isOrganic },
-      source: "catalog",
-    };
-  }
-
-  // 7. Chips, Crackers, Pretzels, Popcorn, Puffs & Salty Snacks
-  if (/\b(chips?|crisps?|crackers?|pretzels?|popcorn|puffs?|tostadas?|tortilla\s+strips|trail\s+mix|nuts|almonds?|cashews?|peanuts?|walnuts?|pecans?|pistachios?)\b/.test(s)) {
-    if (/\b(almonds?|cashews?|walnuts?|pecans?|pistachios?|peanuts?|mixed\s+nuts)\b/.test(s) && !/\b(honey\s+roasted|candy|chocolate|coated|glazed)\b/.test(s)) {
-      return {
-        productTitle: cleanTitle,
-        brand: isOrganic ? "Organic Nuts" : "Whole Nuts",
-        ingredients: "Roasted Nuts, Sea Salt.",
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-        nutrition: { caloriesKcal100g: 580, sugarsG100g: 4.0, saturatedFatG100g: 4.5, sodiumMg100g: 180, fiberG100g: 9.0, proteinG100g: 20.0, fruitsVegNutsPct: 95, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
-        source: "catalog",
-      };
-    }
-    if (/\b(siete|lesserevil|lesser\s+evil|boulder\s+canyon|jackson'?s|simple\s+mills|mary'?s\s+gone|hu\s+kitchen|avocado\s+oil)\b/.test(s)) {
-      return {
-        productTitle: cleanTitle,
-        brand: /\bsiete\b/.test(s) ? "Siete" : "Clean Snack Brand",
-        ingredients: "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-        nutrition: { caloriesKcal100g: 464, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 265, fiberG100g: 6.5, proteinG100g: 3.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic },
-        source: "catalog",
-      };
-    }
-    return {
-      productTitle: cleanTitle,
-      brand: "Snack Aisle",
-      ingredients: "Enriched Flour / Corn, Vegetable Oil (Soybean, Canola, and/or Sunflower Oil), Salt, Maltodextrin, Natural Flavor.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 495, sugarsG100g: 3.0, saturatedFatG100g: 5.5, sodiumMg100g: 640, fiberG100g: 3.0, proteinG100g: 6.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false, isOrganic },
-      source: "catalog",
-    };
-  }
-
-  // 8. Beverages: Soda, Juice, Lemonade, Tea, Coffee, Sparkling Water
-  if (/\b(soda|cola|pop|juice|lemonade|limeade|punch|tea|coffee|espresso|water|seltzer|sparkling|drink|beverage)\b/.test(s)) {
-    if (/\b(water|seltzer|sparkling|spindrift|la\s*croix|unsweetened\s+tea|black\s+coffee|ground\s+coffee|coffee\s+beans)\b/.test(s) && !/\b(tonic|sweetened|sugar)\b/.test(s)) {
-      return {
-        productTitle: cleanTitle,
-        brand: "Unsweetened Beverage",
-        ingredients: "Purified / Carbonated Water, Natural Essence.",
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-        nutrition: { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
-        source: "catalog",
-      };
-    }
-    return {
-      productTitle: cleanTitle,
-      brand: "Sweetened Beverage",
-      ingredients: "Water, Sugar / High Fructose Corn Syrup, Citric Acid, Natural Flavor.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 42, sugarsG100g: 10.2, saturatedFatG100g: 0, sodiumMg100g: 15, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false, isOrganic },
-      source: "catalog",
-    };
-  }
-
-  // 9. Pasta, Rice, Grains, Oats, Beans, Canned Vegetables, Tomatoes & Pantry Staples
-  if (/\b(pasta|spaghetti|penne|rigatoni|fettuccine|linguine|macaroni|noodles?|rice|quinoa|oats?|oatmeal|cereal|granola|flour|beans?|lentils?|chickpeas?|garbanzo|peas|corn|diced\s+tomatoes?|crushed\s+tomatoes?|tomato\s+paste|tomato\s+sauce|olive\s+oil|avocado\s+oil|coconut\s+oil|vinegar|honey|maple\s+syrup)\b/.test(s)) {
-    return {
-      productTitle: cleanTitle,
-      brand: isOrganic ? "Organic Pantry" : "Pantry Staple",
-      ingredients: isOrganic ? "100% Organic Whole Grain / Legume / Pantry Staple." : "Whole Grain / Legume, Water, Sea Salt.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 130, sugarsG100g: 1.5, saturatedFatG100g: 0.3, sodiumMg100g: 120, fiberG100g: 4.2, proteinG100g: 5.5, fruitsVegNutsPct: 60, nutriScoreGrade: "a", isWholeFood: false, isOrganic },
-      source: "catalog",
-    };
-  }
-
-  // 10. Universal Grocery Fallback: guarantees 0% missing products (never 404) when external APIs time out
-  if (cleanTitle.length >= 3) {
-    return {
-      productTitle: cleanTitle,
-      brand: isOrganic ? "Organic Grocery" : "Grocery Item",
-      ingredients: isOrganic
-        ? "Organic Whole Food Ingredients, Sea Salt."
-        : "Water, Wheat Flour, Sugar, Salt, Natural Flavor.",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
-      nutrition: { caloriesKcal100g: 210, sugarsG100g: 6.0, saturatedFatG100g: 2.5, sodiumMg100g: 320, fiberG100g: 2.0, proteinG100g: 5.0, fruitsVegNutsPct: 25, nutriScoreGrade: "c", isWholeFood: false, isOrganic },
       source: "catalog",
     };
   }
@@ -1173,7 +1071,7 @@ function cleanSearchQuery(title: string): string {
 /* ------------------------------------------------------------------ */
 
 const DIRECT_CATALOG_PRIORITY =
-  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|golden\s+sweet.*corn|capri\s*sun)\b/i;
+  /\b(marketside.*(clam\s+chowder|chowder|salad|romaine|spinach|spring\s+mix)|romaine\s+salad\s+blend|classic\s+romaine\s+salad|doritos|cheetos|takis|hidden\s+valley|froot\s+loops|lucky\s+charms|cinnamon\s+toast\s+crunch|cheez[- ]?it|velveeta|instant\s+mashed\s+potato\w*|crispy\s+fried\s+onions?|french'?s.*onions?|french\s+fried\s+onions?|ben\s*&\s*jerry'?s?|half[- ]?baked|cherry\s+garcia|pumpkin\s+cake\s+roll|cake\s+roll|just\s+bare|butterball.*turkey|golden\s+sweet.*corn|capri\s*sun|a\.?1\.?\s*(original\s*)?(steak\s*)?sauce|steak\s+sauce|steak[- ]?umm\w*|in\s+(heavy|light)\s+syrup|ore[- ]?ida|oreo\s+puffs?)\b/i;
 
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();

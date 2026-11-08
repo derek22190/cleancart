@@ -21,7 +21,7 @@ export function OPTIONS() {
  */
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (!checkRateLimit(`audit:${ip}`, 20)) {
+  if (!checkRateLimit(`audit:${ip}`, 10)) {
     return NextResponse.json({ ok: false, error: "Too many cart audit requests. Please wait a moment." }, { status: 429, headers: CORS });
   }
   let body: { items?: unknown; store?: string; watchlist?: Watchlist; familyWatchlist?: Category[] };
@@ -37,31 +37,45 @@ export async function POST(request: Request) {
   if (!Array.isArray(body.items) || body.items.length === 0) {
     return NextResponse.json({ ok: false, error: "Provide a non-empty items array." }, { status: 400, headers: CORS });
   }
-  const items = body.items.slice(0, 50);
+  const items = body.items.slice(0, 20);
+  const memo = new Map<string, Promise<ScanResponse | ScanError>>();
 
-  // Process in batches of 5 to avoid flooding Open Food Facts / USDA
+  // Process in bounded batches of 3 with per-request deduplication to avoid flooding Open Food Facts / USDA
   const results: Array<ScanResponse | ScanError> = [];
-  for (let i = 0; i < items.length; i += 5) {
-    const chunk = items.slice(i, i + 5);
+  for (let i = 0; i < items.length; i += 3) {
+    const chunk = items.slice(i, i + 3);
     const batch = await Promise.all(
       chunk.map((item) => {
         if (typeof item === "string") {
-          return runScan({
-            productTitle: item,
-            store: body.store,
-            watchlist: body.watchlist,
-            familyWatchlist: body.familyWatchlist,
-          });
+          const dedupKey = `str:${item.trim().toLowerCase()}`;
+          let pending = memo.get(dedupKey);
+          if (!pending) {
+            pending = runScan({
+              productTitle: item,
+              store: body.store,
+              watchlist: body.watchlist,
+              familyWatchlist: body.familyWatchlist,
+            });
+            memo.set(dedupKey, pending);
+          }
+          return pending;
         }
         if (!item || typeof item !== "object" || Array.isArray(item)) {
           return Promise.resolve<ScanError>({ ok: false, status: 400, error: "Each item must be an object or string." });
         }
-        return runScan({
-          ...(item as ScanRequest),
-          store: body.store,
-          watchlist: body.watchlist,
-          familyWatchlist: (item as ScanRequest).familyWatchlist ?? body.familyWatchlist,
-        });
+        const reqItem = item as ScanRequest;
+        const dedupKey = `obj:${(reqItem.barcode || "").trim()}|${(reqItem.productTitle || "").trim().toLowerCase()}|${(reqItem.rawIngredients || "").trim().slice(0, 64)}`;
+        let pending = memo.get(dedupKey);
+        if (!pending) {
+          pending = runScan({
+            ...reqItem,
+            store: body.store,
+            watchlist: body.watchlist,
+            familyWatchlist: reqItem.familyWatchlist ?? body.familyWatchlist,
+          });
+          memo.set(dedupKey, pending);
+        }
+        return pending;
       }),
     );
     results.push(...batch);

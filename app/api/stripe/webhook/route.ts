@@ -1,77 +1,22 @@
-import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import {
+  getSubscriptionEntitlement,
   saveEntitlement,
   updateSubscriptionEntitlement,
   type EntitlementStatus,
 } from "@/lib/entitlements";
-import { recordStripeCreatorConversionOnce } from "@/lib/influencers";
+import {
+  recordStripeCreatorConversionOnce,
+  recordStripeCreatorRefundOnce,
+} from "@/lib/influencers";
 import type { PlanId } from "@/lib/pricing";
-
-const WEBHOOK_TOLERANCE_SECONDS = 300;
-
-/**
- * Verifies the Stripe `Stripe-Signature` header (`t=...,v1=...`) using HMAC-SHA256
- * and constant-time comparison against `STRIPE_WEBHOOK_SECRET`.
- */
-export function verifyStripeWebhookSignature(
-  rawBody: string,
-  signatureHeader: string | null,
-  webhookSecret: string,
-  nowUnixSeconds = Math.floor(Date.now() / 1000)
-): boolean {
-  if (!signatureHeader || !webhookSecret) return false;
-
-  const parts = signatureHeader.split(",").map((p) => p.trim());
-  let timestampStr = "";
-  const v1Signatures: string[] = [];
-
-  for (const part of parts) {
-    const eqIdx = part.indexOf("=");
-    if (eqIdx <= 0) continue;
-    const key = part.slice(0, eqIdx).trim();
-    const val = part.slice(eqIdx + 1).trim();
-    if (key === "t") timestampStr = val;
-    if (key === "v1" && val) v1Signatures.push(val);
-  }
-
-  const timestamp = Number(timestampStr);
-  if (!Number.isFinite(timestamp) || timestamp <= 0 || v1Signatures.length === 0) {
-    return false;
-  }
-
-  if (Math.abs(nowUnixSeconds - timestamp) > WEBHOOK_TOLERANCE_SECONDS) {
-    return false;
-  }
-
-  const signedPayload = `${timestamp}.${rawBody}`;
-  const expectedHex = crypto
-    .createHmac("sha256", webhookSecret)
-    .update(signedPayload, "utf8")
-    .digest("hex");
-  const expectedBuf = Buffer.from(expectedHex, "hex");
-
-  for (const sigHex of v1Signatures) {
-    if (sigHex.length !== expectedHex.length) continue;
-    try {
-      const candidateBuf = Buffer.from(sigHex, "hex");
-      if (
-        candidateBuf.length === expectedBuf.length &&
-        crypto.timingSafeEqual(candidateBuf, expectedBuf)
-      ) {
-        return true;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return false;
-}
+import { applyOrActivateReferral } from "@/lib/referrals";
+import { verifyStripeWebhookSignature } from "@/lib/stripe-webhook";
 
 interface StripeEventPayload {
   id: string;
   type: string;
+  created?: number;
   data?: {
     object?: Record<string, unknown>;
   };
@@ -107,6 +52,10 @@ export async function POST(req: Request) {
   }
 
   const obj = event.data?.object ?? {};
+  const eventCreated =
+    typeof event.created === "number" && Number.isFinite(event.created)
+      ? event.created
+      : undefined;
 
   try {
     switch (event.type) {
@@ -132,37 +81,59 @@ export async function POST(req: Request) {
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
         const plan: PlanId = metadata.plan === "monthly" ? "monthly" : "annual";
         const creatorCode = metadata.creator_code || undefined;
+        const deviceId =
+          metadata.device_id ||
+          (typeof obj.client_reference_id === "string"
+            ? obj.client_reference_id
+            : undefined);
+
+        // Require explicit payment_status ("paid" or "no_payment_required" for trial)
         const paymentStatus =
-          typeof obj.payment_status === "string" ? obj.payment_status : "paid";
+          typeof obj.payment_status === "string" ? obj.payment_status : "";
+        const isPaid = paymentStatus === "paid";
         const isTrial = paymentStatus === "no_payment_required";
-        const status: EntitlementStatus = isTrial ? "trialing" : "active";
+        const status: EntitlementStatus = isPaid
+          ? "active"
+          : isTrial
+            ? "trialing"
+            : "incomplete";
 
         await saveEntitlement({
           sessionId,
           subscriptionId,
           customerId,
           customerEmail: customerDetails?.email || undefined,
+          deviceId,
           plan,
           creatorCode,
           status,
-          active: true,
+          active: isPaid || isTrial,
+          lastStripeEventCreated: eventCreated,
           updatedAt: new Date().toISOString(),
         });
 
-        if (creatorCode) {
-          const refKey = subscriptionId || sessionId;
-          if (isTrial) {
-            await recordStripeCreatorConversionOnce(
-              `trial:${refKey}`,
-              creatorCode,
-              "trial"
-            );
-          } else if (paymentStatus === "paid") {
-            await recordStripeCreatorConversionOnce(
-              `paid:${refKey}`,
-              creatorCode,
-              plan === "monthly" ? "paid_monthly" : "paid_annual"
-            );
+        if (creatorCode && (isTrial || isPaid)) {
+          if (/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode)) {
+            await applyOrActivateReferral({
+              deviceId: deviceId || `checkout:${sessionId}`,
+              referralCode: creatorCode,
+              activateNow: true,
+            });
+          } else {
+            const refKey = subscriptionId || sessionId;
+            if (isTrial) {
+              await recordStripeCreatorConversionOnce(
+                `trial:${refKey}`,
+                creatorCode,
+                "trial"
+              );
+            } else if (isPaid) {
+              await recordStripeCreatorConversionOnce(
+                `paid:${refKey}`,
+                creatorCode,
+                plan === "monthly" ? "paid_monthly" : "paid_annual"
+              );
+            }
           }
         }
         break;
@@ -173,7 +144,7 @@ export async function POST(req: Request) {
         if (!subscriptionId) break;
 
         const status = (
-          typeof obj.status === "string" ? obj.status : "active"
+          typeof obj.status === "string" ? obj.status : "incomplete"
         ) as EntitlementStatus;
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
         const plan: PlanId | undefined =
@@ -183,6 +154,7 @@ export async function POST(req: Request) {
               ? "annual"
               : undefined;
         const creatorCode = metadata.creator_code || undefined;
+        const deviceId = metadata.device_id || undefined;
         const customerId =
           typeof obj.customer === "string" ? obj.customer : undefined;
 
@@ -191,9 +163,11 @@ export async function POST(req: Request) {
           plan,
           customerId,
           creatorCode,
+          deviceId,
+          lastStripeEventCreated: eventCreated,
         });
 
-        // If subscription transitioned to active paid state and has a creator code, credit once
+        // If subscription transitioned to active paid state and has a creator code, credit initial conversion once
         const effectiveCreator = creatorCode || updated?.creatorCode;
         const effectivePlan = plan || updated?.plan || "annual";
         if (status === "active" && effectiveCreator) {
@@ -206,11 +180,103 @@ export async function POST(req: Request) {
         break;
       }
 
+      case "invoice.paid": {
+        const invoiceId = typeof obj.id === "string" ? obj.id : "";
+        const subscriptionId =
+          typeof obj.subscription === "string"
+            ? obj.subscription
+            : typeof (obj.subscription as { id?: string } | null)?.id === "string"
+              ? (obj.subscription as { id: string }).id
+              : "";
+        if (!subscriptionId) break;
+
+        const billingReason =
+          typeof obj.billing_reason === "string" ? obj.billing_reason : "";
+        const amountPaidCents =
+          typeof obj.amount_paid === "number" ? obj.amount_paid : 0;
+
+        const subDetails = (obj.subscription_details ?? {}) as {
+          metadata?: Record<string, string>;
+        };
+        const metadata = {
+          ...((obj.metadata ?? {}) as Record<string, string>),
+          ...(subDetails.metadata ?? {}),
+        };
+
+        const existing = await getSubscriptionEntitlement(subscriptionId);
+        const plan: PlanId =
+          metadata.plan === "monthly"
+            ? "monthly"
+            : metadata.plan === "annual"
+              ? "annual"
+              : existing?.plan || "annual";
+        const creatorCode =
+          metadata.creator_code || existing?.creatorCode || undefined;
+
+        await updateSubscriptionEntitlement(subscriptionId, {
+          status: "active",
+          plan,
+          creatorCode,
+          lastStripeEventCreated: eventCreated,
+        });
+
+        // Credit recurring renewals (and initial paid invoices) to creator ledger
+        if (creatorCode && amountPaidCents > 0) {
+          const isRenewal = billingReason === "subscription_cycle";
+          const convKey = isRenewal && invoiceId
+            ? `invoice:${invoiceId}`
+            : `paid:${subscriptionId}`;
+          await recordStripeCreatorConversionOnce(
+            convKey,
+            creatorCode,
+            plan === "monthly" ? "paid_monthly" : "paid_annual"
+          );
+        }
+        break;
+      }
+
+      case "charge.refunded": {
+        const chargeId = typeof obj.id === "string" ? obj.id : event.id;
+        const amountRefundedCents =
+          typeof obj.amount_refunded === "number" ? obj.amount_refunded : 0;
+        const amountCapturedCents =
+          typeof obj.amount === "number" ? obj.amount : amountRefundedCents;
+        const metadata = (obj.metadata ?? {}) as Record<string, string>;
+        const subscriptionId = metadata.subscription_id || "";
+        const existing = subscriptionId
+          ? await getSubscriptionEntitlement(subscriptionId)
+          : null;
+        const creatorCode =
+          metadata.creator_code || existing?.creatorCode || undefined;
+        const plan: PlanId =
+          metadata.plan === "monthly"
+            ? "monthly"
+            : existing?.plan || "annual";
+
+        if (subscriptionId && amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0) {
+          await updateSubscriptionEntitlement(subscriptionId, {
+            status: "canceled",
+            lastStripeEventCreated: eventCreated,
+          });
+        }
+
+        if (creatorCode && amountRefundedCents > 0) {
+          await recordStripeCreatorRefundOnce(
+            `refund:${chargeId}`,
+            creatorCode,
+            plan,
+            amountRefundedCents / 100
+          );
+        }
+        break;
+      }
+
       case "customer.subscription.deleted": {
         const subscriptionId = typeof obj.id === "string" ? obj.id : "";
         if (!subscriptionId) break;
         await updateSubscriptionEntitlement(subscriptionId, {
           status: "canceled",
+          lastStripeEventCreated: eventCreated,
         });
         break;
       }

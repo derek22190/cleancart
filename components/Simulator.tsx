@@ -409,13 +409,10 @@ export default function Simulator() {
           setPersonalReferralCode(refData.entitlement.referralCode);
           window.localStorage.setItem("heybroc_my_referral_code", refData.entitlement.referralCode);
         } else {
-          let myCode = window.localStorage.getItem("heybroc_my_referral_code");
-          if (!myCode) {
-            const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
-            myCode = `BROC-${rand}`;
-            window.localStorage.setItem("heybroc_my_referral_code", myCode);
+          const cachedServerCode = window.localStorage.getItem("heybroc_my_referral_code") || "";
+          if (!cancelled && /^BROC-[A-Z0-9]{8}$/.test(cachedServerCode)) {
+            setPersonalReferralCode(cachedServerCode);
           }
-          if (!cancelled) setPersonalReferralCode(myCode);
         }
 
         if (!cancelled && refParam && refData?.ok) {
@@ -435,7 +432,7 @@ export default function Simulator() {
           return;
         }
         const res = await fetch(
-          `/api/entitlement?session_id=${encodeURIComponent(candidateSessionId)}`,
+          `/api/entitlement?session_id=${encodeURIComponent(candidateSessionId)}&deviceId=${encodeURIComponent(deviceId)}`,
           { cache: "no-store" }
         );
         const data = (await res.json().catch(() => null)) as {
