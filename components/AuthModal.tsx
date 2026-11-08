@@ -41,6 +41,7 @@ export default function AuthModal({
   const [oauthProvider, setOauthProvider] = useState<"google" | "apple">("google");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [resetCode, setResetCode] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,7 +53,7 @@ export default function AuthModal({
 
   const canSubmitEmail =
     email.trim().includes("@") &&
-    (mode === "forgot" ? password.length >= 6 : password.length >= 6);
+    (mode === "forgot" ? password.length >= 6 && resetCode.trim().length >= 6 : password.length >= 6);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +66,10 @@ export default function AuthModal({
     }
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
+      return;
+    }
+    if (mode === "forgot" && resetCode.trim().length < 6) {
+      setError("Please enter your 6-digit password reset code.");
       return;
     }
 
@@ -85,6 +90,7 @@ export default function AuthModal({
           email: email.trim(),
           password,
           newPassword: password,
+          resetCode: mode === "forgot" ? resetCode.trim() : undefined,
           displayName: displayName.trim() || undefined,
           deviceId,
           watchlist,
@@ -455,6 +461,24 @@ export default function AuthModal({
                 />
               </div>
             </div>
+
+            {mode === "forgot" && (
+              <div className="gococo-pill-ring">
+                <div className="gococo-pill-inner">
+                  <input
+                    id="auth-reset-code-input"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    placeholder="6-digit reset code"
+                    aria-label="6-digit reset code"
+                    className="gococo-input"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Password Pill Input with Closed/Open Eyelash Toggle */}
             <div className="gococo-pill-ring">

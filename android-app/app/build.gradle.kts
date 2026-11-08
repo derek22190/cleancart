@@ -57,6 +57,8 @@ android {
                 storePassword = keystorePasswordEnv
                 keyAlias = keyAliasEnv
                 keyPassword = keyPasswordEnv
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }

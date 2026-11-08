@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/scan";
 import { scoreProductYuka } from "@/lib/rubric";
 import { CLEAN_ALTERNATIVES, EXACT_PRODUCT_ALTERNATIVES } from "@/lib/swaps";
 
@@ -236,6 +237,16 @@ const FULL_INDEX: SuggestEntry[] = (() => {
 })();
 
 export async function GET(request: Request) {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "anon";
+  if (!checkRateLimit(`suggest:${ip}`, 120)) {
+    return NextResponse.json(
+      { ok: false, suggestions: [], error: "Rate limit exceeded" },
+      { status: 429, headers: { "Access-Control-Allow-Origin": "*" } }
+    );
+  }
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim().toLowerCase();
   if (!q) {

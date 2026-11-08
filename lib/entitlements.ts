@@ -92,7 +92,11 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
   if (normalized.customerEmail) {
     const cleanEmail = normalized.customerEmail.trim().toLowerCase();
     if (cleanEmail) {
-      await kvSet(`${EMAIL_KEY_PREFIX}${cleanEmail}`, normalized);
+      await kvSet(
+        `${EMAIL_KEY_PREFIX}${cleanEmail}`,
+        normalized,
+        ENTITLEMENT_TTL_SECONDS
+      );
     }
   }
 }

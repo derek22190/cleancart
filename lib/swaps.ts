@@ -1005,9 +1005,9 @@ function impactRedirectBase(store: Store): string {
 
 function withAffiliate(url: string, store: Store, clickId: string): string {
   const sep = url.includes("?") ? "&" : "?";
-  const cid = encodeURIComponent(clickId || "heybroc_live");
   if (store === "amazon") {
-    const tag = amazonPartnerTag() || "heybroc-20";
+    const tag = amazonPartnerTag();
+    if (!tag) return url;
     return `${url}${sep}tag=${encodeURIComponent(tag)}&linkCode=ll2`;
   }
   const redirectBase = impactRedirectBase(store);
@@ -1016,17 +1016,7 @@ function withAffiliate(url: string, store: Store, clickId: string): string {
     const subIdParam = clickId ? `&subId1=${encodeURIComponent(clickId)}` : "";
     return `${redirectBase.replace(/\/+$/, "")}${baseSep}u=${encodeURIComponent(url)}${subIdParam}`;
   }
-  switch (store) {
-    case "walmart":
-      return `${url}${sep}irgwc=1&sourceid=imp_${cid}&veh=aff&wmlspartner=imp_heybroc&clickid=${cid}`;
-    case "target":
-      return `${url}${sep}irgwc=1&afid=heybroc&ref=tgt_adv_xasd0002&clickid=${cid}`;
-    case "instacart":
-    case "aldi":
-      return `${url}${sep}irgwc=1&utm_source=instacart_impact&utm_medium=affiliate&clickid=${cid}`;
-    default:
-      return `${url}${sep}irgwc=1&utm_source=heybroc&utm_medium=affiliate&clickid=${cid}`;
-  }
+  return url;
 }
 
 /** Concise 2-3 word 1-for-1 search query for grocery stores so native search screens always find in-stock clean matches instead of "0 results". */

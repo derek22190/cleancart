@@ -2491,7 +2491,7 @@ class MainActivity : Activity() {
         val url = when (storeKey.lowercase()) {
             "target" -> "https://www.target.com/s?searchTerm=$encoded"
             "instacart" -> "https://www.instacart.com/store/s?k=$encoded"
-            "aldi" -> "https://new.aldi.us/results?q=$encoded"
+            "aldi" -> "https://shop.aldi.us/store/aldi/s?k=$encoded"
             "bjs" -> "https://www.bjs.com/search/$encoded"
             "costco" -> "https://www.costco.com/CatalogSearch?keyword=$encoded"
             "kroger" -> "https://www.kroger.com/search?query=$encoded"

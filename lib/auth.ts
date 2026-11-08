@@ -45,12 +45,20 @@ const KV_TTL_SECONDS = 60 * 60 * 24 * 365;
 const memUsers = new Map<string, UserAccount>();
 
 function getAuthSecret(): string {
-  return (
+  const secret = (
     process.env.AUTH_SECRET ||
+    process.env.ADMIN_SECRET ||
     process.env.STRIPE_SECRET_KEY ||
     process.env.STRIPE_WEBHOOK_SECRET ||
-    "heybroc-clean-grocery-auth-secret-2026"
+    ""
   ).trim();
+  if (!secret) {
+    if (process.env.VERCEL) {
+      throw new Error("AUTH_SECRET is required in production.");
+    }
+    return "local-dev-only-heybroc-auth-secret";
+  }
+  return secret;
 }
 
 export function normalizeEmail(raw: string): string {
@@ -67,7 +75,15 @@ function hashPassword(password: string, salt: string): string {
     .toString("hex");
 }
 
+function safeEqualStrings(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export function createSessionToken(user: UserAccount): string {
+  const now = Date.now();
   const payload = Buffer.from(
     JSON.stringify({
       uid: user.userId,
@@ -75,7 +91,8 @@ export function createSessionToken(user: UserAccount): string {
       provider: user.provider,
       name: user.displayName,
       ref: user.referralCode,
-      iat: Date.now(),
+      iat: now,
+      exp: now + 30 * DAY_MS,
     }),
     "utf8"
   ).toString("base64url");
@@ -92,6 +109,8 @@ export function verifySessionToken(token: string): {
   provider: AuthProvider;
   name: string;
   ref: string;
+  iat?: number;
+  exp?: number;
 } | null {
   const clean = (token || "").trim();
   if (!clean.startsWith("hb_")) return null;
@@ -100,14 +119,20 @@ export function verifySessionToken(token: string): {
   if (dotIdx <= 0) return null;
   const payload = body.slice(0, dotIdx);
   const sig = body.slice(dotIdx + 1);
-  const expected = crypto
-    .createHmac("sha256", getAuthSecret())
-    .update(payload)
-    .digest("base64url");
-  if (sig !== expected) return null;
+  let expected: string;
+  try {
+    expected = crypto
+      .createHmac("sha256", getAuthSecret())
+      .update(payload)
+      .digest("base64url");
+  } catch {
+    return null;
+  }
+  if (!safeEqualStrings(sig, expected)) return null;
   try {
     const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (!parsed || typeof parsed.email !== "string") return null;
+    if (typeof parsed.exp === "number" && parsed.exp <= Date.now()) return null;
     return parsed;
   } catch {
     return null;
@@ -157,7 +182,7 @@ export async function toPublicProfile(
     isStripePro = true;
   }
 
-  // Merge guest device entitlement if present so guest Pro days & referrals carry over
+  // Merge guest device entitlement if present so earned referral Pro days carry over
   if (deviceId) {
     const dev = await getOrCreateDevice(deviceId).catch(() => null);
     if (dev) {
@@ -224,7 +249,6 @@ export async function registerOrLoginEmail(params: {
 
   if (params.mode === "login") {
     if (!existing) {
-      // Friendly auto-create if first time logging in on a fresh instance, or return clear message
       const salt = crypto.randomBytes(16).toString("hex");
       const hash = hashPassword(password, salt);
       const nameFromEmail = email.split("@")[0].replace(/[._-]+/g, " ");
@@ -236,7 +260,7 @@ export async function registerOrLoginEmail(params: {
         passwordSalt: salt,
         passwordHash: hash,
         referralCode: dev?.referralCode || codeFromDeviceId(email),
-        proUntil: dev?.proUntil || Date.now() + 7 * DAY_MS,
+        proUntil: dev?.proUntil || 0,
         isStripePro: false,
         watchlist: params.watchlist,
         linkedDevices: params.deviceId ? [params.deviceId] : [],
@@ -253,19 +277,19 @@ export async function registerOrLoginEmail(params: {
       };
     }
 
-    if (existing.passwordSalt && existing.passwordHash) {
-      const candidateHash = hashPassword(password, existing.passwordSalt);
-      if (candidateHash !== existing.passwordHash) {
-        return {
-          ok: false,
-          error: "Incorrect password. Tap 'Forgot password?' to reset it.",
-        };
-      }
-    } else {
-      // Account originally created via Google/Apple; set password now
-      const salt = crypto.randomBytes(16).toString("hex");
-      existing.passwordSalt = salt;
-      existing.passwordHash = hashPassword(password, salt);
+    if (!existing.passwordSalt || !existing.passwordHash) {
+      return {
+        ok: false,
+        error: `This account is linked with ${existing.provider === "apple" ? "Apple" : "Google"}. Please sign in with ${existing.provider === "apple" ? "Apple" : "Google"}.`,
+      };
+    }
+
+    const candidateHash = hashPassword(password, existing.passwordSalt);
+    if (!safeEqualStrings(candidateHash, existing.passwordHash)) {
+      return {
+        ok: false,
+        error: "Incorrect password. Tap 'Forgot password?' to reset it.",
+      };
     }
 
     if (params.deviceId && !existing.linkedDevices.includes(params.deviceId)) {
@@ -285,18 +309,18 @@ export async function registerOrLoginEmail(params: {
   }
 
   // Register mode
-  if (existing && existing.passwordHash) {
-    const candidateHash = existing.passwordSalt
-      ? hashPassword(password, existing.passwordSalt)
-      : "";
-    if (candidateHash === existing.passwordHash) {
-      const profile = await toPublicProfile(existing, params.deviceId);
-      return {
-        ok: true,
-        token: createSessionToken(existing),
-        user: profile,
-        created: false,
-      };
+  if (existing) {
+    if (existing.passwordSalt && existing.passwordHash) {
+      const candidateHash = hashPassword(password, existing.passwordSalt);
+      if (safeEqualStrings(candidateHash, existing.passwordHash)) {
+        const profile = await toPublicProfile(existing, params.deviceId);
+        return {
+          ok: true,
+          token: createSessionToken(existing),
+          user: profile,
+          created: false,
+        };
+      }
     }
     return {
       ok: false,
@@ -308,18 +332,18 @@ export async function registerOrLoginEmail(params: {
   const hash = hashPassword(password, salt);
   const nameFromEmail = email.split("@")[0].replace(/[._-]+/g, " ");
   const newUser: UserAccount = {
-    userId: existing?.userId || `usr_${crypto.randomBytes(8).toString("hex")}`,
+    userId: `usr_${crypto.randomBytes(8).toString("hex")}`,
     email,
-    displayName: (params.displayName || existing?.displayName || nameFromEmail || "HeyBroc Shopper").trim(),
+    displayName: (params.displayName || nameFromEmail || "HeyBroc Shopper").trim(),
     provider: "email",
     passwordSalt: salt,
     passwordHash: hash,
-    referralCode: existing?.referralCode || dev?.referralCode || codeFromDeviceId(email),
-    proUntil: Math.max(existing?.proUntil || 0, dev?.proUntil || Date.now() + 7 * DAY_MS),
-    isStripePro: existing?.isStripePro || false,
-    watchlist: params.watchlist || existing?.watchlist,
+    referralCode: dev?.referralCode || codeFromDeviceId(email),
+    proUntil: dev?.proUntil || 0,
+    isStripePro: false,
+    watchlist: params.watchlist,
     linkedDevices: params.deviceId ? [params.deviceId] : [],
-    createdAt: existing?.createdAt || new Date().toISOString(),
+    createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
   await saveUser(newUser);
@@ -332,9 +356,28 @@ export async function registerOrLoginEmail(params: {
   };
 }
 
+async function verifyGoogleIdToken(idToken: string, expectedEmail: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) return false;
+    const data = (await res.json()) as { email?: string; email_verified?: string };
+    return (
+      data.email_verified === "true" &&
+      normalizeEmail(data.email || "") === normalizeEmail(expectedEmail)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function loginWithOAuth(params: {
   provider: "google" | "apple";
   email: string;
+  idToken?: string;
+  password?: string;
   displayName?: string;
   deviceId?: string;
   watchlist?: Record<string, boolean>;
@@ -353,6 +396,40 @@ export async function loginWithOAuth(params: {
   }
 
   const existing = await getUserByEmail(email);
+  let verifiedOAuth = false;
+  if (params.idToken && params.provider === "google") {
+    verifiedOAuth = await verifyGoogleIdToken(params.idToken, email);
+    if (!verifiedOAuth) {
+      return { ok: false, error: "Invalid Google ID token." };
+    }
+  }
+
+  if (existing && !verifiedOAuth) {
+    // Prevent unauthenticated email-only takeover of an existing account
+    if (existing.passwordSalt && existing.passwordHash) {
+      if (!params.password) {
+        return {
+          ok: false,
+          error: "This email already has a password-protected account. Please sign in with your password.",
+        };
+      }
+      const candidateHash = hashPassword(params.password, existing.passwordSalt);
+      if (!safeEqualStrings(candidateHash, existing.passwordHash)) {
+        return { ok: false, error: "Incorrect password for this account." };
+      }
+    } else if (existing.provider !== params.provider) {
+      return {
+        ok: false,
+        error: `This email is already registered with ${existing.provider}.`,
+      };
+    } else if (params.deviceId && existing.linkedDevices.length > 0 && !existing.linkedDevices.includes(params.deviceId)) {
+      return {
+        ok: false,
+        error: "Please sign in with your password or verified OAuth token on this new device.",
+      };
+    }
+  }
+
   const dev = params.deviceId ? await getOrCreateDevice(params.deviceId) : null;
   const fallbackName = email.split("@")[0].replace(/[._-]+/g, " ");
 
@@ -362,7 +439,7 @@ export async function loginWithOAuth(params: {
     displayName: (params.displayName || fallbackName || "HeyBroc Shopper").trim(),
     provider: params.provider,
     referralCode: dev?.referralCode || codeFromDeviceId(email),
-    proUntil: dev?.proUntil || Date.now() + 7 * DAY_MS,
+    proUntil: dev?.proUntil || 0,
     isStripePro: false,
     watchlist: params.watchlist,
     linkedDevices: params.deviceId ? [params.deviceId] : [],
@@ -393,28 +470,29 @@ export async function requestPasswordReset(rawEmail: string): Promise<{
   ok: boolean;
   error?: string;
   message?: string;
-  resetCode?: string;
 }> {
   const email = normalizeEmail(rawEmail);
   if (!isValidEmail(email)) {
     return { ok: false, error: "Enter your account email first so we can reset your password." };
   }
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const code = String(crypto.randomInt(100000, 1000000));
   const existing = await getUserByEmail(email);
   if (existing) {
     existing.resetCode = code;
     existing.resetExpiresAt = Date.now() + 15 * 60 * 1000;
     await saveUser(existing);
   }
+  // Never leak resetCode in the HTTP response
   return {
     ok: true,
-    resetCode: code,
-    message: `Reset code generated for ${email}. Enter a new password below to finish resetting.`,
+    message: `If an account exists for ${email}, a 6-digit reset code has been issued.`,
   };
 }
 
 export async function confirmPasswordReset(params: {
   email: string;
+  resetCode?: string;
+  currentPassword?: string;
   newPassword: string;
   deviceId?: string;
 }): Promise<{
@@ -432,33 +510,48 @@ export async function confirmPasswordReset(params: {
   }
 
   const existing = await getUserByEmail(email);
-  const dev = params.deviceId ? await getOrCreateDevice(params.deviceId) : null;
+  if (!existing) {
+    return { ok: false, error: "Invalid or expired reset code." };
+  }
+
+  let authorized = false;
+  if (
+    params.resetCode &&
+    existing.resetCode &&
+    existing.resetExpiresAt &&
+    existing.resetExpiresAt > Date.now() &&
+    safeEqualStrings(params.resetCode.trim(), existing.resetCode)
+  ) {
+    authorized = true;
+  } else if (
+    params.currentPassword &&
+    existing.passwordSalt &&
+    existing.passwordHash &&
+    safeEqualStrings(hashPassword(params.currentPassword, existing.passwordSalt), existing.passwordHash)
+  ) {
+    authorized = true;
+  }
+
+  if (!authorized) {
+    return {
+      ok: false,
+      error: "A valid 6-digit reset code (or current password) is required to change your password.",
+    };
+  }
+
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = hashPassword(params.newPassword, salt);
 
-  const user: UserAccount = existing || {
-    userId: `usr_${crypto.randomBytes(8).toString("hex")}`,
-    email,
-    displayName: email.split("@")[0],
-    provider: "email",
-    referralCode: dev?.referralCode || codeFromDeviceId(email),
-    proUntil: dev?.proUntil || Date.now() + 7 * DAY_MS,
-    isStripePro: false,
-    linkedDevices: params.deviceId ? [params.deviceId] : [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  existing.passwordSalt = salt;
+  existing.passwordHash = hash;
+  existing.resetCode = undefined;
+  existing.resetExpiresAt = undefined;
+  await saveUser(existing);
 
-  user.passwordSalt = salt;
-  user.passwordHash = hash;
-  user.resetCode = undefined;
-  user.resetExpiresAt = undefined;
-  await saveUser(user);
-
-  const profile = await toPublicProfile(user, params.deviceId);
+  const profile = await toPublicProfile(existing, params.deviceId);
   return {
     ok: true,
-    token: createSessionToken(user),
+    token: createSessionToken(existing),
     user: profile,
   };
 }

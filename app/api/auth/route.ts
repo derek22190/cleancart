@@ -10,7 +10,7 @@ import {
   toPublicProfile,
   verifySessionToken,
 } from "@/lib/auth";
-import { codeFromDeviceId, getOrCreateDevice } from "@/lib/referrals";
+import { checkRateLimit } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,11 +21,26 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+function getClientIp(req: Request): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "anon"
+  );
+}
+
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
 export async function GET(request: Request) {
+  if (!checkRateLimit(`auth:get:${getClientIp(request)}`, 60)) {
+    return NextResponse.json(
+      { ok: false, error: "Too many auth checks. Please slow down." },
+      { status: 429, headers: CORS }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const authHeader = request.headers.get("authorization") || "";
   const tokenParam =
@@ -49,21 +64,14 @@ export async function GET(request: Request) {
   }
 
   const stored = await getUserByEmail(decoded.email);
-  const dev = deviceId ? await getOrCreateDevice(deviceId).catch(() => null) : null;
-  const userObj = stored || {
-    userId: decoded.uid,
-    email: decoded.email,
-    displayName: decoded.name || decoded.email.split("@")[0],
-    provider: decoded.provider || "email",
-    referralCode: decoded.ref || dev?.referralCode || codeFromDeviceId(decoded.email),
-    proUntil: dev?.proUntil || Date.now() + 7 * 24 * 60 * 60 * 1000,
-    isStripePro: false,
-    linkedDevices: deviceId ? [deviceId] : [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+  if (!stored) {
+    return NextResponse.json(
+      { ok: false, authenticated: false, error: "Account not found." },
+      { status: 401, headers: CORS }
+    );
+  }
 
-  const profile = await toPublicProfile(userObj, deviceId);
+  const profile = await toPublicProfile(stored, deviceId);
   return NextResponse.json(
     { ok: true, authenticated: true, user: profile },
     { headers: CORS }
@@ -71,6 +79,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!checkRateLimit(`auth:post:${getClientIp(request)}`, 20)) {
+    return NextResponse.json(
+      { ok: false, error: "Too many authentication attempts. Try again in a minute." },
+      { status: 429, headers: CORS }
+    );
+  }
+
   try {
     const body = (await request.json()) as {
       action?:
@@ -83,7 +98,10 @@ export async function POST(request: Request) {
         | "delete_account";
       email?: string;
       password?: string;
+      currentPassword?: string;
       newPassword?: string;
+      resetCode?: string;
+      idToken?: string;
       displayName?: string;
       provider?: "google" | "apple";
       deviceId?: string;
@@ -113,6 +131,8 @@ export async function POST(request: Request) {
       const res = await loginWithOAuth({
         provider,
         email: body.email || "",
+        idToken: body.idToken,
+        password: body.password,
         displayName: body.displayName,
         deviceId: body.deviceId,
         watchlist: body.watchlist,
@@ -134,6 +154,8 @@ export async function POST(request: Request) {
     if (action === "reset_password") {
       const res = await confirmPasswordReset({
         email: body.email || "",
+        resetCode: body.resetCode,
+        currentPassword: body.currentPassword,
         newPassword: body.newPassword || body.password || "",
         deviceId: body.deviceId,
       });
@@ -164,9 +186,17 @@ export async function POST(request: Request) {
     }
 
     if (action === "delete_account") {
-      const decoded = body.token ? verifySessionToken(body.token) : null;
-      const targetEmail = decoded?.email || body.email || "";
-      await deleteUserAccount(targetEmail);
+      const authHeader = request.headers.get("authorization") || "";
+      const tokenCandidate =
+        body.token || (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "");
+      const decoded = tokenCandidate ? verifySessionToken(tokenCandidate) : null;
+      if (!decoded?.email) {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required to delete account." },
+          { status: 401, headers: CORS }
+        );
+      }
+      await deleteUserAccount(decoded.email);
       return NextResponse.json(
         { ok: true, message: "Your account and saved cloud data have been permanently deleted." },
         { headers: CORS }

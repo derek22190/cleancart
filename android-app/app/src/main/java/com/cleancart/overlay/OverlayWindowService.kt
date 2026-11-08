@@ -1421,7 +1421,6 @@ class OverlayWindowService : Service() {
         val rawWebUrl = normalizeStoreUrl(swap.optString("webUrl"))
         val link = normalizeStoreUrl(swap.optString("deepLink").ifBlank { rawWebUrl })
         val pkg = swap.optString("androidPackage")
-        val storeName = storeDisplayName(currentStoreKey)
 
         removeCard()
         showPill()
@@ -1442,22 +1441,9 @@ class OverlayWindowService : Service() {
             }
         }
 
-        if (!launchedInNativeApp) {
-            // If the user is currently inside a store app (like ALDI) that doesn't register an external ACTION_VIEW search filter,
-            // search directly inside the active store app window via Accessibility so we don't kick them out to a browser.
-            val searchedInOpenApp = GroceryScreenReaderService.performInAppSearch(searchQuery, pkg)
-            if (searchedInOpenApp) {
-                runCatching {
-                    Toast.makeText(
-                        this,
-                        "🔎 Searching $storeName for \"$searchQuery\" (copied to clipboard)",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            } else if (rawWebUrl.isNotBlank()) {
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
+        if (!launchedInNativeApp && rawWebUrl.isNotBlank()) {
+            runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
     }

@@ -432,9 +432,18 @@
       }
       render();
     });
+    pill.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (targetMode === "auditor") state.auditorOpen = true;
+        else state.expanded = true;
+        render();
+      }
+    });
   }
 
   /* ---------------- Scan loop ---------------- */
+  let scanSeq = 0;
   function scan() {
     if (sessionStorage.getItem(HIDE_SESSION_KEY) === "1") return;
     if (!host.isConnected) document.documentElement.appendChild(host);
@@ -457,9 +466,11 @@
     const key = `${location.pathname}|${productTitle}|${rawIngredients.length}|${inCart ? 1 : 0}`;
     if (key === lastKey) return;
     lastKey = key;
+    const reqId = ++scanSeq;
     chrome.runtime.sendMessage(
       { type: "CLEANCART_SCAN", payload: { productTitle, rawIngredients: rawIngredients || undefined, store: STORE } },
       (resp) => {
+        if (reqId !== scanSeq) return;
         state = {
           ...state,
           mode: "product",

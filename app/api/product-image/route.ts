@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +70,13 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
 }
 
 export async function GET(request: Request) {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "anon";
+  if (!checkRateLimit(`img:${ip}`, 60)) {
+    return new NextResponse("Too many requests", { status: 429 });
+  }
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim().slice(0, 160);
   if (!q) {
