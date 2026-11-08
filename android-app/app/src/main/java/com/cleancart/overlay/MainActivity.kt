@@ -516,7 +516,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     addView(label("Enable Live Store Bubble ($done/2 ON)", 13.5f, 0xFF14532D.toInt(), bold = true))
-                    addView(label("Auto-scan foods inside Walmart, Target & Instacart", 12f, 0xFF166534.toInt()))
+                    addView(label("Auto-scan foods in Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart, ALDI & more", 12f, 0xFF166534.toInt()))
                 })
                 addView(label("Turn ON →", 12.5f, Color.WHITE, bold = true).apply {
                     setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -1186,7 +1186,7 @@ class MainActivity : Activity() {
             key = "bubble",
             icon = "MASCOT",
             title = "Live Store Bubble",
-            subtitle = "Auto-grade products while shopping in Walmart, Target, Instacart & ALDI."
+            subtitle = "Auto-grade foods in Walmart, Target, Costco, Sam's Club, BJ's, Amazon Fresh, Instacart, ALDI & more."
         ) {
             val inner = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1303,7 +1303,7 @@ class MainActivity : Activity() {
             target.addView(stepCard(
                 "Store Bubble Active",
                 "HeyBroc Floats Over Your Grocery Apps",
-                "Open Walmart, Target, BJ's, ALDI, Instacart, Kroger, Costco, or DoorDash — the score bubble pops up automatically when you view food items.",
+                "Open Walmart, Target, Costco, Sam's Club, BJ's, Amazon Fresh, Whole Foods, Instacart, ALDI, Kroger & more — the score bubble pops up automatically when you view food items.",
                 statusBadge,
                 primaryButton("Preview Score Bubble Here") { launchTestPill() },
                 primaryButton("Hide Preview Bubble", filled = false) {

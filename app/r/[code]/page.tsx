@@ -101,7 +101,7 @@ export default function ReferralLandingPage({
             margin: "0 0 20px",
           }}
         >
-          HeyBroc floats over <b>Walmart, Target, Instacart, Kroger &amp; ALDI</b> on
+          HeyBroc floats over <b>Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh, Instacart, ALDI &amp; more</b> on
           your phone to grade food &amp; household ingredients (0–100) and swap dirty
           items for clean 1-for-1 alternatives in 1 tap.
         </p>
