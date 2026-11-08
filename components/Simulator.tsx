@@ -2132,6 +2132,53 @@ export default function Simulator() {
               </div>
             </div>
           </div>
+
+          {/* Semantic SEO & GEO FAQ Section (Matches Schema.org FAQPage JSON-LD) */}
+          <div style={{ marginTop: 28, borderTop: "1px solid #e2e8f0", paddingTop: 22 }}>
+            <span className="eyebrow eyebrow--green">CLEAN INGREDIENT &amp; SCORING FAQ</span>
+            <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "6px 0 14px" }}>
+              How HeyBroc Grades Groceries &amp; Finds Clean Swaps
+            </h3>
+            <div style={{ display: "grid", gap: 10 }}>
+              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
+                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
+                  How does HeyBroc calculate its 0 to 100 food and ingredient score?
+                </summary>
+                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
+                  HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Additive &amp; Chemical Safety (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
+                </p>
+              </details>
+              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
+                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
+                  Which grocery stores work with the HeyBroc floating bubble?
+                </summary>
+                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
+                  HeyBroc&apos;s Live Store Bubble works automatically across 12 major grocery stores and delivery apps: <b>Walmart, Instacart, Target, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale, Amazon Fresh, DoorDash, Uber Eats, and Shipt</b>—without needing to scan physical barcodes.
+                </p>
+              </details>
+              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
+                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
+                  What ingredients and additives does HeyBroc flag?
+                </summary>
+                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
+                  HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), emulsifiers (Carrageenan, Polysorbate 80), and cosmetic endocrine disruptors (Parabens, Phthalates, PFAS).
+                </p>
+              </details>
+              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
+                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
+                  Does HeyBroc accept payments from brands to change product scores?
+                </summary>
+                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
+                  No. HeyBroc is 100% independent. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
+                </p>
+              </details>
+            </div>
+            <div style={{ marginTop: 16, display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
+              <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy</a>
+              <a href="/llms.txt" style={{ color: "#15803d", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
+              <a href="/sitemap.xml" style={{ color: "#15803d", fontWeight: 600 }}>Sitemap</a>
+            </div>
+          </div>
         </div>
       </section>
 
