@@ -1235,6 +1235,15 @@ class OverlayWindowService : Service() {
             swapBox.addView(text("✓ Great pick — this item already scores $score/100.", 12.5f, 0xFF0B5E39.toInt(), bold = true))
         }
         sheet.addView(swapBox)
+        sheet.addView(
+            text(
+                "Informational opinion only — not medical advice. Rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc's independent clean-label rubric.",
+                9.5f,
+                INK_3
+            ).apply {
+                setPadding(dp(2), dp(7), dp(2), 0)
+            }
+        )
 
         val outerScroll = ScrollView(this).apply {
             addView(sheet)

@@ -104,9 +104,9 @@ export const PENALTIES: Record<RiskLevel, number> = {
 };
 
 export const RISK_LABEL: Record<RiskLevel, string> = {
-  high: "High Risk",
-  moderate: "Moderate Risk",
-  low: "Limited Risk",
+  high: "High Concern",
+  moderate: "Moderate Concern",
+  low: "Low Concern",
 };
 
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -234,47 +234,47 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   {
     id: "phoil", name: "Partially Hydrogenated Oil", risk: "high", category: "seedOils",
     patterns: ["partially hydrogenated"],
-    explanation: "Artificial trans fat that raises harmful LDL cholesterol, lowers protective HDL cholesterol, stiffens arteries, and increases blood pressure and heart-disease risk.",
+    explanation: "Industrial trans fat source whose major food uses were revoked by the FDA due to established links to elevated LDL cholesterol and cardiovascular risk.",
   },
   {
     id: "hydrogoil", name: "Hydrogenated Oil", risk: "high", category: "seedOils",
     patterns: ["(?<!partially )hydrogenated (vegetable|soybean|canola|cottonseed|rapeseed|palm|coconut|corn|sunflower) oils?"],
-    explanation: "Chemically hardened industrial fat that promotes vascular inflammation, poor LDL/HDL cholesterol ratios, and cardiovascular stress.",
+    explanation: "Chemically hardened fat permitted by the FDA, studied in nutrition research for associations with altered LDL/HDL cholesterol ratios.",
   },
   {
     id: "soybeanoil", name: "Soybean Oil", risk: "high", category: "seedOils",
     patterns: ["soy(bean|a)? oil"],
-    explanation: "Hexane-extracted industrial seed oil high in unstable omega-6 linoleic acid and hidden trans fats that drive oxidized LDL cholesterol and blood vessel inflammation.",
+    explanation: "FDA-permitted refined seed oil high in omega-6 linoleic acid; clean-label rubrics flag solvent-extracted oils studied for heat oxidation.",
   },
   {
     id: "canolaoil", name: "Canola Oil", risk: "high", category: "seedOils",
     patterns: ["canola oil", "rapeseed oil"],
-    explanation: "High-heat refined, bleached, and deodorized seed oil with hidden trans fats (0.5%–3%) that degrade LDL cholesterol quality and impair blood vessel elasticity.",
+    explanation: "FDA-permitted refined, bleached, and deodorized seed oil; flagged by clean-label rubrics in favor of cold-pressed olive, avocado, or coconut oil.",
   },
   {
     id: "cornoil", name: "Corn Oil", risk: "high", category: "seedOils",
     patterns: ["corn oil"],
-    explanation: "Industrially refined seed oil with a lopsided ~46:1 omega-6 to omega-3 ratio linked to oxidized LDL cholesterol, arterial stiffness, and elevated blood pressure.",
+    explanation: "FDA-permitted refined seed oil with a high (~46:1) omega-6 to omega-3 fatty acid ratio studied in dietary lipid research.",
   },
   {
     id: "cottonseedoil", name: "Cottonseed Oil", risk: "high", category: "seedOils",
     patterns: ["cottonseed oil"],
-    explanation: "Refined industrial oil from a heavily sprayed non-food crop; high in pro-inflammatory omega-6 fats that harm cholesterol quality and endothelial health.",
+    explanation: "FDA-permitted refined oil derived from cotton seeds; high in omega-6 polyunsaturated fats that are less heat-stable than monounsaturated oils.",
   },
   {
     id: "grapeseedoil", name: "Grapeseed Oil", risk: "high", category: "seedOils",
     patterns: ["grape ?seed oil"],
-    explanation: "Solvent-extracted by-product oil (~70% omega-6 linoleic acid) that oxidizes rapidly into toxic aldehydes linked to oxidized LDL and vascular stress.",
+    explanation: "FDA-permitted by-product oil (~70% omega-6 linoleic acid) that is sensitive to high-heat oxidation compared with avocado or olive oil.",
   },
   {
     id: "ricebranoil", name: "Rice Bran Oil", risk: "high", category: "seedOils",
     patterns: ["rice ?bran oil"],
-    explanation: "Industrially solvent-extracted seed/bran oil high in omega-6 linoleic acid and prone to oxidation and hidden trans-fat formation during refining.",
+    explanation: "FDA-permitted refined bran oil high in omega-6 linoleic acid; flagged on our clean-label watchlist in favor of cold-pressed oils.",
   },
   {
     id: "vegoil", name: "Vegetable Oil (Industrial Blend)", risk: "high", category: "seedOils",
     patterns: ["(?<!brominated |hydrogenated )vegetable oils?"],
-    explanation: "Undisclosed industrial blend of refined seed oils (typically soybean, canola, or corn oil) high in oxidized omega-6 fats that harm cholesterol and blood pressure.",
+    explanation: "FDA-permitted blend of refined seed oils (typically soybean, canola, or corn oil) high in omega-6 polyunsaturated fats.",
   },
 
   // ---------------- MODERATE RISK (-20) ----------------

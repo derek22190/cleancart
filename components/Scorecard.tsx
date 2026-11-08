@@ -116,12 +116,12 @@ export default function Scorecard({
     ctx.font = `800 42px ${font}`;
     ctx.fillText(gradeLabel, 130, 435);
 
-    // Section 1: Toxic Additives Dodged Today (or Flagged in Cart)
+    // Section 1: Watchlist Additives Dodged Today (or Flagged in Cart)
     ctx.fillStyle = "#86efac";
     ctx.font = `800 28px ${font}`;
     ctx.fillText(
       hasSwaps
-        ? `TOXIC ADDITIVES DODGED TODAY (${dodgedList.length})`
+        ? `WATCHLIST ADDITIVES DODGED TODAY (${dodgedList.length})`
         : `FLAGGED ADDITIVES IN CART (${dodgedList.length})`,
       84,
       575,
@@ -241,7 +241,7 @@ export default function Scorecard({
 
             <div className="story-section">
               <h4>
-                {hasSwaps ? "Toxic Additives Dodged Today" : "Flagged Additives in Cart"} <span>{dodgedList.length}</span>
+                {hasSwaps ? "Watchlist Additives Dodged Today" : "Flagged Additives in Cart"} <span>{dodgedList.length}</span>
               </h4>
               <div className="story-dodged-pills">
                 {dodgedList.map((name) => (
@@ -270,7 +270,7 @@ export default function Scorecard({
                 <img src="/broc-mascot.jpg" alt="Broc" className="story-watermark-mascot" />
                 <div>
                   <strong>HeyBroc · heybroc.com</strong>
-                  <span>Scan &amp; swap dirty groceries in 1 tap</span>
+                  <span>Scan &amp; swap groceries for cleaner alternatives in 1 tap</span>
                 </div>
               </div>
               <div className="story-code-badge">

@@ -191,7 +191,7 @@ export default async function SwapReportPage({
         </h2>
         {result.flagged.length === 0 ? (
           <div style={{ background: "#dcfce7", color: "#166534", padding: "12px 14px", borderRadius: 12, fontWeight: 800, fontSize: 13.5, marginBottom: 18 }}>
-            ✓ Zero hazardous chemical additives, refined seed oils, or synthetic food dyes detected.
+            ✓ Zero watchlist additives, refined seed oils, or synthetic food dyes detected.
           </div>
         ) : (
           <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
@@ -213,6 +213,9 @@ export default async function SwapReportPage({
             Full Published Ingredients List:
           </b>
           <p style={{ fontSize: 13, color: "#334155", margin: 0, lineHeight: 1.55 }}>{entry.ingredients}</p>
+          <p style={{ fontSize: 11.5, color: "#64748b", margin: "8px 0 0", lineHeight: 1.45 }}>
+            Informational opinion only — not medical or regulatory advice. All rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc&apos;s independent clean-label rubric.
+          </p>
         </div>
       </article>
     </div>

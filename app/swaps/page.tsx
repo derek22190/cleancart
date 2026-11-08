@@ -119,7 +119,7 @@ export default function SwapsDirectoryPage() {
                   ✓ Clean Category Benchmark
                 </span>
                 <b style={{ display: "block", fontSize: 15, color: "#14532d", marginTop: 4 }}>
-                  Zero Hazardous Additives Flagged — View 3-Pillar Breakdown →
+                  Zero Watchlist Additives Flagged — View 3-Pillar Breakdown →
                 </b>
               </div>
             )}

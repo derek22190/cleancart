@@ -1842,6 +1842,9 @@ export default function Simulator() {
                           <div className="insights-ingredients-box">
                             <span>Ingredients Inspected:</span>
                             <p>{active.ingredients}</p>
+                            <small style={{ display: "block", marginTop: 6, fontSize: 10.5, color: "#64748b", lineHeight: 1.4 }}>
+                              Informational opinion only — not medical or regulatory advice. All rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc&apos;s independent clean-label rubric.
+                            </small>
                           </div>
                         </>
                       )}

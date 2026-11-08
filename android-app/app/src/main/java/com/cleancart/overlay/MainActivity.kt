@@ -1993,7 +1993,8 @@ class MainActivity : Activity() {
                             else -> "login"
                         },
                         password = pw,
-                        resetCode = if (isReset) rc else null
+                        resetCode = if (isReset) rc else null,
+                        onSuccess = { authDialog?.dismiss() }
                     )
                 }
             })
@@ -2025,7 +2026,8 @@ class MainActivity : Activity() {
         fallbackName: String,
         action: String,
         password: String?,
-        resetCode: String? = null
+        resetCode: String? = null,
+        onSuccess: (() -> Unit)? = null
     ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         io.execute {
@@ -2075,7 +2077,7 @@ class MainActivity : Activity() {
                         )
                         mainHandler.post {
                             if (isDestroyed || isFinishing) return@post
-                            authDialog?.dismiss()
+                            onSuccess?.invoke()
                             renderScreen()
                             Toast.makeText(this@MainActivity, "👋 Welcome, $resolvedName! Account synced.", Toast.LENGTH_LONG).show()
                         }
@@ -2267,7 +2269,7 @@ class MainActivity : Activity() {
 
         // Flagged Additives List
         if (flagCount == 0) {
-            sheet.addView(label("✓ No Hazardous Additives — Clean Label", 13.5f, 0xFF16A34A.toInt(), bold = true).apply {
+            sheet.addView(label("✓ No Watchlist Additives — Clean Label", 13.5f, 0xFF16A34A.toInt(), bold = true).apply {
                 setPadding(dp(14), dp(11), dp(14), dp(11))
                 background = GradientDrawable().apply {
                     setColor(0xFFE8F5EC.toInt())
@@ -2292,9 +2294,9 @@ class MainActivity : Activity() {
                     else -> 0xFFFACC15.toInt()
                 }
                 val riskLabel = when (risk) {
-                    "high" -> "Hazardous"
-                    "moderate" -> "Moderate risk"
-                    else -> "Limited risk"
+                    "high" -> "High concern"
+                    "moderate" -> "Moderate concern"
+                    else -> "Low concern"
                 }
                 sheet.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
@@ -2413,6 +2415,16 @@ class MainActivity : Activity() {
             })
             sheet.addView(swapCard)
         }
+
+        sheet.addView(
+            label(
+                "Informational opinion only — not medical or regulatory advice. Rated ingredients are permitted under U.S. FDA regulations; scores reflect HeyBroc's independent clean-label rubric.",
+                10.5f,
+                0xFF6B7280.toInt()
+            ).apply {
+                setPadding(dp(4), dp(12), dp(4), dp(2))
+            }
+        )
 
         sheetScroll.addView(sheet)
         AlertDialog.Builder(this)

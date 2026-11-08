@@ -496,8 +496,10 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
             wasOnCartScreen = false
 
-            // 2. Grade the product only on confirmed Single Product Detail Pages (not home/aisle/search feeds)
-            val isProductView = isConfirmedSinglePdp
+            // 2. Grade the product on Product Detail Pages AND vertical product card feeds
+            val isProductView =
+                isConfirmedSinglePdp ||
+                    (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons || tileAddCount >= 1))
 
             val candidates = if (isProductView) {
                 val primary = findCandidateTitles(primaryNodes, primaryAllNodes, isConfirmedSinglePdp, pkg)
@@ -537,6 +539,39 @@ class GroceryScreenReaderService : AccessibilityService() {
                         lastKey = scrollHintKey
                         sendToOverlay(OverlayWindowService.ACTION_PDP_SCROLL_HINT)
                         markVisible()
+                    }
+                    return
+                }
+
+                // If the user added items to cart directly on a Search Results aisle (which renders "1 in cart - <Product>"),
+                // sync those added items into Cart Check immediately even before they open the Cart screen.
+                val aisleInCartRe = Regex("""(?i)^\d+\s+in\s+(?:cart|bag|basket|order)\s*[-–—:,]\s*(.+)$""")
+                val aisleAddedTitles = nodes.mapNotNull { n ->
+                    aisleInCartRe.find(n.text.trim())?.groupValues?.getOrNull(1)?.let { cleanTitleCandidate(it) }
+                }.filter { isCandidateProductTitle(it) }.distinct()
+
+                if (aisleAddedTitles.isNotEmpty()) {
+                    val aisleCartKey = "$pkg|AISLE_CART|${aisleAddedTitles.joinToString("|")}"
+                    if (lastKey != aisleCartKey) {
+                        lastKey = aisleCartKey
+                        markVisible()
+                        val store = ScanApi.storeForPackage(pkg)
+                        val appContext = applicationContext
+                        io.execute {
+                            val arr = org.json.JSONArray()
+                            for (itemTitle in aisleAddedTitles) {
+                                val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
+                                if (json != null) arr.put(json)
+                            }
+                            handler.post {
+                                if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
+                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                        putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                        putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
+                                    }
+                                }
+                            }
+                        }
                     }
                     return
                 }
@@ -672,7 +707,6 @@ class GroceryScreenReaderService : AccessibilityService() {
             seen++
             try {
                 if (node.isPassword) continue
-                if (node !== root && !node.isVisibleToUser) continue
                 val viewId = node.viewIdResourceName?.lowercase().orEmpty()
                 val isSearchInput = node.isEditable ||
                     viewId.contains("search_src_text") ||

@@ -15,8 +15,8 @@ android {
         applicationId = "com.cleancart.overlay"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "2.2.8"
+        versionCode = 29
+        versionName = "2.2.9"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
     }
 

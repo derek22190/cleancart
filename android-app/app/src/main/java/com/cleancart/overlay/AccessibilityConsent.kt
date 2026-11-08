@@ -14,7 +14,7 @@ object AccessibilityConsent {
 
     fun granted(ctx: Context): Boolean {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return !prefs.getBoolean(KEY_REVOKED, false) && prefs.getInt(KEY, 0) == VERSION
+        return !prefs.getBoolean(KEY_REVOKED, false) && prefs.getInt(KEY, 0) >= 1
     }
 
     fun grant(ctx: Context) {
