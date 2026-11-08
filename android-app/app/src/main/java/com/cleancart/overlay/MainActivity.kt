@@ -251,6 +251,19 @@ class MainActivity : Activity() {
         }
 
         renderScreen()
+
+        // Pop up the Welcome / Sign-In card right away when opening the app if not signed in yet
+        if (savedInstanceState == null) {
+            val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+            val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
+            if (savedEmail == null) {
+                mainHandler.postDelayed({
+                    if (!isDestroyed && !isFinishing) {
+                        showGoCoCoLoginDialog()
+                    }
+                }, 180L)
+            }
+        }
     }
 
     private fun renderScreen() {
@@ -1503,56 +1516,71 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(20), dp(22), dp(22))
-            setBackgroundColor(Color.WHITE)
+            setPadding(dp(24), dp(22), dp(24), dp(22))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(28).toFloat()
+            }
         }
         scroll.addView(card)
 
-        // Top row: Circular < back button + Peeking Broc mascot in angled doorway
-        val topRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(8))
-        }
-        val backCircle = label("‹", 24f, 0xFF18181B.toInt(), bold = true).apply {
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(46), dp(46))
-            background = GradientDrawable().apply {
-                setColor(0xFFEFF1F0.toInt())
-                setStroke(dp(1), 0xFFE4E7E5.toInt())
-                cornerRadius = dp(999).toFloat()
+        // Top row: Broc mascot badge on left + subtle ✕ close button on right
+        fun buildTopHeader(onBackOrClose: () -> Unit, showBackArrow: Boolean = false): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(12))
+
+                if (showBackArrow) {
+                    addView(label("← Back", 14f, 0xFF4B5563.toInt(), bold = true).apply {
+                        setPadding(dp(12), dp(8), dp(12), dp(8))
+                        background = GradientDrawable().apply {
+                            setColor(0xFFF3F4F6.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        setOnClickListener { onBackOrClose() }
+                    })
+                } else {
+                    addView(LinearLayout(this@MainActivity).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        background = GradientDrawable().apply {
+                            setColor(0xFFECFDF5.toInt())
+                            setStroke(dp(1), 0xFFA7F3D0.toInt())
+                            cornerRadius = dp(16).toFloat()
+                        }
+                        addView(ImageView(this@MainActivity).apply {
+                            setImageResource(R.drawable.broc_mascot)
+                            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                        })
+                    })
+                }
+
+                addView(View(this@MainActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
+                })
+
+                addView(label("✕", 16f, 0xFF6B7280.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF3F4F6.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    setOnClickListener { authDialog?.dismiss() }
+                })
             }
-            setOnClickListener { authDialog?.dismiss() }
         }
-        topRow.addView(backCircle)
-        topRow.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
-        })
-        val mascotDoorBox = LinearLayout(this).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            background = GradientDrawable().apply {
-                setColor(0xFFDCFCE7.toInt())
-                setStroke(dp(2), 0xFFF1F5F9.toInt())
-                cornerRadius = dp(16).toFloat()
-            }
-            rotation = -12f
-            addView(ImageView(this@MainActivity).apply {
-                setImageResource(R.drawable.broc_mascot)
-                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
-                scaleType = ImageView.ScaleType.FIT_CENTER
-            })
-        }
-        topRow.addView(mascotDoorBox)
-        card.addView(topRow)
 
         if (savedEmail != null) {
             // ================= LOGGED-IN ACCOUNT VIEW =================
-            card.addView(label("Account", 28f, 0xFF18181B.toInt(), bold = true))
+            card.addView(buildTopHeader({ authDialog?.dismiss() }))
+            card.addView(label("Your Account", 26f, 0xFF111814.toInt(), bold = true))
             card.addView(label(
                 "Signed in and syncing your Watchlist, Favorites & Family Pro across devices.",
                 14f,
-                0xFF71717A.toInt()
+                0xFF6B7280.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(16)) })
 
             val profileCard = LinearLayout(this).apply {
@@ -1565,35 +1593,53 @@ class MainActivity : Activity() {
                 }
             }
             profileCard.addView(label(savedName ?: savedEmail.substringBefore("@"), 16.5f, 0xFF0F172A.toInt(), bold = true))
-            profileCard.addView(label(savedEmail, 13.5f, 0xFF475569.toInt()).apply { setPadding(0, dp(2), 0, dp(4)) })
-            val providerBadge = when (savedProvider) {
-                "google" -> "✓ Signed in with Google (Gmail)"
-                "apple" -> "✓ Signed in with Apple"
-                else -> "✓ Signed in with Email"
+            profileCard.addView(label(savedEmail, 13.5f, 0xFF475569.toInt()).apply { setPadding(0, dp(2), 0, dp(6)) })
+
+            val providerRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
             }
-            profileCard.addView(label(providerBadge, 12f, 0xFF0F7A4A.toInt(), bold = true))
+            val providerIconRes = when (savedProvider) {
+                "google" -> R.drawable.ic_gmail_logo
+                "apple" -> R.drawable.ic_apple_logo
+                else -> R.drawable.ic_email_logo
+            }
+            if (savedProvider == "google") {
+                providerRow.addView(ImageView(this).apply {
+                    setImageResource(providerIconRes)
+                    layoutParams = LinearLayout.LayoutParams(dp(18), dp(14)).apply { marginEnd = dp(8) }
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                })
+            }
+            val providerBadge = when (savedProvider) {
+                "google" -> "Connected with Gmail"
+                "apple" -> "✓ Connected with Apple"
+                else -> "✓ Connected with Email"
+            }
+            providerRow.addView(label(providerBadge, 12.5f, 0xFF0F7A4A.toInt(), bold = true))
+            profileCard.addView(providerRow)
             card.addView(profileCard)
 
-            card.addView(label("Continue Shopping  →", 16f, Color.WHITE, bold = true).apply {
+            card.addView(label("Continue Shopping  →", 15.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(15), dp(16), dp(15))
                 background = GradientDrawable().apply {
-                    setColor(0xFF0F7A4A.toInt())
-                    cornerRadius = dp(22).toFloat()
+                    setColor(0xFF16A34A.toInt())
+                    cornerRadius = dp(999).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(16) }
+                ).apply { topMargin = dp(18) }
                 setOnClickListener { authDialog?.dismiss() }
             })
 
-            card.addView(label("Log out of this device", 15f, 0xFF18181B.toInt(), bold = true).apply {
+            card.addView(label("Sign out", 14.5f, 0xFF374151.toInt(), bold = true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(16), dp(14), dp(16), dp(14))
+                setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply {
-                    setColor(0xFFEFF1F0.toInt())
-                    cornerRadius = dp(22).toFloat()
+                    setColor(0xFFF3F4F6.toInt())
+                    cornerRadius = dp(999).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1610,15 +1656,15 @@ class MainActivity : Activity() {
                     renderScreen()
                     Toast.makeText(
                         this@MainActivity,
-                        "Signed out. Continuing in Guest mode (all scans & store swaps active).",
-                        Toast.LENGTH_LONG
+                        "Signed out. Continuing in Guest mode.",
+                        Toast.LENGTH_SHORT
                     ).show()
                 }
             })
 
             card.addView(label("Delete account & cloud data", 12.5f, 0xFFDC2626.toInt()).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(8), dp(14), dp(8), dp(4))
+                setPadding(dp(8), dp(14), dp(8), dp(2))
                 setOnClickListener {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Delete HeyBroc Account?")
@@ -1658,238 +1704,331 @@ class MainActivity : Activity() {
                 }
             })
 
-            authDialog = AlertDialog.Builder(this).setView(scroll).show()
+            authDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+                dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                dlg.show()
+            }
             return
         }
 
-        // ================= GOCOCO-STYLE LOGIN VIEW =================
-        card.addView(label("Log in", 29f, 0xFF18181B.toInt(), bold = true))
-        card.addView(label(
-            "Welcome back to HeyBroc, we have missed you!",
-            15f,
-            0xFF71717A.toInt()
-        ).apply { setPadding(0, dp(4), 0, dp(18)) })
-
-        // Pill input 1: Email
-        val emailInput = EditText(this).apply {
-            hint = "Email"
-            setHintTextColor(0xFF52525B.toInt())
-            setTextColor(0xFF18181B.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            setSingleLine(true)
-            setPadding(dp(20), dp(17), dp(20), dp(17))
-            background = GradientDrawable().apply {
-                setColor(0xFFEFF1F0.toInt())
-                setStroke(dp(1), 0xFFE4E7E5.toInt())
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        }
-        card.addView(emailInput)
-
-        // Pill input 2: Password + Eyelash toggle
-        val passRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(4), dp(12), dp(4))
-            background = GradientDrawable().apply {
-                setColor(0xFFEFF1F0.toInt())
-                setStroke(dp(1), 0xFFE4E7E5.toInt())
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        }
-        var passVisible = false
-        val passInput = EditText(this).apply {
-            hint = "Password"
-            setHintTextColor(0xFF52525B.toInt())
-            setTextColor(0xFF18181B.toInt())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setSingleLine(true)
-            background = null
-            setPadding(0, dp(13), dp(8), dp(13))
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val eyeToggle = label("︶", 17f, 0xFF18181B.toInt(), bold = true).apply {
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            setOnClickListener {
-                passVisible = !passVisible
-                text = if (passVisible) "👁" else "︶"
-                passInput.inputType = if (passVisible) {
-                    android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                } else {
-                    android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        // ================= CLEAN PROGRESSIVE SIGN-IN SHEET =================
+        fun buildIconPillButton(
+            iconRes: Int,
+            iconWidthDp: Int,
+            iconHeightDp: Int,
+            text: String,
+            bgColor: Int,
+            borderColor: Int?,
+            textColor: Int,
+            onClick: () -> Unit
+        ): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(20), dp(15), dp(20), dp(15))
+                background = GradientDrawable().apply {
+                    setColor(bgColor)
+                    if (borderColor != null) setStroke(dp(1), borderColor)
+                    cornerRadius = dp(999).toFloat()
                 }
-                passInput.setSelection(passInput.text?.length ?: 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(12) }
+
+                addView(ImageView(this@MainActivity).apply {
+                    setImageResource(iconRes)
+                    layoutParams = LinearLayout.LayoutParams(dp(iconWidthDp), dp(iconHeightDp)).apply {
+                        marginEnd = dp(12)
+                    }
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                })
+                addView(label(text, 15.5f, textColor, bold = true))
+                setOnClickListener { onClick() }
             }
         }
-        passRow.addView(passInput)
-        passRow.addView(eyeToggle)
-        card.addView(passRow)
 
-        // Pill button: Forgot password?
-        val forgotBtn = label("Forgot password?  🔑", 15f, 0xFF18181B.toInt(), bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = GradientDrawable().apply {
-                setColor(0xFFEFF1F0.toInt())
-                setStroke(dp(1), 0xFFE4E7E5.toInt())
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-            setOnClickListener {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Enter your email and your new 6+ character password above, then tap Log in → to reset!",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-        card.addView(forgotBtn)
+        fun renderStep(step: String) {
+            card.removeAllViews()
 
-        // "or continue with" divider
-        card.addView(label("or continue with", 14.5f, 0xFF71717A.toInt()).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, dp(10))
-        })
+            if (step == "welcome") {
+                card.addView(buildTopHeader({ authDialog?.dismiss() }, showBackArrow = false))
+                card.addView(label("Welcome to HeyBroc", 26f, 0xFF111814.toInt(), bold = true))
+                card.addView(label(
+                    "Sign in to save your scans, Family Watchlist & Clean Swaps across all your devices.",
+                    14.5f,
+                    0xFF6B7280.toInt()
+                ).apply { setPadding(0, dp(6), 0, dp(22)) })
 
-        // Sky-blue pill: Continue with Google (Gmail)
-        val googleBtn = label("G   Continue with Google (Gmail)", 15f, 0xFF0C4A6E.toInt(), bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(15), dp(16), dp(15))
-            background = GradientDrawable().apply {
-                setColor(0xFFC7E8FF.toInt())
-                setStroke(dp(1), 0xFF93C5FD.toInt())
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-            setOnClickListener {
-                authDialog?.dismiss()
-                showOAuthEmailPromptDialog("google")
-            }
-        }
-        card.addView(googleBtn)
+                // 1. Official White Button with Exact 5-Color Gmail 'M' Symbol
+                card.addView(buildIconPillButton(
+                    iconRes = R.drawable.ic_gmail_logo,
+                    iconWidthDp = 22,
+                    iconHeightDp = 17,
+                    text = "Continue with Gmail",
+                    bgColor = Color.WHITE,
+                    borderColor = 0xFFDADCE0.toInt(),
+                    textColor = 0xFF1F1F1F.toInt(),
+                    onClick = { renderStep("gmail") }
+                ))
 
-        // Dark pill: Continue with Apple
-        val appleBtn = label("   Continue with Apple", 15f, Color.WHITE, bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(15), dp(16), dp(15))
-            background = GradientDrawable().apply {
-                setColor(0xFF18181B.toInt())
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(18) }
-            setOnClickListener {
-                authDialog?.dismiss()
-                showOAuthEmailPromptDialog("apple")
-            }
-        }
-        card.addView(appleBtn)
+                // 2. Official Black Button with Exact White Apple Symbol
+                card.addView(buildIconPillButton(
+                    iconRes = R.drawable.ic_apple_logo,
+                    iconWidthDp = 20,
+                    iconHeightDp = 20,
+                    text = "Continue with Apple",
+                    bgColor = 0xFF000000.toInt(),
+                    borderColor = null,
+                    textColor = Color.WHITE,
+                    onClick = { renderStep("apple") }
+                ))
 
-        // Bottom Primary Pill: Log in [→]
-        val submitBtn = label("Log in   →", 16.5f, Color.WHITE, bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = GradientDrawable().apply {
-                setColor(0xFF0F7A4A.toInt())
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-            setOnClickListener {
-                val em = emailInput.text.toString().trim().lowercase()
-                val pw = passInput.text.toString()
-                if (!em.contains("@")) {
-                    Toast.makeText(this@MainActivity, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
+                // Subtle "or" divider
+                val dividerRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(4), 0, dp(14))
+                    addView(View(this@MainActivity).apply {
+                        setBackgroundColor(0xFFE5E7EB.toInt())
+                        layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
+                    })
+                    addView(label("  or  ", 12.5f, 0xFF9CA3AF.toInt(), bold = true))
+                    addView(View(this@MainActivity).apply {
+                        setBackgroundColor(0xFFE5E7EB.toInt())
+                        layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
+                    })
                 }
-                if (pw.length < 6) {
-                    Toast.makeText(this@MainActivity, "Password must be at least 6 characters.", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
+                card.addView(dividerRow)
+
+                // 3. Clean Email Button (expands Email & Password only when tapped)
+                card.addView(buildIconPillButton(
+                    iconRes = R.drawable.ic_email_logo,
+                    iconWidthDp = 19,
+                    iconHeightDp = 19,
+                    text = "Continue with Email",
+                    bgColor = 0xFFF3F4F6.toInt(),
+                    borderColor = 0xFFE5E7EB.toInt(),
+                    textColor = 0xFF1F2937.toInt(),
+                    onClick = { renderStep("email") }
+                ))
+
+                // Subtle Guest Mode link at the bottom
+                card.addView(label("Continue as Guest", 13.5f, 0xFF6B7280.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(8), dp(8), dp(2))
+                    setOnClickListener { authDialog?.dismiss() }
+                })
+                return
+            }
+
+            if (step == "gmail" || step == "apple") {
+                val isGmail = step == "gmail"
+                card.addView(buildTopHeader({ renderStep("welcome") }, showBackArrow = true))
+
+                // Brand badge
+                card.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(2), 0, dp(10))
+                    addView(FrameLayout(this@MainActivity).apply {
+                        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) }
+                        background = GradientDrawable().apply {
+                            setColor(if (isGmail) Color.WHITE else 0xFF000000.toInt())
+                            if (isGmail) setStroke(dp(1), 0xFFDADCE0.toInt())
+                            cornerRadius = dp(14).toFloat()
+                        }
+                        addView(ImageView(this@MainActivity).apply {
+                            setImageResource(if (isGmail) R.drawable.ic_gmail_logo else R.drawable.ic_apple_logo)
+                            layoutParams = FrameLayout.LayoutParams(
+                                dp(if (isGmail) 24 else 22),
+                                dp(if (isGmail) 18 else 22),
+                                Gravity.CENTER
+                            )
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                        })
+                    })
+                    addView(label(
+                        if (isGmail) "Continue with Gmail" else "Continue with Apple",
+                        22f,
+                        0xFF111814.toInt(),
+                        bold = true
+                    ))
+                })
+
+                card.addView(label(
+                    if (isGmail) {
+                        "Enter your Gmail address to link your HeyBroc account and sync across devices."
+                    } else {
+                        "Enter your Apple ID email to link your HeyBroc account and sync across devices."
+                    },
+                    14f,
+                    0xFF6B7280.toInt()
+                ).apply { setPadding(0, 0, 0, dp(16)) })
+
+                val oauthInput = EditText(this).apply {
+                    hint = if (isGmail) "yourname@gmail.com" else "yourname@icloud.com"
+                    setHintTextColor(0xFF9CA3AF.toInt())
+                    setTextColor(0xFF111814.toInt())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                    setSingleLine(true)
+                    setPadding(dp(18), dp(16), dp(18), dp(16))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF9FAFB.toInt())
+                        setStroke(dp(1), 0xFFD1D5DB.toInt())
+                        cornerRadius = dp(16).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(14) }
                 }
-                completeMobileAuth(em, em.substringBefore("@"), "email", pw)
-                authDialog?.dismiss()
+                card.addView(oauthInput)
+
+                card.addView(label("Continue  →", 16f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(15), dp(16), dp(15))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    setOnClickListener {
+                        val em = oauthInput.text.toString().trim().lowercase()
+                        if (!em.contains("@") || !em.contains(".")) {
+                            Toast.makeText(this@MainActivity, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
+                            return@setOnClickListener
+                        }
+                        completeMobileAuth(em, em.substringBefore("@"), if (isGmail) "google" else "apple", null)
+                        authDialog?.dismiss()
+                    }
+                })
+                return
             }
-        }
-        card.addView(submitBtn)
 
-        // Continue as Guest link
-        card.addView(label("Continue as Guest →", 13.5f, 0xFF71717A.toInt(), bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(4))
-            setOnClickListener { authDialog?.dismiss() }
-        })
+            // step == "email"
+            card.addView(buildTopHeader({ renderStep("welcome") }, showBackArrow = true))
+            card.addView(label("Continue with Email", 23f, 0xFF111814.toInt(), bold = true))
+            card.addView(label(
+                "Sign in to your existing account or create a new one automatically.",
+                14f,
+                0xFF6B7280.toInt()
+            ).apply { setPadding(0, dp(4), 0, dp(16)) })
 
-        authDialog = AlertDialog.Builder(this).setView(scroll).show()
-    }
-
-    private fun showOAuthEmailPromptDialog(provider: String) {
-        val isGoogle = provider == "google"
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(20), dp(22), dp(10))
-        }
-        box.addView(label(
-            if (isGoogle) "Sign in with Google (Gmail)" else "Sign in with Apple",
-            20f,
-            0xFF18181B.toInt(),
-            bold = true
-        ))
-        box.addView(label(
-            if (isGoogle) {
-                "Enter your Gmail address to link your HeyBroc account & sync Family Pro across devices."
-            } else {
-                "Enter your Apple ID email to link your HeyBroc account & sync Family Pro across devices."
-            },
-            13.5f,
-            0xFF64748B.toInt()
-        ).apply { setPadding(0, dp(4), 0, dp(12)) })
-
-        val input = EditText(this).apply {
-            hint = if (isGoogle) "yourname@gmail.com" else "yourname@icloud.com"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            setSingleLine(true)
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = GradientDrawable().apply {
-                setColor(0xFFEFF1F0.toInt())
-                cornerRadius = dp(16).toFloat()
-            }
-        }
-        box.addView(input)
-
-        AlertDialog.Builder(this)
-            .setView(box)
-            .setPositiveButton(if (isGoogle) "Continue with Gmail" else "Continue with Apple") { _, _ ->
-                val em = input.text.toString().trim().lowercase()
-                if (!em.contains("@")) {
-                    Toast.makeText(this, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
+            val emailInput = EditText(this).apply {
+                hint = "Email address"
+                setHintTextColor(0xFF9CA3AF.toInt())
+                setTextColor(0xFF111814.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                setSingleLine(true)
+                setPadding(dp(18), dp(15), dp(18), dp(15))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF9FAFB.toInt())
+                    setStroke(dp(1), 0xFFD1D5DB.toInt())
+                    cornerRadius = dp(16).toFloat()
                 }
-                completeMobileAuth(em, em.substringBefore("@"), provider, null)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
             }
-            .setNegativeButton("Back") { _, _ ->
-                showGoCoCoLoginDialog()
+            card.addView(emailInput)
+
+            val passRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(18), dp(2), dp(12), dp(2))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF9FAFB.toInt())
+                    setStroke(dp(1), 0xFFD1D5DB.toInt())
+                    cornerRadius = dp(16).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(6) }
             }
-            .show()
+            var passVisible = false
+            val passInput = EditText(this).apply {
+                hint = "Password (6+ characters)"
+                setHintTextColor(0xFF9CA3AF.toInt())
+                setTextColor(0xFF111814.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                setSingleLine(true)
+                background = null
+                setPadding(0, dp(13), dp(8), dp(13))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val showHideToggle = label("Show", 13f, 0xFF4B5563.toInt(), bold = true).apply {
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setOnClickListener {
+                    passVisible = !passVisible
+                    text = if (passVisible) "Hide" else "Show"
+                    passInput.inputType = if (passVisible) {
+                        android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    } else {
+                        android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    }
+                    passInput.setSelection(passInput.text?.length ?: 0)
+                }
+            }
+            passRow.addView(passInput)
+            passRow.addView(showHideToggle)
+            card.addView(passRow)
+
+            // Subtle right-aligned "Forgot password?" link (never a giant full-width button)
+            card.addView(label("Forgot password?", 12.5f, 0xFF6B7280.toInt(), bold = true).apply {
+                gravity = Gravity.END
+                setPadding(dp(4), dp(2), dp(4), dp(14))
+                setOnClickListener {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Enter your email and a new 6+ character password above, then tap Continue → to reset.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            })
+
+            card.addView(label("Continue  →", 16f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(15), dp(16), dp(15))
+                background = GradientDrawable().apply {
+                    setColor(0xFF16A34A.toInt())
+                    cornerRadius = dp(999).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setOnClickListener {
+                    val em = emailInput.text.toString().trim().lowercase()
+                    val pw = passInput.text.toString()
+                    if (!em.contains("@") || !em.contains(".")) {
+                        Toast.makeText(this@MainActivity, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    if (pw.length < 6) {
+                        Toast.makeText(this@MainActivity, "Password must be at least 6 characters.", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    completeMobileAuth(em, em.substringBefore("@"), "email", pw)
+                    authDialog?.dismiss()
+                }
+            })
+        }
+
+        renderStep("welcome")
+
+        authDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+            dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            dlg.show()
+        }
     }
 
     private fun completeMobileAuth(email: String, fallbackName: String, provider: String, password: String?) {
@@ -1900,7 +2039,12 @@ class MainActivity : Activity() {
             .putString("auth_provider", provider)
             .apply()
         renderScreen()
-        Toast.makeText(this, "👋 Welcome back, $fallbackName! Account synced.", Toast.LENGTH_LONG).show()
+        ScanApi.trackEvent(
+            this,
+            "auth_completed",
+            properties = JSONObject().put("provider", provider)
+        )
+        Toast.makeText(this, "👋 Welcome, $fallbackName! Account synced.", Toast.LENGTH_LONG).show()
 
         io.execute {
             runCatching {
