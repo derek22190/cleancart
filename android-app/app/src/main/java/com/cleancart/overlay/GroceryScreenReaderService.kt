@@ -178,7 +178,6 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        instance = this
         // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
         sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
         lastKey = ""
