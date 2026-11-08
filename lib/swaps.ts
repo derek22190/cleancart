@@ -90,7 +90,7 @@ export const STORE_META: Record<Store, { label: string; host: string; androidPac
   instacart: { label: "Instacart", host: "www.instacart.com", androidPackage: "com.instacart.client", scheme: "instacart" },
   target: { label: "Target", host: "www.target.com", androidPackage: "com.target.ui", scheme: "target" },
   kroger: { label: "Kroger", host: "www.kroger.com", androidPackage: "com.kroger.mobile", scheme: "kroger" },
-  aldi: { label: "ALDI", host: "www.aldi.us", androidPackage: "de.apptiv.business.android.aldi_us", scheme: "aldi" },
+  aldi: { label: "ALDI", host: "shop.aldi.us", androidPackage: "de.apptiv.business.android.aldi_us", scheme: "aldi" },
   doordash: { label: "DoorDash", host: "www.doordash.com", androidPackage: "com.dd.doordash", scheme: "doordash" },
   ubereats: { label: "Uber Eats", host: "www.ubereats.com", androidPackage: "com.ubercab.eats", scheme: "ubereats" },
   amazon: { label: "Amazon Fresh", host: "www.amazon.com", androidPackage: "com.amazon.mShop.android.shopping", scheme: "amazon" },
@@ -996,6 +996,7 @@ function impactRedirectBase(store: Store): string {
     case "target":
       return (process.env.NEXT_PUBLIC_IMPACT_TARGET_BASE_URL || process.env.IMPACT_TARGET_BASE_URL || "").trim();
     case "instacart":
+    case "aldi":
       return (process.env.NEXT_PUBLIC_IMPACT_INSTACART_BASE_URL || process.env.IMPACT_INSTACART_BASE_URL || "").trim();
     default:
       return (process.env.NEXT_PUBLIC_IMPACT_DEFAULT_BASE_URL || process.env.IMPACT_DEFAULT_BASE_URL || "").trim();
@@ -1003,10 +1004,10 @@ function impactRedirectBase(store: Store): string {
 }
 
 function withAffiliate(url: string, store: Store, clickId: string): string {
+  const sep = url.includes("?") ? "&" : "?";
+  const cid = encodeURIComponent(clickId || "heybroc_live");
   if (store === "amazon") {
-    const tag = amazonPartnerTag();
-    if (!tag) return url;
-    const sep = url.includes("?") ? "&" : "?";
+    const tag = amazonPartnerTag() || "heybroc-20";
     return `${url}${sep}tag=${encodeURIComponent(tag)}&linkCode=ll2`;
   }
   const redirectBase = impactRedirectBase(store);
@@ -1015,7 +1016,17 @@ function withAffiliate(url: string, store: Store, clickId: string): string {
     const subIdParam = clickId ? `&subId1=${encodeURIComponent(clickId)}` : "";
     return `${redirectBase.replace(/\/+$/, "")}${baseSep}u=${encodeURIComponent(url)}${subIdParam}`;
   }
-  return url;
+  switch (store) {
+    case "walmart":
+      return `${url}${sep}irgwc=1&sourceid=imp_${cid}&veh=aff&wmlspartner=imp_heybroc&clickid=${cid}`;
+    case "target":
+      return `${url}${sep}irgwc=1&afid=heybroc&ref=tgt_adv_xasd0002&clickid=${cid}`;
+    case "instacart":
+    case "aldi":
+      return `${url}${sep}irgwc=1&utm_source=instacart_impact&utm_medium=affiliate&clickid=${cid}`;
+    default:
+      return `${url}${sep}irgwc=1&utm_source=heybroc&utm_medium=affiliate&clickid=${cid}`;
+  }
 }
 
 /** Concise 2-3 word 1-for-1 search query for grocery stores so native search screens always find in-stock clean matches instead of "0 results". */
@@ -1099,7 +1110,7 @@ function searchPath(store: Store, q: string): string {
     case "instacart": return `/store/s?k=${e}`;
     case "target": return `/s?searchTerm=${e}`;
     case "kroger": return `/search?query=${e}`;
-    case "aldi": return `/results?q=${e}`;
+    case "aldi": return `/store/aldi/s?k=${e}`;
     case "doordash": return `/search/store/${e}`;
     case "ubereats": return `/search?q=${e}`;
     case "amazon": return `/s?k=${e}&i=amazonfresh`;
@@ -1118,7 +1129,7 @@ function productPath(store: Store, id: string): string {
     case "instacart": return `/products/${id}`;
     case "target": return `/p/${id}`;
     case "kroger": return `/p/item/${id}`;
-    case "aldi": return `/product/${id}`;
+    case "aldi": return `/store/aldi/products/${id}`;
     case "doordash": return `/products/${id}`;
     case "ubereats": return `/product/${id}`;
     case "amazon": return `/dp/${id}`;

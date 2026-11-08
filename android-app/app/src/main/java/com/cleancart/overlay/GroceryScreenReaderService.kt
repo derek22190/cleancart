@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -21,6 +22,18 @@ import java.util.concurrent.Executors
 class GroceryScreenReaderService : AccessibilityService() {
 
     companion object {
+        @Volatile
+        private var instance: GroceryScreenReaderService? = null
+
+        /**
+         * Attempts to search for [query] directly inside the active grocery app window
+         * (used when a store app like ALDI does not register an external ACTION_VIEW search intent).
+         */
+        fun performInAppSearch(query: String, targetPkg: String = ""): Boolean {
+            val svc = instance ?: return false
+            return svc.runInAppSearch(query, targetPkg)
+        }
+
         val STORE_PACKAGES = setOf(
             "com.walmart.android",
             "com.instacart.client",
@@ -178,6 +191,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
         sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
         lastKey = ""
@@ -278,10 +292,87 @@ class GroceryScreenReaderService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         sendToOverlay(OverlayWindowService.ACTION_HIDE)
         handler.removeCallbacksAndMessages(null)
         io.shutdownNow()
         super.onDestroy()
+    }
+
+    private fun runInAppSearch(query: String, targetPkg: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val activePkg = root.packageName?.toString().orEmpty()
+        recycleNode(root)
+        if (activePkg !in STORE_PACKAGES) return false
+        if (targetPkg.isNotBlank() && activePkg != targetPkg) return false
+
+        fun attemptSearchStep(step: Int) {
+            val winRoot = rootInActiveWindow ?: return
+            try {
+                val qNodes = ArrayDeque<AccessibilityNodeInfo>()
+                qNodes.add(winRoot)
+                var editableNode: AccessibilityNodeInfo? = null
+                var searchTriggerNode: AccessibilityNodeInfo? = null
+                var visited = 0
+
+                while (qNodes.isNotEmpty() && visited < 350) {
+                    val n = qNodes.removeFirst()
+                    visited++
+                    val cls = n.className?.toString().orEmpty()
+                    val txt = n.text?.toString().orEmpty()
+                    val desc = n.contentDescription?.toString().orEmpty()
+                    val vid = n.viewIdResourceName?.lowercase().orEmpty()
+
+                    if (editableNode == null && (n.isEditable || cls.contains("EditText", ignoreCase = true))) {
+                        editableNode = n
+                        break
+                    }
+                    val looksLikeSearch =
+                        vid.contains("search") ||
+                            Regex("""(?i)\b(search|find products|search products)\b""").containsMatchIn("$txt $desc")
+                    if (searchTriggerNode == null && looksLikeSearch) {
+                        searchTriggerNode = n
+                    }
+                    for (i in 0 until n.childCount) {
+                        n.getChild(i)?.let { qNodes.add(it) }
+                    }
+                }
+
+                if (editableNode != null) {
+                    editableNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    editableNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
+                    }
+                    editableNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        editableNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+                    }
+                    return
+                }
+
+                if (searchTriggerNode != null && step < 2) {
+                    var clickable: AccessibilityNodeInfo? = searchTriggerNode
+                    while (clickable != null && !clickable.isClickable) {
+                        clickable = clickable.parent
+                    }
+                    (clickable ?: searchTriggerNode).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    handler.postDelayed({ attemptSearchStep(step + 1) }, 450L)
+                    return
+                }
+
+                if (step == 0) {
+                    // Dismiss product modal sheet (e.g., top-left X in ALDI) so the main search bar is exposed
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                    handler.postDelayed({ attemptSearchStep(1) }, 500L)
+                }
+            } finally {
+                recycleNode(winRoot)
+            }
+        }
+
+        handler.post { attemptSearchStep(0) }
+        return true
     }
 
     private fun isDeviceInteractiveAndUnlocked(): Boolean {

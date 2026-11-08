@@ -31,6 +31,7 @@ interface PaywallProps {
   personalReferralCode?: string;
   courtesyRefillAvailable?: boolean;
   onUseCourtesyRefill?: () => void;
+  onOpenLogin?: () => void;
 }
 
 export default function Paywall({
@@ -44,6 +45,7 @@ export default function Paywall({
   personalReferralCode = "BROC-7F4A2",
   courtesyRefillAvailable = true,
   onUseCourtesyRefill,
+  onOpenLogin,
 }: PaywallProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("annual");
   const [codeInput, setCodeInput] = useState(appliedCreator?.code ?? "");
@@ -394,6 +396,26 @@ export default function Paywall({
             ? `$0 due today, then $${PRICING.annual.toFixed(2)}/year ($${annualPerMonth.toFixed(2)}/mo). Cancel anytime in 1 tap.`
             : `Billed monthly at $${PRICING.monthly.toFixed(2)}/mo ($${monthlyPerYear.toFixed(2)}/yr). Switch to Annual to save ${annualSavingsPct}%.`}
         </p>
+
+        {onOpenLogin && (
+          <div style={{ textAlign: "center", marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#0f7a4a",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Already have an account or want to sync Pro across devices? Log in →
+            </button>
+          </div>
+        )}
 
         {receipt && (
           <div className="paywall-receipt" role="status">

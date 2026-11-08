@@ -29,6 +29,7 @@ export interface EntitlementRecord {
 const SESSION_KEY_PREFIX = "heybroc:entitlement:session:";
 const SUB_KEY_PREFIX = "heybroc:entitlement:sub:";
 const DEVICE_KEY_PREFIX = "heybroc:entitlement:device:";
+const EMAIL_KEY_PREFIX = "heybroc:entitlement:email:";
 
 /** Retain entitlement & billing records for 400 days (covers annual billing cycle + grace period). */
 export const ENTITLEMENT_TTL_SECONDS = 400 * 24 * 60 * 60;
@@ -88,6 +89,20 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
       ENTITLEMENT_TTL_SECONDS
     );
   }
+  if (normalized.customerEmail) {
+    const cleanEmail = normalized.customerEmail.trim().toLowerCase();
+    if (cleanEmail) {
+      await kvSet(`${EMAIL_KEY_PREFIX}${cleanEmail}`, normalized);
+    }
+  }
+}
+
+export async function getEmailEntitlement(
+  email: string
+): Promise<EntitlementRecord | null> {
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (!cleanEmail) return null;
+  return kvGet<EntitlementRecord>(`${EMAIL_KEY_PREFIX}${cleanEmail}`);
 }
 
 export async function getSubscriptionEntitlement(

@@ -32,6 +32,7 @@ import {
   type SwapCategory,
   type SwapResult,
 } from "@/lib/swaps";
+import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import Scorecard, { type SwapRecord } from "./Scorecard";
 
@@ -363,6 +364,9 @@ export default function Simulator() {
   const [personalReferralCode, setPersonalReferralCode] = useState("BROC-7F4A2");
   const [isPro, setIsPro] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
+  const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
 
@@ -377,10 +381,44 @@ export default function Simulator() {
           deviceId = `web-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
           window.localStorage.setItem("heybroc_device_id", deviceId);
         }
+        if (!cancelled) setDeviceIdState(deviceId);
 
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
+        if (params.get("login") === "1") {
+          setAuthOpen(true);
+        }
+
+        // Restore authenticated user session if present
+        const storedToken = (window.localStorage.getItem("heybroc_auth_token") || "").trim();
+        let authenticatedPro = false;
+        if (storedToken) {
+          const authRes = await fetch(
+            `/api/auth?token=${encodeURIComponent(storedToken)}&deviceId=${encodeURIComponent(deviceId)}`,
+            { cache: "no-store" }
+          ).catch(() => null);
+          const authData = (authRes ? await authRes.json().catch(() => null) : null) as {
+            ok?: boolean;
+            authenticated?: boolean;
+            user?: AuthenticatedUser;
+          } | null;
+          if (!cancelled && authData?.ok && authData.authenticated && authData.user) {
+            setAuthUser(authData.user);
+            if (authData.user.referralCode) {
+              setPersonalReferralCode(authData.user.referralCode);
+              window.localStorage.setItem("heybroc_my_referral_code", authData.user.referralCode);
+            }
+            if (authData.user.isProActive) {
+              authenticatedPro = true;
+              setIsPro(true);
+            }
+          } else if (!cancelled && authRes && authRes.status === 401) {
+            window.localStorage.removeItem("heybroc_auth_token");
+            window.localStorage.removeItem("heybroc_auth_user");
+          }
+        }
+
         const refParam = (params.get("ref") || "").trim().toUpperCase();
         if (refParam && /^BROC-[A-Z0-9]{4,8}$/.test(refParam)) {
           window.localStorage.setItem("heybroc_referred_by", refParam);
@@ -427,7 +465,7 @@ export default function Simulator() {
         const candidateSessionId = urlSessionId || storedSessionId;
         if (!candidateSessionId) {
           if (!cancelled) {
-            setIsPro(Boolean(refData?.entitlement?.isProActive));
+            setIsPro(authenticatedPro || Boolean(refData?.entitlement?.isProActive));
           }
           return;
         }
@@ -450,7 +488,7 @@ export default function Simulator() {
             });
           }
         } else {
-          setIsPro(Boolean(refData?.entitlement?.isProActive));
+          setIsPro(authenticatedPro || Boolean(refData?.entitlement?.isProActive));
           window.localStorage.removeItem("heybroc_session_id");
         }
       } catch {
@@ -1010,6 +1048,25 @@ export default function Simulator() {
         </div>
 
         <div className="topbar-actions">
+          <button
+            id="open-auth-modal"
+            type="button"
+            className="topbar-btn"
+            onClick={() => setAuthOpen(true)}
+            style={
+              authUser
+                ? {
+                    background: "#ecfdf5",
+                    borderColor: "#86efac",
+                    color: "#065f46",
+                    fontWeight: 800,
+                  }
+                : undefined
+            }
+          >
+            {authUser ? `👤 ${authUser.displayName}` : "👤 Log in"}
+          </button>
+
           <button
             id="open-paywall"
             type="button"
@@ -2230,6 +2287,56 @@ export default function Simulator() {
       </section>
 
       {/* ============ PHASE 6 MODALS ============ */}
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        user={authUser}
+        deviceId={deviceIdState}
+        watchlist={watch}
+        onAuthSuccess={(loggedInUser, token) => {
+          setAuthUser(loggedInUser);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("heybroc_auth_token", token);
+            window.localStorage.setItem("heybroc_auth_user", JSON.stringify(loggedInUser));
+            if (loggedInUser.referralCode) {
+              window.localStorage.setItem("heybroc_my_referral_code", loggedInUser.referralCode);
+            }
+          }
+          if (loggedInUser.referralCode) {
+            setPersonalReferralCode(loggedInUser.referralCode);
+          }
+          if (loggedInUser.isProActive) {
+            setIsPro(true);
+          }
+          setToast({
+            title: `👋 Welcome back, ${loggedInUser.displayName}!`,
+            body: `Signed in with ${loggedInUser.email}. Your Family Watchlist, Clean Swaps & Pro status are synced.`,
+          });
+        }}
+        onLogout={() => {
+          setAuthUser(null);
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("heybroc_auth_token");
+            window.localStorage.removeItem("heybroc_auth_user");
+          }
+          setToast({
+            title: "Signed out",
+            body: "Continuing in Guest mode — all scans, scores & Clean Swap store links remain active.",
+          });
+        }}
+        onDeleteAccount={() => {
+          setAuthUser(null);
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("heybroc_auth_token");
+            window.localStorage.removeItem("heybroc_auth_user");
+          }
+          setToast({
+            title: "Account Deleted",
+            body: "Your cloud account was permanently deleted. You can continue using HeyBroc as a Guest anytime.",
+          });
+        }}
+      />
+
       <Paywall
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
@@ -2257,6 +2364,10 @@ export default function Simulator() {
             title: "✓ +3 Free Courtesy Swaps Added!",
             body: "Finish cleaning your cart right now — on us.",
           });
+        }}
+        onOpenLogin={() => {
+          setPaywallOpen(false);
+          setAuthOpen(true);
         }}
       />
 

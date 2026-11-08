@@ -2,8 +2,11 @@ package com.cleancart.overlay
 
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
+import android.app.SearchManager
 import android.app.Service
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -37,6 +40,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -1129,7 +1133,7 @@ class OverlayWindowService : Service() {
                     setOnClickListener { showSwapPreviewModal(swap) }
                 })
             }
-            swapBox.addView(text("👁 Tap to Preview Photo & Ingredients  •  🛒 Find in $storeName ↗", 10.5f, BRAND, bold = true).apply {
+            swapBox.addView(text("👁 Tap to Preview Photo & Ingredients", 10.5f, BRAND, bold = true).apply {
                 setPadding(0, dp(4), 0, 0)
                 setOnClickListener { showSwapPreviewModal(swap) }
             })
@@ -1355,8 +1359,16 @@ class OverlayWindowService : Service() {
         isAuditorOpen = false
     }
 
+    private fun normalizeStoreUrl(raw: String): String {
+        if (raw.contains("aldi.us/results?q=", ignoreCase = true)) {
+            val q = raw.substringAfter("results?q=", "")
+            return "https://shop.aldi.us/store/aldi/s?k=$q"
+        }
+        return raw
+    }
+
     /**
-     * Fires the affiliate deep link inside the store's native app (falls back to browser).
+     * Fires the affiliate deep link inside the store's native app (or performs in-app search / opens live store search).
      * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
      */
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
@@ -1386,16 +1398,54 @@ class OverlayWindowService : Service() {
         pendingSwapFromKey = target?.key ?: prodTitle.takeIf { it.isNotBlank() }
         pendingSwapTitle = swap.optString("title").takeIf { it.isNotBlank() }
 
-        val link = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
-        val pkg = swap.optString("androidPackage")
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            startActivity(Intent(intent).apply { if (pkg.isNotBlank()) setPackage(pkg) })
-        } catch (_: ActivityNotFoundException) {
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(swap.optString("webUrl"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        val searchQuery = swap.optString("searchQuery").ifBlank { swap.optString("title", "Clean Swap") }
+        runCatching {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            cm?.setPrimaryClip(ClipData.newPlainText("HeyBroc Clean Swap", searchQuery))
         }
+
+        val rawWebUrl = normalizeStoreUrl(swap.optString("webUrl"))
+        val link = normalizeStoreUrl(swap.optString("deepLink").ifBlank { rawWebUrl })
+        val pkg = swap.optString("androidPackage")
+        val storeName = storeDisplayName(currentStoreKey)
+
         removeCard()
         showPill()
+
+        var launchedInNativeApp = false
+        if (pkg.isNotBlank()) {
+            val candidates = listOf(
+                Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                Intent("com.google.android.gms.actions.SEARCH_ACTION").setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            for (candidate in candidates) {
+                if (runCatching { startActivity(candidate) }.isSuccess) {
+                    launchedInNativeApp = true
+                    break
+                }
+            }
+        }
+
+        if (!launchedInNativeApp) {
+            // If the user is currently inside a store app (like ALDI) that doesn't register an external ACTION_VIEW search filter,
+            // search directly inside the active store app window via Accessibility so we don't kick them out to a browser.
+            val searchedInOpenApp = GroceryScreenReaderService.performInAppSearch(searchQuery, pkg)
+            if (searchedInOpenApp) {
+                runCatching {
+                    Toast.makeText(
+                        this,
+                        "🔎 Searching $storeName for \"$searchQuery\" (copied to clipboard)",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            } else if (rawWebUrl.isNotBlank()) {
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
+        }
     }
 
     /* ---------------- Helpers ---------------- */
