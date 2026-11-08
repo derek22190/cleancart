@@ -1584,7 +1584,55 @@ export default function Simulator() {
                             </div>
                           ) : null}
 
-                          {/* Yuka NEGATIVES Section */}
+                          {/* 3-Pillar Score & Blood Sugar / PCOS / Calorie Insight Card */}
+                          {score.yukaBreakdown && (
+                            <div
+                              style={{
+                                background: "#f8fafc",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: 14,
+                                padding: "12px 14px",
+                                marginBottom: 12,
+                              }}
+                            >
+                              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "#64748b", textTransform: "uppercase" }}>
+                                3-PILLAR SCORE BREAKDOWN
+                              </div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginTop: 4 }}>
+                                🥗 Nutritional Quality: {score.yukaBreakdown.nutritionScore}/60 (Nutri-Score {score.yukaBreakdown.nutriScoreGrade})
+                              </div>
+                              <div style={{ fontSize: 12.5, color: "#475569", marginTop: 2 }}>
+                                🧪 Additive Safety: {score.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {score.yukaBreakdown.organicScore}/10
+                              </div>
+                              {score.yukaBreakdown.glucoseImpact && (
+                                <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 8, paddingTop: 8 }}>
+                                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "#64748b", textTransform: "uppercase" }}>
+                                    BLOOD SUGAR, PCOS &amp; CALORIE INSIGHT
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: 12.5,
+                                      fontWeight: 800,
+                                      marginTop: 3,
+                                      color:
+                                        score.yukaBreakdown.glucoseImpact === "High Spike"
+                                          ? "#dc2626"
+                                          : score.yukaBreakdown.glucoseImpact === "Moderate Spike"
+                                            ? "#ea580c"
+                                            : "#16a34a",
+                                    }}
+                                  >
+                                    🩸 Glucose Impact: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp; 🔥 {score.yukaBreakdown.calorieNote}
+                                  </div>
+                                  <p style={{ fontSize: 11.5, color: "#475569", margin: "2px 0 0", lineHeight: 1.45 }}>
+                                    {score.yukaBreakdown.glucoseNote}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* NEGATIVES Section */}
                           {score.flagged.length > 0 && (
                             <div className="yuka-section">
                               <h4 className="yuka-section-title">Negatives</h4>

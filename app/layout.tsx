@@ -7,15 +7,19 @@ const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans",
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.heybroc.com"),
   title: {
-    default: "HeyBroc — Clean Food & Ingredient Scanner (0–100) + 1-Tap Clean Swaps",
+    default: "HeyBroc - Online Food Scanner (0–100 Ingredient Score & Clean Swaps)",
     template: "%s | HeyBroc",
   },
   description:
-    "Instant 0–100 food, cosmetic & grocery ingredient scanner with 1-Tap Clean Swaps. Automatically flags seed oils, Red 40, artificial dyes & additives while you shop on Walmart, Instacart, Target, Kroger, ALDI, Costco, Amazon Fresh & 12 stores.",
+    "Instant 0–100 online food, cosmetic & grocery ingredient scanner with blood sugar / glucose spike insights and 1-Tap Clean Swaps across Walmart, Instacart, Target, Kroger, ALDI, Costco & 12 stores.",
   keywords: [
+    "online food scanner",
     "clean food scanner",
     "ingredient scanner app",
     "seed oil scanner",
+    "glucose spike food scanner",
+    "PCOS food scanner",
+    "diabetic grocery scanner",
     "healthy grocery swaps",
     "food additive checker",
     "Red 40 scanner",
@@ -34,24 +38,24 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://www.heybroc.com",
     siteName: "HeyBroc",
-    title: "HeyBroc — Shop Clean. Skip the Junk. (0–100 Ingredient Scanner)",
+    title: "HeyBroc - Online Food Scanner | Shop Clean. Skip the Junk.",
     description:
-      "Grades 7.5M+ grocery, cosmetic & household products from 0–100 and suggests 1-Tap Clean Swaps automatically on Walmart, Target, Instacart, ALDI, Kroger & Costco.",
+      "Grades 7.5M+ grocery, cosmetic & household products from 0–100 with blood sugar impact & 1-Tap Clean Swaps on Walmart, Target, Instacart, ALDI, Kroger & Costco.",
     images: [
       {
         url: "/og-banner.png",
         width: 1024,
         height: 500,
-        alt: "HeyBroc — 100% Ingredient & Additive Scanner (0–100 Score & 1-Tap Clean Swaps)",
+        alt: "HeyBroc - Online Food Scanner (0–100 Score & 1-Tap Clean Swaps)",
       },
     ],
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "HeyBroc — Clean Food & Ingredient Scanner + 1-Tap Clean Swaps",
+    title: "HeyBroc - Online Food Scanner + 1-Tap Clean Swaps",
     description:
-      "Instant 0–100 ingredient health scores & 1-Tap Clean Swaps across Walmart, Target, Instacart, Kroger, ALDI & 12 stores.",
+      "Instant 0–100 ingredient health scores, blood sugar insights & 1-Tap Clean Swaps across Walmart, Target, Instacart, Kroger, ALDI & 12 stores.",
     images: ["/og-banner.png"],
   },
   robots: {
@@ -94,12 +98,12 @@ const jsonLd = {
       url: "https://www.heybroc.com",
       logo: "https://www.heybroc.com/broc-mascot.jpg",
       description:
-        "Independent 0–100 food, cosmetic, and household ingredient grading engine and floating grocery shopping assistant.",
+        "Independent 0–100 online food, cosmetic, and household ingredient grading engine and floating grocery shopping assistant.",
     },
     {
       "@type": "SoftwareApplication",
       "@id": "https://www.heybroc.com/#app",
-      name: "HeyBroc: Clean Food Scanner",
+      name: "HeyBroc - Online Food Scanner",
       operatingSystem: "Android, iOS, Chrome, Safari, Web",
       applicationCategory: "HealthApplication",
       url: "https://www.heybroc.com",

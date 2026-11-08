@@ -19,9 +19,9 @@
 
 ## 2. Copy-Paste Store Listing Text
 
-### App Name / Title (Max 30 characters)
+### App Name / Title (Max 30 characters — 29 chars)
 ```text
-HeyBroc: Clean Food Scanner
+HeyBroc - Online Food Scanner
 ```
 
 ### Apple Subtitle (Max 30 characters)

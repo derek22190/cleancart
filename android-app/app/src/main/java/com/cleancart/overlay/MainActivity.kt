@@ -1509,6 +1509,30 @@ class MainActivity : Activity() {
         val addScore = yb?.optInt("additiveScore", if (flagCount == 0) 30 else 0) ?: 0
         val orgScore = yb?.optInt("organicScore", if (title.contains("organic", true)) 10 else 0) ?: 0
 
+        val hasHighGlycemicIng = Regex("\\b(high fructose corn syrup|corn syrup|maltodextrin|dextrose|glucose syrup|cane sugar|sucrose)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
+        val hasStarchBase = Regex("\\b(enriched.*flour|corn\\s*starch|tapioca\\s*starch|potato\\s*starch|cassava\\s*flour|rice\\s*flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
+        val defaultGlucoseImpact = when {
+            hasHighGlycemicIng || nutGrade == "E" -> "High Spike"
+            hasStarchBase || nutGrade == "C" || nutGrade == "D" -> "Moderate Spike"
+            else -> "Low Spike"
+        }
+        val glucoseImpact = yb?.optString("glucoseImpact")?.takeIf { it.isNotBlank() } ?: defaultGlucoseImpact
+        val glucoseNote = yb?.optString("glucoseNote")?.takeIf { it.isNotBlank() } ?: when (glucoseImpact) {
+            "High Spike" -> "High glucose spike risk — concentrated sugars or fast-absorbing syrups can rapidly elevate blood sugar (watch for Type 2 Diabetes & PCOS)."
+            "Moderate Spike" -> "Moderate glucose impact — contains fast-digesting starches or sugars; pair with protein or fiber to steady blood sugar."
+            else -> "Steady glycemic profile — low added sugar and minimal glucose spike risk (PCOS & blood-sugar friendly)."
+        }
+        val calorieNote = yb?.optString("calorieNote")?.takeIf { it.isNotBlank() } ?: when (nutGrade) {
+            "A", "B" -> "Calorie-Smart"
+            "C" -> "Moderate Calories"
+            else -> "Calorie-Dense"
+        }
+        val glucoseBadgeColor = when (glucoseImpact) {
+            "High Spike" -> 0xFFD93025.toInt()
+            "Moderate Spike" -> 0xFFEA8600.toInt()
+            else -> 0xFF16A34A.toInt()
+        }
+
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -1526,6 +1550,20 @@ class MainActivity : Activity() {
                 setPadding(0, dp(4), 0, 0)
             })
             addView(label("🧪 Additive Safety: $addScore/30   ·   🌱 Organic Bonus: $orgScore/10", 12.5f, 0xFF4B5563.toInt()).apply {
+                setPadding(0, dp(2), 0, 0)
+            })
+            addView(View(context).apply {
+                setBackgroundColor(0xFFE5E7EB.toInt())
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                    topMargin = dp(8)
+                    bottomMargin = dp(8)
+                }
+            })
+            addView(label("BLOOD SUGAR, PCOS & CALORIE INSIGHT", 10.5f, 0xFF6B7280.toInt(), bold = true).apply { letterSpacing = 0.06f })
+            addView(label("🩸 Glucose Impact: $glucoseImpact  ·  🔥 $calorieNote", 12.5f, glucoseBadgeColor, bold = true).apply {
+                setPadding(0, dp(3), 0, 0)
+            })
+            addView(label(glucoseNote, 11.5f, 0xFF4B5563.toInt()).apply {
                 setPadding(0, dp(2), 0, 0)
             })
         })

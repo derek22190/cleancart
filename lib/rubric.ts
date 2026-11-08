@@ -43,15 +43,20 @@ export interface NutritionInput {
 }
 
 export interface YukaBreakdown {
-  /** 0..60 points (60% of Yuka score, based on Nutri-Score A-E). */
+  /** 0..60 points (60% of score, based on Nutri-Score A-E). */
   nutritionScore: number;
   nutriScoreGrade: "A" | "B" | "C" | "D" | "E";
-  /** 0..30 points (30% of Yuka score, based on additive count & risk tier). */
+  /** 0..30 points (30% of score, based on additive count & risk tier). */
   additiveScore: number;
-  /** 0..10 points (10% of Yuka score, awarded for certified Organic or 100% whole foods). */
+  /** 0..10 points (10% of score, awarded for certified Organic or 100% whole foods). */
   organicScore: number;
   /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
   highRiskCapped: boolean;
+  /** Blood sugar / glycemic impact tier for Diabetes & PCOS awareness. */
+  glucoseImpact?: "Low Spike" | "Moderate Spike" | "High Spike";
+  glucoseColor?: RatingColor;
+  glucoseNote?: string;
+  calorieNote?: string;
 }
 
 export interface AdditiveRule {
@@ -911,7 +916,7 @@ export function scoreProductYuka(
         risk: "low",
         category: "hfcs",
         penalty: 26,
-        explanation: "Even 100% fruit juice removes whole-fruit fiber and delivers ~22g of concentrated free liquid sugar per cup, so Yuka caps its nutrition score.",
+        explanation: "Even 100% fruit juice removes whole-fruit fiber and delivers ~22g of concentrated free liquid sugar per cup, lowering its nutrition score.",
         matched: "juice",
       });
     } else if (isBeverage && sugars >= 5) {
@@ -990,6 +995,42 @@ export function scoreProductYuka(
     }
   }
 
+  // Compute Blood Sugar / Glucose Spike & Calorie Smart insight (for Diabetes, PCOS & metabolic clarity)
+  const hasRapidGlycemicAdditive =
+    base.flagged.some((f) => f.category === "hfcs") ||
+    /\b(maltodextrin|dextrose|corn syrup|glucose syrup|cane sugar|brown sugar|invert sugar)\b/i.test(base.normalizedIngredients);
+  const hasRefinedCarbBase =
+    /\b(enriched\s+(?:wheat\s+)?flour|bleached\s+flour|corn\s*starch|tapioca\s+starch|potato\s+starch|cassava\s+flour|white\s+rice\s+flour)\b/i.test(base.normalizedIngredients);
+
+  let glucoseImpact: "Low Spike" | "Moderate Spike" | "High Spike" = "Low Spike";
+  let glucoseColor: RatingColor = "green";
+  let glucoseNote =
+    "Steady glycemic profile — low added sugar and minimal glucose spike risk (PCOS & blood-sugar friendly).";
+
+  if (
+    (isBeverage && sugars >= 5) ||
+    is100PctFruitJuice ||
+    sugars >= 15 ||
+    (hasRapidGlycemicAdditive && sugars >= 8)
+  ) {
+    glucoseImpact = "High Spike";
+    glucoseColor = "red";
+    glucoseNote =
+      "High glucose spike risk — concentrated sugars or fast-absorbing syrups can rapidly elevate blood glucose and insulin (watch for Type 2 Diabetes & PCOS).";
+  } else if (sugars >= 6 || hasRapidGlycemicAdditive || (hasRefinedCarbBase && fiber < 4)) {
+    glucoseImpact = "Moderate Spike";
+    glucoseColor = "yellow";
+    glucoseNote =
+      "Moderate glucose impact — contains fast-digesting starches or sugars; pair with protein or healthy fats to steady blood sugar.";
+  }
+
+  const calorieNote =
+    kcal <= 120
+      ? `Calorie-Smart (~${Math.round(kcal)} kcal/100g)`
+      : kcal <= 360
+        ? `Moderate Calories (~${Math.round(kcal)} kcal/100g)`
+        : `Calorie-Dense (~${Math.round(kcal)} kcal/100g)`;
+
   return {
     ...base,
     flagged,
@@ -1001,6 +1042,10 @@ export function scoreProductYuka(
       additiveScore,
       organicScore,
       highRiskCapped: hasHighRisk,
+      glucoseImpact,
+      glucoseColor,
+      glucoseNote,
+      calorieNote,
     },
   };
 }
