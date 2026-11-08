@@ -1281,27 +1281,50 @@ class GroceryScreenReaderService : AccessibilityService() {
      * product title viewId so Cart UI chrome (delivery addresses, barcode scanner button, Express/Today time slots)
      * is never mistaken for a cart item.
      */
+    private fun normalizeCartDedupKey(raw: String): String =
+        raw.lowercase()
+            .replace(Regex("""\b93?%\s*lean\s*/?\s*7?%\s*fat\b"""), "93 7 lean fat")
+            .replace(Regex("""\b80?%\s*lean\s*/?\s*20?%\s*fat\b"""), "80 20 lean fat")
+            .replace(Regex("""\b85?%\s*lean\s*/?\s*15?%\s*fat\b"""), "85 15 lean fat")
+            .replace(Regex("""\b73?%\s*lean\s*/?\s*27?%\s*fat\b"""), "73 27 lean fat")
+            .replace(Regex("""[,•|\-–—.…*]+"""), " ")
+            .replace(WHITESPACE, " ")
+            .trim()
+
+    private fun isSameCartRowTitle(a: String, b: String): Boolean {
+        val na = normalizeCartDedupKey(a)
+        val nb = normalizeCartDedupKey(b)
+        if (na == nb) return true
+        val shorter = if (na.length <= nb.length) na else nb
+        val longer = if (na.length <= nb.length) nb else na
+        return shorter.length >= 15 && longer.startsWith(shorter)
+    }
+
     private fun extractCartScreenTitles(nodes: List<TextNode>, removedTitles: List<String> = emptyList()): List<String> {
         val endIdx = nodes.indexOfFirst { CART_END_BOUNDARY.matches(it.text.trim()) }
         val cartNodes = if (endIdx >= 2) nodes.subList(0, endIdx) else nodes
-        val seen = LinkedHashSet<String>()
+        val seen = ArrayList<String>()
         for (n in cartNodes) {
             val c = cleanTitleCandidate(n.text)
             if (!isCandidateProductTitle(c)) continue
-            if (removedTitles.any { rem -> c.equals(rem, ignoreCase = true) || c.contains(rem, ignoreCase = true) || rem.contains(c, ignoreCase = true) }) {
+            if (removedTitles.any { rem -> isSameCartRowTitle(c, rem) || c.contains(rem, ignoreCase = true) || rem.contains(c, ignoreCase = true) }) {
                 continue
             }
             val words = c.split(' ').filter { it.isNotBlank() }
             val hasExplicitTitleViewId = TITLE_ID_HINTS.any { n.viewId.contains(it) }
             if ((words.size >= 1 && FOOD_HINTS.containsMatchIn(c)) || (hasExplicitTitleViewId && words.size >= 2)) {
-                val normKey = c.lowercase()
-                if (seen.none { it.lowercase() == normKey }) {
+                val existingIdx = seen.indexOfFirst { isSameCartRowTitle(it, c) }
+                if (existingIdx >= 0) {
+                    if (c.length > seen[existingIdx].length) {
+                        seen[existingIdx] = c
+                    }
+                } else {
                     seen.add(c)
                 }
             }
             if (seen.size >= 20) break
         }
-        return seen.toList()
+        return seen
     }
 
     private fun findIngredients(nodes: List<TextNode>): String? {

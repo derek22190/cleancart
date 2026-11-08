@@ -346,15 +346,25 @@ class OverlayWindowService : Service() {
         else -> "red"
     }
 
+    private fun cleanCartTitle(raw: String): String =
+        raw.replace(Regex("^(?i)conventional grocery\\s+"), "")
+            .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
+            .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
+            .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
+            .replace(Regex("(?i)\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93% Lean/7% Fat")
+            .replace(Regex("(?i)\\b80?%\\s*lean\\s*/?\\s*20?%\\s*fat\\b"), "80% Lean/20% Fat")
+            .replace(Regex("(?i)\\b85?%\\s*lean\\s*/?\\s*15?%\\s*fat\\b"), "85% Lean/15% Fat")
+            .replace(Regex("(?i)\\b73?%\\s*lean\\s*/?\\s*27?%\\s*fat\\b"), "73% Lean/27% Fat")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
     private fun normalizeCartKey(raw: String): String =
-        raw.lowercase()
-            .replace(Regex("\\(category\\s+estimate[^)]*\\)"), " ")
+        cleanCartTitle(raw).lowercase()
             .replace(Regex("^(conventional grocery|organic|natural)\\s+"), "")
-            .replace(Regex("\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
-            .replace(Regex("\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
-            .replace(Regex("\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93 7 lean fat")
-            .replace(Regex("\\b80?%\\s*lean\\s*/?\\s*20?%\\s*fat\\b"), "80 20 lean fat")
-            .replace(Regex("\\b85?%\\s*lean\\s*/?\\s*15?%\\s*fat\\b"), "85 15 lean fat")
+            .replace(Regex("\\b93%\\s*lean/7%\\s*fat\\b"), "93 7 lean fat")
+            .replace(Regex("\\b80%\\s*lean/20%\\s*fat\\b"), "80 20 lean fat")
+            .replace(Regex("\\b85%\\s*lean/15%\\s*fat\\b"), "85 15 lean fat")
+            .replace(Regex("\\b73%\\s*lean/27%\\s*fat\\b"), "73 27 lean fat")
             .replace(Regex("[,•|\\-–—.…*]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
@@ -364,7 +374,9 @@ class OverlayWindowService : Service() {
         val na = normalizeCartKey(a)
         val nb = normalizeCartKey(b)
         if (na == nb) return true
-        if (na.length >= 18 && nb.length >= 18 && (na.startsWith(nb.take(22)) || nb.startsWith(na.take(22)))) return true
+        val shorter = if (na.length <= nb.length) na else nb
+        val longer = if (na.length <= nb.length) nb else na
+        if (shorter.length >= 15 && longer.startsWith(shorter)) return true
         return false
     }
 
@@ -380,10 +392,16 @@ class OverlayWindowService : Service() {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
         val prevAvg = calcCartAvg()
+        val now = System.currentTimeMillis()
         var swapDetectedInCart = false
-        // Never clear tripCart on virtualized RecyclerView cart screens — merge/accumulate visible rows
-        // so scrolling up and down a Walmart/BJ's/ALDI cart retains off-screen items smoothly.
-        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
+        // When syncing from the real Cart screen, drop non-cart-screen items (e.g. PDP browsing leftovers or legacy pre-v4 cache)
+        // and items from previous shopping sessions (>30 min old), while retaining items scrolled during the active Cart session.
+        tripCart.removeAll {
+            it.isSeed ||
+                it.title.lowercase() in DEMO_SEED_TITLES ||
+                VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
+                (arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
+        }
         if (remArr != null) {
             for (i in 0 until remArr.length()) {
                 val remTitle = remArr.optString(i).trim()
@@ -402,7 +420,7 @@ class OverlayWindowService : Service() {
             if (d.optBoolean("ok") != true) continue
             val result = d.optJSONObject("result") ?: continue
             val prod = d.optJSONObject("product") ?: continue
-            val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
+            val rawTitle = cleanCartTitle(prod.optString("title"))
             if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) continue
             val score = result.optInt("score", 50)
             val swap = d.optJSONObject("swap")
@@ -420,11 +438,13 @@ class OverlayWindowService : Service() {
                 existing.score = score
                 existing.swapObj = swap
                 existing.fullJson = d
+                existing.fromCartScreen = true
+                existing.lastSeenAtMs = now
                 if (rawTitle.length > existing.title.length && !rawTitle.endsWith("...")) {
                     existing.title = rawTitle
                 }
             } else {
-                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d))
+                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d, fromCartScreen = true, lastSeenAtMs = now))
                 while (tripCart.size > 40) {
                     tripCart.removeAt(tripCart.size - 1)
                 }
@@ -442,10 +462,11 @@ class OverlayWindowService : Service() {
         if (d?.optBoolean("ok") != true) return
         val result = d.optJSONObject("result") ?: return
         val prod = d.optJSONObject("product") ?: return
-        val rawTitle = prod.optString("title").replace(Regex("^(?i)conventional grocery\\s+"), "").trim()
+        val rawTitle = cleanCartTitle(prod.optString("title"))
         if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) return
         if (Regex("(?i)(gas savings|walmart\\+|notification|scan barcodes|qr code|account|sparky)").containsMatchIn(rawTitle)) return
         val prevAvg = calcCartAvg()
+        val now = System.currentTimeMillis()
         var swapDetectedInCart = false
         val score = result.optInt("score", 50)
         val swap = d.optJSONObject("swap")
@@ -464,8 +485,9 @@ class OverlayWindowService : Service() {
             existing.score = score
             existing.swapObj = swap
             existing.fullJson = d
+            existing.lastSeenAtMs = now
         } else {
-            tripCart.add(0, TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d))
+            tripCart.add(0, TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d, fromCartScreen = false, lastSeenAtMs = now))
             while (tripCart.size > 40) {
                 tripCart.removeAt(tripCart.size - 1)
             }
@@ -485,6 +507,8 @@ class OverlayWindowService : Service() {
                 put("key", item.key)
                 put("title", item.title)
                 put("score", item.score)
+                put("fromCartScreen", item.fromCartScreen)
+                put("lastSeenAtMs", item.lastSeenAtMs)
                 item.swapObj?.let { put("swap", it) }
                 item.fullJson?.let { put("fullJson", it) }
             })
@@ -503,21 +527,26 @@ class OverlayWindowService : Service() {
             val arr = JSONArray(raw)
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                val title = o.optString("title")
-                    .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
-                    .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
-                    .trim()
+                val title = cleanCartTitle(o.optString("title"))
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
-                if (tripCart.any { isSameCartItem(it.key, title) || isSameCartItem(it.title, title) }) continue
+                val existing = tripCart.firstOrNull { isSameCartItem(it.key, title) || isSameCartItem(it.title, title) }
+                if (existing != null) {
+                    if (title.length > existing.title.length && !title.endsWith("...")) {
+                        existing.title = title
+                    }
+                    continue
+                }
                 val score = o.optInt("score", 50)
                 tripCart.add(
                     TripCartItem(
-                        key = o.optString("key").ifBlank { title },
+                        key = cleanCartTitle(o.optString("key")).ifBlank { title },
                         title = title,
                         score = score,
                         swapObj = o.optJSONObject("swap"),
                         isSeed = false,
                         fullJson = o.optJSONObject("fullJson"),
+                        fromCartScreen = o.optBoolean("fromCartScreen", false),
+                        lastSeenAtMs = o.optLong("lastSeenAtMs", 0L),
                     )
                 )
             }
