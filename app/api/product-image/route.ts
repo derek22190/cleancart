@@ -54,15 +54,21 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
 }
 
 const STOP_TOKENS = new Set([
-  "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack",
+  "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack", "pk",
   "original", "classic", "organic", "natural", "flavored", "flavor", "pure",
   "grade", "category", "estimate", "verify", "package", "label", "rating", "ratings",
   "sweeteners", "sweetener", "creamery", "fresh", "each", "average", "price",
+  "snack", "size", "family", "party", "share", "fun", "giant", "king", "bag", "box",
+  "pouch", "jar", "bottle", "can", "carton", "candy", "bars", "bar", "gourmet", "gift",
 ]);
 
 function distinctiveTokens(s: string): string[] {
   return s
     .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/\btruffl\b/g, "truffles")
+    .replace(/\bchocolat\b/g, "chocolate")
+    .replace(/\bappl\b/g, "apples")
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
     .filter((t) => t.length >= 3 && !STOP_TOKENS.has(t) && !/^\d+$/.test(t));
@@ -71,66 +77,81 @@ function distinctiveTokens(s: string): string[] {
 function hasProductIdentityMatch(query: string, candidateName: string, candidateBrands = ""): boolean {
   const qTokens = distinctiveTokens(query);
   const cTokens = distinctiveTokens(`${candidateBrands} ${candidateName}`);
-  // Require at least 3 distinctive tokens (brand + specific product words) so generic category
-  // labels like "Maple Syrup" never pull a random brand's bottle photo from Open Food Facts.
-  if (qTokens.length < 3 || !cTokens.length) return false;
+  if (qTokens.length < 2 || !cTokens.length) return false;
   const leadBrandToken = qTokens[0];
   const hasBrandMatch = cTokens.some(
     (ct) => ct === leadBrandToken || ct === `${leadBrandToken}s` || leadBrandToken === `${ct}s`
   );
   if (!hasBrandMatch) return false;
   const matched = qTokens.filter((qt) =>
-    cTokens.some((ct) => ct === qt || ct === `${qt}s` || qt === `${ct}s`)
+    cTokens.some((ct) => ct === qt || ct === `${qt}s` || qt === `${ct}s` || (qt.length >= 5 && ct.startsWith(qt)))
   );
-  return matched.length / qTokens.length >= 0.7;
+  return matched.length >= Math.min(2, qTokens.length) && matched.length / qTokens.length >= 0.6;
 }
 
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
   const clean = rawQuery
     .replace(/\(category\s+estimate[^)]*\)/gi, " ")
+    .replace(/\(representative\s+formulation[^)]*\)/gi, " ")
+    .replace(/\([^)]*$/g, " ")
     .replace(/\b(natural\s+sweeteners|creamery\s+butter|conventional\s+grocery)\b/gi, " ")
     .replace(/\s*,\s*ratings?\b/gi, " ")
-    .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|g|kg|ml|l|cup|bag|box|can|jar|bottle))\b/gi, " ")
+    .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|pk|g|kg|ml|l|cup|bag|box|can|jar|bottle|as|assorted))\b/gi, " ")
+    .replace(/\b(snack\s+size|family\s+size|party\s+size|share\s+size|fun\s+size|candy\s+bag|candy\s+bars?|gourmet\s+gift\s+box)\b/gi, " ")
+    .replace(/\btruffl\.*/gi, "Truffles")
+    .replace(/\bchocolat\.*/gi, "Chocolate")
+    .replace(/\bappl\.*/gi, "Apples")
+    .replace(/[.,•|\-–—…]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   const cacheKey = clean.toLowerCase();
-  if (distinctiveTokens(clean).length < 3) return null;
+  const tokens = distinctiveTokens(clean);
+  if (tokens.length < 2) return null;
   const cached = imageUrlCache.get(cacheKey);
   if (cached) return cached;
 
-  // OpenFoodFacts open-licensed product image lookup (ODbL / CC-BY-SA 3.0)
-  try {
-    const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(clean)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,image_front_small_url,image_front_url`;
-    const res = await fetch(offUrl, {
-      headers: { "User-Agent": "HeyBroc/2.0 (https://www.heybroc.com)" },
-      signal: AbortSignal.timeout(4000),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as {
-        products?: Array<{
-          product_name?: string;
-          brands?: string;
-          image_front_small_url?: string;
-          image_front_url?: string;
-        }>;
-      };
-      const hit = (data.products || []).find(
-        (p) =>
-          (p.image_front_small_url || p.image_front_url) &&
-          hasProductIdentityMatch(clean, p.product_name || "", p.brands || "")
-      );
-      const url = hit?.image_front_small_url || hit?.image_front_url;
-      if (url && isAllowedImageUrl(url)) {
-        if (imageUrlCache.size >= 1000) {
-          const oldest = imageUrlCache.keys().next().value;
-          if (oldest !== undefined) imageUrlCache.delete(oldest);
+  const queriesToTry = [clean];
+  if (tokens.length > 3) {
+    queriesToTry.push(tokens.slice(0, 3).join(" "));
+  }
+
+  // OpenFoodFacts Search-a-licious v3 open-licensed product image lookup (ODbL / CC-BY-SA 3.0)
+  for (const searchQ of queriesToTry) {
+    try {
+      const offUrl = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(searchQ)}&page_size=6&fields=code,product_name,brands,image_front_small_url,image_front_url`;
+      const res = await fetch(offUrl, {
+        headers: { "User-Agent": "HeyBroc/2.0 (https://www.heybroc.com)" },
+        signal: AbortSignal.timeout(3800),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          hits?: Array<{
+            product_name?: string;
+            brands?: string | string[];
+            image_front_small_url?: string;
+            image_front_url?: string;
+          }>;
+        };
+        const hit = (data.hits || []).find((p) => {
+          const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
+          return (
+            (p.image_front_small_url || p.image_front_url) &&
+            hasProductIdentityMatch(searchQ, p.product_name || "", brandsStr)
+          );
+        });
+        const url = hit?.image_front_small_url || hit?.image_front_url;
+        if (url && isAllowedImageUrl(url)) {
+          if (imageUrlCache.size >= 1000) {
+            const oldest = imageUrlCache.keys().next().value;
+            if (oldest !== undefined) imageUrlCache.delete(oldest);
+          }
+          imageUrlCache.set(cacheKey, url);
+          return url;
         }
-        imageUrlCache.set(cacheKey, url);
-        return url;
       }
+    } catch {
+      // Ignore and try next query or fall through to local category asset
     }
-  } catch {
-    // Ignore and fall through to local category asset
   }
 
   return null;
@@ -202,8 +223,8 @@ export async function GET(request: Request) {
   }
 
   // 3. Guaranteed local fallback image so product cards never show broken images
+  const fallback = localFallbackAssetForQuery(q);
   try {
-    const fallback = localFallbackAssetForQuery(q);
     const buf = await fs.readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), fallback.relPath));
     const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
     return new NextResponse(arrayBuffer, {
@@ -217,6 +238,7 @@ export async function GET(request: Request) {
       },
     });
   } catch {
-    return new NextResponse("Not found", { status: 404 });
+    const publicPath = fallback.relPath.replace(/^public/, "");
+    return NextResponse.redirect(new URL(publicPath, request.url), 302);
   }
 }

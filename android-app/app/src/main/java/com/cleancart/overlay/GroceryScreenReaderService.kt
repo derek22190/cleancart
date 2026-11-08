@@ -64,19 +64,19 @@ class GroceryScreenReaderService : AccessibilityService() {
             "item_name"
         )
         private val HOME_OR_AISLE_BANNERS = Regex(
-            """shop all food|rollbacks\s*&\s*more|your favorites,\s*for less|the holiday shop|use walmart\+?\s*gas savings|hosting,\s*decor\s*&\s*more|search results for|featured categories|shop categories|shop by category|shop by department|weekly ad""",
+            """shop all food|rollbacks\s*&\s*more|your favorites,\s*for less|the holiday shop|use walmart\+?\s*gas savings|hosting,\s*decor\s*&\s*more|search results for|featured categories|shop categories|shop by category|shop by department|weekly ad|^your carts$|^personal cart$|^continue shopping$|^restaurants$""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_CHECKOUT_SIGNALS = Regex(
-            """(\b(continue to checkout|proceed to checkout|go to checkout|checkout all items|review order|place order|estimated total|order summary|subtotal|your cart|shopping cart|skip the order min|available for all items|available for \d+ of \d+ items|same-day delivery fees|pickup fee)\b|^[^a-z0-9]*checkout(\s+all\s+items|\s*\(\d+\))?$|^cart\s*\(\d+(\s+items?)?\)$)""",
+            """(\b(continue to checkout|proceed to checkout|go to checkout|checkout all items|review order|place order|estimated total|order summary|item subtotal|subtotal|your cart|shopping cart|skip the order min|available for all items|available for \d+ of \d+ items|same-day delivery fees|pickup fee)\b|^[^a-z0-9]*checkout(\s+all\s+items|\s*\(\d+\))?$|^cart\s*\(\d+(\s+items?)?\)$|^(personal|family)\s+.*\bcart$)""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_ITEM_CONTROLS = Regex(
-            """^(remove|save for later|select all)$""",
+            """^(remove|save for later|select all|replace with best match|edit instructions)$""",
             RegexOption.IGNORE_CASE,
         )
         private val CART_END_BOUNDARY = Regex(
-            """^(saved for later.*|save for later\s*\(\d+.*|recommended for you.*|customers also.*|similar items.*|frequently bought.*|people also bought.*|don't forget.*|items to add next.*)$""",
+            """^(saved for later.*|save for later\s*\(\d+.*|recommended for you.*|customers also.*|similar items.*|frequently bought.*|people also bought.*|don't forget.*|items to add next.*|complete your cart.*|based on items in your cart.*|item subtotal.*|\d+\s+items?\s+(are|is)\s+no\s+longer\s+available.*|these items have been removed from your cart.*)$""",
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_PDP_CTA = Regex(
@@ -96,7 +96,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CAROUSEL_BOUNDARY = Regex(
-            """^(items to add next|similar items?( to consider)?|customers also (bought|viewed|considered)|frequently bought together|often bought with|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar( items?)?|recommended for you|items that pair well together)$""",
+            """^(items to add next|similar items?( to consider)?|customers also (bought|viewed|considered)|frequently bought together|often bought with|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar( items?)?|recommended for you|items that pair well together|complete your cart|based on items in your cart)$""",
             RegexOption.IGNORE_CASE,
         )
         private val BRAND_OR_UNIT_ONLY = Regex(
@@ -104,23 +104,23 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_WORD_PRODUCE = Regex(
-            """^(banana|bananas|apple|apples|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|avocado|avocados|broccoli|spinach|kale|lettuce|romaine|arugula|carrot|carrots|tomato|tomatoes|potato|potatoes|onion|onions|garlic|ginger|parsley|cilantro|basil|celery|cucumber|cucumbers|zucchini|asparagus|mushrooms|orange|oranges|lemon|lemons|lime|limes|grape|grapes|peach|peaches|watermelon|cantaloupe|pineapple|mango|mangoes|pear|pears|plum|plums|kiwi|cabbage|cauliflower)$""",
+            """^(banana|bananas|apple|apples|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|avocado|avocados|broccoli|spinach|kale|lettuce|romaine|arugula|carrot|carrots|tomato|tomatoes|potato|potatoes|yam|yams|onion|onions|garlic|ginger|parsley|cilantro|basil|celery|cucumber|cucumbers|zucchini|asparagus|mushrooms|orange|oranges|lemon|lemons|lime|limes|grape|grapes|peach|peaches|watermelon|cantaloupe|pineapple|mango|mangoes|pear|pears|plum|plums|kiwi|cabbage|cauliflower)$""",
             RegexOption.IGNORE_CASE,
         )
         private val PROSE_OR_BULLET_NOISE = Regex(
-            """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|clip\s+coupon|congratulations|pickup\s+benefit|benefit\s+has\s+been\s+applied|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|eligible\s+order|pay\s+once\s+for\s+a\s+year|groceries\s+delivered|lower\s+your\s+delivery\s+fees|select\s+package)\b|&\s*more\.?$|!$""",
+            """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|edit instructions|this item is not available in your area|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available|these items have been removed from your cart|complete your cart|based on items in your cart|yes,\s*i want \$0 delivery fee|start saving with instacart\+|service fees apply|add \$?\d+(\.\d{2})? of eligible items|buy \$\d+,\s*get \$\d+ off|shopping in \d+|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|clip\s+coupon|congratulations|pickup\s+benefit|benefit\s+has\s+been\s+applied|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|eligible\s+order|pay\s+once\s+for\s+a\s+year|groceries\s+delivered|lower\s+your\s+delivery\s+fees|select\s+package|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen)\b|&\s*more\.?$|!$""",
             RegexOption.IGNORE_CASE,
         )
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|check nearby clubs|out of stock.*|in stock.*|many in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee.*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|checkout|checkout all items|estimated total|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|[!?]$""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|this item is not available.*|\d+\s+items?\s+(are|is)\s+no\s+longer\s+available.*|these items have been removed.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|ready by .*|check nearby clubs|out of stock.*|in stock.*|many in stock|likely in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee.*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|edit instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|service fees apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|your carts|personal cart|continue shopping|restaurants|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|go to checkout|checkout|checkout all items|estimated total|item subtotal|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|edit instructions|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|[!?]$""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|dinner rolls?|cinnamon rolls?|sweet rolls?|crescent rolls?|hawaiian rolls?|sausage rolls?|pizza rolls?|egg rolls?|bread rolls?|kaiser rolls?|sub rolls?|hoagie rolls?|sandwich rolls?|potato rolls?|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|crunchmaster|mary'?s gone|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|french toast|breakfast|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|pompeian|bertolli|vinegar|turkey|chicken|rotisserie|poultry|beef|angus|usda choice|usda prime|steak|ribeye|sirloin|new york strip|strip steak|roast|chuck|tenderloin|brisket|pork|bacon|crumbled bacon|bac'?n|mccormick|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets?|cutlets?|chicken strips?|beef strips?|ham|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dogs?|franks?|frankfurters?|wieners?|ball park|nathan'?s|hebrew national|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|soda pop|ice pop|pop[- ]?tarts?|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang energy|reign|rockstar|prime hydration|prime energy|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit energy|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost original|boost high protein|boost nutritional|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|carvel|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|florets?|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|mashed|idahoan|ore-ida|tater|tots|hash\s*browns?|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichokes?|beet|beets|radish|turnip|eggplant|okra|corn|peas|edamame|green beans|brussels|vegetables?|veggies?|frozen|steamfresh|birds eye|green giant|medley|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|de cecco|barilla|rao'?s|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|(?:chicken|beef|vegetable|bone|seafood|turkey|fish)\s+stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|haribo|lindt|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|kellogg'?s?|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|prego|ragu|classico|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish soap|dish detergent|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|banana boat|huggies|pampers|vitamin|protein|collagen|creatine|purina|dog chow|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
+            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|dinner rolls?|cinnamon rolls?|sweet rolls?|crescent rolls?|hawaiian rolls?|sausage rolls?|pizza rolls?|egg rolls?|bread rolls?|kaiser rolls?|sub rolls?|hoagie rolls?|sandwich rolls?|potato rolls?|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|crunchmaster|mary'?s gone|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|french toast|breakfast|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|pompeian|bertolli|vinegar|turkey|chicken|rotisserie|poultry|beef|angus|usda choice|usda prime|steak|ribeye|sirloin|new york strip|strip steak|roast|chuck|tenderloin|brisket|pork|bacon|crumbled bacon|bac'?n|mccormick|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets?|cutlets?|chicken strips?|beef strips?|ham|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dogs?|franks?|frankfurters?|wieners?|ball park|nathan'?s|hebrew national|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|soda pop|ice pop|pop[- ]?tarts?|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang energy|reign|rockstar|prime hydration|prime energy|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit energy|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost original|boost high protein|boost nutritional|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|carvel|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|truffles?|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|honeycrisp|gala|fuji|granny smith|pink lady|mcintosh|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|florets?|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|sweet potato|sweet potatoes|yam|yams|mashed|idahoan|ore-ida|tater|tots|hash\s*browns?|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichokes?|beet|beets|radish|turnip|eggplant|okra|corn|peas|edamame|green beans|brussels|vegetables?|veggies?|frozen|steamfresh|birds eye|green giant|medley|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|de cecco|barilla|rao'?s|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|(?:chicken|beef|vegetable|bone|seafood|turkey|fish)\s+stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|rocher|tony'?s|chocolonely|haribo|lindt|lindor|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|freihofer'?s|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|kellogg'?s?|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|wegmans|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|prego|ragu|classico|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|redhot|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish soap|dish detergent|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|banana boat|huggies|pampers|vitamin|protein|collagen|creatine|purina|dog chow|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2}|\s+\d{2})?|\b\d+\s*dollars?(\s*(and\s*)?\d+\s*cents?)?\b)""", RegexOption.IGNORE_CASE)
-        private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add|quick add|add item|choose options|\+|increase quantity.*)$""", RegexOption.IGNORE_CASE)
+        private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add(\s+.+)?|quick add.*|add item.*|choose options.*|\+|increase quantity.*)$""", RegexOption.IGNORE_CASE)
         private val CLUB_ITEM_NUMBER = Regex("""^(item|model|sku)\s*:?\s*#?[a-z0-9\-]+(\s*[|•,/]\s*(item|model|sku)\s*:?\s*#?[a-z0-9\-]+)*$""", RegexOption.IGNORE_CASE)
         private val NON_INGREDIENT_TEXT = Regex(
             """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value|items to add next|product information|customers also|similar items|you might also|related items|sold by|fulfilled by)\b""",
@@ -300,19 +300,27 @@ class GroceryScreenReaderService : AccessibilityService() {
                         }
                         recycleNode(ch)
                     }
-                    // Walk up to 4 ancestor levels so tapping a product photo inside a nested CardView/Compose node captures the product card's title
+                    // Walk up to 5 ancestor levels (and grandchildren) so tapping a product photo or '+' button inside a nested CardView/Compose node captures the product card's title
                     var ancestor = runCatching { src.parent }.getOrNull()
                     var depth = 0
-                    while (ancestor != null && depth < 4) {
+                    while (ancestor != null && depth < 5) {
                         val curAncestor = ancestor
                         if (!curAncestor.isPassword && !curAncestor.isEditable && curAncestor.isVisibleToUser) {
                             addCandidateStrings(candidateClickStrings, curAncestor.text)
                             addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
-                            for (i in 0 until minOf(curAncestor.childCount, 10)) {
+                            for (i in 0 until minOf(curAncestor.childCount, 12)) {
                                 val pch = runCatching { curAncestor.getChild(i) }.getOrNull() ?: continue
                                 if (!pch.isPassword && !pch.isEditable && pch.isVisibleToUser) {
                                     addCandidateStrings(candidateClickStrings, pch.text)
                                     addCandidateStrings(candidateClickStrings, pch.contentDescription)
+                                    for (j in 0 until minOf(pch.childCount, 8)) {
+                                        val gch = runCatching { pch.getChild(j) }.getOrNull() ?: continue
+                                        if (!gch.isPassword && !gch.isEditable && gch.isVisibleToUser) {
+                                            addCandidateStrings(candidateClickStrings, gch.text)
+                                            addCandidateStrings(candidateClickStrings, gch.contentDescription)
+                                        }
+                                        recycleNode(gch)
+                                    }
                                 }
                                 recycleNode(pch)
                             }
@@ -328,6 +336,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             val srcViewId = src?.viewIdResourceName?.lowercase().orEmpty()
             recycleNode(src)
 
+            var clickedProduct: String? = null
             if (Regex("""(?i)^(back|navigate up|close|dismiss|cancel|search|clear|cart|view cart)\b""").containsMatchIn(clickedText) ||
                 srcViewId.contains("back") || srcViewId.contains("close") || srcViewId.contains("toolbar_navigation")
             ) {
@@ -343,7 +352,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 val validClickedCandidates = candidateClickStrings
                     .map { cleanTitleCandidate(it) }
                     .filter { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) }
-                val clickedProduct = validClickedCandidates
+                clickedProduct = validClickedCandidates
                     .filter { it.split(' ').size >= 3 }
                     .maxByOrNull { it.length }
                     ?: validClickedCandidates.maxByOrNull { it.length }
@@ -372,12 +381,35 @@ class GroceryScreenReaderService : AccessibilityService() {
             val isAddClick =
                 SINGLE_PDP_CTA.containsMatchIn(clickedText) ||
                     ADD_TILE_BUTTON.matches(clickedText) ||
+                    Regex("""(?i)\b(add\s+to\s+cart|add\s+item|increase\s+quantity|\d+\s*ct)\b""").containsMatchIn(clickedText) ||
                     srcViewId.contains("add_to_cart") ||
                     srcViewId.contains("addtocart") ||
                     srcViewId.contains("stepper_plus") ||
-                    srcViewId.contains("plus_button")
+                    srcViewId.contains("plus_button") ||
+                    srcViewId.contains("add_button") ||
+                    srcViewId.contains("increment")
             if (isAddClick) {
                 pendingAddToCartClick = true
+                val addedTitle = clickedProduct ?: lastRowGradedTitle
+                if (addedTitle != null) {
+                    val store = ScanApi.storeForPackage(pkg)
+                    val appContext = applicationContext
+                    io.execute {
+                        val json = runCatching { ScanApi.scan(appContext, addedTitle, null, store) }.getOrNull()
+                        if (json != null) {
+                            val arr = org.json.JSONArray().put(json)
+                            handler.post {
+                                if (AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
+                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                        putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                        putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
+                                        putExtra(OverlayWindowService.EXTRA_KEEP_MODE, true)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 lastKey = "" // Force re-evaluation so the clicked product is recorded in cart automatically
                 pendingSinceMs = System.currentTimeMillis()
                 handler.removeCallbacks(scanRunnable)
@@ -480,17 +512,23 @@ class GroceryScreenReaderService : AccessibilityService() {
                 allNodes.any { n -> TITLE_ID_HINTS.any { n.viewId.contains(it) } }
             val hasClubItemNumber = nodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
+            val isMultiCartSwitcher = nodes.any { it.text.trim().equals("Your carts", ignoreCase = true) }
             val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text.trim()) }
             val hasCartItemControls = nodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
-            val hasDefinitiveCartScreenSignal = hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
+            val hasDefinitiveCartScreenSignal = !isMultiCartSwitcher && hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
                 val t = it.text.trim()
                 t.contains("continue to checkout", ignoreCase = true) ||
                     t.contains("proceed to checkout", ignoreCase = true) ||
+                    t.contains("go to checkout", ignoreCase = true) ||
                     t.contains("checkout all items", ignoreCase = true) ||
                     t.contains("estimated total", ignoreCase = true) ||
+                    t.contains("item subtotal", ignoreCase = true) ||
                     t.contains("subtotal", ignoreCase = true) ||
                     t.matches(Regex("""(?i)^[^a-z0-9]*checkout(\s*\(\d+\))?$""")) ||
                     t.matches(Regex("""(?i)^cart\s*\(\d+(\s+items?)?\)$""")) ||
+                    t.matches(Regex("""(?i)^(personal|family)\s+.*\bcart$""")) ||
+                    t.contains("replace with best match", ignoreCase = true) ||
+                    t.contains("edit instructions", ignoreCase = true) ||
                     t.contains("choose substitution", ignoreCase = true) ||
                     t.contains("skip the order min", ignoreCase = true) ||
                     t.contains("same-day delivery fees", ignoreCase = true) ||
@@ -512,7 +550,9 @@ class GroceryScreenReaderService : AccessibilityService() {
             // above the carousel header, grade the visible carousel cards in carousel/feed mode!
             val carouselHasCards = carouselIdx >= 0 && carouselIdx + 1 < nodes.size &&
                 nodes.subList(carouselIdx + 1, nodes.size).any {
-                    ADD_TILE_BUTTON.matches(it.text.trim()) || it.text.trim().equals("options", ignoreCase = true)
+                    ADD_TILE_BUTTON.matches(it.text.trim()) ||
+                        it.text.trim().equals("options", ignoreCase = true) ||
+                        PRICE_PATTERN.containsMatchIn(it.text)
                 }
             val visiblePrimaryCandidates = if (carouselIdx >= 0) {
                 findCandidateTitles(primaryNodes, emptyList(), isConfirmedSinglePdp = false, pkg = pkg)
@@ -587,11 +627,41 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
             wasOnCartScreen = false
 
+            // Sync any visible aisle/carousel cards that already show an "in cart" or leading "1 ct" badge into Cart Check in the background!
+            val aisleInCartRe = Regex("""(?i)^(?:\d+\s+in\s+(?:cart|bag|basket|order)\s*[-–—:,]?\s*|\d+\s*ct\s+)(.+)$""")
+            val aisleAddedTitles = nodes.mapNotNull { n ->
+                aisleInCartRe.find(n.text.trim())?.groupValues?.getOrNull(1)?.let { cleanTitleCandidate(it) }
+            }.filter { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) }.distinct()
+            if (aisleAddedTitles.isNotEmpty()) {
+                val store = ScanApi.storeForPackage(pkg)
+                val appContext = applicationContext
+                io.execute {
+                    val arr = org.json.JSONArray()
+                    for (itemTitle in aisleAddedTitles) {
+                        val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
+                        if (json != null) arr.put(json)
+                    }
+                    if (arr.length() > 0) {
+                        handler.post {
+                            if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
+                                sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                    putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                    putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
+                                    putExtra(OverlayWindowService.EXTRA_KEEP_MODE, true)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 2. Grade the product on Product Detail Pages AND vertical/horizontal product card feeds
+            val hasCarouselPricesOrStock = nodes.count { PRICE_PATTERN.containsMatchIn(it.text) } >= 2 ||
+                nodes.any { Regex("""(?i)\b(many|likely|low)\s+in\s+stock\b""").containsMatchIn(it.text) }
             val isProductView =
                 isConfirmedSinglePdp ||
                     isViewingFullScreenCarousel ||
-                    (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons || totalTileAddCount >= 1))
+                    (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons || totalTileAddCount >= 1 || hasCarouselPricesOrStock))
 
             val candidates = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
                 val carouselSlice = nodes.subList(carouselIdx + 1, nodes.size)
@@ -634,39 +704,6 @@ class GroceryScreenReaderService : AccessibilityService() {
                         lastKey = scrollHintKey
                         sendToOverlay(OverlayWindowService.ACTION_PDP_SCROLL_HINT)
                         markVisible()
-                    }
-                    return
-                }
-
-                // If the user added items to cart directly on a Search Results aisle (which renders "1 in cart - <Product>"),
-                // sync those added items into Cart Check immediately even before they open the Cart screen.
-                val aisleInCartRe = Regex("""(?i)^\d+\s+in\s+(?:cart|bag|basket|order)\s*[-–—:,]\s*(.+)$""")
-                val aisleAddedTitles = nodes.mapNotNull { n ->
-                    aisleInCartRe.find(n.text.trim())?.groupValues?.getOrNull(1)?.let { cleanTitleCandidate(it) }
-                }.filter { isCandidateProductTitle(it) }.distinct()
-
-                if (aisleAddedTitles.isNotEmpty()) {
-                    val aisleCartKey = "$pkg|AISLE_CART|${aisleAddedTitles.joinToString("|")}"
-                    if (lastKey != aisleCartKey) {
-                        lastKey = aisleCartKey
-                        markVisible()
-                        val store = ScanApi.storeForPackage(pkg)
-                        val appContext = applicationContext
-                        io.execute {
-                            val arr = org.json.JSONArray()
-                            for (itemTitle in aisleAddedTitles) {
-                                val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
-                                if (json != null) arr.put(json)
-                            }
-                            handler.post {
-                                if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
-                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
-                                        putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
-                                        putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
-                                    }
-                                }
-                            }
-                        }
                     }
                     return
                 }
@@ -817,7 +854,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         val screenW = dm.widthPixels.coerceAtLeast(720)
         val screenH = dm.heightPixels.coerceAtLeast(1280)
         val edgeMarginPx = (14f * density).toInt()
-        val minCardTextWidthPx = (92f * density).toInt()
+        val minCardTextWidthPx = (54f * density).toInt()
         val belowFoldThresholdY = (screenH * 0.52f).toInt()
         val rect = Rect()
 
@@ -984,6 +1021,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)^.*?\b(remove from favorites|add to favorites|remove from my items|add to my items)\s*[,•|\-]?\s*"""), "")
         s = s.replace(Regex("""(?i)^(remove|delete)\s+(?=[a-z0-9].*\s+[a-z0-9])"""), "")
         s = s.replace(Regex("""(?i)^\d+\s+in\s+(cart|bag|basket|order)\s*[-–—:,]?\s*"""), "")
+        s = s.replace(Regex("""(?i)^\d+\s*(?:ct|count|pk|pack|ea)\s+(?=[a-zA-Z]{2,})"""), "")
         s = s.replace(Regex("""(?i)^(quantity|qty)\s*:?\s*\d+\s*[,:•|\-]?\s*"""), "")
         // Strip embedded reorder/popularity/badge tokens whether separated by commas, bullets, periods, or spaces
         // (Do NOT strip "sponsored" here so compound sponsored banner strings are rejected by isCandidateProductTitle)
@@ -991,7 +1029,11 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\blast\s+purchased(?:\s+on)?\s+[a-z]+\s+\d{1,2}(?:\s*,\s*\d{4})?\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\b\d+[km]?\+?\s*bought\s+since\s+yesterday(?:\s*,?\s*try\s+a\s+subscription)?\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\btry\s+a\s+subscription\s*[,•|\-.]?"""), " ")
-        s = s.replace(Regex("""(?i)\b(best\s+seller|overall\s+pick|popular\s+pick|rollback|save\s+for\s+later|subscribe\s+to\s+save|instant\s+savings|shop\s+similar|final\s+cost\s+by\s+weight|avg\s+price)(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\b(best\s+seller|overall\s+pick|popular\s+pick|rollback|save\s+for\s+later|subscribe\s+to\s+save|instant\s+savings|shop\s+similar|final\s+cost\s+by\s+weight|avg\s+price|many\s+in\s+stock|likely\s+in\s+stock|low\s+in\s+stock|with\s+loyalty\s+card)(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\babout\s+\d+(?:\.\d+)?\s*(?:lb|lbs|oz)\b\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\beach\s*\(est\.?\)\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\breg\.?\s*\$\s*\d+(?:\.\d{2})?\b\s*[,•|\-.]?"""), " ")
+        s = s.replace(Regex("""(?i)\b\d+\s+sizes?\b\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:average|avg)\s+price\b.*$"""), "")
         s = s.replace(Regex("""(?i)\bprice\s+may\s+vary(?:\s+in\s+club\s+and\s+online)?(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\bmax\s+\d+\s+per\s+order\s*[,•|\-.]?"""), " ")
@@ -1014,8 +1056,15 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(?:\.\d+)?\s*(?:¢|cents?)\s*(?:/|per)\s*(?:oz|fl\s*oz|lb|ea|each|ct|count|pt|qt|gal|\d+\s*ct)\b"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]\s*(now|was|current\s+price|price|add)\s*$"""), "")
         s = s.replace(Regex("""(?i)^\+?\s*add\s*[,•|\-]?\s*"""), "")
-        // Strip truncated trailing weight fragments from narrow carousel cards (e.g. "Martin's Potato Sandwich Rolls, 9...")
-        s = s.replace(Regex("""\s*,\s*\d+\s*(?:\.\.\.+|…)\s*$"""), "")
+        // Strip truncated trailing weight/count fragments from narrow Instacart/Walmart cards (e.g. "(6.35 ...", "(6 C...", ", 12 As...", ", 9...")
+        s = s.replace(Regex("""\s*\(\d+(?:\.\d+)?\s*(?:[a-zA-Z]{0,6}\s*)?(?:\.\.\.+|…)?\s*$"""), "")
+        s = s.replace(Regex("""\s*,\s*\d+\s*(?:[a-zA-Z]{1,4}\s*)?(?:\.\.\.+|…)\s*$"""), "")
+        s = s.replace(Regex("""(?i)\btruffl(?:\.\.\.+|…)?$"""), "Truffles")
+        s = s.replace(Regex("""(?i)\bchocolat(?:\.\.\.+|…)?$"""), "Chocolate")
+        s = s.replace(Regex("""(?i)\bappl(?:\.\.\.+|…)?$"""), "Apples")
+        s = s.replace(Regex("""(?i)\bwing\s+sa(?:\.\.\.+|…)?$"""), "Wing Sauce")
+        s = s.replace(Regex("""(?i)\band\s+re(?:\.\.\.+|…)?$"""), "and Reese's")
+        s = s.replace(Regex("""\s*(?:\.\.\.+|…)\s*$"""), "")
         s = s.replace(WHITESPACE, " ").trim(' ', ',', '•', '|', '-', '.', 'ⓘ', 'ℹ')
         // Deduplicate repeated leading 1–3 word brand prefix when a merged PDP header includes both the brand link ("Great Value") and the full title ("Great Value Whole Vitamin D Milk, Gallon")
         s = s.replace(Regex("""(?i)^([a-z0-9'&]+(?:\s+[a-z0-9'&]+){0,2})\s*[,•|\-]?\s+\1\b"""), "$1")
@@ -1024,13 +1073,43 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun extractRemovedCartTitles(nodes: List<TextNode>): List<String> {
         val removedRe = Regex("""(?i)^(?:removed(?:\s+from\s+cart)?|moved\s+to\s+saved\s+for\s+later)\s*:\s*(.+)$""")
+        val unavailableItemLineRe = Regex("""(?i)^this\s+item\s+is\s+not\s+available\s+in\s+your\s+area\b""")
+        val unavailableModalHeaderRe = Regex("""(?i)^(?:\d+\s+items?\s+are\s+no\s+longer\s+available|these\s+items\s+have\s+been\s+removed\s+from\s+your\s+cart)\b""")
         val out = LinkedHashSet<String>()
-        for (n in nodes) {
-            val m = removedRe.find(n.text.trim()) ?: continue
-            val rawName = m.groupValues.getOrNull(1)?.trim().orEmpty()
-            val cleaned = cleanTitleCandidate(rawName)
-            if (cleaned.length >= 4) {
-                out.add(cleaned)
+        var inUnavailableModal = false
+        for (i in nodes.indices) {
+            val txt = nodes[i].text.trim()
+            val m = removedRe.find(txt)
+            if (m != null) {
+                val rawName = m.groupValues.getOrNull(1)?.trim().orEmpty()
+                val cleaned = cleanTitleCandidate(rawName)
+                if (cleaned.length >= 4) out.add(cleaned)
+                continue
+            }
+            if (unavailableModalHeaderRe.containsMatchIn(txt)) {
+                inUnavailableModal = true
+                continue
+            }
+            if (inUnavailableModal) {
+                if (txt.equals("continue", ignoreCase = true) || txt.equals("got it", ignoreCase = true)) {
+                    inUnavailableModal = false
+                    continue
+                }
+                val cleaned = cleanTitleCandidate(txt)
+                if (cleaned.length >= 5 && isCandidateProductTitle(cleaned)) {
+                    out.add(cleaned)
+                }
+                continue
+            }
+            if (unavailableItemLineRe.containsMatchIn(txt)) {
+                for (fwd in 1..4) {
+                    val nextNode = nodes.getOrNull(i + fwd) ?: break
+                    val cleaned = cleanTitleCandidate(nextNode.text)
+                    if (cleaned.length >= 5 && isCandidateProductTitle(cleaned)) {
+                        out.add(cleaned)
+                        break
+                    }
+                }
             }
         }
         return out.toList()
@@ -1094,7 +1173,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
 
         // On home/aisle/carousel feeds (`!isConfirmedSinglePdp`), if a section header link ("View all", "See all",
-        // "Shop the list", "Shop all") appears in the first 20 nodes with no product card (`+ Add` or `Options`)
+        // "Shop the list", "Shop all") appears in the first 20 nodes with no product card (`+ Add`, `Options`, or price)
         // before it, any text above that link is a promotional section title/subtitle (e.g. "Thanksgiving feast for 4" /
         // "A full Thanksgiving meal, Turkey, classic sides & more."), NOT a product card!
         val sectionHeaderLinkIdx = if (!isConfirmedSinglePdp) {
@@ -1109,7 +1188,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         val hasCardBeforeHeaderLink = if (sectionHeaderLinkIdx > 0) {
             postOrphanNodes.subList(0, sectionHeaderLinkIdx).any {
                 val t = it.text.trim()
-                ADD_TILE_BUTTON.matches(t) || t.equals("options", ignoreCase = true)
+                ADD_TILE_BUTTON.matches(t) ||
+                    t.equals("options", ignoreCase = true) ||
+                    PRICE_PATTERN.containsMatchIn(t)
             }
         } else false
         val searchNodes = if (sectionHeaderLinkIdx >= 0 && !hasCardBeforeHeaderLink) {
@@ -1172,13 +1253,13 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 fun isPartiallyClippedInRow(rc: CarouselCandidate): Boolean {
                     if (rc.node.isEdgeClipped) return true
-                    // If a card's right edge doesn't even reach 36% of the screen width, it's a departing left-edge card!
-                    if (rc.node.right in 1 until (screenW * 0.36f).toInt()) return true
+                    // If a card's right edge doesn't even reach 26% of the screen width, it's a departing left-edge card!
+                    if (rc.node.right in 1 until (screenW * 0.26f).toInt()) return true
                     val maxW = maxWidthByBand[rc.rowBand] ?: 0
                     // When a card in a horizontal carousel slides partially off the left or right edge,
                     // Android clamps getBoundsInScreen(rect) to the viewport so its visible width shrinks
                     // compared to the full card next to it!
-                    return maxW >= (100f * density).toInt() && rc.width < (maxW * 0.90f).toInt()
+                    return maxW >= (64f * density).toInt() && rc.width < (maxW * 0.85f).toInt()
                 }
                 val sorted = rawCandidates.sortedWith(
                     compareBy<CarouselCandidate> { isPartiallyClippedInRow(it) }
@@ -1293,7 +1374,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     /**
-     * Extracts the actual product titles listed in the user's Cart screen (e.g. Walmart, BJ's, ALDI Cart)
+     * Extracts the actual product titles listed in the user's Cart screen (e.g. Walmart, BJ's, ALDI, Instacart Cart)
      * so `🛒 Cart Avg` and the Whole-Cart Health Check drawer match the real items in their cart.
      * Strictly requires recognizable grocery/household/personal-care keywords (`FOOD_HINTS`) or an explicit
      * product title viewId so Cart UI chrome (delivery addresses, barcode scanner button, Express/Today time slots)
@@ -1320,7 +1401,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun extractCartScreenTitles(nodes: List<TextNode>, removedTitles: List<String> = emptyList()): List<String> {
         val endIdx = nodes.indexOfFirst { CART_END_BOUNDARY.matches(it.text.trim()) }
-        val cartNodes = if (endIdx >= 2) nodes.subList(0, endIdx) else nodes
+        val cartNodes = if (endIdx >= 0) nodes.subList(0, endIdx) else nodes
         val seen = ArrayList<String>()
         for (n in cartNodes) {
             val c = cleanTitleCandidate(n.text)

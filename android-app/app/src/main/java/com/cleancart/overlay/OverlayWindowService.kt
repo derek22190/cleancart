@@ -79,6 +79,7 @@ class OverlayWindowService : Service() {
         const val EXTRA_REPLACE_CART = "replace_cart"
         const val EXTRA_REMOVED_TITLES = "removed_titles"
         const val EXTRA_STORE_PKG = "store_pkg"
+        const val EXTRA_KEEP_MODE = "keep_mode"
 
         private const val INK = 0xFF15201B.toInt()
         private const val INK_2 = 0xFF4A5550.toInt()
@@ -87,7 +88,8 @@ class OverlayWindowService : Service() {
         private const val PREFS_NAME = "heybroc_overlay_prefs"
         private const val LEGACY_KEY_TRIP_CART = "trip_cart_json"
         private const val LEGACY_KEY_TRIP_CART_V2 = "trip_cart_v2_json"
-        private const val KEY_TRIP_CART_PREFIX = "trip_cart_v3_"
+        private const val LEGACY_KEY_TRIP_CART_V3_PREFIX = "trip_cart_v3_"
+        private const val KEY_TRIP_CART_PREFIX = "trip_cart_v4_"
         private const val KEY_PILL_Y = "pill_y"
         private val DEMO_SEED_TITLES = setOf(
             "berry swirl strawberry lowfat yogurt",
@@ -96,7 +98,7 @@ class OverlayWindowService : Service() {
             "grass-fed salted butter"
         )
         private val VARIANT_NOISE_TITLE = Regex(
-            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery)\b.*|.*&\s*more\.?$|.*,\s*was|.*[!?])$"""
+            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|no\s+longer\s+available|not\s+available\s+in\s+your\s+area|based\s+on\s+items\s+in\s+your\s+cart|complete\s+your\s+cart)\b.*|.*&\s*more\.?$|.*,\s*was|.*[!?])$"""
         )
     }
 
@@ -144,8 +146,13 @@ class OverlayWindowService : Service() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.contains(LEGACY_KEY_TRIP_CART) || prefs.contains(LEGACY_KEY_TRIP_CART_V2)) {
-            prefs.edit().remove(LEGACY_KEY_TRIP_CART).remove(LEGACY_KEY_TRIP_CART_V2).apply()
+        val staleKeys = prefs.all.keys.filter {
+            it == LEGACY_KEY_TRIP_CART || it == LEGACY_KEY_TRIP_CART_V2 || it.startsWith(LEGACY_KEY_TRIP_CART_V3_PREFIX)
+        }
+        if (staleKeys.isNotEmpty()) {
+            val editor = prefs.edit()
+            staleKeys.forEach { editor.remove(it) }
+            editor.apply()
         }
         pillY = prefs.getInt(KEY_PILL_Y, dp(220))
         loadPersistedCart(currentStoreKey)
@@ -269,19 +276,24 @@ class OverlayWindowService : Service() {
             }
             ACTION_SYNC_CART -> {
                 isTestMode = false
-                isPdpScrollHint = false
+                val keepMode = intent.getBooleanExtra(EXTRA_KEEP_MODE, false)
+                if (!keepMode) {
+                    isPdpScrollHint = false
+                }
                 val prevSize = tripCart.size
                 val prevAvg = displayedCartAvg
                 val arrRaw = intent.getStringExtra(EXTRA_CART_ARRAY) ?: "[]"
                 val remRaw = intent.getStringExtra(EXTRA_REMOVED_TITLES) ?: "[]"
                 val replaceCart = intent.getBooleanExtra(EXTRA_REPLACE_CART, false)
-                syncCartFromScreen(arrRaw, remRaw, replaceCart)
-                isCartAvgMode = true
+                syncCartFromScreen(arrRaw, remRaw, replaceCart, keepMode)
+                if (!keepMode) {
+                    isCartAvgMode = true
+                }
                 if (card != null && isAuditorOpen) {
                     if (tripCart.size != prevSize || displayedCartAvg != prevAvg) {
                         showAuditorDrawer()
                     }
-                } else if (!hiddenForCurrentScreen && card == null) {
+                } else if (!hiddenForCurrentScreen && card == null && (!keepMode || isCartAvgMode)) {
                     showPill()
                 }
             }
@@ -350,9 +362,17 @@ class OverlayWindowService : Service() {
 
     private fun cleanCartTitle(raw: String): String =
         raw.replace(Regex("^(?i)conventional grocery\\s+"), "")
+            .replace(Regex("^(?i)\\d+\\s*(?:ct|count|pk|pack|ea)\\s+(?=[a-zA-Z]{2,})"), "")
             .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
             .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
             .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
+            .replace(Regex("\\s*\\(\\d+(?:\\.\\d+)?\\s*(?:[a-zA-Z]{0,6}\\s*)?(?:\\.\\.\\.+|…)?\\s*$"), "")
+            .replace(Regex("\\s*,\\s*\\d+\\s*(?:[a-zA-Z]{1,4}\\s*)?(?:\\.\\.\\.+|…)\\s*$"), "")
+            .replace(Regex("(?i)\\btruffl(?:\\.\\.\\.+|…)?$"), "Truffles")
+            .replace(Regex("(?i)\\bchocolat(?:\\.\\.\\.+|…)?$"), "Chocolate")
+            .replace(Regex("(?i)\\bappl(?:\\.\\.\\.+|…)?$"), "Apples")
+            .replace(Regex("(?i)\\bwing\\s+sa(?:\\.\\.\\.+|…)?$"), "Wing Sauce")
+            .replace(Regex("(?i)\\band\\s+re(?:\\.\\.\\.+|…)?$"), "and Reese's")
             .replace(Regex("(?i)\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93% Lean/7% Fat")
             .replace(Regex("(?i)\\b80?%\\s*lean\\s*/?\\s*20?%\\s*fat\\b"), "80% Lean/20% Fat")
             .replace(Regex("(?i)\\b85?%\\s*lean\\s*/?\\s*15?%\\s*fat\\b"), "85% Lean/15% Fat")
@@ -390,19 +410,19 @@ class OverlayWindowService : Service() {
         return words.size >= 2 && words.take(2).all { lower.contains(it) }
     }
 
-    private fun syncCartFromScreen(arrRaw: String, remRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean) {
+    private fun syncCartFromScreen(arrRaw: String, remRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean, keepMode: Boolean = false) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
         val prevAvg = calcCartAvg()
         val now = System.currentTimeMillis()
         var swapDetectedInCart = false
-        // When syncing from the real Cart screen, drop non-cart-screen items (e.g. PDP browsing leftovers or legacy pre-v4 cache)
+        // When syncing from the real Cart screen (`!keepMode`), drop non-cart-screen items (e.g. PDP browsing leftovers)
         // and items from previous shopping sessions (>30 min old), while retaining items scrolled during the active Cart session.
         tripCart.removeAll {
             it.isSeed ||
                 it.title.lowercase() in DEMO_SEED_TITLES ||
                 VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
-                (arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
+                (!keepMode && arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
         }
         if (remArr != null) {
             for (i in 0 until remArr.length()) {
@@ -440,13 +460,15 @@ class OverlayWindowService : Service() {
                 existing.score = score
                 existing.swapObj = swap
                 existing.fullJson = d
-                existing.fromCartScreen = true
+                if (!keepMode) {
+                    existing.fromCartScreen = true
+                }
                 existing.lastSeenAtMs = now
                 if (rawTitle.length > existing.title.length && !rawTitle.endsWith("...")) {
                     existing.title = rawTitle
                 }
             } else {
-                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d, fromCartScreen = true, lastSeenAtMs = now))
+                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d, fromCartScreen = !keepMode, lastSeenAtMs = now))
                 while (tripCart.size > 40) {
                     tripCart.removeAt(tripCart.size - 1)
                 }
@@ -1780,8 +1802,8 @@ class OverlayWindowService : Service() {
                 val parsed = URL(fullUrl)
                 if (!parsed.protocol.equals("https", ignoreCase = true)) return@runCatching null
                 val conn = (parsed.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 4000
-                    readTimeout = 5000
+                    connectTimeout = 5000
+                    readTimeout = 7500
                     instanceFollowRedirects = true
                 }
                 try {

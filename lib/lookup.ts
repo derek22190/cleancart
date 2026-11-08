@@ -726,12 +726,84 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 535, sugarsG100g: 44, saturatedFatG100g: 16.5, sodiumMg100g: 160, fiberG100g: 2.0, proteinG100g: 6.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
   },
   {
-    match: /\b(kinder|ferrero rocher|lindt|ghirardelli|hershey'?s?|reese'?s|snickers|twix|kit\s*kat|m&m'?s|butterfinger|milky way|3 musketeers)\b|\b(chocolate variety|milk and creamy chocolate|chocolate candy|chocolate bar|chocolate truffles)\b/i,
+    match: /\b(tony'?s\s+chocolonely)\b/i,
+    brand: "Tony's Chocolonely",
+    title: "Milk Chocolate Caramel Sea Salt Bar",
+    ingredients: "Sugar, Dry Whole Milk, Cocoa Butter, Chocolate Liquor, Caramel Pieces (Sugar, Corn Syrup, Cream, Butter), Sea Salt, Soy Lecithin.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Tony's%20Chocolonely%20Milk%20Caramel%20Sea%20Salt",
+    nutrition: { caloriesKcal100g: 533, sugarsG100g: 50.0, saturatedFatG100g: 18.0, sodiumMg100g: 215, fiberG100g: 3.3, proteinG100g: 6.7, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://us.tonyschocolonely.com/products/milk-caramel-sea-salt-32",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(lindt|lindor)\b/i,
+    brand: "Lindt",
+    title: "Lindt Lindor Milk Chocolate Candy Truffles",
+    ingredients: "Milk Chocolate (Sugar, Cocoa Butter, Milk, Chocolate, Soya Lecithin (Emulsifier), Barley Malt Powder, Vanillin (Artificial Flavoring)), Vegetable Oil (Coconut, Palm Kernel), Sugar, Chocolate, Cocoa Butter, Milk, Soya Lecithin (Emulsifier), Barley Malt Powder, Artificial Flavors.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Lindt%20Lindor%20Milk%20Chocolate%20Candy%20Truffles",
+    nutrition: { caloriesKcal100g: 611, sugarsG100g: 44.4, saturatedFatG100g: 33.3, sodiumMg100g: 83, fiberG100g: 2.8, proteinG100g: 5.6, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.lindtusa.com/lindor-milk-chocolate-truffles-bag-431922",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(ferrero\s+(?:rocher|collection))\b/i,
+    brand: "Ferrero",
+    title: "Ferrero Rocher Fine Hazelnut Milk Chocolates",
+    ingredients: "Milk Chocolate (Sugar, Cocoa Butter, Cocoa Mass, Skim Milk Powder, Butteroil, Lecithin as Emulsifier (Soy), Vanillin: An Artificial Flavor), Hazelnuts, Sugar, Palm Oil, Wheat Flour, Whey (Milk), Lowfat Cocoa Powder, Lecithin as Emulsifier (Soy), Sodium Bicarbonate as Leavening Agent, Salt, Vanillin: An Artificial Flavor.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Ferrero%20Rocher%20Fine%20Hazelnut%20Milk%20Chocolate",
+    nutrition: { caloriesKcal100g: 595, sugarsG100g: 40.5, saturatedFatG100g: 14.3, sodiumMg100g: 60, fiberG100g: 4.8, proteinG100g: 7.1, fruitsVegNutsPct: 28, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.ferrerorocher.com/us/en/our-products/ferrero-rocher",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(reese'?s)\b(?!\s+puffs)/i,
+    brand: "Reese's",
+    title: "Reese's Milk Chocolate Peanut Butter Cups",
+    ingredients: "Milk Chocolate (Sugar, Cocoa Butter, Chocolate, Skim Milk, Milk Fat, Lactose, Lecithin (Soy), PGPR), Peanuts, Sugar, Dextrose, Salt, TBHQ and Citric Acid, to Maintain Freshness.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Reese's%20Milk%20Chocolate%20Snack%20Size",
+    nutrition: { caloriesKcal100g: 500, sugarsG100g: 52.4, saturatedFatG100g: 10.7, sodiumMg100g: 357, fiberG100g: 4.8, proteinG100g: 11.9, fruitsVegNutsPct: 25, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.hersheyland.com/products/reeses-milk-chocolate-peanut-butter-cups-1-5-oz.html",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(hershey'?s?)\b/i,
+    brand: "Hershey's",
+    title: "Hershey's Milk Chocolate Candy Bar",
+    ingredients: "Milk Chocolate (Sugar, Milk, Chocolate, Cocoa Butter, Milk Fat, Lecithin (Soy), PGPR, Natural Flavor).",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Hershey's%20Milk%20Chocolate%20Candy%20Bar",
+    nutrition: { caloriesKcal100g: 535, sugarsG100g: 51, saturatedFatG100g: 18.0, sodiumMg100g: 75, fiberG100g: 3.0, proteinG100g: 7.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.hersheyland.com/products/hersheys-milk-chocolate-candy-bars-1-55-oz.html",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(frank'?s\s+redhot)\b.*\b(wings?|buffalo)\b/i,
+    brand: "Frank's RedHot",
+    title: "Frank's RedHot Wings Buffalo Sauce",
+    ingredients: "Distilled Vinegar, Aged Cayenne Red Peppers, Salt, Water, Canola Oil, Paprika, Xanthan Gum, Natural Butter Type Flavor and Garlic Powder.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Frank's%20RedHot%20Wings%20Buffalo%20Sauce",
+    nutrition: { caloriesKcal100g: 33, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 3060, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 35, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.mccormick.com/franks-redhot/products/sauces/franks-redhot-buffalo-wings-sauce",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(frank'?s\s+redhot)\b/i,
+    brand: "Frank's RedHot",
+    title: "Frank's RedHot Original Cayenne Pepper Hot Sauce",
+    ingredients: "Aged Cayenne Red Peppers, Distilled Vinegar, Water, Salt and Garlic Powder.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Frank's%20RedHot%20Original%20Cayenne%20Pepper%20Sauce",
+    nutrition: { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 3800, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 50, nutriScoreGrade: "c", isWholeFood: false },
+    sourceUrl: "https://www.mccormick.com/franks-redhot/products/sauces/franks-redhot-original-cayenne-pepper-sauce",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(kinder|ghirardelli|snickers|twix|kit\s*kat|m&m'?s|butterfinger|milky way|3 musketeers)\b|\b(chocolate variety|milk and creamy chocolate|chocolate candy|chocolate bar|chocolate truffles)\b/i,
     brand: "Representative Confectionery Formulation",
     title: "Milk Chocolate Confectionery (Representative Formulation)",
     ingredients: "Sugar, Chocolate, Cocoa Butter, Milk, Skim Milk, Milkfat, Soy Lecithin, PGPR (Emulsifier), Natural Flavor.",
     imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 535, sugarsG100g: 51, saturatedFatG100g: 18.0, sodiumMg100g: 75, fiberG100g: 3.0, proteinG100g: 7.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
+    sourceUrl: "https://www.hersheyland.com/products/hersheys-milk-chocolate-candy-bars-1-55-oz.html",
+    verifiedAt: "2026-11-08",
   },
   {
     match: /\b(velveeta)\b/i,
@@ -1393,7 +1465,7 @@ const UI_NOISE_QUERY =
   /\b(bought \d+\+?\s*times?|stay stocked|last purchased|price may vary|max \d+ per order|final cost by weight|instant savings|really philly good|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|usual items in stock|out of stock|replace with best match|add note for shopper|item instructions|visit the store|freshness guarantee|see customer images|from the manufacturer|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|&\s*more\.?$|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|.*\bsam'?s\s+club|\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(?:street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
 const NON_FOOD_GUARD =
-  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue)\b/i;
+  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i;
 
 const PROCESSED_FOOD_GUARD =
   /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
@@ -1417,7 +1489,7 @@ const CATEGORY_FALLBACK_CATALOG: Array<{
     nutrition: { caloriesKcal100g: 235, sugarsG100g: 1.0, saturatedFatG100g: 7.5, sodiumMg100g: 740, fiberG100g: 0, proteinG100g: 14.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
   },
   {
-    match: /\b(hot\s*dogs?|franks?|frankfurters?|wieners?|bologna|salami|pepperoni|pastrami|deli\s+(ham|turkey|chicken|roast\s+beef)|sliced\s+(ham|turkey|chicken)|lunch\s*meat|lunchables?|beef\s+jerky|turkey\s+jerky|oscar\s+mayer|ball\s+park|parkview|appleton\s+farms)\b/i,
+    match: /^(?!.*\b(redhot|wing\s+sauce|buffalo\s+sauce|hot\s+sauce)\b).*\b(hot\s*dogs?|franks?|frankfurters?|wieners?|bologna|salami|pepperoni|pastrami|deli\s+(ham|turkey|chicken|roast\s+beef)|sliced\s+(ham|turkey|chicken)|lunch\s*meat|lunchables?|beef\s+jerky|turkey\s+jerky|oscar\s+mayer|ball\s+park|parkview|appleton\s+farms)\b/i,
     brand: "Deli & Cured Meats",
     ingredients: "Beef, Pork, or Poultry, Water, Corn Syrup, Contains 2% or Less of Salt, Dextrose, Sodium Phosphates, Sodium Propionate, Sodium Diacetate, Sodium Benzoate, Flavorings, Sodium Erythorbate, Sodium Nitrite.",
     nutrition: { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 8.5, sodiumMg100g: 980, fiberG100g: 0, proteinG100g: 13.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
@@ -1477,7 +1549,7 @@ const CATEGORY_FALLBACK_CATALOG: Array<{
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 14.0, sodiumMg100g: 680, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
   },
   {
-    match: /\b(salted\s+butter|unsalted\s+butter|sweet\s+cream\s+butter|irish\s+butter|land\s+o'?\s*lakes.*butter|great\s+value.*butter|kirkland.*butter|wellsley\s+farms.*butter|country\s+side\s+creamery.*butter|\bbutter\b)\b/i,
+    match: /^(?!.*\b(potato|potatoes|lettuce|squash|beans?|peas|apple|peanut|almond|cashew|sunflower|cocoa|shea|cookie)\b).*\b(salted\s+butter|unsalted\s+butter|sweet\s+cream\s+butter|irish\s+butter|land\s+o'?\s*lakes.*butter|great\s+value.*butter|kirkland.*butter|wellsley\s+farms.*butter|country\s+side\s+creamery.*butter|\bbutter\b)\b/i,
     brand: "Creamery Butter",
     ingredients: "Pasteurized Cream, Salt.",
     nutrition: { caloriesKcal100g: 717, sugarsG100g: 0.1, saturatedFatG100g: 51.0, sodiumMg100g: 640, fiberG100g: 0, proteinG100g: 0.9, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
@@ -1805,7 +1877,13 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
   const title = (input.productTitle || "").trim();
 
-  if (title && UI_NOISE_QUERY.test(title)) {
+  if (
+    title &&
+    (UI_NOISE_QUERY.test(title) ||
+      /\b(topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i.test(
+        title,
+      ))
+  ) {
     return null;
   }
 
@@ -1826,16 +1904,9 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   const key = cacheKey(input);
   if (!key) return null;
-  const cache = await loadCache();
-  const hit = cache.get(key);
-  if (isFreshCacheEntry(hit) && !hit.productTitle.startsWith("Conventional Grocery")) {
-    const { cachedAt: _c, source, ...rest } = hit;
-    return { ...rest, source: "cache", origin: source, ms: ms() };
-  }
 
-  let found: Omit<LookupResult, "ms"> | null = null;
   const DIRECT_CATALOG_PRIORITY =
-    /\b(velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
+    /\b(velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh)\b/i;
 
   if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
     const directCat = catalogFallback(title);
@@ -1847,6 +1918,15 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
       return { ...directCat, ms: ms() };
     }
   }
+
+  const cache = await loadCache();
+  const hit = cache.get(key);
+  if (isFreshCacheEntry(hit) && !hit.productTitle.startsWith("Conventional Grocery")) {
+    const { cachedAt: _c, source, ...rest } = hit;
+    return { ...rest, source: "cache", origin: source, ms: ms() };
+  }
+
+  let found: Omit<LookupResult, "ms"> | null = null;
 
   if (input.barcode) {
     const [offRes, usdaRes] = await Promise.all([offByBarcode(input.barcode), usdaSearch(input.barcode)]);

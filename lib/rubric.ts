@@ -311,8 +311,13 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "datem", name: "DATEM / Dough Conditioners", risk: "moderate", category: "emulsifiers",
-    patterns: ["datem", "diacetyl tartaric acid esters?", "(sodium|calcium) stearoyl lactylate", "polyglycerol polyricinoleate", "pgpr"],
+    patterns: ["datem", "diacetyl tartaric acid esters?", "(sodium|calcium) stearoyl lactylate"],
     explanation: "FDA-permitted synthetic dough conditioners and emulsifiers used in commercial bakery products.",
+  },
+  {
+    id: "pgpr", name: "PGPR (Polyglycerol Polyricinoleate)", risk: "moderate", category: "emulsifiers",
+    patterns: ["polyglycerol polyricinoleate", "pgpr", "e ?476"],
+    explanation: "FDA-GRAS synthetic emulsifier derived from castor beans; used in commercial chocolate to reduce cocoa butter viscosity.",
   },
   {
     id: "carrageenan", name: "Carrageenan", risk: "moderate", category: "emulsifiers",
@@ -807,15 +812,16 @@ export function scoreProductYuka(
     !/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|juice\s+drink|juice\s+pouch\w*|cocktail|blend\s+with\s+sugar|high\s+fructose|lemonade|limeade)\b/i.test(titleAndIng);
 
   const NON_WHOLE_FOOD =
-    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|butter|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
+
+  const isWholeProduceIngredient = /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients);
 
   const isWholeFood =
     nutrition.isWholeFood !== false &&
-    !NON_WHOLE_FOOD.test(titleAndIng) &&
+    (isWholeProduceIngredient || !NON_WHOLE_FOOD.test(titleAndIng)) &&
     !isBeverage &&
     !hasTop3AddedSugar &&
-    (Boolean(nutrition.isWholeFood) ||
-      /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients));
+    (Boolean(nutrition.isWholeFood) || isWholeProduceIngredient);
 
   // High 3 Fix: Never infer whole-product USDA Organic certification from an ingredient word in rawIngredients.
   // Require explicit nutrition.isOrganic === true, or product-level organic designation in productTitle when not explicitly false.
@@ -864,8 +870,9 @@ export function scoreProductYuka(
   }
 
   const isPureButterOrGhee =
+    !isWholeFood &&
     /\b(butter|kerrygold|ghee|land o'? ?lakes)\b/i.test(titleAndIng) &&
-    !/\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
+    !/\b(peanut|almond|cashew|sunflower|cookie|cocoa|apple|buttermilk|potato\w*|lettuce|squash|beans?|peas|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
 
   const isWholeMilk =
     /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
