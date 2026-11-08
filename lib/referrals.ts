@@ -3,7 +3,7 @@
  *
  * Security & Anti-Abuse Rules:
  * - Product scores (0–100), expanded additive explanations, and live Cart Avg are 100% FREE forever.
- * - Free users get 5 single-item swaps per rolling 7-day week (+ a 3-swap courtesy refill mid-order).
+ * - Free users get 3 single-item swaps per rolling 7-day week.
  * - New deviceIds start on the free tier (`proUntil = 0`) so clearing app data or rotating deviceIds
  *   never mints free Pro days.
  * - Referral codes (`BROC-XXXXXXXX`, 8 base-32 chars = 32^8 > 1 trillion combinations) are generated
@@ -371,7 +371,7 @@ export function serializeEntitlement(
     weeklySwapsUsedCount: d.weeklySwapsUsed.length,
     weeklySwapsLimit: maxWeeklySwaps,
     swapsRemaining,
-    courtesyRefillAvailable: !d.courtesyRefillUsedThisWeek,
+    courtesyRefillAvailable: PRICING.courtesyRefillSwaps > 0 && !d.courtesyRefillUsedThisWeek,
     weekResetAt: d.weekResetAt,
     paywallHeadline: paywallHeadline || null,
     paywallVariant,

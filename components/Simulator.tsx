@@ -663,6 +663,10 @@ export default function Simulator() {
   /** Inspects the Clean Swap item when the user clicks its photo or title inside Health Insights. */
   const inspectCleanSwap = useCallback(
     (cat: SwapCategory, replaced?: Product) => {
+      if (!isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT) {
+        setPaywallOpen(true);
+        return;
+      }
       const target = replaced ?? (active.origin !== "swap" ? active : previousDirtyItem ?? undefined);
       const clean = cleanToProduct(cat, target);
       if (active.origin !== "swap") {
@@ -679,7 +683,7 @@ export default function Simulator() {
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [active, previousDirtyItem],
+    [active, previousDirtyItem, isPro, swapsUsedThisWeek],
   );
 
   const triggerClimbFlash = useCallback(() => {
@@ -752,7 +756,7 @@ export default function Simulator() {
   /* ---------------- Swap (single item or from auditor) ---------------- */
   const swapCartItem = useCallback(
     (targetItem: Product) => {
-      const weeklyAllowance = courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3;
+      const weeklyAllowance = FREE_SCAN_LIMIT;
       if (!isPro && swapsUsedThisWeek >= weeklyAllowance) {
         setPaywallOpen(true);
         return;
@@ -944,7 +948,7 @@ export default function Simulator() {
   const swapAll = useCallback(() => {
     const n = dirty.length;
     if (n === 0) return;
-    const weeklyAllowance = courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3;
+    const weeklyAllowance = FREE_SCAN_LIMIT;
     if (!isPro && swapsUsedThisWeek + n > weeklyAllowance) {
       setPaywallOpen(true);
       return;
@@ -1678,24 +1682,44 @@ export default function Simulator() {
 
                           {/* 1-Tap Clean Swap Banner right at top when dirty */}
                           {swap ? (
-                            <div className="swap">
-                              <button
-                                id="inspect-clean-swap"
-                                type="button"
-                                className="swap-info swap-info--btn"
-                                onClick={() => inspectCleanSwap(swap.category, active)}
-                              >
-                                <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" />
-                                <div className="swap-info-copy">
-                                  <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
-                                  <b>{swap.title}</b>
-                                  <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
-                                </div>
-                              </button>
-                              <button id="swap-item" className="swap-btn" onClick={doSwap}>
-                                Swap Item{swap.isPaidLink ? " · paid link" : ""}
-                              </button>
-                            </div>
+                            !isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT ? (
+                              <div className="swap">
+                                <button
+                                  id="inspect-clean-swap"
+                                  type="button"
+                                  className="swap-info swap-info--btn"
+                                  onClick={() => setPaywallOpen(true)}
+                                >
+                                  <div className="swap-info-copy">
+                                    <span className="eyebrow eyebrow--green">🔒 Clean Swap Locked · {swap.score}/100 Excellent</span>
+                                    <b>100/100 Clean Replacement Available</b>
+                                    <span className="swap-score">All {FREE_SCAN_LIMIT} free weekly Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
+                                  </div>
+                                </button>
+                                <button id="swap-item" className="swap-btn" onClick={() => setPaywallOpen(true)}>
+                                  ⚡ Unlock Pro
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="swap">
+                                <button
+                                  id="inspect-clean-swap"
+                                  type="button"
+                                  className="swap-info swap-info--btn"
+                                  onClick={() => inspectCleanSwap(swap.category, active)}
+                                >
+                                  <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" />
+                                  <div className="swap-info-copy">
+                                    <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
+                                    <b>{swap.title}</b>
+                                    <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
+                                  </div>
+                                </button>
+                                <button id="swap-item" className="swap-btn" onClick={doSwap}>
+                                  Swap Item{swap.isPaidLink ? " · paid link" : ""}
+                                </button>
+                              </div>
+                            )
                           ) : activeRevertTarget ? (
                             <div className="swap">
                               <div className="swap-preview-note">
@@ -2179,7 +2203,14 @@ export default function Simulator() {
                             <ProductArt product={item} className="cart-art" />
                             <span className="cart-text">
                               <b>{item.title}</b>
-                              <small>{item.brand}{sw ? ` · Tap to inspect or swap → ${sw.brand}` : " · Tap to inspect"}</small>
+                              <small>
+                                {item.brand}
+                                {sw
+                                  ? !isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT
+                                    ? " · 🔒 100/100 Clean Swap available"
+                                    : ` · Tap to inspect or swap → ${sw.brand}`
+                                  : " · Tap to inspect"}
+                              </small>
                             </span>
                             <ScoreChip score={s.score} color={s.color} />
                           </button>
@@ -2550,7 +2581,7 @@ export default function Simulator() {
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         scanCount={swapsUsedThisWeek}
-        freeScanLimit={courtesyRefillAvailable ? FREE_SCAN_LIMIT : FREE_SCAN_LIMIT + 3}
+        freeScanLimit={FREE_SCAN_LIMIT}
         appliedCreator={appliedCreator}
         onCreatorApplied={(c) => {
           setAppliedCreator(c);

@@ -437,7 +437,7 @@ export default function Paywall({
               {shareCopied ? "✓ Invite Link Copied!" : `Text a Friend (${personalReferralCode}) →`}
             </button>
           </div>
-          {courtesyRefillAvailable && onUseCourtesyRefill && (
+          {courtesyRefillAvailable && PRICING.courtesyRefillSwaps > 0 && onUseCourtesyRefill && (
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #bbf7d0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 12, color: "#3d5949" }}>In the middle of checkout right now?</span>
               <button
@@ -454,7 +454,7 @@ export default function Paywall({
                   padding: 0,
                 }}
               >
-                +3 Free Courtesy Swaps right now →
+                +{PRICING.courtesyRefillSwaps} Free Courtesy Swaps right now →
               </button>
             </div>
           )}
