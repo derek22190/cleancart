@@ -47,10 +47,10 @@ export default function SwapsDirectoryPage() {
           1-for-1 Same-Category Alternatives
         </span>
         <h1 style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.15, marginBottom: 10 }}>
-          Clean Grocery Swaps &amp; Ingredient Safety Reports (0–100)
+          Clean Grocery Swaps &amp; Editorial Ingredient Reports (0–100)
         </h1>
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 740, lineHeight: 1.5 }}>
-          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, flagged chemical additives, and verified <b>1-Tap Clean Swap</b>.
+          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, watchlist additives, and verified <b>1-Tap Clean Swap</b>.
         </p>
       </section>
 
@@ -92,7 +92,7 @@ export default function SwapsDirectoryPage() {
                 </span>
                 {result.yukaBreakdown?.glucoseImpact && (
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
-                    🩸 Glucose: {result.yukaBreakdown.glucoseImpact}
+                    🩸 Sugar &amp; Carb Note: {result.yukaBreakdown.glucoseImpact}
                   </span>
                 )}
               </div>

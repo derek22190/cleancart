@@ -382,7 +382,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(alani(?:\s+nu)?(?:\s+energy)?|cosmic\s+stardust|cherry\s+slush|breezeberry|witches'?\s+brew)\b(?!.*\b(pre[- ]?workout|powder|whey|protein|bar)\b)/i,
+    match: /^(?!.*\b(pre[- ]?workout|powder|whey|protein|bar)\b).*\b(alani(?:\s+nu)?(?:\s+energy)?|cosmic\s+stardust|cherry\s+slush|breezeberry|witches'?\s+brew)\b/i,
   },
   {
     id: "ghost-energy",
@@ -413,7 +413,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(ghost\s+energy|ghost\s+(?:sour\s+patch|warheads|swedish\s+fish|orange\s+cream|faze\s+pop|cherry\s+limeade))\b/i,
+    match: /^(?!.*\b(pre[- ]?workout|legend|powder|whey|protein|bar)\b).*\b(ghost\s+energy|ghost\s+(?:sour\s+patch|warheads|swedish\s+fish|orange\s+cream|faze\s+pop|cherry\s+limeade))\b/i,
   },
   {
     id: "c4-performance-energy",
@@ -491,13 +491,35 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(reign\s+(?:total\s+body\s+fuel|energy|storm|orange\s+dreamsicle|white\s+gummy|razzle\s+berry))\b/i,
   },
   {
+    id: "rockstar-pure-zero",
+    title: "Rockstar Pure Zero Energy Drink (Punched / Silver Ice / Tangerine Mango), 16 fl oz",
+    brand: "Rockstar",
+    category: "Energy Drinks",
+    description:
+      "Zero-sugar high-caffeine energy drink (240mg caffeine per 16 oz can) sweetened with erythritol, sucralose, and acesulfame potassium, preserved with potassium sorbate and sodium benzoate.",
+    keywords: ["rockstar pure zero", "rockstar zero", "rockstar sugar free", "silver ice rockstar", "energy drink"],
+    ingredients:
+      "Carbonated Water, Citric Acid, Erythritol, Taurine, Natural and Artificial Flavors, Sodium Citrate, Caffeine, Potassium Sorbate (Preservative), Sodium Benzoate (Preservative), Sucralose, Caramel Color, Acesulfame Potassium, L-Carnitine, Inositol, Niacinamide, Calcium Pantothenate, Milk Thistle Extract, Ginkgo Biloba Leaf Extract, Guarana Seed Extract, Panax Ginseng Root Extract, Pyridoxine Hydrochloride, Cyanocobalamin.",
+    nutrition: {
+      caloriesKcal100g: 4,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 35,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      isWholeFood: false,
+    },
+    match: /\b(rockstar\s+(?:pure\s+zero|zero\s+sugar|sugar\s*free|silver\s+ice))\b/i,
+  },
+  {
     id: "rockstar-energy",
-    title: "Rockstar Energy Drink Original / Pure Zero Punched, 16 fl oz",
+    title: "Rockstar Energy Drink Original / Punched, 16 fl oz",
     brand: "Rockstar",
     category: "Energy Drinks",
     description:
       "High-sugar original energy drink (160mg caffeine, 63g sugar per 16 oz can) containing sugar, glucose, caramel color, sodium benzoate, potassium sorbate, and artificial flavors.",
-    keywords: ["rockstar", "rockstar energy", "rockstar punched", "rockstar pure zero", "energy drink"],
+    keywords: ["rockstar", "rockstar energy", "rockstar punched", "rockstar original", "energy drink"],
     ingredients:
       "Carbonated Water, Sugar, Glucose, Citric Acid, Taurine, Natural and Artificial Flavors, Sodium Citrate, Caffeine, Caramel Color, Benzoic Acid, Sorbic Acid, L-Carnitine, Inositol, Niacinamide, Calcium Pantothenate, Milk Thistle Extract, Ginkgo Biloba Leaf Extract, Guarana Seed Extract, Panax Ginseng Root Extract, Riboflavin, Pyridoxine Hydrochloride, Cyanocobalamin.",
     nutrition: {
@@ -511,7 +533,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(rockstar\s+energy|rockstar\s+(?:original|punched|pure\s+zero|recovery|boom))\b/i,
+    match: /\b(rockstar\s+energy|rockstar\s+(?:original|punched|recovery|boom))\b/i,
   },
   {
     id: "prime-energy",
@@ -586,7 +608,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Energy Drinks",
     description:
       "High-sugar citrus energy drink (160mg caffeine, 51g sugar per 16 oz can) containing high fructose corn syrup, sucralose, Yellow 5, Yellow 6, and sodium hexametaphosphate.",
-    keywords: ["nos", "nos energy", "full throttle", "venom energy", "energy drink"],
+    keywords: ["nos", "nos energy", "energy drink"],
     ingredients:
       "Carbonated Water, High Fructose Corn Syrup, Citric Acid, Sodium Citrate, Sodium Hexametaphosphate (Preservative), Caffeine, Taurine, Natural Flavors, Acacia, Potassium Sorbate (Preservative), Glycerol Ester of Rosin, Inositol, Sucralose, Yellow 5, Pyridoxine Hydrochloride (Vitamin B6), Guarana, Calcium Disodium EDTA (Preservative), Yellow 6, L-Theanine, Cyanocobalamin (Vitamin B12).",
     nutrition: {
@@ -600,7 +622,78 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(nos\s+energy|full\s+throttle\s+energy|venom\s+energy)\b/i,
+    match: /\b(nos\s+energy|\bnos\b\s+high\s+performance)\b/i,
+  },
+  {
+    id: "full-throttle-venom-energy",
+    title: "Full Throttle / Venom Original Citrus Energy Drink, 16 fl oz",
+    brand: "Full Throttle / Venom",
+    category: "Energy Drinks",
+    description:
+      "High-sugar citrus energy drink (160mg caffeine, 55g–58g sugar per 16 oz can) formulated with high fructose corn syrup, sodium benzoate, potassium sorbate, sucralose, and glycerol ester of rosin.",
+    keywords: ["full throttle", "venom energy", "energy drink"],
+    ingredients:
+      "Carbonated Water, High Fructose Corn Syrup, Citric Acid, Taurine, Natural and Artificial Flavors, Sodium Benzoate and Potassium Sorbate (Preservatives), Caffeine, Sodium Citrate, Acacia, Glycerol Ester of Rosin, Niacinamide (Vitamin B3), Carnitine Fumarate, Sucralose, Calcium Pantothenate (Vitamin B5), Guarana, Ginseng Extract, Pyridoxine Hydrochloride (Vitamin B6), Cyanocobalamin (Vitamin B12).",
+    nutrition: {
+      caloriesKcal100g: 46,
+      sugarsG100g: 11.4,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 35,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    match: /\b(full\s+throttle|venom\s+energy)\b/i,
+  },
+  {
+    id: "clean-cause-yerba-mate",
+    title: "Clean Cause Organic Sparkling Yerba Mate Energy Drink (Peach / Blackberry), 16 fl oz",
+    brand: "Clean Cause",
+    category: "Energy Drinks",
+    description:
+      "USDA Organic low-calorie sparkling yerba mate energy drink (160mg plant-based caffeine) sweetened with organic erythritol and organic stevia leaf — zero artificial sweeteners or dyes.",
+    keywords: ["clean cause", "sparkling yerba mate", "organic energy drink", "energy drink"],
+    ingredients:
+      "Carbonated Water, Organic Brewed Yerba Mate (Filtered Water, Organic Yerba Mate), Organic Erythritol, Organic Fair Trade Cane Sugar, Organic Peach Juice Concentrate, Organic Lemon Juice, Organic Stevia Leaf Extract.",
+    nutrition: {
+      caloriesKcal100g: 4,
+      sugarsG100g: 0.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 4,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 50,
+      nutriScoreGrade: "a",
+      isOrganic: true,
+      isWholeFood: false,
+    },
+    match: /\b(clean\s+cause)\b/i,
+  },
+  {
+    id: "guru-organic-energy",
+    title: "GURU Organic Energy Drink, 12 fl oz",
+    brand: "GURU",
+    category: "Energy Drinks",
+    description:
+      "USDA Organic plant-based energy drink made with organic green tea infusion, organic guarana, organic ginseng, and organic cane sugar / stevia — zero synthetic sweeteners or preservatives.",
+    keywords: ["guru", "guru organic energy", "organic energy drink", "energy drink"],
+    ingredients:
+      "Carbonated Water, Organic Cane Sugar, Organic Green Tea Infusion, Organic Lemon Juice Concentrate, Natural Flavors, Citric Acid, Organic Guarana Seed Extract, Organic Echinacea Purpurea Extract, Organic Panax Ginseng Root Extract, Stevia Leaf Extract.",
+    nutrition: {
+      caloriesKcal100g: 17,
+      sugarsG100g: 3.9,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 2,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 40,
+      nutriScoreGrade: "b",
+      isOrganic: true,
+      isWholeFood: false,
+    },
+    match: /\b(guru\s+organic\s+energy|\bguru\b\s+energy)\b/i,
   },
   {
     id: "guayaki-organic-yerba-mate",
@@ -634,30 +727,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     match: /\b(guayak[ií]|yerba\s+mate|enlighten\s+mint|revel\s+berry|bluephoria)\b/i,
-  },
-  {
-    id: "clean-cause-yerba-mate",
-    title: "Clean Cause Organic Sparkling Yerba Mate Energy Drink (Peach / Blackberry), 16 fl oz",
-    brand: "Clean Cause",
-    category: "Energy Drinks",
-    description:
-      "USDA Organic low-calorie sparkling yerba mate energy drink (160mg plant-based caffeine) sweetened with organic erythritol and organic stevia leaf — zero artificial sweeteners or dyes.",
-    keywords: ["clean cause", "sparkling yerba mate", "organic energy drink", "energy drink"],
-    ingredients:
-      "Carbonated Water, Organic Brewed Yerba Mate (Filtered Water, Organic Yerba Mate), Organic Erythritol, Organic Fair Trade Cane Sugar, Organic Peach Juice Concentrate, Organic Lemon Juice, Organic Stevia Leaf Extract.",
-    nutrition: {
-      caloriesKcal100g: 4,
-      sugarsG100g: 0.8,
-      saturatedFatG100g: 0,
-      sodiumMg100g: 4,
-      fiberG100g: 0,
-      proteinG100g: 0,
-      fruitsVegNutsPct: 50,
-      nutriScoreGrade: "a",
-      isOrganic: true,
-      isWholeFood: false,
-    },
-    match: /\b(clean\s+cause|guru\s+organic\s+energy)\b/i,
   },
 
   /* ======================================================================== */
@@ -820,7 +889,30 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(total\s+war|redcon1|nitraflex|alani\s+nu\s+pre[- ]?workout|optimum\s+nutrition.*pre[- ]?workout|gold\s+standard\s+pre[- ]?workout|\bpre[- ]?workout\b)\b/i,
+    match: /\b(total\s+war|redcon1)\b/i,
+  },
+  {
+    id: "transparent-labs-bulk-pre-workout",
+    title: "Transparent Labs BULK Pre-Workout Powder",
+    brand: "Transparent Labs",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "Clean-label pre-workout powder (citrulline malate, beta-alanine, betaine, PurCaf organic caffeine, L-theanine) sweetened with stevia extract — zero artificial sweeteners, zero synthetic dyes, and zero artificial flavors.",
+    keywords: ["transparent labs", "transparent labs bulk", "bulk pre workout", "clean pre workout"],
+    ingredients:
+      "Citrulline Malate, Beta-Alanine, Betaine Anhydrous, Taurine, L-Tyrosine, AlphaSize Alpha-GPC, Organic Caffeine (PurCaf), L-Theanine, Citric Acid, Natural Flavor, Stevia Extract, Calcium Silicate, Silicon Dioxide, Himalayan Rock Salt.",
+    nutrition: {
+      caloriesKcal100g: 5,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 30,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(transparent\s+labs\s+bulk|transparent\s+labs.*pre[- ]?workout)\b/i,
   },
   {
     id: "ora-organic-clean-pre-workout",
@@ -833,7 +925,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "ora organic",
       "clean pre workout",
       "organic pre workout",
-      "transparent labs bulk",
       "pre workout",
       "pre-workout",
       "preworkout",
@@ -852,7 +943,29 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    match: /\b(ora\s+organic.*pre[- ]?workout|renewable\s+energy.*pre[- ]?workout|transparent\s+labs\s+bulk)\b/i,
+    match: /\b(ora\s+organic.*pre[- ]?workout|renewable\s+energy.*pre[- ]?workout)\b/i,
+  },
+  {
+    id: "representative-pre-workout",
+    title: "Pre-Workout Powder (Representative Category Formulation)",
+    brand: "Representative Pre-Workout (Category Estimate)",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "Representative commercial pre-workout powder formulation containing L-citrulline, beta-alanine, caffeine anhydrous, artificial flavors, and artificial sweeteners (sucralose / acesulfame potassium).",
+    keywords: ["nitraflex", "alani nu pre workout", "gold standard pre workout", "pre workout", "pre-workout", "preworkout"],
+    ingredients:
+      "L-Citrulline, Beta-Alanine, Citric Acid, Malic Acid, Natural and Artificial Flavors, Caffeine Anhydrous, Silicon Dioxide, Calcium Silicate, Sucralose, Acesulfame Potassium.",
+    nutrition: {
+      caloriesKcal100g: 5,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 40,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      isWholeFood: false,
+    },
+    match: /\b(nitraflex|alani\s+nu\s+pre[- ]?workout|optimum\s+nutrition.*pre[- ]?workout|gold\s+standard\s+pre[- ]?workout|\bpre[- ]?workout\b)\b/i,
   },
   {
     id: "core-power-fairlife-protein",
@@ -893,7 +1006,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Pre-Workouts & Fitness",
     description:
       "Ready-to-drink 30g protein shake formulated with milk protein concentrate, high oleic sunflower oil, sucralose, acesulfame potassium, carrageenan, cellulose gum, and synthetic phosphates.",
-    keywords: ["premier protein", "premier shake", "30g protein shake", "muscle milk", "protein shake"],
+    keywords: ["premier protein", "premier shake", "30g protein shake", "protein shake"],
     ingredients:
       "Water, Milk Protein Concentrate, Calcium Caseinate, Contains Less than 1% of High Oleic Sunflower Oil or Soybean Oil, Natural and Artificial Flavors, Inulin, Cellulose Gel and Cellulose Gum, Salt, Sucralose, Acesulfame Potassium, Carrageenan, Tripotassium Phosphate, Dipotassium Phosphate, Sodium Hexametaphosphate, Vitamin and Mineral Blend.",
     nutrition: {
@@ -907,7 +1020,30 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
-    match: /\b(premier\s+protein|muscle\s+milk)\b/i,
+    match: /\b(premier\s+protein)\b/i,
+  },
+  {
+    id: "muscle-milk-protein-shake",
+    title: "Muscle Milk Genuine / Pro Series Protein Shake (Chocolate / Vanilla), 11 fl oz",
+    brand: "Muscle Milk",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "Ready-to-drink protein shake formulated with milk protein isolate, calcium sodium caseinate, canola/sunflower oil, soluble corn fiber, sucralose, acesulfame potassium, and carrageenan.",
+    keywords: ["muscle milk", "muscle milk pro", "muscle milk zero", "protein shake"],
+    ingredients:
+      "Water, Milk Protein Isolate, Calcium Sodium Caseinate, Contains Less than 2% of: Soluble Corn Fiber, Canola Oil, High Oleic Sunflower Oil, Alkalized Cocoa Powder, Natural and Artificial Flavors, Dipotassium Phosphate, Salt, Cellulose Gel, Cellulose Gum, Potassium Chloride, Sucralose, Acesulfame Potassium, Carrageenan, Vitamin and Mineral Blend.",
+    nutrition: {
+      caloriesKcal100g: 48,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0.3,
+      sodiumMg100g: 68,
+      fiberG100g: 1.2,
+      proteinG100g: 7.6,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(muscle\s+milk)\b/i,
   },
   {
     id: "optimum-nutrition-whey",
@@ -915,8 +1051,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     brand: "Optimum Nutrition",
     category: "Pre-Workouts & Fitness",
     description:
-      "Whey protein isolate & concentrate blend (24g protein per scoop) containing soy lecithin, natural and artificial flavors, and acesulfame potassium / sucralose.",
-    keywords: ["optimum nutrition", "gold standard whey", "whey protein", "ghost whey", "protein powder"],
+      "Whey protein isolate & concentrate blend (24g protein per scoop) containing soy/sunflower lecithin, natural and artificial flavors, and acesulfame potassium / sucralose.",
+    keywords: ["optimum nutrition", "gold standard whey", "whey protein", "protein powder"],
     ingredients:
       "Protein Blend (Whey Protein Isolate, Whey Protein Concentrate, Hydrolyzed Whey Protein), Cocoa (Processed with Alkali), Natural and Artificial Flavor, Sunflower and/or Soy Lecithin, Creamer (Sunflower Oil, Maltodextrin, Modified Food Starch, Dipotassium Phosphate, Tricalcium Phosphate, Tocopherols), Salt, Acesulfame Potassium, Sucralose.",
     nutrition: {
@@ -930,7 +1066,53 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
-    match: /\b(gold\s+standard\s+(?:100%\s+)?whey|optimum\s+nutrition\s+whey|ghost\s+whey|whey\s+protein\s+powder)\b/i,
+    match: /\b(gold\s+standard\s+(?:100%\s+)?whey|optimum\s+nutrition\s+whey)\b/i,
+  },
+  {
+    id: "ghost-whey-protein",
+    title: "Ghost Whey / Flavored Whey Protein Powder (Representative Formulation)",
+    brand: "Ghost / Representative Whey Formulation",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "Flavored whey protein isolate & concentrate blend sweetened with sucralose and acesulfame potassium, plus natural and artificial flavors, xanthan gum, and sunflower/soy lecithin.",
+    keywords: ["ghost whey", "whey protein powder", "protein powder"],
+    ingredients:
+      "Whey Protein Blend (Whey Protein Isolate, Whey Protein Concentrate, Hydrolyzed Whey Protein Isolate), Natural and Artificial Flavor, Cocoa Powder (Processed with Alkali), Sunflower Lecithin, Salt, Xanthan Gum, Cellulose Gum, Sucralose, Acesulfame Potassium, Protease Enzymes.",
+    nutrition: {
+      caloriesKcal100g: 130,
+      sugarsG100g: 2.0,
+      saturatedFatG100g: 0.8,
+      sodiumMg100g: 65,
+      fiberG100g: 0.5,
+      proteinG100g: 25.0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(ghost\s+whey|whey\s+protein\s+powder)\b/i,
+  },
+  {
+    id: "owyn-plant-protein-shake",
+    title: "OWYN (Only What You Need) 100% Plant-Based Protein Shake (Dark Chocolate / Vanilla), 12 fl oz",
+    brand: "OWYN",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "100% plant-based, Top-9-allergen-free protein shake (20g–32g pea, organic pumpkin seed, and flaxseed protein) sweetened with organic cane sugar and monk fruit extract — zero dairy, soy, gluten, or artificial sweeteners.",
+    keywords: ["owyn", "only what you need", "plant based protein shake", "vegan protein shake", "protein shake"],
+    ingredients:
+      "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Organic Flaxseed Oil), Cane Sugar, High Oleic Sunflower Oil, Alkalized Cocoa Powder, Guar Gum, Monk Fruit Extract, Natural Flavors, Sea Salt, Greens Blend (Spinach, Kale, Broccoli), Vitamin & Mineral Blend.",
+    nutrition: {
+      caloriesKcal100g: 50,
+      sugarsG100g: 1.1,
+      saturatedFatG100g: 0.2,
+      sodiumMg100g: 68,
+      fiberG100g: 0.8,
+      proteinG100g: 5.6,
+      fruitsVegNutsPct: 5,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(owyn|only\s+what\s+you\s+need)\b/i,
   },
   {
     id: "orgain-organic-protein-shake",
@@ -939,7 +1121,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Pre-Workouts & Fitness",
     description:
       "USDA Organic grass-fed dairy or plant protein shake free of sucralose, acesulfame potassium, carrageenan, soy lecithin, and industrial seed oils.",
-    keywords: ["orgain", "orgain protein", "organic protein shake", "owyn", "clean protein shake", "protein shake"],
+    keywords: ["orgain", "orgain protein", "organic protein shake", "clean protein shake", "protein shake"],
     ingredients:
       "Filtered Water, Orgain Organic Grass-Fed Milk Protein Concentrate, Organic Erythritol, Organic Fair Trade Alkalized Cocoa, Organic Acacia, Sea Salt, Organic Monk Fruit Extract, Organic Stevia.",
     nutrition: {
@@ -954,7 +1136,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    match: /\b(orgain|owyn|clean\s+protein\s+shake|organic\s+protein\s+shake)\b/i,
+    match: /\b(orgain|clean\s+protein\s+shake|organic\s+protein\s+shake)\b/i,
   },
 
   /* ======================================================================== */
@@ -2144,31 +2326,73 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(capri\s*sun)\b/i,
   },
   {
-    id: "kool-aid-hi-c-sunnyd-hawaiian-punch",
-    title: "Kool-Aid Jammers / Hi-C Fruit Punch / SunnyD / Hawaiian Punch / Tampico",
-    brand: "Kool-Aid / SunnyD / Hawaiian Punch",
+    id: "hi-c-fruit-punch",
+    title: "Hi-C Flashin' Fruit Punch / Orange Lavaburst Juice Box, 8 ct",
+    brand: "Hi-C",
     category: "Juices, Smoothies & Lemonades",
     description:
-      "Ultra-processed sweetened fruit punch (≤5% juice) containing high fructose corn syrup, sucralose, synthetic dyes (Red 40, Yellow 5, Yellow 6, Blue 1), and sodium benzoate / potassium sorbate.",
+      "Sweetened fruit drink box (10% fruit juice) containing high fructose corn syrup, sucrose acetate isobutyrate, glycerol ester of rosin, potassium sorbate, and Red 40.",
+    keywords: ["hi-c", "hi c", "flashin fruit punch", "orange lavaburst", "minute maid fruit punch", "fruit punch", "juice"],
+    ingredients:
+      "Filtered Water, High Fructose Corn Syrup, Less than 2% of: Pear, Orange and Pineapple Juice Concentrates, Citric Acid, Ascorbic Acid (Vitamin C), Natural Flavors, Sucrose Acetate Isobutyrate, Modified Cornstarch, Glycerol Ester of Rosin, Sodium Hexametaphosphate, Potassium Sorbate (to Protect Taste), Red 40.",
+    nutrition: {
+      caloriesKcal100g: 28,
+      sugarsG100g: 7.2,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 12,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 10,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    match: /\b(hi[- ]?c|minute\s+maid\s+fruit\s+punch)\b/i,
+  },
+  {
+    id: "sunnyd-tangy-original",
+    title: "SunnyD Tangy Original Citrus Punch, 64 fl oz",
+    brand: "SunnyD",
+    category: "Juices, Smoothies & Lemonades",
+    description:
+      "Citrus punch drink (5% juice) containing high fructose corn syrup, canola oil, modified cornstarch, sucralose, acesulfame potassium, potassium sorbate, Yellow 5, and Yellow 6.",
+    keywords: ["sunnyd", "sunny d", "tangy original", "citrus punch", "juice"],
+    ingredients:
+      "Water, High Fructose Corn Syrup, Contains Less than 2% of: Concentrated Orange Juice, Concentrated Tangerine Juice, Concentrated Apple Juice, Concentrated Lime Juice, Concentrated Grapefruit Juice, Concentrated Pear Juice, Citric Acid, Ascorbic Acid (Vitamin C), Thiamin Hydrochloride (Vitamin B1), Natural Flavors, Modified Cornstarch, Canola Oil, Sodium Citrate, Cellulose Gum, Sucralose, Acesulfame Potassium, Sodium Hexametaphosphate, Potassium Sorbate to Protect Flavor, Yellow 5, Yellow 6.",
+    nutrition: {
+      caloriesKcal100g: 25,
+      sugarsG100g: 5.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 75,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 5,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    match: /\b(sunny\s*d)\b/i,
+  },
+  {
+    id: "kool-aid-hi-c-sunnyd-hawaiian-punch",
+    title: "Kool-Aid Jammers / Hawaiian Punch / Tampico Sweetened Fruit Punch",
+    brand: "Kool-Aid / Hawaiian Punch / Tampico",
+    category: "Juices, Smoothies & Lemonades",
+    description:
+      "Sweetened fruit punch drink (≤5% juice) containing high fructose corn syrup, sucralose, synthetic dyes (Red 40, Blue 1, Yellow 5, Yellow 6), and sodium benzoate / potassium sorbate.",
     keywords: [
       "kool-aid",
       "kool aid",
       "kool aid jammers",
-      "hi-c",
-      "sunnyd",
-      "sunny d",
       "hawaiian punch",
       "tampico",
       "tang",
-      "minute maid fruit punch",
       "fruit punch",
       "juice",
     ],
     ingredients:
-      "Water, High Fructose Corn Syrup, Contains Less than 2% of: Concentrated Orange Juice, Concentrated Tangerine Juice, Concentrated Apple Juice, Citric Acid, Ascorbic Acid (Vitamin C), Thiamin Hydrochloride (Vitamin B1), Natural and Artificial Flavors, Modified Cornstarch, Canola Oil, Sodium Citrate, Cellulose Gum, Sucralose, Acesulfame Potassium, Sodium Hexametaphosphate, Potassium Sorbate to Protect Flavor, Yellow 5, Yellow 6, Red 40.",
+      "Filtered Water, High Fructose Corn Syrup, Contains Less than 2% of: Pear Juice from Concentrate, Citric Acid, Ascorbic Acid (Vitamin C), Natural and Artificial Flavor, Sucralose, Acesulfame Potassium, Gum Arabic, Ester Gum, Red 40, Blue 1, Sodium Benzoate and Potassium Sorbate (Preservatives), Calcium Disodium EDTA (to Protect Flavor).",
     nutrition: {
-      caloriesKcal100g: 34,
-      sugarsG100g: 8.2,
+      caloriesKcal100g: 30,
+      sugarsG100g: 7.4,
       saturatedFatG100g: 0,
       sodiumMg100g: 28,
       fiberG100g: 0,
@@ -2177,7 +2401,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|\btang\b\s+orange)\b/i,
+    match: /\b(kool[- ]?aid|hawaiian\s+punch|tampico|\btang\b\s+orange)\b/i,
   },
   {
     id: "honest-kids-organic-juice",
@@ -2289,12 +2513,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   /* ======================================================================== */
   {
     id: "gatorade-zero",
-    title: "Gatorade Zero Sugar Sports Drink (Glacier Freeze / Berry / Lemon-Lime), 20 fl oz",
-    brand: "Gatorade",
+    title: "Gatorade Zero / Powerade Zero Sugar Sports Drink (Glacier Freeze / Berry), 20 fl oz",
+    brand: "Gatorade / Powerade",
     category: "Sports & Electrolyte Drinks",
     description:
       "Zero-sugar electrolyte sports drink sweetened with sucralose and acesulfame potassium, plus synthetic dyes (Blue 1 / Red 40 / Yellow 5) and glycerol ester of rosin.",
-    keywords: ["gatorade zero", "gatorade zero sugar", "gatorlyte", "powerade zero", "zero sugar sports drink", "sports drink"],
+    keywords: ["gatorade zero", "gatorade zero sugar", "powerade zero", "zero sugar sports drink", "sports drink"],
     ingredients:
       "Water, Citric Acid, Sodium Citrate, Salt, Monopotassium Phosphate, Modified Food Starch, Natural Flavor, Sucralose, Acesulfame Potassium, Glycerol Ester of Rosin, Blue 1.",
     nutrition: {
@@ -2307,7 +2531,29 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fruitsVegNutsPct: 0,
       isWholeFood: false,
     },
-    match: /\b(gatorade\s+zero|gatorlyte|powerade\s+zero)\b/i,
+    match: /\b(gatorade\s+zero|powerade\s+zero)\b/i,
+  },
+  {
+    id: "gatorlyte-rapid-rehydration",
+    title: "Gatorlyte Rapid Rehydration Electrolyte Beverage, 20 fl oz",
+    brand: "Gatorade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Lower-sugar rapid rehydration sports drink (12g sugar per 20 oz bottle) sweetened with sugar and stevia leaf extract, plus glycerol ester of rosin and synthetic dye (Red 40 / Blue 1 / Yellow 5).",
+    keywords: ["gatorlyte", "gatorade gatorlyte", "rapid rehydration", "sports drink"],
+    ingredients:
+      "Water, Sugar, Citric Acid, Salt, Potassium Chloride, Sodium Citrate, Calcium Chloride, Magnesium Oxide, Stevia Leaf Extract, Natural Flavor, Modified Food Starch, Glycerol Ester of Rosin, Red 40.",
+    nutrition: {
+      caloriesKcal100g: 10,
+      sugarsG100g: 2.0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 82,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      isWholeFood: false,
+    },
+    match: /\b(gatorlyte)\b/i,
   },
   {
     id: "gatorade-thirst-quencher",
@@ -2364,13 +2610,36 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(powerade)\b/i,
   },
   {
-    id: "bodyarmor-superdrink",
-    title: "BodyArmor SuperDrink / BodyArmor Lyte Sports Drink (Fruit Punch / Strawberry Banana), 16 fl oz",
+    id: "bodyarmor-lyte-zero",
+    title: "BodyArmor Lyte / BodyArmor Zero Sugar Sports Drink (Peach Mango / Berry), 16 fl oz",
     brand: "BodyArmor",
     category: "Sports & Electrolyte Drinks",
     description:
-      "Coconut-water sports drink without artificial dyes, but sweetened with 28g–36g pure cane sugar per 16 oz bottle (or erythritol + stevia in Lyte) and flavored with natural flavors.",
-    keywords: ["bodyarmor", "body armor", "bodyarmor lyte", "bodyarmor flash iv", "sports drink"],
+      "Low-calorie / zero-added-sugar coconut-water sports drink sweetened with erythritol and stevia leaf extract — zero artificial dyes and zero synthetic sweeteners.",
+    keywords: ["bodyarmor lyte", "bodyarmor zero", "bodyarmor zero sugar", "body armor lyte", "sports drink"],
+    ingredients:
+      "Filtered Water, Erythritol, Coconut Water Concentrate, Citric Acid, Dipotassium Phosphate (Electrolyte), Vegetable Juice Concentrate (Color), Ascorbic Acid (Vitamin C), Gum Arabic, Stevia Leaf Extract, Natural Flavors, Magnesium Oxide (Electrolyte), Calcium D-Pantothenate (Vitamin B5), Niacinamide (Vitamin B3), Alpha-Tocopheryl Acetate (Vitamin E), Zinc Oxide, Pyridoxine Hydrochloride (Vitamin B6), Folic Acid, Vitamin A Palmitate, Cyanocobalamin (Vitamin B12).",
+    nutrition: {
+      caloriesKcal100g: 4,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 8,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 10,
+      nutriScoreGrade: "b",
+      isWholeFood: false,
+    },
+    match: /\b(body\s*armor\s+(?:lyte|zero|lite))\b/i,
+  },
+  {
+    id: "bodyarmor-superdrink",
+    title: "BodyArmor SuperDrink Sports Drink (Fruit Punch / Strawberry Banana), 16 fl oz",
+    brand: "BodyArmor",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Coconut-water sports drink without artificial dyes, sweetened with 28g–36g pure cane sugar per 16 oz bottle and flavored with natural flavors.",
+    keywords: ["bodyarmor", "body armor", "bodyarmor superdrink", "bodyarmor flash iv", "sports drink"],
     ingredients:
       "Filtered Water, Pure Cane Sugar, Coconut Water Concentrate, Citric Acid, Dipotassium Phosphate (Electrolyte), Vegetable Juice Concentrate (Color), Ascorbic Acid (Vitamin C),Gum Arabic, Magnesium Oxide (Electrolyte), Calcium D-Pantothenate (Vitamin B5), Niacinamide (Vitamin B3), Natural Fruit Punch Flavor, Alpha-Tocopheryl Acetate (Vitamin E), Zinc Oxide, Pyridoxine Hydrochloride (Vitamin B6), Folic Acid, Vitamin A Palmitate, Cyanocobalamin (Vitamin B12).",
     nutrition: {
@@ -2417,23 +2686,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(prime\s+hydration|prime\s+(?:ice\s+pop|meta\s+moon|blue\s+raspberry|tropical\s+punch|lemon\s+lime|cherry\s+freeze|strawberry\s+watermelon)|\bprime\b\s+drink)\b/i,
   },
   {
-    id: "liquid-iv-pedialyte-electrolit",
-    title: "Liquid I.V. Hydration Multiplier / Pedialyte / Electrolit Electrolyte Solution",
-    brand: "Liquid I.V. / Pedialyte / Electrolit",
+    id: "liquid-iv-hydration-multiplier",
+    title: "Liquid I.V. Hydration Multiplier Electrolyte Drink Mix",
+    brand: "Liquid I.V.",
     category: "Sports & Electrolyte Drinks",
     description:
-      "Oral rehydration electrolyte drink containing sodium citrate, potassium chloride, dextrose/cane sugar (11g sugar per stick in Liquid I.V.; sucralose + acesulfame K + dyes in Pedialyte).",
-    keywords: [
-      "liquid iv",
-      "liquid i.v.",
-      "hydration multiplier",
-      "pedialyte",
-      "electrolit",
-      "biolyte",
-      "nuun",
-      "electrolytes",
-      "electrolyte drink",
-    ],
+      "Electrolyte drink mix formulated with pure cane sugar, dextrose, sodium citrate, potassium citrate, stevia leaf extract, and B-vitamins — zero artificial sweeteners or synthetic dyes.",
+    keywords: ["liquid iv", "liquid i.v.", "hydration multiplier", "electrolytes", "electrolyte drink"],
     ingredients:
       "Pure Cane Sugar, Dextrose, Citric Acid, Salt, Potassium Citrate, Sodium Citrate, Dipotassium Phosphate, Silicon Dioxide, Stevia Leaf Extract, Ascorbic Acid (Vitamin C), Natural Flavors, Niacinamide (Vitamin B3), D-Calcium Pantothenate (Vitamin B5), Pyridoxine Hydrochloride (Vitamin B6), Cyanocobalamin (Vitamin B12).",
     nutrition: {
@@ -2447,19 +2706,85 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "b",
       isWholeFood: false,
     },
-    match: /\b(liquid\s+i\.?v\.?|hydration\s+multiplier|pedialyte|electrolit|biolyte|nuun)\b/i,
+    match: /\b(liquid\s+i\.?v\.?|hydration\s+multiplier)\b/i,
+  },
+  {
+    id: "pedialyte-electrolyte-solution",
+    title: "Pedialyte / Electrolit Oral Electrolyte Rehydration Solution",
+    brand: "Pedialyte / Electrolit",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Medical-style oral electrolyte rehydration solution containing dextrose, citric acid, potassium citrate, artificial sweeteners (sucralose and acesulfame potassium in Pedialyte), and synthetic dye (Red 40 / Blue 1 / Yellow 6).",
+    keywords: ["pedialyte", "electrolit", "biolyte", "electrolyte solution", "electrolyte drink"],
+    ingredients:
+      "Water, Dextrose, Less than 1% of: Galacto-Oligosaccharides, Citric Acid, Potassium Citrate, Salt, Natural and Artificial Flavor, Sodium Citrate, Sucralose, Acesulfame Potassium, Zinc Gluconate, Red 40.",
+    nutrition: {
+      caloriesKcal100g: 10,
+      sugarsG100g: 2.5,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 103,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      isWholeFood: false,
+    },
+    match: /\b(pedialyte|electrolit|biolyte)\b/i,
+  },
+  {
+    id: "nuun-sport-electrolyte",
+    title: "Nuun Sport Electrolyte Hydration Tablets",
+    brand: "Nuun",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Effervescent low-sugar electrolyte tablet (1g dextrose per 16 oz serving) sweetened with stevia leaf extract and colored with beet powder / riboflavin — zero artificial sweeteners or synthetic dyes.",
+    keywords: ["nuun", "nuun sport", "nuun tablets", "electrolyte tablets"],
+    ingredients:
+      "Citric Acid, Dextrose, Sodium Bicarbonate, Potassium Bicarbonate, Sodium Carbonate, Natural Flavors, Potassium Chloride, Magnesium Oxide, Calcium Carbonate, Stevia Leaf Extract, Avocado Oil, Beet Powder Color, Riboflavin (for Color).",
+    nutrition: {
+      caloriesKcal100g: 3,
+      sugarsG100g: 0.2,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 63,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(nuun)\b/i,
+  },
+  {
+    id: "lmnt-zero-sugar-electrolyte",
+    title: "LMNT / Ultima Replenisher Zero-Sugar Electrolyte Drink Mix",
+    brand: "LMNT / Ultima Replenisher",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Zero-sugar mineral electrolyte drink mix (sodium chloride, magnesium malate, potassium chloride, citric acid) sweetened with stevia leaf extract — zero sugar, zero artificial sweeteners, and zero synthetic dyes.",
+    keywords: ["lmnt", "ultima replenisher", "zero sugar electrolytes", "clean sports drink", "electrolyte"],
+    ingredients:
+      "Salt (Sodium Chloride), Citric Acid, Magnesium Malate, Potassium Chloride, Natural Flavors, Stevia Leaf Extract.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 200,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    match: /\b(lmnt|ultima\s+replenisher)\b/i,
   },
   {
     id: "nooma-lmnt-clean-electrolyte",
-    title: "NOOMA Organic Electrolyte Sports Drink / LMNT Zero-Sugar Electrolytes",
-    brand: "NOOMA / LMNT",
+    title: "NOOMA Organic Electrolyte Sports Drink, 16.9 fl oz",
+    brand: "NOOMA",
     category: "Sports & Electrolyte Drinks",
     description:
-      "USDA Organic coconut-water electrolyte drink (NOOMA) or zero-sugar clean mineral electrolyte mix (LMNT) with zero artificial sweeteners, zero synthetic dyes, and zero added cane sugar.",
+      "USDA Organic coconut-water electrolyte drink with Himalayan pink salt and organic fruit puree — zero artificial sweeteners, zero synthetic dyes, and zero added cane sugar.",
     keywords: [
       "nooma",
-      "lmnt",
-      "ultima replenisher",
       "organic electrolyte drink",
       "clean sports drink",
       "electrolyte",
@@ -2478,12 +2803,58 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    match: /\b(nooma|lmnt|ultima\s+replenisher)\b/i,
+    match: /\b(nooma)\b/i,
   },
 
   /* ======================================================================== */
   /* 8. READY-TO-DRINK COFFEES, TEAS & KOMBUCHA                               */
   /* ======================================================================== */
+  {
+    id: "la-colombe-draft-latte",
+    title: "La Colombe Draft Latte Cold-Pressed Espresso, 9 fl oz",
+    brand: "La Colombe",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "Canned nitrous-infused cold-pressed espresso latte made with farm-fresh milk, cold-pressed espresso, a touch of cane sugar, and pectin — zero artificial sweeteners or synthetic preservatives.",
+    keywords: ["la colombe", "la colombe draft latte", "draft latte", "iced coffee", "coffee"],
+    ingredients:
+      "Reduced-Fat Milk, Cold-Pressed Espresso (Water, Coffee), Cane Sugar, Natural Flavors, Nitrous Oxide, Pectin, Dipotassium Phosphate, Lactase Enzyme.",
+    nutrition: {
+      caloriesKcal100g: 42,
+      sugarsG100g: 4.5,
+      saturatedFatG100g: 0.9,
+      sodiumMg100g: 40,
+      fiberG100g: 0.8,
+      proteinG100g: 2.6,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "c",
+      isWholeFood: false,
+    },
+    match: /\b(la\s+colombe\s+draft\s+latte|la\s+colombe)\b/i,
+  },
+  {
+    id: "dunkin-iced-coffee",
+    title: "Dunkin' / International Delight Bottled Iced Coffee, 13.7 fl oz",
+    brand: "Dunkin' / International Delight",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "Sweetened bottled dairy iced coffee containing brewed coffee, skim milk, cream, cane sugar (~37g–40g sugar per bottle), potassium phosphate, and natural flavors.",
+    keywords: ["dunkin iced coffee", "international delight iced coffee", "bottled iced coffee", "iced coffee", "coffee"],
+    ingredients:
+      "Coffee (Water, Coffee), Skim Milk, Sugar, Cream, Potassium Phosphate, Pectin, Natural Flavor.",
+    nutrition: {
+      caloriesKcal100g: 68,
+      sugarsG100g: 10.5,
+      saturatedFatG100g: 0.8,
+      sodiumMg100g: 38,
+      fiberG100g: 0,
+      proteinG100g: 2.0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    match: /\b(dunkin'?\s+iced\s+coffee|international\s+delight\s+iced\s+coffee)\b/i,
+  },
   {
     id: "starbucks-frappuccino-iced-coffee",
     title: "Starbucks Frappuccino Chilled Coffee Drink (Mocha / Vanilla / Caramel), 13.7 fl oz",
@@ -2496,8 +2867,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "frappuccino",
       "starbucks frappuccino",
       "starbucks doubleshot",
-      "dunkin iced coffee",
-      "international delight iced coffee",
       "iced coffee",
       "coffee",
     ],
@@ -2514,7 +2883,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(starbucks\s+(?:frappuccino|doubleshot|tripleshot|iced\s+espresso)|frappuccino|dunkin'?\s+iced\s+coffee|international\s+delight\s+iced\s+coffee|la\s+colombe\s+draft\s+latte)\b/i,
+    match: /\b(starbucks\s+(?:frappuccino|doubleshot|tripleshot|iced\s+espresso)|frappuccino)\b/i,
   },
   {
     id: "unsweetened-cold-brew-coffee",
@@ -2524,7 +2893,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     description:
       "100% unsweetened cold-steeped black Arabica coffee (water + coffee) — 0g sugar, 0 artificial sweeteners, 0 gums, and 0 synthetic additives.",
     keywords: ["stok", "stok cold brew", "starbucks cold brew", "califia cold brew", "chamberlain coffee", "cold brew", "black coffee", "coffee"],
-    ingredients: "Filtered Water, Organic Arabica Coffee.",
+    ingredients: "Filtered Water, Arabica Coffee.",
     nutrition: {
       caloriesKcal100g: 2,
       sugarsG100g: 0,
@@ -2534,7 +2903,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0.2,
       fruitsVegNutsPct: 0,
       nutriScoreGrade: "a",
-      isOrganic: true,
       isWholeFood: false,
     },
     match: /\b(stok\s+cold\s+brew|starbucks.*unsweetened.*cold\s+brew|califia.*pure\s+black|unsweetened.*cold\s+brew|cold\s+brew\s+coffee)\b/i,
@@ -2552,7 +2920,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "arizona iced tea",
       "arnold palmer",
       "mucho mango",
-      "peace tea",
       "iced tea",
       "tea",
     ],
@@ -2569,15 +2936,15 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(arizona\s+(?:green\s+tea|iced\s+tea|arnold\s+palmer|mucho\s+mango|watermelon|rx\s+energy)|arnold\s+palmer|mucho\s+mango|peace\s+tea)\b/i,
+    match: /\b(arizona\s+(?:green\s+tea|iced\s+tea|arnold\s+palmer|mucho\s+mango|watermelon|rx\s+energy)|arnold\s+palmer|mucho\s+mango)\b/i,
   },
   {
     id: "pure-leaf-gold-peak-snapple-sweet-tea",
-    title: "Pure Leaf / Gold Peak / Milo's / Brisk / Snapple Sweet Iced Tea",
+    title: "Pure Leaf / Gold Peak / Milo's / Brisk / Snapple / Peace Tea Sweet Iced Tea",
     brand: "Pure Leaf / Gold Peak / Snapple",
     category: "Coffee, Tea & Kombucha",
     description:
-      "Sweetened bottled iced tea containing 36g–44g added sugar per bottle (plus citric acid, phosphoric acid, and potassium sorbate in Brisk/Lipton).",
+      "Sweetened bottled iced tea containing 36g–44g added sugar per bottle (plus citric acid, phosphoric acid, and potassium sorbate in Brisk/Lipton/Peace Tea).",
     keywords: [
       "pure leaf",
       "gold peak",
@@ -2585,6 +2952,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "milos tea",
       "snapple",
       "snapple peach tea",
+      "peace tea",
       "brisk",
       "lipton iced tea",
       "sweet tea",
@@ -2603,21 +2971,42 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    match: /\b(pure\s+leaf.*sweet|gold\s+peak.*sweet|milo'?s.*sweet\s+tea|snapple|lipton\s+(?:brisk|iced\s+tea|green\s+tea)|brisk\s+iced\s+tea|\bsweet\s+tea\b)\b/i,
+    match: /\b(pure\s+leaf.*sweet|gold\s+peak.*sweet|milo'?s.*sweet\s+tea|snapple|peace\s+tea|lipton\s+(?:brisk|iced\s+tea|green\s+tea)|brisk\s+iced\s+tea|\bsweet\s+tea\b)\b/i,
+  },
+  {
+    id: "pure-leaf-gold-peak-unsweetened-tea",
+    title: "Pure Leaf / Gold Peak Unsweetened Brewed Black or Green Iced Tea",
+    brand: "Pure Leaf / Gold Peak",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "100% unsweetened real brewed tea leaves in purified water — 0g sugar, 0 calories, and 0 synthetic sweeteners or dyes.",
+    keywords: ["pure leaf unsweetened", "gold peak unsweetened", "unsweetened iced tea", "unsweetened black tea", "tea"],
+    ingredients: "Brewed Black Tea (Water, Black Tea Leaves), Citric Acid.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 4,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: true,
+    },
+    match: /\b(pure\s+leaf\s+unsweetened|gold\s+peak\s+unsweetened)\b/i,
   },
   {
     id: "ito-en-unsweetened-tea",
-    title: "Ito En Oi Ocha Organic Unsweetened Green Tea / Pure Leaf Unsweetened Black Tea",
-    brand: "Ito En / Pure Leaf / Just Ice Tea",
+    title: "Ito En Oi Ocha / Just Ice Tea Organic Unsweetened Green or Black Tea",
+    brand: "Ito En / Just Ice Tea",
     category: "Coffee, Tea & Kombucha",
     description:
-      "100% unsweetened brewed tea leaves in purified water with rich catechins and antioxidants — 0g sugar, 0 calories, and 0 synthetic sweeteners or dyes.",
+      "USDA Organic 100% unsweetened brewed tea leaves in purified water with rich catechins and antioxidants — 0g sugar, 0 calories, and 0 synthetic sweeteners or dyes.",
     keywords: [
       "ito en",
       "oi ocha",
       "unsweetened green tea",
       "unsweetened iced tea",
-      "pure leaf unsweetened",
       "just ice tea",
       "honest tea",
       "green tea",
@@ -2636,7 +3025,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: true,
     },
-    match: /\b(ito\s+en|oi\s+ocha|just\s+ice\s+tea|unsweetened\s+(?:green|black|iced)\s+tea|pure\s+leaf\s+unsweetened|gold\s+peak\s+unsweetened)\b/i,
+    match: /\b(ito\s+en|oi\s+ocha|just\s+ice\s+tea|unsweetened\s+(?:green|black|iced)\s+tea)\b/i,
   },
   {
     id: "health-ade-gts-kombucha",
@@ -2678,7 +3067,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
 function isZeroOrDietDrink(item: DrinkCatalogEntry): boolean {
   if ((item.nutrition.sugarsG100g ?? 0) > 0) return false;
   const zeroModifier =
-    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer)\b/i;
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer)\b/i;
   if (zeroModifier.test(item.title)) return true;
   return item.keywords.some((k) => zeroModifier.test(k));
 }
@@ -2690,7 +3079,7 @@ export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
   const q = query.trim();
   if (!q) return null;
   const requiresZeroOrDiet =
-    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|unsweetened)\b/i.test(q);
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened)\b/i.test(q);
   for (const item of DRINKS_CATALOG) {
     if (item.match.test(q)) {
       if (requiresZeroOrDiet && !isZeroOrDietDrink(item)) {

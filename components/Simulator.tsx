@@ -1708,7 +1708,7 @@ export default function Simulator() {
                                 🥗 Nutritional Quality: {score.yukaBreakdown.nutritionScore}/60 (Nutri-Score {score.yukaBreakdown.nutriScoreGrade})
                               </div>
                               <div style={{ fontSize: 12.5, color: "#475569", marginTop: 2 }}>
-                                🧪 Additive Safety: {score.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {score.yukaBreakdown.organicScore}/10
+                                🧪 Clean-Label Additives: {score.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {score.yukaBreakdown.organicScore}/10
                               </div>
                               {score.yukaBreakdown.glucoseImpact && (
                                 <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 8, paddingTop: 8 }}>
@@ -1728,7 +1728,7 @@ export default function Simulator() {
                                             : "#16a34a",
                                     }}
                                   >
-                                    🩸 Glucose Impact: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp; 🔥 {score.yukaBreakdown.calorieNote}
+                                    🩸 Sugar &amp; Carb Note: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp; 🔥 {score.yukaBreakdown.calorieNote}
                                   </div>
                                   <p style={{ fontSize: 11.5, color: "#475569", margin: "2px 0 0", lineHeight: 1.45 }}>
                                     {score.yukaBreakdown.glucoseNote}
@@ -2020,7 +2020,7 @@ export default function Simulator() {
                             <img src="/broc-mascot.jpg" alt="Broc" className="yuka-member-mascot" />
                             <span className="yuka-member-eyebrow">MEMBER ACCESS</span>
                             <h4>Search for any product</h4>
-                            <p>Packaged food and beverage products scored on our 3-pillar rubric (60% Nutritional Quality, 30% Additive Safety, 10% Organic Bonus) via Open Food Facts &amp; USDA FoodData Central.</p>
+                            <p>Packaged food and beverage products scored on our 3-pillar rubric (60% Nutritional Quality, 30% Clean-Label Additives, 10% Organic Bonus) via Open Food Facts &amp; USDA FoodData Central.</p>
                             {!isPro && (
                               <button
                                 type="button"
@@ -2206,7 +2206,7 @@ export default function Simulator() {
             {/* Header Row */}
             <div className="compare-row compare-row--head" role="row">
               <div className="compare-cell compare-cell--feature" role="columnheader">Feature</div>
-              <div className="compare-cell" role="columnheader">Honey / Rakuten</div>
+              <div className="compare-cell" role="columnheader">Coupon Extensions</div>
               <div className="compare-cell" role="columnheader">Barcode Apps</div>
               <div className="compare-cell compare-cell--broc" role="columnheader">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2304,7 +2304,7 @@ export default function Simulator() {
                   How does HeyBroc calculate its 0 to 100 food and ingredient score?
                 </summary>
                 <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-                  HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Additive &amp; Chemical Safety (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
+                  HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Clean-Label Additives (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
                 </p>
               </details>
               <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>

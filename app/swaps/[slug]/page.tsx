@@ -20,7 +20,7 @@ export async function generateMetadata({
 
   return {
     title: `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`,
-    description: `Is ${entry.title} healthy? HeyBroc scores it ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) with ${result.flagged.length} ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
+    description: `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${result.score < 25 ? "Bad" : result.rating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
     alternates: {
       canonical: `https://www.heybroc.com/swaps/${entry.slug}`,
     },
@@ -175,7 +175,7 @@ export default async function SwapReportPage({
               3-PILLAR SCORE BREAKDOWN
             </div>
             <div style={{ fontSize: 14.5, fontWeight: 800, marginTop: 6 }}>
-              🥗 Nutritional Quality: {yb.nutritionScore}/60 (Nutri-Score {yb.nutriScoreGrade}) &nbsp;·&nbsp; 🧪 Additive Safety: {yb.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {yb.organicScore}/10
+              🥗 Nutritional Quality: {yb.nutritionScore}/60 (Nutri-Score {yb.nutriScoreGrade}) &nbsp;·&nbsp; 🧪 Clean-Label Additives: {yb.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {yb.organicScore}/10
             </div>
             <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 10, paddingTop: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase" }}>

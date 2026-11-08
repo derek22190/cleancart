@@ -126,38 +126,47 @@ export default function PrivacyPage() {
       </section>
 
       <section style={{ marginTop: 28 }}>
-        <h2 style={{ fontSize: 20 }}>4. Editorial Opinion, FDA Status, Pricing &amp; Label Verification Disclaimer</h2>
+        <h2 style={{ fontSize: 20 }}>4. Editorial Opinion, Allergen &amp; Medical Disclaimer, FDA Status &amp; Label Verification</h2>
         <p>
           HeyBroc 0–100 scores, risk tiers, and ingredient summaries reflect HeyBroc&apos;s subjective clean-label opinion (flagging synthetic dyes,
           refined seed oils, high-fructose corn syrup, synthetic preservatives, nitrites, and artificial sweeteners) for informational grocery comparison
-          only. They do not constitute medical, nutritional, diagnostic, allergen-safety, or regulatory compliance advice, nor do they claim that any
-          commercial food product is adulterated or unlawful. Most flagged ingredients are permitted for food use or recognized as Generally Recognized as
-          Safe (GRAS) by the U.S. Food and Drug Administration (FDA). Product ingredient lists and sample prices displayed in HeyBroc are representative
-          estimates sourced from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices
-          vary by store location and date. Always verify the physical product package and live store checkout price before purchasing or consuming any item.
+          only. They do not constitute medical, nutritional, diagnostic, glycemic/diabetes, allergen-safety, or regulatory compliance advice, nor do they
+          claim that any commercial food product is adulterated, unsafe, or unlawful. Most flagged ingredients are permitted for food use or recognized as
+          Generally Recognized as Safe (GRAS) by the U.S. Food and Drug Administration (FDA).
+        </p>
+        <p>
+          <strong>Allergen &amp; Dietary Restriction Warning:</strong> HeyBroc is <strong>not</strong> an allergen-detection tool and must never be relied
+          upon to identify or rule out food allergens (including FDA Major Food Allergens: Milk, Eggs, Fish, Crustacean Shellfish, Tree Nuts, Peanuts,
+          Wheat/Gluten, Soybeans, and Sesame) or cross-contact warnings. Product ingredient lists and sample prices displayed in HeyBroc are representative
+          estimates sourced from public databases (Open Food Facts under ODbL, USDA FoodData Central) or category-level reference formulations;
+          manufacturers reformulate products frequently and retail prices vary by store location and date. Always read the physical product package label
+          and live store checkout price before purchasing or consuming any item.
         </p>
       </section>
 
       <section style={{ marginTop: 28 }}>
         <h2 style={{ fontSize: 20 }}>5. Trademark &amp; Retailer Non-Affiliation Disclaimer</h2>
         <p>
-          HeyBroc is an independent software product and is not affiliated with, endorsed by, sponsored by, or officially connected to Walmart Inc.,
-          Target Corporation, Maplebear Inc. (Instacart), The Kroger Co., ALDI Inc., Costco Wholesale Corporation, Sam&apos;s West Inc. (Sam&apos;s Club),
-          BJ&apos;s Wholesale Club Holdings Inc., Amazon.com Inc., Whole Foods Market IP Inc., DoorDash Inc., Uber Technologies Inc. (Uber Eats), Shipt Inc.,
-          or any food or beverage manufacturer referenced in our catalog. All retailer names, product titles, and brand names are trademarks or registered
-          trademarks of their respective owners and are used strictly for nominative fair-use identification and comparative consumer information.
+          HeyBroc is an independent software product and is not affiliated with, endorsed by, sponsored by, or officially connected to Walmart Inc.
+          (Walmart, Great Value, Marketside, Bettergoods, Sam&apos;s Choice), Sam&apos;s West Inc. (Sam&apos;s Club, Member&apos;s Mark), BJ&apos;s Wholesale
+          Club Holdings Inc. (BJ&apos;s, Wellsley Farms, Berkley Jensen), Costco Wholesale Corporation (Costco, Kirkland Signature), Target Corporation
+          (Target, Good &amp; Gather, Favorite Day), The Kroger Co. (Kroger, Simple Truth, Private Selection), ALDI Inc., Maplebear Inc. (Instacart),
+          Amazon.com Inc., Whole Foods Market IP Inc. (365 by Whole Foods Market), DoorDash Inc., Uber Technologies Inc. (Uber Eats), Shipt Inc., or any
+          food or beverage manufacturer referenced in our catalog. All retailer names, product titles, and brand names are trademarks or registered
+          trademarks of their respective owners and are used strictly for nominative fair-use identification and comparative consumer commentary.
         </p>
       </section>
 
       <section style={{ marginTop: 28 }}>
-        <h2 style={{ fontSize: 20 }}>6. Contact &amp; Data Deletion Requests</h2>
+        <h2 style={{ fontSize: 20 }}>6. Manufacturer Reformulation Updates, Corrections &amp; Data Deletion Requests</h2>
         <p>
-          Signed-in users can delete their account and saved data directly in the app&apos;s Account menu. For privacy questions, product ingredient update
-          requests, device-record deletion, or support, contact the HeyBroc team at{" "}
+          Signed-in users can delete their account and saved data directly in the app&apos;s Account menu. Food and beverage manufacturers, brand owners,
+          and retailers may submit updated ingredient panels, reformulation notices, or trademark inquiries—and users may submit privacy or device-record
+          deletion requests—by contacting the HeyBroc team at{" "}
           <a href="mailto:privacy@heybroc.com" style={{ color: "#0F7A4A", fontWeight: 600 }}>
             privacy@heybroc.com
           </a>
-          .
+          . Verified product formulation updates are reviewed and applied promptly.
         </p>
       </section>
     </main>

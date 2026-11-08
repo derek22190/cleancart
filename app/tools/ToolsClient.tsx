@@ -83,7 +83,7 @@ export default function ToolsClient() {
           <img src="/broc-mascot.jpg" alt="HeyBroc" style={{ width: 42, height: 42, borderRadius: 12, border: "2px solid #16a34a" }} />
           <div>
             <b style={{ fontSize: 18, fontWeight: 900, display: "block" }}>HeyBroc - Online Food Scanner</b>
-            <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>Free Clean Ingredient, Seed Oil &amp; Blood Sugar Tools</span>
+            <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>Free Clean Ingredient, Seed Oil &amp; Sugar / Carb Tools</span>
           </div>
         </Link>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -112,7 +112,7 @@ export default function ToolsClient() {
           Free Ingredient Label Grader, Seed Oil Detector &amp; Sugar / Refined-Carb Checker
         </h1>
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 760, lineHeight: 1.5 }}>
-          Paste any food or beverage ingredient label below for an instant <b>0–100 health score</b>, <b>3-Pillar Breakdown</b>, <b>Seed Oil &amp; Red 40 check</b>, and <b>Sugar &amp; refined-carb note</b>.
+          Paste any food or beverage ingredient label below for an instant <b>0–100 clean-label score</b>, <b>3-Pillar Breakdown</b>, <b>Seed Oil &amp; Red 40 check</b>, and <b>Sugar &amp; refined-carb note</b>.
         </p>
       </section>
 
@@ -124,7 +124,7 @@ export default function ToolsClient() {
               Tool #1 · Instant 1-Second Custom Label Grader
             </span>
             <h2 style={{ fontSize: 21, fontWeight: 900, marginTop: 2 }}>
-              Paste Any Ingredient List (0–100 Score + Blood Sugar &amp; Seed Oil Check)
+              Paste Any Ingredient List (0–100 Score + Sugar / Carb &amp; Seed Oil Check)
             </h2>
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function ToolsClient() {
               </div>
             </div>
 
-            {/* Quick Status Badges for Seed Oils, Dyes & Glucose */}
+            {/* Quick Status Badges for Seed Oils, Dyes & Sugar/Carbs */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <span
                 style={{
@@ -242,7 +242,7 @@ export default function ToolsClient() {
                           : "#991b1b",
                   }}
                 >
-                  🩸 Glucose: {liveScore.yukaBreakdown.glucoseImpact}
+                  🩸 Sugar &amp; Carb Note: {liveScore.yukaBreakdown.glucoseImpact}
                 </span>
               )}
             </div>
@@ -255,7 +255,7 @@ export default function ToolsClient() {
                 3-PILLAR SCORE BREAKDOWN &amp; SUGAR / REFINED-CARB NOTE
               </div>
               <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 4 }}>
-                🥗 Nutritional Quality: {liveScore.yukaBreakdown.nutritionScore}/60 (Nutri-Score {liveScore.yukaBreakdown.nutriScoreGrade}) &nbsp;·&nbsp; 🧪 Additive Safety: {liveScore.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {liveScore.yukaBreakdown.organicScore}/10
+                🥗 Nutritional Quality: {liveScore.yukaBreakdown.nutritionScore}/60 (Nutri-Score {liveScore.yukaBreakdown.nutriScoreGrade}) &nbsp;·&nbsp; 🧪 Clean-Label Additives: {liveScore.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {liveScore.yukaBreakdown.organicScore}/10
               </div>
               <p style={{ fontSize: 12.5, color: "#475569", marginTop: 6, marginBottom: 0 }}>
                 <b>🩸 Sugar &amp; refined-carb note:</b> {liveScore.yukaBreakdown.glucoseNote} ({liveScore.yukaBreakdown.calorieNote})
@@ -266,7 +266,7 @@ export default function ToolsClient() {
           {/* Flagged Additives List */}
           {liveScore.flagged.length === 0 ? (
             <div style={{ background: "#dcfce7", color: "#166534", padding: "10px 14px", borderRadius: 10, fontWeight: 800, fontSize: 13 }}>
-              ✓ Clean Label! Zero flagged chemical additives, seed oils, or synthetic dyes.
+              ✓ Clean Label! Zero watchlist additives, seed oils, or synthetic dyes.
             </div>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
@@ -362,13 +362,13 @@ export default function ToolsClient() {
       {/* TOOL 3: Complete A-Z Food Additive Encyclopedia */}
       <section id="additive-encyclopedia" style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "22px" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Tool #3 · Scientific Ingredient Database ({ADDITIVE_RULES.length} Tracked Food Additives)
+          Tool #3 · Clean-Label Ingredient Reference ({ADDITIVE_RULES.length} Tracked Food Additives)
         </span>
         <h2 style={{ fontSize: 22, fontWeight: 900, marginTop: 2, marginBottom: 8 }}>
-          A–Z Food Additive Safety Encyclopedia
+          A–Z Food Additive &amp; Clean-Label Encyclopedia
         </h2>
         <p style={{ fontSize: 13.5, color: "#475569", marginBottom: 14 }}>
-          Search every chemical preservative, synthetic food dye, refined seed oil, artificial sweetener, and emulsifier flagged by HeyBroc—complete with EFSA, FDA, WHO/IARC, and NIH citations.
+          Search every synthetic preservative, food dye, refined seed oil, artificial sweetener, and emulsifier tracked by HeyBroc—complete with EFSA, FDA, WHO/IARC, and NIH references.
         </p>
 
         <input

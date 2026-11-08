@@ -2258,7 +2258,7 @@ class MainActivity : Activity() {
             addView(label("🥗 Nutritional Quality: $nutScore/60 (Nutri-Score $nutGrade)", 13f, 0xFF111814.toInt(), bold = true).apply {
                 setPadding(0, dp(4), 0, 0)
             })
-            addView(label("🧪 Additive Safety: $addScore/30   ·   🌱 Organic Bonus: $orgScore/10", 12.5f, 0xFF4B5563.toInt()).apply {
+            addView(label("🧪 Clean-Label Additives: $addScore/30   ·   🌱 Organic Bonus: $orgScore/10", 12.5f, 0xFF4B5563.toInt()).apply {
                 setPadding(0, dp(2), 0, 0)
             })
             addView(View(context).apply {

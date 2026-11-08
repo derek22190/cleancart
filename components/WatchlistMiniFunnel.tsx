@@ -30,14 +30,14 @@ const WATCHLIST_PILLS: Array<{
     icon: "🧪",
     title: "Red 40 & Artificial Dyes",
     subtitle: "Red 40, Yellow 5 & 6, Blue 1, Titanium Dioxide",
-    badge: "Kids' Health",
+    badge: "Clean Label",
   },
   {
     id: "hfcs",
     icon: "🌽",
     title: "High Fructose Corn Syrup",
     subtitle: "HFCS, corn syrup solids & hidden refined syrups",
-    badge: "Blood Sugar",
+    badge: "Added Syrups",
   },
   {
     id: "nitrates",
@@ -51,14 +51,14 @@ const WATCHLIST_PILLS: Array<{
     icon: "🥤",
     title: "Artificial Sweeteners",
     subtitle: "Sucralose, aspartame, acesulfame potassium & saccharin",
-    badge: "Gut Health",
+    badge: "Zero Artificial",
   },
   {
     id: "preservatives",
     icon: "🛡️",
     title: "BHA, BHT & Harsh Preservatives",
     subtitle: "TBHQ, BHA/BHT, potassium bromate & propylparaben",
-    badge: "Endocrine",
+    badge: "Synthetic",
   },
 ];
 

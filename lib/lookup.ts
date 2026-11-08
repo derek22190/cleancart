@@ -528,7 +528,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Cool%20Ranch%20Tortilla%20Chips",
   },
   {
-    match: /\b(doritos|nacho cheese)\b/i,
+    match: /\b(doritos)\b/i,
     brand: "Doritos",
     title: "Nacho Cheese Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Artificial Color (Yellow 6, Yellow 5, Red 40), Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Disodium Inosinate, and Disodium Guanylate.",
@@ -581,14 +581,14 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/snacks.jpg",
   },
   {
-    match: /\b(cheetos|flamin'? hot)\b/i,
+    match: /\b(cheetos)\b/i,
     brand: "Cheetos",
     title: "Crunchy Cheese Flavored Snacks",
     ingredients: "Enriched Corn Meal (Corn Meal, Ferrous Sulfate, Niacin, Thiamin Mononitrate, Riboflavin, Folic Acid), Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Cheese Seasoning (Whey, Cheddar Cheese, Canola Oil, Maltodextrin, Natural and Artificial Flavors, Salt, Whey Protein Concentrate, Monosodium Glutamate, Lactic Acid, Citric Acid, Artificial Color [Yellow 6]), and Salt.",
     imageUrl: "/products/chips.jpg",
   },
   {
-    match: /\b(takis|fuego)\b/i,
+    match: /\b(takis)\b/i,
     brand: "Takis",
     title: "Fuego Hot Chili Pepper & Lime Tortilla Chips",
     ingredients: "Corn Masa Flour, Vegetable Oil (Palm and/or Soybean and/or Canola Oil), Seasoning (Maltodextrin, Citric Acid, Sugar, Potassium Chloride, Salt, Monosodium Glutamate, Hydrolyzed Soy Protein, Natural and Artificial Flavors, Hydrolyzed Yeast, Soybean Oil, Onion Powder, Red 40 Lake, Yellow 6 Lake, Sodium Bicarbonate, Chili Pepper, Disodium Inosinate, Disodium Guanylate, TBHQ).",
@@ -598,7 +598,7 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(froot loops|fruit loops)\b/i,
     brand: "Kellogg's",
     title: "Froot Loops Sweetened Multigrain Cereal",
-    ingredients: "Corn Flour Blend, Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6, BHT for Freshness.",
+    ingredients: "Corn Flour Blend, Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6.",
     imageUrl: "/products/cereal.jpg",
   },
   {
@@ -644,9 +644,16 @@ const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/products/yogurt.jpg",
   },
   {
-    match: /\b(hidden valley)\b|(?<!primal kitchen |avocado oil |organic )\branch dressing\b/i,
+    match: /\b(hidden valley)\b/i,
     brand: "Hidden Valley",
     title: "Original Ranch Salad Dressing & Topping",
+    ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
+    imageUrl: "/products/ranch.jpg",
+  },
+  {
+    match: /(?<!primal kitchen |avocado oil |organic )\branch dressing\b/i,
+    brand: "Representative Category Formulation",
+    title: "Creamy Ranch Salad Dressing (Category Estimate)",
     ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
     imageUrl: "/products/ranch.jpg",
   },
