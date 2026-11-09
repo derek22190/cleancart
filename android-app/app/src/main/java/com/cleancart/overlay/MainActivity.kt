@@ -266,6 +266,21 @@ class MainActivity : Activity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_PICK_GOOGLE_ACCOUNT) {
+            val cb = pendingGoogleAccountPicked
+            pendingGoogleAccountPicked = null
+            val pickedEmail = if (resultCode == Activity.RESULT_OK && data != null) {
+                data.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME).orEmpty().trim()
+            } else {
+                ""
+            }
+            cb?.invoke(pickedEmail)
+        }
+    }
+
     private fun renderScreen() {
         renderTopBar()
         renderBottomNav()
@@ -283,6 +298,9 @@ class MainActivity : Activity() {
 
     private fun renderTopBar() {
         topBarContainer.removeAllViews()
+        topBarContainer.orientation = LinearLayout.VERTICAL
+        topBarContainer.gravity = Gravity.START
+
         val titleText = when (activeTab) {
             0 -> if (historyFavoritesOnly) "★ Favorites" else "My Scans"
             1 -> "Top Picks"
@@ -290,58 +308,82 @@ class MainActivity : Activity() {
             else -> "Search"
         }
 
-        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
-        val hasDietaryAlerts = activeDietaryCount > 0
-        val allergyHeaderLabel = if (hasDietaryAlerts) {
-            "🛡️ $activeDietaryCount Allergy/Diet Alert${if (activeDietaryCount == 1) "" else "s"} ▾"
-        } else {
-            "🛡️ Allergies & Diabetes ▾"
+        // Row 1: Page Title on the left + Favorites star (☆) and Menu (⋮) on the right
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
-
-        // Left Header Column: Page Title + One-Tap "🛡️ Allergies & Diabetes" Pill Button
-        val leftHeaderCol = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        titleRow.addView(label(titleText, 26f, 0xFF111814.toInt(), bold = true).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(label(titleText, 26f, 0xFF111814.toInt(), bold = true))
-            addView(label(
-                allergyHeaderLabel,
-                11.5f,
-                if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF065F46.toInt(),
-                bold = true
-            ).apply {
-                setPadding(dp(10), dp(4), dp(10), dp(4))
-                background = GradientDrawable().apply {
-                    setColor(if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFECFDF5.toInt())
-                    setStroke(dp(1), if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFF86EFAC.toInt())
-                    cornerRadius = dp(999).toFloat()
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(4) }
-                setOnClickListener {
-                    showAllergyAndDietModal()
-                }
-            })
-        }
-        topBarContainer.addView(leftHeaderCol)
+        })
 
-        // On My Scans tab, show the ★ (Favorites filter) icon
         if (activeTab == 0) {
-            topBarContainer.addView(label(
+            titleRow.addView(label(
                 if (historyFavoritesOnly) "★" else "☆",
-                23f,
+                22f,
                 if (historyFavoritesOnly) 0xFFEAB308.toInt() else 0xFF374151.toInt(),
                 bold = true
             ).apply {
-                setPadding(dp(10), dp(4), dp(10), dp(4))
+                setPadding(dp(10), dp(2), dp(10), dp(2))
                 setOnClickListener {
                     historyFavoritesOnly = !historyFavoritesOnly
                     renderScreen()
                 }
             })
         }
+
+        titleRow.addView(label("⋮", 22f, 0xFF374151.toInt(), bold = true).apply {
+            setPadding(dp(10), dp(2), dp(4), dp(2))
+            setOnClickListener {
+                showTopRightMenuDialog()
+            }
+        })
+        topBarContainer.addView(titleRow)
+
+        // Row 2: Uniform-height action pills (Allergies & Diabetes · Log in · Setup/Live)
+        val pillsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
+        val hasDietaryAlerts = activeDietaryCount > 0
+        val allergyHeaderLabel = if (hasDietaryAlerts) {
+            "🛡️ Allergies ($activeDietaryCount) ▾"
+        } else {
+            "🛡️ Allergies & Diabetes ▾"
+        }
+
+        pillsRow.addView(label(
+            allergyHeaderLabel,
+            11.5f,
+            if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF065F46.toInt(),
+            bold = true
+        ).apply {
+            setSingleLine(true)
+            setPadding(dp(11), dp(5), dp(11), dp(5))
+            background = GradientDrawable().apply {
+                setColor(if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFECFDF5.toInt())
+                setStroke(dp(1), if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFF86EFAC.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dp(6) }
+            setOnClickListener {
+                showAllergyAndDietModal()
+            }
+        })
 
         // Account / Log in pill button
         val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
@@ -353,13 +395,14 @@ class MainActivity : Activity() {
             "👤 Log in"
         }
 
-        topBarContainer.addView(label(
+        pillsRow.addView(label(
             displayAccountLabel,
             11.5f,
             if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
             bold = true
         ).apply {
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            setSingleLine(true)
+            setPadding(dp(11), dp(5), dp(11), dp(5))
             background = GradientDrawable().apply {
                 setColor(if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt())
                 setStroke(dp(1), if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt())
@@ -374,23 +417,25 @@ class MainActivity : Activity() {
             }
         })
 
-        // Top-right ⋮ menu / Bubble status button
+        // Bubble status pill button
         val ready = Settings.canDrawOverlays(this) && isAccessibilityEnabled() && AccessibilityConsent.granted(this)
-        topBarContainer.addView(label(
+        pillsRow.addView(label(
             if (ready) "● Live" else "⚡ Setup",
-            12f,
+            11.5f,
             if (ready) 0xFF16A34A.toInt() else 0xFF92400E.toInt(),
             bold = true
         ).apply {
+            setSingleLine(true)
             setPadding(dp(11), dp(5), dp(11), dp(5))
             background = GradientDrawable().apply {
                 setColor(if (ready) 0xFFE8F7EE.toInt() else 0xFFFEF3C7.toInt())
+                setStroke(dp(1), if (ready) 0xFF86EFAC.toInt() else 0xFFFDE68A.toInt())
                 cornerRadius = dp(999).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = dp(4) }
+            )
             setOnClickListener {
                 activeTab = 1
                 topSubTab = "Bubble"
@@ -398,12 +443,7 @@ class MainActivity : Activity() {
             }
         })
 
-        topBarContainer.addView(label("⋮", 22f, 0xFF374151.toInt(), bold = true).apply {
-            setPadding(dp(10), dp(4), dp(6), dp(4))
-            setOnClickListener {
-                showTopRightMenuDialog()
-            }
-        })
+        topBarContainer.addView(pillsRow)
     }
 
     private fun renderBottomNav() {
@@ -1896,6 +1936,9 @@ class MainActivity : Activity() {
             }
         }
 
+        var prefilledEmail = ""
+        var selectedProvider = "email"
+
         fun renderStep(step: String) {
             card.removeAllViews()
 
@@ -1903,33 +1946,60 @@ class MainActivity : Activity() {
                 card.addView(buildTopHeader({ authDialog?.dismiss() }, showBackArrow = false))
                 card.addView(label("Welcome to HeyBroc", 26f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Sign in with email or create an account to save your scans, Family Watchlist & Clean Swaps across all your devices.",
+                    "Sign in or create your free account to save your scans, Family Watchlist & Clean Swaps across all your devices.",
                     14.5f,
                     0xFF6B7280.toInt()
                 ).apply { setPadding(0, dp(6), 0, dp(22)) })
 
-                // 1. Sign In with Email Button
+                // 1. Continue with Google Button (4-color Google 'G' logo + system Google account picker)
+                card.addView(buildIconPillButton(
+                    iconRes = R.drawable.ic_google_logo,
+                    iconWidthDp = 20,
+                    iconHeightDp = 20,
+                    text = "Continue with Google",
+                    bgColor = Color.WHITE,
+                    borderColor = 0xFFD1D5DB.toInt(),
+                    textColor = 0xFF1F2937.toInt(),
+                    onClick = {
+                        selectedProvider = "google"
+                        pendingGoogleAccountPicked = { pickedEmail ->
+                            prefilledEmail = pickedEmail
+                            selectedProvider = "google"
+                            renderStep("email_login")
+                        }
+                        val launched = runCatching {
+                            @Suppress("DEPRECATION")
+                            val intent = AccountManager.newChooseAccountIntent(
+                                null,
+                                null,
+                                arrayOf("com.google"),
+                                null,
+                                null,
+                                null,
+                                null
+                            )
+                            startActivityForResult(intent, REQ_PICK_GOOGLE_ACCOUNT)
+                            true
+                        }.getOrDefault(false)
+                        if (!launched) {
+                            renderStep("email_login")
+                        }
+                    }
+                ))
+
+                // 2. Unified Continue with Email Button (handles both returning & new accounts)
                 card.addView(buildIconPillButton(
                     iconRes = R.drawable.ic_email_logo,
                     iconWidthDp = 19,
                     iconHeightDp = 19,
-                    text = "Sign in with Email",
+                    text = "Continue with Email",
                     bgColor = 0xFF16A34A.toInt(),
                     borderColor = null,
                     textColor = Color.WHITE,
-                    onClick = { renderStep("email_login") }
-                ))
-
-                // 2. Create Account Button
-                card.addView(buildIconPillButton(
-                    iconRes = R.drawable.ic_email_logo,
-                    iconWidthDp = 19,
-                    iconHeightDp = 19,
-                    text = "Create Free Account",
-                    bgColor = 0xFFF3F4F6.toInt(),
-                    borderColor = 0xFFE5E7EB.toInt(),
-                    textColor = 0xFF1F2937.toInt(),
-                    onClick = { renderStep("email_register") }
+                    onClick = {
+                        selectedProvider = "email"
+                        renderStep("email_login")
+                    }
                 ))
 
                 // Shipt-style "— or —" divider + full-width outlined "Continue as guest" pill button
@@ -1970,7 +2040,8 @@ class MainActivity : Activity() {
                 when {
                     isRegister -> "Create Account"
                     isReset -> "Reset Password"
-                    else -> "Sign in with Email"
+                    selectedProvider == "google" -> "Continue with Google"
+                    else -> "Continue with Email"
                 },
                 23f,
                 0xFF111814.toInt(),
@@ -1980,19 +2051,23 @@ class MainActivity : Activity() {
                 when {
                     isRegister -> "Create a free HeyBroc account to sync your Watchlist & Clean Swaps across devices."
                     isReset -> "Enter your email, 6-digit reset code, and a new password (8+ characters)."
-                    else -> "Enter your email and password (8+ characters) to sign in."
+                    selectedProvider == "google" -> "Confirm your Google email and enter a password (8+ characters) to sign in or create your account."
+                    else -> "Enter your email and password (8+ characters) — we'll sign you in or create your account automatically."
                 },
                 14f,
                 0xFF6B7280.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(16)) })
 
             val emailInput = EditText(this).apply {
-                hint = "Email address"
+                hint = if (selectedProvider == "google") "Google email (you@gmail.com)" else "Email address"
                 setHintTextColor(0xFF9CA3AF.toInt())
                 setTextColor(0xFF111814.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
                 setSingleLine(true)
+                if (prefilledEmail.isNotBlank()) {
+                    setText(prefilledEmail)
+                }
                 setPadding(dp(18), dp(15), dp(18), dp(15))
                 background = GradientDrawable().apply {
                     setColor(0xFFF9FAFB.toInt())
@@ -2077,6 +2152,7 @@ class MainActivity : Activity() {
                     setPadding(dp(4), dp(2), dp(4), dp(14))
                     setOnClickListener {
                         val em = emailInput.text.toString().trim().lowercase()
+                        prefilledEmail = em
                         renderStep("email_reset")
                         if (em.contains("@") && em.contains(".")) {
                             io.execute {
@@ -2114,7 +2190,7 @@ class MainActivity : Activity() {
             val submitLabel = when {
                 isRegister -> "Create Account  →"
                 isReset -> "Save New Password  →"
-                else -> "Sign In  →"
+                else -> "Continue  →"
             }
             card.addView(label(submitLabel, 16f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
@@ -2153,21 +2229,9 @@ class MainActivity : Activity() {
                         },
                         password = pw,
                         resetCode = if (isReset) rc else null,
+                        provider = selectedProvider,
                         onSuccess = { authDialog?.dismiss() }
                     )
-                }
-            })
-
-            card.addView(label(
-                if (isRegister) "Already have an account? Sign in" else "New to HeyBroc? Create a free account",
-                13.5f,
-                0xFF4B5563.toInt(),
-                bold = true
-            ).apply {
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(12), dp(8), dp(2))
-                setOnClickListener {
-                    renderStep(if (isRegister) "email_login" else "email_register")
                 }
             })
         }
@@ -2186,69 +2250,83 @@ class MainActivity : Activity() {
         action: String,
         password: String?,
         resetCode: String? = null,
+        provider: String = "email",
         onSuccess: (() -> Unit)? = null
     ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         io.execute {
             runCatching {
-                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
-                    connectTimeout = 7000
-                    readTimeout = 7000
-                }
-                try {
-                    val payload = JSONObject().apply {
-                        put("action", action)
-                        put("provider", "email")
-                        put("email", email)
-                        put("displayName", fallbackName)
-                        put("deviceId", ScanApi.deviceId(this@MainActivity))
-                        if (!password.isNullOrBlank()) {
-                            put("password", password)
-                            put("newPassword", password)
-                        }
-                        if (!resetCode.isNullOrBlank()) {
-                            put("resetCode", resetCode)
-                        }
-                    }.toString()
-                    conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-                    val okHttp = conn.responseCode in 200..299
-                    val stream = if (okHttp) conn.inputStream else conn.errorStream
-                    val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                    val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
-                    if (okHttp && json.optBoolean("ok")) {
-                        val tok = json.optString("token", "")
-                        val usr = json.optJSONObject("user")
-                        val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
-                        ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
-                        prefs.edit()
-                            .putString("auth_email", email)
-                            .putString("auth_name", resolvedName)
-                            .putString("auth_provider", "email")
-                            .putString("auth_token", tok)
-                            .apply()
-                        ScanApi.trackEvent(
-                            this@MainActivity,
-                            "auth_completed",
-                            properties = JSONObject().put("provider", "email")
-                        )
-                        mainHandler.post {
-                            if (isDestroyed || isFinishing) return@post
-                            onSuccess?.invoke()
-                            renderScreen()
-                            Toast.makeText(this@MainActivity, "👋 Welcome, $resolvedName! Account synced.", Toast.LENGTH_LONG).show()
-                        }
-                    } else {
-                        val errMsg = json.optString("error", "Could not sign in. Please check your credentials.")
-                        mainHandler.post {
-                            if (isDestroyed || isFinishing) return@post
-                            Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
-                        }
+                fun sendAuthRequest(reqAction: String): Pair<Boolean, JSONObject> {
+                    val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/json")
+                        connectTimeout = 7000
+                        readTimeout = 7000
                     }
-                } finally {
-                    conn.disconnect()
+                    try {
+                        val payload = JSONObject().apply {
+                            put("action", reqAction)
+                            put("provider", provider)
+                            put("email", email)
+                            put("displayName", fallbackName)
+                            put("deviceId", ScanApi.deviceId(this@MainActivity))
+                            if (!password.isNullOrBlank()) {
+                                put("password", password)
+                                put("newPassword", password)
+                            }
+                            if (!resetCode.isNullOrBlank()) {
+                                put("resetCode", resetCode)
+                            }
+                        }.toString()
+                        conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                        val okHttp = conn.responseCode in 200..299
+                        val stream = if (okHttp) conn.inputStream else conn.errorStream
+                        val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                        val json = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                        return Pair(okHttp && json.optBoolean("ok"), json)
+                    } finally {
+                        conn.disconnect()
+                    }
+                }
+
+                var (ok, json) = sendAuthRequest(action)
+                // If user tapped "Continue with Google" or "Continue with Email" and doesn't have an account yet,
+                // automatically create their account with the password they entered.
+                if (!ok && action == "login" && json.optString("error").contains("No account found", ignoreCase = true)) {
+                    val regResult = sendAuthRequest("register")
+                    ok = regResult.first
+                    json = regResult.second
+                }
+
+                if (ok) {
+                    val tok = json.optString("token", "")
+                    val usr = json.optJSONObject("user")
+                    val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
+                    ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
+                    prefs.edit()
+                        .putString("auth_email", email)
+                        .putString("auth_name", resolvedName)
+                        .putString("auth_provider", provider)
+                        .putString("auth_token", tok)
+                        .apply()
+                    ScanApi.trackEvent(
+                        this@MainActivity,
+                        "auth_completed",
+                        properties = JSONObject().put("provider", provider)
+                    )
+                    mainHandler.post {
+                        if (isDestroyed || isFinishing) return@post
+                        onSuccess?.invoke()
+                        renderScreen()
+                        Toast.makeText(this@MainActivity, "👋 Welcome, $resolvedName! Account synced.", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    val errMsg = json.optString("error", "Could not sign in. Please check your credentials.")
+                    mainHandler.post {
+                        if (isDestroyed || isFinishing) return@post
+                        Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
+                    }
                 }
             }.onFailure {
                 mainHandler.post {

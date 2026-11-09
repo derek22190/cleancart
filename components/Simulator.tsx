@@ -462,12 +462,6 @@ export default function Simulator() {
           setAuthOpen(true);
         } else if (params.get("onboarding") === "1") {
           setWatchlistFunnelOpen(true);
-        } else if (
-          !params.get("pro") &&
-          !params.get("upgrade") &&
-          !window.localStorage.getItem("heybroc_onboarding_done")
-        ) {
-          setWatchlistFunnelOpen(true);
         }
 
         // Restore authenticated user session if present
@@ -1428,6 +1422,22 @@ export default function Simulator() {
               <span><b>Settings &amp; Watchlist</b><small>{disabledCount ? `${disabledCount} categor${disabledCount === 1 ? "y" : "ies"} ignored` : "Bubble style & 9 categories"}</small></span>
             </button>
           </div>
+
+          <button
+            id="open-watchlist-funnel"
+            type="button"
+            className="tool"
+            onClick={() => setWatchlistFunnelOpen(true)}
+            style={{ width: "100%", textAlign: "left" }}
+          >
+            <span className="tool-icon">🛡️</span>
+            <span>
+              <b>Family Ingredient Watchlist ({familyWatchlist.length} Active · 2x Penalty)</b>
+              <small>
+                Choose ingredients your family avoids (Seed Oils, Red 40 &amp; Dyes, High Fructose Corn Syrup, Nitrites &amp; Artificial Sweeteners) — HeyBroc doubles their score penalty and finds clean swaps. Tap to customize →
+              </small>
+            </span>
+          </button>
 
           {panel === "watchlist" && (
             <div className="card watchlist">

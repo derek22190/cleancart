@@ -83,15 +83,36 @@ export default function WatchlistMiniFunnel({
 
   return (
     <div
-      className="gococo-backdrop"
+      className="modal-backdrop gococo-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="Personalize Family Watchlist"
       onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        background: "rgba(15, 22, 18, 0.62)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+      }}
     >
       <div
-        className="gococo-sheet"
-        style={{ maxWidth: 460, padding: "22px 20px 20px" }}
+        className="modal-card gococo-sheet"
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          maxHeight: "calc(100vh - 32px)",
+          overflowY: "auto",
+          background: "#ffffff",
+          borderRadius: 24,
+          padding: "22px 20px 20px",
+          boxShadow: "0 24px 48px rgba(0, 0, 0, 0.28)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
