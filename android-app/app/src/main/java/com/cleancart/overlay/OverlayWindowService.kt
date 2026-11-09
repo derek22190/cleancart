@@ -344,7 +344,7 @@ class OverlayWindowService : Service() {
                 }
                 if (cartChanged) {
                     displayedCartAvg = calcCartAvg()
-                    savePersistedCart(currentStoreKey)
+                    persistCart()
                 }
                 if (!hiddenForCurrentScreen && card == null && pill != null) {
                     showPill()
@@ -542,7 +542,7 @@ class OverlayWindowService : Service() {
 
     private fun persistCart() {
         val arr = JSONArray()
-        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES && !VARIANT_NOISE_TITLE.matches(it.title.trim()) && !ScanHistoryStore.isPoisonedProduceEntry(it.title, item.fullJson) }) {
+        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES && !VARIANT_NOISE_TITLE.matches(it.title.trim()) && !ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) }) {
             arr.put(JSONObject().apply {
                 put("key", item.key)
                 put("title", item.title)

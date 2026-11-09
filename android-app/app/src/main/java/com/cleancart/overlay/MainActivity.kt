@@ -333,7 +333,8 @@ class MainActivity : Activity() {
         })
         topBarContainer.addView(titleRow)
 
-        // Row 2: Uniform-height action pills (Allergies & Diabetes · Log in · Setup/Live)
+        // Row 2: Uniform 30dp-height action pills aligned on a single horizontal baseline across all tabs
+        // Left: 🛡️ Allergies & Diabetes ▾   |   Right: 👤 Log in · ⚡ Setup / ● Live
         val pillsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -341,6 +342,33 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(8) }
+        }
+
+        fun buildHeaderPill(
+            text: String,
+            textColor: Int,
+            bgColor: Int,
+            strokeColor: Int,
+            marginEndDp: Int = 0,
+            onClick: () -> Unit
+        ): TextView = label(text, 11.5f, textColor, bold = true).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(11), 0, dp(11), 0)
+            background = GradientDrawable().apply {
+                setColor(bgColor)
+                setStroke(dp(1), strokeColor)
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(30)
+            ).apply {
+                if (marginEndDp > 0) marginEnd = dp(marginEndDp)
+            }
+            setOnClickListener { onClick() }
         }
 
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
@@ -352,26 +380,18 @@ class MainActivity : Activity() {
             "🛡️ Allergies & Diabetes ▾"
         }
 
-        pillsRow.addView(label(
-            allergyHeaderLabel,
-            11.5f,
-            if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF065F46.toInt(),
-            bold = true
-        ).apply {
-            setSingleLine(true)
-            setPadding(dp(11), dp(5), dp(11), dp(5))
-            background = GradientDrawable().apply {
-                setColor(if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFECFDF5.toInt())
-                setStroke(dp(1), if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFF86EFAC.toInt())
-                cornerRadius = dp(999).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = dp(6) }
-            setOnClickListener {
-                showAllergyAndDietModal()
-            }
+        pillsRow.addView(buildHeaderPill(
+            text = allergyHeaderLabel,
+            textColor = if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF065F46.toInt(),
+            bgColor = if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFECFDF5.toInt(),
+            strokeColor = if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFF86EFAC.toInt(),
+            marginEndDp = 6,
+            onClick = { showAllergyAndDietModal() }
+        ))
+
+        // Flexible spacer so left pill sits cleanly under the page title and right pills align with top-right icons
+        pillsRow.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
         })
 
         // Account / Log in pill button
@@ -384,53 +404,28 @@ class MainActivity : Activity() {
             "👤 Log in"
         }
 
-        pillsRow.addView(label(
-            displayAccountLabel,
-            11.5f,
-            if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
-            bold = true
-        ).apply {
-            setSingleLine(true)
-            setPadding(dp(11), dp(5), dp(11), dp(5))
-            background = GradientDrawable().apply {
-                setColor(if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt())
-                setStroke(dp(1), if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt())
-                cornerRadius = dp(999).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = dp(6) }
-            setOnClickListener {
-                showGoCoCoLoginDialog()
-            }
-        })
+        pillsRow.addView(buildHeaderPill(
+            text = displayAccountLabel,
+            textColor = if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
+            bgColor = if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt(),
+            strokeColor = if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt(),
+            marginEndDp = 6,
+            onClick = { showGoCoCoLoginDialog() }
+        ))
 
         // Bubble status pill button
         val ready = Settings.canDrawOverlays(this) && isAccessibilityEnabled() && AccessibilityConsent.granted(this)
-        pillsRow.addView(label(
-            if (ready) "● Live" else "⚡ Setup",
-            11.5f,
-            if (ready) 0xFF16A34A.toInt() else 0xFF92400E.toInt(),
-            bold = true
-        ).apply {
-            setSingleLine(true)
-            setPadding(dp(11), dp(5), dp(11), dp(5))
-            background = GradientDrawable().apply {
-                setColor(if (ready) 0xFFE8F7EE.toInt() else 0xFFFEF3C7.toInt())
-                setStroke(dp(1), if (ready) 0xFF86EFAC.toInt() else 0xFFFDE68A.toInt())
-                cornerRadius = dp(999).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setOnClickListener {
+        pillsRow.addView(buildHeaderPill(
+            text = if (ready) "● Live" else "⚡ Setup",
+            textColor = if (ready) 0xFF16A34A.toInt() else 0xFF92400E.toInt(),
+            bgColor = if (ready) 0xFFE8F7EE.toInt() else 0xFFFEF3C7.toInt(),
+            strokeColor = if (ready) 0xFF86EFAC.toInt() else 0xFFFDE68A.toInt(),
+            onClick = {
                 activeTab = 1
                 topSubTab = "Bubble"
                 renderScreen()
             }
-        })
+        ))
 
         topBarContainer.addView(pillsRow)
     }
