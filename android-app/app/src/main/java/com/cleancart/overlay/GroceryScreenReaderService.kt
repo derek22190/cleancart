@@ -23,6 +23,14 @@ import kotlin.math.abs
 class GroceryScreenReaderService : AccessibilityService() {
 
     companion object {
+        @Volatile
+        private var activeInstance: GroceryScreenReaderService? = null
+
+        fun requestInAppSearch(targetPkg: String, query: String): Boolean {
+            val svc = activeInstance ?: return false
+            return svc.startInAppSearch(targetPkg, query)
+        }
+
         val STORE_PACKAGES = setOf(
             "com.walmart.android",
             "com.instacart.client",
@@ -239,6 +247,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        activeInstance = this
         // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
         sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
         lastKey = ""
@@ -249,6 +258,13 @@ class GroceryScreenReaderService : AccessibilityService() {
         } else {
             handler.postDelayed(scanRunnable, 250L)
         }
+    }
+
+    override fun onDestroy() {
+        if (activeInstance === this) {
+            activeInstance = null
+        }
+        super.onDestroy()
     }
 
     private fun addCandidateStrings(target: MutableList<String>, raw: CharSequence?) {
@@ -1071,6 +1087,8 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
         // Strip leading checkmarks (e.g. "✓ Bought 5+ times, stay stocked and subscribe")
         s = s.replace(Regex("""^[✓✔☑]\s*"""), "")
+        // Strip Shipt/store carousel prefixes like "Promotion 1 Of 3. Get Monster Energy" -> "Monster Energy"
+        s = s.replace(Regex("""(?i)^(?:promotion|promo|slide|deal|offer|banner)\s+\d+\s*(?:of|/)\s*\d+\s*[.:,\-–—|]*\s*(?:get\s+|shop\s+|save\s+on\s+|try\s+)?"""), "")
         // Unwrap action/image contentDescriptions on PDP buttons & hero images (e.g. "Add Great Value Whole Vitamin D Milk to cart", "Product image 1 of 6, Great Value Whole Vitamin D Milk")
         s = s.replace(Regex("""(?i)^(?:add|save|remove|delete)\s+(.{5,}?)\s+(?:to|from)\s+(?:cart|bag|basket|order|favorites|list|my\s+items|registry).*$"""), "$1")
         s = s.replace(Regex("""(?i)^(?:add\s+to\s+(?:cart|bag|basket|order|favorites|list)|save\s+to\s+(?:list|favorites|my\s+items)|saved\s+to\s+(?:list|favorites|my\s+items)|favorited|share)\s*[,:•|\-–—]\s*(?=[a-zA-Z]{2,})"""), "")
@@ -1575,5 +1593,197 @@ class GroceryScreenReaderService : AccessibilityService() {
         } catch (_: IllegalStateException) {
             // Background-start restriction (shouldn't happen while bound as an accessibility service).
         }
+    }
+
+    /**
+     * Drives the active grocery store app's native search bar automatically when the shopper taps
+     * "Find in [Store] ↗" or "Swap in [Store] ↗":
+     * 1) Finds and clicks the store's search bar (e.g. "What are you looking for?" in Shipt,
+     *    "Search Instacart", "Search Kroger", or the bottom "Search" tab) if an EditText isn't open yet.
+     * 2) Once the search EditText is visible, fills in [query] via ACTION_SET_TEXT and triggers
+     *    ACTION_IME_ENTER (plus clicks the top search submit / autocomplete suggestion if needed).
+     */
+    private fun startInAppSearch(targetPkg: String, query: String): Boolean {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isEmpty()) return false
+        val activePkg = rootInActiveWindow?.packageName?.toString().orEmpty().ifBlank { currentPackage }
+        if (targetPkg.isNotBlank() && activePkg.isNotBlank() && activePkg != targetPkg && activePkg != packageName) {
+            return false
+        }
+
+        // Wait 140ms for OverlayWindowService.removeCard() to detach focus so rootInActiveWindow is the grocery app
+        handler.postDelayed({
+            performInAppSearchStep(cleanQuery, attempt = 0, clickedTrigger = false, typedQuery = false)
+        }, 140L)
+        return true
+    }
+
+    private fun performInAppSearchStep(
+        query: String,
+        attempt: Int,
+        clickedTrigger: Boolean,
+        typedQuery: Boolean
+    ) {
+        if (attempt > 4) return
+        val root = rootInActiveWindow ?: run {
+            handler.postDelayed({
+                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery)
+            }, 280L)
+            return
+        }
+
+        // 1. Look for an editable search EditText on screen
+        val editNode = findEditableSearchNode(root)
+        if (editNode != null && !typedQuery) {
+            editNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val args = android.os.Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
+            }
+            val setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            if (setOk) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    editNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+                } else {
+                    editNode.performAction(0x01020054) // android.R.id.accessibilityActionImeEnter
+                }
+                // Follow up 480ms later to tap "Search for ..." or the top autocomplete suggestion if the app didn't auto-submit on IME_ENTER
+                handler.postDelayed({
+                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = true)
+                }, 480L)
+                return
+            }
+        }
+
+        // 2. If we already typed the query into EditText and the app is still showing a search suggestion / submit row, click it
+        if (typedQuery) {
+            val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query)
+            if (submitOrSuggestion != null) {
+                clickNodeOrParent(submitOrSuggestion)
+            }
+            return
+        }
+
+        // 3. No EditText open yet: find and click the store's search bar pill ("What are you looking for?", "Search...") or bottom "Search" tab
+        if (!clickedTrigger) {
+            val triggerNode = findSearchTriggerNode(root)
+            if (triggerNode != null && clickNodeOrParent(triggerNode)) {
+                handler.postDelayed({
+                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = false)
+                }, 380L)
+                return
+            }
+        }
+
+        // Retry if the search input screen is still animating open
+        if (attempt < 3) {
+            handler.postDelayed({
+                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery)
+            }, 360L)
+        }
+    }
+
+    private fun findEditableSearchNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val n = queue.removeFirst()
+            if (n.isVisibleToUser && !n.isPassword) {
+                val cls = n.className?.toString().orEmpty()
+                if (n.isEditable || cls.contains("EditText", ignoreCase = true) || cls.contains("AutoComplete", ignoreCase = true)) {
+                    return n
+                }
+            }
+            for (i in 0 until n.childCount) {
+                n.getChild(i)?.let(queue::addLast)
+            }
+        }
+        return null
+    }
+
+    private fun findSearchTriggerNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val searchBarPattern = Regex(
+            """(?i)\b(what are you looking for|search\s+shipt|search\s+instacart|search\s+walmart|search\s+target|search\s+kroger|search\s+aldi|search\s+amazon|search\s+doordash|search\s+products|search\s+items|search\s+stores|search\s+in\b|find\s+products|find\s+items|find\s+something)\b|^search\b"""
+        )
+        val searchViewIdPattern = Regex(
+            """(?i)(search_bar|search_box|search_plate|search_src_text|search_button|search_view|toolbar_search|action_search|menu_search|search_entry|search_field|search_input)"""
+        )
+        val dm = resources.displayMetrics
+        val screenH = dm.heightPixels.coerceAtLeast(1280)
+        var bestTopSearchBar: AccessibilityNodeInfo? = null
+        var bestFallbackSearchTab: AccessibilityNodeInfo? = null
+
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        val rect = Rect()
+        while (queue.isNotEmpty()) {
+            val n = queue.removeFirst()
+            if (n.isVisibleToUser) {
+                val txt = n.text?.toString()?.trim().orEmpty()
+                val desc = n.contentDescription?.toString()?.trim().orEmpty()
+                val vid = n.viewIdResourceName?.substringAfterLast('/')?.lowercase().orEmpty()
+                n.getBoundsInScreen(rect)
+
+                val matchesBar = searchBarPattern.containsMatchIn(txt) ||
+                    searchBarPattern.containsMatchIn(desc) ||
+                    (vid.isNotEmpty() && searchViewIdPattern.containsMatchIn(vid))
+
+                if (matchesBar && rect.top in 0..(screenH * 0.42f).toInt()) {
+                    bestTopSearchBar = n
+                    break
+                } else if (bestFallbackSearchTab == null && (matchesBar || txt.equals("Search", ignoreCase = true) || desc.equals("Search", ignoreCase = true))) {
+                    bestFallbackSearchTab = n
+                }
+            }
+            for (i in 0 until n.childCount) {
+                n.getChild(i)?.let(queue::addLast)
+            }
+        }
+        return bestTopSearchBar ?: bestFallbackSearchTab
+    }
+
+    private fun findSearchSubmitOrSuggestionNode(root: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
+        val firstWord = query.lowercase().replace(Regex("[^a-z0-9\\s]"), "").trim().substringBefore(" ")
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        val rect = Rect()
+        val dm = resources.displayMetrics
+        val topMinY = (dm.heightPixels * 0.10f).toInt()
+        val topMaxY = (dm.heightPixels * 0.55f).toInt()
+
+        while (queue.isNotEmpty()) {
+            val n = queue.removeFirst()
+            if (n.isVisibleToUser && !n.isEditable && n.className?.toString()?.contains("EditText", ignoreCase = true) != true) {
+                val txt = n.text?.toString()?.trim().orEmpty()
+                val desc = n.contentDescription?.toString()?.trim().orEmpty()
+                n.getBoundsInScreen(rect)
+                if (rect.top in topMinY..topMaxY) {
+                    val lowTxt = txt.lowercase().replace("í", "i")
+                    if (lowTxt.startsWith("search for") ||
+                        (firstWord.length >= 3 && lowTxt.contains(firstWord) && txt.length <= 90) ||
+                        desc.equals("Search", ignoreCase = true)
+                    ) {
+                        return n
+                    }
+                }
+            }
+            for (i in 0 until n.childCount) {
+                n.getChild(i)?.let(queue::addLast)
+            }
+        }
+        return null
+    }
+
+    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+        var curr: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (curr != null && depth < 6) {
+            if (curr.isClickable && curr.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            curr = curr.parent
+            depth++
+        }
+        return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 }

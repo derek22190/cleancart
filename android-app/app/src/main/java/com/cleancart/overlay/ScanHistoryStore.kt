@@ -95,6 +95,68 @@ object ScanHistoryStore {
         return !already
     }
 
+    /**
+     * Automatically saves a Clean Swap recommendation into Favorites and Scan History
+     * when the shopper taps "Find in [Store] ↗" or "Swap in [Store] ↗".
+     */
+    fun saveSwapToFavorites(
+        context: Context,
+        swap: JSONObject,
+        replacedTitle: String = "",
+        storeKey: String = "walmart"
+    ) {
+        val swapTitle = swap.optString("title").trim()
+        val key = normKey(swapTitle)
+        if (key.isBlank()) return
+
+        val swapScore = swap.optInt("score", 95)
+        val swapRating = when {
+            swapScore >= 75 -> "Excellent"
+            swapScore >= 50 -> "Good"
+            else -> "Mediocre"
+        }
+        val swapBrand = swap.optString("brand").ifBlank { swapTitle.substringBefore(" ") }
+        val swapIngredients = swap.optString("ingredients").trim()
+        val now = System.currentTimeMillis()
+
+        val itemJson = JSONObject().apply {
+            put("ok", true)
+            put("storeKey", storeKey)
+            put("scannedAtMs", now)
+            put("favoritedAtMs", now)
+            put("product", JSONObject().apply {
+                put("title", swapTitle)
+                put("brand", swapBrand)
+                put("category", "Clean Swaps")
+                put("imageUrl", productImageUrl(swapTitle))
+                put("ingredients", swapIngredients)
+                if (replacedTitle.isNotBlank()) {
+                    put("description", "Clean 1-for-1 replacement for $replacedTitle")
+                }
+            })
+            put("result", JSONObject().apply {
+                put("score", swapScore)
+                put("rating", swapRating)
+                put("color", if (swapScore >= 75) "green" else "yellow")
+                put("flagged", JSONArray())
+                put("yukaBreakdown", JSONObject().apply {
+                    put("nutritionScore", (swapScore - 40).coerceIn(30, 60))
+                    put("nutriScoreGrade", "A")
+                    put("additiveScore", 30)
+                    put("organicScore", if (swapTitle.contains("organic", ignoreCase = true)) 10 else 0)
+                })
+            })
+        }
+
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val currentFavs = getFavorites(context).filterNot { normKey(extractTitle(it)) == key }
+        val nextFavs = listOf(itemJson) + currentFavs
+        val favArr = JSONArray().apply { nextFavs.forEach { put(it) } }
+        prefs.edit().putString(KEY_FAVORITES, favArr.toString()).apply()
+
+        recordScan(context, itemJson, storeKey)
+    }
+
     private const val MAX_ENTRY_AGE_MS = 90L * 24L * 60L * 60L * 1000L
 
     private fun parseList(raw: String): List<JSONObject> = runCatching {

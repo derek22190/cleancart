@@ -1464,7 +1464,10 @@ class OverlayWindowService : Service() {
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
             val isPaidLink = swap.optBoolean("isPaidLink", false)
-            val swapBtnLabel = if (isPaidLink) "Swap ↗ · paid link" else "Swap ↗"
+            val storeName = storeDisplayName(currentStoreKey)
+            val isInCart = tripCart.any { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
+            val baseSwapCta = if (isInCart) "Swap in $storeName ↗" else "Find in $storeName ↗"
+            val swapBtnLabel = if (isPaidLink) "$baseSwapCta · paid link" else baseSwapCta
 
             if (swapUnlocked) {
                 val topRow = LinearLayout(this).apply {
@@ -1493,7 +1496,7 @@ class OverlayWindowService : Service() {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
 
-                // Action button — opens directly in the store app
+                // Action button — auto-searches directly inside the store app & saves to Favorites
                 topRow.addView(text(swapBtnLabel, 11.5f, Color.WHITE, bold = true).apply {
                     setPadding(dp(12), dp(9), dp(12), dp(9))
                     background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
@@ -1664,8 +1667,11 @@ class OverlayWindowService : Service() {
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").trim()
         val storeName = storeDisplayName(currentStoreKey)
+        val prodTitleForModal = data?.optJSONObject("product")?.optString("title").orEmpty()
+        val isInCart = tripCart.any { isSameCartItem(it.key, prodTitleForModal) || isSameCartItem(it.title, prodTitleForModal) }
         val isPaidLink = swap.optBoolean("isPaidLink", false)
-        val modalSwapCta = if (isPaidLink) "Find & Swap in $storeName ↗ · paid link" else "Find & Swap in $storeName ↗"
+        val baseModalCta = if (isInCart) "🔍 Swap in $storeName ↗" else "🔍 Find in $storeName ↗"
+        val modalSwapCta = if (isPaidLink) "$baseModalCta · paid link" else baseModalCta
 
         val backdrop = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -1855,7 +1861,8 @@ class OverlayWindowService : Service() {
     }
 
     /**
-     * Fires the affiliate deep link inside the store's native app (or performs in-app search / opens live store search).
+     * Fires the Clean Swap search inside the store's native app (via in-app accessibility search bar automation
+     * or verified native deep link) and saves the Clean Swap to Favorites & Scan History.
      * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
      */
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
@@ -1875,6 +1882,7 @@ class OverlayWindowService : Service() {
         }
 
         ScanApi.consumeSwap(this, swapTitle, prodTitle)
+        ScanHistoryStore.saveSwapToFavorites(this, swap, prodTitle, currentStoreKey)
 
         val target = explicitItem ?: tripCart.firstOrNull { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
         pendingSwapFromKey = target?.key ?: prodTitle.takeIf { it.isNotBlank() }
@@ -1889,18 +1897,37 @@ class OverlayWindowService : Service() {
         val rawWebUrl = normalizeStoreUrl(swap.optString("webUrl"))
         val link = normalizeStoreUrl(swap.optString("deepLink").ifBlank { rawWebUrl })
         val pkg = swap.optString("androidPackage")
+        val storeName = storeDisplayName(currentStoreKey)
 
         removeCard()
         showPill()
 
+        Toast.makeText(
+            this,
+            "🔍 Searching $storeName for $swapTitle… (Saved to ♥ Favorites)",
+            Toast.LENGTH_LONG
+        ).show()
+
+        // 1. Trigger in-app search bar automation via GroceryScreenReaderService (works across Shipt, Instacart, Kroger, Aldi, DoorDash, etc.)
+        val inAppSearchStarted = GroceryScreenReaderService.requestInAppSearch(pkg, searchQuery)
+
+        // Stores whose Android app natively routes external search URLs directly to search results:
+        val supportsDirectUrlDeepLink = pkg in setOf(
+            "com.walmart.android",
+            "com.target.ui",
+            "com.amazon.mShop.android.shopping"
+        )
+
         var launchedInNativeApp = false
-        if (pkg.isNotBlank()) {
-            val candidates = listOf(
-                Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                Intent("com.google.android.gms.actions.SEARCH_ACTION").setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+        if (pkg.isNotBlank() && (supportsDirectUrlDeepLink || !inAppSearchStarted)) {
+            val candidates = buildList {
+                if (supportsDirectUrlDeepLink) {
+                    add(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    add(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                add(Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                add(Intent("com.google.android.gms.actions.SEARCH_ACTION").setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
             for (candidate in candidates) {
                 if (runCatching { startActivity(candidate) }.isSuccess) {
                     launchedInNativeApp = true
@@ -1909,7 +1936,7 @@ class OverlayWindowService : Service() {
             }
         }
 
-        if (!launchedInNativeApp && rawWebUrl.isNotBlank()) {
+        if (!inAppSearchStarted && !launchedInNativeApp && rawWebUrl.isNotBlank()) {
             runCatching {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
