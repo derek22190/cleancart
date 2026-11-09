@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">HeyBroc</string>
     <string name="accessibility_label">HeyBroc</string>
-    <string name="accessibility_description">HeyBroc uses the AccessibilityService API only inside Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam\'s Club, BJ\'s, Costco, and Shipt to inspect visible, non-editable screen text on device, filter out search/payment/chat inputs, and send matched grocery product titles and visible ingredient lists over HTTPS to heybroc.com to compute your 0–100 ingredient score. No other apps are accessed and personal data is never sold.</string>
+    <string name="accessibility_description">HeyBroc uses the AccessibilityService API only inside Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh, Whole Foods Market, Sam\'s Club, BJ\'s, Costco, and Shipt to inspect visible, non-editable screen text on device, send matched grocery product titles and visible ingredient lists over HTTPS to heybroc.com to compute your 0–100 ingredient score, and enter Clean Swap items into the store\'s search bar when you tap Find or Swap in Store. Password, payment, and chat inputs are ignored and personal data is never sold.</string>
 </resources>

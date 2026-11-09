@@ -3336,12 +3336,13 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Accessibility Service Disclosure")
             .setMessage(
-                "HeyBroc uses the Android AccessibilityService API solely inside supported grocery apps " +
-                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh [com.amazon.mShop.android.shopping], Whole Foods Market [com.wholefoods.wholefoodsmarket], Sam's Club, BJ's, Costco, and Shipt) to:\n" +
-                    "1) Inspect visible, non-editable screen text on device to detect grocery product pages and extract the visible product title and ingredient list, and\n" +
-                    "2) Extract visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
-                    "• What is transmitted: Matched grocery product title candidates, extracted ingredient text, active store identifier, your selected additive watchlist categories (familyWatchlist) and personal allergy/dietary watchlist preferences (dietaryWatchlist), any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
-                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the supported grocery apps above, prunes password fields, editable inputs, search boxes, payment fields, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and does not sell personal data."
+                "HeyBroc uses the Android AccessibilityService API solely inside 13 supported grocery apps " +
+                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh, Whole Foods Market, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
+                    "1) Inspect visible, non-editable screen text on device to detect grocery product pages and extract the visible product title and ingredient list,\n" +
+                    "2) Extract visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart, and\n" +
+                    "3) When you tap \"Find in Store\" or \"Swap in Store\" on a Clean Swap, enter that replacement product into the active store's search bar for you.\n\n" +
+                    "• What is transmitted: Matched grocery product title candidates, extracted ingredient text, active store identifier, your selected additive & allergy watchlist preferences, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
+                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 13 supported grocery apps above, ignores password fields, payment fields, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and never sells personal data."
             )
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->

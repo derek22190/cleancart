@@ -102,9 +102,11 @@ In Google Play Console → **Policy and programs → App content → Accessibili
 - **Category / Purpose:** Utility / Shopping Assistant triggered by user opt-in
 - **Explanation (Copy-paste into Play Console):**
 ```text
-HeyBroc uses the Android AccessibilityService API solely after explicit user opt-in via our prominent in-app disclosure modal to read the visible product title text, visible ingredient text, and visible cart item titles (up to 20 items on Cart screens) on supported grocery shopping apps (Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh / Whole Foods, DoorDash, Uber Eats, and Shipt) so HeyBroc can display the product's 0–100 ingredient health score, Whole-Cart Health Check, and cleaner swap suggestions in a floating pill.
+HeyBroc uses the Android AccessibilityService API solely after explicit user opt-in via our prominent in-app disclosure modal on 13 supported grocery shopping apps (Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Shopping / Amazon Fresh, Whole Foods Market, DoorDash, Uber Eats, and Shipt) to:
+1) Read visible product title text, visible ingredient text, and visible cart item titles (up to 20 items on Cart screens) so HeyBroc can display the product's 0–100 ingredient health score, Whole-Cart Health Check, and cleaner swap suggestions in a floating pill, and
+2) When the shopper explicitly taps "Find in Store" or "Swap in Store" on a Clean Swap recommendation, enter that replacement item into the active store's search bar.
 
-Extracted product titles, ingredient text, active store identifier, watchlist preferences, referral code, and an install-scoped random UUID (retained up to 1 year for Pro entitlement and weekly swap accounting) are transmitted over HTTPS to heybroc.com/api/scan. HeyBroc never reads passwords, payment inputs, messages, or text outside the allowlisted grocery shopping packages, and never sells personal user data. Users can pause or disable the Live Store Bubble with one tap at any time.
+Extracted product titles, ingredient text, active store identifier, additive & allergy watchlist preferences, referral code, and an install-scoped random UUID (retained up to 1 year for Pro entitlement and weekly swap accounting) are transmitted over HTTPS to heybroc.com/api/scan. HeyBroc never reads passwords, payment inputs, messages, or text outside the 13 allowlisted grocery shopping packages, and never sells personal user data. Users can pause or disable the Live Store Bubble with one tap at any time.
 ```
 
 ---
