@@ -603,6 +603,7 @@ export default function Simulator() {
   const [yukaTab, setYukaTab] = useState<"inspect" | "history" | "recs" | "top" | "search">("inspect");
   const [favOnly, setFavOnly] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [streakDays, setStreakDays] = useState<number>(1);
   const [scanHistory, setScanHistory] = useState<{ product: Product; timeLabel: string }[]>(() => [
     { product: presetToProduct(PRESETS[0]), timeLabel: "Just now" },
     { product: cleanToProduct("Butter/Dairy"), timeLabel: "12 mins ago" },
@@ -610,6 +611,26 @@ export default function Simulator() {
     { product: cleanToProduct("Yogurt"), timeLabel: "Yesterday" },
     { product: presetToProduct(PRESETS[3]), timeLabel: "3 days ago" },
   ]);
+
+  useEffect(() => {
+    try {
+      const todayEpoch = Math.floor(Date.now() / 86_400_000);
+      const raw = window.localStorage.getItem("heybroc_streak_dates_v1");
+      const parsed: number[] = raw ? JSON.parse(raw) : [];
+      const daySet = new Set<number>(Array.isArray(parsed) ? parsed : []);
+      daySet.add(todayEpoch);
+      window.localStorage.setItem("heybroc_streak_dates_v1", JSON.stringify(Array.from(daySet)));
+      let count = 0;
+      let cursor = todayEpoch;
+      while (daySet.has(cursor)) {
+        count += 1;
+        cursor -= 1;
+      }
+      setStreakDays(Math.max(1, count));
+    } catch {
+      // ignore storage errors
+    }
+  }, [scanHistory.length, favorites.length]);
 
   const toggleFavorite = useCallback((key: string) => {
     setFavorites((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -2013,6 +2034,88 @@ export default function Simulator() {
                       {/* ==================== TAB 2: YUKA HISTORY & FAVORITES ==================== */}
                       {yukaTab === "history" && (
                         <div className="yuka-history">
+                          {!favOnly && (
+                            <div
+                              style={{
+                                margin: "8px 12px 12px",
+                                padding: "14px 16px",
+                                borderRadius: "18px",
+                                background: "#fafafa",
+                                border: "1px solid #e5e7eb",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: "10px",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src="/broc-mascot.jpg"
+                                  alt="HeyBroc"
+                                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }}
+                                />
+                                <div>
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: "#111814" }}>
+                                    Clean Cart Streak: Day {streakDays}
+                                  </div>
+                                  <div style={{ fontSize: 11.5, color: "#6b7280" }}>
+                                    Scan groceries or tap Clean Swaps daily to grow your streak
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                {Array.from({ length: 5 }, (_, idx) => {
+                                  const startNum = streakDays <= 5 ? 1 : streakDays - 4;
+                                  const dayNum = startNum + idx;
+                                  const completed = dayNum <= streakDays;
+                                  return (
+                                    <span
+                                      key={dayNum}
+                                      style={{
+                                        width: 34,
+                                        height: 34,
+                                        borderRadius: "50%",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: 13,
+                                        fontWeight: 800,
+                                        background: completed ? "#3E9B4F" : "#E8F5EC",
+                                        color: completed ? "#ffffff" : "#166534",
+                                        border: completed ? "none" : "1px solid #BBF7D0",
+                                      }}
+                                    >
+                                      {dayNum}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+
+                              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "6px" }}>
+                                {(["Seed-Oil Free", "No Red 40", "Allergy Guard"] as const).map((badge) => (
+                                  <button
+                                    key={badge}
+                                    type="button"
+                                    onClick={() => setWatchlistFunnelOpen(true)}
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 999,
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      background: "#ffffff",
+                                      color: "#1f2937",
+                                      border: "1px solid #d1d5db",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {badge}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {favOnly && favorites.length === 0 ? (
                             <div className="yuka-empty-fav">
                               {/* eslint-disable-next-line @next/next/no-img-element */}

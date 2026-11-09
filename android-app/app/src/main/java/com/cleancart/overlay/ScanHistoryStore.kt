@@ -12,7 +12,72 @@ object ScanHistoryStore {
     private const val PREFS = "heybroc_yuka_store_v1"
     private const val KEY_HISTORY = "scan_history_json"
     private const val KEY_FAVORITES = "favorites_json"
+    private const val KEY_STREAK_DATES = "clean_cart_streak_dates_v1"
     private const val MAX_HISTORY = 80
+
+    data class StreakStatus(
+        val streakDays: Int,
+        val windowNumbers: List<Pair<Int, Boolean>>,
+        val cleanCount: Int
+    )
+
+    private fun epochDay(ms: Long = System.currentTimeMillis()): Long =
+        java.util.concurrent.TimeUnit.MILLISECONDS.toDays(ms + java.util.TimeZone.getDefault().rawOffset)
+
+    fun recordStreakActivity(context: Context, timestampMs: Long = System.currentTimeMillis()) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val day = epochDay(timestampMs)
+        val existing = prefs.getStringSet(KEY_STREAK_DATES, emptySet()).orEmpty().toMutableSet()
+        if (existing.add(day.toString())) {
+            prefs.edit().putStringSet(KEY_STREAK_DATES, existing).apply()
+        }
+    }
+
+    fun getStreakStatus(context: Context): StreakStatus {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val storedDays = prefs.getStringSet(KEY_STREAK_DATES, emptySet()).orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .toMutableSet()
+
+        val history = getHistory(context)
+        val favs = getFavorites(context)
+        (history + favs).forEach { item ->
+            val ts = item.optLong("scannedAtMs", 0L).takeIf { it > 0L }
+                ?: item.optLong("favoritedAtMs", 0L)
+            if (ts > 0L) storedDays.add(epochDay(ts))
+        }
+
+        val today = epochDay()
+        // Record today's visit so the shopper's active session always counts toward their daily Clean Cart Streak
+        if (storedDays.add(today)) {
+            prefs.edit().putStringSet(KEY_STREAK_DATES, storedDays.map { it.toString() }.toSet()).apply()
+        }
+
+        var streak = 0
+        var cursor = today
+        while (storedDays.contains(cursor)) {
+            streak++
+            cursor--
+        }
+        val effectiveStreak = streak.coerceAtLeast(1)
+
+        // Build the 5-circle progress window matching Slide 5 (e.g. 1..5, or trailing 5 days up to effectiveStreak)
+        val startNum = if (effectiveStreak <= 5) 1 else (effectiveStreak - 4)
+        val window = (startNum until (startNum + 5)).map { dayNum ->
+            dayNum to (dayNum <= effectiveStreak)
+        }
+
+        val cleanItemsCount = (history + favs).count { item ->
+            val sc = item.optJSONObject("result")?.optInt("score") ?: item.optInt("score", 0)
+            sc >= 75
+        }
+
+        return StreakStatus(
+            streakDays = effectiveStreak,
+            windowNumbers = window,
+            cleanCount = cleanItemsCount
+        )
+    }
 
     fun extractTitle(item: JSONObject): String =
         item.optJSONObject("product")?.optString("title").orEmpty()
@@ -37,8 +102,9 @@ object ScanHistoryStore {
         val key = normKey(title)
         if (key.isBlank()) return
 
+        val now = System.currentTimeMillis()
         val copy = JSONObject(rawScanJson.toString()).apply {
-            put("scannedAtMs", System.currentTimeMillis())
+            put("scannedAtMs", now)
             put("storeKey", storeKey)
         }
 
@@ -49,6 +115,7 @@ object ScanHistoryStore {
             existing.take(MAX_HISTORY - 1).forEach { put(it) }
         }
         prefs.edit().putString(KEY_HISTORY, updated.toString()).apply()
+        recordStreakActivity(context, now)
     }
 
     fun getHistory(context: Context): List<JSONObject> {

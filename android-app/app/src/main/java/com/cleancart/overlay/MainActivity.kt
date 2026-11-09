@@ -541,6 +541,110 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun buildCleanCartStreakCard(): View {
+        val streak = ScanHistoryStore.getStreakStatus(this)
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val activeAllergies = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                setColor(0xFFFAFAFA.toInt())
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), 0xFFE5E7EB.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(16), dp(4), dp(16), dp(10))
+            }
+
+            // Header Row: Mascot + "Clean Cart Streak: Day X"
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(ImageView(context).apply {
+                    setImageResource(R.drawable.broc_mascot)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                        marginEnd = dp(10)
+                    }
+                })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(label("Clean Cart Streak: Day ${streak.streakDays}", 16f, 0xFF111814.toInt(), bold = true))
+                    addView(label("${streak.cleanCount} clean items in your library · Scan or swap daily!", 11.5f, 0xFF6B7280.toInt()))
+                })
+            })
+
+            // 5 Green Day Circles Row (matching Slide 5)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(0, dp(12), 0, dp(10))
+                streak.windowNumbers.forEachIndexed { i, (dayNum, completed) ->
+                    addView(label(
+                        dayNum.toString(),
+                        13.5f,
+                        if (completed) Color.WHITE else 0xFF166534.toInt(),
+                        bold = true
+                    ).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(if (completed) 0xFF3E9B4F.toInt() else 0xFFE8F5EC.toInt())
+                            if (!completed) {
+                                setStroke(dp(1), 0xFFBBF7D0.toInt())
+                            }
+                        }
+                        layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                            if (i < streak.windowNumbers.lastIndex) marginEnd = dp(10)
+                        }
+                    })
+                }
+            })
+
+            // 3 Protection Badges Row: Seed-Oil Free · No Red 40 · Allergy Guard
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                val pills = listOf(
+                    "Seed-Oil Free" to false,
+                    "No Red 40" to false,
+                    (if (activeAllergies > 0) "Allergy Guard ($activeAllergies)" else "Allergy Guard") to true
+                )
+                pills.forEachIndexed { idx, (pillText, opensAllergyModal) ->
+                    addView(label(pillText, 11f, 0xFF1F2937.toInt(), bold = true).apply {
+                        setPadding(dp(10), dp(4), dp(10), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(Color.WHITE)
+                            cornerRadius = dp(999).toFloat()
+                            setStroke(dp(1), 0xFFD1D5DB.toInt())
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            if (idx < pills.lastIndex) marginEnd = dp(6)
+                        }
+                        setOnClickListener {
+                            if (opensAllergyModal) {
+                                showAllergyAndDietModal()
+                            } else {
+                                activeTab = 3
+                                expandedPrefSection = "watchlist"
+                                renderScreen()
+                            }
+                        }
+                    })
+                }
+            })
+        }
+    }
+
     private fun renderHistoryTab() {
         val a11yServiceEnabled = isAccessibilityEnabled()
         val consentOk = AccessibilityConsent.granted(this)
@@ -589,6 +693,11 @@ class MainActivity : Activity() {
                     }
                 })
             })
+        }
+
+        // Clean Cart Streak Card (matching Slide 5 of the ASO store deck)
+        if (!historyFavoritesOnly) {
+            tabContentContainer.addView(buildCleanCartStreakCard())
         }
 
         val items = if (historyFavoritesOnly) {
