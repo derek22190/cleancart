@@ -1908,38 +1908,45 @@ class OverlayWindowService : Service() {
             Toast.LENGTH_LONG
         ).show()
 
-        // 1. Trigger in-app search bar automation via GroceryScreenReaderService (works across Shipt, Instacart, Kroger, Aldi, DoorDash, etc.)
-        val inAppSearchStarted = GroceryScreenReaderService.requestInAppSearch(pkg, searchQuery)
-
-        // Stores whose Android app natively routes external search URLs directly to search results:
-        val supportsDirectUrlDeepLink = pkg in setOf(
-            "com.walmart.android",
-            "com.target.ui",
-            "com.amazon.mShop.android.shopping"
-        )
-
-        var launchedInNativeApp = false
-        if (pkg.isNotBlank() && (supportsDirectUrlDeepLink || !inAppSearchStarted)) {
-            val candidates = buildList {
-                if (supportsDirectUrlDeepLink) {
-                    add(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    add(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val launchFallbackIntent: () -> Unit = {
+            val supportsDirectUrlDeepLink = pkg in setOf(
+                "com.walmart.android",
+                "com.target.ui",
+                "com.amazon.mShop.android.shopping"
+            )
+            var launchedInNativeApp = false
+            if (pkg.isNotBlank()) {
+                val candidates = buildList {
+                    if (supportsDirectUrlDeepLink) {
+                        add(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        add(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                    add(Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    add(Intent("com.google.android.gms.actions.SEARCH_ACTION").setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-                add(Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                add(Intent("com.google.android.gms.actions.SEARCH_ACTION").setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                for (candidate in candidates) {
+                    if (runCatching { startActivity(candidate) }.isSuccess) {
+                        launchedInNativeApp = true
+                        break
+                    }
+                }
             }
-            for (candidate in candidates) {
-                if (runCatching { startActivity(candidate) }.isSuccess) {
-                    launchedInNativeApp = true
-                    break
+            if (!launchedInNativeApp && rawWebUrl.isNotBlank()) {
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
             }
         }
 
-        if (!inAppSearchStarted && !launchedInNativeApp && rawWebUrl.isNotBlank()) {
-            runCatching {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
+        // Drive the active grocery store app's native search bar across all 13 stores;
+        // if no search bar/tab is reachable on the current screen, fall back to launchFallbackIntent.
+        val inAppSearchStarted = GroceryScreenReaderService.requestInAppSearch(
+            targetPkg = pkg,
+            query = searchQuery,
+            onFallbackNeeded = launchFallbackIntent
+        )
+        if (!inAppSearchStarted) {
+            launchFallbackIntent()
         }
     }
 

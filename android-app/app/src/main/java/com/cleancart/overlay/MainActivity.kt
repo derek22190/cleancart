@@ -3050,18 +3050,28 @@ class MainActivity : Activity() {
 
         if (query.isNotBlank()) {
             ScanApi.consumeSwap(this, query)
+            if (swapObj != null) {
+                ScanHistoryStore.saveSwapToFavorites(this, swapObj, "", storeKey)
+            }
+            runCatching {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                cm?.setPrimaryClip(ClipData.newPlainText("HeyBroc Clean Swap", query))
+            }
         }
 
         val explicitDeepLink = swapObj?.optString("deepLink").orEmpty().ifBlank { swapObj?.optString("webUrl").orEmpty() }
         val explicitPkg = swapObj?.optString("androidPackage").orEmpty()
+        val supportsDirectUrlDeepLink = explicitPkg in setOf(
+            "com.walmart.android",
+            "com.target.ui",
+            "com.amazon.mShop.android.shopping"
+        )
         if (explicitDeepLink.startsWith("http")) {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(explicitDeepLink))
-            try {
-                startActivity(Intent(intent).apply { if (explicitPkg.isNotBlank()) setPackage(explicitPkg) })
-                return
-            } catch (_: Exception) {
-                if (runCatching { startActivity(intent) }.isSuccess) return
+            if (supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
+                if (runCatching { startActivity(Intent(intent).setPackage(explicitPkg)) }.isSuccess) return
             }
+            if (runCatching { startActivity(intent) }.isSuccess) return
         }
 
         val encoded = Uri.encode(query)

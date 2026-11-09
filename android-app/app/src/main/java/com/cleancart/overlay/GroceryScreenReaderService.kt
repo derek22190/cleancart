@@ -26,9 +26,13 @@ class GroceryScreenReaderService : AccessibilityService() {
         @Volatile
         private var activeInstance: GroceryScreenReaderService? = null
 
-        fun requestInAppSearch(targetPkg: String, query: String): Boolean {
+        fun requestInAppSearch(
+            targetPkg: String,
+            query: String,
+            onFallbackNeeded: (() -> Unit)? = null
+        ): Boolean {
             val svc = activeInstance ?: return false
-            return svc.startInAppSearch(targetPkg, query)
+            return svc.startInAppSearch(targetPkg, query, onFallbackNeeded)
         }
 
         val STORE_PACKAGES = setOf(
@@ -120,7 +124,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val STORE_ONBOARDING_OR_AUTH_GATE = Regex(
-            """\b(nearby stores are a tap away|shop neighborhood favorites|national retailers|shoppers who know their stuff|looking for something special|continue as guest|sign in to your account|create an account|welcome to shipt|welcome to kroger|welcome to doordash|health data privacy|your privacy choices)\b""",
+            """\b(nearby stores are a tap away|shop neighborhood favorites|national retailers|shoppers who know their stuff|looking for something special|continue as guest|sign in to your account|create an account|welcome to shipt|welcome to kroger|welcome to doordash|welcome to instacart|welcome to walmart|welcome to target|welcome to aldi|welcome to costco|welcome to sam'?s club|welcome to bj'?s|health data privacy|your privacy choices)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val AUTH_BUTTON_SIGNAL = Regex(
@@ -1597,13 +1601,19 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     /**
      * Drives the active grocery store app's native search bar automatically when the shopper taps
-     * "Find in [Store] ↗" or "Swap in [Store] ↗":
-     * 1) Finds and clicks the store's search bar (e.g. "What are you looking for?" in Shipt,
-     *    "Search Instacart", "Search Kroger", or the bottom "Search" tab) if an EditText isn't open yet.
+     * "Find in [Store] ↗" or "Swap in [Store] ↗" across ALL 13 supported grocery apps:
+     * 1) Finds and clicks the store's search bar (e.g. "What are you looking for?" in Shipt/BJ's,
+     *    "What can we help you find?" in Target/Kroger, "Ask Rufus or search Amazon", "Search Walmart",
+     *    "Search Costco", "Search Sam's", "Search Instacart", "Search ALDI", or the bottom "Search" tab).
      * 2) Once the search EditText is visible, fills in [query] via ACTION_SET_TEXT and triggers
      *    ACTION_IME_ENTER (plus clicks the top search submit / autocomplete suggestion if needed).
+     * 3) If no search bar or EditText is reachable after all attempts, invokes [onFallbackNeeded].
      */
-    private fun startInAppSearch(targetPkg: String, query: String): Boolean {
+    private fun startInAppSearch(
+        targetPkg: String,
+        query: String,
+        onFallbackNeeded: (() -> Unit)? = null
+    ): Boolean {
         val cleanQuery = query.trim()
         if (cleanQuery.isEmpty()) return false
         val activePkg = rootInActiveWindow?.packageName?.toString().orEmpty().ifBlank { currentPackage }
@@ -1613,7 +1623,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
         // Wait 140ms for OverlayWindowService.removeCard() to detach focus so rootInActiveWindow is the grocery app
         handler.postDelayed({
-            performInAppSearchStep(cleanQuery, attempt = 0, clickedTrigger = false, typedQuery = false)
+            performInAppSearchStep(cleanQuery, attempt = 0, clickedTrigger = false, typedQuery = false, onFallbackNeeded = onFallbackNeeded)
         }, 140L)
         return true
     }
@@ -1622,12 +1632,16 @@ class GroceryScreenReaderService : AccessibilityService() {
         query: String,
         attempt: Int,
         clickedTrigger: Boolean,
-        typedQuery: Boolean
+        typedQuery: Boolean,
+        onFallbackNeeded: (() -> Unit)? = null
     ) {
-        if (attempt > 4) return
+        if (attempt > 4) {
+            if (!typedQuery) onFallbackNeeded?.invoke()
+            return
+        }
         val root = rootInActiveWindow ?: run {
             handler.postDelayed({
-                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery)
+                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery, onFallbackNeeded)
             }, 280L)
             return
         }
@@ -1649,7 +1663,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 // Follow up 480ms later to tap "Search for ..." or the top autocomplete suggestion if the app didn't auto-submit on IME_ENTER
                 handler.postDelayed({
-                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = true)
+                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = true, onFallbackNeeded = null)
                 }, 480L)
                 return
             }
@@ -1664,12 +1678,12 @@ class GroceryScreenReaderService : AccessibilityService() {
             return
         }
 
-        // 3. No EditText open yet: find and click the store's search bar pill ("What are you looking for?", "Search...") or bottom "Search" tab
+        // 3. No EditText open yet: find and click the store's search bar pill or bottom/top "Search" icon/tab
         if (!clickedTrigger) {
             val triggerNode = findSearchTriggerNode(root)
             if (triggerNode != null && clickNodeOrParent(triggerNode)) {
                 handler.postDelayed({
-                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = false)
+                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = false, onFallbackNeeded = onFallbackNeeded)
                 }, 380L)
                 return
             }
@@ -1678,8 +1692,10 @@ class GroceryScreenReaderService : AccessibilityService() {
         // Retry if the search input screen is still animating open
         if (attempt < 3) {
             handler.postDelayed({
-                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery)
+                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery, onFallbackNeeded)
             }, 360L)
+        } else if (!typedQuery) {
+            onFallbackNeeded?.invoke()
         }
     }
 
@@ -1703,10 +1719,10 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun findSearchTriggerNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         val searchBarPattern = Regex(
-            """(?i)\b(what are you looking for|search\s+shipt|search\s+instacart|search\s+walmart|search\s+target|search\s+kroger|search\s+aldi|search\s+amazon|search\s+doordash|search\s+products|search\s+items|search\s+stores|search\s+in\b|find\s+products|find\s+items|find\s+something)\b|^search\b"""
+            """(?i)\b(what are you looking for|what can we help you find|ask rufus or search|search\s+everything|search\s+shipt|search\s+instacart|search\s+walmart|search\s+target|search\s+kroger|search\s+aldi|search\s+amazon|search\s+whole\s+foods|search\s+costco|search\s+sam'?s|search\s+bj'?s|search\s+doordash|search\s+uber\s+eats|search\s+products|search\s+items|search\s+stores|search\s+store|search\s+in\b|find\s+products|find\s+items|find\s+something)\b|^search\b"""
         )
         val searchViewIdPattern = Regex(
-            """(?i)(search_bar|search_box|search_plate|search_src_text|search_button|search_view|toolbar_search|action_search|menu_search|search_entry|search_field|search_input)"""
+            """(?i)(rs_search_src_text|chrome_search_hint_view|search_bar|search_box|search_plate|search_src_text|search_button|search_view|toolbar_search|action_search|menu_search|search_entry|search_field|search_input|search_icon|btn_search)"""
         )
         val dm = resources.displayMetrics
         val screenH = dm.heightPixels.coerceAtLeast(1280)
