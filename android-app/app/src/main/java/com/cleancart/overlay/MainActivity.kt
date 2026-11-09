@@ -702,7 +702,7 @@ class MainActivity : Activity() {
         } else {
             val combined = ArrayList<JSONObject>()
             val seen = HashSet<String>()
-            (ScanHistoryStore.getHistory(this) + ScanHistoryStore.EXPLORE_CATALOG).forEach { it ->
+            (ScanHistoryStore.getHistory(this) + ScanHistoryStore.getExploreCatalog(this)).forEach { it ->
                 val k = ScanHistoryStore.extractTitle(it).lowercase().trim()
                 if (k.isNotBlank() && seen.add(k)) combined.add(it)
             }
@@ -830,7 +830,7 @@ class MainActivity : Activity() {
     private fun renderRecsTab() {
         val allItems = ArrayList<JSONObject>()
         val seen = HashSet<String>()
-        (ScanHistoryStore.getHistory(this) + ScanHistoryStore.EXPLORE_CATALOG).forEach { it ->
+        (ScanHistoryStore.getHistory(this) + ScanHistoryStore.getExploreCatalog(this)).forEach { it ->
             val k = ScanHistoryStore.extractTitle(it).lowercase().trim()
             if (k.isNotBlank() && seen.add(k) && it.optJSONObject("swap") != null) {
                 allItems.add(it)
@@ -1146,7 +1146,7 @@ class MainActivity : Activity() {
                 addView(label("·  $activeCat", 15f, 0xFF111814.toInt(), bold = true))
             })
 
-            val catItems = ScanHistoryStore.EXPLORE_CATALOG
+            val catItems = ScanHistoryStore.getExploreCatalog(this)
                 .filter {
                     val c = it.optString("category")
                     c.equals(activeCat, ignoreCase = true)
@@ -3413,6 +3413,7 @@ class MainActivity : Activity() {
                                 }
                             )
                         }
+                        renderScreen()
                     }
                 })
             }
@@ -3424,6 +3425,74 @@ class MainActivity : Activity() {
         val selected = prefs.getStringSet("dietaryWatchlist", emptySet())?.toMutableSet() ?: mutableSetOf()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+
+            // 1) Seed Oil Grading Toggle (ON by default — uncheck for pure European Yuka scoring)
+            addView(
+                label(
+                    "🌻 SEED OIL SCORING (US VS. EUROPEAN YUKA)",
+                    11f,
+                    0xFF166534.toInt(),
+                    bold = true
+                ).apply {
+                    letterSpacing = 0.06f
+                    setPadding(0, 0, 0, dp(6))
+                }
+            )
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(8), dp(6), dp(8), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF0FDF4.toInt())
+                    setStroke(dp(1), 0xFFBBF7D0.toInt())
+                    cornerRadius = dp(10).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(12) }
+
+                addView(CheckBox(this@MainActivity).apply {
+                    text = "🌻 Penalize Seed Oils in 0–100 Grade"
+                    textSize = 13.5f
+                    setTextColor(0xFF14532D.toInt())
+                    typeface = Typeface.DEFAULT_BOLD
+                    isChecked = ScanApi.isSeedOilsEnabled(this@MainActivity)
+                    setOnCheckedChangeListener { _, checked ->
+                        ScanApi.setSeedOilsEnabled(this@MainActivity, checked)
+                        runCatching {
+                            startService(
+                                Intent(this@MainActivity, OverlayWindowService::class.java).apply {
+                                    action = OverlayWindowService.ACTION_REFRESH_PILL
+                                }
+                            )
+                        }
+                        renderScreen()
+                        onChanged?.invoke()
+                    }
+                })
+                addView(
+                    label(
+                        "Default ON: Dings Soybean, Canola, Corn & Sunflower oil so HeyBroc recommends Avocado/Olive oil swaps. Uncheck to ignore seed oils and see pure European Yuka grades.",
+                        11.5f,
+                        0xFF166534.toInt()
+                    ).apply {
+                        setPadding(dp(32), 0, dp(4), dp(2))
+                    }
+                )
+            })
+
+            // 2) Personal Allergy & Diabetes Watchlist
+            addView(
+                label(
+                    "🛡️ PERSONAL ALLERGY & DIABETES ALERTS",
+                    11f,
+                    0xFF374151.toInt(),
+                    bold = true
+                ).apply {
+                    letterSpacing = 0.06f
+                    setPadding(0, 0, 0, dp(4))
+                }
+            )
             addView(
                 label(
                     "Only checked boxes trigger warnings on your floating HeyBroc pill overlay and product cards. Unchecked boxes never appear.",
@@ -3468,6 +3537,7 @@ class MainActivity : Activity() {
                                     }
                                 )
                             }
+                            renderScreen()
                             onChanged?.invoke()
                         }
                     })
@@ -3476,6 +3546,20 @@ class MainActivity : Activity() {
                     })
                 })
             }
+
+            // 3) 2x Family Strictness Mode
+            addView(
+                label(
+                    "⚡ 2X STRICTNESS MODE (DOUBLE PENALTY)",
+                    11f,
+                    0xFF374151.toInt(),
+                    bold = true
+                ).apply {
+                    letterSpacing = 0.06f
+                    setPadding(0, dp(10), 0, dp(4))
+                }
+            )
+            addView(watchlistControls())
         }
     }
 
@@ -3485,14 +3569,18 @@ class MainActivity : Activity() {
             addView(dietaryWatchlistControls())
         }
         AlertDialog.Builder(this)
-            .setTitle("🛡️ Personal Allergies & Diabetes Watch")
+            .setTitle("🛡️ Allergies, Seed Oils & Strictness")
             .setView(scroll)
             .setPositiveButton("Save & Apply") { _, _ ->
                 renderScreen()
             }
-            .setNeutralButton("Clear All") { _, _ ->
+            .setNeutralButton("Reset Defaults") { _, _ ->
                 val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-                prefs.edit().putStringSet("dietaryWatchlist", emptySet()).apply()
+                prefs.edit()
+                    .putStringSet("dietaryWatchlist", emptySet())
+                    .putStringSet("familyWatchlist", emptySet())
+                    .apply()
+                ScanApi.setSeedOilsEnabled(this, true)
                 runCatching {
                     startService(
                         Intent(this, OverlayWindowService::class.java).apply {

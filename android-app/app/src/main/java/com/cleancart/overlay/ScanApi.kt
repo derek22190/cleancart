@@ -668,6 +668,18 @@ object ScanApi {
         return alerts
     }
 
+    private const val KEY_SEED_OILS_ENABLED = "seed_oils_enabled_v1"
+
+    fun isSeedOilsEnabled(ctx: Context): Boolean {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_SEED_OILS_ENABLED, true)
+    }
+
+    fun setSeedOilsEnabled(ctx: Context, enabled: Boolean) {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_SEED_OILS_ENABLED, enabled).apply()
+    }
+
     fun currentWatchlistSignature(ctx: Context): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val fw = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
@@ -677,28 +689,59 @@ object ScanApi {
         val dw = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
             .sorted()
             .joinToString(",")
-        return "$fw|$dw"
+        val so = if (isSeedOilsEnabled(ctx)) "1" else "0"
+        return "$fw|$dw|so=$so"
+    }
+
+    private fun resolveAdditiveCategory(item: JSONObject): String {
+        val explicit = item.optString("category")
+        if (explicit.isNotBlank()) return explicit
+        val id = item.optString("id").lowercase()
+        val name = item.optString("name").lowercase()
+        return when {
+            id in setOf("red40", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "caramelcolor", "tio2") -> "dyes"
+            id in setOf("hfcs", "corn_syrup", "cornsyrup") -> "hfcs"
+            id in setOf("soybean_oil", "soybeanoil", "canola_oil", "canolaoil", "corn_oil", "cornoil", "cottonseed_oil", "cottonseedoil", "sunflower_oil", "sunfloweroil", "safflower_oil", "saffloweroil", "grapeseed_oil", "grapeseedoil", "rice_bran_oil", "ricebranoil", "vegetable_oil", "vegoil", "phoil", "hydrogoil") ||
+                Regex("\\b(soybean|canola|rapeseed|corn|cottonseed|sunflower|safflower|grapeseed|rice\\s*bran|vegetable|hydrogenated)\\s+oil\\b").containsMatchIn(name) -> "seedOils"
+            id in setOf("bha", "bht", "tbhq", "sodium_benzoate", "nabenzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "capropionate", "potassium_bromate", "propylparaben", "edta") -> "preservatives"
+            id in setOf("sodium_nitrite", "sodium_nitrate", "celerynitrate") -> "nitrates"
+            id in setOf("sucralose", "aspartame", "ace_k", "acek", "saccharin", "neotame", "advantame") -> "sweeteners"
+            id in setOf("polysorbate_80", "polysorbate80", "polysorbate_60", "polysorbate60", "carboxymethylcellulose", "cmc", "mono_diglycerides", "monodiglycerides", "datem", "sodium_stearoyl_lactylate", "pgpr", "carrageenan") -> "emulsifiers"
+            id in setOf("xanthan_gum", "xanthan", "guar_gum", "locust_bean_gum", "cellulose_gum", "gellan_gum", "soylecithin") -> "gums"
+            id in setOf("msg", "artificial_flavor", "artificialflavor", "natural_flavor", "naturalflavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate") -> "flavors"
+            else -> ""
+        }
     }
 
     /**
-     * Re-evaluates a scan JSONObject in-place against the user's current familyWatchlist (2x strictness)
-     * so toggling checkboxes in the app immediately updates the active floating pill and drawer score.
+     * Re-evaluates a scan JSONObject in-place against the user's current Seed Oil toggle and familyWatchlist (2x strictness)
+     * so toggling checkboxes in the app immediately updates the active floating pill, My Scans, and drawer score.
      */
     fun applyLocalWatchlistToData(ctx: Context, data: JSONObject?) {
         val result = data?.optJSONObject("result") ?: return
-        val flagged = result.optJSONArray("flagged") ?: return
+        val currentFlagged = result.optJSONArray("flagged") ?: return
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val seedOilsOn = isSeedOilsEnabled(ctx)
         val familySet = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
             .map { if (it == "nitrites") "nitrates" else it }
             .toSet()
 
-        // Recover the 1x baseline score on first pass so repeated toggles are idempotent
+        // Snapshot original flagged array & 1x baseline score on first pass so repeated toggles are 100% reversible
+        val origFlaggedStr = if (result.has("_origFlaggedJson")) {
+            result.optString("_origFlaggedJson", "[]")
+        } else {
+            val snap = currentFlagged.toString()
+            result.put("_origFlaggedJson", snap)
+            snap
+        }
+        val origFlagged = runCatching { JSONArray(origFlaggedStr) }.getOrDefault(currentFlagged)
+
         val baseScore1x = if (result.has("_baseScore1x")) {
             result.optInt("_baseScore1x", result.optInt("score", 50))
         } else {
             var initial2xDeduction = 0
-            for (i in 0 until flagged.length()) {
-                val item = flagged.optJSONObject(i) ?: continue
+            for (i in 0 until origFlagged.length()) {
+                val item = origFlagged.optJSONObject(i) ?: continue
                 val risk = item.optString("risk", "low")
                 val pen = item.optInt("penalty", 10)
                 val was2x = (risk == "high" && pen >= 60) || (risk == "moderate" && pen >= 35) || (risk == "low" && pen >= 18)
@@ -715,30 +758,37 @@ object ScanApi {
             recovered
         }
 
+        val yuka = result.optJSONObject("yukaBreakdown")
+        if (yuka != null && !yuka.has("_origAdditiveScore")) {
+            yuka.put("_origAdditiveScore", yuka.optInt("additiveScore", 30))
+        }
+
+        val activeFlagged = JSONArray()
         var strictnessDeduction = 0
         var hasHighOrMod2x = false
-        for (i in 0 until flagged.length()) {
-            val item = flagged.optJSONObject(i) ?: continue
+        var hadSeedOilRemoved = false
+        var remainingBasePenaltySum = 0
+        var remainingHighRisk = false
+
+        for (i in 0 until origFlagged.length()) {
+            val rawItem = origFlagged.optJSONObject(i) ?: continue
+            val item = JSONObject(rawItem.toString())
             val risk = item.optString("risk", "low")
-            val cat = item.optString("category").ifBlank {
-                when (item.optString("id")) {
-                    "red40", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "tio2" -> "dyes"
-                    "hfcs", "corn_syrup" -> "hfcs"
-                    "soybean_oil", "canola_oil", "corn_oil", "cottonseed_oil", "sunflower_oil", "safflower_oil", "grapeseed_oil", "rice_bran_oil", "vegetable_oil" -> "seedOils"
-                    "bha", "bht", "tbhq", "sodium_benzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "potassium_bromate", "propylparaben" -> "preservatives"
-                    "sodium_nitrite", "sodium_nitrate" -> "nitrates"
-                    "sucralose", "aspartame", "ace_k", "saccharin", "neotame", "advantame" -> "sweeteners"
-                    "polysorbate_80", "polysorbate_60", "carboxymethylcellulose", "mono_diglycerides", "datem", "sodium_stearoyl_lactylate", "pgpr" -> "emulsifiers"
-                    "carrageenan", "xanthan_gum", "guar_gum", "locust_bean_gum", "cellulose_gum", "gellan_gum" -> "gums"
-                    "msg", "artificial_flavor", "natural_flavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate" -> "flavors"
-                    else -> ""
-                }
+            val cat = resolveAdditiveCategory(item)
+            if (cat == "seedOils" && !seedOilsOn) {
+                hadSeedOilRemoved = true
+                continue
             }
             val is2x = cat.isNotEmpty() && (cat in familySet || (cat == "nitrates" && "preservatives" in familySet))
             val basePen = when (risk) {
                 "high" -> 35
                 "moderate" -> 20
                 else -> 10
+            }
+            val idStr = item.optString("id")
+            if (!idStr.startsWith("nutri_")) {
+                remainingBasePenaltySum += basePen
+                if (risk == "high") remainingHighRisk = true
             }
             item.put("penalty", if (is2x) basePen * 2 else basePen)
             if (is2x) {
@@ -751,9 +801,33 @@ object ScanApi {
                     hasHighOrMod2x = true
                 }
             }
+            activeFlagged.put(item)
+        }
+        result.put("flagged", activeFlagged)
+
+        var effectiveBaseScore = baseScore1x
+        if (!seedOilsOn && hadSeedOilRemoved) {
+            if (yuka != null) {
+                val nutriScore = yuka.optInt("nutritionScore", 36)
+                val orgScore = yuka.optInt("organicScore", 0)
+                val nonNutriCount = (0 until activeFlagged.length()).count { idx ->
+                    !activeFlagged.optJSONObject(idx)?.optString("id").orEmpty().startsWith("nutri_")
+                }
+                val multiDed = (nonNutriCount - 1).coerceAtLeast(0) * 3
+                val addDed = (Math.round(remainingBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
+                val newAddScore = if (remainingHighRisk) 0 else (30 - addDed).coerceAtLeast(0)
+                yuka.put("additiveScore", newAddScore)
+                yuka.put("highRiskCapped", remainingHighRisk)
+                val pillarSum = (nutriScore + newAddScore + orgScore).coerceIn(0, 100)
+                effectiveBaseScore = if (remainingHighRisk) pillarSum.coerceAtMost(49) else pillarSum
+            } else {
+                effectiveBaseScore = (baseScore1x + 26).coerceIn(0, 88)
+            }
+        } else if (yuka != null && yuka.has("_origAdditiveScore")) {
+            yuka.put("additiveScore", yuka.optInt("_origAdditiveScore", yuka.optInt("additiveScore", 30)))
         }
 
-        var nextScore = (baseScore1x - strictnessDeduction).coerceIn(0, 100)
+        var nextScore = (effectiveBaseScore - strictnessDeduction).coerceIn(0, 100)
         if (hasHighOrMod2x && nextScore > 39) {
             nextScore = 39
         }
@@ -827,8 +901,10 @@ object ScanApi {
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val seedOilsOn = isSeedOilsEnabled(ctx)
         val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
             .map { if (it == "nitrites") "nitrates" else it }
+            .filter { seedOilsOn || it != "seedOils" }
             .toSet()
         val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
         val refCode = referredByCode(ctx)
@@ -841,6 +917,9 @@ object ScanApi {
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
             put("store", store)
             put("surface", "android")
+            if (!seedOilsOn) {
+                put("watchlist", JSONObject().put("seedOils", false))
+            }
             if (familyWatchlist.isNotEmpty()) {
                 put("familyWatchlist", JSONArray(familyWatchlist.toList().sorted()))
             }

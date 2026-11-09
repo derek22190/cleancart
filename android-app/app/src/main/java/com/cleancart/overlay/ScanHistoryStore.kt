@@ -121,7 +121,7 @@ object ScanHistoryStore {
     fun getHistory(context: Context): List<JSONObject> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
-        return parseList(raw)
+        return parseList(raw).onEach { ScanApi.applyLocalWatchlistToData(context, it) }
     }
 
     fun clearHistory(context: Context) {
@@ -132,8 +132,11 @@ object ScanHistoryStore {
     fun getFavorites(context: Context): List<JSONObject> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_FAVORITES, null) ?: return emptyList()
-        return parseList(raw)
+        return parseList(raw).onEach { ScanApi.applyLocalWatchlistToData(context, it) }
     }
+
+    fun getExploreCatalog(context: Context): List<JSONObject> =
+        EXPLORE_CATALOG.onEach { ScanApi.applyLocalWatchlistToData(context, it) }
 
     fun isFavorite(context: Context, title: String): Boolean {
         val key = normKey(title)
@@ -419,7 +422,7 @@ object ScanHistoryStore {
         val tokens = q.split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
         if (tokens.isEmpty()) return emptyList()
         val pool = LinkedHashMap<String, JSONObject>()
-        (getHistory(context) + getFavorites(context) + EXPLORE_CATALOG).forEach { item ->
+        (getHistory(context) + getFavorites(context) + getExploreCatalog(context)).forEach { item ->
             val t = extractTitle(item)
             val k = normKey(t)
             if (k.isNotBlank() && !pool.containsKey(k)) {
