@@ -108,11 +108,11 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val PROSE_OR_BULLET_NOISE = Regex(
-            """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|edit instructions|this item is not available in your area|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available|these items have been removed from your cart|complete your cart|based on items in your cart|yes,\s*i want \$0 delivery fee|start saving with instacart\+|service fees apply|add \$?\d+(\.\d{2})? of eligible items|buy \$\d+,\s*get \$\d+ off|shopping in \d+|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care|(excellent|good|high|rich|great)\s+source\s+of|made in america|european quality|fresh-grated horseradish for|for prime rib|hear the highlights|copy associates link|ways to buy|price history|share product|amazon'?s choice|bought in past (month|week)|purchased \d+\+?\s*times?|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|clip\s+coupon|congratulations|pickup\s+benefit|benefit\s+has\s+been\s+applied|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|eligible\s+order|pay\s+once\s+for\s+a\s+year|groceries\s+delivered|lower\s+your\s+delivery\s+fees|select\s+package|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|boost\s+by\s+kroger|sign\s+in\s+to\s+clip|optup\s+score|located\s+in\s+aisle|choose\s+backup|backup\s+item|special\s+requests?|add\s+a\s+special\s+request|dashpass|dashmart|substitution\s+preferences|doubledash|nearby\s+stores\s+are\s+a\s+tap\s+away|shoppers\s+who\s+know\s+their\s+stuff|looking\s+for\s+something\s+special|continue\s+as\s+guest)\b|&\s*more\.?$|!$""",
+            """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|edit instructions|this item is not available in your area|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available|these items have been removed from your cart|complete your cart|based on items in your cart|yes,\s*i want \$0 delivery fee|start saving with instacart\+|service fees apply|add \$?\d+(\.\d{2})? of eligible items|buy \$\d+,\s*get \$\d+ off|shopping in \d+|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care|(excellent|good|high|rich|great)\s+source\s+of|made in america|european quality|fresh-grated horseradish for|for prime rib|hear the highlights|copy associates link|ways to buy|price history|share product|amazon'?s choice|bought in past (month|week)|purchased \d+\+?\s*times?|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|clip\s+coupon|congratulations|pickup\s+benefit|benefit\s+has\s+been\s+applied|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|eligible\s+order|pay\s+once\s+for\s+a\s+year|groceries\s+delivered|lower\s+your\s+delivery\s+fees|select\s+package|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|boost\s+by\s+kroger|sign\s+in\s+to\s+clip|optup\s+score|located\s+in\s+aisle|choose\s+backup|backup\s+item|special\s+requests?|add\s+a\s+special\s+request|dashpass|dashmart|substitution\s+preferences|doubledash|nearby\s+stores\s+are\s+a\s+tap\s+away|shop\s+neighborhood\s+favorites|national\s+retailers|shoppers\s+who\s+know\s+their\s+stuff|looking\s+for\s+something\s+special|continue\s+as\s+guest)\b|&\s*more\.?$|!$""",
             RegexOption.IGNORE_CASE,
         )
         private val STORE_ONBOARDING_OR_AUTH_GATE = Regex(
-            """\b(nearby stores are a tap away|shoppers who know their stuff|looking for something special|continue as guest|sign in to your account|create an account|welcome to shipt|welcome to kroger|welcome to doordash|health data privacy|your privacy choices)\b""",
+            """\b(nearby stores are a tap away|shop neighborhood favorites|national retailers|shoppers who know their stuff|looking for something special|continue as guest|sign in to your account|create an account|welcome to shipt|welcome to kroger|welcome to doordash|health data privacy|your privacy choices)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val AUTH_BUTTON_SIGNAL = Regex(
@@ -763,22 +763,23 @@ class GroceryScreenReaderService : AccessibilityService() {
                     return
                 }
 
-                // Do not float "🛒 Cart: Open Cart to Grade" on top of store onboarding/welcome carousels
-                // or pre-shopping Login / Sign up / Continue as guest screens (e.g. Shipt, Kroger, DoorDash).
+                // Keep the HeyBroc floating pill visible across all store onboarding/welcome funnel slides
+                // and pre-shopping Login / Sign up / Continue as guest screens (e.g. Shipt, Kroger, DoorDash)
+                // so the pill never disappears mid-funnel on pages 2–4.
                 val hasOnboardingGateSignal = allNodes.any { STORE_ONBOARDING_OR_AUTH_GATE.containsMatchIn(it.text) } ||
                     allNodes.count { AUTH_BUTTON_SIGNAL.matches(it.text.trim()) } >= 2
                 if (hasOnboardingGateSignal && totalTileAddCount == 0 && !hasCarouselPricesOrStock) {
                     val gateKey = "$pkg|ONBOARDING_AUTH_GATE"
-                    if (lastKey != gateKey || overlayVisible) {
+                    if (lastKey != gateKey || !overlayVisible) {
                         lastKey = gateKey
-                        sendToOverlay(OverlayWindowService.ACTION_HIDE)
-                        overlayVisible = false
+                        sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                        markVisible()
                     }
                     return
                 }
 
                 val idleKey = "$pkg|IDLE_CART_AVG"
-                if (lastKey != idleKey) {
+                if (lastKey != idleKey || !overlayVisible) {
                     lastKey = idleKey
                     sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
                     markVisible()
