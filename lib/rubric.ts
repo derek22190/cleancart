@@ -714,7 +714,7 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   // 4b. 100% Fruit Juices (Orange Juice, Apple Juice, Grape Juice, Cranberry Juice — ~9-10g natural liquid sugar/100ml with 0g fiber)
   if (
     /\b(orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s.*juice|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|nature'?s\s+nectar|100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|cranberry|pomegranate|fruit)\s+juice)\b/.test(combined) &&
-    !/\b(olipop|poppi|culture\s+pop|kombucha|health[- ]?ade|spindrift|ora\s+organic|pre[- ]?workout|nooma|suja.*uber\s+greens)\b/.test(combined)
+    !/\b(olipop|poppi|culture\s+pop|kombucha|health[- ]?ade|spindrift|ora\s+organic|pre[- ]?workout|nooma|suja.*uber\s+greens|apple\s*sauce|puree|fruit\s+cups?)\b/.test(combined)
   ) {
     return { caloriesKcal100g: 45, sugarsG100g: 9.2, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0.2, proteinG100g: 0.7, fruitsVegNutsPct: 100 };
   }
@@ -858,7 +858,7 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
     return { caloriesKcal100g: 245, sugarsG100g: 4.0, saturatedFatG100g: 0.8, sodiumMg100g: 230, fiberG100g: 6.5, proteinG100g: 9.5, fruitsVegNutsPct: 20 };
   }
   // 15. Ingredient-order heuristic: if Sugar/Syrup/Honey/Maple/Agave is in the first 3 ingredients
-  if (/\b(sugar|cane sugar|brown sugar|coconut sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|maple syrup|honey|agave|molasses)\b/.test(top3)) {
+  if (/(?<!no\s+)\b(sugar(?!\s+snap|\s+kelp|\s+free|\s+added|\s+alcohol)|cane sugar|brown sugar|coconut sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|maple syrup|honey|agave|molasses)\b/.test(top3)) {
     return { caloriesKcal100g: 370, sugarsG100g: 22, saturatedFatG100g: 5.0, sodiumMg100g: 260, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0 };
   }
   // Default balanced whole/minimally-processed staple
@@ -919,12 +919,13 @@ export function scoreProductYuka(
   const clauses = rawIngredients.toLowerCase().split(/[,;]/).map((c) => c.trim()).filter(Boolean);
   const top3 = clauses.slice(0, 3).join(" ");
   // Organic sugar is still sugar — never exempt organic cane sugar from top-3 added sugar!
+  // Guard "sugar snap peas", "sugar kelp", "sugar free", and "no sugar added" against false positives.
   const hasTop3AddedSugar =
-    /\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing|liquid sugar|invert sugar|sugar|cane sugar|brown sugar|coconut sugar|maple syrup|honey|agave|molasses)\b/.test(top3);
+    /(?<!no\s+)\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing|liquid sugar|invert sugar|sugar(?!\s+snap|\s+kelp|\s+free|\s+added|\s+alcohol)|cane sugar|brown sugar|coconut sugar|maple syrup|honey|agave|molasses)\b/.test(top3);
 
   const isBeverage =
     /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|simply\s+lemonade|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|suja|v8|nature'?s\s+nectar|lemonade|limeade|sweet\s+tea|iced\s+tea|green\s+tea|black\s+tea|yerba\s+mate|guayaki|guayakí|clean\s+cause|guru|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|ito\s+en|just\s+ice\s+tea|cold\s+brew|stok|frappuccino|doubleshot|dunkin|la\s+colombe|(?<!baking\s+)soda(?!\s+crackers?)|cola|pepsi|coke|coca[- ]?cola|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|zevia|culture\s+pop|gatorade|gatorlyte|powerade|bodyarmor|prime|red\s*bull|monster|celsius|alani|ghost\s+(?:energy|legend)|c4\s+(?:energy|performance|smart|original|ultimate|pre)|bang\s+energy|reign|rockstar|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|sports?\s+drink|energy\s+drink|electrolyte|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sparkling\s+ice|bai|kombucha|olipop|poppi|spindrift|la\s*croix|waterloo|bubly|polar\s+seltzer|nixie|hint\s+water|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spring\s+water|mineral\s+water|artesian\s+water|purified\s+water|alkaline\s+water|coconut\s+water|harmless\s+harvest|vita\s+coco|sparkling\s+water|seltzer|club\s+soda)\b/i.test(titleAndIng) &&
-    !/\b(gummies|gummy|bars?|chews?|crisps?|cookies?|cakes?|pies?|crackers?|wafers?|brownies?|muffins?|donuts?|doughnuts?|breads?|rolls?|buns?|pastries|pastry|pancakes?|waffles?|pretzels?|chips|popcorn|cereal|oatmeal|sauce|marinade|glaze|dressing|vinaigrette|vanilla\s+extract|almond\s+extract|lemon\s+extract|fruit\s+spread|jam|jelly)\b/i.test(nutrition.productTitle || "");
+    !/\b(gummies|gummy|bars?|chews?|crisps?|cookies?|cakes?|pies?|crackers?|wafers?|brownies?|muffins?|donuts?|doughnuts?|breads?|rolls?|buns?|pastries|pastry|pancakes?|waffles?|pretzels?|chips|popcorn|cereal|oatmeal|sauce|apple\s*sauce|puree|fruit\s+cups?|marinade|glaze|dressing|vinaigrette|vanilla\s+extract|almond\s+extract|lemon\s+extract|fruit\s+spread|jam|jelly)\b/i.test(nutrition.productTitle || "");
 
   const hasMeasuredCalories = typeof nutrition.caloriesKcal100g === "number" && Number.isFinite(nutrition.caloriesKcal100g);
   const hasMeasuredSugars = typeof nutrition.sugarsG100g === "number" && Number.isFinite(nutrition.sugarsG100g);
@@ -938,19 +939,29 @@ export function scoreProductYuka(
     !hasTop3AddedSugar &&
     (!hasMeasuredSugars || nutrition.sugarsG100g! >= 5) &&
     /\b(100%\s+(pure\s+)?(organic\s+)?(orange|apple|grape|cranberry|grapefruit|pomegranate|pineapple|tart\s+cherry|fruit)\s+juice|orange\s+juice|apple\s+juice|grape\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|simply\s+orange|tropicana|uncle\s+matt'?s|mott'?s|martinelli'?s|pom\s+wonderful|lakewood|knudsen)\b/i.test(titleAndIng) &&
-    !/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|juice\s+drink|juice\s+pouch\w*|cocktail|blend\s+with\s+sugar|high\s+fructose|lemonade|limeade|olipop|poppi|culture\s+pop|prebiotic|soda|cola|root\s+beer|ginger\s+ale|kombucha|health[- ]?ade|gt'?s|kevita|spindrift|sparkling\s+water|seltzer|club\s+soda|tea|yerba\s+mate|pre[- ]?workout|preworkout|ora\s+organic|electrolyte|nooma|suja.*uber\s+greens|green\s+juice|vegetable\s+juice)\b/i.test(titleAndIng);
+    !/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|juice\s+drink|juice\s+pouch\w*|cocktail|blend\s+with\s+sugar|high\s+fructose|lemonade|limeade|olipop|poppi|culture\s+pop|prebiotic|soda|cola|root\s+beer|ginger\s+ale|kombucha|health[- ]?ade|gt'?s|kevita|spindrift|sparkling\s+water|seltzer|club\s+soda|tea|yerba\s+mate|pre[- ]?workout|preworkout|ora\s+organic|electrolyte|nooma|suja.*uber\s+greens|green\s+juice|vegetable\s+juice|apple\s*sauce|puree|fruit\s+cups?)\b/i.test(titleAndIng);
 
   const NON_WHOLE_FOOD =
     /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
 
   const isWholeProduceIngredient = /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients);
 
+  const isPureCleanCulinaryOil =
+    clauses.length === 1 &&
+    base.flagged.length === 0 &&
+    /\b(extra\s+virgin\s+olive\s+oil|virgin\s+olive\s+oil|100%\s+(?:pure\s+)?olive\s+oil|100%\s+(?:pure\s+)?avocado\s+oil|avocado\s+oil|virgin\s+coconut\s+oil|unrefined\s+(?:cold[- ]?pressed\s+)?(?:virgin\s+)?coconut\s+oil)\b/i.test(
+      titleAndIng,
+    ) &&
+    !/\b(mayo|mayonnaise|dressing|vinaigrette|ranch|aioli|sauce|marinade|pesto|hummus|dip|chips|crisps|crackers|popcorn|pretzels|bread|tortilla|pasta|tuna|sardines|salmon|chicken|turkey|beef|pork|beans|cereal|granola|oats|bars?|cookies?|cake|muffin|brownie|blend|canola|soybean|sunflower|safflower|corn\s+oil|cottonseed|grapeseed|rice\s+bran|vegetable\s+oil)\b/i.test(
+      titleAndIng,
+    );
+
   const isWholeFood =
     nutrition.isWholeFood !== false &&
-    (isWholeProduceIngredient || !NON_WHOLE_FOOD.test(titleAndIng)) &&
+    (isWholeProduceIngredient || isPureCleanCulinaryOil || !NON_WHOLE_FOOD.test(titleAndIng)) &&
     !isBeverage &&
     !hasTop3AddedSugar &&
-    (Boolean(nutrition.isWholeFood) || isWholeProduceIngredient);
+    (Boolean(nutrition.isWholeFood) || isWholeProduceIngredient || isPureCleanCulinaryOil);
 
   // High 3 Fix: Never infer whole-product USDA Organic certification from rawIngredients or productTitle alone.
   // Require explicit product-level nutrition.isOrganic === true.

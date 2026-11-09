@@ -1084,6 +1084,51 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  // Additional edge-case checks: Sugar Snap Peas, Mott's Unsweetened Applesauce, Baking Soda in pancake mix, single-ingredient EVOO, and Soy-Free/Butter Beans/Egg-Free dietary alerts
+  const sugarSnapPeasCheck = scoreProductYuka(
+    "Organic Sugar Snap Peas.",
+    {},
+    [],
+    { productTitle: "Fresh Organic Sugar Snap Peas" },
+  );
+  const unsweetenedApplesauceCheck = scoreProductYuka(
+    "Apples, Water, Ascorbic Acid (Vitamin C) to Maintain Color.",
+    {},
+    [],
+    { productTitle: "Mott's Unsweetened Applesauce" },
+  );
+  const almondPancakeMixCheck = scoreProductYuka(
+    "Blanched Almond Flour, Arrowroot, Tapioca, Organic Coconut Sugar, Cream of Tartar, Baking Soda, Sea Salt.",
+    {},
+    [],
+    { productTitle: "Simple Mills Almond Flour Pancake & Waffle Mix" },
+  );
+  const pureEvooYukaCheck = scoreProductYuka(
+    "100% Extra Virgin Olive Oil.",
+    {},
+    [],
+    { productTitle: "Pompeian 100% Extra Virgin Olive Oil" },
+  );
+  const falsePositiveAlerts = evaluateDietaryAlerts(
+    ["sugar_diabetes", "soy", "dairy", "egg"],
+    "Organic Sugar Snap Peas & Butternut Squash with Vegan Mayo",
+    "Organic Sugar Snap Peas, Butternut Squash, Butter Beans, Water, Avocado Oil, Sunflower Lecithin (Soy-Free), Egg-Free Vegan Mayonnaise, No Sugar Added.",
+    { sugarsG100g: 3.5 },
+  );
+  check(
+    "Part A1/A4 Edge Cases: Sugar Snap Peas (90/100), Unsweetened Applesauce (90/100), Baking Soda in pancake mix, 100% EVOO (90/100), and Soy-Free / Butter Beans / Egg-Free alerts have 0 false positives",
+    sugarSnapPeasCheck.score === 90 &&
+      sugarSnapPeasCheck.flagged.length === 0 &&
+      unsweetenedApplesauceCheck.score === 90 &&
+      unsweetenedApplesauceCheck.flagged.length === 0 &&
+      almondPancakeMixCheck.flagged.length === 0 &&
+      almondPancakeMixCheck.yukaBreakdown?.additiveScore === 30 &&
+      !almondPancakeMixCheck.yukaBreakdown?.calorieNote?.includes("Liquid Calories") &&
+      pureEvooYukaCheck.score === 90 &&
+      pureEvooYukaCheck.flagged.length === 0 &&
+      falsePositiveAlerts.length === 0
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);

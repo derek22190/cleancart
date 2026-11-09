@@ -75,7 +75,7 @@ export function evaluateDietaryAlerts(
   if (selected.has("sugar_diabetes")) {
     const sugarsG = nutrition?.sugarsG100g ?? 0;
     const ingCleanedForSugar = ing.replace(
-      /\b(no\s+(?:added\s+)?sugars?|sugar[\s-]*free|zero\s+sugar|unsweetened|without\s+(?:added\s+)?sugar|0\s*g\s+sugar)\b/gi,
+      /\b(no\s+(?:added\s+)?sugars?|sugar[\s-]*free|zero\s+sugar|unsweetened|without\s+(?:added\s+)?sugar|0\s*g\s+sugar|sugar\s+snap(?:\s+peas?)?|sugar\s+kelp|sugar\s+pumpkin)\b/gi,
       " ",
     );
     const sugarMatch = ingCleanedForSugar.match(
@@ -100,7 +100,7 @@ export function evaluateDietaryAlerts(
 
   if (selected.has("dairy") && !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/i.test(productTitle)) {
     const dairyCleaned = text.replace(
-      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi,
+      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi,
       " ",
     );
     const m = dairyCleaned.match(
@@ -117,7 +117,7 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("wheat_gluten") && !/\b(gluten[\s-]*free|grain[\s-]*free|celiac)\b/i.test(productTitle)) {
-    const wheatCleaned = text.replace(/\b(buckwheat|wheat\s*grass)\b/gi, " ");
+    const wheatCleaned = text.replace(/\b(buckwheat|wheat\s*grass|wheat[\s-]*free|gluten[\s-]*free)\b/gi, " ");
     const m = wheatCleaned.match(
       /\b(vital\s+wheat\s+gluten|graham\s+flour|enriched\s+flour|bleached\s+flour|unbleached\s+flour|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale)\b/i,
     );
@@ -133,7 +133,7 @@ export function evaluateDietaryAlerts(
 
   if (selected.has("peanuts_nuts")) {
     const nutCleaned = text.replace(
-      /\b(nutmeg|butternut|water\s+chestnuts?|coconuts?)\b/gi,
+      /\b(nutmeg|butternut|water\s+chestnuts?|coconuts?|nut[\s-]*free|peanut[\s-]*free|tree\s+nut[\s-]*free)\b/gi,
       " ",
     );
     const m = nutCleaned.match(
@@ -150,7 +150,8 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("soy")) {
-    const m = text.match(
+    const soyCleaned = text.replace(/\b(soy[\s-]*free|no\s+soy(?:\s+lecithin)?|without\s+soy|free\s+of\s+soy)\b/gi, " ");
+    const m = soyCleaned.match(
       /\b(soybean\s+oil|soy\s+lecithin|soy\s+protein|soy\s+flour|soy\s+sauce|textured\s+vegetable\s+protein|soybeans?|soymilk|soy|soya|tamari|tofu|tempeh|edamame|miso)\b/i,
     );
     if (m) {
@@ -164,7 +165,7 @@ export function evaluateDietaryAlerts(
   }
 
   if (selected.has("egg")) {
-    const eggCleaned = text.replace(/\beggplants?\b/gi, " ");
+    const eggCleaned = text.replace(/\b(eggplants?|egg[\s-]*free|no\s+eggs?|vegan\s+mayo(?:nnaise)?)\b/gi, " ");
     const m = eggCleaned.match(
       /\b(egg\s+whites?|egg\s+yolks?|dried\s+egg|powdered\s+egg|eggs?|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\b/i,
     );
