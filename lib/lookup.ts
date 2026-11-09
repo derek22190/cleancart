@@ -638,7 +638,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
 export function genericWholeFoodQuery(query: string): string | null {
   if (classifyWholeFood(query).isWholeFood !== true) return null;
   const text = query.toLowerCase();
-  const food = text.match(/\b(apples?|almonds?|walnuts?|cashews?|chia\s+seeds?|flax\s*seeds?|pumpkin\s+seeds?|salmon|trout|cod|tuna|chicken|turkey|beef|pork|eggs?|oats?|oatmeal|quinoa|broccoli|spinach|carrots?|potatoes?|avocados?|bananas?|lentils?|chickpeas?|olive\s+oil|greek\s+yogurt)\b/)?.[0];
+  const food = text.match(/\b(apples?|almonds?|walnuts?|cashews?|chia\s+seeds?|flax\s*seeds?|pumpkin\s+seeds?|salmon|trout|cod|tuna|chicken|turkey|beef|pork|eggs?|oats?|oatmeal|quinoa|broccoli|spinach|carrots?|sweet\s+potato(?:es)?|potato(?:es)?|yams?|tomato(?:es)?|avocados?|bananas?|lentils?|chickpeas?|olive\s+oil|greek\s+yogurt)\b/)?.[0];
   if (!food) return null;
   const species = text.match(/\b(atlantic|pacific|sockeye|pink|chinook)\b/)?.[0];
   const preparation = /\b(greek\s+yogurt)\b/.test(food) ? "plain" : /olive\s+oil|oats?|oatmeal|quinoa/.test(food) ? "" : /\b(cooked|roasted|boiled|baked)\b/.exec(text)?.[0] || "raw";
@@ -1398,7 +1398,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(annie'?s|organic)\b.*\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|shells\s*(and|&)\s*(?:real\s+aged\s+|white\s+)?cheddar)\b/i,
+    match: /\b(annie'?s|organic)\b.*\b(macaroni\s*(and|&)\s*cheese|mac\s*(and|&)\s*cheese|shells\s*(and|&)\s*(?:real\s+aged\s+)?cheddar)\b/i,
     brand: "Annie's Homegrown",
     title: "Organic Grass-Fed Shells & Real Aged Cheddar",
     ingredients: "Organic Wheat Pasta (Organic Wheat Flour), Organic Grass-Fed Cheddar Cheese (Cultured Pasteurized Organic Milk, Salt, Non-Animal Enzymes), Organic Whey, Organic Nonfat Milk, Organic Butter (Organic Cream, Salt), Salt, Cultured Whole Milk, Sodium Phosphate, Organic Annatto Extract (For Color).",
@@ -2574,7 +2574,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         productTitle: cleanTitle,
         brand: "Just Bare",
         ingredients: jbIng,
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
         nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false, isOrganic: false },
         source: "catalog",
         sourceUpdatedAt: "2026-11-08",
@@ -2595,7 +2595,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       category: drinkHit.category,
       description: drinkHit.description,
       ingredients: drinkHit.ingredients,
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}&v=2`,
       nutrition: { ...drinkHit.nutrition, isOrganic: drinkHit.nutrition?.isOrganic === true },
       source: "catalog",
       sourceUpdatedAt: drinkHit.verifiedAt,
@@ -2618,7 +2618,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       const resolvedTitle = wordCount <= 2 ? fullEntryTitle : cleanTitle;
       const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
         ? entry.imageUrl
-        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}`;
+        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}&v=2`;
       return {
         productTitle: resolvedTitle,
         brand: entry.brand,
@@ -2648,7 +2648,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         description:
           "Representative category formulation shown because an exact product/UPC label was not returned by Open Food Facts or USDA. Formulations vary by brand and batch; always verify the physical package label.",
         ingredients: `${cat.ingredients} [Representative Category Formulation — Verify Physical Package Label]`,
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
         nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic === true },
         source: "catalog",
         sourceUpdatedAt: cat.verifiedAt,
@@ -2662,13 +2662,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 
   // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly single-ingredient)
   if (
-    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomatoes?|potatoes?|sweet\s+potatoes?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|mint|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|green\s+beans|brussels\s+sprouts|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|bok\s+choy|chard|collards?|edamame|peas|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|papayas?|pomegranates?|figs?|dates?|berries|vegetables?|veggies|fresh\s+produce)\b/.test(s)
+    /\b(salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomato(?:es)?|sweet\s+potato(?:es)?|potato(?:es)?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|mint|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|green\s+beans|brussels\s+sprouts|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|bok\s+choy|chard|collards?|edamame|peas|apples?|bananas?|strawberries|blueberries|raspberries|blackberries|cherries|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangoes?|pineapple|watermelon|cantaloupe|honeydew|papayas?|pomegranates?|figs?|dates?|berries|vegetables?|veggies|fresh\s+produce)\b/.test(s)
   ) {
     return {
       productTitle: cleanTitle,
       brand: "Fresh Produce",
       ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
       nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -2683,7 +2683,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       productTitle: cleanTitle,
       brand: "Fresh Meat & Eggs",
       ingredients: "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Eggs).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
       nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -2700,7 +2700,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       productTitle: cleanTitle,
       brand: "Whole Nuts, Seeds & Legumes",
       ingredients: "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
       nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -2767,6 +2767,26 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   const key = cacheKey(input);
   if (!key) return null;
+
+  const DIRECT_CATALOG_PRIORITY =
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
+
+  const isPlainProduceDirectPriority =
+    !PROCESSED_FOOD_GUARD.test(title) &&
+    /\b(fresh\s+whole\b|fresh\s+produce\b|sweet\s+potato(?:es)?|russet\s+potato(?:es)?|idaho\s+potato(?:es)?|yukon\s+gold\s+potato(?:es)?|red\s+potato(?:es)?|yellow\s+potato(?:es)?|raw\s+(?:whole\s+)?(?:almonds?|walnuts?|pecans?|cashews?|pistachios?|hazelnuts?|macadamia\s+nuts?|brazil\s+nuts?|pumpkin\s+seeds?|sunflower\s+seeds?)|chia\s+seeds?|flax\s*seeds?|hemp\s+(?:hearts?|seeds?))\b/i.test(
+      title,
+    );
+
+  if (!input.barcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority)) {
+    const directCat = catalogFallback(title);
+    if (
+      directCat &&
+      !directCat.productTitle.startsWith("Conventional Grocery") &&
+      !/category estimate|representative/i.test(directCat.brand || "")
+    ) {
+      return { ...directCat, ms: ms() };
+    }
+  }
 
   const cache = await loadCache();
   const hit = cache.get(key);

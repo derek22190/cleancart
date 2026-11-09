@@ -510,7 +510,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       size: "16 oz jar",
       isOrganic: true,
       image: "/swaps/peanutbutter.png",
-      ingredients: "Organic roasted sunflower seeds, salt.",
+      ingredients: "Organic roasted sunflower seeds.",
     },
   },
   {
@@ -1475,7 +1475,7 @@ export function resolveSwap(params: {
   const alt = resolveCleanAlternative(params.productTitle, params.category);
   const category = alt.category;
   const baseClean = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist);
-  if (baseClean.score < 90) return null;
+  if (baseClean.score < 85) return null;
   if (params.productTitle) {
     const requested = params.productTitle.replace(/\blactaid\b/ig, "lactose-free");
     const variantTitle = (alt.isOrganic === true || alt.nutrition?.isOrganic === true ? "Organic " : "") + alt.brand + " " + alt.name;
@@ -1508,7 +1508,7 @@ export function resolveSwap(params: {
     verifiedAt: alt.verifiedAt,
     image: alt.image.endsWith(".png")
       ? alt.image
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}`,
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=2`,
     score: altScore,
     store,
     ...buildLinks(alt, store, impactClickId(), surface),

@@ -1350,6 +1350,41 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       allSwaps.every((alt) => hasValidCatalogProvenance(alt.sourceUrl, alt.verifiedAt))
   );
 
+  const sweetPotatoLookup = await lookupIngredients({ productTitle: "Fresh Whole Sweet Potato" });
+  const sweetPotatoScore = sweetPotatoLookup
+    ? scoreProductYuka(sweetPotatoLookup.ingredients, {}, [], {
+        ...sweetPotatoLookup.nutrition,
+        productTitle: sweetPotatoLookup.productTitle,
+      })
+    : null;
+  check(
+    "Fresh Whole Sweet Potato resolves to Fresh Produce (90/100 Excellent, 0 flags, never Simply Nature chips or canned yams)",
+    Boolean(
+      sweetPotatoLookup &&
+        sweetPotatoLookup.brand === "Fresh Produce" &&
+        sweetPotatoScore?.score === 90 &&
+        sweetPotatoScore?.rating === "Excellent" &&
+        sweetPotatoScore?.flagged.length === 0 &&
+        sweetPotatoLookup.imageUrl?.includes("&v=2")
+    )
+  );
+
+  check(
+    "Beverage flavor guard rejects unmatched flavor queries (LaCroix Pamplemousse, Bubly Grapefruit, Guayaki Revel Berry, C4 Skittles)",
+    matchDrinkCatalog("LaCroix Pamplemousse") === null &&
+      matchDrinkCatalog("Bubly Grapefruit") === null &&
+      matchDrinkCatalog("Guayaki Revel Berry") === null &&
+      matchDrinkCatalog("C4 Skittles") === null &&
+      matchDrinkCatalog("Clean Cause Blackberry") === null &&
+      matchDrinkCatalog("Vitaminwater Dragonfruit") === null
+  );
+
+  const frapSwap = resolveSwap({ score: 30, productTitle: "Starbucks Bottled Mocha Frappuccino", store: "walmart" });
+  check(
+    "Starbucks Bottled Mocha Frappuccino resolves to SToK Unsweetened Black Cold Brew Coffee (85/100)",
+    Boolean(frapSwap && frapSwap.brand === "SToK" && frapSwap.score === 85)
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

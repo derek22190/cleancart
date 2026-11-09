@@ -275,12 +275,18 @@ object ScanHistoryStore {
         return true
     }
 
-    private fun isPoisonedProduceEntry(rawTitle: String, item: JSONObject): Boolean {
+    fun isPoisonedProduceEntry(rawTitle: String, item: JSONObject?): Boolean {
         val t = rawTitle.lowercase()
         val isPlainProduce = Regex("\\b(?:fresh\\s+whole|sweet\\s+potat(?:o|oes)|russet\\s+potat(?:o|oes)|idaho\\s+potat(?:o|oes)|yukon\\s+gold\\s+potat(?:o|oes)|red\\s+potat(?:o|oes)|yellow\\s+potat(?:o|oes))\\b").containsMatchIn(t) &&
             !Regex("\\b(?:chips?|crisps?|fries|fried|tots|puffs?|hash\\s*browns?|casserole|pie)\\b").containsMatchIn(t)
         if (!isPlainProduce) return false
-        val ing = item.optJSONObject("product")?.optString("ingredients").orEmpty()
+        if (item == null) return false
+        val prod = item.optJSONObject("product")
+        val ing = prod?.optString("ingredients").orEmpty()
+        val brand = prod?.optString("brand").orEmpty()
+        val score = item.optJSONObject("result")?.optInt("score", 90) ?: item.optInt("score", 90)
+        if (score < 75) return true
+        if (Regex("\\b(?:bruce'?s|simply\\s+nature)\\b", RegexOption.IGNORE_CASE).containsMatchIn(brand) && !t.contains("simply nature") && !t.contains("bruce")) return true
         return Regex("\\b(?:canola|sunflower|safflower|soybean|vegetable|palm|corn)\\s+oil\\b", RegexOption.IGNORE_CASE).containsMatchIn(ing)
     }
 
@@ -303,7 +309,7 @@ object ScanHistoryStore {
     }.getOrDefault(emptyList())
 
     fun productImageUrl(title: String): String =
-        "https://www.heybroc.com/api/product-image?q=${java.net.URLEncoder.encode(title.trim(), "UTF-8")}"
+        "https://www.heybroc.com/api/product-image?q=${java.net.URLEncoder.encode(title.trim(), "UTF-8")}&v=2"
 
     /**
      * Instant 0ms on-device prefix/token matcher across user History, Favorites, and Explore catalog

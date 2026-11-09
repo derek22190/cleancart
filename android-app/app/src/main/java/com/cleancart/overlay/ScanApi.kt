@@ -785,7 +785,16 @@ object ScanApi {
         if (productTitle.isBlank()) return null
         val key = normalizedCacheKey(ctx, productTitle, rawIngredients, store)
         synchronized(responseCache) {
-            responseCache[key]?.let { return it }
+            responseCache[key]?.let { cached ->
+                val isPoisoned = runCatching {
+                    ScanHistoryStore.isPoisonedProduceEntry(productTitle, JSONObject(cached))
+                }.getOrDefault(false)
+                if (isPoisoned) {
+                    responseCache.remove(key)
+                    return null
+                }
+                return cached
+            }
             if (rawIngredients.isNullOrBlank()) {
                 return null
             }

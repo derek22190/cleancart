@@ -5375,8 +5375,11 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   // A pooled flavor title cannot substantiate one requested flavor's formulation.
   const pooled = t.match(/\(([^)]*,[^)]*)\)/)?.[1];
   if (pooled && pooled.split(/[^a-z0-9]+/).some(word => word.length >= 3 && new RegExp("\\b" + word + "\\b").test(q))) return false;
-  const flavors = q.match(/\b(vanilla|chocolate|strawberry|raspberry|blueberry|mango|peach|cherry|grape|coconut|caramel|mocha|lemon|lime|orange|watermelon)\b/g) || [];
-  if (flavors.some(flavor => !new RegExp("\\b" + flavor + "\\b").test(t))) return false;
+  const flavors =
+    q.match(
+      /\b(vanilla|chocolate|strawberry|raspberry|blueberry|blackberry|razzberry|cranberry|pomegranate|mango|peach|cherry|grape|grapefruit|pamplemousse|coconut|caramel|mocha|lemon|lime|orange|watermelon|pineapple|passionfruit|dragonfruit|guava|tangerine|hibiscus|ginger|root\s+beer|cream\s+soda|doc\s+pop|fruit\s+punch|tropical\s+punch|blue\s+razz|ice\s+pop|rocket\s+pop|bombsicle|meta\s+moon|skittles|starburst|warheads|cosmic\s+stardust|cherry\s+slush|dreamsicle|gummy\s+bear|revel\s+berry|bluephoria|enlighten\s*mint|silver\s+ice|glacier\s+freeze|power[- ]?c|xxx|super\s+berry|mixed\s+berry|blood\s+raz|tiger'?s\s+blood|blue\s+lemonade|volcano\s+burst|kool[- ]?aid|sunnyd|ring\s+pop|severed\s+lime|mango\s+chainsaw|cafe\s+latte)\b/g,
+    ) || [];
+  if (flavors.some((flavor) => !new RegExp("\\b" + flavor + "\\b").test(t))) return false;
   // Percent signs are not word characters: a trailing \b after '%' misses '2% Milk'.
   if (/\bmilk\b/.test(q) || /\bmilk\b/.test(t)) {
     if (/\bwhole\b/.test(q) && !/\b(whole|full[ -]*fat)\b/.test(t)) return false;

@@ -503,13 +503,14 @@ class OverlayWindowService : Service() {
         val prod = d.optJSONObject("product") ?: return
         val rawTitle = cleanCartTitle(prod.optString("title"))
         if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) return
+        if (ScanHistoryStore.isPoisonedProduceEntry(rawTitle, d)) return
         if (Regex("(?i)(gas savings|walmart\\+|notification|scan barcodes|qr code|account|sparky)").containsMatchIn(rawTitle)) return
         val prevAvg = calcCartAvg()
         val now = System.currentTimeMillis()
         var swapDetectedInCart = false
         val score = result.optInt("score", 50)
         val swap = d.optJSONObject("swap")
-        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) }
+        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) || ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) }
         if (matchesPendingSwap(rawTitle)) {
             val fromKey = pendingSwapFromKey
             if (!fromKey.isNullOrBlank()) {
@@ -541,7 +542,7 @@ class OverlayWindowService : Service() {
 
     private fun persistCart() {
         val arr = JSONArray()
-        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES && !VARIANT_NOISE_TITLE.matches(it.title.trim()) }) {
+        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES && !VARIANT_NOISE_TITLE.matches(it.title.trim()) && !ScanHistoryStore.isPoisonedProduceEntry(it.title, item.fullJson) }) {
             arr.put(JSONObject().apply {
                 put("key", item.key)
                 put("title", item.title)
@@ -568,6 +569,7 @@ class OverlayWindowService : Service() {
                 val o = arr.getJSONObject(i)
                 val title = cleanCartTitle(o.optString("title"))
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
+                if (ScanHistoryStore.isPoisonedProduceEntry(title, o.optJSONObject("fullJson") ?: o)) continue
                 val existing = tripCart.firstOrNull { isSameCartItem(it.key, title) || isSameCartItem(it.title, title) }
                 if (existing != null) {
                     if (title.length > existing.title.length && !title.endsWith("...")) {
@@ -1309,6 +1311,7 @@ class OverlayWindowService : Service() {
             val prodThumbJson = JSONObject().apply {
                 put("title", prodTitle)
                 put("imageUrl", prodObj?.optString("imageUrl").orEmpty())
+                put("isProductHeader", true)
             }
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1918,9 +1921,14 @@ class OverlayWindowService : Service() {
                 }
                 try {
                     if (conn.responseCode in 200..299) {
-                        conn.inputStream.use { stream ->
-                            val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
-                            Bitmap.createScaledBitmap(decoded, sizePx, sizePx, true)
+                        val imgSource = conn.getHeaderField("X-Image-Source").orEmpty()
+                        if (swap.optBoolean("isProductHeader", false) && imgSource.contains("Illustration", ignoreCase = true)) {
+                            null
+                        } else {
+                            conn.inputStream.use { stream ->
+                                val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
+                                Bitmap.createScaledBitmap(decoded, sizePx, sizePx, true)
+                            }
                         }
                     } else null
                 } finally {

@@ -2948,13 +2948,13 @@
       "catalog": "CLEAN_ALTERNATIVES + EXACT_PRODUCT_ALTERNATIVES",
       "title": "Once Again Organic Unsweetened Creamy Sunflower Seed Butter (Nut-Free)",
       "brand": "Once Again",
-      "ingredients": "Organic roasted sunflower seeds, salt.",
+      "ingredients": "Organic roasted sunflower seeds.",
       "nutrition": {
         "isOrganic": true
       },
       "sourceUrl": "https://www.onceagainnutbutter.com/products/organic-sunflower-seed-butter-unsweetened-salt-free",
       "verifiedAt": "2026-11-09",
-      "score": 68,
+      "score": 95,
       "ingredientScore": 100,
       "flags": [],
       "scoringBasis": "three-pillar",

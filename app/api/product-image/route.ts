@@ -52,9 +52,12 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|mustard|bbq|wasabi|horseradish|sauce|marinara|salsa|soup|chowder|broth)\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
   if (/\b(turkey|chicken|beef|pork|bacon|sausage|hot\s*dog|salami|ham|deli|meat|jerky)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
   if (/\b(fresh\s+whole|fresh\s+produce|sweet\s+potato|russet\s+potato|yukon\s+gold|idaho\s+potato|red\s+potato|yellow\s+potato|potatoes?|yams?|bananas?|apples?|oranges?|lemons?|limes?|avocados?|tomatoes?|onions?|garlic|carrots?|celery|broccoli|cauliflower|spinach|lettuce|romaine|kale|cabbage|cucumbers?|peppers?|mushrooms?|zucchini|squash|strawberries|blueberries|raspberries|blackberries|grapes?|watermelon|pineapple|mangoes?|peaches?|pears?|produce|vegetables?|fruit)\b/.test(s)) {
-    return { relPath: "public/swaps/produce.png", contentType: "image/png" };
+    if (/\borganic\b/.test(s)) {
+      return { relPath: "public/swaps/produce.png", contentType: "image/png" };
+    }
+    return { relPath: "public/broc-mascot.jpg", contentType: "image/jpeg" };
   }
-  return { relPath: "public/swaps/drink.png", contentType: "image/png" };
+  return { relPath: "public/broc-mascot.jpg", contentType: "image/jpeg" };
 }
 
 const STOP_TOKENS = new Set([

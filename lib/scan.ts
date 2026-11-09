@@ -500,7 +500,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       error: `No ingredient list found for "${productTitle || barcode}" on Open Food Facts or USDA. Try adding the brand name.`,
     };
   }
-  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food|.*category estimate.*)$/i;
+  const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food|fresh produce|fresh meat & eggs|whole nuts, seeds & legumes|.*category estimate.*)$/i;
   const callerWords = productTitle.split(/\s+/).filter(Boolean);
   // If the caller/screen-reader provided a full store product title (3+ words), preserve it
   // so a store brand (e.g. "Great Value", "Wellsley Farms") is never overwritten by a different brand ("Dairy Pure").
@@ -577,14 +577,14 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}`;
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}&v=2`;
   const resolvedSwap: SwapResult | null = swap
     ? {
         ...swap,
         image:
           swap.image && swap.image.startsWith("http")
             ? swap.image
-            : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}`,
+            : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}&v=2`,
         ...(canAccessSwapLinks
           ? {}
           : {
