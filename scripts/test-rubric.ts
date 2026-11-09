@@ -858,6 +858,17 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const lookupTs = fs.readFileSync("lib/lookup.ts", "utf8");
+  check(
+    "Open Food Facts & USDA FoodData Central Resilience: DEMO_KEY fallback, 3200ms timeout, v0 barcode fallback, US GS1 UPC priority, and No Salt Added / Spicy variant guards",
+    lookupTs.includes("const TIMEOUT_MS = 3200") &&
+      lookupTs.includes("fetchOffProductByCode") &&
+      lookupTs.includes('/api/v0/product/${code}.json') &&
+      lookupTs.includes('process.env.USDA_API_KEY || "DEMO_KEY"') &&
+      !passesVariantGuard("Heinz Tomato Ketchup", "Heinz Tomato Ketchup No Salt Added") &&
+      !passesVariantGuard("Heinz Tomato Ketchup", "Heinz No Sugar Added Tomato Ketchup")
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);

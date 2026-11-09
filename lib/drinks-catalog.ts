@@ -5396,6 +5396,8 @@ export function passesVariantGuard(query: string, candidateTitle: string): boole
     [/\bdoubleshot\s+energy\b/, /\benergy\b/],
     [/\bmatcha\s+green\s+tea\s+latte\b|\bmilk\s+tea\b/, /\bmilk\s+tea\b|\blatte\b/],
     [/\bliquid\s+death\s+mountain\s+water\b/, /\bmountain\s+water\b|\bstill\s+water\b/],
+    [/\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\blow\s+sodium\b/, /\bno\s+salt\b|\bsalt[\s-]*free\b|\bunsalted\b|\blow\s+sodium\b/],
+    [/\bno\s+sugar\s+added\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b/, /\bno\s+sugar\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b|\bunsweetened\b|\bdiet\b/],
   ];
   for (const [tRe, qRe] of reverseStrict) {
     if (tRe.test(t) && !qRe.test(q)) return false;

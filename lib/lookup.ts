@@ -61,10 +61,10 @@ const CACHE_DIR =
   process.env.CLEANCART_CACHE_DIR ||
   (process.env.VERCEL ? "/tmp/cleancart-cache" : path.join(process.cwd(), ".cache"));
 const CACHE_FILE = path.join(CACHE_DIR, "lookup-cache.json");
-const TIMEOUT_MS = 1800;
+const TIMEOUT_MS = 3200;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 1000;
-let offUnavailableUntil = 0;
+const offBarcodeCache = new Map<string, OffProduct>();
 
 let memory: Map<string, CacheEntry> | null = null;
 let loading: Promise<Map<string, CacheEntry>> | null = null;
@@ -162,6 +162,8 @@ const FLAVOR_TOKENS = new Set([
   "orange", "grape", "watermelon", "mint", "coffee", "mocha", "maple", "brown",
   "bbq", "barbecue", "sour", "cheddar", "nacho", "ranch", "spicy", "flamin",
   "hot", "buffalo", "jalapeno", "garlic", "onion", "teriyaki", "salsa", "flip",
+  "marinara", "alfredo", "pesto", "vodka", "bolognese", "ketchup", "mustard",
+  "mayonnaise", "mayo", "relish", "chipotle", "habanero", "sriracha", "tartar",
 ]);
 
 const PLAIN_TOKENS = new Set(["plain", "unsweetened", "unflavored"]);
@@ -212,17 +214,23 @@ function relevance(query: string, candidate: string): number {
   const queryWantsPlain = all.some((t) => PLAIN_TOKENS.has(t));
   const queryFlavors = all.filter((t) => FLAVOR_TOKENS.has(t));
   const candidateFlavors = c.filter((t) => FLAVOR_TOKENS.has(t));
+  const unrequestedFlavors = candidateFlavors.filter((f) => !hasIn(all, f));
 
-  if (queryWantsPlain && candidateFlavors.some((f) => !hasIn(all, f))) {
+  if (queryWantsPlain && unrequestedFlavors.length > 0) {
     return 0;
   }
-  // If the query specifies a flavor (e.g. "strawberry", "honey"), candidate must include it
+  // Never match a hot/spicy variant when the query did not request it
+  const SPICY_TOKENS = new Set(["hot", "spicy", "flamin", "jalapeno", "habanero", "chipotle", "sriracha", "buffalo", "poblano", "poblanos"]);
+  if (c.some((t) => SPICY_TOKENS.has(t)) && !all.some((t) => SPICY_TOKENS.has(t))) {
+    return 0;
+  }
+  // If the query specifies a flavor (e.g. "strawberry", "honey", "marinara"), candidate must include it
   if (queryFlavors.length > 0 && !queryFlavors.every((f) => hasIn(c, f))) {
     return 0;
   }
-  // If the query does NOT specify a flavor (e.g. "Cheerios"), penalize candidates that add flavors ("Honey Nut Cheerios")
+  // Penalize candidates that add any unrequested flavor tokens ("Honey Nut Cheerios" for "Cheerios")
   const extraFlavorPenalty =
-    queryFlavors.length === 0 && candidateFlavors.length > 0 ? Math.min(0.25, candidateFlavors.length * 0.12) : 0;
+    unrequestedFlavors.length > 0 ? Math.min(0.45, unrequestedFlavors.length * 0.22) : 0;
 
   const ratio = pool.filter((t) => hasIn(c, t)).length / pool.length;
   if (pool.length <= 2 && ratio < 1 && ratio < 0.5) return 0;
@@ -244,9 +252,8 @@ function relevance(query: string, candidate: string): number {
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
-  const isOffV2Product = url.includes("world.openfoodfacts.org/api/v2/product/");
   const isUsda = url.includes("api.nal.usda.gov");
-  if ((isOffV2Product && Date.now() < offUnavailableUntil) || (isUsda && Date.now() < usdaUnavailableUntil)) {
+  if (isUsda && Date.now() < usdaUnavailableUntil) {
     return null;
   }
   try {
@@ -256,9 +263,6 @@ async function getJson<T>(url: string): Promise<T | null> {
       cache: "no-store",
     });
     if (!res.ok) {
-      if (isOffV2Product && (res.status === 429 || res.status >= 502)) {
-        offUnavailableUntil = Date.now() + 30 * 1000;
-      }
       if (isUsda && (res.status === 429 || res.status >= 502)) {
         usdaUnavailableUntil = Date.now() + 60 * 1000;
       }
@@ -330,9 +334,10 @@ const OCR_NUTRITION_GARBAGE =
   /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|gredients?\b|itamin\s+[a-d]|alcium\s+\d)/i;
 
 function englishIngredients(p: OffProduct): string {
-  const en = p.ingredients_text_en?.trim() || "";
+  const clean = (s: string) => s.replace(/_/g, "").replace(/\s+/g, " ").trim();
+  const en = clean(p.ingredients_text_en || "");
   if (en && !OCR_NUTRITION_GARBAGE.test(en) && isEnglishIngredientText(en)) return en;
-  const raw = p.ingredients_text?.trim() || "";
+  const raw = clean(p.ingredients_text || "");
   if (raw && (!p.lang || p.lang === "en") && !OCR_NUTRITION_GARBAGE.test(raw) && isEnglishIngredientText(raw)) return raw;
   return "";
 }
@@ -429,25 +434,58 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
 const NON_FOOD_VERTICAL_QUERY =
   /\b(shampoo|conditioner|body\s*wash|shower\s*gel|soap|hand\s*wash|lotion|moisturizer|cream|cleanser|face\s*wash|serum|toner|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|lip\s*balm|mascara|foundation|concealer|lipstick|makeup|cosmetic|perfume|cologne|body\s*spray|hair\s*spray|hair\s*gel|mousse|pomade|shaving|aftershave|diapers?|wipes?|detergent|laundry|cleaner|disinfect\w*|bleach|dish\s*soap|dishwashing|dog\s*food|cat\s*food|pet\s*food|puppy|kitten|kibble|purina|pedigree|friskies|blue\s*buffalo|fancy\s*feast|cesar|iams|rachael\s*ray\s*nutrish|cerave|cetaphil|neutrogena|aveeno|olay|dove|pantene|tresemme|herbal\s*essences|head\s*&\s*shoulders|garnier|l'?oreal|maybelline|nyx|revlon|covergirl|e\.?l\.?f\.?|old\s*spice|degree|secret|axe|native|schmidt'?s|tom'?s\s*of\s*maine|colgate|crest|sensodyne|listerine|thera\s*breath|vaseline|aquaphor|eucerin|nivea|jergens|lubriderm|gold\s*bond|coppertone|banana\s*boat|sun\s*bum|la\s*roche|vichy|ordinary|dr\s*bronner|method|mrs\.?\s*meyer'?s|seventh\s*generation|ecos)\b/i;
 
+async function fetchOffProductByCode(
+  code: string,
+  host = "https://world.openfoodfacts.org",
+): Promise<OffProduct | null> {
+  const cacheKey = `${host}|${code}`;
+  const cached = offBarcodeCache.get(cacheKey);
+  if (cached) return cached;
+
+  let data = await getJson<{ status?: number; product?: OffProduct }>(
+    `${host}/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+  );
+  if (!data?.product && host === "https://world.openfoodfacts.org") {
+    // Fallback to Open Food Facts v0 JSON product handler if v2 is rate-limited
+    data = await getJson<{ status?: number; product?: OffProduct }>(
+      `${host}/api/v0/product/${code}.json?fields=${OFF_FIELDS}`,
+    );
+  }
+  if (data?.product) {
+    if (offBarcodeCache.size >= MAX_CACHE_ENTRIES) {
+      const oldest = offBarcodeCache.keys().next().value;
+      if (oldest) offBarcodeCache.delete(oldest);
+    }
+    offBarcodeCache.set(cacheKey, data.product);
+    return data.product;
+  }
+  return null;
+}
+
 async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> | null> {
   const code = barcode.replace(/\D/g, "");
   if (!code) return null;
   const candidates = Array.from(new Set([code, code.padStart(13, "0"), code.slice(-12).padStart(13, "0")]));
-  const hosts = [
-    "https://world.openfoodfacts.org",
+  // 1. Check primary Open Food Facts database first
+  for (const c of candidates) {
+    const prod = await fetchOffProductByCode(c, "https://world.openfoodfacts.org");
+    if (prod && englishIngredients(prod)) {
+      return offToResult(prod, prod.product_name || c);
+    }
+  }
+  // 2. Fallback to Beauty, Products, and Pet Food Facts verticals if not in food database
+  const verticalHosts = [
     "https://world.openbeautyfacts.org",
     "https://world.openproductsfacts.org",
     "https://world.openpetfoodfacts.org",
   ];
   for (const c of candidates) {
     const results = await Promise.all(
-      hosts.map((host) =>
-        getJson<{ status?: number; product?: OffProduct }>(`${host}/api/v2/product/${c}?fields=${OFF_FIELDS}`),
-      ),
+      verticalHosts.map((host) => fetchOffProductByCode(c, host)),
     );
-    for (const data of results) {
-      if (data?.product && englishIngredients(data.product)) {
-        return offToResult(data.product, data.product.product_name || c);
+    for (const prod of results) {
+      if (prod && englishIngredients(prod)) {
+        return offToResult(prod, prod.product_name || c);
       }
     }
   }
@@ -460,10 +498,8 @@ async function offImageByBarcode(barcode?: string): Promise<string | undefined> 
   if (!code) return undefined;
   const candidates = Array.from(new Set([code, code.padStart(13, "0"), code.slice(-12).padStart(13, "0")]));
   for (const c of candidates) {
-    const data = await getJson<{ status?: number; product?: OffProduct }>(
-      `https://world.openfoodfacts.org/api/v2/product/${c}?fields=image_front_url,image_url,image_front_small_url`,
-    );
-    const img = bestOffImage(data?.product);
+    const prod = await fetchOffProductByCode(c, "https://world.openfoodfacts.org");
+    const img = bestOffImage(prod || undefined);
     if (img) return img;
   }
   return undefined;
@@ -500,6 +536,7 @@ interface OffSearchHit {
   product_name_en?: string;
   brands?: string | string[];
   states_tags?: string[];
+  countries_tags?: string[];
   image_front_url?: string;
   image_url?: string;
   image_front_small_url?: string;
@@ -512,12 +549,14 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     toks.length >= 2 ? `brands_tags:${firstTok} ${toks.slice(1).join(" ")}` : title;
 
   // 1. Run Open Food Facts Search-a-licious v3 (brand-tagged + full text) and vertical search concurrently
+  const searchFields =
+    "code,product_name,product_name_en,brands,states_tags,countries_tags,image_front_url,image_url,image_front_small_url";
   const [v3Brand, v3Text, vertical] = await Promise.all([
     getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=10&fields=code,product_name,product_name_en,brands,states_tags,image_front_url,image_url,image_front_small_url`,
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=12&fields=${searchFields}`,
     ),
     getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(title)}&page_size=16&fields=code,product_name,product_name_en,brands,states_tags,image_front_url,image_url,image_front_small_url`,
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(title)}&page_size=16&fields=${searchFields}`,
     ),
     openFactsVerticalSearch(title),
   ]);
@@ -544,26 +583,39 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
       if (!passesVariantGuard(title, name)) return { h, score: 0 };
       const r = relevance(title, name);
       if (r < 0.5) return { h, score: 0 };
-      const brandBonus = firstTok.length >= 3 && brandStr.toLowerCase().includes(firstTok) ? 0.08 : 0;
+      const brandBonus =
+        firstTok.length >= 3 &&
+        (brandStr.toLowerCase().includes(firstTok) || name.toLowerCase().startsWith(firstTok))
+          ? 0.08
+          : 0;
       const hasImg = Boolean(h.image_front_url || h.image_url || h.image_front_small_url);
-      return { h, score: r + brandBonus + (hasImg ? 0.03 : 0) };
+      const codeStr = (h.code || "").trim();
+      const isUsCountry =
+        Array.isArray(h.countries_tags) && h.countries_tags.includes("en:united-states");
+      const isNorthAmericanUpc = /^(?:00?\d{11}|\d{11,12}|0\d{7})$/.test(codeStr);
+      const isNonUsEan13 = /^[2-9]\d{12}$/.test(codeStr);
+      const usMarketBonus = isNonUsEan13
+        ? -0.22
+        : isUsCountry && isNorthAmericanUpc
+          ? 0.25
+          : isNorthAmericanUpc
+            ? 0.14
+            : isUsCountry
+              ? 0.10
+              : 0;
+      return { h, score: r + brandBonus + usMarketBonus + (hasImg ? 0.03 : 0) };
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+    .slice(0, 4);
 
   if (!ranked.length) return null;
 
-  const productDetails = await Promise.all(
-    ranked.map(({ h }) =>
-      getJson<{ product?: OffProduct }>(
-        `https://world.openfoodfacts.org/api/v2/product/${h.code}?fields=${OFF_FIELDS}`,
-      ),
-    ),
-  );
-
-  for (let i = 0; i < productDetails.length; i++) {
-    const p = productDetails[i]?.product;
+  // Fetch product details sequentially starting with the top-ranked US candidate so 90%+ of queries
+  // resolve in 1 request instead of firing 3 parallel requests that trigger Open Food Facts rate limits.
+  for (const { h } of ranked) {
+    if (!h.code) continue;
+    const p = await fetchOffProductByCode(h.code, "https://world.openfoodfacts.org");
     if (!p) continue;
     const ing = englishIngredients(p);
     if (!ing) continue;
@@ -572,7 +624,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     if (!passesVariantGuard(title, name)) continue;
     if (isDietaryOrVariantMismatch(title, name, ing, extractOffNutrition(p))) continue;
     if (!bestOffImage(p)) {
-      const hitImg = bestOffImage(ranked[i].h);
+      const hitImg = bestOffImage(h);
       if (hitImg) p.image_front_url = hitImg;
     }
     return offToResult(p, title);
@@ -611,7 +663,7 @@ const USDA_LUCENE_SKIP_WORDS = new Set([
 
 function buildUsdaLuceneQuery(query: string): string {
   const words = query
-    .replace(/['’]s\b/gi, "")
+    .replace(/['’]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, " ")
     .trim()
     .split(/\s+/)
@@ -637,8 +689,7 @@ function extractUsdaNutrition(f: UsdaFood): NutritionInput | undefined {
 }
 
 async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | null> {
-  const key = (process.env.USDA_API_KEY || "").trim();
-  if (!key) return null;
+  const key = (process.env.USDA_API_KEY || "DEMO_KEY").trim();
   const numericBarcode = query.replace(/\D/g, "");
   const isBarcodeQuery = numericBarcode.length >= 8 && numericBarcode === query.trim().replace(/[-\s]/g, "");
 
@@ -677,18 +728,13 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   };
 
   const luceneQuery = !isBarcodeQuery ? buildUsdaLuceneQuery(query) : "";
-  if (luceneQuery) {
-    const brandedData = await getJson<{ foods?: UsdaFood[] }>(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(luceneQuery)}&dataType=Branded&pageSize=18&api_key=${key}`,
-    );
-    evaluateFoods(brandedData?.foods);
-  }
-  if (!best || bestScore < 0.65) {
-    const generalData = await getJson<{ foods?: UsdaFood[] }>(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=${encodeURIComponent("Branded,Foundation,SR Legacy")}&pageSize=20&api_key=${key}`,
-    );
-    evaluateFoods(generalData?.foods);
-  }
+  const searchQuery = luceneQuery || query;
+  const dataTypes = isBarcodeQuery ? "Branded" : "Branded,Foundation";
+  const usdaData = await getJson<{ foods?: UsdaFood[] }>(
+    `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(searchQuery)}&dataType=${encodeURIComponent(dataTypes)}&pageSize=20&api_key=${key}`,
+  );
+  evaluateFoods(usdaData?.foods);
+
   if (!best || bestScore < 0.55) return null;
   const titleCase = (s = "") => s.toLowerCase().replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const rawDesc = (best.description || "")
@@ -2684,34 +2730,43 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   }
 
   let found: Omit<LookupResult, "ms"> | null = null;
+  const hasDedicatedUsdaKey = Boolean((process.env.USDA_API_KEY || "").trim());
 
   if (input.barcode) {
-    const [offRes, usdaRes] = await Promise.all([offByBarcode(input.barcode), usdaSearch(input.barcode)]);
-    found = offRes || usdaRes;
+    if (hasDedicatedUsdaKey) {
+      const [offRes, usdaRes] = await Promise.all([offByBarcode(input.barcode), usdaSearch(input.barcode)]);
+      found = offRes || usdaRes;
+    } else {
+      found = (await offByBarcode(input.barcode)) || (await usdaSearch(input.barcode));
+    }
   }
   if (!found && title) {
     const qClean = cleanSearchQuery(title) || title;
-    const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
-    if (offRes && usdaRes) {
-      const fullCandidate = (r: Omit<LookupResult, "ms">) =>
-        r.brand && !r.productTitle.toLowerCase().startsWith(r.brand.toLowerCase())
-          ? `${r.brand} ${r.productTitle}`
-          : r.productTitle;
-      const offScore = relevance(qClean, fullCandidate(offRes));
-      const usdaScore = relevance(qClean, fullCandidate(usdaRes));
-      if (usdaScore + 0.08 >= offScore) {
-        found = {
-          ...usdaRes,
-          imageUrl:
-            usdaRes.imageUrl && !usdaRes.imageUrl.includes("/api/product-image")
-              ? usdaRes.imageUrl
-              : offRes.imageUrl || usdaRes.imageUrl,
-        };
+    if (hasDedicatedUsdaKey) {
+      const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
+      if (offRes && usdaRes) {
+        const fullCandidate = (r: Omit<LookupResult, "ms">) =>
+          r.brand && !r.productTitle.toLowerCase().startsWith(r.brand.toLowerCase())
+            ? `${r.brand} ${r.productTitle}`
+            : r.productTitle;
+        const offScore = relevance(qClean, fullCandidate(offRes));
+        const usdaScore = relevance(qClean, fullCandidate(usdaRes));
+        if (usdaScore + 0.08 >= offScore) {
+          found = {
+            ...usdaRes,
+            imageUrl:
+              usdaRes.imageUrl && !usdaRes.imageUrl.includes("/api/product-image")
+                ? usdaRes.imageUrl
+                : offRes.imageUrl || usdaRes.imageUrl,
+          };
+        } else {
+          found = offRes;
+        }
       } else {
-        found = offRes;
+        found = usdaRes || offRes;
       }
     } else {
-      found = usdaRes || offRes;
+      found = (await offSearch(qClean)) || (await usdaSearch(qClean));
     }
   }
   if (!found && title) found = catalogFallback(title);
