@@ -869,6 +869,221 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       !passesVariantGuard("Heinz Tomato Ketchup", "Heinz No Sugar Added Tomato Ketchup")
   );
 
+  // --- Part A & Part B Clean-Ingredient, USDA/OFF Extraction & NIH DSLD Regression Suite ---
+  const { inferNutritionFromText } = await import("../lib/rubric");
+  const { extractOffNutrition, extractUsdaNutrition, lookupDSLD } = await import("../lib/lookup");
+  const { evaluateDietaryAlerts } = await import("../lib/scan");
+
+  // A1.1: Natural vitamin/mineral fortifiers & fermentation cultures have 0 false-positive additive flags
+  const cleanFortifiers = scoreIngredients(
+    "Organic Whole Grain Oats, Ascorbic Acid (Vitamin C), Mixed Tocopherols (Vitamin E), Riboflavin (Vitamin B2), Niacinamide (Vitamin B3), Ferrous Sulfate (Iron), Zinc Oxide, Thiamine Mononitrate (Vitamin B1), Folic Acid, Lactic Acid, Fruit Pectin, Cream of Tartar, Baking Soda (Sodium Bicarbonate).",
+  );
+  const cleanFortifiersYuka = scoreProductYuka(
+    "Organic Whole Grain Oats, Ascorbic Acid (Vitamin C), Mixed Tocopherols (Vitamin E), Riboflavin (Vitamin B2), Niacinamide (Vitamin B3), Ferrous Sulfate (Iron), Zinc Oxide, Thiamine Mononitrate (Vitamin B1), Folic Acid, Lactic Acid, Fruit Pectin, Cream of Tartar, Baking Soda (Sodium Bicarbonate).",
+    {},
+    [],
+    { productTitle: "Organic Whole Grain Oats", isOrganic: true },
+  );
+  const cleanCultures = scoreIngredients(
+    "Cultured Pasteurized Grade A Organic Whole Milk, Live and Active Cultures (S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei), Cheese Cultures, Microbial Enzymes, Organic Apple Cider Vinegar, Distilled White Vinegar.",
+  );
+  check(
+    "Part A1: Natural vitamin/mineral fortifiers and fermentation cultures have 0 false-positive additive flags (score 100, additiveScore 30)",
+    cleanFortifiers.score === 100 &&
+      cleanFortifiers.flagged.length === 0 &&
+      cleanFortifiersYuka.yukaBreakdown?.additiveScore === 30 &&
+      cleanFortifiersYuka.score >= 95 &&
+      cleanCultures.score === 100 &&
+      cleanCultures.flagged.length === 0
+  );
+
+  // A1.2: Cold-pressed celery juice in green juices is NOT flagged as a meat-curing nitrate, whereas celery powder/cultured celery juice IS flagged
+  const sujaGreens = scoreProductYuka(
+    "Organic Cucumber Juice, Organic Celery Juice, Organic Grapefruit Juice, Organic Green Leaf Lettuce Juice, Organic Lacinato Kale Juice, Organic Lemon Juice, Organic Parsley Juice, Organic Spinach Juice, Organic Mint Tea.",
+  {},
+    [],
+    { productTitle: "Suja Organic Cold-Pressed Uber Greens Juice", isOrganic: true },
+  );
+  const curedBaconCelery = scoreIngredients("Pork, Water, Sea Salt, Cultured Celery Powder, Celery Juice Powder.");
+  check(
+    "Part A1: Cold-pressed celery juice in Suja Uber Greens has 0 nitrate flags (scores 100/100), while Cultured Celery Powder is flagged",
+    sujaGreens.score === 100 &&
+      sujaGreens.flagged.length === 0 &&
+      curedBaconCelery.flagged.some((f) => f.id === "celerynitrate")
+  );
+
+  // A1.3: Clean culinary oils (100% avocado, extra virgin olive, virgin coconut, grass-fed ghee, cocoa butter) vs deceptive seed-oil blends
+  const pureCulinaryOils = scoreIngredients(
+    "100% Pure Avocado Oil, Extra Virgin Olive Oil, Organic Virgin Coconut Oil, Grass-Fed Ghee (Clarified Butter), Organic Cocoa Butter.",
+  );
+  const sharedSuffixBlend1 = scoreIngredients("Potatoes, Canola and Extra Virgin Olive Oil, Sea Salt.");
+  const sharedSuffixBlend2 = scoreIngredients("Whole Grain Oats, Canola or Palm Kernel Oil, Honey.");
+  const sharedSuffixBlend3 = scoreIngredients("Cooked Chickpeas, Water, Tahini, Olive or Soybean Oil, Salt.");
+  const hellmannsOliveMayoScan = await runScan({
+    productTitle: "Hellmann's Mayonnaise Dressing with Olive Oil",
+    store: "walmart",
+  });
+  const primalAvocadoMayoScan = await runScan({
+    productTitle: "Primal Kitchen Real Mayonnaise Made with Avocado Oil",
+    store: "walmart",
+  });
+  const chosenPureAvocadoOilScan = await runScan({
+    productTitle: "Chosen Foods 100% Pure Avocado Oil",
+    store: "walmart",
+  });
+  check(
+    "Part A1: 100% Avocado/Olive/Coconut Oil & Ghee have 0 seed-oil flags, while deceptive 'with Olive Oil' mayo and shared-suffix blends flag hidden seed oils",
+    Boolean(
+      pureCulinaryOils.score === 100 &&
+        pureCulinaryOils.flagged.length === 0 &&
+        sharedSuffixBlend1.flagged.some((f) => f.id === "canolaoil") &&
+        sharedSuffixBlend2.flagged.some((f) => f.id === "canolaoil") &&
+        sharedSuffixBlend3.flagged.some((f) => f.id === "soybeanoil") &&
+        hellmannsOliveMayoScan.ok &&
+        hellmannsOliveMayoScan.product?.brand === "Hellmann's" &&
+        hellmannsOliveMayoScan.result?.flagged.some((f) => f.id === "canolaoil" || f.id === "soybeanoil") &&
+        (hellmannsOliveMayoScan.result?.score ?? 100) <= 49 &&
+        primalAvocadoMayoScan.ok &&
+        primalAvocadoMayoScan.product?.brand === "Primal Kitchen" &&
+        (primalAvocadoMayoScan.result?.score ?? 0) >= 75 &&
+        chosenPureAvocadoOilScan.ok &&
+        chosenPureAvocadoOilScan.product?.title.includes("100% Pure Avocado Oil") &&
+        (chosenPureAvocadoOilScan.result?.score ?? 0) >= 85
+    )
+  );
+
+  // A1.4: Negated marketing claims ("no bht or bha", "no carrageenan", "no sugar added", "milk thistle") never trigger false flags or alerts
+  const negatedClaimsCheck = scoreIngredients(
+    "Organic Pasteurized Milk, No Carrageenan, No BHT or BHA, No Artificial Sweeteners, Seed-Oil-Free.",
+  );
+  const noSugarAddedAlerts = evaluateDietaryAlerts(
+    ["sugar_diabetes", "dairy"],
+    "Organic Unsweetened Applesauce & Milk Thistle Herbal Tea",
+    "Organic Apples, Water, Ascorbic Acid (Vitamin C), No Sugar Added, Sugar Free, Organic Milk Thistle Extract.",
+    { sugarsG100g: 9.0 },
+  );
+  check(
+    "Part A1: Negated claims ('No BHT or BHA', 'No Carrageenan', 'No Sugar Added', 'Milk Thistle') never trigger false additive or dietary alerts",
+    negatedClaimsCheck.score === 100 &&
+      negatedClaimsCheck.flagged.length === 0 &&
+      noSugarAddedAlerts.length === 0
+  );
+
+  // A1.5: Clean nut/seed butters (Sunflower Seed Butter, Tahini), clean chocolate milk, and clean whole-grain ramen score >= 80
+  const sunButterCheck = scoreProductYuka(
+    "Organic Roasted Sunflower Seeds.",
+    {},
+    [],
+    { productTitle: "SunButter Organic Unsweetened Sunflower Seed Butter", isOrganic: true },
+  );
+  const chocGrassmilkCheck = scoreProductYuka(
+    "Organic Grade A Lowfat Milk, Organic Fair Trade Unrefined Cane Sugar, Organic Fair Trade Dutch Cocoa, Organic Vanilla, Salt, Lactase Enzyme, Vitamin A Palmitate, Vitamin D3.",
+    {},
+    [],
+    { productTitle: "Organic Valley Lowfat Chocolate Grassmilk", isOrganic: true },
+  );
+  const lotusRamenCheck = scoreProductYuka(
+    "Organic Brown Rice Flour, Organic Millet Flour.",
+    {},
+    [],
+    { productTitle: "Lotus Foods Organic Millet & Brown Rice Ramen", isOrganic: true },
+  );
+  check(
+    "Part A1/A4: Clean sunflower seed butter, Organic Valley Chocolate Grassmilk, and Lotus Foods Millet & Brown Rice Ramen score >= 90",
+    sunButterCheck.score >= 90 &&
+      chocGrassmilkCheck.score >= 90 &&
+      lotusRamenCheck.score >= 90
+  );
+
+  // A2: USDA FoodData Central extraction accuracy (1008 kcal vs 1062 kJ, Atwater 2047, Foundation/SR Legacy whole foods)
+  const usdaKjOnlyAndKcal = extractUsdaNutrition({
+    dataType: "Foundation",
+    description: "Apples, honeycrisp, raw",
+    foodNutrients: [
+      { nutrientId: 1062, nutrientNumber: "268", nutrientName: "Energy", unitName: "kJ", value: 218 },
+      { nutrientId: 2047, nutrientNumber: "957", nutrientName: "Energy (Atwater General Factors)", unitName: "KCAL", value: 52 },
+      { nutrientId: 2000, nutrientNumber: "269", nutrientName: "Total Sugars", unitName: "G", value: 10.4 },
+      { nutrientId: 1258, nutrientNumber: "606", nutrientName: "Fatty acids, total saturated", unitName: "G", value: 0.03 },
+      { nutrientId: 1093, nutrientNumber: "307", nutrientName: "Sodium, Na", unitName: "MG", value: 1 },
+      { nutrientId: 1079, nutrientNumber: "291", nutrientName: "Fiber, total dietary", unitName: "G", value: 2.4 },
+      { nutrientId: 1003, nutrientNumber: "203", nutrientName: "Protein", unitName: "G", value: 0.26 },
+    ],
+  });
+  const usdaChiaSeeds = extractUsdaNutrition({
+    dataType: "SR Legacy",
+    description: "Seeds, chia seeds, dried",
+    foodNutrients: [
+      { nutrientId: 1008, nutrientNumber: "208", nutrientName: "Energy", unitName: "KCAL", value: 486 },
+      { nutrientId: 1079, nutrientNumber: "291", nutrientName: "Fiber, total dietary", unitName: "G", value: 34.4 },
+      { nutrientId: 1003, nutrientNumber: "203", nutrientName: "Protein", unitName: "G", value: 16.5 },
+    ],
+  });
+  check(
+    "Part A2: extractUsdaNutrition never treats 1062 kJ as kcal, supports Atwater 2047 kcal, and sets isWholeFood + fruitsVegNutsPct=100 on Foundation/SR Legacy produce & dried seeds",
+    usdaKjOnlyAndKcal?.caloriesKcal100g === 52 &&
+      usdaKjOnlyAndKcal?.isWholeFood === true &&
+      usdaKjOnlyAndKcal?.fruitsVegNutsPct === 100 &&
+      usdaChiaSeeds?.caloriesKcal100g === 486 &&
+      usdaChiaSeeds?.isWholeFood === true &&
+      usdaChiaSeeds?.fruitsVegNutsPct === 100
+  );
+
+  // A3: Open Food Facts v2 extraction accuracy (kJ conversion, sodium g->mg, labels_tags isOrganic, and inferNutritionFromText filling missing positive nutrients)
+  const offPartialWholeGrain = extractOffNutrition({
+    product_name_en: "Organic Sprouted Rolled Oats",
+    ingredients_text_en: "100% Organic Sprouted Whole Grain Oats.",
+    labels_tags: ["en:organic", "en:usda-organic"],
+    nutriments: {
+      "energy_100g": 1586, // kJ only (~379 kcal)
+      "sugars_100g": 1.0,
+      "saturated-fat_100g": 1.2,
+      "sodium_100g": 0.005, // 5 mg
+      // fiber_100g and proteins_100g missing from OFF payload!
+    },
+  });
+  const offScore = scoreProductYuka(
+    "100% Organic Sprouted Whole Grain Oats.",
+    {},
+    [],
+    { ...offPartialWholeGrain, productTitle: "Organic Sprouted Rolled Oats" },
+  );
+  const inferredPreservesMeasured = inferNutritionFromText(
+    "100% Whole Grain Rolled Oats",
+    "100% Whole Grain Rolled Oats.",
+    { caloriesKcal100g: 370, sugarsG100g: 0.8, saturatedFatG100g: 1.4, sodiumMg100g: 3 },
+    { onlyPositive: true },
+  );
+  check(
+    "Part A3: extractOffNutrition converts kJ->kcal, sodium g->mg, detects en:usda-organic from labels_tags, and inferNutritionFromText fills missing positive nutrients",
+    Math.round(offPartialWholeGrain.caloriesKcal100g ?? 0) === 379 &&
+      offPartialWholeGrain.sodiumMg100g === 5 &&
+      offPartialWholeGrain.isOrganic === true &&
+      (offPartialWholeGrain.fiberG100g ?? 0) >= 8 &&
+      (offPartialWholeGrain.proteinG100g ?? 0) >= 10 &&
+      offScore.score >= 95 &&
+      inferredPreservesMeasured.caloriesKcal100g === 370 &&
+      inferredPreservesMeasured.sugarsG100g === 0.8 &&
+      (inferredPreservesMeasured.fiberG100g ?? 0) >= 8
+  );
+
+  // Part B: Whole nuts/seeds/legumes resolver & NIH DSLD supplement API integration
+  const rawAlmondsScan = await runScan({
+    productTitle: "Raw Whole Almonds, 16 oz",
+    store: "walmart",
+  });
+  const dsldLiveResult = await lookupDSLD("Optimum Nutrition Gold Standard 100% Whey");
+  check(
+    "Part B: Raw Whole Almonds resolve as single-ingredient whole food (90/100 Excellent), and lookupDSLD is wired for dietary supplements",
+    Boolean(
+      rawAlmondsScan.ok &&
+        rawAlmondsScan.result?.score === 90 &&
+        rawAlmondsScan.result?.rating === "Excellent" &&
+        rawAlmondsScan.product?.nutrition?.isWholeFood === true &&
+        rawAlmondsScan.result?.yukaBreakdown?.organicScore === 0 &&
+        (dsldLiveResult === null || (dsldLiveResult.source === "dsld" && dsldLiveResult.ingredients.length > 10))
+    )
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);

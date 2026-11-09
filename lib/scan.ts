@@ -74,7 +74,11 @@ export function evaluateDietaryAlerts(
 
   if (selected.has("sugar_diabetes")) {
     const sugarsG = nutrition?.sugarsG100g ?? 0;
-    const sugarMatch = ing.match(
+    const ingCleanedForSugar = ing.replace(
+      /\b(no\s+(?:added\s+)?sugars?|sugar[\s-]*free|zero\s+sugar|unsweetened|without\s+(?:added\s+)?sugar|0\s*g\s+sugar)\b/gi,
+      " ",
+    );
+    const sugarMatch = ingCleanedForSugar.match(
       /\b(high\s+fructose\s+corn\s+syrup|corn\s+syrup|cane\s+sugar|brown\s+sugar|sugar|sucrose|dextrose|maltose|fructose|glucose\s+syrup|honey|maple\s+syrup|molasses|agave|invert\s+sugar|fruit\s+juice\s+concentrate)\b/i,
     );
     const refinedCarbMatch = ing.match(
@@ -96,7 +100,7 @@ export function evaluateDietaryAlerts(
 
   if (selected.has("dairy") && !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/i.test(productTitle)) {
     const dairyCleaned = text.replace(
-      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi,
+      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi,
       " ",
     );
     const m = dairyCleaned.match(

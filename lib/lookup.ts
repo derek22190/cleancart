@@ -21,6 +21,7 @@ import {
 } from "./drinks-catalog";
 import {
   ENGLISH_INGREDIENT_ANCHORS,
+  inferNutritionFromText,
   isEnglishIngredientText,
   NON_ENGLISH_INGREDIENTS,
   type NutritionInput,
@@ -29,7 +30,7 @@ import {
 export { ENGLISH_INGREDIENT_ANCHORS, isEnglishIngredientText, NON_ENGLISH_INGREDIENTS };
 export const isInstantCatalogEntryFresh = isCatalogEntryFresh;
 
-export type LookupSource = "screen" | "cache" | "openfoodfacts" | "usda" | "catalog";
+export type LookupSource = "screen" | "cache" | "openfoodfacts" | "usda" | "dsld" | "catalog";
 
 export interface LookupInput {
   productTitle?: string;
@@ -65,6 +66,7 @@ const TIMEOUT_MS = 3200;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 1000;
 const offBarcodeCache = new Map<string, OffProduct>();
+let dsldUnavailableUntil = 0;
 
 let memory: Map<string, CacheEntry> | null = null;
 let loading: Promise<Map<string, CacheEntry>> | null = null;
@@ -251,9 +253,12 @@ function relevance(query: string, candidate: string): number {
   return Math.max(0, base + bigramBonus - extraFlavorPenalty - extraTokensPenalty);
 }
 
+let usdaMissingKeyWarned = false;
+
 async function getJson<T>(url: string): Promise<T | null> {
   const isUsda = url.includes("api.nal.usda.gov");
-  if (isUsda && Date.now() < usdaUnavailableUntil) {
+  const isDsld = url.includes("api.ods.od.nih.gov/dsld/");
+  if ((isUsda && Date.now() < usdaUnavailableUntil) || (isDsld && Date.now() < dsldUnavailableUntil)) {
     return null;
   }
   try {
@@ -263,8 +268,11 @@ async function getJson<T>(url: string): Promise<T | null> {
       cache: "no-store",
     });
     if (!res.ok) {
-      if (isUsda && (res.status === 429 || res.status >= 502)) {
+      if (isUsda && (res.status === 403 || res.status === 429 || res.status >= 500)) {
         usdaUnavailableUntil = Date.now() + 60 * 1000;
+      }
+      if (isDsld && (res.status === 429 || res.status >= 500)) {
+        dsldUnavailableUntil = Date.now() + 60 * 1000;
       }
       return null;
     }
@@ -282,7 +290,7 @@ async function getJson<T>(url: string): Promise<T | null> {
 /* Open Food Facts (US + Global 4M+ Database)                          */
 /* ------------------------------------------------------------------ */
 
-interface OffProduct {
+export interface OffProduct {
   code?: string;
   product_name?: string;
   product_name_en?: string;
@@ -377,25 +385,56 @@ function numVal(v: unknown): number | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
-function extractOffNutrition(p: OffProduct): NutritionInput | undefined {
+export function extractOffNutrition(p: OffProduct): NutritionInput {
   const n = p.nutriments || {};
-  const kcal = numVal(n["energy-kcal_100g"]) ?? (numVal(n["energy_100g"]) !== undefined ? Number(n["energy_100g"]) / 4.184 : undefined);
-  const sugars = numVal(n["sugars_100g"]);
-  const satFat = numVal(n["saturated-fat_100g"]);
+  const rawKcal = numVal(n["energy-kcal_100g"]);
+  const rawKj = numVal(n["energy-kj_100g"]) ?? numVal(n["energy_100g"]);
+  // Guard against crowdsourced OFF records where kJ (>950 per 100g) was entered into energy-kcal_100g
+  const kcal =
+    rawKcal !== undefined
+      ? rawKcal > 950 && rawKcal <= 4000
+        ? Math.round((rawKcal / 4.184) * 10) / 10
+        : rawKcal <= 950
+          ? rawKcal
+          : undefined
+      : rawKj !== undefined
+        ? Math.round((rawKj / 4.184) * 10) / 10
+        : undefined;
+  const rawSugars = numVal(n["sugars_100g"]);
+  const sugars = rawSugars !== undefined && rawSugars <= 100 ? rawSugars : undefined;
+  const rawSatFat = numVal(n["saturated-fat_100g"]);
+  const satFat = rawSatFat !== undefined && rawSatFat <= 100 ? rawSatFat : undefined;
   const sodiumG = numVal(n["sodium_100g"]);
   const saltG = numVal(n["salt_100g"]);
   // If a crowdsourced contributor entered sodium_100g in mg instead of g (e.g. 106 instead of 0.106g), normalize it
-  const rawSodiumMg = sodiumG !== undefined ? (sodiumG > 10 ? sodiumG : sodiumG * 1000) : saltG !== undefined ? (saltG > 25 ? saltG * 0.4 : saltG * 400) : undefined;
+  const rawSodiumMg =
+    sodiumG !== undefined
+      ? sodiumG > 10
+        ? sodiumG
+        : sodiumG * 1000
+      : saltG !== undefined
+        ? saltG > 25
+          ? saltG * 0.4
+          : saltG * 400
+        : undefined;
   const sodiumMg = rawSodiumMg !== undefined && rawSodiumMg <= 40000 ? rawSodiumMg : undefined;
-  const fiber = numVal(n["fiber_100g"]);
-  const protein = numVal(n["proteins_100g"]);
-  const fvn = numVal(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]);
+  const rawFiber = numVal(n["fiber_100g"]);
+  const fiber = rawFiber !== undefined && rawFiber <= 100 ? rawFiber : undefined;
+  const rawProtein = numVal(n["proteins_100g"]);
+  const protein = rawProtein !== undefined && rawProtein <= 100 ? rawProtein : undefined;
+  const rawFvn =
+    numVal(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]) ??
+    numVal(n["fruits-vegetables-legumes-estimate-from-ingredients_100g"]) ??
+    numVal(n["fruits-vegetables-nuts_100g"]);
+  const fvn = rawFvn !== undefined && rawFvn <= 100 ? rawFvn : undefined;
   const gradeRaw = (p.nutriscore_grade || "").toLowerCase();
   const nutriScoreGrade = ["a", "b", "c", "d", "e"].includes(gradeRaw) ? (gradeRaw as "a" | "b" | "c" | "d" | "e") : undefined;
+  // Strictly detect USDA / EU Organic certification from OFF labels_tags (never from rawIngredients)
   const isOrganic =
     Array.isArray(p.labels_tags) &&
     p.labels_tags.some((t) => /^(en|fr):(organic|usda-organic|eu-organic|ab-agriculture-biologique|bio)$/i.test(t));
-  return {
+
+  const baseNut: NutritionInput = {
     caloriesKcal100g: kcal,
     sugarsG100g: sugars,
     saturatedFatG100g: satFat,
@@ -406,26 +445,36 @@ function extractOffNutrition(p: OffProduct): NutritionInput | undefined {
     nutriScoreGrade,
     isOrganic,
   };
+  const ing = englishIngredients(p);
+  const title = `${normalizeOffBrand(p.brands)} ${p.product_name_en || p.product_name || ""}`.trim();
+  return ing ? inferNutritionFromText(title, ing, baseNut, { onlyPositive: true }) : baseNut;
 }
 
-function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "ms"> {
+function offToResult(p: OffProduct, fallbackTitle: string, isNonFoodVertical = false): Omit<LookupResult, "ms"> {
   const sourceUpdatedAt =
     typeof p.last_modified_t === "number" && p.last_modified_t > 0
       ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10)
       : null;
   const brandStr = normalizeOffBrand(p.brands).split(",")[0]?.trim() || undefined;
   const rawName = (p.product_name_en || p.product_name || fallbackTitle).trim();
-  const fullTitle =
+  const baseTitle =
     brandStr && !rawName.toLowerCase().startsWith(brandStr.toLowerCase())
       ? `${brandStr} ${rawName}`
       : rawName;
+  const fullTitle =
+    isNonFoodVertical && !/\b(shampoo|conditioner|body\s+wash|lotion|soap|detergent|cleaner|toothpaste|deodorant|sunscreen|cosmetic|dog\s+food|cat\s+food|pet\s+food)\b/i.test(baseTitle)
+      ? `${baseTitle} (Personal Care / Household)`
+      : baseTitle;
   return {
     productTitle: fullTitle,
     brand: brandStr,
+    category: isNonFoodVertical ? "Non-Food / Personal Care & Household" : undefined,
     barcode: p.code,
     ingredients: englishIngredients(p),
     imageUrl: bestOffImage(p),
-    nutrition: extractOffNutrition(p),
+    nutrition: isNonFoodVertical
+      ? { productTitle: `${fullTitle} body wash household non-food`, isOrganic: false, isWholeFood: false }
+      : extractOffNutrition(p),
     source: "openfoodfacts",
     sourceUpdatedAt,
   };
@@ -485,7 +534,7 @@ async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> |
     );
     for (const prod of results) {
       if (prod && englishIngredients(prod)) {
-        return offToResult(prod, prod.product_name || c);
+        return offToResult(prod, prod.product_name || c, true);
       }
     }
   }
@@ -525,7 +574,7 @@ async function openFactsVerticalSearch(title: string): Promise<Omit<LookupResult
   );
   for (const res of responses) {
     const best = pickBestOff(title, res?.products);
-    if (best) return offToResult(best, title);
+    if (best) return offToResult(best, title, true);
   }
   return null;
 }
@@ -636,13 +685,15 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
 /* USDA FoodData Central (Branded + Foundation + SR Legacy + Survey)   */
 /* ------------------------------------------------------------------ */
 
-interface UsdaNutrient {
+export interface UsdaNutrient {
+  nutrientId?: number;
+  nutrientNumber?: string;
   nutrientName?: string;
   unitName?: string;
   value?: number;
 }
 
-interface UsdaFood {
+export interface UsdaFood {
   description?: string;
   brandName?: string;
   brandOwner?: string;
@@ -650,6 +701,8 @@ interface UsdaFood {
   ingredients?: string;
   dataType?: string;
   publishedDate?: string;
+  servingSize?: number;
+  servingSizeUnit?: string;
   foodNutrients?: UsdaNutrient[];
 }
 
@@ -673,44 +726,192 @@ function buildUsdaLuceneQuery(query: string): string {
   return words.map((w) => `+${w}`).join(" ");
 }
 
-function extractUsdaNutrition(f: UsdaFood): NutritionInput | undefined {
+const PROCESSED_USDA_DESC =
+  /\b(cookie|cookies|cracker|crackers|chip|chips|crisps|crispy|fried|battered|breaded|rings|cereal|puffs|bar|bars|bread|bun|roll|cake|pie|pastry|donut|doughnut|bismark|muffin|waffle|pancake|candy|chocolate|gummy|gummies|soda|cola|pop|drink|beverage|dressing|mayo|mayonnaise|ketchup|sauce|sausage|hot dog|frankfurter|bologna|salami|pepperoni|bacon|nugget|tenders|strips|pizza|fries|tots|instant|mashed|flakes|dehydrated|canned|pickled|cured|smoked|salted|sweetened|candied|glazed|frosted|flavored|ice cream|gelato|sorbet|spread|dip|soup|chowder|ramen|noodle|macaroni|pretzel|popcorn|frosting|syrup|creamer|margarine)\b/i;
+
+function isSingleIngredientUsdaWholeFood(f: UsdaFood): boolean {
+  const isUnbrandedType = f.dataType === "Foundation" || f.dataType === "SR Legacy";
+  const desc = (f.description || "").trim();
+  if (!desc) return false;
+  if (PROCESSED_USDA_DESC.test(desc)) return false;
+  // Allow dried raw seeds/nuts/legumes (e.g. "Seeds, chia seeds, dried", "Nuts, almonds, dried") but reject sweetened dried fruit
+  if (/\bdried\b/i.test(desc) && !/^(seeds|nuts|beans|lentils|peas|chickpeas)\b/i.test(desc)) return false;
+  if (isUnbrandedType) return true;
+  const ing = (f.ingredients || "").trim();
+  if (!ing) return false;
+  const clauses = ing.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+  return clauses.length === 1 && !PROCESSED_USDA_DESC.test(ing);
+}
+
+/**
+ * Extracts per-100g/100ml nutrients from USDA FoodData Central search results across
+ * Branded, Foundation, SR Legacy, and Survey (FNDDS) records.
+ *Note: USDA FDC `/v1/foods/search` normalizes `foodNutrients[].value` to per 100g/100ml
+ * across all data types (`Branded`, `Foundation`, `SR Legacy`).
+ * Explicitly distinguishes Energy in KCAL (nutrientId 1008 / number "208" / Atwater 2047/2048)
+ * from Energy in kJ (nutrientId 1062 / number "268") so kJ is never treated as kcal.
+ */
+export function extractUsdaNutrition(f: UsdaFood): NutritionInput | undefined {
   const list = f.foodNutrients || [];
   if (!list.length) return undefined;
-  const findVal = (re: RegExp) => list.find((n) => re.test(n.nutrientName || ""))?.value;
-  return {
-    caloriesKcal100g: findVal(/^energy$/i),
-    sugarsG100g: findVal(/sugars,\s*total|total\s+sugars/i),
-    saturatedFatG100g: findVal(/fatty acids,\s*total saturated/i),
-    sodiumMg100g: findVal(/^sodium,\s*na$/i),
-    fiberG100g: findVal(/fiber,\s*total dietary/i),
-    proteinG100g: findVal(/^protein$/i),
+
+  // 1. Energy (kcal per 100g) — never treat kJ (1062 / "268") as kcal (1008 / "208")
+  const kcalNutrient =
+    list.find(
+      (n) =>
+        (n.nutrientId === 1008 || n.nutrientNumber === "208" || /^energy$/i.test(n.nutrientName || "")) &&
+        (n.unitName || "KCAL").toUpperCase() === "KCAL" &&
+        typeof n.value === "number",
+    ) ??
+    list.find(
+      (n) =>
+        (n.nutrientId === 2047 || n.nutrientId === 2048 || /energy\s*\(atwater/i.test(n.nutrientName || "")) &&
+        (n.unitName || "KCAL").toUpperCase() === "KCAL" &&
+        typeof n.value === "number",
+    );
+  const kjNutrient = list.find(
+    (n) =>
+      (n.nutrientId === 1062 || n.nutrientNumber === "268" || (n.unitName || "").toUpperCase() === "KJ") &&
+      typeof n.value === "number",
+  );
+  const rawKcal =
+    kcalNutrient?.value !== undefined
+      ? kcalNutrient.value
+      : kjNutrient?.value !== undefined
+        ? Math.round((kjNutrient.value / 4.184) * 10) / 10
+        : undefined;
+  const caloriesKcal100g = rawKcal !== undefined && rawKcal >= 0 && rawKcal <= 950 ? rawKcal : undefined;
+
+  // 2. Total Sugars (g per 100g) — nutrientId 2000 / number "269" / 1063
+  const sugNutrient = list.find(
+    (n) =>
+      n.nutrientId === 2000 ||
+      n.nutrientId === 1063 ||
+      n.nutrientNumber === "269" ||
+      /sugars,\s*total|total\s+sugars/i.test(n.nutrientName || ""),
+  );
+  const sugarsG100g =
+    typeof sugNutrient?.value === "number" && sugNutrient.value >= 0 && sugNutrient.value <= 100
+      ? sugNutrient.value
+      : undefined;
+
+  // 3. Saturated Fat (g per 100g) — nutrientId 1258 / number "606"
+  const satNutrient = list.find(
+    (n) =>
+      n.nutrientId === 1258 ||
+      n.nutrientNumber === "606" ||
+      /fatty acids,\s*total saturated/i.test(n.nutrientName || ""),
+  );
+  const saturatedFatG100g =
+    typeof satNutrient?.value === "number" && satNutrient.value >= 0 && satNutrient.value <= 100
+      ? satNutrient.value
+      : undefined;
+
+  // 4. Sodium (mg per 100g) — nutrientId 1093 / number "307"
+  const sodNutrient = list.find(
+    (n) =>
+      n.nutrientId === 1093 ||
+      n.nutrientNumber === "307" ||
+      /^sodium,\s*na$/i.test(n.nutrientName || ""),
+  );
+  const rawSodium =
+    typeof sodNutrient?.value === "number" && sodNutrient.value >= 0
+      ? (sodNutrient.unitName || "MG").toUpperCase() === "G"
+        ? sodNutrient.value * 1000
+        : sodNutrient.value
+      : undefined;
+  const sodiumMg100g = rawSodium !== undefined && rawSodium <= 40000 ? rawSodium : undefined;
+
+  // 5. Dietary Fiber (g per 100g) — nutrientId 1079 / number "291"
+  const fibNutrient = list.find(
+    (n) =>
+      n.nutrientId === 1079 ||
+      n.nutrientNumber === "291" ||
+      /fiber,\s*total dietary/i.test(n.nutrientName || ""),
+  );
+  const fiberG100g =
+    typeof fibNutrient?.value === "number" && fibNutrient.value >= 0 && fibNutrient.value <= 100
+      ? fibNutrient.value
+      : undefined;
+
+  // 6. Protein (g per 100g) — nutrientId 1003 / number "203"
+  const proNutrient = list.find(
+    (n) =>
+      n.nutrientId === 1003 ||
+      n.nutrientNumber === "203" ||
+      /^protein$/i.test(n.nutrientName || ""),
+  );
+  const proteinG100g =
+    typeof proNutrient?.value === "number" && proNutrient.value >= 0 && proNutrient.value <= 100
+      ? proNutrient.value
+      : undefined;
+
+  const isWholeFood = isSingleIngredientUsdaWholeFood(f);
+  const descLower = `${f.description || ""} ${f.ingredients || ""}`.toLowerCase();
+  const isFvnWholeFood =
+    isWholeFood &&
+    /\b(apple|apples|banana|bananas|berry|berries|strawberry|strawberries|blueberry|blueberries|raspberry|blackberry|cherry|cherries|orange|oranges|grape|grapes|peach|pear|mango|pineapple|watermelon|melon|avocado|tomato|potato|sweet potato|carrot|broccoli|cauliflower|spinach|kale|lettuce|cabbage|celery|cucumber|onion|garlic|pepper|mushroom|zucchini|squash|asparagus|beans|lentils|chickpeas|peas|edamame|almond|almonds|walnut|walnuts|pecan|pecans|cashew|cashews|pistachio|pistachios|macadamia|hazelnut|peanut|peanuts|chia|flax|flaxseed|hemp|pumpkin seed|sunflower seed|sesame|olive oil|avocado oil|coconut)\b/.test(
+      descLower,
+    );
+
+  const baseNut: NutritionInput = {
+    caloriesKcal100g,
+    sugarsG100g,
+    saturatedFatG100g,
+    sodiumMg100g,
+    fiberG100g,
+    proteinG100g,
+    fruitsVegNutsPct: isFvnWholeFood ? 100 : undefined,
+    isWholeFood: isWholeFood ? true : undefined,
     isOrganic: false,
   };
+
+  if (f.ingredients?.trim()) {
+    return inferNutritionFromText(f.description || "", f.ingredients, baseNut, { onlyPositive: true });
+  }
+  return baseNut;
 }
 
 async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | null> {
+  if (!process.env.USDA_API_KEY && !usdaMissingKeyWarned) {
+    usdaMissingKeyWarned = true;
+    if (process.env.NODE_ENV === "development") {
+      console.warn(
+        "[HeyBroc/lookup] USDA_API_KEY is not set; using public DEMO_KEY fallback + built-in USDA whole-food resolvers.",
+      );
+    }
+  }
   const key = (process.env.USDA_API_KEY || "DEMO_KEY").trim();
+  if (!key || Date.now() < usdaUnavailableUntil) return null;
+
   const numericBarcode = query.replace(/\D/g, "");
   const isBarcodeQuery = numericBarcode.length >= 8 && numericBarcode === query.trim().replace(/[-\s]/g, "");
+  const isUnbrandedWholeQuery =
+    !isBarcodeQuery &&
+    !NAMED_BRAND_GUARD.test(query) &&
+    !PROCESSED_FOOD_GUARD.test(query);
 
   let best = null as UsdaFood | null;
   let bestScore = 0;
-  const PROCESSED_USDA_DESC = /\b(cookie|cookies|cracker|crackers|chip|chips|crisps|crispy|fried|battered|breaded|rings|cereal|puffs|bar|bars|bread|bun|roll|cake|pie|pastry|donut|doughnut|bismark|muffin|waffle|pancake|candy|chocolate|gummy|gummies|soda|cola|pop|drink|beverage|dressing|mayo|mayonnaise|ketchup|sauce|sausage|hot dog|frankfurter|bologna|salami|pepperoni|bacon|nugget|tenders|strips|pizza|fries|tots|instant|mashed|flakes|dehydrated|dried|canned|pickled|cured|smoked|salted|sweetened|candied|glazed|frosted|flavored|ice cream|gelato|sorbet|yogurt|spread|dip|soup|chowder|ramen|noodle|macaroni|pretzel|popcorn|frosting|syrup|creamer|margarine)\b/i;
 
   const evaluateFoods = (foods: UsdaFood[] | undefined) => {
     for (const f of foods || []) {
-      const isTrueWholeFood =
-        (f.dataType === "Foundation" || f.dataType === "SR Legacy") &&
-        f.description &&
-        !PROCESSED_USDA_DESC.test(f.description);
+      const isUnbrandedType = f.dataType === "Foundation" || f.dataType === "SR Legacy";
+      const isTrueWholeFood = isSingleIngredientUsdaWholeFood(f);
       const ing =
         f.ingredients?.trim() ||
         (isTrueWholeFood ? `Whole Food: ${f.description}` : "");
       if (!ing || !isEnglishIngredientText(ing)) continue;
       const candidateName = `${f.brandName || f.brandOwner || ""} ${f.description || ""}`.trim();
-      if (!isBarcodeQuery && !passesVariantGuard(query, candidateName)) continue;
+      // USDA Foundation / SR Legacy records never include "organic" or "fresh" in description;
+      // allow unbranded whole-food queries like "organic honeycrisp apples" or "fresh Atlantic salmon"
+      // to match Foundation/SR Legacy nutrient profiles while keeping nutrition.isOrganic === false.
+      const effectiveQuery = isUnbrandedType
+        ? query.replace(/\b(organic|fresh|raw|whole)\b/gi, " ").replace(/\s+/g, " ").trim() || query
+        : query;
+      if (!isBarcodeQuery && !passesVariantGuard(effectiveQuery, candidateName)) continue;
       const nut = extractUsdaNutrition(f);
-      if (!isBarcodeQuery && isDietaryOrVariantMismatch(query, candidateName, ing, nut)) continue;
+      if (!isBarcodeQuery && isDietaryOrVariantMismatch(effectiveQuery, candidateName, ing, nut)) continue;
       let r = 0;
       if (isBarcodeQuery) {
         const fCode = (f.gtinUpc || "").replace(/\D/g, "");
@@ -718,7 +919,10 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
           r = 1;
         }
       } else {
-        r = relevance(query, candidateName);
+        r = relevance(effectiveQuery, candidateName);
+        if (r > 0 && isUnbrandedWholeQuery && isTrueWholeFood) {
+          r += 0.1;
+        }
       }
       if (r > bestScore) {
         best = { ...f, ingredients: ing };
@@ -728,13 +932,18 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   };
 
   const luceneQuery = !isBarcodeQuery ? buildUsdaLuceneQuery(query) : "";
-  const searchQuery = luceneQuery || query;
-  const dataTypes = isBarcodeQuery ? "Branded" : "Branded,Foundation";
+  const searchQuery = isUnbrandedWholeQuery
+    ? query.replace(/\b(organic|fresh)\b/gi, "").trim() || query
+    : luceneQuery || query;
+  const dataTypes = isBarcodeQuery
+    ? "Branded"
+    : isUnbrandedWholeQuery
+      ? "Foundation,SR Legacy,Branded"
+      : "Branded,Foundation,SR Legacy";
   const usdaData = await getJson<{ foods?: UsdaFood[] }>(
     `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(searchQuery)}&dataType=${encodeURIComponent(dataTypes)}&pageSize=20&api_key=${key}`,
   );
   evaluateFoods(usdaData?.foods);
-
   if (!best || bestScore < 0.55) return null;
   const titleCase = (s = "") => s.toLowerCase().replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const rawDesc = (best.description || "")
@@ -763,6 +972,182 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     nutrition: extractUsdaNutrition(best),
     source: "usda",
     sourceUpdatedAt: best.publishedDate ? best.publishedDate.slice(0, 10) : null,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* NIH Dietary Supplement Label Database (DSLD v9 Public REST API)     */
+/* Covers Pre-Workouts, Protein Powders, Electrolytes, Creatine & Gummies */
+/* ------------------------------------------------------------------ */
+
+const SUPPLEMENT_QUERY_RE =
+  /\b(pre[- ]?workout|preworkout|whey\s+protein|plant\s+protein|protein\s+powder|protein\s+isolate|whey\s+isolate|casein|mass\s+gainer|creatine|bcaa|eaa|amino\s+energy|electrolyte|hydration\s+multiplier|liquid\s+i\.?v\.?|lmnt|nuun|ultima\s+replenisher|biosteel|dripdrop|greens\s+powder|super\s+greens|athletic\s+greens|ag1|bloom\s+greens|collagen\s+peptides|vital\s+proteins|multivitamin|gummy\s+vitamins?|vitamin\s+[cd]\d*|omega[- ]?3|fish\s+oil|ashwagandha|magnesium\s+glycinate|melatonin|probiotic\s+supplement|dietary\s+supplement|c4\s+(?:original|ripped|ultimate|sport|extreme|pre)|cellucor|ghost\s+(?:legend|whey|vegan|pump|amino|size|hydration|greens)|alani\s+nu\s+(?:pre|whey|greens|bcaa)|optimum\s+nutrition|gold\s+standard\s+(?:100%\s+)?whey|dymatize|iso100|muscletech|transparent\s+labs|gorilla\s+mode|ryse|bucked\s+up|woke\s+af|total\s+war|redcon1|legion\s+athletics|vega\s+sport|orgain|garden\s+of\s+life|thorne|nature\s+made|olly|smartypants)\b/i;
+
+const DSLD_MACRO_IGNORE = new Set([
+  "calories",
+  "calories from fat",
+  "total fat",
+  "saturated fat",
+  "trans fat",
+  "polyunsaturated fat",
+  "monounsaturated fat",
+  "cholesterol",
+  "total carbohydrate",
+  "total carbohydrates",
+  "carbohydrate",
+  "dietary fiber",
+  "total fiber",
+  "soluble fiber",
+  "insoluble fiber",
+  "total sugars",
+  "added sugars",
+  "sugars",
+  "sugar",
+  "protein",
+]);
+
+interface DsldIngredientItem {
+  name?: string;
+  category?: string;
+  ingredientGroup?: string;
+  forms?: Array<{ name?: string }>;
+}
+
+interface DsldSearchHit {
+  _id?: string;
+  _source?: {
+    brandName?: string;
+    fullName?: string;
+    upcSku?: string;
+    entryDate?: string;
+    offMarket?: number;
+    allIngredients?: DsldIngredientItem[];
+  };
+}
+
+interface DsldLabelDetail {
+  id?: number | string;
+  fullName?: string;
+  brandName?: string;
+  upcSku?: string;
+  entryDate?: string;
+  otheringredients?: {
+    text?: string | null;
+    ingredients?: DsldIngredientItem[];
+  };
+  ingredientRows?: Array<{
+    name?: string;
+    forms?: Array<{ name?: string }>;
+  }>;
+}
+
+function formatDsldIngredients(
+  searchSource?: DsldSearchHit["_source"],
+  detail?: DsldLabelDetail | null,
+): string {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  const addPart = (raw?: string | null) => {
+    const clean = (raw || "").trim();
+    if (!clean) return;
+    const lower = clean.toLowerCase();
+    if (DSLD_MACRO_IGNORE.has(lower) || seen.has(lower)) return;
+    seen.add(lower);
+    parts.push(clean);
+  };
+
+  if (detail?.otheringredients?.text) {
+    addPart(detail.otheringredients.text);
+  }
+  for (const item of detail?.otheringredients?.ingredients || []) {
+    if (!item.name) continue;
+    const forms = (item.forms || []).map((f) => (f.name || "").trim()).filter(Boolean);
+    addPart(forms.length ? `${item.name} (${forms.join(", ")})` : item.name);
+  }
+  for (const row of detail?.ingredientRows || []) {
+    if (!row.name) continue;
+    const forms = (row.forms || []).map((f) => (f.name || "").trim()).filter(Boolean);
+    addPart(forms.length ? `${row.name} (${forms.join(", ")})` : row.name);
+  }
+  for (const item of searchSource?.allIngredients || []) {
+    addPart(item.name);
+  }
+  return parts.join(", ");
+}
+
+export async function lookupDSLD(query: string): Promise<Omit<LookupResult, "ms"> | null> {
+  if (!query.trim() || Date.now() < dsldUnavailableUntil) return null;
+  const numericBarcode = query.replace(/\D/g, "");
+  const isBarcodeQuery = numericBarcode.length >= 8 && numericBarcode === query.trim().replace(/[-\s]/g, "");
+
+  const data = await getJson<{ hits?: DsldSearchHit[] }>(
+    `https://api.ods.od.nih.gov/dsld/v9/search-filter?q=${encodeURIComponent(query)}&size=10`,
+  );
+  const hits = data?.hits || [];
+  if (!hits.length) return null;
+
+  let bestHit: DsldSearchHit | null = null;
+  let bestScore = 0;
+
+  for (const h of hits) {
+    const src = h._source;
+    if (!src || !h._id) continue;
+    const brand = (src.brandName || "").trim();
+    const name = (src.fullName || "").trim();
+    const candidateName = `${brand} ${name}`.trim();
+    if (!candidateName) continue;
+    if (!isBarcodeQuery && !passesVariantGuard(query, candidateName)) continue;
+
+    let r = 0;
+    if (isBarcodeQuery) {
+      const upc = (src.upcSku || "").replace(/\D/g, "");
+      if (upc && (upc === numericBarcode || upc.padStart(13, "0") === numericBarcode.padStart(13, "0"))) {
+        r = 1;
+      }
+    } else {
+      r = relevance(query, candidateName);
+      if (r > 0 && !src.offMarket) r += 0.03;
+    }
+    if (r > bestScore) {
+      bestHit = h;
+      bestScore = r;
+    }
+  }
+
+  if (!bestHit || bestScore < 0.55) return null;
+
+  const detail = await getJson<DsldLabelDetail>(
+    `https://api.ods.od.nih.gov/dsld/v9/label/${encodeURIComponent(String(bestHit._id))}`,
+  );
+  const ing = formatDsldIngredients(bestHit._source, detail);
+  if (!ing || !isEnglishIngredientText(ing)) return null;
+
+  const brand = (detail?.brandName || bestHit._source?.brandName || "Dietary Supplement").trim();
+  const rawTitle = (detail?.fullName || bestHit._source?.fullName || query).trim();
+  const fullTitle =
+    brand && !rawTitle.toLowerCase().startsWith(brand.toLowerCase())
+      ? `${brand} ${rawTitle}`
+      : rawTitle;
+  const isProteinPowder = /\b(whey|protein|isolate|casein|collagen)\b/i.test(fullTitle);
+  const nutrition: NutritionInput = isProteinPowder
+    ? { caloriesKcal100g: 375, sugarsG100g: 3.0, saturatedFatG100g: 1.5, sodiumMg100g: 220, fiberG100g: 1.0, proteinG100g: 78.0, fruitsVegNutsPct: 0, isOrganic: false }
+    : { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 40, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, isOrganic: false };
+
+  if (!isBarcodeQuery && isDietaryOrVariantMismatch(query, fullTitle, ing, nutrition)) {
+    return null;
+  }
+
+  const rawUpc = (detail?.upcSku || bestHit._source?.upcSku || "").replace(/\D/g, "");
+  return {
+    productTitle: fullTitle,
+    brand,
+    category: "Dietary Supplement (NIH DSLD)",
+    barcode: rawUpc.length >= 8 ? rawUpc : undefined,
+    ingredients: ing,
+    imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}`,
+    nutrition,
+    source: "dsld",
+    sourceUpdatedAt: (detail?.entryDate || bestHit._source?.entryDate || "").slice(0, 10) || null,
   };
 }
 
@@ -1950,7 +2335,67 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(chosen\s+foods.*avocado\s+oil|avocado\s+oil)\b/i,
+    match: /\b(hellmann'?s|best\s+foods)\b.*\b(olive\s+oil)\b.*\b(mayo|mayonnaise|dressing)\b|\b(hellmann'?s|best\s+foods)\b.*\b(mayo|mayonnaise)\b.*\b(olive\s+oil)\b/i,
+    brand: "Hellmann's",
+    title: "Mayonnaise Dressing with Olive Oil",
+    ingredients: "Water, Olive Oil, Canola Oil, Soybean Oil, Modified Potato Starch, Eggs, Sugar, Salt, Vinegar, Lemon Juice, Sorbic Acid and Calcium Disodium EDTA (Used to Protect Quality), Natural Flavor, Vitamin E.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Hellmann's%20Mayonnaise%20Dressing%20with%20Olive%20Oil",
+    nutrition: { caloriesKcal100g: 400, sugarsG100g: 0, saturatedFatG100g: 5.0, sodiumMg100g: 600, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 15, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.hellmanns.com/us/en/p/mayonnaise-dressing-with-olive-oil.html/00048001354531",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(kraft)\b.*\b(olive\s+oil)\b.*\b(mayo|mayonnaise)\b|\b(kraft)\b.*\b(mayo|mayonnaise)\b.*\b(olive\s+oil)\b/i,
+    brand: "Kraft",
+    title: "Mayo with Olive Oil Reduced Fat Mayonnaise",
+    ingredients: "Water, Olive Oil, Soybean Oil, Vinegar, Modified Food Starch, Sugar, Maltodextrin, Eggs, Contains Less than 2% of Salt, Natural Flavor, Mustard Flour, Potassium Sorbate and Calcium Disodium EDTA (to Protect Flavor), Dried Onions, Dried Garlic, Beta Carotene (Color).",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Kraft%20Mayo%20with%20Olive%20Oil",
+    nutrition: { caloriesKcal100g: 333, sugarsG100g: 6.7, saturatedFatG100g: 3.3, sodiumMg100g: 633, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 15, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.kraftheinz.com/kraft-mayo/products/00021000642236-mayo-with-olive-oil-reduced-fat-mayonnaise",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(primal\s+kitchen)\b.*\b(mayo|mayonnaise)\b/i,
+    brand: "Primal Kitchen",
+    title: "Real Mayonnaise Made with Avocado Oil",
+    ingredients: "Avocado Oil, Organic Eggs, Organic Egg Yolks, Organic Vinegar, Sea Salt, Organic Rosemary Extract.",
+    imageUrl: "/swaps/ranch.jpg",
+    nutrition: { caloriesKcal100g: 140, sugarsG100g: 0.5, saturatedFatG100g: 1.5, sodiumMg100g: 160, fiberG100g: 1.0, proteinG100g: 3.5, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false },
+    sourceUrl: "https://www.primalkitchen.com/products/avocado-oil-mayo",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(primal\s+kitchen)\b.*\b(ranch|dressing|vinaigrette)\b/i,
+    brand: "Primal Kitchen",
+    title: "Ranch Dressing & Marinade Made with Avocado Oil",
+    ingredients: "Avocado Oil, Water, Organic Apple Cider Vinegar, Organic Distilled Vinegar, Organic Egg Yolks, Sea Salt, Organic Lemon Juice Concentrate, Organic Onion Powder, Organic Garlic Powder, Organic Dill, Organic Parsley, Organic Chives, Organic Black Pepper, Organic Rosemary Extract.",
+    imageUrl: "/swaps/ranch.jpg",
+    nutrition: { caloriesKcal100g: 140, sugarsG100g: 0.5, saturatedFatG100g: 1.5, sodiumMg100g: 160, fiberG100g: 1.0, proteinG100g: 3.5, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false },
+    sourceUrl: "https://www.primalkitchen.com/products/ranch-dressing",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(chosen\s+foods)\b.*\b(mayo|mayonnaise)\b/i,
+    brand: "Chosen Foods",
+    title: "Classic Avocado Oil Mayonnaise",
+    ingredients: "Avocado Oil, Filtered Water, Whole Eggs, Egg Yolks, Organic Distilled White Vinegar, Organic Mustard (Distilled Vinegar, Water, Organic Mustard Seed, Salt, Organic Spices), Salt, Organic Rosemary Extract.",
+    imageUrl: "/swaps/ranch.jpg",
+    nutrition: { caloriesKcal100g: 140, sugarsG100g: 0.5, saturatedFatG100g: 1.5, sodiumMg100g: 160, fiberG100g: 1.0, proteinG100g: 3.5, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false },
+    sourceUrl: "https://chosenfoods.com/products/classic-avocado-oil-mayo",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(boulder\s+canyon)\b.*\b(avocado\s+oil)\b.*\b(chips?|crisps?)\b/i,
+    brand: "Boulder Canyon",
+    title: "Avocado Oil Classic Sea Salt Kettle Cooked Potato Chips",
+    ingredients: "Potatoes, Avocado Oil, Sea Salt.",
+    imageUrl: "/swaps/snacks.jpg",
+    nutrition: { caloriesKcal100g: 535, sugarsG100g: 0, saturatedFatG100g: 5.3, sodiumMg100g: 392, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 80, nutriScoreGrade: "b", isWholeFood: false },
+    sourceUrl: "https://www.utzsnacks.com/products/boulder-canyon-kettle-cooked-potato-chips-avocado-oil-classic-sea-salt",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /^(?!.*\b(mayo|mayonnaise|dressing|ranch|vinaigrette|aioli|chips?|crisps?|crackers?|popcorn|pretzels?|tortillas?|bread|pasta|sauce|marinara|pesto|hummus|tuna|sardines?|salmon|olives?|spread|butter|margarine|cookies?|cereal|granola|bars?)\b).*\b(chosen\s+foods.*avocado\s+oil|100%\s*(?:pure\s+)?avocado\s+oil|avocado\s+oil)\b/i,
     brand: "Chosen Foods",
     title: "100% Pure Avocado Oil",
     ingredients: "100% Pure Avocado Oil (Expeller-Pressed Single-Ingredient Fruit Oil).",
@@ -1960,7 +2405,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(extra\s+virgin\s+olive\s+oil|olive\s+oil|pompeian|bertolli.*olive\s+oil|california\s+olive\s+ranch)\b/i,
+    match: /^(?!.*\b(mayo|mayonnaise|dressing|ranch|vinaigrette|aioli|chips?|crisps?|crackers?|popcorn|pretzels?|tortillas?|bread|pasta|sauce|marinara|pesto|hummus|tuna|sardines?|salmon|olives?|spread|butter|margarine|cookies?|cereal|granola|bars?)\b).*\b(extra\s+virgin\s+olive\s+oil|olive\s+oil|pompeian|bertolli.*olive\s+oil|california\s+olive\s+ranch)\b/i,
     brand: "Pompeian",
     title: "100% Extra Virgin Olive Oil",
     ingredients: "100% Extra Virgin Olive Oil (Cold-Pressed Single-Ingredient Fruit Oil).",
@@ -2168,7 +2613,7 @@ const NON_FOOD_GUARD =
   /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|wax\s+paper|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i;
 
 const PROCESSED_FOOD_GUARD =
-  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
+  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
 
 const NAMED_BRAND_GUARD =
   /\b(silk|pedialyte|oscar\s+mayer|tyson|applegate|boar'?s\s+head|hormel|perdue|foster\s+farms|barilla|rao'?s|wonder|pepperidge|arnold|orowheat|chobani|fage|tillamook|sargento|philadelphia|haagen[- ]?dazs|häagen[- ]?dazs|ben\s*&\s*jerry|ore[- ]?ida|mccain|alexia|hunt'?s|muir\s+glen|bush'?s|goya|tostitos|pace|herdez|sabra|land\s+o'?\s*lakes|kerrygold|country\s+crock|blue\s+bonnet|hellmann'?s|best\s+foods|duke'?s|french'?s|grey\s+poupon|kikkoman|tabasco|cholula|frank'?s|pillsbury|betty\s+crocker|duncan\s+hines|kodiak|krusteaz|bisquick|aunt\s+jemima|pearl\s+milling|log\s+cabin|mrs\.?\s*butterworth|skippy|jif|peter\s+pan|welch'?s|bonne\s+maman|nissin|nongshim|buldak|samyang|progresso|totino'?s|red\s+baron|tombstone|banquet|healthy\s+choice|lean\s+cuisine|marie\s+callender|breyers|talenti|jennie[- ]?o|hillshire|jimmy\s+dean|smithfield|wright|farmland|nathan'?s|hebrew\s+national|ball\s+park|stouffer'?s|amy'?s|halo\s+top|yasso|clif\s+bar|quest|nature\s+valley|quaker|belvita|thomas'?|canyon\s+bakehouse|udi'?s|sara\s+lee|nature'?s\s+own|king'?s\s+hawaiian|mission|eggo|smucker'?s|heinz|sweet\s+baby\s+ray'?s|stubb'?s|miracle\s+whip|wish[- ]?bone|ken'?s|briannas|marzetti|prego|ragu|classico|bertolli|newman'?s\s+own|mateo'?s|tapatio|valentina|oikos|siggi'?s|dannon|activia|stonyfield|kraft|babybel|laughing\s+cow|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|mott'?s|outshine|digiorno|vlasic|mt\.?\s*olive|lay'?s|ruffles|pringles|fritos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop)\b/i;
@@ -2636,6 +3081,23 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     };
   }
 
+  // 3. Raw Nuts, Seeds, Legumes & Whole Grains (unflavored, uncandied single-ingredient whole foods)
+  if (
+    /\b(raw\s+almonds?|whole\s+almonds?|\balmonds\b|walnuts?|pecans?|cashews?|pistachios?|macadamia\s+nuts?|hazelnuts?|brazil\s+nuts?|pine\s+nuts?|chia\s+seeds?|flax\s*seeds?|hemp\s+(?:seeds?|hearts?)|pumpkin\s+seeds?|pepitas|sunflower\s+seeds?|sesame\s+seeds?|quinoa|lentils?|chickpeas?|garbanzo\s+beans?|black\s+beans?|pinto\s+beans?|kidney\s+beans?|navy\s+beans?|cannellini\s+beans?|great\s+northern\s+beans?|split\s+peas)\b/.test(
+      s,
+    )
+  ) {
+    return {
+      productTitle: cleanTitle,
+      brand: "Whole Nuts, Seeds & Legumes",
+      ingredients: "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}`,
+      nutrition: { caloriesKcal100g: 520, sugarsG100g: 2.5, saturatedFatG100g: 4.0, sodiumMg100g: 5, fiberG100g: 11.0, proteinG100g: 19.0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true, isOrganic },
+      source: "catalog",
+      sourceUpdatedAt: "2026-11-08",
+    };
+  }
+
   return null;
 }
 
@@ -2697,7 +3159,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&
@@ -2734,21 +3196,35 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   if (input.barcode) {
     if (hasDedicatedUsdaKey) {
-      const [offRes, usdaRes] = await Promise.all([offByBarcode(input.barcode), usdaSearch(input.barcode)]);
-      found = offRes || usdaRes;
+      const [offRes, usdaRes, dsldRes] = await Promise.all([
+        offByBarcode(input.barcode),
+        usdaSearch(input.barcode),
+        lookupDSLD(input.barcode),
+      ]);
+      found = offRes || usdaRes || dsldRes;
     } else {
-      found = (await offByBarcode(input.barcode)) || (await usdaSearch(input.barcode));
+      found =
+        (await offByBarcode(input.barcode)) ||
+        (await usdaSearch(input.barcode)) ||
+        (await lookupDSLD(input.barcode));
     }
   }
   if (!found && title) {
     const qClean = cleanSearchQuery(title) || title;
+    const isSupplementQuery = SUPPLEMENT_QUERY_RE.test(qClean);
+    const fullCandidate = (r: Omit<LookupResult, "ms">) =>
+      r.brand && !r.productTitle.toLowerCase().startsWith(r.brand.toLowerCase())
+        ? `${r.brand} ${r.productTitle}`
+        : r.productTitle;
+    let dsldRes: Omit<LookupResult, "ms"> | null = null;
     if (hasDedicatedUsdaKey) {
-      const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
+      const [offRes, usdaRes, dsldParallel] = await Promise.all([
+        offSearch(qClean),
+        usdaSearch(qClean),
+        isSupplementQuery ? lookupDSLD(qClean) : Promise.resolve(null),
+      ]);
+      dsldRes = dsldParallel;
       if (offRes && usdaRes) {
-        const fullCandidate = (r: Omit<LookupResult, "ms">) =>
-          r.brand && !r.productTitle.toLowerCase().startsWith(r.brand.toLowerCase())
-            ? `${r.brand} ${r.productTitle}`
-            : r.productTitle;
         const offScore = relevance(qClean, fullCandidate(offRes));
         const usdaScore = relevance(qClean, fullCandidate(usdaRes));
         if (usdaScore + 0.08 >= offScore) {
@@ -2766,7 +3242,26 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
         found = usdaRes || offRes;
       }
     } else {
-      found = (await offSearch(qClean)) || (await usdaSearch(qClean));
+      const [offRes, dsldParallel] = await Promise.all([
+        offSearch(qClean),
+        isSupplementQuery ? lookupDSLD(qClean) : Promise.resolve(null),
+      ]);
+      dsldRes = dsldParallel;
+      found = offRes || (await usdaSearch(qClean));
+    }
+
+    if (dsldRes) {
+      if (!found) {
+        found = dsldRes;
+      } else {
+        const foundScore = relevance(qClean, fullCandidate(found));
+        const dsldScore = relevance(qClean, fullCandidate(dsldRes));
+        if (dsldScore > foundScore + 0.05) {
+          found = dsldRes;
+        }
+      }
+    } else if (!found && !isSupplementQuery) {
+      found = await lookupDSLD(qClean);
     }
   }
   if (!found && title) found = catalogFallback(title);

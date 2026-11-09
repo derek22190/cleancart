@@ -1419,7 +1419,9 @@ export default function Simulator() {
                     ? "Open Food Facts record"
                     : active.lookup.source === "usda"
                       ? "USDA FoodData Central record"
-                      : `Source: ${active.lookup.source}`}
+                      : active.lookup.source === "dsld"
+                        ? "NIH Dietary Supplement Label Database (DSLD) record"
+                        : `Source: ${active.lookup.source}`}
                 {active.lookup.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                 {" · Verify physical label · "}
                 <a
@@ -2014,7 +2016,9 @@ export default function Simulator() {
                                 ? "Source: Open Food Facts (ODbL / CC BY-SA 3.0)"
                                 : active.lookup?.source === "usda"
                                   ? "Source: USDA FoodData Central"
-                                  : "Source: Representative catalog"}
+                                  : active.lookup?.source === "dsld"
+                                    ? "Source: NIH Dietary Supplement Label Database (DSLD)"
+                                    : "Source: Representative catalog"}
                               {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                               {" · "}
                               <a
