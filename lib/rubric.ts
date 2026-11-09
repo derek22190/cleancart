@@ -165,7 +165,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "yellow6", name: "Yellow 6", risk: "high", category: "dyes",
-    patterns: ["(fd and c )?yellow( no)? 6", "sunset yellow", "e ?110"],
+    patterns: ["(fd and c )?yellow( no)? 6", "sunset yellow", "(?<!vitamin )e ?110(?! ?(?:iu|mg|mcg))"],
     explanation: "FDA-certified synthetic azo dye studied for behavioral sensitivity in children and subject to an EU warning requirement.",
   },
   {
@@ -205,7 +205,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "kbromate", name: "Potassium Bromate", risk: "high", category: "preservatives",
-    patterns: ["potassium bromate", "(?<!un|non|never )bromated( wheat| flour)?"],
+    patterns: ["potassium bromate", "(?<!un|non|un |non |never |no )bromated( wheat| flour)?"],
     explanation: "Flour improver classified by IARC as a Group 2B possible human carcinogen and prohibited in the EU, UK, Canada, and California (effective 2027).",
   },
   {
@@ -298,8 +298,8 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "cornsyrup", name: "Corn Syrup", risk: "moderate", category: "hfcs",
-    // Negative lookbehind prevents double-counting inside "high fructose corn syrup".
-    patterns: ["(?<!fructose )corn syrup( solids)?"],
+    // Negative lookbehind prevents double-counting inside "high fructose corn syrup" or "glucose fructose syrup".
+    patterns: ["(?<!fructose )corn syrup( solids)?", "(?<!fructose )glucose syrup( solids)?"],
     explanation: "Refined glucose syrup used as a sweetener and thickener in processed foods.",
   },
   {
@@ -314,7 +314,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "caramelcolor", name: "Caramel Color", risk: "moderate", category: "dyes",
-    patterns: ["caramel colou?r(ing)?", "e ?150[abcd]?"],
+    patterns: ["caramel colou?r(ing)?", "(?<!vitamin )e ?150[abcd]?(?! ?(?:iu|mg|mcg))"],
     explanation: "FDA-permitted caramel coloring; certain classes (Class III/IV) are manufactured with ammonia compounds that can form trace 4-MEI (listed under California Prop 65).",
   },
   {
@@ -401,7 +401,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "naphosphate", name: "Sodium Phosphate", risk: "low", category: "preservatives",
-    patterns: ["(mono|di|tri)?(sodium|potassium|calcium) (acid )?(phosphates?|tripolyphosphate|pyrophosphate|hexametaphosphate)"],
+    patterns: ["(mono|di|tri)?(sodium|potassium) (acid )?(phosphates?|tripolyphosphate|pyrophosphate|hexametaphosphate)"],
     explanation: "FDA-gras inorganic phosphate salt used for moisture retention and texture in processed foods.",
   },
   {
@@ -507,15 +507,18 @@ export function normalizeIngredients(raw: string): string {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\b(?:vitamin|vit\.?)\s+e\s*(?:\([^)]*\)\s*)?(?=\d)/g, "vitamine ")
+    .replace(/\b(un|non)\s*[-\s]\s*(bromated|gmo|dairy|fat|nutritive)\b/g, "$1$2")
     .replace(/\b(un|non)\s*-\s*([a-z]+)/g, "$1$2")
     .replace(/&/g, " and ")
     .replace(/\band\s*\/\s*or\b/g, " or ");
 
-  // Strip negated label marketing claims ("no sodium nitrite", "no artificial flavors", "free of bha/bht", "carrageenan-free")
+  // Strip negated label marketing claims ("no sodium nitrite", "no artificial flavors", "free of bha/bht", "carrageenan-free", "non-bromated flour")
   s = s.replace(
     /\b(no|without|free of|never any|zero)\s+(added\s+)?(nitrates?( or nitrites?)?|nitrites?( or nitrates?)?|sodium nitrite|artificial (flavou?rs?( or colou?rs?)?|colou?rs?( or flavou?rs?)?|dyes?|sweeteners?|preservatives?)|high fructose corn syrup|hfcs|bha( or bht)?|bht( or bha)?|tbhq|msg|monosodium glutamate|carrageenan|sucralose( or aspartame)?|aspartame( or sucralose)?|seed oils?|(canola|soybean|corn|sunflower|safflower)( or (canola|soybean|corn|sunflower|safflower))? oils?|bromated\s+flour|citric acid)\b(\s+added)?/g,
     " ",
   );
+  s = s.replace(/\b(?:un|non|never)\s*bromated(?:\s+wheat)?(?:\s+flour)?\b/g, " ");
   s = s.replace(
     /\b(nitrite|nitrate|carrageenan|msg|bha|bht|paraben|dye|seed\s+oil)\s*-?\s*free\b/g,
     " ",
@@ -859,6 +862,10 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   ) {
     return { caloriesKcal100g: 245, sugarsG100g: 4.0, saturatedFatG100g: 0.8, sodiumMg100g: 230, fiberG100g: 6.5, proteinG100g: 9.5, fruitsVegNutsPct: 20 };
   }
+  // 14d. Boxed Macaroni & Cheese / Shells & Cheddar
+  if (/\b(mac(?:aroni)?\s*(?:&|and)\s*cheese|shells?\s*(?:&|and)\s*(?:real\s+aged\s+|white\s+)?cheddar|mac\s+n\s+cheese)\b/.test(combined)) {
+    return { caloriesKcal100g: 375, sugarsG100g: 5.5, saturatedFatG100g: 3.5, sodiumMg100g: 750, fiberG100g: 2.5, proteinG100g: 13.5, fruitsVegNutsPct: 0 };
+  }
   // 15. Ingredient-order heuristic: if Sugar/Syrup/Honey/Maple/Agave is in the first 3 ingredients
   if (/(?<!no\s+)\b(sugar(?!\s+snap|\s+kelp|\s+free|\s+added|\s+alcohol)|cane sugar|brown sugar|coconut sugar|corn syrup|high fructose corn syrup|dextrose|fructose|maltose|maple syrup|honey|agave|molasses)\b/.test(top3)) {
     return { caloriesKcal100g: 370, sugarsG100g: 22, saturatedFatG100g: 5.0, sodiumMg100g: 260, fiberG100g: 1.5, proteinG100g: 4.0, fruitsVegNutsPct: 0 };
@@ -910,7 +917,7 @@ export function scoreProductYuka(
   // Organic sugar is still sugar — never exempt organic cane sugar from top-3 added sugar!
   // Guard "sugar snap peas", "sugar kelp", "sugar free", and "no sugar added" against false positives.
   const hasTop3AddedSugar =
-    /(?<!no\s+)\b(corn syrup|high fructose corn syrup|dextrose|fructose|maltose|frosting|icing|liquid sugar|invert sugar|sugar(?!\s+snap|\s+kelp|\s+free|\s+added|\s+alcohol)|cane sugar|brown sugar|coconut sugar|maple syrup|honey|agave|molasses)\b/.test(top3);
+    /(?<!no\s+)\b(corn syrup|high fructose corn syrup|glucose syrup|(?:brown )?rice syrup|tapioca syrup|oat syrup|sorghum syrup|date syrup|malt syrup|barley malt syrup|cane syrup|golden syrup|dextrose|fructose|sucrose|maltose|frosting|icing|liquid sugar|invert sugar|sugar(?!\s+snap|\s+kelp|\s+free|\s+added|\s+alcohol)|cane sugar|brown sugar|coconut sugar|maple syrup|honey|agave(?!\s+inulin)|molasses)\b/.test(top3);
 
   const isBeverage =
     /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|simply\s+lemonade|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|suja|v8|nature'?s\s+nectar|lemonade|limeade|sweet\s+tea|iced\s+tea|green\s+tea|black\s+tea|yerba\s+mate|guayaki|guayakí|clean\s+cause|guru|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|ito\s+en|just\s+ice\s+tea|cold\s+brew|stok|frappuccino|doubleshot|dunkin|la\s+colombe|(?<!baking\s+)soda(?!\s+crackers?)|cola|pepsi|coke|coca[- ]?cola|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|zevia|culture\s+pop|gatorade|gatorlyte|powerade|bodyarmor|prime|red\s*bull|monster|celsius|alani|ghost\s+(?:energy|legend)|c4\s+(?:energy|performance|smart|original|ultimate|pre)|bang\s+energy|reign|rockstar|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|sports?\s+drink|energy\s+drink|electrolyte|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sparkling\s+ice|bai|kombucha|olipop|poppi|spindrift|la\s*croix|waterloo|bubly|polar\s+seltzer|nixie|hint\s+water|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spring\s+water|mineral\s+water|artesian\s+water|purified\s+water|alkaline\s+water|coconut\s+water|harmless\s+harvest|vita\s+coco|sparkling\s+water|seltzer|club\s+soda)\b/i.test(titleAndIng) &&
@@ -1000,7 +1007,7 @@ export function scoreProductYuka(
   const isPureButterOrGhee =
     !isWholeFood &&
     /\b(butter|kerrygold|ghee|land o'? ?lakes)\b/i.test(titleAndIng) &&
-    !/\b(peanut|almond|cashew|sunflower|pumpkin|sesame|tahini|hazelnut|macadamia|pistachio|walnut|pecan|nut\s+butter|seed\s+butter|cookie|cocoa|shea|apple|buttermilk|butterfinger|potato\w*|lettuce|squash|beans?|peas|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
+    !/\b(peanut|almond|cashew|sunflower|pumpkin|sesame|tahini|hazelnut|macadamia|pistachio|walnut|pecan|nut\s+butter|seed\s+butter|cookie|cocoa|shea|apple|buttermilk|butterfinger|potato\w*|lettuce|squash|beans?|peas|clam|chowder|soup|bisque|pasta|macaroni|shells|cheese|cheddar|crackers?|bread|rolls?|buns?|bagels?|waffles?|pancakes?|croissants?|muffins?|cakes?|pies?|pastry|pastries|popcorn|pretzels?|chips|candy|candies|caramel|toffee|fudge|sauce|alfredo|ranch|dressing|ramen|noodles?|chicken|turkey|beef|pork|shrimp|fish|vegetables?|broccoli|corn)\b/i.test(titleAndIng);
 
   const isWholeMilk =
     /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
@@ -1112,7 +1119,7 @@ export function scoreProductYuka(
   // strictness deduction per matched 2x additive so toggling Family Watchlist preferences visibly updates the score and pill.
   const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore);
   let finalScore = yukaPillarScore;
-  if (hasHighRisk || seedOilHits.length >= 2) {
+  if (hasHighRisk || seedOilHits.length >= 2 || (isBeverage && hasTop3AddedSugar && sugars >= 5)) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
     // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
@@ -1229,7 +1236,8 @@ export function scoreProductYuka(
   // High 4 Fix: Factual sugar/carbohydrate summary without blood-glucose ("Spike") predictions or unmeasured calorie claims
   const hasAddedSweetenerOrSyrup =
     base.flagged.some((f) => f.category === "hfcs") ||
-    /\b(maltodextrin|dextrose|corn syrup|glucose syrup|cane sugar|brown sugar|coconut sugar|invert sugar|maple syrup|honey|agave|molasses)\b/i.test(base.normalizedIngredients);
+    hasTop3AddedSugar ||
+    /(?<!no\s+)\b(maltodextrin|dextrose|corn syrup|glucose syrup|(?:brown )?rice syrup|tapioca syrup|oat syrup|sorghum syrup|date syrup|malt syrup|barley malt syrup|cane syrup|golden syrup|cane sugar|brown sugar|coconut sugar|invert sugar|liquid sugar|sugar(?!\s+snap|\s+kelp|\s+free|\s+added|\s+alcohol)|fructose|sucrose|maltose|maple syrup|honey|agave(?!\s+inulin)|molasses)\b/i.test(base.normalizedIngredients);
   const hasRefinedCarbBase =
     /\b(enriched\s+(?:wheat\s+)?flour|bleached\s+flour|corn\s*starch|tapioca\s+starch|potato\s+starch|cassava\s+flour|white\s+rice\s+flour)\b/i.test(base.normalizedIngredients);
 
@@ -1240,13 +1248,13 @@ export function scoreProductYuka(
     | "High Sugar / Carb"
     | undefined = isNonFoodItem
     ? undefined
-    : hasMeasuredSugars || isWholeFood || isBeverage
+    : hasMeasuredSugars || isWholeFood || isBeverage || hasAddedSweetenerOrSyrup
       ? "Low Sugar / Carb"
       : "No Added Sugar in Ingredients";
   let glucoseColor: RatingColor | undefined = isNonFoodItem ? undefined : "green";
   let glucoseNote: string | undefined = isNonFoodItem
     ? undefined
-    : hasMeasuredSugars || isWholeFood || isBeverage
+    : hasMeasuredSugars || isWholeFood || isBeverage || hasAddedSweetenerOrSyrup
       ? "Sugar & refined-carb note: Low added sugar and minimal refined starch in the ingredient list."
       : "Sugar & refined-carb note: No added sugars or refined starches detected in the ingredient list (total sugars not measured).";
 

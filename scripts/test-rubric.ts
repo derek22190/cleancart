@@ -1252,6 +1252,104 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       falsePositiveAlerts.length === 0
   );
 
+  // Final sign-off regression checks: Vitamin E IU vs E150/E110, calcium phosphates vs sodium/potassium phosphates,
+  // non-bromated flour, glucose/rice/tapioca syrups, variant guard sugar/fat rules, Guayaki Enlighten Mint vs Terere,
+  // Annie's Shells & Real Aged Cheddar 63/100, 0 pooled drink titles, and 100% swap provenance
+  const vitEIuCheck = scoreIngredients("Purified Water, Vitamin C 250 mg, Vitamin E 150 IU, Vitamin E (d-alpha-tocopherol) 110 IU.");
+  const realENumberCheck = scoreIngredients("Carbonated Water, E150d, E110.");
+  check(
+    "Vitamin E 150 IU / 110 IU never false-positives on E150 caramel color or E110 Yellow 6, while E150d and E110 remain flagged",
+    vitEIuCheck.score === 100 &&
+      vitEIuCheck.flagged.length === 0 &&
+      realENumberCheck.flagged.some((f) => f.id === "caramelcolor") &&
+      realENumberCheck.flagged.some((f) => f.id === "yellow6")
+  );
+
+  const caPhosphateCheck = scoreIngredients("Filtered Water, Almonds, Tricalcium Phosphate, Dicalcium Phosphate, Calcium Phosphate, Sea Salt.");
+  const naKPhosphateCheck = scoreIngredients("Water, Trisodium Phosphate, Dipotassium Phosphate.");
+  check(
+    "Calcium fortifiers (tricalcium/dicalcium/calcium phosphate) are not flagged as synthetic sodium/potassium phosphates",
+    caPhosphateCheck.score === 100 &&
+      caPhosphateCheck.flagged.length === 0 &&
+      naKPhosphateCheck.flagged.some((f) => f.id === "naphosphate")
+  );
+
+  const nonBromatedCheck = scoreIngredients("Unbleached Non Bromated Wheat Flour, Unbromated Flour, Water, Sea Salt.");
+  const bromatedCheck = scoreIngredients("Enriched Bromated Wheat Flour, Water, Salt.");
+  check(
+    "Non bromated / unbromated flour (with space or hyphen) never triggers Potassium Bromate",
+    nonBromatedCheck.score === 100 &&
+      nonBromatedCheck.flagged.length === 0 &&
+      bromatedCheck.flagged.some((f) => f.id === "kbromate")
+  );
+
+  const syrupBarCheck = scoreProductYuka(
+    "Organic Brown Rice Syrup, Organic Tapioca Syrup, Glucose Syrup, Rolled Oats, Roasted Peanuts.",
+    {},
+    [],
+    { productTitle: "Chewy Granola Bar" },
+  );
+  check(
+    "Glucose syrup is flagged under corn/glucose syrup and rice/tapioca/glucose syrups never claim No Added Sugar in Ingredients",
+    syrupBarCheck.flagged.some((f) => f.id === "cornsyrup") &&
+      syrupBarCheck.yukaBreakdown?.glucoseImpact !== "No Added Sugar in Ingredients"
+  );
+
+  check(
+    "Variant guard enforces dairy fat %, unsweetened plant milk, and zero-sugar drink modifiers while allowing inherently zero-sugar brands",
+    !passesVariantGuard("Whole Milk", "Great Value 2% Reduced Fat Milk") &&
+      !passesVariantGuard("2% Milk", "Great Value Whole Milk") &&
+      !passesVariantGuard("Monster Energy", "Monster Energy Zero Ultra") &&
+      !passesVariantGuard("Silk Almondmilk", "Silk Unsweetened Almondmilk") &&
+      passesVariantGuard("Zevia Cola", "Zevia Zero Sugar Cola Soda")
+  );
+
+  const guayakiMint = matchDrinkCatalog("Guayaki Enlighten Mint Yerba Mate");
+  const guayakiTerere = matchDrinkCatalog("Guayaki Unsweetened Traditional Terere");
+  const guayakiMintScore = guayakiMint
+    ? scoreProductYuka(guayakiMint.ingredients, {}, [], { ...guayakiMint.nutrition, productTitle: guayakiMint.title })
+    : null;
+  const guayakiTerereScore = guayakiTerere
+    ? scoreProductYuka(guayakiTerere.ingredients, {}, [], { ...guayakiTerere.nutrition, productTitle: guayakiTerere.title })
+    : null;
+  const monsterSwap = resolveSwap({ score: 15, productTitle: "Monster Energy Drink", store: "walmart" });
+  check(
+    "Guayaki Enlighten Mint reflects 28g cane sugar (49/100 Poor), while Unsweetened Traditional Terere scores 100/100 and serves as the clean energy swap",
+    Boolean(
+      guayakiMint &&
+        guayakiMint.nutrition.sugarsG100g === 6.1 &&
+        guayakiMintScore?.score === 49 &&
+        guayakiMintScore?.rating === "Poor" &&
+        guayakiTerere &&
+        guayakiTerere.nutrition.sugarsG100g === 0 &&
+        guayakiTerereScore?.score === 100 &&
+        monsterSwap?.name.includes("Unsweetened Traditional Tereré") &&
+        monsterSwap?.score === 100
+    )
+  );
+
+  const anniesLookup = await lookupIngredients({ productTitle: "Annie's Organic Grass-Fed Shells & Real Aged Cheddar" });
+  const anniesScore = anniesLookup
+    ? scoreProductYuka(anniesLookup.ingredients, {}, [], { ...anniesLookup.nutrition, productTitle: anniesLookup.productTitle })
+    : null;
+  const kraftMacSwap = resolveSwap({ score: 22, productTitle: "Kraft Macaroni & Cheese Dinner", store: "walmart" });
+  check(
+    "Annie's Organic Grass-Fed Shells & Real Aged Cheddar reflects US label nutrition and Sodium Phosphate (53/100 Mediocre)",
+    Boolean(
+      anniesLookup &&
+        anniesScore?.score === 53 &&
+        anniesScore?.rating === "Mediocre" &&
+        kraftMacSwap?.score === 53
+    )
+  );
+
+  const allSwaps = [...Object.values(CLEAN_ALTERNATIVES), ...EXACT_PRODUCT_ALTERNATIVES.map((e) => e.alt)];
+  check(
+    "Catalog sign-off: 0 pooled multi-flavor titles in DRINKS_CATALOG and 100% valid provenance on all swaps",
+    DRINKS_CATALOG.every((item) => !/\([^)]*,[^)]*\)/.test(item.title)) &&
+      allSwaps.every((alt) => hasValidCatalogProvenance(alt.sourceUrl, alt.verifiedAt))
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

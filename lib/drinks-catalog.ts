@@ -469,7 +469,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "alani-nu-energy",
-    title: "Alani Nu Energy Drink (Cosmic Stardust, Cherry Slush, Juicy Peach), 12 fl oz",
+    title: "Alani Nu Cosmic Stardust Energy Drink, 12 fl oz",
     brand: "Alani Nu",
     category: "Energy Drinks",
     description:
@@ -504,7 +504,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "ghost-energy",
-    title: "Ghost Energy Drink (Sour Patch Kids Redberry, Blue Raspberry, Warheads), 16 fl oz",
+    title: "Ghost Energy Drink Sour Patch Kids Redberry, 16 fl oz",
     brand: "Ghost",
     category: "Energy Drinks",
     description:
@@ -537,7 +537,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "c4-performance-energy",
-    title: "C4 Performance Energy Drink (Frozen Bombsicle, Skittles, Starburst), 16 fl oz",
+    title: "C4 Performance Energy Drink Frozen Bombsicle, 16 fl oz",
     brand: "C4 Energy",
     category: "Energy Drinks",
     description:
@@ -570,7 +570,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "bang-energy",
-    title: "Bang Energy Drink (Blue Razz, Peach Mango, Radical Skadattle), 16 fl oz",
+    title: "Bang Energy Drink Blue Razz, 16 fl oz",
     brand: "Bang Energy",
     category: "Energy Drinks",
     description:
@@ -594,7 +594,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "reign-energy",
-    title: "Reign Total Body Fuel Energy Drink (Orange Dreamsicle, White Gummy Bear), 16 fl oz",
+    title: "Reign Total Body Fuel Orange Dreamsicle Energy Drink, 16 fl oz",
     brand: "Reign",
     category: "Energy Drinks",
     description:
@@ -618,7 +618,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "rockstar-pure-zero",
-    title: "Rockstar Pure Zero Energy Drink (Punched, Silver Ice, Tangerine Mango), 16 fl oz",
+    title: "Rockstar Pure Zero Silver Ice Energy Drink, 16 fl oz",
     brand: "Rockstar",
     category: "Energy Drinks",
     description:
@@ -667,7 +667,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "prime-energy",
-    title: "Prime Energy Drink (Ice Pop, Blue Raspberry, Tropical Punch), 12 fl oz",
+    title: "Prime Energy Drink Ice Pop, 12 fl oz",
     brand: "Prime",
     category: "Energy Drinks",
     description:
@@ -715,7 +715,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "zoa-energy",
-    title: "ZOA Zero Sugar Energy Drink (Super Berry, Tropical Punch, White Peach), 12 fl oz",
+    title: "ZOA Zero Sugar Super Berry Energy Drink, 12 fl oz",
     brand: "ZOA Energy",
     category: "Energy Drinks",
     description:
@@ -814,7 +814,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "clean-cause-yerba-mate",
-    title: "Clean Cause Organic Sparkling Yerba Mate Energy Drink (Peach, Blackberry), 16 fl oz",
+    title: "Clean Cause Organic Peach Sparkling Yerba Mate Energy Drink, 16 fl oz",
     brand: "Clean Cause",
     category: "Energy Drinks",
     description:
@@ -866,28 +866,60 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "guayaki-organic-yerba-mate",
-    title: "Guayakí Organic Yerba Mate Clean Energy Tea (Enlighten Mint), 15.5 fl oz",
+    title: "Guayakí Organic Yerba Mate Enlighten Mint, 15.5 fl oz",
     brand: "Guayakí",
     category: "Energy Drinks",
     description:
-      "USDA Organic brewed yerba mate tea (140–150mg natural plant caffeine + theobromine + polyphenols) with zero synthetic sweeteners, zero artificial dyes, and zero preservatives.",
+      "USDA Organic brewed yerba mate tea (150mg natural caffeine) sweetened with organic cane sugar and organic honey (28g sugar and 120 kcal per 15.5 fl oz can).",
     keywords: [
       "guayaki",
       "yerba mate",
-      "clean energy",
-      "organic energy drink",
+      "yerba madre",
       "enlighten mint",
+      "enlightenmint",
       "revel berry",
       "bluephoria",
       "energy drink",
     ],
     ingredients:
-      "Purified Water, Organic Brewed Yerba Mate, Organic Peppermint, Organic Honey, Organic Lemon Juice.",
+      "Purified Water, Organic Cane Sugar, Organic Brewed Yerba Mate, Organic Peppermint, Organic Honey, Organic Lemon Juice, Ascorbic Acid.",
     nutrition: {
-      caloriesKcal100g: 6,
-      sugarsG100g: 1.2,
+      caloriesKcal100g: 26.2,
+      sugarsG100g: 6.1,
       saturatedFatG100g: 0,
-      sodiumMg100g: 2,
+      sodiumMg100g: 2.2,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "d",
+      isOrganic: true,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://yerbamadre.com/products/enlightenmint",
+    verifiedAt: "2026-11-09",
+    match: /^(?!.*\b(unsweetened|terere|tereré)\b).*\b(guayak[ií]|yerba\s+madre|yerba\s+mate|enlighten\s*mint|revel\s+berry|bluephoria)\b/i,
+  },
+  {
+    id: "guayaki-unsweetened-traditional-terere",
+    title: "Guayakí Organic Yerba Mate Unsweetened Traditional Tereré, 15.5 fl oz",
+    brand: "Guayakí",
+    category: "Energy Drinks",
+    description:
+      "USDA Organic unsweetened brewed yerba mate tea (140mg natural caffeine, 0g sugar, 5 kcal per 15.5 fl oz can) with zero added sugar, zero artificial sweeteners, and zero preservatives.",
+    keywords: [
+      "guayaki unsweetened",
+      "guayaki terere",
+      "unsweetened yerba mate",
+      "traditional terere",
+      "organic energy drink",
+    ],
+    ingredients:
+      "Purified Water, Organic Brewed Yerba Mate (Purified Water, Organic Yerba Mate), Organic Ascorbic Acid.",
+    nutrition: {
+      caloriesKcal100g: 1.1,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 2.2,
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 80,
@@ -895,9 +927,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://guayaki.com/products/enlighten-mint-15-5-oz",
-    verifiedAt: "2026-11-08",
-    match: /\b(guayak[ií]|yerba\s+mate|enlighten\s+mint|revel\s+berry|bluephoria)\b/i,
+    sourceUrl: "https://guayaki.com/products/unsweetened-traditional-terere",
+    verifiedAt: "2026-11-09",
+    match: /\b(guayak[ií]|yerba\s+madre|yerba\s+mate)\b.*\b(unsweetened|terere|tereré)\b|\b(unsweetened|terere|tereré)\b.*\b(guayak[ií]|yerba\s+madre|yerba\s+mate)\b/i,
   },
 
   /* ======================================================================== */
@@ -905,7 +937,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   /* ======================================================================== */
   {
     id: "c4-original-pre-workout",
-    title: "C4 Original Pre-Workout Powder (Icy Blue Razz, Fruit Punch, Watermelon), 60 Servings",
+    title: "C4 Original Icy Blue Razz Pre-Workout Powder, 60 Servings",
     brand: "Cellucor C4",
     category: "Pre-Workouts & Fitness",
     description:
@@ -939,7 +971,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "ghost-legend-pre-workout",
-    title: "Ghost Legend Pre-Workout Powder (Sour Patch Kids Redberry, Welch's Grape)",
+    title: "Ghost Legend Sour Patch Kids Redberry Pre-Workout Powder",
     brand: "Ghost",
     category: "Pre-Workouts & Fitness",
     description:
@@ -972,7 +1004,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "gorilla-mode-pre-workout",
-    title: "Gorilla Mode Pre-Workout Powder (Bombsicle, Volcano Burst, Fruit Punch)",
+    title: "Gorilla Mode Bombsicle Pre-Workout Powder",
     brand: "Gorilla Mind",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1004,7 +1036,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "ryse-loaded-pre-workout",
-    title: "RYSE Loaded Pre-Workout Powder (Kool-Aid Tropical Punch, SunnyD, Ring Pop)",
+    title: "RYSE Loaded Kool-Aid Tropical Punch Pre-Workout Powder",
     brand: "RYSE Supplements",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1028,7 +1060,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "bucked-up-pre-workout",
-    title: "Bucked Up Pre-Workout Powder (Woke AF, BAMF, Blood Raz, Rocket Pop)",
+    title: "Bucked Up Blood Raz Pre-Workout Powder",
     brand: "Bucked Up",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1052,7 +1084,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "redcon1-total-war-pre-workout",
-    title: "Redcon1 Total War Pre-Workout Powder (Tiger's Blood, Blue Lemonade)",
+    title: "Redcon1 Total War Tiger's Blood Pre-Workout Powder",
     brand: "Redcon1",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1158,7 +1190,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "core-power-elite-fairlife-protein",
-    title: "Core Power Elite by Fairlife 42g High Protein Milk Shake (Chocolate, Vanilla, Strawberry), 14 fl oz",
+    title: "Core Power Elite by Fairlife 42g Chocolate High Protein Milk Shake, 14 fl oz",
     brand: "Core Power Fairlife",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1173,23 +1205,23 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     ingredients:
       "Filtered Lowfat Grade A Milk, Alkalized Cocoa, Natural Flavors, Lactase Enzyme, Acesulfame Potassium, Carrageenan, Cellulose Gel, Cellulose Gum, Monk Fruit Juice Concentrate, Salt, Sucralose, Stevia Leaf Extract, Vitamin A Palmitate, Vitamin D3.",
     nutrition: {
-      caloriesKcal100g: 56,
+      caloriesKcal100g: 55.4,
       sugarsG100g: 1.9,
       saturatedFatG100g: 0.5,
-      sodiumMg100g: 63,
-      fiberG100g: 0.5,
-      proteinG100g: 10.2,
+      sodiumMg100g: 62.6,
+      fiberG100g: 0.2,
+      proteinG100g: 10.1,
       fruitsVegNutsPct: 0,
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://fairlife.com/core-power-elite/chocolate-42g-protein-shake/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /\b(core\s+power.*elite|elite.*core\s+power|fairlife.*(?:elite|42g))\b/i,
   },
   {
     id: "core-power-fairlife-protein",
-    title: "Core Power by Fairlife 26g High Protein Milk Shake (Chocolate, Vanilla), 14 fl oz",
+    title: "Core Power by Fairlife 26g Chocolate High Protein Milk Shake, 14 fl oz",
     brand: "Core Power Fairlife",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1206,34 +1238,34 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "Filtered Lowfat Grade A Milk, Alkalized Cocoa, Natural Flavors, Lactase Enzyme, Acesulfame Potassium, Carrageenan, Cellulose Gel, Cellulose Gum, Monk Fruit Juice Concentrate, Salt, Sucralose, Stevia Leaf Extract, Vitamin A Palmitate, Vitamin D3.",
     nutrition: {
       caloriesKcal100g: 41,
-      sugarsG100g: 1.5,
+      sugarsG100g: 1.4,
       saturatedFatG100g: 0.6,
-      sodiumMg100g: 63,
-      fiberG100g: 0.5,
+      sodiumMg100g: 62.6,
+      fiberG100g: 0.2,
       proteinG100g: 6.3,
       fruitsVegNutsPct: 0,
       nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://fairlife.com/core-power/chocolate-protein-shake/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /^(?!.*\b(elite|42g)\b).*\b(core\s+power|fairlife\s+(?:nutrition\s+plan|protein|core\s+power))\b/i,
   },
   {
     id: "premier-protein-shake",
-    title: "Premier Protein 30g High Protein Shake (Chocolate, Vanilla, Caramel, Cafe Latte), 11 fl oz",
+    title: "Premier Protein 30g Chocolate High Protein Shake, 11 fl oz",
     brand: "Premier Protein",
     category: "Pre-Workouts & Fitness",
     description:
       "Ready-to-drink 30g protein shake formulated with milk protein concentrate, high oleic sunflower oil, sucralose, acesulfame potassium, carrageenan, cellulose gum, and synthetic phosphates.",
     keywords: ["premier protein", "premier shake", "30g protein shake", "protein shake"],
     ingredients:
-      "Water, Milk Protein Concentrate, Calcium Caseinate, Contains Less than 1% of High Oleic Sunflower Oil or Soybean Oil, Natural and Artificial Flavors, Inulin, Cellulose Gel and Cellulose Gum, Salt, Sucralose, Acesulfame Potassium, Carrageenan, Tripotassium Phosphate, Dipotassium Phosphate, Sodium Hexametaphosphate, Vitamin and Mineral Blend.",
+      "Water, Milk Protein Concentrate, Calcium Caseinate, Cocoa Powder (Processed with Alkali), Contains Less than 1% of High Oleic Sunflower Oil or Soybean Oil, Natural and Artificial Flavors, Inulin, Cellulose Gel and Cellulose Gum, Salt, Sucralose, Acesulfame Potassium, Carrageenan, Tripotassium Phosphate, Dipotassium Phosphate, Sodium Hexametaphosphate, Vitamin and Mineral Blend (DL-Alpha-Tocopheryl Acetate [Vitamin E], Zinc Glycinate Chelate, Ferric Orthophosphate, Vitamin A Palmitate, Niacinamide, Phytonadione [Vitamin K1], Potassium Iodide, Cholecalciferol [Vitamin D3], Copper Gluconate, Calcium D-Pantothenate, Manganese Sulfate, Sodium Selenite, Biotin, Sodium Molybdate, Folic Acid, Thiamine Mononitrate [Vitamin B1], Cyanocobalamin [Vitamin B12], Pyridoxine Hydrochloride [Vitamin B6], Riboflavin [Vitamin B2], Chromium Polynicotinate), Magnesium Phosphate, Sodium Ascorbate.",
     nutrition: {
-      caloriesKcal100g: 49,
+      caloriesKcal100g: 49.2,
       sugarsG100g: 0.3,
       saturatedFatG100g: 0.3,
-      sodiumMg100g: 70,
+      sodiumMg100g: 70.8,
       fiberG100g: 0.9,
       proteinG100g: 9.2,
       fruitsVegNutsPct: 0,
@@ -1241,12 +1273,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     sourceUrl: "https://www.premierprotein.com/products/chocolate-shake",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /\b(premier\s+protein)\b/i,
   },
   {
     id: "muscle-milk-protein-shake",
-    title: "Muscle Milk Genuine Protein Shake (Chocolate, Vanilla), 11 fl oz",
+    title: "Muscle Milk Genuine Chocolate Protein Shake, 11 fl oz",
     brand: "Muscle Milk",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1266,12 +1298,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     sourceUrl: "https://www.musclemilk.com/product/muscle-milk-genuine-protein-shake-chocolate/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /\b(muscle\s+milk)\b/i,
   },
   {
     id: "optimum-nutrition-whey",
-    title: "Optimum Nutrition Gold Standard 100% Whey Protein Powder (Double Rich Chocolate, Vanilla)",
+    title: "Optimum Nutrition Gold Standard 100% Whey Double Rich Chocolate Protein Powder",
     brand: "Optimum Nutrition",
     category: "Pre-Workouts & Fitness",
     description:
@@ -1291,7 +1323,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     sourceUrl: "https://www.optimumnutrition.com/en-us/Products/Protein/Shakes-%26-Powders/Gold-Standard-100%25-Whey-Protein/p/gold-standard-100-whey-protein",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /\b(gold\s+standard\s+(?:100%\s+)?whey|optimum\s+nutrition\s+whey)\b/i,
   },
   {
@@ -1326,7 +1358,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Pre-Workouts & Fitness",
     description:
       "Zero-sugar 32g plant-based protein shake formulated with pea protein, organic pumpkin seed protein, chickpea protein, sunflower oil, soluble corn fiber, greens blend, and monk fruit extract — 0g sugar and no cane sugar.",
-    keywords: ["owyn pro elite", "owyn 32g", "owyn pro elite vanilla", "owyn zero sugar"],
+    keywords: ["owyn pro elite", "owyn 32g", "owyn zero sugar"],
     ingredients:
       "Water, OWYN Protein Blend (Pea Protein, Organic Pumpkin Seed Protein, Chickpea Protein), Sunflower Oil, Soluble Corn Fiber, Natural Flavor, Greens Blend (Broccoli, Kale, Spinach), Acacia Gum, Gellan Gum, Sea Salt, Monk Fruit Extract.",
     nutrition: {
@@ -1371,11 +1403,11 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "orgain-organic-protein-shake",
-    title: "Orgain Organic Grass-Fed Clean Protein Shake (Creamy Chocolate, Vanilla Bean), 11 fl oz",
+    title: "Orgain Organic Grass-Fed Clean Protein Shake Creamy Chocolate, 11 fl oz",
     brand: "Orgain",
     category: "Pre-Workouts & Fitness",
     description:
-      "USDA Organic grass-fed dairy or plant protein shake free of sucralose, acesulfame potassium, carrageenan, soy lecithin, and industrial seed oils.",
+      "USDA Organic grass-fed dairy protein shake free of sucralose, acesulfame potassium, carrageenan, soy lecithin, and industrial seed oils.",
     keywords: ["orgain", "orgain protein", "organic protein shake", "clean protein shake", "protein shake"],
     ingredients:
       "Filtered Water, Orgain Organic Grass-Fed Milk Protein Concentrate, Organic Erythritol, Organic Fair Trade Alkalized Cocoa, Organic Acacia, Sea Salt, Organic Monk Fruit Extract, Organic Stevia.",
@@ -1392,7 +1424,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isWholeFood: false,
     },
     sourceUrl: "https://orgain.com/products/organic-grass-fed-clean-protein-shake",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /\b(orgain|clean\s+protein\s+shake|organic\s+protein\s+shake)\b/i,
   },
 
@@ -1961,7 +1993,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "olipop-prebiotic-soda",
-    title: "OLIPOP Prebiotic Soda (Vintage Cola, Strawberry Vanilla, Classic Root Beer), 12 fl oz",
+    title: "OLIPOP Vintage Cola Prebiotic Soda, 12 fl oz",
     brand: "OLIPOP",
     category: "Sodas & Prebiotic Sodas",
     description:
@@ -1996,7 +2028,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "poppi-prebiotic-soda",
-    title: "Poppi Prebiotic Soda (Strawberry Lemon, Orange, Doc Pop, Cherry Limeade), 12 fl oz",
+    title: "Poppi Strawberry Lemon Prebiotic Soda, 12 fl oz",
     brand: "Poppi",
     category: "Sodas & Prebiotic Sodas",
     description:
@@ -2499,27 +2531,27 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "nesquik-trumoo-chocolate-milk",
-    title: "Nesquik Chocolate Milk, 14 fl oz",
+    title: "Nesquik Chocolate Lowfat Milk, 14 fl oz",
     brand: "Nesquik",
     category: "Milk & Dairy Drinks",
     description:
-      "Conventional sweetened chocolate dairy milk formulated with lowfat milk, sugar, alkalized cocoa, carrageenan, and guar gum.",
-    keywords: ["nesquik", "chocolate milk", "strawberry milk", "milk"],
+      "Sweetened lowfat chocolate dairy milk formulated with lowfat milk, sugar, alkalized cocoa, calcium carbonate, cellulose gel, carrageenan, guar gum, and cellulose gum.",
+    keywords: ["nesquik", "chocolate milk", "nesquik chocolate milk", "milk"],
     ingredients:
-      "Lowfat Milk, Sugar, Less than 2% of Cocoa Processed with Alkali, Calcium Carbonate, Cellulose Gel, Natural Flavor, Carrageenan, Salt, Guar Gum, Cellulose Gum, Vitamin A Palmitate, Vitamin D3.",
+      "Lowfat Milk with Vitamin A Palmitate and Vitamin D3 Added, Sugar, Less than 2% of Cocoa Processed with Alkali, Calcium Carbonate, Cellulose Gel, Natural and Artificial Flavors, Carrageenan, Salt, Guar Gum, Cellulose Gum.",
     nutrition: {
-      caloriesKcal100g: 78,
-      sugarsG100g: 10.2,
-      saturatedFatG100g: 0.9,
-      sodiumMg100g: 68,
-      fiberG100g: 0.4,
-      proteinG100g: 3.3,
+      caloriesKcal100g: 62.6,
+      sugarsG100g: 6.7,
+      saturatedFatG100g: 0.7,
+      sodiumMg100g: 55.4,
+      fiberG100g: 0.5,
+      proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
       nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.goodnes.com/nesquik/products/chocolate-lowfat-milk-14-fl-oz-bottle/",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /^(?!.*\b(organic\s+valley|horizon|fairlife|trumoo|tru\s+moo|lactaid|great\s+value|simple\s+truth|good\s*(?:&|and)\s*gather|favorite\s+day|kirkland|silk|oatly|planet\s+oat|almond|soy|oat)\b).*\b(nesquik|chocolate\s+milk)\b/i,
   },
   {
@@ -3249,7 +3281,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "liquid-death-water",
-    title: "Liquid Death Flavored Sparkling Water (Severed Lime, Mango Chainsaw), 19.2 fl oz",
+    title: "Liquid Death Severed Lime Sparkling Water, 19.2 fl oz",
     brand: "Liquid Death",
     category: "Waters & Seltzers",
     description:
@@ -3279,7 +3311,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "nixie-organic-sparkling-water",
-    title: "Nixie Organic Zero-Sugar Sparkling Water (Lime Ginger, Strawberry Hibiscus), 12 fl oz",
+    title: "Nixie Organic Lime Ginger Zero-Sugar Sparkling Water, 12 fl oz",
     brand: "Nixie",
     category: "Waters & Seltzers",
     description:
@@ -3336,7 +3368,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "waterloo-sparkling-water",
-    title: "Waterloo Sparkling Water (Black Cherry, Peach, Watermelon), 12 fl oz",
+    title: "Waterloo Black Cherry Sparkling Water, 12 fl oz",
     brand: "Waterloo",
     category: "Waters & Seltzers",
     description:
@@ -3360,7 +3392,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "bubly-sparkling-water",
-    title: "Bubly Sparkling Water (Blackberry, Cherry, Lime, Grapefruit), 12 fl oz",
+    title: "Bubly Blackberry Sparkling Water, 12 fl oz",
     brand: "Bubly",
     category: "Waters & Seltzers",
     description:
@@ -3384,7 +3416,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "lacroix-waterloo-bubly-polar-seltzer",
-    title: "LaCroix Sparkling Water (Pamplemousse, Lime, Black Razzberry), 12 fl oz",
+    title: "LaCroix Lime Sparkling Water, 12 fl oz",
     brand: "LaCroix",
     category: "Waters & Seltzers",
     description:
@@ -3416,7 +3448,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "bai-antioxidant-infusion",
-    title: "Bai Antioxidant Infusion Flavored Water (Brasilia Blueberry, Molokai Coconut, Kula Watermelon), 18 fl oz",
+    title: "Bai Antioxidant Infusion Brasilia Blueberry Flavored Water, 18 fl oz",
     brand: "Bai",
     category: "Waters & Seltzers",
     description:
@@ -3466,7 +3498,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "vitaminwater-enhanced-water",
-    title: "Glacéau Vitaminwater Original Nutrient-Enhanced Water (XXX, Dragonfruit, Power-C), 20 fl oz",
+    title: "Glacéau Vitaminwater XXX Original Nutrient-Enhanced Water, 20 fl oz",
     brand: "Vitaminwater",
     category: "Waters & Seltzers",
     description:
@@ -3491,7 +3523,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "propel-electrolyte-water",
-    title: "Propel Electrolyte Water Beverage (Berry, Grape, Kiwi Strawberry), 16.9 fl oz",
+    title: "Propel Berry Electrolyte Water Beverage, 16.9 fl oz",
     brand: "Propel",
     category: "Waters & Seltzers",
     description:
@@ -3521,7 +3553,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "sparkling-ice-flavored-water",
-    title: "Sparkling Ice Zero Sugar Sparkling Flavored Water (Black Raspberry, Orange Mango), 17 fl oz",
+    title: "Sparkling Ice Black Raspberry Zero Sugar Sparkling Flavored Water, 17 fl oz",
     brand: "Sparkling Ice",
     category: "Waters & Seltzers",
     description:
@@ -4139,7 +4171,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   /* ======================================================================== */
   {
     id: "powerade-zero",
-    title: "Powerade Zero Sugar Sports Drink (Mixed Berry, Grape), 28 fl oz",
+    title: "Powerade Zero Sugar Mixed Berry Sports Drink, 28 fl oz",
     brand: "Powerade",
     category: "Sports & Electrolyte Drinks",
     description:
@@ -4163,7 +4195,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "gatorade-zero",
-    title: "Gatorade Zero Sugar Sports Drink (Glacier Freeze, Berry), 20 fl oz",
+    title: "Gatorade Zero Sugar Glacier Freeze Sports Drink, 20 fl oz",
     brand: "Gatorade",
     category: "Sports & Electrolyte Drinks",
     description:
@@ -4415,7 +4447,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "bodyarmor-lyte-zero",
-    title: "BodyArmor Lyte Low-Calorie Sports Drink (Peach Mango, Berry), 16 fl oz",
+    title: "BodyArmor Lyte Peach Mango Low-Calorie Sports Drink, 16 fl oz",
     brand: "BodyArmor",
     category: "Sports & Electrolyte Drinks",
     description:
@@ -4440,7 +4472,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "bodyarmor-superdrink",
-    title: "BodyArmor SuperDrink Sports Drink (Fruit Punch, Strawberry Banana), 16 fl oz",
+    title: "BodyArmor SuperDrink Fruit Punch Sports Drink, 16 fl oz",
     brand: "BodyArmor",
     category: "Sports & Electrolyte Drinks",
     description:
@@ -4465,7 +4497,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "prime-hydration",
-    title: "Prime Hydration Drink (Ice Pop, Blue Raspberry, Tropical Punch, Meta Moon), 16.9 fl oz",
+    title: "Prime Hydration Ice Pop Drink, 16.9 fl oz",
     brand: "Prime",
     category: "Sports & Electrolyte Drinks",
     description:
@@ -5336,20 +5368,23 @@ export function hasConflictingBrand(query: string, candidateText: string): boole
   return false;
 }
 
-export function passesVariantGuard(query: string, candidateTitle: string): boolean {
+export function passesVariantGuard(query: string, candidateTitle: string, options?: { allowCleanerSwap?: boolean }): boolean {
   const q = query.toLowerCase();
   const t = candidateTitle.toLowerCase();
+  if (!q.trim()) return true;
   // A pooled flavor title cannot substantiate one requested flavor's formulation.
   const pooled = t.match(/\(([^)]*,[^)]*)\)/)?.[1];
   if (pooled && pooled.split(/[^a-z0-9]+/).some(word => word.length >= 3 && new RegExp("\\b" + word + "\\b").test(q))) return false;
   const flavors = q.match(/\b(vanilla|chocolate|strawberry|raspberry|blueberry|mango|peach|cherry|grape|coconut|caramel|mocha|lemon|lime|orange|watermelon)\b/g) || [];
   if (flavors.some(flavor => !new RegExp("\\b" + flavor + "\\b").test(t))) return false;
   // Percent signs are not word characters: a trailing \b after '%' misses '2% Milk'.
-  if (/\bmilk\b/.test(q)) {
-    if (/\bwhole\s+milk\b/.test(q) && !/\b(whole|full[ -]*fat)\b/.test(t)) return false;
+  if (/\bmilk\b/.test(q) || /\bmilk\b/.test(t)) {
+    if (/\bwhole\b/.test(q) && !/\b(whole|full[ -]*fat)\b/.test(t)) return false;
     const requestedFat = q.match(/(?:^|\s)([012])\s*%(?=\s|$)/)?.[1];
     if (requestedFat && !new RegExp(`(?:^|\\s)${requestedFat}\\s*%(?=\\s|$)`).test(t)) return false;
-    if (/\bwhole\s+milk\b/.test(q) && /(?:^|\s)[012]\s*%|\b(skim|nonfat|fat[ -]*free|reduced[ -]*fat)\b/.test(t)) return false;
+    const candidateFat = t.match(/(?:^|\s)([012])\s*%(?=\s|$)/)?.[1];
+    if (candidateFat && !options?.allowCleanerSwap && !/\bfairlife\b/.test(t) && !new RegExp(`(?:^|\\s)${candidateFat}\\s*%(?=\\s|$)`).test(q) && !/\b(reduced[ -]*fat|low[ -]*fat)\b/.test(q)) return false;
+    if (/\bwhole\b/.test(q) && (/(?:^|\s)[012]\s*%/.test(t) || /\b(skim|nonfat|fat[ -]*free|reduced[ -]*fat|low[ -]*fat)\b/.test(t))) return false;
     if (/\b(skim|nonfat|fat[ -]*free)\b/.test(q) && !/\b(skim|nonfat|fat[ -]*free)\b/.test(t)) return false;
   }
   const variantTokens: [RegExp, RegExp][] = [
@@ -5410,10 +5445,25 @@ export function passesVariantGuard(query: string, candidateTitle: string): boole
     [/\bmatcha\s+green\s+tea\s+latte\b|\bmilk\s+tea\b/, /\bmilk\s+tea\b|\blatte\b/],
     [/\bliquid\s+death\s+mountain\s+water\b/, /\bmountain\s+water\b|\bstill\s+water\b/],
     [/\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\blow\s+sodium\b/, /\bno\s+salt\b|\bsalt[\s-]*free\b|\bunsalted\b|\blow\s+sodium\b/],
-    [/\bno\s+sugar\s+added\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b/, /\bno\s+sugar\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b|\bunsweetened\b|\bdiet\b/],
   ];
   for (const [tRe, qRe] of reverseStrict) {
     if (tRe.test(t) && !qRe.test(q)) return false;
+  }
+  if (!options?.allowCleanerSwap) {
+    if (
+      /\bunsweetened\b/.test(t) &&
+      !/\b(unsweetened|0g\s+sugar|no\s+sugar|sugar[\s-]*free|zero)\b/.test(q) &&
+      !/\b(malk|elmhurst|three\s+trees|stok|ito\s+en|nutpods|harmless\s+harvest|guayak[ií])\b/.test(t)
+    ) {
+      return false;
+    }
+    if (
+      /\b(no\s+sugar\s+added|sugar[\s-]*free|zero\s+sugar|zero\s+ultra)\b/.test(t) &&
+      !/\b(no\s+sugar|sugar[\s-]*free|zero|ultra|unsweetened|diet|white\s+monster|lyte|light|lite)\b/.test(q) &&
+      !/\b(zevia|nixie|sparkling\s+ice|zoa|rockstar\s+pure\s+zero|powerade\s+zero|gatorade\s+zero|vitaminwater\s+zero)\b/.test(t)
+    ) {
+      return false;
+    }
   }
   return true;
 }
