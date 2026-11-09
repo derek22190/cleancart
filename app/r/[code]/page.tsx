@@ -17,6 +17,17 @@ export default function ReferralLandingPage({
   useEffect(() => {
     try {
       localStorage.setItem("heybroc_referred_by", cleanCode);
+      if (!cleanCode.startsWith("BROC-")) {
+        localStorage.setItem(
+          "cleancart_creator_v1",
+          JSON.stringify({ code: cleanCode, name: cleanCode }),
+        );
+        void fetch("/api/influencers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "track", code: cleanCode, event: "click" }),
+        }).catch(() => {});
+      }
     } catch {
       /* ignore storage errors */
     }

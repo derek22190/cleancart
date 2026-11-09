@@ -42,14 +42,27 @@ async function snapshot() {
  * GET /api/influencers?code=XYZ   -> validate a creator code on the paywall (never auto-creates)
  */
 export async function GET(request: Request) {
-  const code = new URL(request.url).searchParams.get("code");
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
   if (code) {
     const c = await getCreator(code);
     if (!c) {
       return NextResponse.json({ ok: false, error: "Invalid creator code." }, { status: 404, headers: CORS });
     }
     return NextResponse.json(
-      { ok: true, creator: { code: c.code, name: c.name } },
+      {
+        ok: true,
+        creator: {
+          code: c.code,
+          name: c.name,
+          commissionPct: c.commissionPct,
+          clicks: c.clicks,
+          trials: c.trials,
+          paidAnnual: c.paidAnnual,
+          paidMonthly: c.paidMonthly,
+          commissionOwed: c.commissionOwed,
+        },
+      },
       { status: 200, headers: CORS },
     );
   }
@@ -63,6 +76,7 @@ export async function GET(request: Request) {
  * POST actions:
  *  Public (unauthenticated):
  *   { action: "track", code, event: "click" } -> increments click on existing creator only, returns { ok, creator: { code, name } }
+ *   { action: "self_register", code, name? }  -> creates a new creator at default 35% commission (never overwrites existing creators)
  *  Admin (requires Bearer HEYBROC_ADMIN_SECRET):
  *   { action: "create", code, name?, commissionPct? }
  *   { action: "update", code, commissionPct?, name? }
@@ -84,12 +98,47 @@ export async function POST(request: Request) {
 
   const isAdmin = isAdminAuthorized(request);
   const isPublicClickTrack = body.action === "track" && body.event === "click";
+  const isSelfRegister = body.action === "self_register";
 
-  if (!isAdmin && !isPublicClickTrack) {
+  if (!isAdmin && !isPublicClickTrack && !isSelfRegister) {
     return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401, headers: CORS });
   }
 
   try {
+    if (!isAdmin && isSelfRegister) {
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        request.headers.get("x-real-ip") ||
+        "anon";
+      if (!checkRateLimit(`inf-selfreg:${ip}`, 10)) {
+        return NextResponse.json({ ok: false, error: "Too many attempts. Please wait a minute." }, { status: 429, headers: CORS });
+      }
+      const rawCode = (body.code || "").trim().toUpperCase().replace(/[^A-Z0-9_]/g, "").slice(0, 24);
+      if (rawCode.length < 3) {
+        return NextResponse.json(
+          { ok: false, error: "Choose a code with at least 3 letters or numbers (e.g. SARAHHAULS)." },
+          { status: 400, headers: CORS },
+        );
+      }
+      const existing = await getCreator(rawCode);
+      if (existing) {
+        return NextResponse.json(
+          { ok: true, alreadyExisted: true, creator: existing },
+          { headers: CORS },
+        );
+      }
+      const cleanName = (body.name || rawCode).trim().slice(0, 60) || rawCode;
+      const created = await createCreator({
+        code: rawCode,
+        name: cleanName,
+        commissionPct: PRICING.defaultCommissionPct,
+      });
+      return NextResponse.json(
+        { ok: true, alreadyExisted: false, creator: created },
+        { headers: CORS },
+      );
+    }
+
     if (!isAdmin && isPublicClickTrack) {
       const ip =
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
