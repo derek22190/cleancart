@@ -1,5 +1,5 @@
 import { scoreProductYuka, type ScoreResult } from "./rubric";
-import { resolveSwap, type SwapResult } from "./swaps";
+import { resolveSwap, type RetailerId, type SwapResult } from "./swaps";
 
 export interface SeoProductEntry {
   slug: string;
@@ -64,7 +64,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     category: "Deli Meat",
     searchVolumeTag: "#1 Deli Meat Ingredient Check",
     ingredients:
-      "Turkey Breast, Water, Cultured Dextrose, Modified Cornstarch, Contains Less than 2% of Salt, Vinegar, Cultured Celery Juice, Sodium Phosphates, Cherry Powder, Caramel Color.",
+      "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Vinegar, Salt, Cultured Dextrose, Sugar, Sodium Phosphates, Carrageenan, Caramel Color.",
     sourceUrl: "https://www.oscarmayer.com/product/00044700075036/deli-fresh-oven-roasted-turkey-breast-sliced-lunch-meat",
     verifiedAt: "2026-11-08",
   },
@@ -207,7 +207,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     category: "Kids Drinks",
     searchVolumeTag: "#1 Kids Juice Pouch Search",
     ingredients:
-      "Water, Sugar, Pear and Grape Juice Concentrate, Citric Acid, Strawberry and Kiwi Juice Concentrate, Natural Flavor, Monk Fruit Concentrate.",
+      "Water, Sugar, Pear and Grape Juice Concentrate, Citric Acid, Strawberry and Kiwi Juice Concentrate, Natural Flavor.",
     sourceUrl: "https://www.myfoodandfamily.com/brands/capri-sun/product/00087684001059",
     verifiedAt: "2026-11-08",
   },
@@ -297,7 +297,10 @@ export interface EvaluatedSeoProduct {
   imageUrl: string;
 }
 
-export function evaluateSeoProduct(entry: SeoProductEntry): EvaluatedSeoProduct {
+export function evaluateSeoProduct(
+  entry: SeoProductEntry,
+  store: RetailerId = "walmart",
+): EvaluatedSeoProduct {
   const result = scoreProductYuka(entry.ingredients, {}, [], {
     productTitle: `${entry.brand} ${entry.title}`,
   });
@@ -307,7 +310,7 @@ export function evaluateSeoProduct(entry: SeoProductEntry): EvaluatedSeoProduct 
     score: result.score,
     watchlist: {},
     familyWatchlist: [],
-    store: "walmart",
+    store,
   });
   return {
     entry,

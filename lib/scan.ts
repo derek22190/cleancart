@@ -219,28 +219,7 @@ export function parseStore(s?: unknown): Store {
   return typeof s === "string" && (STORES as string[]).includes(s) ? (s as Store) : "walmart";
 }
 
-const ipHits = new Map<string, { count: number; resetAt: number }>();
-
-export function checkRateLimit(ip: string, limitPerMin = 90): boolean {
-  const now = Date.now();
-  const entry = ipHits.get(ip);
-  if (!entry || now > entry.resetAt) {
-    if (ipHits.size > 5000) {
-      for (const [k, v] of ipHits) {
-        if (now > v.resetAt) ipHits.delete(k);
-        if (ipHits.size <= 4000) break;
-      }
-      if (ipHits.size > 5000) {
-        const oldest = ipHits.keys().next().value;
-        if (oldest !== undefined) ipHits.delete(oldest);
-      }
-    }
-    ipHits.set(ip, { count: 1, resetAt: now + 60_000 });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= limitPerMin;
-}
+export { checkRateLimit, checkRateLimitAsync } from "./rate-limit";
 
 export function detectStoreFromUrl(text: string): Store | undefined {
   const m = text.match(/https?:\/\/(?:www\.|m\.|new\.|shop\.)?([a-z0-9.-]+)/i);

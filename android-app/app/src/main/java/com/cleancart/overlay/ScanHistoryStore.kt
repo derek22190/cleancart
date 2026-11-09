@@ -159,6 +159,55 @@ object ScanHistoryStore {
 
     private const val MAX_ENTRY_AGE_MS = 90L * 24L * 60L * 60L * 1000L
 
+    fun isEntryFresh(ts: Long, now: Long = System.currentTimeMillis()): Boolean {
+        if (ts <= 0L) return false
+        val ageMs = now - ts
+        return ageMs in 0L..MAX_ENTRY_AGE_MS
+    }
+
+    fun passesVariantGuard(query: String, candidateTitle: String): Boolean {
+        val q = query.lowercase()
+        val t = candidateTitle.lowercase()
+        val rules = listOf(
+            Regex("\\bunflavored\\b") to Regex("\\bunflavored\\b"),
+            Regex("\\bextra\\s+creamy\\b") to Regex("\\bextra\\s+creamy\\b"),
+            Regex("\\bfull\\s+fat\\b") to Regex("\\bfull\\s+fat\\b"),
+            Regex("\\bcookies\\s*(?:&|and|'n)?\\s*cr[eè]me\\b|\\bcookies\\s*(?:&|and|'n)?\\s*cream\\b") to Regex("\\bcookies\\b"),
+            Regex("\\bcool\\s+ranch\\b") to Regex("\\bcool\\s+ranch\\b"),
+            Regex("\\bsimply\\s+nkd\\b|\\bnkd\\b") to Regex("\\bsimply\\s+nkd\\b|\\bnkd\\b"),
+            Regex("\\bpro\\s+elite\\b|\\bcore\\s+power\\s+elite\\b|\\b42\\s*g\\b") to Regex("\\bpro\\s+elite\\b|\\belite\\b|\\b42\\s*g\\b"),
+            Regex("\\b26\\s*g\\b") to Regex("\\b26\\s*g\\b"),
+            Regex("\\bsome\\s+pulp\\b|\\blots\\s+of\\s+pulp\\b|\\bwith\\s+pulp\\b") to Regex("\\bsome\\s+pulp\\b|\\blots\\s+of\\s+pulp\\b|\\bwith\\s+pulp\\b"),
+            Regex("\\bno\\s+pulp\\b|\\bpulp[\\s-]*free\\b") to Regex("\\bno\\s+pulp\\b|\\bpulp[\\s-]*free\\b"),
+            Regex("\\bunsweetened\\b") to Regex("\\bunsweetened\\b|\\b0g\\s+sugar\\b"),
+            Regex("\\bzero\\s+sugar\\b|\\bsugar[\\s-]*free\\b|\\bdiet\\b") to Regex("\\bzero\\b|\\bsugar[\\s-]*free\\b|\\bdiet\\b|\\bunsweetened\\b|\\blyte\\b|\\bultra\\b"),
+            Regex("\\bdoubleshot\\b") to Regex("\\bdoubleshot\\b"),
+            Regex("\\bmountain\\s+water\\b|\\bstill\\s+water\\b") to Regex("\\bmountain\\s+water\\b|\\bstill\\b|\\bspring\\s+water\\b|\\bartesian\\s+water\\b|\\bpurified\\s+water\\b"),
+            Regex("\\bsoy\\s*milk\\b") to Regex("\\bsoy\\s*milk\\b"),
+            Regex("\\boat\\s*milk\\b") to Regex("\\boat\\s*milk\\b"),
+            Regex("\\balmond\\s*milk\\b") to Regex("\\balmond\\s*milk\\b|\\bmilked\\s+almonds\\b"),
+            Regex("\\borganic\\b") to Regex("\\borganic\\b")
+        )
+        for ((qRe, tRe) in rules) {
+            if (qRe.containsMatchIn(q) && !tRe.containsMatchIn(t)) return false
+        }
+        val reverseRules = listOf(
+            Regex("\\bunflavored\\b") to Regex("\\bunflavored\\b"),
+            Regex("\\bextra\\s+creamy\\b") to Regex("\\bextra\\s+creamy\\b"),
+            Regex("\\bclassic\\s+vanilla\\b|\\bvanilla\\s+oatmilk\\b") to Regex("\\bvanilla\\b"),
+            Regex("\\bcookies\\s*(?:&|and|'n)?\\s*cream\\b") to Regex("\\bcookies\\b"),
+            Regex("\\bcool\\s+ranch\\b") to Regex("\\bcool\\s+ranch\\b"),
+            Regex("\\bsimply\\s+nkd\\b") to Regex("\\bsimply\\s+nkd\\b|\\bnkd\\b"),
+            Regex("\\bpro\\s+elite\\b|\\bcore\\s+power\\s+elite\\b") to Regex("\\bpro\\s+elite\\b|\\belite\\b|\\b42\\s*g\\b"),
+            Regex("\\bdoubleshot\\b") to Regex("\\bdoubleshot\\b"),
+            Regex("\\bliquid\\s+death\\s+mountain\\s+water\\b") to Regex("\\bmountain\\s+water\\b|\\bstill\\s+water\\b")
+        )
+        for ((tRe, qRe) in reverseRules) {
+            if (tRe.containsMatchIn(t) && !qRe.containsMatchIn(q)) return false
+        }
+        return true
+    }
+
     private fun parseList(raw: String): List<JSONObject> = runCatching {
         val arr = JSONArray(raw)
         val out = ArrayList<JSONObject>(arr.length())
@@ -167,7 +216,7 @@ object ScanHistoryStore {
         for (i in 0 until arr.length()) {
             val item = arr.optJSONObject(i) ?: continue
             val ts = item.optLong("scannedAtMs", 0L).takeIf { it > 0L } ?: item.optLong("favoritedAtMs", 0L)
-            if (ts <= 0L || now - ts > MAX_ENTRY_AGE_MS) continue
+            if (!isEntryFresh(ts, now)) continue
             val rawTitle = extractTitle(item)
             val key = canonicalKey(rawTitle)
             if (key.isBlank() || !seenKeys.add(key)) continue
@@ -200,6 +249,7 @@ object ScanHistoryStore {
         for ((_, item) in pool) {
             val prod = item.optJSONObject("product")
             val title = extractTitle(item)
+            if (!passesVariantGuard(rawQuery, title)) continue
             val brand = prod?.optString("brand").orEmpty()
             val cat = prod?.optString("category").orEmpty().ifBlank { item.optString("category") }
             val kw = prod?.optString("keywords").orEmpty()
@@ -303,7 +353,7 @@ object ScanHistoryStore {
                 brand = "Marketside",
                 category = "Soups & Chowders",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "yellow",
                 imageUrl = productImageUrl("Marketside New England Clam Chowder 16 oz"),
                 ingredients = "Light Cream, Potatoes, Fish Stock, Sea Clams, Chopped Cockle, Onions, Wheat Flour, Soybean Oil, Butter, Clam Broth, Sea Salt, Celery, Salt Pork, Black Pepper, Worcestershire Sauce, Garlic, Natural Flavors.",
@@ -328,7 +378,7 @@ object ScanHistoryStore {
                 brand = "Campbell's",
                 category = "Soups & Chowders",
                 score = 27,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "yellow",
                 imageUrl = productImageUrl("Campbell's Chunky New England Clam Chowder Soup"),
                 ingredients = "Clam Stock, Potatoes, Clams, Vegetable Oil (Corn, Canola, And/Or Soybean), Celery, Modified Food Starch, Wheat Flour, Salt, Cream, Soy Protein Concentrate, Monosodium Glutamate, Sodium Phosphate, Disodium Inosinate, Disodium Guanylate, Natural Flavoring, Soy Lecithin.",
@@ -570,7 +620,7 @@ object ScanHistoryStore {
                 brand = "Monster Energy",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Monster Energy Zero Ultra White 16 oz"),
                 description = "Zero-sugar carbonated energy drink (150mg caffeine) sweetened with erythritol, sucralose, and acesulfame potassium.",
@@ -599,7 +649,7 @@ object ScanHistoryStore {
                 brand = "Red Bull",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 30,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Red Bull Energy Drink Original 8.4 oz"),
                 description = "Classic Austrian energy drink with 80mg caffeine, 1000mg taurine, B-group vitamins, and 27g added sugars per 8.4 fl oz can.",
@@ -623,7 +673,7 @@ object ScanHistoryStore {
                 brand = "Red Bull",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Red Bull Sugarfree Energy Drink 8.4 oz"),
                 description = "Zero-sugar Red Bull with 80mg caffeine and taurine, sweetened with aspartame and acesulfame potassium (Ace-K).",
@@ -676,7 +726,7 @@ object ScanHistoryStore {
                 brand = "C4 Energy",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("C4 Performance Energy Frozen Bombsicle 16 oz"),
                 description = "Pre-workout carbonated energy drink with 200mg caffeine, CarnoSyn beta-alanine, and citrulline, sweetened with sucralose & Ace-K.",
@@ -704,7 +754,7 @@ object ScanHistoryStore {
                 brand = "Cellucor C4",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("C4 Original Pre Workout Powder Icy Blue Razz"),
                 description = "Explosive pre-workout supplement powder with 150mg caffeine, 1.6g beta-alanine, and 1g creatine nitrate; contains Blue 1, sucralose, and Ace-K.",
@@ -732,7 +782,7 @@ object ScanHistoryStore {
                 brand = "Alani Nu",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Alani Nu Energy Drink Cosmic Stardust 12 oz"),
                 description = "Zero-sugar energy drink with 200mg caffeine, L-theanine, and biotin, sweetened with erythritol, sucralose, and Ace-K.",
@@ -760,7 +810,7 @@ object ScanHistoryStore {
                 brand = "Ghost",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Ghost Energy Drink Sour Patch Kids Redberry 16 oz"),
                 description = "Nootropic zero-sugar energy drink with 200mg natural caffeine, Alpha-GPC, and L-carnitine; sweetened with sucralose & Ace-K.",
@@ -824,7 +874,7 @@ object ScanHistoryStore {
                 brand = "Core Power by Fairlife",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Core Power Fairlife 26g Protein Milk Shake Chocolate"),
                 description = "Ready-to-drink post-workout protein recovery shake made from ultra-filtered milk (26g protein); contains carrageenan, sucralose, and Ace-K.",
@@ -880,7 +930,7 @@ object ScanHistoryStore {
                 brand = "Coca-Cola",
                 category = "Sodas & Prebiotic Drinks",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Diet Coke Soda 12 oz Can"),
                 description = "Zero-calorie diet cola sweetened with aspartame, colored with Caramel Color, and preserved with potassium benzoate.",
@@ -1035,7 +1085,7 @@ object ScanHistoryStore {
                 brand = "Prime",
                 category = "Waters, Seltzers & Hydration",
                 score = 42,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Prime Hydration Drink Ice Pop 16.9 oz"),
                 description = "Coconut-water sports hydration beverage with electrolytes and BCAAs, sweetened with sucralose and acesulfame potassium.",
@@ -1129,7 +1179,7 @@ object ScanHistoryStore {
                 brand = "Starbucks",
                 category = "Juices, Smoothies & Tea",
                 score = 30,
-                rating = "Poor",
+                rating = "Mediocre",
                 color = "orange",
                 imageUrl = productImageUrl("Starbucks Frappuccino Mocha Coffee Drink Bottle"),
                 description = "Sweetened bottled iced coffee drink made with reduced-fat milk, coffee, 46g total sugars, and pectin.",
@@ -1277,7 +1327,7 @@ object ScanHistoryStore {
                 title = "Big K Cola Soda, 12 fl oz",
                 brand = "Big K",
                 category = "Sodas & Prebiotic Drinks",
-                score = 0,
+                score = 7,
                 rating = "Bad",
                 color = "red",
                 imageUrl = productImageUrl("Big K Cola Soda 12 fl oz"),
@@ -1290,7 +1340,7 @@ object ScanHistoryStore {
                 ),
                 nutritionScore = 0,
                 nutriGrade = "E",
-                additiveScore = 0,
+                additiveScore = 7,
                 organicScore = 0,
                 swap = swapObj(
                     "OLIPOP Classic Vintage Cola Prebiotic Soda",
@@ -1298,6 +1348,80 @@ object ScanHistoryStore {
                     82,
                     productImageUrl("OLIPOP Vintage Cola"),
                     "Carbonated Water, OLISMART (Cassava Root Fiber, Chicory Root Inulin, Jerusalem Artichoke Inulin, Nopal Cactus, Marshmallow Root, Calendula Flower, Kudzu Root), Apple Juice Concentrate, Cassava Root Syrup, Cane Sugar, Caramel, Natural Vanilla Flavor, Cinnamon Extract, Stevia Leaf, Himalayan Pink Salt, Green Tea Caffeine."
+                )
+            ),
+            sampleItem(
+                title = "Private Selection Angus Beef Patties",
+                brand = "Private Selection",
+                category = "Meat & Poultry",
+                score = 90,
+                rating = "Excellent",
+                color = "green",
+                imageUrl = productImageUrl("Private Selection Angus Beef Patties"),
+                description = "Kroger Private Selection single-ingredient 100% USDA Choice Angus beef chuck patties with zero fillers or preservatives.",
+                keywords = "private selection angus beef patties kroger burger beef chuck",
+                ingredients = "100% USDA Choice Angus Beef.",
+                flagged = emptyList(),
+                nutritionScore = 60,
+                nutriGrade = "A",
+                additiveScore = 30,
+                organicScore = 0,
+                swap = null
+            ),
+            sampleItem(
+                title = "Favorite Day Classic Vanilla Ice Cream",
+                brand = "Favorite Day",
+                category = "Milk & Dairy",
+                score = 33,
+                rating = "Mediocre",
+                color = "orange",
+                imageUrl = productImageUrl("Favorite Day Classic Vanilla Ice Cream"),
+                description = "Target Favorite Day vanilla ice cream containing corn syrup, mono and diglycerides, and carrageenan.",
+                keywords = "favorite day classic vanilla ice cream target vanilla bean ice cream",
+                ingredients = "Milk, Cream, Skim Milk, Sugar, Corn Syrup, Egg Yolks, Natural Flavor, Mono and Diglycerides, Guar Gum, Locust Bean Gum, Carrageenan, Annatto Extract (Color).",
+                flagged = listOf(
+                    FlagInfo("Carrageenan", 25, "high", "Seaweed-derived thickener flagged on our clean-label watchlist."),
+                    FlagInfo("Mono- and Diglycerides", 15, "moderate", "Synthetic lipid emulsifier.")
+                ),
+                nutritionScore = 27,
+                nutriGrade = "D",
+                additiveScore = 6,
+                organicScore = 0,
+                swap = swapObj(
+                    "Alden's Organic Old Fashioned Vanilla Ice Cream",
+                    "Alden's Organic",
+                    84,
+                    productImageUrl("Alden's Organic Old Fashioned Vanilla Ice Cream"),
+                    "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Tapioca Starch."
+                )
+            ),
+            sampleItem(
+                title = "Favorite Day Cookies & Cream Ice Cream",
+                brand = "Favorite Day",
+                category = "Milk & Dairy",
+                score = 21,
+                rating = "Bad",
+                color = "red",
+                imageUrl = productImageUrl("Favorite Day Cookies & Cream Ice Cream"),
+                description = "Target Favorite Day cookies & cream ice cream containing wheat flour, soybean/palm oil, soy lecithin, corn syrup, and carrageenan.",
+                keywords = "favorite day cookies & cream cookies and cream ice cream target",
+                ingredients = "Milk, Cream, Sugar, Corn Syrup, Skim Milk, Chocolate Sandwich Cookies (Unbleached Enriched Flour [Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid], Sugar, Soybean and/or Palm Oil, Cocoa Processed with Alkali, Invert Sugar, Corn Flour, Chocolate, Salt, Baking Soda, Soy Lecithin, Natural Flavor), Whey, Mono and Diglycerides, Guar Gum, Cellulose Gum, Carrageenan, Natural Flavor, Vitamin A Palmitate.",
+                flagged = listOf(
+                    FlagInfo("Carrageenan", 25, "high", "Seaweed-derived thickener flagged on our clean-label watchlist."),
+                    FlagInfo("Soybean Oil", 15, "moderate", "Refined industrial seed oil."),
+                    FlagInfo("Palm Oil", 15, "moderate", "Refined tropical oil."),
+                    FlagInfo("Mono- and Diglycerides", 15, "moderate", "Synthetic lipid emulsifier.")
+                ),
+                nutritionScore = 15,
+                nutriGrade = "D",
+                additiveScore = 6,
+                organicScore = 0,
+                swap = swapObj(
+                    "Alden's Organic Cookies & Cream Ice Cream",
+                    "Alden's Organic",
+                    82,
+                    productImageUrl("Alden's Organic Cookies & Cream Ice Cream"),
+                    "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Cookies (Organic Wheat Flour, Organic Cane Sugar, Organic Coconut Oil, Organic Cocoa, Baking Soda, Salt), Organic Vanilla Extract."
                 )
             )
         )

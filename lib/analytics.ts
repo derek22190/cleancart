@@ -202,8 +202,25 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
     snap.byPlatform[platform] = (snap.byPlatform[platform] || 0) + 1;
 
     if (input.store) {
-      const st = input.store.toLowerCase().slice(0, 24);
-      snap.byStore[st] = (snap.byStore[st] || 0) + 1;
+      const ALLOWED_ANALYTICS_STORES = new Set([
+        "walmart",
+        "target",
+        "kroger",
+        "costco",
+        "sams",
+        "bjs",
+        "aldi",
+        "amazon",
+        "instacart",
+        "shipt",
+        "doordash",
+        "ubereats",
+        "search",
+      ]);
+      const st = input.store.toLowerCase().trim().slice(0, 24);
+      if (ALLOWED_ANALYTICS_STORES.has(st)) {
+        snap.byStore[st] = (snap.byStore[st] || 0) + 1;
+      }
     }
 
     const variant = input.variant || (input.properties?.variant === "B" ? "B" : "A");

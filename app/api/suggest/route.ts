@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { DRINKS_CATALOG, hasValidCatalogProvenance } from "@/lib/drinks-catalog";
+import {
+  DRINKS_CATALOG,
+  hasValidCatalogProvenance,
+  isCatalogEntryFresh,
+  passesVariantGuard,
+} from "@/lib/drinks-catalog";
 import { checkRateLimit } from "@/lib/scan";
 import { scoreProductYuka, type NutritionInput } from "@/lib/rubric";
 import { CLEAN_ALTERNATIVES, EXACT_PRODUCT_ALTERNATIVES } from "@/lib/swaps";
@@ -140,7 +145,7 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     title: "Hidden Valley Original Ranch Salad Dressing",
     brand: "Hidden Valley",
     ingredients:
-      "Vegetable Oil (Soybean or Canola), Water, Sugar, Salt, Buttermilk, Egg Yolk, Natural Flavors, Phosphoric Acid, Xanthan Gum, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid, Calcium Disodium EDTA.",
+      "Vegetable Oil (Soybean or Canola Oil), Water, Sugar, Salt, Less than 2% of: Buttermilk, Egg Yolk, Garlic, Onion, Monosodium Glutamate, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Natural and Artificial Flavor, Disodium Inosinate, Disodium Guanylate, Sorbic Acid, Calcium Disodium EDTA.",
     sourceUrl: "https://www.hiddenvalley.com/products/ranch-condiments/classic-ranch/original-ranch/",
     verifiedAt: "2026-11-08",
   },
@@ -194,6 +199,14 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
+    title: "Favorite Day Cookies & Cream Ice Cream",
+    brand: "Favorite Day",
+    ingredients:
+      "Milk, Cream, Sugar, Corn Syrup, Skim Milk, Chocolate Sandwich Cookies (Unbleached Enriched Flour [Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid], Sugar, Soybean and/or Palm Oil, Cocoa Processed with Alkali, Invert Sugar, Corn Flour, Chocolate, Salt, Baking Soda, Soy Lecithin, Natural Flavor), Whey, Mono and Diglycerides, Guar Gum, Cellulose Gum, Carrageenan, Natural Flavor, Vitamin A Palmitate.",
+    sourceUrl: "https://www.target.com/p/cookies-38-cream-ice-cream-48oz-favorite-day-8482/-/A-81502236",
+    verifiedAt: "2026-11-08",
+  },
+  {
     title: "Big K Cola Soda, 12 fl oz",
     brand: "Big K",
     ingredients:
@@ -237,7 +250,7 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     title: "General Mills Lucky Charms Cereal",
     brand: "General Mills",
     ingredients:
-      "Whole Grain Oats, Sugar, Whole Grain Corn, Corn Starch, Corn Syrup, Dextrose, Contains 2% or Less of: Salt, Modified Corn Starch, Gelatin, Trisodium Phosphate, Spirulina Extract, Turmeric Extract, Annatto Extract, Vegetable and Fruit Juice Color, Natural and Artificial Flavor. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
+      "Whole Grain Oats, Sugar, Whole Grain Corn, Corn Starch, Corn Syrup, Dextrose, Contains 2% or Less of: Salt, Modified Corn Starch, Gelatin, Trisodium Phosphate, Spirulina Extract, Turmeric Extract, Annatto Extract, Vegetable and Fruit Juice Color, Natural Flavor. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
     sourceUrl: "https://www.luckycharms.com/products/lucky-charms",
     verifiedAt: "2026-11-08",
   },
@@ -312,14 +325,14 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     title: "Jif Creamy Peanut Butter",
     brand: "Jif",
     ingredients: "Made From Roasted Peanuts And Sugar, Contains 2% Or Less Of: Molasses, Fully Hydrogenated Vegetable Oils (Rapeseed And Soybean), Mono And Diglycerides, Salt.",
-    sourceUrl: "https://www.jif.com/ peanut-butter/creamy/creamy-peanut-butter".replace(/\s+/g, ""),
+    sourceUrl: "https://www.jif.com/peanut-butter/creamy/creamy-peanut-butter",
     verifiedAt: "2026-11-08",
   },
   {
     title: "Oreo Chocolate Sandwich Cookies",
     brand: "Nabisco",
     ingredients:
-      "Unbleached Enriched Flour, Sugar, Palm or Canola Oil, Cocoa (Processed with Alkali), High Fructose Corn Syrup, Leavening (Baking Soda or Calcium Phosphate), Salt, Soy Lecithin, Chocolate, Artificial Flavor.",
+      "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm or Canola Oil, Cocoa (Processed with Alkali), High Fructose Corn Syrup, Leavening (Baking Soda or Calcium Phosphate), Salt, Soy Lecithin, Chocolate, Artificial Flavor.",
     sourceUrl: "https://www.oreo.com/products/oreo-original",
     verifiedAt: "2026-11-08",
   },
@@ -385,19 +398,35 @@ const FULL_INDEX: SuggestEntry[] = (() => {
   }
   for (const alt of Object.values(CLEAN_ALTERNATIVES)) {
     const title = `${alt.brand} ${alt.name}`.trim();
+    if (title.includes("/") || alt.brand.includes("/")) continue;
     const k = title.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
-      out.push({ title, brand: alt.brand, category: alt.category, ingredients: alt.ingredients });
+      out.push({
+        title,
+        brand: alt.brand,
+        category: alt.category,
+        ingredients: alt.ingredients,
+        sourceUrl: "https://fdc.nal.usda.gov/food-search",
+        verifiedAt: "2026-11-08",
+      });
     }
   }
   for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
     const alt = entry.alt;
     const title = `${alt.brand} ${alt.name}`.trim();
+    if (title.includes("/") || alt.brand.includes("/")) continue;
     const k = title.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
-      out.push({ title, brand: alt.brand, category: alt.category, ingredients: alt.ingredients });
+      out.push({
+        title,
+        brand: alt.brand,
+        category: alt.category,
+        ingredients: alt.ingredients,
+        sourceUrl: "https://fdc.nal.usda.gov/food-search",
+        verifiedAt: "2026-11-08",
+      });
     }
   }
   return out;
@@ -427,6 +456,9 @@ export async function GET(request: Request) {
   const scored: Array<{ entry: SuggestEntry; rank: number }> = [];
 
   for (const entry of FULL_INDEX) {
+    if (!isCatalogEntryFresh(entry.verifiedAt) || !passesVariantGuard(q, entry.title)) {
+      continue;
+    }
     const titleLower = entry.title.toLowerCase();
     const brandLower = entry.brand.toLowerCase();
     const catLower = (entry.category || "").toLowerCase();

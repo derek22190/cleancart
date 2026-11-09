@@ -48,13 +48,17 @@ export interface SubscriptionConsentRecord {
   timestamp: string;
   ip: string;
   sessionId?: string;
+  customerId?: string;
+  subscriptionId?: string;
 }
 
 export async function recordSubscriptionConsent(
   consent: SubscriptionConsentRecord
 ): Promise<void> {
   const cleanSessionId = (consent.sessionId || "").trim();
-  const idPart = (cleanSessionId || consent.email || consent.deviceId || "anon")
+  const cleanEmail = (consent.email || "").trim().toLowerCase();
+  const cleanCustomerId = (consent.customerId || "").trim();
+  const idPart = (cleanSessionId || cleanEmail || consent.deviceId || "anon")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9@._-]/g, "_");
@@ -74,6 +78,56 @@ export async function recordSubscriptionConsent(
     await kvSet(`consent:${cleanSessionId}`, consent, CONSENT_TTL_SECONDS);
     await kvSet(`${CONSENT_KEY_PREFIX}${cleanSessionId}`, consent, CONSENT_TTL_SECONDS);
   }
+  if (cleanEmail) {
+    await kvSet(`consent:email:${cleanEmail}`, consent, CONSENT_TTL_SECONDS);
+    await kvSet(`${CONSENT_KEY_PREFIX}email:${cleanEmail}`, consent, CONSENT_TTL_SECONDS);
+  }
+  if (cleanCustomerId) {
+    await kvSet(`consent:customer:${cleanCustomerId}`, consent, CONSENT_TTL_SECONDS);
+    await kvSet(`${CONSENT_KEY_PREFIX}customer:${cleanCustomerId}`, consent, CONSENT_TTL_SECONDS);
+  }
+}
+
+export async function refreshSubscriptionConsentOnRenewal(params: {
+  sessionId?: string;
+  customerId?: string;
+  email?: string;
+  deviceId?: string;
+  subscriptionId?: string;
+  plan?: PlanId;
+}): Promise<void> {
+  const cleanSessionId = (params.sessionId || "").trim();
+  const cleanCustomerId = (params.customerId || "").trim();
+  const cleanEmail = (params.email || "").trim().toLowerCase();
+  const cleanDeviceId = (params.deviceId || "").trim();
+
+  const existing =
+    (cleanSessionId
+      ? await kvGet<SubscriptionConsentRecord>(`consent:${cleanSessionId}`)
+      : null) ??
+    (cleanCustomerId
+      ? await kvGet<SubscriptionConsentRecord>(`consent:customer:${cleanCustomerId}`)
+      : null) ??
+    (cleanEmail
+      ? await kvGet<SubscriptionConsentRecord>(`consent:email:${cleanEmail}`)
+      : null) ??
+    (cleanDeviceId
+      ? await kvGet<SubscriptionConsentRecord>(
+          `${CONSENT_KEY_PREFIX}latest:${cleanDeviceId}`
+        )
+      : null);
+
+  if (!existing) return;
+
+  await recordSubscriptionConsent({
+    ...existing,
+    sessionId: cleanSessionId || existing.sessionId,
+    customerId: cleanCustomerId || existing.customerId,
+    subscriptionId: params.subscriptionId || existing.subscriptionId,
+    email: cleanEmail || existing.email,
+    deviceId: cleanDeviceId || existing.deviceId,
+    plan: params.plan || existing.plan,
+  });
 }
 
 export function isValidStripeSessionIdFormat(sessionId: string): boolean {
@@ -500,23 +554,9 @@ export async function resolveBillingPortalCustomer(params: {
 
   let verifiedEmail = "";
   let verifiedDeviceId = "";
+  let hasVerifiedDeviceSecret = false;
 
-  if (rawAuthToken) {
-    const { getAuthenticatedUser } = await import("./auth");
-    const authUser = await getAuthenticatedUser(rawAuthToken);
-    if (authUser && authUser.emailVerified !== false) {
-      if (authUser.email) {
-        verifiedEmail = authUser.email.trim().toLowerCase();
-      }
-      if (rawDeviceId && authUser.linkedDevices?.includes(rawDeviceId)) {
-        verifiedDeviceId = rawDeviceId;
-      } else if (authUser.linkedDevices?.[0]) {
-        verifiedDeviceId = authUser.linkedDevices[0];
-      }
-    }
-  }
-
-  if (!verifiedDeviceId && rawDeviceId && rawDeviceId !== "anon-web" && rawDeviceSecret) {
+  if (rawDeviceId && rawDeviceId !== "anon-web" && rawDeviceSecret) {
     const { getExistingDevice, verifyDeviceSecret } = await import("./referrals");
     const existingDevice = await getExistingDevice(rawDeviceId);
     if (
@@ -524,6 +564,34 @@ export async function resolveBillingPortalCustomer(params: {
       verifyDeviceSecret(existingDevice, rawDeviceSecret)
     ) {
       verifiedDeviceId = rawDeviceId;
+      hasVerifiedDeviceSecret = true;
+    }
+  }
+
+  if (rawAuthToken) {
+    const { getAuthenticatedUser } = await import("./auth");
+    const authUser = await getAuthenticatedUser(rawAuthToken);
+    if (authUser && authUser.emailVerified === true) {
+      if (authUser.email) {
+        verifiedEmail = authUser.email.trim().toLowerCase();
+      }
+      if (!verifiedDeviceId) {
+        const candidateLinked =
+          rawDeviceId && authUser.linkedDevices?.includes(rawDeviceId)
+            ? rawDeviceId
+            : authUser.linkedDevices?.[0] || "";
+        if (candidateLinked && candidateLinked !== "anon-web") {
+          const { getExistingDevice } = await import("./referrals");
+          const linkedDev = await getExistingDevice(candidateLinked);
+          const linkedEnt = await getDevicePaidEntitlement(candidateLinked);
+          const emailMatchesOrUnset =
+            !linkedEnt?.customerEmail ||
+            linkedEnt.customerEmail.trim().toLowerCase() === verifiedEmail;
+          if (linkedDev?.deviceSecretHash && emailMatchesOrUnset) {
+            verifiedDeviceId = candidateLinked;
+          }
+        }
+      }
     }
   }
 
@@ -538,6 +606,16 @@ export async function resolveBillingPortalCustomer(params: {
   }
   if (!record && verifiedDeviceId) {
     record = await getDevicePaidEntitlement(verifiedDeviceId);
+  }
+  // Prevent cross-account device hijacking if a device entitlement is bound to a different customerEmail
+  if (
+    record &&
+    record.customerEmail &&
+    verifiedEmail &&
+    record.customerEmail.trim().toLowerCase() !== verifiedEmail &&
+    !hasVerifiedDeviceSecret
+  ) {
+    record = null;
   }
   if (!record && verifiedEmail) {
     record = await getEmailEntitlement(verifiedEmail);

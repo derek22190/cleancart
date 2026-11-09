@@ -835,15 +835,18 @@ export function scoreProductYuka(
   // Require explicit product-level nutrition.isOrganic === true.
   const isOrganic = nutrition.isOrganic === true;
 
-  const isNonFoodItem =
-    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
-      titleAndIng,
-    );
-
   const hasMeasuredCalories = typeof nutrition.caloriesKcal100g === "number" && Number.isFinite(nutrition.caloriesKcal100g);
   const hasMeasuredSugars = typeof nutrition.sugarsG100g === "number" && Number.isFinite(nutrition.sugarsG100g);
   const hasMeasuredSatFat = typeof nutrition.saturatedFatG100g === "number" && Number.isFinite(nutrition.saturatedFatG100g);
   const hasMeasuredSodium = typeof nutrition.sodiumMg100g === "number" && Number.isFinite(nutrition.sodiumMg100g);
+  const hasAnyMeasuredNutrition =
+    hasMeasuredCalories || hasMeasuredSugars || hasMeasuredSatFat || hasMeasuredSodium || Boolean(nutrition.nutriScoreGrade);
+
+  const isNonFoodItem =
+    (!rawIngredients.trim() && !hasAnyMeasuredNutrition && !isWholeFood) ||
+    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|dishwashing|dishwasher|rinse\s+aid|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|fabric\s+softener|fabric\s+conditioner|dryer\s+sheets?|scent\s+booster|stain\s+remover|air\s+freshener|febreze|glade|candle|wax\s+melt|incense|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|freezer\s+bags?|ziploc|paper\s+plates?|napkins?|facial\s+tissue|kleenex|cotton\s+swabs?|q-tips?|cotton\s+balls?|tampons?|sanitary\s+pads?|pantiliners?|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|serum|cleanser|toner|micellar|retinol|hyaluronic\s+acid|salicylic\s+acid|benzoyl\s+peroxide|witch\s+hazel|eye\s+cream|face\s+mask|lip\s+balm|mascara|foundation|concealer|eyeliner|nail\s+polish|acetone|perfume|cologne|shaving\s+cream|aftershave|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+treats?|cat\s+treats?|kibble|cat\s+litter|kitty\s+litter|purina|pedigree|blue\s+buffalo|fancy\s+feast|friskies|meow\s+mix|iams|greenies|milk-bone|acetaminophen|ibuprofen|naproxen|diphenhydramine|loratadine|cetirizine|fexofenadine|dextromethorphan|guaifenesin|phenylephrine|pseudoephedrine|omeprazole|famotidine|bismuth\s+subsalicylate|loperamide|polyethylene\s+glycol\s+3350|miralax|tylenol|advil|motrin|aleve|zyrtec|claritin|allegra|benadryl|nyquil|dayquil|mucinex|robitussin|pepto-bismol|neosporin|hydrocortisone|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
+      titleAndIng,
+    );
 
   const est = estimateNutritionFromProduct(nutrition.productTitle, rawIngredients);
   const kcal = hasMeasuredCalories ? nutrition.caloriesKcal100g! : (isWholeFood ? 75 : est.caloriesKcal100g);
@@ -1140,11 +1143,13 @@ export function scoreProductYuka(
       ? "Calories Not Measured"
       : kcal <= 5
         ? `Zero / Trace Calories (${Math.round(kcal)} kcal/100g)`
-        : kcal <= 120
-          ? `Low-to-Moderate Calories (${Math.round(kcal)} kcal/100g)`
-          : kcal <= 360
-            ? `Moderate Calories (${Math.round(kcal)} kcal/100g)`
-            : `Calorie-Dense (${Math.round(kcal)} kcal/100g)`;
+        : isBeverage && (sugars >= 5 || hasTop3AddedSugar || kcal >= 30)
+          ? `Liquid Calories (${Math.round(kcal)} kcal/100ml)`
+          : kcal <= 120
+            ? `Low-to-Moderate Calories (${Math.round(kcal)} kcal/100g)`
+            : kcal <= 360
+              ? `Moderate Calories (${Math.round(kcal)} kcal/100g)`
+              : `Calorie-Dense (${Math.round(kcal)} kcal/100g)`;
 
   return {
     ...base,

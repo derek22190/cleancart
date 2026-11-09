@@ -1154,7 +1154,38 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.optimumnutrition.com/en-us/Products/Energy/Pre-Workout/Gold-Standard-Pre-Workout/p/gold-standard-pre-workout",
     verifiedAt: "2026-11-08",
-    match: /\b(gold\s+standard\s+pre[- ]?workout|optimum\s+nutrition.*pre[- ]?workout|\bpre[- ]?workout\b)\b(?!.*\b(c4|ghost|gorilla|ryse|bucked|redcon1|transparent|ora|alani|nitraflex)\b)/i,
+    match: /^(?!.*\b(c4|ghost|gorilla|ryse|bucked|redcon1|transparent|ora|alani|nitraflex)\b).*\b(gold\s+standard\s+pre[- ]?workout|optimum\s+nutrition.*pre[- ]?workout|\bpre[- ]?workout\b)\b/i,
+  },
+  {
+    id: "core-power-elite-fairlife-protein",
+    title: "Core Power Elite by Fairlife 42g High Protein Milk Shake (Chocolate, Vanilla, Strawberry), 14 fl oz",
+    brand: "Core Power Fairlife",
+    category: "Pre-Workouts & Fitness",
+    description:
+      "Ultra-filtered lactose-free 42g high-protein dairy shake sweetened with acesulfame potassium, sucralose, monk fruit, and stevia, stabilized with carrageenan, cellulose gel, and cellulose gum.",
+    keywords: [
+      "core power elite",
+      "fairlife core power elite",
+      "fairlife 42g",
+      "fairlife elite",
+      "42g protein shake",
+    ],
+    ingredients:
+      "Filtered Lowfat Grade A Milk, Alkalized Cocoa, Natural Flavors, Lactase Enzyme, Acesulfame Potassium, Carrageenan, Cellulose Gel, Cellulose Gum, Monk Fruit Juice Concentrate, Salt, Sucralose, Stevia Leaf Extract, Vitamin A Palmitate, Vitamin D3.",
+    nutrition: {
+      caloriesKcal100g: 56,
+      sugarsG100g: 1.9,
+      saturatedFatG100g: 0.5,
+      sodiumMg100g: 63,
+      fiberG100g: 0.5,
+      proteinG100g: 10.2,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://fairlife.com/core-power-elite/chocolate-42g-protein-shake/",
+    verifiedAt: "2026-11-08",
+    match: /\b(core\s+power.*elite|elite.*core\s+power|fairlife.*(?:elite|42g))\b/i,
   },
   {
     id: "core-power-fairlife-protein",
@@ -1162,14 +1193,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     brand: "Core Power Fairlife",
     category: "Pre-Workouts & Fitness",
     description:
-      "Ultra-filtered lactose-free dairy protein shake (26g–42g protein) sweetened with acesulfame potassium and sucralose, stabilized with carrageenan, cellulose gel, and cellulose gum.",
+      "Ultra-filtered lactose-free dairy protein shake (26g protein) sweetened with acesulfame potassium and sucralose, stabilized with carrageenan, cellulose gel, and cellulose gum.",
     keywords: [
       "core power",
-      "core power elite",
       "fairlife protein",
       "fairlife shake",
       "fairlife 26g",
-      "fairlife 42g",
       "fairlife nutrition plan",
       "protein shake",
     ],
@@ -1188,7 +1217,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://fairlife.com/core-power/chocolate-protein-shake/",
     verifiedAt: "2026-11-08",
-    match: /\b(core\s+power|fairlife\s+(?:elite|nutrition\s+plan|protein|core\s+power))\b/i,
+    match: /^(?!.*\b(elite|42g)\b).*\b(core\s+power|fairlife\s+(?:nutrition\s+plan|protein|core\s+power))\b/i,
   },
   {
     id: "premier-protein-shake",
@@ -1438,9 +1467,59 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       nutriScoreGrade: "e",
       isWholeFood: false,
     },
-    sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/original",
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/mexican-coca-cola",
     verifiedAt: "2026-11-08",
     match: /\b(mexican\s+coke|mexican\s+coca[- ]?cola|coca[- ]?cola.*cane\s+sugar)\b/i,
+  },
+  {
+    id: "coca-cola-cherry",
+    title: "Coca-Cola Cherry Soda, 12 fl oz Cans",
+    brand: "Coca-Cola",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Cherry-flavored carbonated cola sweetened with high fructose corn syrup (42g sugar per 12 oz can) and colored with Class IV caramel color.",
+    keywords: ["cherry coke", "coca-cola cherry", "coca cola cherry", "cherry cola"],
+    ingredients:
+      "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
+    nutrition: {
+      caloriesKcal100g: 42,
+      sugarsG100g: 11.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 10,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/cherry",
+    verifiedAt: "2026-11-08",
+    match: /\b(cherry\s+coke|coca[- ]?cola\s+cherry|cherry\s+coca[- ]?cola)\b/i,
+  },
+  {
+    id: "coca-cola-vanilla",
+    title: "Coca-Cola Vanilla Soda, 12 fl oz Cans",
+    brand: "Coca-Cola",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Vanilla-flavored carbonated cola sweetened with high fructose corn syrup (42g sugar per 12 oz can) and colored with Class IV caramel color.",
+    keywords: ["vanilla coke", "coca-cola vanilla", "coca cola vanilla", "vanilla cola"],
+    ingredients:
+      "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
+    nutrition: {
+      caloriesKcal100g: 42,
+      sugarsG100g: 11.8,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 10,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/vanilla",
+    verifiedAt: "2026-11-08",
+    match: /\b(vanilla\s+coke|coca[- ]?cola\s+vanilla|vanilla\s+coca[- ]?cola)\b/i,
   },
   {
     id: "coca-cola-classic",
@@ -1449,7 +1528,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Sodas & Prebiotic Sodas",
     description:
       "Classic carbonated cola sweetened with high fructose corn syrup (39g sugar per 12 oz can) and colored with Class IV caramel color.",
-    keywords: ["coca-cola", "coca cola", "coke", "coke classic", "cherry coke", "vanilla coke", "soda", "cola"],
+    keywords: ["coca-cola", "coca cola", "coke", "coke classic", "soda", "cola"],
     ingredients:
       "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
     nutrition: {
@@ -1465,7 +1544,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/original",
     verifiedAt: "2026-11-08",
-    match: /\b(coca[- ]?cola|coke\s+classic|cherry\s+coke|vanilla\s+coke|\bcoke\b)\b/i,
+    match: /^(?!.*\b(cherry|vanilla|mexican|diet|zero|spiced|orange\s+cream)\b).*\b(coca[- ]?cola|coke\s+classic|\bcoke\b)\b/i,
   },
   {
     id: "pepsi-zero-sugar",
@@ -1538,7 +1617,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000007894",
     verifiedAt: "2026-11-08",
-    match: /\b(pepsi(?:\s+cola|\s+wild\s+cherry)?)\b(?!.*\b(diet|zero|max)\b)/i,
+    match: /^(?!.*\b(diet|zero|max)\b).*\b(pepsi(?:\s+cola|\s+wild\s+cherry)?)\b/i,
   },
   {
     id: "dr-pepper-zero-sugar",
@@ -1611,7 +1690,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.drpepper.com/s/products/dr-pepper",
     verifiedAt: "2026-11-08",
-    match: /\b(dr\.?\s*pepper)\b(?!.*\b(diet|zero)\b)/i,
+    match: /^(?!.*\b(diet|zero)\b).*\b(dr\.?\s*pepper)\b/i,
   },
   {
     id: "mountain-dew-zero-sugar",
@@ -1703,7 +1782,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000007958",
     verifiedAt: "2026-11-08",
-    match: /\b(mountain\s+dew|mtn\s+dew|mt\.?\s+dew|baja\s+blast|code\s+red\s+dew)\b(?!.*\b(diet|zero)\b)/i,
+    match: /^(?!.*\b(diet|zero)\b).*\b(mountain\s+dew|mtn\s+dew|mt\.?\s+dew|baja\s+blast|code\s+red\s+dew)\b/i,
   },
   {
     id: "starry-zero-sugar",
@@ -1753,7 +1832,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000013623",
     verifiedAt: "2026-11-08",
-    match: /\b(starry)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(starry)\b/i,
   },
   {
     id: "seven-up-zero-sugar",
@@ -1803,7 +1882,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.7up.com/en/products/7up",
     verifiedAt: "2026-11-08",
-    match: /\b(7\s*up|seven\s+up)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(7\s*up|seven\s+up)\b/i,
   },
   {
     id: "sprite-zero-sugar",
@@ -1853,7 +1932,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/sprite",
     verifiedAt: "2026-11-08",
-    match: /\b(sprite)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(sprite)\b/i,
   },
   {
     id: "fresca-original-citrus-soda",
@@ -1942,14 +2021,39 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(poppi)\b/i,
   },
   {
-    id: "zevia-zero-sugar-soda",
-    title: "Zevia Zero Sugar Soda (Cola, Ginger Root Beer, Creamy Root Beer, Black Cherry), 12 fl oz Cans",
+    id: "zevia-ginger-root-beer",
+    title: "Zevia Zero Sugar Ginger Root Beer Soda, 12 fl oz Cans",
     brand: "Zevia",
     category: "Sodas & Prebiotic Sodas",
     description:
-      "Clear zero-sugar carbonated soda naturally sweetened with stevia leaf extract — zero calories, zero sugar, zero caramel color, and zero synthetic preservatives.",
-    keywords: ["zevia", "zevia cola", "zevia root beer", "stevia soda", "zero sugar soda", "soda"],
-    ingredients: "Carbonated Water, Stevia Leaf Extract, Citric Acid, Natural Flavors.",
+      "Clear zero-sugar, caffeine-free carbonated root beer naturally sweetened with stevia leaf extract — zero calories, zero sugar, zero caramel color, and zero synthetic preservatives.",
+    keywords: ["zevia root beer", "zevia ginger root beer", "zevia creamy root beer"],
+    ingredients: "Carbonated Water, Stevia Leaf Extract, Natural Flavors, Citric Acid.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 0,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.zevia.com/products/ginger-root-beer",
+    verifiedAt: "2026-11-08",
+    match: /\b(zevia.*root\s+beer|root\s+beer.*zevia)\b/i,
+  },
+  {
+    id: "zevia-zero-sugar-soda",
+    title: "Zevia Zero Sugar Cola Soda, 12 fl oz Cans",
+    brand: "Zevia",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Clear zero-sugar carbonated cola naturally sweetened with stevia leaf extract and acidulated with tartaric and citric acid (45mg caffeine) — zero calories, zero sugar, zero caramel color, and zero synthetic preservatives.",
+    keywords: ["zevia", "zevia cola", "stevia soda", "zero sugar soda", "soda"],
+    ingredients:
+      "Carbonated Water, Stevia Leaf Extract, Tartaric Acid, Natural Flavors, Caffeine, Citric Acid.",
     nutrition: {
       caloriesKcal100g: 0,
       sugarsG100g: 0,
@@ -1963,7 +2067,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.zevia.com/products/cola",
     verifiedAt: "2026-11-08",
-    match: /\b(zevia)\b/i,
+    match: /^(?!.*\broot\s+beer\b).*\b(zevia)\b/i,
   },
   {
     id: "sunkist-orange-soda",
@@ -1988,7 +2092,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.sunkistsoda.com/products/orange",
     verifiedAt: "2026-11-08",
-    match: /\b(sunkist)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(sunkist)\b/i,
   },
   {
     id: "crush-orange-soda",
@@ -2013,7 +2117,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.crushsoda.com/products/orange",
     verifiedAt: "2026-11-08",
-    match: /\b(crush\s+(?:orange|grape|strawberry))\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(crush\s+(?:orange|grape|strawberry))\b/i,
   },
   {
     id: "fanta-sunkist-crush-orange",
@@ -2038,7 +2142,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/fanta",
     verifiedAt: "2026-11-08",
-    match: /\b(fanta(?:\s+orange)?|orange\s+soda)\b(?!.*\b(sunkist|crush|zero|diet)\b)/i,
+    match: /^(?!.*\b(sunkist|crush|zero|diet)\b).*\b(fanta(?:\s+orange)?|orange\s+soda)\b/i,
   },
   {
     id: "barqs-root-beer",
@@ -2063,7 +2167,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/barq-s",
     verifiedAt: "2026-11-08",
-    match: /\b(barq'?s)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(barq'?s)\b/i,
   },
   {
     id: "mug-root-beer",
@@ -2088,7 +2192,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000008010",
     verifiedAt: "2026-11-08",
-    match: /\b(mug\s+root\s+beer|\bmug\b\s+soda)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(mug\s+root\s+beer|\bmug\b\s+soda)\b/i,
   },
   {
     id: "root-beer-aw-barqs-mug",
@@ -2113,7 +2217,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.rootbeer.com/products/aw-root-beer",
     verifiedAt: "2026-11-08",
-    match: /\b(a\s*&\s*w|root\s+beer|cream\s+soda)\b(?!.*\b(olipop|poppi|zevia|barq'?s|mug|zero|diet)\b)/i,
+    match: /^(?!.*\b(olipop|poppi|zevia|barq'?s|mug|zero|diet)\b).*\b(a\s*&\s*w|root\s+beer|cream\s+soda)\b/i,
   },
   {
     id: "schweppes-ginger-ale",
@@ -2138,7 +2242,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.schweppesus.com/products/ginger-ale",
     verifiedAt: "2026-11-08",
-    match: /\b(schweppes)\b(?!.*\b(zero|diet)\b)/i,
+    match: /^(?!.*\b(zero|diet)\b).*\b(schweppes)\b/i,
   },
   {
     id: "canada-dry-ginger-ale",
@@ -2163,7 +2267,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.canadadry.com/products/ginger-ale",
     verifiedAt: "2026-11-08",
-    match: /\b(canada\s+dry|ginger\s+ale)\b(?!.*\b(schweppes|seagram'?s|vernors|zero|diet)\b)/i,
+    match: /^(?!.*\b(schweppes|seagram'?s|vernors|zero|diet)\b).*\b(canada\s+dry|ginger\s+ale)\b/i,
   },
 
   /* ======================================================================== */
@@ -2192,7 +2296,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://horizon.com/organic-dairy-products/organic-milk/organic-whole-milk/",
     verifiedAt: "2026-11-08",
-    match: /\b(horizon\s+organic.*milk)\b(?!.*\b(chocolate|2%|reduced\s+fat|lowfat|fat\s+free|skim)\b)/i,
+    match: /^(?!.*\b(chocolate|2%|reduced\s+fat|lowfat|fat\s+free|skim)\b).*\b(horizon\s+organic.*milk)\b/i,
   },
   {
     id: "organic-valley-grassmilk-whole",
@@ -2217,7 +2321,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.organicvalley.coop/products/milk/grassmilk/whole-grassmilk-half-gallon/",
     verifiedAt: "2026-11-08",
-    match: /\b(organic\s+valley.*(?:whole|grassmilk))\b(?!.*\b(2%|reduced\s+fat|chocolate)\b)/i,
+    match: /^(?!.*\b(2%|reduced\s+fat|chocolate)\b).*\b(organic\s+valley.*(?:whole|grassmilk))\b/i,
   },
   {
     id: "organic-valley-2pct-milk",
@@ -2317,7 +2421,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://fairlife.com/ultra-filtered-milk/2-percent-milk/",
     verifiedAt: "2026-11-08",
-    match: /\b(fairlife)\b(?!.*\b(chocolate|core\s+power|elite|nutrition\s+plan)\b)/i,
+    match: /^(?!.*\b(chocolate|core\s+power|elite|nutrition\s+plan)\b).*\b(fairlife)\b/i,
   },
   {
     id: "trumoo-chocolate-milk",
@@ -2345,31 +2449,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(trumoo|tru\s+moo)\b/i,
   },
   {
-    id: "nesquik-trumoo-chocolate-milk",
-    title: "Nesquik Lowfat Chocolate Milk, 14 fl oz",
-    brand: "Nesquik",
-    category: "Milk & Dairy Drinks",
-    description:
-      "Conventional sweetened chocolate dairy milk formulated with lowfat milk, sugar, alkalized cocoa, carrageenan, and guar gum.",
-    keywords: ["nesquik", "chocolate milk", "strawberry milk", "milk"],
-    ingredients:
-      "Lowfat Milk, Sugar, Less than 2% of Cocoa Processed with Alkali, Calcium Carbonate, Cellulose Gel, Natural Flavor, Carrageenan, Salt, Guar Gum, Cellulose Gum, Vitamin A Palmitate, Vitamin D3.",
-    nutrition: {
-      caloriesKcal100g: 78,
-      sugarsG100g: 10.2,
-      saturatedFatG100g: 0.9,
-      sodiumMg100g: 68,
-      fiberG100g: 0.4,
-      proteinG100g: 3.3,
-      fruitsVegNutsPct: 0,
-      nutriScoreGrade: "d",
-      isWholeFood: false,
-    },
-    sourceUrl: "https://www.goodnes.com/nesquik/products/chocolate-lowfat-milk-14-fl-oz-bottle/",
-    verifiedAt: "2026-11-08",
-    match: /\b(nesquik|chocolate\s+milk)\b(?!.*\b(organic\s+valley|horizon|fairlife|trumoo|tru\s+moo|lactaid)\b)/i,
-  },
-  {
     id: "lactaid-chocolate-milk",
     title: "Lactaid Whole Chocolate Milk (100% Lactose-Free), 64 fl oz",
     brand: "Lactaid",
@@ -2392,7 +2471,57 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.lactaid.com/products/lactaid-whole-chocolate-milk",
     verifiedAt: "2026-11-08",
-    match: /\b(lactaid.*chocolate)\b/i,
+    match: /\b(lactaid.*chocolate|chocolate.*lactaid)\b/i,
+  },
+  {
+    id: "great-value-chocolate-milk",
+    title: "Great Value Whole Chocolate Milk, 1 Gallon",
+    brand: "Great Value",
+    category: "Milk & Dairy Drinks",
+    description:
+      "Sweetened whole chocolate dairy milk formulated with Grade A milk, high fructose corn syrup, sugar, cocoa processed with alkali, cornstarch, salt, carrageenan, vanilla, and Vitamin D3.",
+    keywords: ["great value chocolate milk", "walmart chocolate milk"],
+    ingredients:
+      "Milk, High Fructose Corn Syrup, Sugar, Cocoa (Processed with Alkali), Cornstarch, Salt, Carrageenan, Artificial Flavor, Vitamin D3.",
+    nutrition: {
+      caloriesKcal100g: 88,
+      sugarsG100g: 10.4,
+      saturatedFatG100g: 2.1,
+      sodiumMg100g: 75,
+      fiberG100g: 0.4,
+      proteinG100g: 3.3,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.walmart.com/ip/Great-Value-Whole-Chocolate-Milk-Gallon-128-fl-oz/10450118",
+    verifiedAt: "2026-11-08",
+    match: /\b(great\s+value.*chocolate\s+milk|chocolate\s+milk.*great\s+value)\b/i,
+  },
+  {
+    id: "nesquik-trumoo-chocolate-milk",
+    title: "Nesquik Chocolate Milk, 14 fl oz",
+    brand: "Nesquik",
+    category: "Milk & Dairy Drinks",
+    description:
+      "Conventional sweetened chocolate dairy milk formulated with lowfat milk, sugar, alkalized cocoa, carrageenan, and guar gum.",
+    keywords: ["nesquik", "chocolate milk", "strawberry milk", "milk"],
+    ingredients:
+      "Lowfat Milk, Sugar, Less than 2% of Cocoa Processed with Alkali, Calcium Carbonate, Cellulose Gel, Natural Flavor, Carrageenan, Salt, Guar Gum, Cellulose Gum, Vitamin A Palmitate, Vitamin D3.",
+    nutrition: {
+      caloriesKcal100g: 78,
+      sugarsG100g: 10.2,
+      saturatedFatG100g: 0.9,
+      sodiumMg100g: 68,
+      fiberG100g: 0.4,
+      proteinG100g: 3.3,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "d",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.goodnes.com/nesquik/products/chocolate-lowfat-milk-14-fl-oz-bottle/",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\b(organic\s+valley|horizon|fairlife|trumoo|tru\s+moo|lactaid|great\s+value|simple\s+truth|good\s*(?:&|and)\s*gather|favorite\s+day|kirkland|silk|oatly|planet\s+oat|almond|soy|oat)\b).*\b(nesquik|chocolate\s+milk)\b/i,
   },
   {
     id: "lactaid-2pct-milk",
@@ -2440,7 +2569,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.lactaid.com/products/lactaid-whole-milk",
     verifiedAt: "2026-11-08",
-    match: /\b(lactaid|lactose[- ]?free\s+milk)\b(?!.*\b(chocolate|2%|reduced\s+fat|fat\s+free|skim|1%|lowfat|fairlife)\b)/i,
+    match: /^(?!.*\b(chocolate|strawberry|vanilla|2%|reduced\s+fat|fat\s+free|skim|1%|lowfat|fairlife)\b).*\b(lactaid|lactose[- ]?free\s+milk)\b/i,
   },
   {
     id: "a2-milk-whole",
@@ -2488,7 +2617,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.walmart.com/ip/Great-Value-Whole-Vitamin-D-Milk-Gallon-128-fl-oz/10450114",
     verifiedAt: "2026-11-08",
-    match: /\b(great\s+value.*milk|whole\s+(?:vitamin\s+d\s+)?milk|2%\s+(?:reduced\s+fat\s+)?milk|1%\s+(?:lowfat\s+)?milk|skim\s+milk|fat\s+free\s+milk|vitamin\s+d\s+milk)\b(?!.*\b(organic|horizon|fairlife|lactaid|a2)\b)/i,
+    match: /^(?!.*\b(organic|horizon|fairlife|lactaid|a2|chocolate|strawberry|vanilla|soy|soymilk|almond|almondmilk|oat|oatmilk|coconut|coconutmilk|cashew|ripple|silk|oatly|planet\s+oat|califia|malk|elmhurst)\b).*\b(great\s+value.*milk|whole\s+(?:vitamin\s+d\s+)?milk|2%\s+(?:reduced\s+fat\s+)?milk|1%\s+(?:lowfat\s+)?milk|skim\s+milk|fat\s+free\s+milk|vitamin\s+d\s+milk)\b/i,
   },
   {
     id: "planet-oat-extra-creamy",
@@ -2613,7 +2742,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.oatly.com/en-us/products/oatmilk/oatmilk-64-fl-oz",
     verifiedAt: "2026-11-08",
-    match: /\b(oatly|oat\s*milk)\b(?!.*\b(malk|planet\s+oat|chobani|califia|elmhurst|silk)\b)/i,
+    match: /^(?!.*\b(malk|planet\s+oat|chobani|califia|elmhurst|silk|great\s+value|simple\s+truth|good\s*(?:&|and)\s*gather|kirkland|trader\s+joe'?s|365)\b).*\b(oatly|oat\s*milk)\b/i,
   },
   {
     id: "malk-organic-oat-milk",
@@ -2663,7 +2792,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://malkorganics.com/products/unsweetened-almond-malk/",
     verifiedAt: "2026-11-08",
-    match: /\b(malk)\b(?!.*\boat\b)/i,
+    match: /^(?!.*\boat\b).*\b(malk)\b/i,
   },
   {
     id: "elmhurst-1925-nut-milk",
@@ -2714,7 +2843,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://silk.com/plant-based-products/soymilk/original-soymilk/",
     verifiedAt: "2026-11-08",
-    match: /\b(silk\s+soy(?:milk)?|soy\s*milk)\b/i,
+    match: /^(?!.*\b(great\s+value|westsoy|west\s+life|edensoy|eden|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather|365|trader\s+joe'?s|eight\s+treasures|vitasoy|vanilla|chocolate|unsweetened)\b).*\b(silk\s+soy(?:milk)?|soy\s*milk)\b/i,
   },
   {
     id: "so-delicious-coconut-milk",
@@ -2818,7 +2947,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.bluediamond.com/brand/almond-breeze/",
     verifiedAt: "2026-11-08",
-    match: /\b((?:almond\s+breeze|almond\s*milk).*unsweetened|unsweetened.*(?:almond\s+breeze|almond\s*milk))\b(?!.*\b(malk|three\s+trees|elmhurst|soy|silk|califia)\b)/i,
+    match: /^(?!.*\b(malk|three\s+trees|elmhurst|soy|silk|califia|great\s+value|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather|365)\b).*\b((?:almond\s+breeze|almond\s*milk).*unsweetened|unsweetened.*(?:almond\s+breeze|almond\s*milk))\b/i,
   },
   {
     id: "silk-original-almondmilk",
@@ -2843,7 +2972,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://silk.com/plant-based-products/almondmilk/original-almondmilk/",
     verifiedAt: "2026-11-08",
-    match: /\b(silk.*almond(?:milk)?)\b(?!.*\bunsweetened\b)/i,
+    match: /^(?!.*\b(unsweetened|vanilla|chocolate)\b).*\b(silk.*almond(?:milk)?)\b/i,
   },
   {
     id: "almond-breeze-silk-almondmilk",
@@ -2873,7 +3002,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.bluediamond.com/brand/almond-breeze/",
     verifiedAt: "2026-11-08",
-    match: /\b(almond\s+breeze|almond\s*milk)\b(?!.*\b(malk|three\s+trees|elmhurst|soy|silk|califia|unsweetened)\b)/i,
+    match: /^(?!.*\b(malk|three\s+trees|elmhurst|soy|silk|califia|unsweetened|great\s+value|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather|365|vanilla|chocolate)\b).*\b(almond\s+breeze|almond\s*milk)\b/i,
   },
 
   /* ======================================================================== */
@@ -2933,7 +3062,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.fijiwater.com/pages/faq",
     verifiedAt: "2026-11-08",
-    match: /\b(fiji(?:\s+water)?|natural\s+spring\s+water|artesian\s+water)\b(?!.*\b(evian|mountain\s+valley|acqua\s+panna|waiakea|icelandic|poland\s+spring|deer\s+park|ice\s+mountain|ozarka|zephyrhills)\b)/i,
+    match: /^(?!.*\b(evian|mountain\s+valley|acqua\s+panna|waiakea|icelandic|poland\s+spring|deer\s+park|ice\s+mountain|ozarka|zephyrhills|crystal\s+geyser|arrowhead|kirkland|great\s+value)\b).*\b(fiji(?:\s+water)?|natural\s+spring\s+water|artesian\s+water)\b/i,
   },
   {
     id: "dasani-purified-water",
@@ -3011,7 +3140,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/smartwater",
     verifiedAt: "2026-11-08",
-    match: /\b(smart\s*water|purified\s+(?:drinking\s+)?water)\b(?!.*\b(essentia|core\s+hydration|dasani|aquafina|kirkland|great\s+value)\b)/i,
+    match: /^(?!.*\b(essentia|core\s+hydration|dasani|aquafina|kirkland|great\s+value|good\s*(?:&|and)\s*gather|simple\s+truth|lifewtr)\b).*\b(smart\s*water|purified\s+(?:drinking\s+)?water)\b/i,
   },
   {
     id: "perrier-mineral-water",
@@ -3036,7 +3165,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.perrier.com/us/products/original",
     verifiedAt: "2026-11-08",
-    match: /\b(perrier)\b(?!.*\b(flavored|peach|lime|lemon|strawberry|grapefruit)\b)/i,
+    match: /^(?!.*\b(flavored|peach|lime|lemon|strawberry|grapefruit)\b).*\b(perrier)\b/i,
   },
   {
     id: "topo-chico-mineral-water",
@@ -3061,7 +3190,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/topo-chico/products/mineral-water",
     verifiedAt: "2026-11-08",
-    match: /\b(topo\s+chico)\b(?!.*\b(hard|sabores|twist|lime|grapefruit|tangerine)\b)/i,
+    match: /^(?!.*\b(hard|sabores|twist|lime|grapefruit|tangerine)\b).*\b(topo\s+chico)\b/i,
   },
   {
     id: "san-pellegrino-perrier-topo-chico",
@@ -3092,7 +3221,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.sanpellegrino.com/us/en/mineral-water",
     verifiedAt: "2026-11-08",
-    match: /\b(san\s+pellegrino|pellegrino|mineral\s+water)\b(?!.*\b(perrier|topo\s+chico|saratoga|gerolsteiner|limonata|aranciata|essenza)\b)/i,
+    match: /^(?!.*\b(perrier|topo\s+chico|saratoga|gerolsteiner|limonata|aranciata|essenza|liquid\s+death)\b).*\b(san\s+pellegrino|pellegrino|mineral\s+water)\b/i,
   },
   {
     id: "liquid-death-mountain-water",
@@ -3285,7 +3414,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.lacroixwater.com/nutritional-facts-faq/",
     verifiedAt: "2026-11-08",
-    match: /\b(la\s*croix|sparkling\s+water|seltzer\s+water)\b(?!.*\b(waterloo|bubly|polar|aha|hint|spindrift|nixie|liquid\s+death|sparkling\s+ice)\b)/i,
+    match: /^(?!.*\b(waterloo|bubly|polar|aha|hint|spindrift|nixie|liquid\s+death|sparkling\s+ice|topo\s+chico|san\s+pellegrino|perrier|schweppes|canada\s+dry|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather)\b).*\b(la\s*croix|sparkling\s+water|seltzer\s+water)\b/i,
   },
   {
     id: "bai-antioxidant-infusion",
@@ -3527,7 +3656,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.tropicana.com/products/pure-premium/original-no-pulp",
     verifiedAt: "2026-11-08",
-    match: /\b(tropicana|100%\s+(?:pure\s+)?(?:squeezed\s+)?orange\s+juice|\borange\s+juice\b)\b(?!.*\b(uncle\s+matt|organic|simply|minute\s+maid|florida'?s\s+natural|natalie'?s)\b)/i,
+    match: /^(?!.*\b(uncle\s+matt|organic|simply|minute\s+maid|florida'?s\s+natural|natalie'?s|great\s+value|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather)\b).*\b(tropicana|100%\s+(?:pure\s+)?(?:squeezed\s+)?orange\s+juice|\borange\s+juice\b)\b/i,
   },
   {
     id: "martinellis-apple-juice",
@@ -3581,7 +3710,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.motts.com/products/juice/motts-100-original-apple-juice",
     verifiedAt: "2026-11-08",
-    match: /\b(mott'?s|100%\s+(?:pure\s+)?apple\s+juice|\bapple\s+juice\b)\b(?!.*\b(martinelli|organic|honest)\b)/i,
+    match: /^(?!.*\b(martinelli|organic|honest|simply|tropicana|minute\s+maid|great\s+value|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather)\b).*\b(mott'?s|100%\s+(?:pure\s+)?apple\s+juice|\bapple\s+juice\b)\b/i,
   },
   {
     id: "pom-wonderful-pomegranate",
@@ -3634,7 +3763,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.welchs.com/juices/100-juices/concord-grape/",
     verifiedAt: "2026-11-08",
-    match: /\b(welch'?s.*juice|grape\s+juice)\b(?!.*\b(pom|lakewood|knudsen)\b)/i,
+    match: /^(?!.*\b(pom|lakewood|knudsen|ocean\s+spray|great\s+value|kirkland|simple\s+truth|good\s*(?:&|and)\s*gather)\b).*\b(welch'?s.*juice|grape\s+juice)\b/i,
   },
   {
     id: "ocean-spray-cranberry-cocktail",
@@ -3713,7 +3842,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/simply/products/simply-lemonade",
     verifiedAt: "2026-11-08",
-    match: /\b(simply\s+(?:lemonade|raspberry\s+lemonade|strawberry\s+lemonade|peach|watermelon|limeade)|\blemonade\b|\blimeade\b)\b(?!.*\b(minute\s+maid|newman'?s\s+own|hubert'?s|monster|liquid\s+death)\b)/i,
+    match: /^(?!.*\b(minute\s+maid|newman'?s\s+own|hubert'?s|monster|liquid\s+death|santa\s+cruz|country\s+time|arizona|snapple|pure\s+leaf|great\s+value|simple\s+truth|kirkland)\b).*\b(simply\s+(?:lemonade|raspberry\s+lemonade|strawberry\s+lemonade|peach|watermelon|limeade)|\blemonade\b|\blimeade\b)\b/i,
   },
   {
     id: "capri-sun-pouches",
@@ -4004,7 +4133,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://vitacoco.com/products/original-coconut-water",
     verifiedAt: "2026-11-08",
-    match: /\b(vita\s+coco|coconut\s+water)\b(?!.*\b(harmless\s+harvest|organic|c2o)\b)/i,
+    match: /^(?!.*\b(harmless\s+harvest|organic|c2o)\b).*\b(vita\s+coco|coconut\s+water)\b/i,
   },
 
   /* ======================================================================== */
@@ -4083,19 +4212,115 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /\b(gatorlyte)\b/i,
   },
   {
-    id: "gatorade-thirst-quencher",
-    title: "Gatorade Thirst Quencher Sports Drink (Fruit Punch, Cool Blue, Lemon-Lime), 20 fl oz",
+    id: "gatorade-cool-blue",
+    title: "Gatorade Thirst Quencher Cool Blue Sports Drink, 20 fl oz",
     brand: "Gatorade",
     category: "Sports & Electrolyte Drinks",
     description:
-      "Conventional sweetened sports drink (34g sugar per 20 oz bottle) formulated with sugar, dextrose, citric acid, monopotassium phosphate, glycerol ester of rosin, and petroleum-derived dye (Red 40 / Blue 1 / Yellow 5).",
+      "Conventional sweetened sports drink (34g sugar per 20 oz bottle) formulated with sugar, dextrose, citric acid, monopotassium phosphate, and synthetic dye Blue 1.",
+    keywords: ["gatorade cool blue", "cool blue gatorade"],
+    ingredients:
+      "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Modified Food Starch, Natural and Artificial Flavor, Caramel Color, Blue 1.",
+    nutrition: {
+      caloriesKcal100g: 24,
+      sugarsG100g: 6.0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 45,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/cool-blue",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\b(zero|gatorlyte|fit)\b).*\b(gatorade.*cool\s+blue|cool\s+blue.*gatorade|\bcool\s+blue\b)\b/i,
+  },
+  {
+    id: "gatorade-lemon-lime",
+    title: "Gatorade Thirst Quencher Lemon-Lime Sports Drink, 20 fl oz",
+    brand: "Gatorade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Conventional sweetened sports drink (34g sugar per 20 oz bottle) formulated with sugar, dextrose, citric acid, monopotassium phosphate, glycerol ester of rosin, and synthetic dye Yellow 5.",
+    keywords: ["gatorade lemon lime", "lemon lime gatorade"],
+    ingredients:
+      "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Glycerol Ester of Rosin, Yellow 5.",
+    nutrition: {
+      caloriesKcal100g: 24,
+      sugarsG100g: 6.0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 45,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/lemon-lime",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\b(zero|gatorlyte|fit)\b).*\b(gatorade.*lemon[\s-]*lime|lemon[\s-]*lime.*gatorade)\b/i,
+  },
+  {
+    id: "gatorade-glacier-freeze",
+    title: "Gatorade Thirst Quencher Glacier Freeze Sports Drink, 20 fl oz",
+    brand: "Gatorade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Conventional sweetened sports drink (34g sugar per 20 oz bottle) formulated with sugar, dextrose, citric acid, monopotassium phosphate, glycerol ester of rosin, and synthetic dye Blue 1.",
+    keywords: ["gatorade glacier freeze", "glacier freeze gatorade"],
+    ingredients:
+      "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Natural Flavor, Blue 1.",
+    nutrition: {
+      caloriesKcal100g: 24,
+      sugarsG100g: 6.0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 45,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/glacier-freeze",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\b(zero|gatorlyte|fit)\b).*\b(gatorade.*glacier\s+freeze|glacier\s+freeze.*gatorade|\bglacier\s+freeze\b)\b/i,
+  },
+  {
+    id: "gatorade-fierce-grape",
+    title: "Gatorade Thirst Quencher Fierce Grape Sports Drink, 20 fl oz",
+    brand: "Gatorade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Conventional sweetened sports drink (34g sugar per 20 oz bottle) formulated with sugar, dextrose, citric acid, monopotassium phosphate, and synthetic dyes Red 40 and Blue 1.",
+    keywords: ["gatorade fierce grape", "fierce grape gatorade"],
+    ingredients:
+      "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural and Artificial Flavor, Red 40, Blue 1.",
+    nutrition: {
+      caloriesKcal100g: 24,
+      sugarsG100g: 6.0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 45,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/fierce-grape",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\b(zero|gatorlyte|fit)\b).*\b(gatorade.*(?:fierce\s+)?grape|(?:fierce\s+)?grape.*gatorade|\bfierce\s+grape\b)\b/i,
+  },
+  {
+    id: "gatorade-thirst-quencher",
+    title: "Gatorade Thirst Quencher Fruit Punch Sports Drink, 20 fl oz",
+    brand: "Gatorade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Conventional sweetened sports drink (34g sugar per 20 oz bottle) formulated with sugar, dextrose, citric acid, monopotassium phosphate, glycerol ester of rosin, and petroleum-derived dye Red 40.",
     keywords: [
       "gatorade",
-      "cool blue",
-      "glacier freeze",
-      "fierce grape",
       "fruit punch gatorade",
-      "lemon lime gatorade",
       "sports drink",
     ],
     ingredients:
@@ -4113,15 +4338,65 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/fruit-punch",
     verifiedAt: "2026-11-08",
-    match: /\b(gatorade)\b(?!.*\b(zero|gatorlyte|fit)\b)/i,
+    match: /^(?!.*\b(zero|gatorlyte|fit|cool\s+blue|lemon[\s-]*lime|glacier\s+freeze|glacier\s+cherry|fierce\s+grape|grape|orange|cucumber)\b).*\b(gatorade)\b/i,
   },
   {
-    id: "powerade-sports-drink",
-    title: "Powerade Sports Drink (Mountain Berry Blast, Fruit Punch, Orange), 28 fl oz",
+    id: "powerade-fruit-punch",
+    title: "Powerade Fruit Punch Sports Drink, 28 fl oz",
     brand: "Powerade",
     category: "Sports & Electrolyte Drinks",
     description:
-      "Sweetened sports drink containing high fructose corn syrup (49g sugar per 28 oz bottle), calcium disodium EDTA, and synthetic dye Blue 1 / Red 40.",
+      "Sweetened sports drink containing high fructose corn syrup (49g sugar per 28 oz bottle), calcium disodium EDTA, and synthetic dye Red 40.",
+    keywords: ["powerade fruit punch", "fruit punch powerade"],
+    ingredients:
+      "Water, High Fructose Corn Syrup, Less than 0.5% of: Citric Acid, Electrolytes (Salt, Mono-Potassium Phosphate, Magnesium and Calcium Chlorides), Natural Flavors, Vitamin B3 (Niacinamide), Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B12, Red 40, Ascorbic Acid and Calcium Disodium EDTA (to Protect Color).",
+    nutrition: {
+      caloriesKcal100g: 24,
+      sugarsG100g: 6.2,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 42,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/fruit-punch",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\bzero\b).*\b(powerade.*fruit\s+punch|fruit\s+punch.*powerade)\b/i,
+  },
+  {
+    id: "powerade-orange",
+    title: "Powerade Orange Sports Drink, 28 fl oz",
+    brand: "Powerade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Sweetened sports drink containing high fructose corn syrup (49g sugar per 28 oz bottle), glycerol ester of rosin, calcium disodium EDTA, and synthetic dye Yellow 6.",
+    keywords: ["powerade orange", "orange powerade"],
+    ingredients:
+      "Water, High Fructose Corn Syrup, Less than 0.5% of: Citric Acid, Electrolytes (Salt, Mono-Potassium Phosphate, Magnesium and Calcium Chlorides), Gum Acacia, Natural Flavors, Glycerol Ester of Rosin, Vitamin B3 (Niacinamide), Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B12, Yellow 6, Ascorbic Acid and Calcium Disodium EDTA (to Protect Color).",
+    nutrition: {
+      caloriesKcal100g: 24,
+      sugarsG100g: 6.2,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 42,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/orange",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\bzero\b).*\b(powerade.*orange|orange.*powerade)\b/i,
+  },
+  {
+    id: "powerade-sports-drink",
+    title: "Powerade Mountain Berry Blast Sports Drink, 28 fl oz",
+    brand: "Powerade",
+    category: "Sports & Electrolyte Drinks",
+    description:
+      "Sweetened sports drink containing high fructose corn syrup (49g sugar per 28 oz bottle), calcium disodium EDTA, and synthetic dye Blue 1.",
     keywords: ["powerade", "mountain berry blast", "sports drink"],
     ingredients:
       "Water, High Fructose Corn Syrup, Less than 0.5% of: Citric Acid, Electrolytes (Salt, Mono-Potassium Phosphate, Magnesium and Calcium Chlorides), Gum Acacia, Natural Flavors, Glycerol Ester of Rosin, Medium Chain Triglycerides, Sucrose Acetate Isobutyrate, Vitamin B3 (Niacinamide), Vitamin B6 (Pyridoxine Hydrochloride), Vitamin B12, Blue 1, Ascorbic Acid and Calcium Disodium EDTA (to Protect Color).",
@@ -4138,7 +4413,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/mountain-berry-blast",
     verifiedAt: "2026-11-08",
-    match: /\b(powerade)\b(?!.*\bzero\b)/i,
+    match: /^(?!.*\b(zero|fruit\s+punch|orange|grape|lemon[\s-]*lime|strawberry)\b).*\b(powerade)\b/i,
   },
   {
     id: "bodyarmor-lyte-zero",
@@ -4188,7 +4463,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.drinkbodyarmor.com/products/bodyarmor-fruit-punch/",
     verifiedAt: "2026-11-08",
-    match: /\b(body\s*armor)\b(?!.*\b(lyte|zero|lite)\b)/i,
+    match: /^(?!.*\b(lyte|zero|lite)\b).*\b(body\s*armor)\b/i,
   },
   {
     id: "prime-hydration",
@@ -4294,7 +4569,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.abbottnutrition.com/our-products/pedialyte-classic",
     verifiedAt: "2026-11-08",
-    match: /^(?=.*\bpedialyte\b)(?!.*\b(unflavored|advanced\s*care)\b).*$/i,
+    match: /^(?=.*\bpedialyte\b)(?!.*\b(unflavored|advanced\s*care|organic|zero\s*sugar|sport|immune|grape|coconut|blue\s*raspberry|bubble\s*gum)\b).*$/i,
   },
   {
     id: "electrolit-biolyte-hydration",
@@ -4503,7 +4778,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.harristeeter.com/p/starbucks-doubleshot-espresso-cream-premium-espresso-beverage/0001200000177",
     verifiedAt: "2026-11-08",
-    match: /\b(starbucks\s+doubleshot(?:\s+espresso)?|doubleshot\s+espresso)\b(?!.*\benergy\b)/i,
+    match: /^(?!.*\benergy\b).*\b(starbucks\s+doubleshot(?:\s+espresso)?|doubleshot\s+espresso)\b/i,
   },
   {
     id: "starbucks-frappuccino-iced-coffee",
@@ -4558,7 +4833,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.stokbrew.com/cold-brew/cold-brew-coffee/unsweet-black-cold-brew-coffee-48oz/",
     verifiedAt: "2026-11-08",
-    match: /\b(stok\s+cold\s+brew|unsweetened.*cold\s+brew|cold\s+brew\s+coffee)\b(?!.*\b(starbucks|califia|chamberlain)\b)/i,
+    match: /^(?!.*\b(starbucks|califia|chamberlain|la\s+colombe|chameleon|bizzy|wandering\s+bear)\b).*\b(stok\s+cold\s+brew|unsweetened.*cold\s+brew|cold\s+brew\s+coffee)\b/i,
   },
   {
     id: "arizona-green-tea-arnold-palmer",
@@ -4670,7 +4945,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.pureleaf.com/us/products/sweet-tea",
     verifiedAt: "2026-11-08",
-    match: /\b(pure\s+leaf.*sweet|\bsweet\s+tea\b)\b(?!.*\b(gold\s+peak|milo'?s|snapple|peace\s+tea|lipton|brisk)\b)/i,
+    match: /^(?!.*\b(gold\s+peak|milo'?s|snapple|peace\s+tea|lipton|brisk|arizona|tradewinds|turkey\s+hill|great\s+value|simple\s+truth|kirkland)\b).*\b(pure\s+leaf.*sweet|\bsweet\s+tea\b)\b/i,
   },
   {
     id: "pure-leaf-gold-peak-unsweetened-tea",
@@ -4726,7 +5001,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://eatjusticetea.com/products/original-green-tea",
     verifiedAt: "2026-11-08",
-    match: /\b(just\s+ice\s+tea|organic\s+unsweetened\s+(?:green|black|iced)\s+tea)\b(?!.*\b(honest\s+tea|ito\s+en)\b)/i,
+    match: /^(?!.*\b(honest\s+tea|ito\s+en|pure\s+leaf|gold\s+peak|rishi|tejava|simple\s+truth|kirkland)\b).*\b(just\s+ice\s+tea|organic\s+unsweetened\s+(?:green|black|iced)\s+tea)\b/i,
   },
   {
     id: "ito-en-matcha-milk-tea",
@@ -4868,18 +5143,32 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://health-ade.com/collections/kombucha",
     verifiedAt: "2026-11-08",
-    match: /\b(health[- ]?ade|kombucha)\b(?!.*\b(gt'?s|synergy|brew\s+dr|kevita)\b)/i,
+    match: /^(?!.*\b(gt'?s|synergy|brew\s+dr|kevita|humm|remedy|better\s+booch|simple\s+truth|kirkland)\b).*\b(health[- ]?ade|kombucha)\b/i,
   },
 ];
 
 const MAX_VERIFIED_AGE_MS = 90 * 86400 * 1000;
 
 export function isCatalogEntryFresh(verifiedAt?: string): boolean {
-  if (!verifiedAt) return false;
-  const ts = Date.parse(verifiedAt);
+  if (!verifiedAt || typeof verifiedAt !== "string") return false;
+  const trimmed = verifiedAt.trim();
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/.exec(trimmed);
+  if (!isoMatch) return false;
+  const year = Number(isoMatch[1]);
+  const month = Number(isoMatch[2]);
+  const day = Number(isoMatch[3]);
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  if (
+    calendarCheck.getUTCFullYear() !== year ||
+    calendarCheck.getUTCMonth() + 1 !== month ||
+    calendarCheck.getUTCDate() !== day
+  ) {
+    return false;
+  }
+  const ts = Date.parse(trimmed);
   if (!Number.isFinite(ts)) return false;
   const ageMs = Date.now() - ts;
-  return ageMs >= -86400 * 1000 && ageMs <= MAX_VERIFIED_AGE_MS;
+  return ageMs >= 0 && ageMs <= MAX_VERIFIED_AGE_MS;
 }
 
 export function hasValidCatalogProvenance(sourceUrl?: string, verifiedAt?: string): boolean {
@@ -4894,15 +5183,183 @@ export function hasValidCatalogProvenance(sourceUrl?: string, verifiedAt?: strin
   }
 }
 
+const KNOWN_BRAND_PATTERNS: RegExp[] = [
+  /\borganic\s+valley\b/i,
+  /\bhorizon(?:\s+organic)?\b/i,
+  /\bfairlife\b/i,
+  /\blactaid\b/i,
+  /\btru\s*moo\b/i,
+  /\bnesquik\b/i,
+  /\bgreat\s+value\b/i,
+  /\bsimple\s+truth\b/i,
+  /\bprivate\s+selection\b/i,
+  /\bgood\s*(?:&|and)\s*gather\b/i,
+  /\bfavorite\s+day\b/i,
+  /\bkirkland(?:\s+signature)?\b/i,
+  /\btrader\s+joe'?s?\b/i,
+  /\b365\s+(?:by\s+whole\s+foods|everyday\s+value|whole\s+foods)\b/i,
+  /\bsignature\s+select\b/i,
+  /\blucerne\b/i,
+  /\bdarigold\b/i,
+  /\bshamrock\s+farms\b/i,
+  /\bstonyfield\b/i,
+  /\bmaple\s+hill\b/i,
+  /\bstraus\b/i,
+  /\boatly\b/i,
+  /\bplanet\s+oat\b/i,
+  /\bchobani\b/i,
+  /\bcalifia(?:\s+farms)?\b/i,
+  /\bmalk\b/i,
+  /\belmhurst\b/i,
+  /\bthree\s+trees\b/i,
+  /\bsilk\b/i,
+  /\balmond\s+breeze\b/i,
+  /\bwest\s*soy\b/i,
+  /\beden\s*soy\b/i,
+  /\bpacific\s+foods\b/i,
+  /\bso\s+delicious\b/i,
+  /\bripple\b/i,
+  /\bnutpods\b/i,
+  /\bevian\b/i,
+  /\bfiji\b/i,
+  /\bdasani\b/i,
+  /\baquafina\b/i,
+  /\bsmart\s*water\b/i,
+  /\bessentia\b/i,
+  /\bcore\s+hydration\b/i,
+  /\bpoland\s+spring\b/i,
+  /\bdeer\s+park\b/i,
+  /\bice\s+mountain\b/i,
+  /\bozarka\b/i,
+  /\bzephyrhills\b/i,
+  /\bcrystal\s+geyser\b/i,
+  /\bmountain\s+valley\b/i,
+  /\bacqua\s+panna\b/i,
+  /\bwaiakea\b/i,
+  /\bperrier\b/i,
+  /\btopo\s+chico\b/i,
+  /\b(?:san\s+)?pellegrino\b/i,
+  /\bsaratoga\b/i,
+  /\bgerolsteiner\b/i,
+  /\bliquid\s+death\b/i,
+  /\bspindrift\b/i,
+  /\bwaterloo\b/i,
+  /\bbubly\b/i,
+  /\bla\s*croix\b/i,
+  /\bpolar\b/i,
+  /\bnixie\b/i,
+  /\bsparkling\s+ice\b/i,
+  /\bvitamin\s*water\b/i,
+  /\bpropel\b/i,
+  /\buncle\s+matt'?s?\b/i,
+  /\bsimply\s+(?:orange|lemonade|limeade|apple|peach|watermelon|grapefruit)\b/i,
+  /\bminute\s+maid\b/i,
+  /\btropicana\b/i,
+  /\bflorida'?s\s+natural\b/i,
+  /\bnatalie'?s\b/i,
+  /\bmartinelli'?s?\b/i,
+  /\bmott'?s?\b/i,
+  /\bpom\s+wonderful\b/i,
+  /\bwelch'?s?\b/i,
+  /\bocean\s+spray\b/i,
+  /\bhonest\s+kids\b/i,
+  /\bcapri\s*sun\b/i,
+  /\bhi[- ]?c\b/i,
+  /\bsunny\s*d\b/i,
+  /\bhawaiian\s+punch\b/i,
+  /\bkool[- ]?aid\b/i,
+  /\bbolthouse(?:\s+farms)?\b/i,
+  /\bnaked\s+juice\b/i,
+  /\bsuja\b/i,
+  /\bharmless\s+harvest\b/i,
+  /\bvita\s+coco\b/i,
+  /\bgatorade\b/i,
+  /\bpowerade\b/i,
+  /\bbody\s*armor\b/i,
+  /\bliquid\s+i\.?v\.?\b/i,
+  /\bpedialyte\b/i,
+  /\belectrolit\b/i,
+  /\bnuun\b/i,
+  /\blmnt\b/i,
+  /\bnooma\b/i,
+  /\bla\s+colombe\b/i,
+  /\bdunkin'?\b/i,
+  /\bstarbucks\b/i,
+  /\bstok\b/i,
+  /\barizona\b/i,
+  /\bgold\s+peak\b/i,
+  /\bpure\s+leaf\b/i,
+  /\bjust\s+ice\s+tea\b/i,
+  /\bito\s+en\b/i,
+  /\bgt'?s\b/i,
+  /\bhealth[- ]?ade\b/i,
+  /\bbrew\s+dr\b/i,
+  /\bkevita\b/i,
+  /\b(?:coca[\s-]*cola|coke)\b/i,
+  /\bpepsi\b/i,
+  /\bdr\.?\s*pepper\b/i,
+  /\b(?:mountain|mtn)\s+dew\b/i,
+  /\bsprite\b/i,
+  /\b7\s*up\b/i,
+  /\bstarry\b/i,
+  /\bfanta\b/i,
+  /\bsunkist\b/i,
+  /\bcrush\b/i,
+  /\bjarritos\b/i,
+  /\ba\s*&\s*w\b/i,
+  /\bbarq'?s\b/i,
+  /\bmug\s+root\s+beer\b/i,
+  /\bschweppes\b/i,
+  /\bcanada\s+dry\b/i,
+  /\bzevia\b/i,
+  /\bolipop\b/i,
+  /\bpoppi\b/i,
+  /\bbig\s+k\b/i,
+  /\bred\s+bull\b/i,
+  /\bmonster\b/i,
+  /\bcelsius\b/i,
+  /\balani(?:\s+nu)?\b/i,
+  /\bghost\b/i,
+  /\breign\b/i,
+  /\bbang\b/i,
+  /\brockstar\b/i,
+  /\bpremier\s+protein\b/i,
+  /\bmuscle\s+milk\b/i,
+  /\bowyn\b/i,
+  /\borgain\b/i,
+];
+
+export function hasConflictingBrand(query: string, candidateText: string): boolean {
+  for (const brandRe of KNOWN_BRAND_PATTERNS) {
+    if (brandRe.test(query) && !brandRe.test(candidateText)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function passesVariantGuard(query: string, candidateTitle: string): boolean {
   const q = query.toLowerCase();
   const t = candidateTitle.toLowerCase();
   const variantTokens: [RegExp, RegExp][] = [
     [/\bunflavored\b/, /\bunflavored\b/],
     [/\bextra\s+creamy\b/, /\bextra\s+creamy\b/],
-    [/\bvanilla\b(?=.*\b(?:oat|almond|soy|coconut|milk)\b)/, /\bvanilla\b/],
+    [/\bfull\s+fat\b/, /\bfull\s+fat\b/],
+    [
+      /\bvanilla\b(?=.*\b(?:oat|almond|soy|coconut|milk|ice\s*cream|coke|coca[\s-]*cola|yogurt|latte|espresso|coffee|cold\s+brew)\b)|(?:\b(?:oat|almond|soy|coconut|milk|ice\s*cream|coke|coca[\s-]*cola|yogurt|latte|espresso|coffee|cold\s+brew)\b.*)\bvanilla\b/,
+      /\bvanilla\b/,
+    ],
+    [/\bcookies\s*(?:&|and|\x27n)?\s*cr[eè]me\b|\bcookies\s*(?:&|and|\x27n)?\s*cream\b/, /\bcookies\b/],
+    [/\bcool\s+ranch\b/, /\bcool\s+ranch\b/],
     [/\bsimply\s+nkd\b|\bnkd\b/, /\bsimply\s+nkd\b|\bnkd\b/],
-    [/\bpro\s+elite\b/, /\bpro\s+elite\b/],
+    [/\bpro\s+elite\b|\bcore\s+power\s+elite\b|\b42\s*g\b/, /\bpro\s+elite\b|\belite\b|\b42\s*g\b/],
+    [/\b26\s*g\b/, /\b26\s*g\b/],
+    [/\bpedialyte\b.*\bsport\b|\bsport\b.*\bpedialyte\b/, /\bsport\b/],
+    [/\bsome\s+pulp\b|\blots\s+of\s+pulp\b|\bwith\s+pulp\b|\bhigh\s+pulp\b/, /\bsome\s+pulp\b|\blots\s+of\s+pulp\b|\bwith\s+pulp\b|\bhigh\s+pulp\b/],
+    [/\bno\s+pulp\b|\bpulp[\s-]*free\b/, /\bno\s+pulp\b|\bpulp[\s-]*free\b/],
+    [/\bunsweetened\b/, /\bunsweetened\b|\b0g\s+sugar\b/],
+    [/\btrilogy\b/, /\btrilogy\b/],
+    [/\bzero\s+sugar\b|\bsugar[\s-]*free\b|\bdiet\b/, /\bzero\b|\bsugar[\s-]*free\b|\bdiet\b|\bunsweetened\b|\blyte\b|\bultra\b/],
     [/\bdoubleshot\b/, /\bdoubleshot\b/],
     [/\bdoubleshot\s+energy\b/, /\bdoubleshot\s+energy\b/],
     [/\bmatcha\b/, /\bmatcha\b/],
@@ -4915,7 +5372,7 @@ export function passesVariantGuard(query: string, candidateTitle: string): boole
     [/\bgluten[\s-]*free\b/, /\bgluten[\s-]*free\b|\bgrain[\s-]*free\b/],
     [
       /\blactose[\s-]*free\b/,
-      /\blactose[\s-]*free\b|\bdairy[\s-]*free\b|\bsoy\s*milk\b|\boat\s*milk\b|\balmond\s*milk\b|\bcoconut\s*milk\b|\bplant[\s-]*based\b/,
+      /\blactose[\s-]*free\b|\bdairy[\s-]*free\b|\bsoy\s*milk\b|\boat\s*milk\b|\balmond\s*milk\b|\bcoconut\s*milk\b|\bplant[\s-]*based\b|\bfairlife\b|\blactaid\b/,
     ],
     [/\bsoy\s*milk\b/, /\bsoy\s*milk\b/],
     [/\boat\s*milk\b/, /\boat\s*milk\b/],
@@ -4929,9 +5386,12 @@ export function passesVariantGuard(query: string, candidateTitle: string): boole
   const reverseStrict: [RegExp, RegExp][] = [
     [/\bunflavored\b/, /\bunflavored\b/],
     [/\bextra\s+creamy\b/, /\bextra\s+creamy\b/],
-    [/\bvanilla\s+oatmilk\b/, /\bvanilla\b/],
+    [/\bfull\s+fat\b/, /\bfull\s+fat\b/],
+    [/\bvanilla\s+oatmilk\b|\bclassic\s+vanilla\b|\bcoca-cola\s+vanilla\b/, /\bvanilla\b/],
+    [/\bcookies\s*(?:&|and|\x27n)?\s*cream\b/, /\bcookies\b/],
+    [/\bcool\s+ranch\b/, /\bcool\s+ranch\b/],
     [/\bsimply\s+nkd\b/, /\bsimply\s+nkd\b|\bnkd\b/],
-    [/\bpro\s+elite\b/, /\bpro\s+elite\b/],
+    [/\bpro\s+elite\b|\bcore\s+power\s+elite\b/, /\bpro\s+elite\b|\belite\b|\b42\s*g\b/],
     [/\bdoubleshot\b/, /\bdoubleshot\b/],
     [/\bdoubleshot\s+energy\b/, /\benergy\b/],
     [/\bmatcha\s+green\s+tea\s+latte\b|\bmilk\s+tea\b/, /\bmilk\s+tea\b|\blatte\b/],
@@ -4969,6 +5429,9 @@ export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
       if (!passesVariantGuard(q, item.title)) {
         continue;
       }
+      if (hasConflictingBrand(q, `${item.brand} ${item.title}`)) {
+        continue;
+      }
       return {
         ...item,
         sourceUrl: item.sourceUrl!,
@@ -4982,6 +5445,13 @@ export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
 const IMAGE_STOP_TOKENS = new Set([
   "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack",
   "original", "classic", "natural", "flavored", "flavor",
+]);
+
+const MODIFIER_IMAGE_TOKENS = new Set([
+  "organic", "unsweetened", "sweetened", "pure", "grade", "pasteurized",
+  "homogenized", "reduced", "lowfat", "nonfat", "skim", "whole", "free",
+  "zero", "diet", "light", "lite", "extra", "creamy", "plain", "raw",
+  "cold", "pressed", "sparkling", "still",
 ]);
 
 const TWO_LETTER_BRANDS = new Set(["hu", "v8", "gv", "bj", "kc"]);
@@ -4999,16 +5469,22 @@ function distinctiveImageTokens(s: string): string[] {
 
 export function hasProductIdentityMatch(query: string, candidateName: string): boolean {
   if (!passesVariantGuard(query, candidateName)) return false;
+  if (hasConflictingBrand(query, candidateName) || hasConflictingBrand(candidateName, query)) {
+    return false;
+  }
   const qTokens = distinctiveImageTokens(query);
   const cTokens = distinctiveImageTokens(candidateName);
   if (!qTokens.length || !cTokens.length) return false;
   const tokenMatches = (qt: string) =>
     cTokens.some((ct) => ct === qt || ct === `${qt}s` || qt === `${ct}s`);
   if (!tokenMatches(qTokens[0])) return false;
+  const primaryNonModifier = qTokens.find((t) => !MODIFIER_IMAGE_TOKENS.has(t));
+  if (primaryNonModifier && !tokenMatches(primaryNonModifier)) return false;
   const matched = qTokens.filter(tokenMatches);
   if (qTokens.length <= 2) {
     return matched.length === qTokens.length;
   }
   return matched.length / qTokens.length >= 0.75;
 }
+
 

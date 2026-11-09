@@ -98,8 +98,7 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
   const alt = replacedItem
     ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat)
     : CLEAN_ALTERNATIVES[cat];
-  const fullTitle = `${alt.brand} ${alt.name}`;
-  const isOrganic = alt.isOrganic ?? /\b(organic|organics)\b/i.test(fullTitle);
+  const isOrganic = alt.isOrganic === true;
   return {
     key: replacedItem ? `clean-${cat}-${replacedItem.key}` : `clean-${cat}`,
     title: alt.name,
@@ -1810,7 +1809,7 @@ export default function Simulator() {
                                   className="swap-info swap-info--btn"
                                   onClick={() => inspectCleanSwap(swap.category, active)}
                                 >
-                                  <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" />
+                                  <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" showAttribution />
                                   <div className="swap-info-copy">
                                     <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
                                     <b>{swap.title}</b>
@@ -2320,7 +2319,7 @@ export default function Simulator() {
                                 {item.brand}
                                 {sw
                                   ? !isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT
-                                    ? " · 🔒 100/100 Clean Swap available"
+                                    ? ` · 🔒 ${sw.score}/100 Clean Swap available`
                                     : ` · Tap to inspect or swap → ${sw.brand}`
                                   : " · Tap to inspect"}
                               </small>
@@ -2373,7 +2372,7 @@ export default function Simulator() {
                   <p>{toast.body}</p>
                   {toast.href && (
                     <a href={toast.href} target="_blank" rel="noreferrer">
-                      View on {STORE_META[store].label}{swap?.isPaidLink ? " · paid link" : ""} ↗
+                      View on {STORE_META[store].label}{(toast.isPaidLink ?? swap?.isPaidLink) ? " · paid link" : ""} ↗
                     </a>
                   )}
                 </div>

@@ -404,7 +404,7 @@ object ScanApi {
             id = "sugar_diabetes",
             emoji = "🩸",
             title = "Sugar / Diabetes Watch",
-            subtitle = "Flags added sugars, corn syrup/HFCS, >=10g sugar/100g, or refined starch spikes",
+            subtitle = "Flags added sugars, corn syrup/HFCS, >=10g sugar/100g, or refined starches",
             shortBadge = "SUGAR"
         ),
         DietaryOption(

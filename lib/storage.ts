@@ -47,18 +47,33 @@ export function isPersistentKvConfigured(): boolean {
   return getRedisConfig() !== null;
 }
 
-function ensureStorageReady(): RedisConfig | null {
+const CRITICAL_KV_KEY_PATTERN =
+  /^(?:ent:|heybroc:entitlement:|consent:|heybroc:consent:|stripe:webhook:|heybroc:stripe:|rc:webhook:|heybroc:rc:|inf:|heybroc:inf|heybroc:creator:|heybroc:influencers|heybroc:device:|heybroc:refcode:|heybroc:auth:|heybroc:charge:)/i;
+
+function ensureStorageReady(key?: string): RedisConfig | null {
   const cfg = getRedisConfig();
-  if (!cfg && process.env.VERCEL) {
-    throw new StorageConfigError();
+  if (!cfg) {
+    const isVercel = Boolean(process.env.VERCEL);
+    const isProd = process.env.NODE_ENV === "production";
+    if (
+      isVercel ||
+      (isProd &&
+        process.env.NEXT_PHASE !== "phase-production-build" &&
+        (!key || CRITICAL_KV_KEY_PATTERN.test(key)))
+    ) {
+      throw new StorageConfigError(
+        "Durable KV storage (UPSTASH_REDIS_REST_URL / KV_REST_API_URL) is required in production."
+      );
+    }
   }
   return cfg;
 }
 
 async function upstashCommand<T = unknown>(
-  args: (string | number)[]
+  args: (string | number)[],
+  keyHint?: string
 ): Promise<T | null> {
-  const cfg = ensureStorageReady();
+  const cfg = ensureStorageReady(keyHint);
   if (!cfg) return null;
 
   const res = await fetch(cfg.url, {
@@ -83,12 +98,34 @@ async function upstashCommand<T = unknown>(
   return data.result ?? null;
 }
 
-// Local / serverless fallback store when Upstash Redis is not configured
+// Local dev / test fallback store when Upstash Redis is not configured outside production
+const MAX_MEMORY_FALLBACK_ENTRIES = 5000;
 const memoryFallback = new Map<string, { raw: string; expiresAt?: number }>();
 
+function setBoundedMemoryFallback(
+  key: string,
+  entry: { raw: string; expiresAt?: number }
+): void {
+  if (
+    memoryFallback.size >= MAX_MEMORY_FALLBACK_ENTRIES &&
+    !memoryFallback.has(key)
+  ) {
+    const now = Date.now();
+    for (const [k, v] of memoryFallback) {
+      if (v.expiresAt && v.expiresAt <= now) memoryFallback.delete(k);
+      if (memoryFallback.size < MAX_MEMORY_FALLBACK_ENTRIES) break;
+    }
+    if (memoryFallback.size >= MAX_MEMORY_FALLBACK_ENTRIES) {
+      const oldest = memoryFallback.keys().next().value;
+      if (oldest !== undefined) memoryFallback.delete(oldest);
+    }
+  }
+  memoryFallback.set(key, entry);
+}
+
 function getLocalDevStorePath(): string | null {
-  if (process.env.VERCEL) {
-    return path.join("/tmp", "heybroc-kv.json");
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+    return null;
   }
   return path.join(process.cwd(), ".cache", "heybroc-kv.json");
 }
@@ -121,9 +158,9 @@ function writeLocalDevStore(
 }
 
 export async function kvGet<T>(key: string): Promise<T | null> {
-  const cfg = ensureStorageReady();
+  const cfg = ensureStorageReady(key);
   if (cfg) {
-    const raw = await upstashCommand<string>(["GET", key]);
+    const raw = await upstashCommand<string>(["GET", key], key);
     if (raw === null || raw === undefined) return null;
     try {
       return JSON.parse(raw) as T;
@@ -158,13 +195,13 @@ export async function kvSet<T>(
   value: T,
   ttlSeconds?: number
 ): Promise<void> {
-  const cfg = ensureStorageReady();
+  const cfg = ensureStorageReady(key);
   const raw = JSON.stringify(value);
   if (cfg) {
     if (ttlSeconds && ttlSeconds > 0) {
-      await upstashCommand(["SET", key, raw, "EX", Math.floor(ttlSeconds)]);
+      await upstashCommand(["SET", key, raw, "EX", Math.floor(ttlSeconds)], key);
     } else {
-      await upstashCommand(["SET", key, raw]);
+      await upstashCommand(["SET", key, raw], key);
     }
     return;
   }
@@ -172,16 +209,16 @@ export async function kvSet<T>(
   const expiresAt =
     ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : undefined;
   const entry = { raw, expiresAt };
-  memoryFallback.set(key, entry);
+  setBoundedMemoryFallback(key, entry);
   const localObj = readLocalDevStore();
   localObj[key] = entry;
   writeLocalDevStore(localObj);
 }
 
 export async function kvDel(key: string): Promise<void> {
-  const cfg = ensureStorageReady();
+  const cfg = ensureStorageReady(key);
   if (cfg) {
-    await upstashCommand(["DEL", key]);
+    await upstashCommand(["DEL", key], key);
     return;
   }
   memoryFallback.delete(key);
@@ -190,6 +227,45 @@ export async function kvDel(key: string): Promise<void> {
     delete localObj[key];
     writeLocalDevStore(localObj);
   }
+}
+
+/**
+ * Atomic Redis INCR + PEXPIRE rate-limit counter.
+ */
+export async function kvIncrWithPExpire(
+  key: string,
+  windowMs = 60_000
+): Promise<number> {
+  const cfg = getRedisConfig();
+  if (cfg) {
+    const lua = [
+      'local c = redis.call("INCR", KEYS[1])',
+      "if c == 1 then",
+      '  redis.call("PEXPIRE", KEYS[1], tonumber(ARGV[1]))',
+      "end",
+      "return c",
+    ].join("\n");
+    const res = await upstashCommand<number>(
+      ["EVAL", lua, 1, key, Math.max(1000, Math.floor(windowMs))],
+      key
+    );
+    return Number(res ?? 1);
+  }
+  const now = Date.now();
+  const existing = memoryFallback.get(key);
+  if (!existing || (existing.expiresAt && existing.expiresAt <= now)) {
+    setBoundedMemoryFallback(key, {
+      raw: "1",
+      expiresAt: now + Math.max(1000, Math.floor(windowMs)),
+    });
+    return 1;
+  }
+  const next = (Number(existing.raw) || 0) + 1;
+  setBoundedMemoryFallback(key, {
+    raw: String(next),
+    expiresAt: existing.expiresAt,
+  });
+  return next;
 }
 
 /**

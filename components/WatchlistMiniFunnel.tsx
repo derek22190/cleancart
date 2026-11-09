@@ -179,7 +179,7 @@ export default function WatchlistMiniFunnel({
           }}
         >
           Tap what matters to you. Broc will apply <b>2x strictness</b> to these
-          ingredients and suggest <b>100/100 Clean Swaps</b> across all 12 stores.
+          ingredients and suggest <b>verified Clean Swaps (up to 100/100)</b> across all 12 stores.
         </p>
 
         <div

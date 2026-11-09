@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PRICING, TERMS_VERSION, annualPerMonth } from "@/lib/pricing";
+import { PRICING, annualPerMonth } from "@/lib/pricing";
+import { TERMS_VERSION } from "@/lib/terms";
 
 export const metadata: Metadata = {
   title: "Terms of Service & Subscription Terms — HeyBroc",

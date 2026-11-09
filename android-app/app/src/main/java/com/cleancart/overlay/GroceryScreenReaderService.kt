@@ -141,12 +141,17 @@ class GroceryScreenReaderService : AccessibilityService() {
             """\b(please\b|can you\b|could you\b|would you\b|thank you\b|thanks\b|shopper\b|driver\b|dasher\b|courier\b|instead of\b|if they don'?t have|let me know|text me\b|call me\b|message me\b|front door|back door|gate code|buzzer|ring the bell|leave at\b|leave by\b|hand it to me|i want\b|i need\b|i prefer\b|don'?t get\b|do not get\b|make sure\b|grab me\b|get me\b|pick up some\b|sent a message|type a message|chat with|message your)\b|[?!]""",
             RegexOption.IGNORE_CASE,
         )
-        private val PROTECTED_VIEW_ID_PATTERN = Regex(
+        private val PROTECTED_CONTAINER_RESOURCE_ID = Regex(
             """(search_src_text|search_bar_text|search_box|search_edit|search_input|password|passcode|pin_entry|card_number|credit_card|debit_card|cvv|cvc|expiry|billing|payment|wallet|ssn|tax_id|chat|message|messenger|conversation|inbox|support|help_center|compose|comment|review_text|review_body|delivery_instructions|driver_note|shopper_note|instructions_input|address_input|phone_number|email_input)""",
             RegexOption.IGNORE_CASE,
         )
+        private val PROTECTED_VIEW_ID_PATTERN = PROTECTED_CONTAINER_RESOURCE_ID
+        private val SENSITIVE_PII_PATTERN = Regex(
+            """(\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b|\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b|\b\d{3}-\d{2}-\d{4}\b|\b(?:\d[ -]*?){13,19}\b|\b(?:visa|mastercard|amex|american express|discover)\s+(?:ending\s+in|card)\s+\d{4}\b|\b(?:cvv|cvc|security\s+code|routing\s+number|account\s+number|passcode|one-time\s+code|verification\s+code)\b)""",
+            RegexOption.IGNORE_CASE,
+        )
         private fun isProtectedViewId(viewId: String): Boolean =
-            viewId.isNotEmpty() && PROTECTED_VIEW_ID_PATTERN.containsMatchIn(viewId)
+            viewId.isNotEmpty() && PROTECTED_CONTAINER_RESOURCE_ID.containsMatchIn(viewId)
 
         private fun isProtectedNode(node: AccessibilityNodeInfo?): Boolean {
             if (node == null) return false
@@ -156,6 +161,15 @@ class GroceryScreenReaderService : AccessibilityService() {
             val cls = node.className?.toString()?.lowercase().orEmpty()
             if (cls.contains("edittext") || cls.contains("autocompletetextview")) return true
             return false
+        }
+
+        private fun isSensitiveCandidate(raw: String): Boolean {
+            val t = raw.trim()
+            if (t.isEmpty()) return false
+            return CHAT_OR_MESSAGE_NOISE.containsMatchIn(t) ||
+                STORE_ONBOARDING_OR_AUTH_GATE.containsMatchIn(t) ||
+                AUTH_BUTTON_SIGNAL.matches(t) ||
+                SENSITIVE_PII_PATTERN.containsMatchIn(t)
         }
         private val NOISE = Regex(
             """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the store$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|flavor\s+name|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|view order|buy it again|hear the highlights.*|price history.*|share product.*|copy associates link.*|ways to buy.*|amazon'?s choice.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|log in|sign up|continue as guest|get started|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|sign in to clip.*|boost by kroger.*|choose backup.*|backup item.*|special requests?.*|add a special request.*|dashpass.*|substitution preferences.*|doubledash.*|express.*|temporarily unavailable|not available.*|this item is not available.*|\d+\s+items?\s+(are|is)\s+no\s+longer\s+available.*|these items have been removed.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|ready by .*|check nearby clubs|out of stock.*|in stock.*|many in stock|likely in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee.*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|edit instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|service fees apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|your carts|personal cart|continue shopping|restaurants|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|go to checkout|checkout|checkout all items|estimated total|item subtotal|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|purchased \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|edit instructions|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|located\s+in\s+aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|[!?]$""",
@@ -318,7 +332,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             if (event.isPassword) return
             val src = runCatching { event.source }.getOrNull()
-            if (src == null || isProtectedNode(src)) {
+            if (src == null || !src.isVisibleToUser || isProtectedNode(src)) {
                 recycleNode(src)
                 return
             }
@@ -347,11 +361,19 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
 
             val candidateClickStrings = ArrayList<String>()
-            event.text?.forEach { addCandidateStrings(candidateClickStrings, it) }
-            addCandidateStrings(candidateClickStrings, event.contentDescription)
+            event.text?.forEach {
+                if (!isSensitiveCandidate(it.toString())) addCandidateStrings(candidateClickStrings, it)
+            }
+            event.contentDescription?.let {
+                if (!isSensitiveCandidate(it.toString())) addCandidateStrings(candidateClickStrings, it)
+            }
             val clickedText = buildString {
-                event.text?.forEach { append(it).append(' ') }
-                event.contentDescription?.let { append(it).append(' ') }
+                event.text?.forEach {
+                    if (!isSensitiveCandidate(it.toString())) append(it).append(' ')
+                }
+                event.contentDescription?.let {
+                    if (!isSensitiveCandidate(it.toString())) append(it).append(' ')
+                }
                 if (!isProtectedNode(src) && src.isVisibleToUser) {
                     src.text?.let {
                         append(it).append(' ')
@@ -741,10 +763,15 @@ class GroceryScreenReaderService : AccessibilityService() {
             // 2. Grade the product on Product Detail Pages AND vertical/horizontal product card feeds
             val hasCarouselPricesOrStock = nodes.any { PRICE_PATTERN.containsMatchIn(it.text) } ||
                 nodes.any { Regex("""(?i)\b(many|likely|low)\s+in\s+stock\b""").containsMatchIn(it.text) }
-            val isProductView =
-                isConfirmedSinglePdp ||
-                    isViewingFullScreenCarousel ||
-                    (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons || totalTileAddCount >= 1 || hasCarouselPricesOrStock))
+            val isProductView = hasProductContext(
+                isConfirmedSinglePdp = isConfirmedSinglePdp,
+                isViewingFullScreenCarousel = isViewingFullScreenCarousel,
+                hasHomeOrAisleBanners = hasHomeOrAisleBanners,
+                hasSinglePdpCta = hasSinglePdpCta,
+                hasOptionsButtons = hasOptionsButtons,
+                totalTileAddCount = totalTileAddCount,
+                hasCarouselPricesOrStock = hasCarouselPricesOrStock,
+            )
 
             val candidates = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
                 val carouselSlice = nodes.subList(carouselIdx + 1, nodes.size)
@@ -794,10 +821,8 @@ class GroceryScreenReaderService : AccessibilityService() {
 
                 // Keep the HeyBroc floating pill visible across all store onboarding/welcome funnel slides
                 // and pre-shopping Login / Sign up / Continue as guest screens (e.g. Shipt, Kroger, DoorDash)
-                // so the pill never disappears mid-funnel on pages 2–4.
-                val hasOnboardingGateSignal = allNodes.any { STORE_ONBOARDING_OR_AUTH_GATE.containsMatchIn(it.text) } ||
-                    allNodes.count { AUTH_BUTTON_SIGNAL.matches(it.text.trim()) } >= 2
-                if (hasOnboardingGateSignal && totalTileAddCount == 0 && !hasCarouselPricesOrStock) {
+                // so the pill never disappears mid-funnel on pages 2–4, while suppressing automatic product popup grading.
+                if (shouldSuppressAutomaticPopup(allNodes, totalTileAddCount, hasCarouselPricesOrStock)) {
                     val gateKey = "$pkg|ONBOARDING_AUTH_GATE"
                     if (lastKey != gateKey || !overlayVisible) {
                         lastKey = gateKey
@@ -1231,10 +1256,48 @@ class GroceryScreenReaderService : AccessibilityService() {
         return out.toList()
     }
 
+    private fun looksLikeFoodTitle(t: String): Boolean =
+        FOOD_HINTS.containsMatchIn(t) || SINGLE_WORD_PRODUCE.matches(t.trim())
+
+    private fun hasProductContext(
+        isConfirmedSinglePdp: Boolean,
+        isViewingFullScreenCarousel: Boolean,
+        hasHomeOrAisleBanners: Boolean,
+        hasSinglePdpCta: Boolean,
+        hasOptionsButtons: Boolean,
+        totalTileAddCount: Int,
+        hasCarouselPricesOrStock: Boolean,
+    ): Boolean =
+        isConfirmedSinglePdp ||
+            isViewingFullScreenCarousel ||
+            (!hasHomeOrAisleBanners && (hasSinglePdpCta || hasOptionsButtons || totalTileAddCount >= 1 || hasCarouselPricesOrStock))
+
+    private fun hasFocusedOrEditableNode(root: AccessibilityNodeInfo?): Boolean {
+        if (root == null) return false
+        val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focused != null) {
+            val isEditableFocused = isProtectedNode(focused)
+            recycleNode(focused)
+            if (isEditableFocused) return true
+        }
+        return false
+    }
+
+    private fun shouldSuppressAutomaticPopup(
+        allNodes: List<TextNode>,
+        totalTileAddCount: Int,
+        hasCarouselPricesOrStock: Boolean,
+    ): Boolean {
+        val hasOnboardingGateSignal = allNodes.any { STORE_ONBOARDING_OR_AUTH_GATE.containsMatchIn(it.text) } ||
+            allNodes.count { AUTH_BUTTON_SIGNAL.matches(it.text.trim()) } >= 2
+        return hasOnboardingGateSignal && totalTileAddCount == 0 && !hasCarouselPricesOrStock
+    }
+
     private fun isCandidateProductTitle(t: String): Boolean =
         t.length in 5..180 &&
             !(t.contains(". ") && t.split(' ').size > 10) &&
             t.lowercase() !in rejectedTitles &&
+            !isSensitiveCandidate(t) &&
             !SPONSORED_ANYWHERE.containsMatchIn(t) &&
             !PROSE_OR_BULLET_NOISE.containsMatchIn(t) &&
             !CHAT_OR_MESSAGE_NOISE.containsMatchIn(t) &&
@@ -1548,7 +1611,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
             val words = c.split(' ').filter { it.isNotBlank() }
             val hasExplicitTitleViewId = TITLE_ID_HINTS.any { n.viewId.contains(it) }
-            if ((words.size >= 1 && FOOD_HINTS.containsMatchIn(c)) || (hasExplicitTitleViewId && words.size >= 2)) {
+            if (looksLikeFoodTitle(c) && (words.size >= 1 || hasExplicitTitleViewId)) {
                 val existingIdx = seen.indexOfFirst { isSameCartRowTitle(it, c) }
                 if (existingIdx >= 0) {
                     if (c.length > seen[existingIdx].length) {

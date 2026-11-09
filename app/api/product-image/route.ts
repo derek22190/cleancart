@@ -56,7 +56,7 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
 
 const STOP_TOKENS = new Set([
   "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack", "pk",
-  "original", "classic", "organic", "natural", "flavored", "flavor", "pure",
+  "flavored", "flavor",
   "grade", "category", "estimate", "verify", "package", "label", "rating", "ratings",
   "sweeteners", "sweetener", "creamery", "fresh", "each", "average", "price",
   "snack", "size", "family", "party", "share", "fun", "giant", "king", "bag", "box",
@@ -127,7 +127,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
           const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
           return (
             (p.image_front_small_url || p.image_front_url) &&
-            hasProductIdentityMatch(clean, `${brandsStr} ${p.product_name_en || p.product_name || ""}`.trim())
+            hasProductIdentityMatch(rawQuery, `${brandsStr} ${p.product_name_en || p.product_name || ""}`.trim())
           );
         });
         const url = hit?.image_front_small_url || hit?.image_front_url;

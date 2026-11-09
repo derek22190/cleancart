@@ -56,7 +56,7 @@ export function verifyDeviceSecret(
   entry: DeviceEntitlement,
   candidateSecret?: string | null
 ): boolean {
-  if (!entry.deviceSecretHash) return true;
+  if (!entry.deviceSecretHash) return false;
   if (!candidateSecret) return false;
   const expected = Buffer.from(entry.deviceSecretHash, "hex");
   const actual = Buffer.from(hashDeviceSecret(candidateSecret), "hex");
@@ -198,20 +198,23 @@ export async function getOrCreateDevice(
     (rawDeviceId || "anon-web").trim().slice(0, 128) || "anon-web";
   const existing = await getExistingDevice(deviceId);
   if (existing) {
-    if (!existing.deviceSecretHash && deviceSecret && deviceSecret.trim().length >= 8) {
-      existing.deviceSecretHash = hashDeviceSecret(deviceSecret);
-      await saveDevice(existing);
-    }
     return existing;
   }
+
+  // Never allow a caller-supplied secret to claim a deviceId that already has a paid subscription record
+  const existingPaid =
+    deviceId !== "anon-web" ? await getDevicePaidEntitlement(deviceId) : null;
+  const canBindSecret =
+    !existingPaid &&
+    deviceId !== "anon-web" &&
+    Boolean(deviceSecret && deviceSecret.trim().length >= 8);
 
   const referralCode = await allocateUniqueReferralCode(deviceId);
   const entry: DeviceEntitlement = {
     deviceId,
-    deviceSecretHash:
-      deviceSecret && deviceSecret.trim().length >= 8
-        ? hashDeviceSecret(deviceSecret)
-        : undefined,
+    deviceSecretHash: canBindSecret
+      ? hashDeviceSecret(deviceSecret!)
+      : undefined,
     referralCode,
     referralActivated: false,
     firstSeenAt: now,

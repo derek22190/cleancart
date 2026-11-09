@@ -754,7 +754,7 @@ class MainActivity : Activity() {
 
         val swapTitle = swapObj.optString("title", "Clean Swap")
         val swapBrand = swapObj.optString("brand", "Clean Pick")
-        val swapScore = swapObj.optInt("score", 92)
+        val swapScore = swapObj.optInt("score", 0)
         val swapImg = swapObj.optString("imageUrl", "")
         val swapRating = ratingForScore(swapScore)
 
@@ -1323,12 +1323,21 @@ class MainActivity : Activity() {
             setOnClickListener { openManageSubscription() }
         })
 
-        wrap.addView(label("Terms of Service ↗   ·   Privacy Policy & Data Disclosure ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+        wrap.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, dp(12))
-            setOnClickListener {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
-            }
+            addView(label("Terms of Service ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+                }
+            })
+            addView(label("   ·   ", 13f, 0xFF6B7280.toInt()))
+            addView(label("Privacy Policy & Data Disclosure ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+                }
+            })
         })
 
         wrap.addView(
@@ -1995,14 +2004,25 @@ class MainActivity : Activity() {
                     ).apply { bottomMargin = dp(12) }
                     setOnClickListener { authDialog?.dismiss() }
                 })
-                card.addView(label("Terms of Service   |   Privacy & Health Data Notice", 11.5f, 0xFF6B7280.toInt()).apply {
+                card.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
                     setPadding(dp(8), dp(2), dp(8), dp(2))
-                    setOnClickListener {
-                        runCatching {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+                    addView(label("Terms of Service", 11.5f, 0xFF6B7280.toInt()).apply {
+                        setOnClickListener {
+                            runCatching {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+                            }
                         }
-                    }
+                    })
+                    addView(label("   |   ", 11.5f, 0xFF6B7280.toInt()))
+                    addView(label("Privacy & Health Data Notice", 11.5f, 0xFF6B7280.toInt()).apply {
+                        setOnClickListener {
+                            runCatching {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+                            }
+                        }
+                    })
                 })
                 return
             }
@@ -2245,6 +2265,7 @@ class MainActivity : Activity() {
                             put("email", email)
                             put("displayName", fallbackName)
                             put("deviceId", ScanApi.deviceId(this@MainActivity))
+                            put("deviceSecret", ScanApi.deviceSecret(this@MainActivity))
                             if (!password.isNullOrBlank()) {
                                 put("password", password)
                                 put("newPassword", password)
@@ -2599,12 +2620,8 @@ class MainActivity : Activity() {
         var dialogRef: AlertDialog? = null
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Swap")
-            val swapScore = swap.optInt("score", 92)
-            val swapRating = when {
-                swapScore >= 75 -> "Excellent"
-                swapScore >= 50 -> "Good"
-                else -> "Mediocre"
-            }
+            val swapScore = swap.optInt("score", 0)
+            val swapRating = ratingForScore(swapScore)
             val swapImg = swap.optString("image").ifBlank { swap.optString("imageUrl") }
             val swapIng = swap.optString("ingredients").ifBlank { swap.optString("cleanIngredients") }
             val swapUnlocked = ScanApi.isSwapUnlocked(this, title, swapTitle)
@@ -2747,7 +2764,7 @@ class MainActivity : Activity() {
         val provenanceLine = buildString {
             append("Source: $sourceLabel")
             if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
-            append(" · Photos: Open Food Facts (CC BY-SA 3.0) · Tap to report a mistake")
+            append(" · Tap to report a mistake")
         }
         sheet.addView(
             label(provenanceLine, 11f, 0xFF0F7A4A.toInt(), bold = true).apply {
@@ -2761,6 +2778,16 @@ class MainActivity : Activity() {
                                 Uri.parse("mailto:support@heybroc.com?subject=$subject")
                             )
                         )
+                    }
+                }
+            }
+        )
+        sheet.addView(
+            label("Photos: Open Food Facts (CC BY-SA 3.0) ↗", 10.5f, 0xFF0F7A4A.toInt(), bold = true).apply {
+                setPadding(dp(4), dp(2), dp(4), dp(2))
+                setOnClickListener {
+                    runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://world.openfoodfacts.org/terms-of-use")))
                     }
                 }
             }
@@ -3200,12 +3227,12 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Accessibility Service Disclosure")
             .setMessage(
-                "HeyBroc uses the Android AccessibilityService API solely inside 12 supported grocery apps " +
-                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
+                "HeyBroc uses the Android AccessibilityService API solely inside supported grocery apps " +
+                    "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Shopping / Amazon Fresh [com.amazon.mShop.android.shopping], Whole Foods Market [com.wholefoods.wholefoodsmarket], Sam's Club, BJ's, Costco, and Shipt) to:\n" +
                     "1) Inspect visible, non-editable screen text on device to detect grocery product pages and extract the visible product title and ingredient list, and\n" +
                     "2) Extract visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
-                    "• What is transmitted: Matched grocery product title candidates, extracted ingredient text, active store identifier, your selected additive watchlist categories, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
-                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 12 supported grocery apps above, prunes password fields, editable inputs, search boxes, payment fields, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and does not sell personal data."
+                    "• What is transmitted: Matched grocery product title candidates, extracted ingredient text, active store identifier, your selected additive watchlist categories (familyWatchlist) and personal allergy/dietary watchlist preferences (dietaryWatchlist), any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
+                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the supported grocery apps above, prunes password fields, editable inputs, search boxes, payment fields, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and does not sell personal data."
             )
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->

@@ -74,23 +74,8 @@ async function createPortalUrl(params: {
   let resolvedEmail = "";
   let resolvedDeviceId = "";
 
-  if (params.authToken) {
-    const authUser = await getAuthenticatedUser(params.authToken);
-    if (authUser && authUser.emailVerified !== false) {
-      if (authUser.email) {
-        resolvedEmail = authUser.email.trim().toLowerCase();
-      }
-      const reqDev = (params.deviceId || "").trim();
-      if (reqDev && authUser.linkedDevices?.includes(reqDev)) {
-        resolvedDeviceId = reqDev;
-      } else if (authUser.linkedDevices?.[0]) {
-        resolvedDeviceId = authUser.linkedDevices[0];
-      }
-    }
-  }
-
   const candidateDeviceId = (params.deviceId || "").trim();
-  if (!resolvedDeviceId && candidateDeviceId && candidateDeviceId !== "anon-web") {
+  if (candidateDeviceId && candidateDeviceId !== "anon-web") {
     const existingDevice = await getExistingDevice(candidateDeviceId);
     if (
       existingDevice?.deviceSecretHash &&
@@ -104,6 +89,27 @@ async function createPortalUrl(params: {
         error: "Invalid device credentials for billing portal access.",
         status: 403,
       };
+    }
+  }
+
+  if (params.authToken) {
+    const authUser = await getAuthenticatedUser(params.authToken);
+    if (authUser && authUser.emailVerified === true) {
+      if (authUser.email) {
+        resolvedEmail = authUser.email.trim().toLowerCase();
+      }
+      if (!resolvedDeviceId) {
+        const reqDev =
+          candidateDeviceId && authUser.linkedDevices?.includes(candidateDeviceId)
+            ? candidateDeviceId
+            : authUser.linkedDevices?.[0] || "";
+        if (reqDev && reqDev !== "anon-web") {
+          const existingDevice = await getExistingDevice(reqDev);
+          if (existingDevice?.deviceSecretHash) {
+            resolvedDeviceId = reqDev;
+          }
+        }
+      }
     }
   }
 

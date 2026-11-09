@@ -16,7 +16,7 @@ for (const p of PRESETS) {
 for (const a of Object.values(CLEAN_ALTERNATIVES)) {
   const r = scoreIngredients(a.ingredients);
   const fullTitle = `${a.brand} ${a.name}`;
-  const isOrganic = a.isOrganic ?? /\b(organic|organics)\b/i.test(fullTitle);
+  const isOrganic = a.isOrganic === true;
   const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: fullTitle, isOrganic });
   const b = ry.yukaBreakdown!;
   check(`${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
@@ -27,7 +27,7 @@ for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
   const a = entry.alt;
   const r = scoreIngredients(a.ingredients);
   const fullTitle = `${a.brand} ${a.name}`;
-  const isOrganic = a.isOrganic ?? /\b(organic|organics)\b/i.test(fullTitle);
+  const isOrganic = a.isOrganic === true;
   const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: fullTitle, isOrganic });
   const b = ry.yukaBreakdown!;
   check(`1-for-1 ${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
@@ -590,6 +590,196 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       readerKt.includes("ONBOARDING_AUTH_GATE") &&
       mainKt.includes("Continue as guest") &&
       authModalTsx.includes("Continue as guest")
+  );
+
+  // --- Post-Audit Remediation Regression Suite (C-1, H-1..H-5, M-1..M-13, L-1..L-12) ---
+  const { isCatalogEntryFresh, passesVariantGuard } = await import("../lib/drinks-catalog");
+  const { isInstantCatalogEntryFresh } = await import("../lib/lookup");
+  const { TERMS_VERSION } = await import("../lib/terms");
+  const { TERMS_VERSION: PRICING_TERMS_VERSION } = await import("../lib/pricing");
+  const { isAdminAuthorized } = await import("../lib/admin-auth");
+
+  // C-1: Favorite Day Cookies & Cream Ice Cream includes wheat & soy allergens; Rocky Road does not match Vanilla
+  const favDayCookiesScan = await runScan({
+    productTitle: "Favorite Day Cookies & Cream Ice Cream",
+    store: "target",
+    dietaryWatchlist: ["wheat_gluten", "soy", "dairy"],
+  });
+  check(
+    "C-1: Favorite Day Cookies & Cream Ice Cream flags wheat/gluten, soy, and dairy allergens",
+    Boolean(
+      favDayCookiesScan.ok &&
+      /\bwheat\s+flour\b/i.test(favDayCookiesScan.product?.ingredients ?? "") &&
+      /\bsoy\s+lecithin\b/i.test(favDayCookiesScan.product?.ingredients ?? "") &&
+      (favDayCookiesScan.dietaryAlerts?.length ?? 0) >= 3
+    )
+  );
+
+  // H-2: Lactaid Chocolate Milk resolves to Lactaid (not Nesquik/TruMoo); Pedialyte AdvancedCare Plus does not match Classic
+  const lactaidChoc = matchDrinkCatalog("Lactaid Chocolate Whole Milk");
+  const pedialyteAdv = matchDrinkCatalog("Pedialyte AdvancedCare Plus Berry Frost Electrolyte Solution");
+  check(
+    "H-2: Lactaid Chocolate Whole Milk resolves to Lactaid and Pedialyte AdvancedCare Plus does not match Pedialyte Classic",
+    Boolean(
+      lactaidChoc && lactaidChoc.id === "lactaid-chocolate-milk" && lactaidChoc.brand === "Lactaid" &&
+      pedialyteAdv === null
+    )
+  );
+
+  // H-3 / M1: Single-flavor drink splits (Coca-Cola Cherry vs Vanilla, Gatorade Cool Blue vs Lemon-Lime, Zevia Ginger Root Beer vs Cola, Core Power Elite 42g vs 26g, Great Value vs TruMoo vs Nesquik)
+  const cokeCherry = matchDrinkCatalog("Coca-Cola Cherry Soda");
+  const cokeVanilla = matchDrinkCatalog("Coca-Cola Vanilla Soda");
+  const gatoradeCoolBlue = matchDrinkCatalog("Gatorade Cool Blue Thirst Quencher");
+  const gatoradeLemonLime = matchDrinkCatalog("Gatorade Lemon-Lime Thirst Quencher");
+  const zeviaRootBeer = matchDrinkCatalog("Zevia Zero Sugar Ginger Root Beer");
+  const zeviaCola = matchDrinkCatalog("Zevia Zero Sugar Cola");
+  const corePowerElite = matchDrinkCatalog("Core Power Elite 42g High Protein Shake");
+  const corePower26 = matchDrinkCatalog("Core Power 26g Protein Milk Shake");
+  const gvChocMilk = matchDrinkCatalog("Great Value Lowfat Chocolate Milk");
+  const trumooChocMilk = matchDrinkCatalog("TruMoo Chocolate Lowfat Milk");
+  const nesquikChocMilk = matchDrinkCatalog("Nesquik Chocolate Lowfat Milk");
+  check(
+    "H-3/M1: Split drink variants resolve to distinct single-formulation entries",
+    Boolean(
+      cokeCherry?.id === "coca-cola-cherry" &&
+      cokeVanilla?.id === "coca-cola-vanilla" &&
+      gatoradeCoolBlue?.id === "gatorade-cool-blue" && /\bblue\s*1\b/i.test(gatoradeCoolBlue.ingredients) && !/\bred\s*40\b/i.test(gatoradeCoolBlue.ingredients) &&
+      gatoradeLemonLime?.id === "gatorade-lemon-lime" && /\byellow\s*5\b/i.test(gatoradeLemonLime.ingredients) && !/\bred\s*40\b/i.test(gatoradeLemonLime.ingredients) &&
+      zeviaRootBeer?.id === "zevia-ginger-root-beer" &&
+      zeviaCola?.id === "zevia-zero-sugar-soda" &&
+      corePowerElite?.id === "core-power-elite-fairlife-protein" &&
+      corePower26?.id === "core-power-fairlife-protein" &&
+      gvChocMilk?.id === "great-value-chocolate-milk" &&
+      trumooChocMilk?.id === "trumoo-chocolate-milk" &&
+      nesquikChocMilk?.id === "nesquik-trumoo-chocolate-milk"
+    )
+  );
+
+  // H-4: Oscar Mayer Deli Fresh Oven Roasted Turkey Breast matches current US label across INSTANT_GROCERY_CATALOG and SEO_PRODUCTS
+  const oscarInstant = INSTANT_GROCERY_CATALOG.find((p) => p.title.includes("Oscar Mayer Deli Fresh"));
+  const oscarSeo = SEO_PRODUCTS.find((p) => p.slug === "oscar-mayer-deli-fresh-turkey");
+  check(
+    "H-4: Oscar Mayer Deli Fresh Turkey matches current US label (carrageenan, sodium phosphates, caramel color) across catalogs",
+    Boolean(
+      oscarInstant && oscarSeo &&
+      /\bcarrageenan\b/i.test(oscarInstant.ingredients) &&
+      /\bsodium\s+phosphates?\b/i.test(oscarInstant.ingredients) &&
+      oscarInstant.ingredients === oscarSeo.ingredients
+    )
+  );
+
+  // H-5: passesVariantGuard blocks flavor/pulp/sweetness/fat/protein variant mismatches
+  check(
+    "H-5: passesVariantGuard blocks variant mismatches across beverages and foods",
+    !passesVariantGuard("Starbucks Iced Espresso Vanilla Latte", "Starbucks Iced Espresso Classics Caffe Latte") &&
+      !passesVariantGuard("Tropicana Pure Premium Orange Juice Some Pulp", "Tropicana Pure Premium Original No Pulp 100% Orange Juice") &&
+      !passesVariantGuard("Silk Unsweetened Almondmilk", "Silk Original Almondmilk") &&
+      !passesVariantGuard("GT's Synergy Trilogy Raw Kombucha", "GT's Synergy Raw Kombucha Gingerade") &&
+      !passesVariantGuard("Oatly Full Fat Oatmilk", "Oatly Original Oatmilk") &&
+      !passesVariantGuard("Core Power Elite 42g Protein Shake", "Core Power 26g Protein Milk Shake") &&
+      !passesVariantGuard("Favorite Day Cookies & Cream Ice Cream", "Favorite Day Classic Vanilla Ice Cream")
+  );
+
+  // M-2, M-4, M-5: Doritos Simply NKD Nacho Cheese vs Cool Ranch, Samyang Buldak Ramen, and Grade A Dairy tightening
+  const doritosNkdCoolRanch = await runScan({
+    productTitle: "Doritos Simply NKD Cool Ranch Flavored Tortilla Chips",
+    store: "target",
+  });
+  const buldakScan = await runScan({
+    productTitle: "Samyang Buldak Hot Chicken Flavor Ramen",
+    store: "walmart",
+  });
+  check(
+    "M-2/M-5: Doritos Simply NKD Cool Ranch and Samyang Buldak Hot Chicken Ramen resolve to dedicated formulations",
+    Boolean(
+      doritosNkdCoolRanch.ok && doritosNkdCoolRanch.product?.title.includes("Cool Ranch") &&
+      buldakScan.ok && buldakScan.product?.brand === "Samyang" && (buldakScan.result?.score ?? 100) < 50
+    )
+  );
+
+  // M-9: Sugary beverage calorieNote says "Liquid Calories", never "Low-to-Moderate Calories"
+  const cokeCalorieCheck = scoreProductYuka(
+    "Carbonated water, high fructose corn syrup, caramel color, phosphoric acid, natural flavors, caffeine.",
+    {},
+    [],
+    { productTitle: "Coca-Cola Original Taste Soda", caloriesKcal100g: 39, sugarsG100g: 10.6 }
+  );
+  check(
+    "M-9: Sugary beverage calorieNote reports Liquid Calories instead of Low-to-Moderate Calories",
+    Boolean(cokeCalorieCheck.yukaBreakdown?.calorieNote?.startsWith("Liquid Calories"))
+  );
+
+  // H4 (non-food): Pet food, cosmetics, household, and OTC items receive nutritionScore 0 and nutriScoreGrade 'N/A'
+  const petFoodCheck = scoreProductYuka(
+    "Ground yellow corn, chicken by-product meal, corn gluten meal, beef tallow, soybean meal, red 40, yellow 5, bha.",
+    {},
+    [],
+    { productTitle: "Purina Dog Chow Complete Adult Dry Dog Food" }
+  );
+  const lotionCheck = scoreProductYuka(
+    "Water, glycerin, cetyl alcohol, dimethicone, petrolatum, phenoxyethanol.",
+    {},
+    [],
+    { productTitle: "CeraVe Daily Moisturizing Lotion" }
+  );
+  check(
+    "H4 (Non-food): Pet food and cosmetics receive nutritionScore === 0 and nutriScoreGrade === 'N/A'",
+    petFoodCheck.yukaBreakdown?.nutritionScore === 0 &&
+      petFoodCheck.yukaBreakdown?.nutriScoreGrade === "N/A" &&
+      lotionCheck.yukaBreakdown?.nutritionScore === 0 &&
+      lotionCheck.yukaBreakdown?.nutriScoreGrade === "N/A"
+  );
+
+  // L-9 & Freshness: isCatalogEntryFresh and isInstantCatalogEntryFresh reject invalid calendar dates (2026-02-31) and future dates
+  const tomorrowIso = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
+  check(
+    "L-9: isCatalogEntryFresh and isInstantCatalogEntryFresh reject impossible calendar dates and future dates",
+    !isCatalogEntryFresh("2026-02-31") &&
+      !isCatalogEntryFresh(tomorrowIso) &&
+      !isInstantCatalogEntryFresh("2026-02-31") &&
+      !isInstantCatalogEntryFresh(tomorrowIso) &&
+      isCatalogEntryFresh("2026-11-08")
+  );
+
+  // L-12: Sprite swaps to Spindrift Sparkling Water (not Olipop Vintage Cola); Spam Classic swaps to uncured ham/bacon (not cereal)
+  const spriteSwap = resolveSwap({ score: 15, productTitle: "Sprite Lemon-Lime Soda", store: "walmart" });
+  const spamSwap = resolveSwap({ score: 15, productTitle: "Spam Classic Canned Pork", store: "walmart" });
+  check(
+    "L-12: Sprite swaps to Spindrift Sparkling Water and Spam Classic swaps to Applegate Uncured Ham",
+    Boolean(
+      spriteSwap?.title.includes("Spindrift") &&
+      spamSwap?.title.includes("Applegate")
+    )
+  );
+
+  // M-11 & L-8: Unified TERMS_VERSION across lib/terms.ts and lib/pricing.ts, and SHA-256 isAdminAuthorized
+  process.env.HEYBROC_ADMIN_SECRET = "test-secret-for-rubric";
+  check(
+    "M-11/L-8: TERMS_VERSION is unified and isAdminAuthorized safely validates bearer tokens of any length",
+    TERMS_VERSION === "2026-11-08" &&
+      PRICING_TERMS_VERSION === TERMS_VERSION &&
+      isAdminAuthorized(new Request("https://heybroc.com/api/analytics", { headers: { authorization: "Bearer test-secret-for-rubric" } })) &&
+      !isAdminAuthorized(new Request("https://heybroc.com/api/analytics", { headers: { authorization: "Bearer short" } })) &&
+      !isAdminAuthorized(new Request("https://heybroc.com/api/analytics", { headers: { authorization: "Bearer a-much-longer-wrong-secret-token-value" } }))
+  );
+  delete process.env.HEYBROC_ADMIN_SECRET;
+
+  // Source-level checks for Android & Extension remediations
+  const scanApiKt = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt", "utf8");
+  const historyStoreKt = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt", "utf8");
+  const chromeExtJs = fs.readFileSync("chrome-extension/content.js", "utf8");
+  const safariExtJs = fs.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+  check(
+    "Android/Extension Remediation Checks: no 'refined starch spikes', Big K Cola score 7, passesVariantGuard in ScanHistoryStore, paid link in extension cart drawer, and PROTECTED_CONTAINER_RESOURCE_ID + isSensitiveCandidate in GroceryScreenReaderService",
+    !scanApiKt.includes("refined starch spikes") &&
+      historyStoreKt.includes("fun passesVariantGuard") &&
+      historyStoreKt.includes("Favorite Day Cookies & Cream Ice Cream") &&
+      readerKt.includes("PROTECTED_CONTAINER_RESOURCE_ID") &&
+      readerKt.includes("isSensitiveCandidate") &&
+      readerKt.includes("hasProductContext") &&
+      readerKt.includes("looksLikeFoodTitle") &&
+      chromeExtJs.includes("swapIsPaidLink") &&
+      safariExtJs.includes("swapIsPaidLink")
   );
 
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));

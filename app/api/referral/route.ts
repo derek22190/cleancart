@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   applyOrActivateReferral,
+  codeFromDeviceId,
+  getExistingDevice,
   getOrCreateDevice,
   saveDevice,
   serializeEntitlementWithPaidLookup,
   verifyDeviceSecret,
+  type DeviceEntitlement,
 } from "@/lib/referrals";
 import { PRICING } from "@/lib/pricing";
 import { checkRateLimit } from "@/lib/scan";
@@ -26,6 +29,21 @@ function getClientIp(req: Request): string {
   );
 }
 
+function buildTransientDevice(deviceId: string): DeviceEntitlement {
+  const now = Date.now();
+  return {
+    deviceId,
+    referralCode: codeFromDeviceId(deviceId),
+    referralActivated: false,
+    firstSeenAt: now,
+    proUntil: 0,
+    referralsCompleted: 0,
+    weeklySwapsUsed: [],
+    weekResetAt: now + 7 * 24 * 60 * 60 * 1000,
+    courtesyRefillUsedThisWeek: false,
+  };
+}
+
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
@@ -39,9 +57,12 @@ export async function GET(request: Request) {
     );
   }
   const { searchParams } = new URL(request.url);
-  const deviceId = searchParams.get("deviceId") || "anon-web";
+  const deviceId = (searchParams.get("deviceId") || "anon-web").trim();
   const deviceSecret = request.headers.get("x-device-secret") || undefined;
-  const device = await getOrCreateDevice(deviceId, deviceSecret);
+  const device =
+    deviceSecret || deviceId === "anon-web"
+      ? await getOrCreateDevice(deviceId, deviceSecret)
+      : (await getExistingDevice(deviceId)) ?? buildTransientDevice(deviceId);
   return NextResponse.json(
     { ok: true, entitlement: await serializeEntitlementWithPaidLookup(device) },
     { headers: CORS }
@@ -88,7 +109,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (action === "claim" || action === "courtesy_refill" || action === "record_swap") {
+    const requiresAuth =
+      action === "claim" ||
+      action === "courtesy_refill" ||
+      action === "record_swap";
+
+    if (requiresAuth) {
       if (!deviceId || deviceId === "anon-web" || !deviceSecret) {
         return NextResponse.json(
           {
@@ -101,20 +127,32 @@ export async function POST(request: Request) {
       }
     }
 
-    const device = await getOrCreateDevice(deviceId, deviceSecret);
-    if (!verifyDeviceSecret(device, deviceSecret)) {
+    const device =
+      deviceSecret || deviceId === "anon-web"
+        ? await getOrCreateDevice(deviceId, deviceSecret)
+        : (await getExistingDevice(deviceId)) ?? buildTransientDevice(deviceId);
+
+    if (requiresAuth) {
+      if (!device.deviceSecretHash) {
+        return NextResponse.json(
+          { ok: false, error: "Unbound device credentials." },
+          { status: 400, headers: CORS }
+        );
+      }
+      if (!verifyDeviceSecret(device, deviceSecret)) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid device credentials." },
+          { status: 403, headers: CORS }
+        );
+      }
+    } else if (
+      device.deviceSecretHash &&
+      deviceSecret &&
+      !verifyDeviceSecret(device, deviceSecret)
+    ) {
       return NextResponse.json(
         { ok: false, error: "Invalid device credentials." },
         { status: 403, headers: CORS }
-      );
-    }
-    if (
-      (action === "claim" || action === "courtesy_refill" || action === "record_swap") &&
-      !device.deviceSecretHash
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "Unbound device credentials." },
-        { status: 400, headers: CORS }
       );
     }
 

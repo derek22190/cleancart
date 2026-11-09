@@ -10,6 +10,7 @@ import {
   usd,
   type PlanId,
 } from "@/lib/pricing";
+import { TERMS_VERSION } from "@/lib/terms";
 
 export interface AppliedCreator {
   code: string;
@@ -298,8 +299,9 @@ export default function Paywall({
           deviceId: devId || undefined,
           deviceSecret: devSecret || undefined,
           email: userEmail || undefined,
+          consentAccepted: true,
           termsAccepted: true,
-          termsVersion: "2026-11-08",
+          termsVersion: TERMS_VERSION,
           origin: typeof window !== "undefined" ? window.location.origin : "https://heybroc.com",
         }),
       });

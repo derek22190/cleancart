@@ -6,7 +6,12 @@ import {
   getEmailEntitlement,
   saveEntitlement,
 } from "./entitlements";
-import { codeFromDeviceId, getOrCreateDevice } from "./referrals";
+import {
+  codeFromDeviceId,
+  getExistingDevice,
+  getOrCreateDevice,
+  verifyDeviceSecret,
+} from "./referrals";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./email";
 
 export type AuthProvider = "email" | "google" | "apple";
@@ -306,6 +311,7 @@ export async function registerOrLoginEmail(params: {
   password: string;
   displayName?: string;
   deviceId?: string;
+  deviceSecret?: string;
   watchlist?: Record<string, boolean>;
 }): Promise<{
   ok: boolean;
@@ -327,7 +333,18 @@ export async function registerOrLoginEmail(params: {
   }
 
   const existing = await getUserByEmail(email);
-  const dev = params.deviceId ? await getOrCreateDevice(params.deviceId) : null;
+  const cleanDeviceId = (params.deviceId || "").trim();
+  const cleanDeviceSecret = (params.deviceSecret || "").trim();
+  const dev =
+    cleanDeviceId && cleanDeviceId !== "anon-web"
+      ? cleanDeviceSecret
+        ? await getOrCreateDevice(cleanDeviceId, cleanDeviceSecret)
+        : await getExistingDevice(cleanDeviceId)
+      : null;
+  const isDeviceSecretVerified = Boolean(
+    dev && cleanDeviceSecret && verifyDeviceSecret(dev, cleanDeviceSecret)
+  );
+  const verifiedDeviceId = isDeviceSecretVerified ? cleanDeviceId : undefined;
 
   if (params.mode === "login") {
     if (!existing) {
@@ -352,14 +369,17 @@ export async function registerOrLoginEmail(params: {
       };
     }
 
-    if (params.deviceId && !existing.linkedDevices.includes(params.deviceId)) {
-      existing.linkedDevices.push(params.deviceId);
+    if (
+      verifiedDeviceId &&
+      !existing.linkedDevices.includes(verifiedDeviceId)
+    ) {
+      existing.linkedDevices.push(verifiedDeviceId);
     }
     if (params.watchlist && !existing.watchlist) {
       existing.watchlist = params.watchlist;
     }
     await saveUser(existing);
-    const profile = await toPublicProfile(existing, params.deviceId);
+    const profile = await toPublicProfile(existing, verifiedDeviceId);
     return {
       ok: true,
       token: createSessionToken(existing),
@@ -390,11 +410,13 @@ export async function registerOrLoginEmail(params: {
     passwordIterations: PBKDF2_ITERATIONS,
     emailVerified: false,
     tokenVersion: 0,
-    referralCode: dev?.referralCode || codeFromDeviceId(email),
+    referralCode:
+      (isDeviceSecretVerified ? dev?.referralCode : undefined) ||
+      codeFromDeviceId(email),
     proUntil: 0,
     isStripePro: false,
     watchlist: params.watchlist,
-    linkedDevices: params.deviceId ? [params.deviceId] : [],
+    linkedDevices: verifiedDeviceId ? [verifiedDeviceId] : [],
     verificationCode,
     verificationExpiresAt: Date.now() + 15 * 60 * 1000,
     verificationAttempts: 0,
@@ -403,7 +425,7 @@ export async function registerOrLoginEmail(params: {
   };
   await saveUser(newUser);
   await sendVerificationEmail(email, verificationCode).catch(() => {});
-  const profile = await toPublicProfile(newUser, params.deviceId);
+  const profile = await toPublicProfile(newUser, verifiedDeviceId);
   return {
     ok: true,
     token: createSessionToken(newUser),
@@ -491,7 +513,7 @@ async function verifyOidcJwtWithJwks(params: {
     if (!jwk) return { ok: false, email: "" };
 
     const publicKey = crypto.createPublicKey({
-      key: jwk as crypto.JsonWebKey,
+      key: jwk as unknown as crypto.JsonWebKey,
       format: "jwk",
     });
     const signingInput = Buffer.from(`${headerB64}.${payloadB64}`, "utf8");
@@ -561,6 +583,7 @@ export async function loginWithOAuth(params: {
   password?: string;
   displayName?: string;
   deviceId?: string;
+  deviceSecret?: string;
   watchlist?: Record<string, boolean>;
 }): Promise<{
   ok: boolean;
@@ -592,7 +615,18 @@ export async function loginWithOAuth(params: {
 
   const email = verification.email;
   const existing = await getUserByEmail(email);
-  const dev = params.deviceId ? await getOrCreateDevice(params.deviceId) : null;
+  const cleanDeviceId = (params.deviceId || "").trim();
+  const cleanDeviceSecret = (params.deviceSecret || "").trim();
+  const dev =
+    cleanDeviceId && cleanDeviceId !== "anon-web"
+      ? cleanDeviceSecret
+        ? await getOrCreateDevice(cleanDeviceId, cleanDeviceSecret)
+        : await getExistingDevice(cleanDeviceId)
+      : null;
+  const isDeviceSecretVerified = Boolean(
+    dev && cleanDeviceSecret && verifyDeviceSecret(dev, cleanDeviceSecret)
+  );
+  const verifiedDeviceId = isDeviceSecretVerified ? cleanDeviceId : undefined;
   const fallbackName = email.split("@")[0].replace(/[._-]+/g, " ");
 
   const user: UserAccount = existing || {
@@ -602,11 +636,13 @@ export async function loginWithOAuth(params: {
     provider: params.provider,
     emailVerified: true,
     tokenVersion: 0,
-    referralCode: dev?.referralCode || codeFromDeviceId(email),
+    referralCode:
+      (isDeviceSecretVerified ? dev?.referralCode : undefined) ||
+      codeFromDeviceId(email),
     proUntil: 0,
     isStripePro: false,
     watchlist: params.watchlist,
-    linkedDevices: params.deviceId ? [params.deviceId] : [],
+    linkedDevices: verifiedDeviceId ? [verifiedDeviceId] : [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -614,8 +650,8 @@ export async function loginWithOAuth(params: {
   user.emailVerified = true;
   if (existing) {
     if (params.displayName) user.displayName = params.displayName.trim();
-    if (params.deviceId && !user.linkedDevices.includes(params.deviceId)) {
-      user.linkedDevices.push(params.deviceId);
+    if (verifiedDeviceId && !user.linkedDevices.includes(verifiedDeviceId)) {
+      user.linkedDevices.push(verifiedDeviceId);
     }
     if (params.watchlist && !user.watchlist) {
       user.watchlist = params.watchlist;
@@ -623,7 +659,7 @@ export async function loginWithOAuth(params: {
   }
 
   await saveUser(user);
-  const profile = await toPublicProfile(user, params.deviceId);
+  const profile = await toPublicProfile(user, verifiedDeviceId);
   return {
     ok: true,
     token: createSessionToken(user),

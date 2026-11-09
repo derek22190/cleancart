@@ -6,6 +6,10 @@ plugins {
 }
 
 val apiBase: String = (project.findProperty("cleancartApiBase") as String?) ?: "https://www.heybroc.com"
+val amazonMobileApproved: Boolean =
+    ((project.findProperty("cleancartAmazonMobileApproved") as String?)
+        ?: System.getenv("CLEANCART_AMAZON_MOBILE_APPROVED"))
+        ?.equals("true", ignoreCase = true) == true
 
 android {
     namespace = "com.cleancart.overlay"
@@ -18,6 +22,7 @@ android {
         versionCode = 33
         versionName = "2.3.3"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
+        buildConfigField("boolean", "CLEANCART_AMAZON_MOBILE_APPROVED", "$amazonMobileApproved")
     }
 
     val keystoreFileEnv = System.getenv("KEYSTORE_FILE")?.takeIf { it.isNotBlank() }

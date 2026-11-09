@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-Secret",
 };
 
 function getClientIp(req: Request): string {
@@ -102,11 +102,16 @@ export async function POST(request: Request) {
       displayName?: string;
       provider?: "google" | "apple";
       deviceId?: string;
+      deviceSecret?: string;
       token?: string;
       watchlist?: Record<string, boolean>;
     };
 
     const action = body.action || "login";
+    const resolvedDeviceSecret =
+      body.deviceSecret ||
+      request.headers.get("x-device-secret") ||
+      undefined;
 
     if (action === "login" || action === "register") {
       const res = await registerOrLoginEmail({
@@ -115,6 +120,7 @@ export async function POST(request: Request) {
         password: body.password || "",
         displayName: body.displayName,
         deviceId: body.deviceId,
+        deviceSecret: resolvedDeviceSecret,
         watchlist: body.watchlist,
       });
       return NextResponse.json(res, {
@@ -132,6 +138,7 @@ export async function POST(request: Request) {
         password: body.password,
         displayName: body.displayName,
         deviceId: body.deviceId,
+        deviceSecret: resolvedDeviceSecret,
         watchlist: body.watchlist,
       });
       return NextResponse.json(res, {

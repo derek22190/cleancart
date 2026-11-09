@@ -4,6 +4,20 @@ import { notFound } from "next/navigation";
 import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import { CATEGORY_LABELS, RISK_LABEL } from "@/lib/rubric";
 import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
+import { resolveSwap, type RetailerId } from "@/lib/swaps";
+
+export const revalidate = 86400;
+
+const SEO_RETAILERS: Array<{ id: RetailerId; label: string }> = [
+  { id: "walmart", label: "Walmart" },
+  { id: "target", label: "Target" },
+  { id: "kroger", label: "Kroger" },
+  { id: "shipt", label: "Shipt" },
+  { id: "doordash", label: "DoorDash" },
+  { id: "instacart", label: "Instacart" },
+  { id: "amazon", label: "Amazon Fresh" },
+  { id: "costco", label: "Costco" },
+];
 
 export function generateStaticParams() {
   return SEO_PRODUCTS.filter((p) => hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)).map((p) => ({
@@ -99,8 +113,8 @@ export default async function SwapReportPage({
               borderRadius: 999,
               fontSize: 18,
               fontWeight: 900,
-              background: result.score >= 70 ? "#dcfce7" : "#fee2e2",
-              color: result.score >= 70 ? "#166534" : "#991b1b",
+              background: result.score >= 75 ? "#dcfce7" : result.score >= 50 ? "#fef3c7" : "#fee2e2",
+              color: result.score >= 75 ? "#166534" : result.score >= 50 ? "#92400e" : "#991b1b",
             }}
           >
             {result.score}/100 · {result.rating}
@@ -138,19 +152,43 @@ export default async function SwapReportPage({
               ⇄ Recommended 1-for-1 Clean Swap ({swap.category})
             </span>
             <h2 style={{ fontSize: 20, fontWeight: 900, color: "#064e3b", margin: "4px 0" }}>
-              {swap.title} — {swap.score}/100 ({swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : swap.score >= 25 ? "Mediocre" : "Poor"})
+              {swap.title} — {swap.score}/100 ({swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Mediocre" : "Poor"})
             </h2>
             <p style={{ fontSize: 13.5, color: "#065f46", margin: "4px 0 10px" }}>
               <b>Representative Ingredients:</b> {swap.ingredients}
             </p>
-            <a
-              href={swap.webUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ display: "inline-block", padding: "9px 16px", borderRadius: 999, background: "#059669", color: "#ffffff", fontWeight: 800, fontSize: 13, textDecoration: "none" }}
-            >
-              Shop Clean Swap on Walmart ↗{swap.isPaidLink ? " · paid link" : ""}
-            </a>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {SEO_RETAILERS.map((r) => {
+                const storeSwap =
+                  resolveSwap({
+                    score: result.score,
+                    productTitle: entry.title,
+                    ingredients: entry.ingredients,
+                    store: r.id,
+                  }) ?? swap;
+                return (
+                  <a
+                    key={r.id}
+                    href={storeSwap.webUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: "inline-block",
+                      padding: r.id === "walmart" ? "9px 16px" : "8px 13px",
+                      borderRadius: 999,
+                      background: r.id === "walmart" ? "#059669" : "#ffffff",
+                      border: "1px solid #059669",
+                      color: r.id === "walmart" ? "#ffffff" : "#065f46",
+                      fontWeight: 800,
+                      fontSize: 12.5,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Shop on {r.label} ↗{storeSwap.isPaidLink ? " · paid link" : ""}
+                  </a>
+                );
+              })}
+            </div>
             <span style={{ display: "block", fontSize: 11, color: "#047857", marginTop: 6 }}>
               Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. Not affiliated with Walmart, Target, Kroger, Shipt, DoorDash, or any brand shown.
             </span>

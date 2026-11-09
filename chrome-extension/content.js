@@ -246,9 +246,9 @@
         ? state.cartItems
             .map(
               (item, idx) => `<li class="cc-audit-row">
-                <div><b>${esc(item.title)}</b>${item.swapTitle && item.score < 75 ? `<small>Clean Swap: ${esc(item.swapTitle)} (${esc(item.swapScore || 90)}/100)</small>` : ""}</div>
+                <div><b>${esc(item.title)}</b>${item.swapTitle && item.score < 75 ? `<small>Clean Swap: ${esc(item.swapTitle)}${item.swapScore ? ` (${esc(item.swapScore)}/100)` : ""}${item.swapIsPaidLink ? " · paid link" : ""}</small>` : ""}</div>
                 <span class="cc-chip cc-tone-${toneForScore(item.score)}">${esc(item.score)}</span>
-                ${item.score < 75 && item.swapTitle ? `<button class="cc-mini-swap" data-swap-idx="${idx}">Swap</button>` : ""}
+                ${item.score < 75 && item.swapTitle ? `<button class="cc-mini-swap" data-swap-idx="${idx}">Swap${item.swapIsPaidLink ? " · paid" : ""}</button>` : ""}
               </li>`,
             )
             .join("")
@@ -262,7 +262,7 @@
             <button class="cc-close" data-act="collapse">×</button>
           </div>
           <ul class="cc-audit-list">${rows}</ul>
-          ${firstDirty ? `<button class="cc-swap-btn cc-wide" data-act="swap-all">Find Clean Swap: ${esc(firstDirty.swapTitle)} (${esc(firstDirty.swapScore || 90)}/100)</button>` : state.cartItems.length ? `<p class="cc-clean" style="margin-top:12px">✓ Every item in your cart scores 75+!</p>` : ""}
+          ${firstDirty ? `<button class="cc-swap-btn cc-wide" data-act="swap-all">Find Clean Swap: ${esc(firstDirty.swapTitle)}${firstDirty.swapScore ? ` (${esc(firstDirty.swapScore)}/100)` : ""}${firstDirty.swapIsPaidLink ? " · paid link" : ""}</button>` : state.cartItems.length ? `<p class="cc-clean" style="margin-top:12px">✓ Every item in your cart scores 75+!</p>` : ""}
         </div>
       </div>`;
       return;
@@ -308,7 +308,7 @@
     const swapPaidSuffix = d.swap?.isPaidLink ? " · paid link" : "";
     const swapRatingLabel = d.swap ? (Number(d.swap.score) >= 75 ? "Excellent" : Number(d.swap.score) >= 50 ? "Good" : "Mediocre") : "";
     const swap = d.swap
-      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 ${swapRatingLabel}</span></div>
+      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}${swapPaidSuffix}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 ${swapRatingLabel}</span></div>
            <button class="cc-swap-btn" data-act="swap">Swap Item${swapPaidSuffix}</button></div>`
       : `<div class="cc-swap cc-swap-ok">Great pick — no swap needed.</div>`;
     const srcKey = d.lookup?.origin || d.lookup?.source || d.product?.origin || d.product?.source || "catalog";
@@ -379,6 +379,7 @@
       existing.swapTitle = resp.swap?.title || null;
       existing.swapScore = resp.swap?.score || null;
       existing.swapUrl = resp.swap?.webUrl || null;
+      existing.swapIsPaidLink = Boolean(resp.swap?.isPaidLink);
     } else {
       state.cartItems.unshift({
         key: itemKey,
@@ -387,6 +388,7 @@
         swapTitle: resp.swap?.title || null,
         swapScore: resp.swap?.score || null,
         swapUrl: resp.swap?.webUrl || null,
+        swapIsPaidLink: Boolean(resp.swap?.isPaidLink),
       });
       state.cartItems = state.cartItems.slice(0, 20);
     }

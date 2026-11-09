@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import {
-  getCustomerEntitlement,
   getSubscriptionEntitlement,
+  recordSubscriptionConsent,
+  refreshSubscriptionConsentOnRenewal,
   saveEntitlement,
   updateSubscriptionEntitlement,
   type EntitlementStatus,
@@ -10,8 +11,9 @@ import {
   recordStripeCreatorConversionOnce,
   recordStripeCreatorRefundOnce,
 } from "@/lib/influencers";
-import type { PlanId } from "@/lib/pricing";
+import { TERMS_VERSION, type PlanId } from "@/lib/pricing";
 import { applyOrActivateReferral } from "@/lib/referrals";
+import { kvGet, kvSet } from "@/lib/storage";
 import { verifyStripeWebhookSignature } from "@/lib/stripe-webhook";
 
 interface StripeEventPayload {
@@ -60,6 +62,18 @@ function extractSubIdFromInvoiceObject(inv: Record<string, unknown>): string {
   return "";
 }
 
+function chargeObjHasSubscriptionLink(
+  chargeObj: Record<string, unknown>
+): boolean {
+  const metadata = (chargeObj.metadata ?? {}) as Record<string, string>;
+  if (metadata.subscription_id) return true;
+  if (chargeObj.invoice) return true;
+  if (chargeObj.payment_intent) return true;
+  // If chargeObj explicitly sets `invoice: null` with no payment_intent or subscription_id, it is a one-off charge
+  if ("invoice" in chargeObj && chargeObj.invoice === null) return false;
+  return true;
+}
+
 async function resolveSubscriptionFromCharge(
   chargeObj: Record<string, unknown>
 ): Promise<string> {
@@ -93,14 +107,12 @@ async function resolveSubscriptionFromCharge(
         cache: "no-store",
       }
     );
-    if (invRes.status >= 500) {
+    if (!invRes.ok) {
       throw new Error(`Stripe invoice lookup failed with HTTP ${invRes.status}`);
     }
-    if (invRes.ok) {
-      const invData = (await invRes.json()) as Record<string, unknown>;
-      const subId = extractSubIdFromInvoiceObject(invData);
-      if (subId) return subId;
-    }
+    const invData = (await invRes.json()) as Record<string, unknown>;
+    const subId = extractSubIdFromInvoiceObject(invData);
+    if (subId) return subId;
   }
 
   // Basil+ API: resolve invoice from payment_intent via /v1/invoice_payments
@@ -122,55 +134,38 @@ async function resolveSubscriptionFromCharge(
       headers: { Authorization: `Bearer ${secretKey}` },
       cache: "no-store",
     });
-    if (ipRes.status >= 500) {
+    if (!ipRes.ok) {
       throw new Error(`Stripe invoice_payments lookup failed with HTTP ${ipRes.status}`);
     }
-    if (ipRes.ok) {
-      const ipData = (await ipRes.json()) as {
-        data?: Array<{
-          invoice?: string | Record<string, unknown>;
-        }>;
-      };
-      const firstInv = ipData.data?.[0]?.invoice;
-      if (firstInv && typeof firstInv === "object") {
-        const subId = extractSubIdFromInvoiceObject(firstInv);
-        if (subId) return subId;
-      } else if (typeof firstInv === "string" && firstInv) {
-        const invRes = await fetch(
-          `https://api.stripe.com/v1/invoices/${encodeURIComponent(firstInv)}`,
-          {
-            method: "GET",
-            headers: { Authorization: `Bearer ${secretKey}` },
-            cache: "no-store",
-          }
-        );
-        if (invRes.status >= 500) {
-          throw new Error(`Stripe invoice lookup failed with HTTP ${invRes.status}`);
+    const ipData = (await ipRes.json()) as {
+      data?: Array<{
+        invoice?: string | Record<string, unknown>;
+      }>;
+    };
+    const firstInv = ipData.data?.[0]?.invoice;
+    if (firstInv && typeof firstInv === "object") {
+      const subId = extractSubIdFromInvoiceObject(firstInv);
+      if (subId) return subId;
+    } else if (typeof firstInv === "string" && firstInv) {
+      const invRes = await fetch(
+        `https://api.stripe.com/v1/invoices/${encodeURIComponent(firstInv)}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${secretKey}` },
+          cache: "no-store",
         }
-        if (invRes.ok) {
-          const invData = (await invRes.json()) as Record<string, unknown>;
-          const subId = extractSubIdFromInvoiceObject(invData);
-          if (subId) return subId;
-        }
+      );
+      if (!invRes.ok) {
+        throw new Error(`Stripe invoice lookup failed with HTTP ${invRes.status}`);
       }
+      const invData = (await invRes.json()) as Record<string, unknown>;
+      const subId = extractSubIdFromInvoiceObject(invData);
+      if (subId) return subId;
     }
   }
 
-  // Fallback: look up stored entitlement by customerId ONLY when no invoiceId failed resolution
-  const rawCustomer = chargeObj.customer;
-  const customerId =
-    typeof rawCustomer === "string"
-      ? rawCustomer
-      : rawCustomer && typeof (rawCustomer as { id?: string }).id === "string"
-        ? (rawCustomer as { id: string }).id
-        : "";
-  if (customerId && !invoiceId) {
-    const byCustomer = await getCustomerEntitlement(customerId);
-    if (byCustomer?.subscriptionId) {
-      return byCustomer.subscriptionId;
-    }
-  }
-
+  // Never fall back to getCustomerEntitlement(customerId) when a charge has no subscription invoice,
+  // so refunding a one-off non-subscription charge never cancels an unrelated active subscription (H2).
   return "";
 }
 
@@ -244,6 +239,8 @@ export async function POST(req: Request) {
           (typeof obj.client_reference_id === "string"
             ? obj.client_reference_id
             : undefined);
+        const resolvedEmail =
+          customerDetails?.email || metadata.customer_email || "";
 
         // Require explicit payment_status ("paid" or "no_payment_required" for trial)
         const paymentStatus =
@@ -260,7 +257,7 @@ export async function POST(req: Request) {
           sessionId,
           subscriptionId,
           customerId,
-          customerEmail: customerDetails?.email || metadata.customer_email || undefined,
+          customerEmail: resolvedEmail || undefined,
           deviceId,
           plan,
           creatorCode,
@@ -268,6 +265,18 @@ export async function POST(req: Request) {
           active: isPaid || isTrial,
           lastStripeEventCreated: eventCreated,
           updatedAt: new Date().toISOString(),
+        });
+
+        await recordSubscriptionConsent({
+          deviceId: deviceId || "anon-web",
+          email: resolvedEmail,
+          plan,
+          termsVersion: metadata.terms_version || TERMS_VERSION,
+          timestamp: metadata.terms_accepted_at || new Date().toISOString(),
+          ip: "stripe-webhook",
+          sessionId,
+          customerId,
+          subscriptionId,
         });
 
         if (creatorCode && (isTrial || isPaid)) {
@@ -339,7 +348,8 @@ export async function POST(req: Request) {
         break;
       }
 
-      case "invoice.paid": {
+      case "invoice.paid":
+      case "invoice.payment_succeeded": {
         const invoiceId = typeof obj.id === "string" ? obj.id : "";
         const parentObj = (obj.parent ?? {}) as {
           subscription_details?: {
@@ -380,7 +390,7 @@ export async function POST(req: Request) {
         const creatorCode =
           metadata.creator_code || existing?.creatorCode || undefined;
 
-        await updateSubscriptionEntitlement(subscriptionId, {
+        const updated = await updateSubscriptionEntitlement(subscriptionId, {
           status: "active",
           plan,
           customerId,
@@ -388,7 +398,20 @@ export async function POST(req: Request) {
           lastStripeEventCreated: eventCreated,
         });
 
-        // Credit creators ONLY from invoice.paid with amount_paid > 0, key invoice:${id}, using actual paid USD
+        await refreshSubscriptionConsentOnRenewal({
+          sessionId: updated?.sessionId || existing?.sessionId,
+          customerId: customerId || updated?.customerId || existing?.customerId,
+          email:
+            (typeof obj.customer_email === "string" ? obj.customer_email : "") ||
+            metadata.customer_email ||
+            updated?.customerEmail ||
+            existing?.customerEmail,
+          deviceId: metadata.device_id || updated?.deviceId || existing?.deviceId,
+          subscriptionId,
+          plan,
+        });
+
+        // Credit creators ONLY from invoice.paid / invoice.payment_succeeded with amount_paid > 0, key invoice:${id}, using actual paid USD
         if (creatorCode && amountPaidCents > 0 && invoiceId) {
           await recordStripeCreatorConversionOnce(
             `invoice:${invoiceId}`,
@@ -438,7 +461,10 @@ export async function POST(req: Request) {
           isDispute ||
           (amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0);
 
-        if (isFullRefund && !subscriptionId) {
+        const hasInvoiceReference = Boolean(
+          chargeObjHasSubscriptionLink(obj)
+        );
+        if (isFullRefund && !subscriptionId && hasInvoiceReference) {
           throw new Error(
             `Unable to resolve subscription for refunded/disputed charge ${chargeId}`
           );
@@ -485,12 +511,27 @@ export async function POST(req: Request) {
               );
             }
           } else {
-            await recordStripeCreatorRefundOnce(
-              `refund:${chargeId}:${event.id || amountRefundedCents}`,
-              creatorCode,
-              plan,
-              amountRefundedCents / 100
-            );
+            const chargeRefundTrackerKey = `heybroc:charge:refunded:${chargeId}`;
+            const prevRefundedCents =
+              (await kvGet<number>(chargeRefundTrackerKey)) ?? 0;
+            const deltaCents = isDispute
+              ? amountRefundedCents
+              : Math.max(0, amountRefundedCents - prevRefundedCents);
+            if (deltaCents > 0) {
+              const recorded = await recordStripeCreatorRefundOnce(
+                `refund:${chargeId}:${event.id || amountRefundedCents}`,
+                creatorCode,
+                plan,
+                deltaCents / 100
+              );
+              if (recorded && !isDispute) {
+                await kvSet(
+                  chargeRefundTrackerKey,
+                  Math.max(prevRefundedCents, amountRefundedCents),
+                  400 * 24 * 60 * 60
+                );
+              }
+            }
           }
         }
         break;

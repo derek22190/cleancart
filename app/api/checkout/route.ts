@@ -30,12 +30,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400 });
     }
     const body = parsed as Record<string, unknown>;
-    if (body.termsAccepted !== true) {
+    const hasExpressConsent =
+      body.termsAccepted === true || body.consentAccepted === true;
+    if (!hasExpressConsent) {
       return NextResponse.json(
         {
           ok: false,
           error:
             "Please check the box to agree to the Terms of Service and automatic renewal terms before continuing.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const suppliedTermsVersion =
+      typeof body.termsVersion === "string" ? body.termsVersion.trim() : "";
+    if (!suppliedTermsVersion || suppliedTermsVersion !== TERMS_VERSION) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Outdated or missing Terms of Service version. Expected ${TERMS_VERSION}; please refresh and review the current terms.`,
         },
         { status: 400 }
       );
@@ -48,7 +62,6 @@ export async function POST(req: NextRequest) {
       typeof body.deviceSecret === "string"
         ? body.deviceSecret.trim()
         : req.headers.get("x-device-secret")?.trim() || "";
-    // Always record the authoritative server TERMS_VERSION (never trust forged client version strings)
     const termsVersion = TERMS_VERSION;
     const rawEmail =
       typeof body.email === "string"

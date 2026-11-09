@@ -972,7 +972,8 @@ class OverlayWindowService : Service() {
             val projectedAvg = if (tripCart.isEmpty()) 100 else {
                 tripCart.sumOf { item ->
                     if (item.score < 75 && item.swapObj != null) {
-                        item.swapObj!!.optInt("score", 90).coerceAtLeast(item.score)
+                        val s = item.swapObj!!.optInt("score", 0)
+                        if (s > 0) s.coerceAtLeast(item.score) else item.score
                     } else {
                         item.score
                     }
@@ -988,12 +989,13 @@ class OverlayWindowService : Service() {
                     val onlyItem = dirtyWithSwaps[0]
                     val swapObj = onlyItem.swapObj!!
                     val swapTitle = swapObj.optString("title", "Clean Alternative")
-                    val swapScore = swapObj.optInt("score", 90)
+                    val swapScore = swapObj.optInt("score", 0)
+                    val scoreTag = if (swapScore > 0) " ($swapScore/100)" else ""
                     val unlocked = ScanApi.isSwapUnlocked(this, onlyItem.title, swapTitle)
                     when {
-                        unlocked -> "🔁 Swap Flagged Item → $swapTitle ($swapScore/100)$paidSuffix"
-                        rem > 0 -> "🔓 Reveal Clean Swap ($swapScore/100) · $rem/$lim Free Left$paidSuffix"
-                        else -> "🔒 Unlock Clean Swap ($swapScore/100) — Go Pro"
+                        unlocked -> "🔁 Swap Flagged Item → $swapTitle$scoreTag$paidSuffix"
+                        rem > 0 -> "🔓 Reveal Clean Swap$scoreTag · $rem/$lim Free Left$paidSuffix"
+                        else -> "🔒 Unlock Clean Swap$scoreTag — Go Pro"
                     }
                 }
                 ScanApi.isProActive(this) || rem > 0 ->
@@ -1121,7 +1123,8 @@ class OverlayWindowService : Service() {
         for (item in sortedDirty) {
             val swapObj = item.swapObj ?: continue
             val swapTitle = swapObj.optString("title", "Clean Alternative")
-            val swapScore = swapObj.optInt("score", 90)
+            val swapScore = swapObj.optInt("score", 0)
+            val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
             val swapPaid = swapObj.optBoolean("isPaidLink", false)
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1141,7 +1144,7 @@ class OverlayWindowService : Service() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(5), 0, 0)
-                    addView(text("➔ $swapTitle ($swapScore/100)", 13f, 0xFF0B5E39.toInt(), bold = true).apply {
+                    addView(text("➔ $swapTitle$swapScoreSuffix", 13f, 0xFF0B5E39.toInt(), bold = true).apply {
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -1501,12 +1504,14 @@ class OverlayWindowService : Service() {
         }
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Alternative")
-            val swapScore = swap.optInt("score", 90)
+            val swapScore = swap.optInt("score", 0)
             val swapRating = when {
                 swapScore >= 75 -> "Excellent"
                 swapScore >= 50 -> "Good"
-                else -> "Mediocre"
+                swapScore >= 25 -> "Poor"
+                else -> "Bad"
             }
+            val swapScoreBadge = if (swapScore > 0) "$swapScore/100 $swapRating" else "Clean Alternative"
             val swapIngredients = swap.optString("ingredients").trim()
             val swapUnlocked = ScanApi.isSwapUnlocked(this, prodTitle, swapTitle)
             val rem = ScanApi.swapsRemaining(this)
@@ -1540,7 +1545,7 @@ class OverlayWindowService : Service() {
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END
                     })
-                    addView(text("$swapScore/100 $swapRating", 11f, 0xFF16A34A.toInt(), bold = true))
+                    addView(text(swapScoreBadge, 11f, 0xFF16A34A.toInt(), bold = true))
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
 
@@ -1563,7 +1568,7 @@ class OverlayWindowService : Service() {
                 }
             } else if (rem > 0) {
                 // Free user with remaining weekly swaps: hide brand/product name until they tap Reveal!
-                swapBox.addView(text("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRating.uppercase()}", 9.5f, BRAND, bold = true).apply {
+                swapBox.addView(text("🔒 CLEAN SWAP FOUND · ${swapScoreBadge.uppercase()}", 9.5f, BRAND, bold = true).apply {
                     letterSpacing = 0.05f
                 })
                 swapBox.addView(text("1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
@@ -1585,10 +1590,10 @@ class OverlayWindowService : Service() {
                 })
             } else {
                 // Free user out of weekly swaps (0/3 left): keep brand/product name locked behind Pro / Referral!
-                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · $swapScore/100 ${swapRating.uppercase()}", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
+                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · ${swapScoreBadge.uppercase()}", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
                     letterSpacing = 0.05f
                 })
-                swapBox.addView(text("$swapScore/100 Clean Replacement Available", 12.5f, INK, bold = true).apply {
+                swapBox.addView(text("${if (swapScore > 0) "$swapScore/100 " else ""}Clean Replacement Available", 12.5f, INK, bold = true).apply {
                     setPadding(0, dp(3), 0, 0)
                 })
                 swapBox.addView(text("All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 11f, INK_2).apply {
@@ -1653,10 +1658,18 @@ class OverlayWindowService : Service() {
             "screen" -> "On-screen package text"
             else -> "Ingredient lookup"
         }
+        val prodImageRaw = prodObj?.optString("imageUrl").orEmpty()
+        val swapImageRaw = swap?.optString("imageUrl").orEmpty().ifBlank { swap?.optString("image").orEmpty() }
+        val usesOffPhotos = rawSource == "openfoodfacts" ||
+            prodImageRaw.contains("openfoodfacts", ignoreCase = true) ||
+            prodImageRaw.contains("/api/product-image", ignoreCase = true) ||
+            swapImageRaw.contains("openfoodfacts", ignoreCase = true) ||
+            swapImageRaw.contains("/api/product-image", ignoreCase = true) ||
+            prodTitle.isNotBlank()
         val provenanceLine = buildString {
             append("Source: $sourceLabel")
             if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
-            append(" · Photos: Open Food Facts (CC BY-SA 3.0) · Tap to report a mistake")
+            append(" · Tap to report a mistake")
         }
         sheet.addView(
             text(provenanceLine, 9.5f, BRAND, bold = true).apply {
@@ -1673,6 +1686,22 @@ class OverlayWindowService : Service() {
                 }
             }
         )
+        if (usesOffPhotos) {
+            sheet.addView(
+                text("Photos: Open Food Facts (CC BY-SA 3.0) ↗", 9.5f, BRAND, bold = true).apply {
+                    setPadding(dp(2), dp(3), dp(2), 0)
+                    setOnClickListener {
+                        runCatching {
+                            val offIntent = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://world.openfoodfacts.org/terms-of-use")
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(offIntent)
+                        }
+                    }
+                }
+            )
+        }
         sheet.addView(
             text(
                 "Informational opinion only — not medical advice. Scores reflect HeyBroc's independent clean-label rubric. Formulations vary by region and lot; always verify the physical package label.",
@@ -1706,11 +1735,12 @@ class OverlayWindowService : Service() {
         removeCard()
         removePill()
         val swapTitle = swap.optString("title", "Clean Alternative")
-        val swapScore = swap.optInt("score", 90)
+        val swapScore = swap.optInt("score", 0)
         val swapRating = when {
             swapScore >= 75 -> "Excellent"
             swapScore >= 50 -> "Good"
-            else -> "Mediocre"
+            swapScore >= 25 -> "Poor"
+            else -> "Bad"
         }
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").trim()
