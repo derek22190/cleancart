@@ -138,13 +138,18 @@ const GENERIC_LEADING_MODIFIERS = new Set([
   "pack", "bag", "box", "can", "jar", "bottle", "tub", "carton", "pouch",
 ]);
 
+const SHORT_BRAND_TOKENS = new Set(["hu", "v8", "gv", "bj", "kc"]);
+let usdaUnavailableUntil = 0;
+
 function tokens(s: string): string[] {
   return s
     .toLowerCase()
     .replace(/['’]s\b/g, "s")
+    .replace(/['’]/g, "")
+    .replace(/\bcr[eè]me\b/g, "cream")
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
-    .filter((t) => t.length >= 3 && !STOP.has(t) && !/^\d+$/.test(t));
+    .filter((t) => (t.length >= 3 || SHORT_BRAND_TOKENS.has(t)) && !STOP.has(t) && !/^\d+$/.test(t));
 }
 
 const FLAVOR_TOKENS = new Set([
@@ -177,7 +182,7 @@ function relevance(query: string, candidate: string): number {
     );
 
   // Prevent cross-category novel spin-offs (e.g. "Oatmeal Creme Pies" matching "Oatmeal Creme Pies Cereal" or "Nutty Bars Ice Cream")
-  const FORM_FACTOR_TOKENS = ["cereal", "ice", "cream", "seasoning", "syrup", "creamer", "frosting", "powder", "supplement", "kcup", "pods"];
+  const FORM_FACTOR_TOKENS = ["cereal", "ice", "seasoning", "syrup", "creamer", "frosting", "powder", "supplement", "kcup", "pods"];
   for (const ff of FORM_FACTOR_TOKENS) {
     if (hasIn(c, ff) && !hasIn(all, ff)) {
       return 0;
@@ -238,7 +243,8 @@ function relevance(query: string, candidate: string): number {
 
 async function getJson<T>(url: string): Promise<T | null> {
   const isOffV2Product = url.includes("world.openfoodfacts.org/api/v2/product/");
-  if (isOffV2Product && Date.now() < offUnavailableUntil) {
+  const isUsda = url.includes("api.nal.usda.gov");
+  if ((isOffV2Product && Date.now() < offUnavailableUntil) || (isUsda && Date.now() < usdaUnavailableUntil)) {
     return null;
   }
   try {
@@ -250,6 +256,9 @@ async function getJson<T>(url: string): Promise<T | null> {
     if (!res.ok) {
       if (isOffV2Product && (res.status === 429 || res.status >= 502)) {
         offUnavailableUntil = Date.now() + 30 * 1000;
+      }
+      if (isUsda && (res.status === 429 || res.status >= 502)) {
+        usdaUnavailableUntil = Date.now() + 60 * 1000;
       }
       return null;
     }
@@ -597,7 +606,7 @@ const USDA_LUCENE_SKIP_WORDS = new Set([
   "snack", "snacks", "pack", "size", "family", "party", "share", "value", "giant", "mega",
   "bag", "box", "can", "jar", "bottle", "tub", "carton", "pouch", "tray", "cup", "bowl",
   "count", "ct", "oz", "fl", "lb", "lbs", "gal", "gallon", "half", "quart", "pint", "pkg",
-  "assorted", "variety", "original", "classic", "homemade", "homestyle", "fresh", "pure",
+  "assorted", "variety", "homemade", "fresh", "pure",
 ]);
 
 function buildUsdaLuceneQuery(query: string): string {
@@ -634,53 +643,57 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   const numericBarcode = query.replace(/\D/g, "");
   const isBarcodeQuery = numericBarcode.length >= 8 && numericBarcode === query.trim().replace(/[-\s]/g, "");
 
-  const luceneQuery = !isBarcodeQuery ? buildUsdaLuceneQuery(query) : "";
-  const [brandedData, generalData] = await Promise.all([
-    luceneQuery
-      ? getJson<{ foods?: UsdaFood[] }>(
-          `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(luceneQuery)}&dataType=Branded&pageSize=18&api_key=${key}`,
-        )
-      : Promise.resolve(null),
-    getJson<{ foods?: UsdaFood[] }>(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=${encodeURIComponent("Branded,Foundation,SR Legacy")}&pageSize=20&api_key=${key}`,
-    ),
-  ]);
-
-  const combinedFoods = [...(brandedData?.foods || []), ...(generalData?.foods || [])];
-  let best: UsdaFood | null = null;
+  let best = null as UsdaFood | null;
   let bestScore = 0;
   const PROCESSED_USDA_DESC = /\b(cookie|cookies|cracker|crackers|chip|chips|crisps|crispy|fried|battered|breaded|rings|cereal|puffs|bar|bars|bread|bun|roll|cake|pie|pastry|donut|doughnut|bismark|muffin|waffle|pancake|candy|chocolate|gummy|gummies|soda|cola|pop|drink|beverage|dressing|mayo|mayonnaise|ketchup|sauce|sausage|hot dog|frankfurter|bologna|salami|pepperoni|bacon|nugget|tenders|strips|pizza|fries|tots|instant|mashed|flakes|dehydrated|dried|canned|pickled|cured|smoked|salted|sweetened|candied|glazed|frosted|flavored|ice cream|gelato|sorbet|yogurt|spread|dip|soup|chowder|ramen|noodle|macaroni|pretzel|popcorn|frosting|syrup|creamer|margarine)\b/i;
-  for (const f of combinedFoods) {
-    const isTrueWholeFood =
-      (f.dataType === "Foundation" || f.dataType === "SR Legacy") &&
-      f.description &&
-      !PROCESSED_USDA_DESC.test(f.description);
-    const ing =
-      f.ingredients?.trim() ||
-      (isTrueWholeFood ? `Whole Food: ${f.description}` : "");
-    if (!ing || !isEnglishIngredientText(ing)) continue;
-    const candidateName = `${f.brandName || f.brandOwner || ""} ${f.description || ""}`.trim();
-    if (!isBarcodeQuery && !passesVariantGuard(query, candidateName)) continue;
-    const nut = extractUsdaNutrition(f);
-    if (!isBarcodeQuery && isDietaryOrVariantMismatch(query, candidateName, ing, nut)) continue;
-    let r = 0;
-    if (isBarcodeQuery) {
-      const fCode = (f.gtinUpc || "").replace(/\D/g, "");
-      if (fCode && (fCode === numericBarcode || fCode.padStart(13, "0") === numericBarcode.padStart(13, "0"))) {
-        r = 1;
+
+  const evaluateFoods = (foods: UsdaFood[] | undefined) => {
+    for (const f of foods || []) {
+      const isTrueWholeFood =
+        (f.dataType === "Foundation" || f.dataType === "SR Legacy") &&
+        f.description &&
+        !PROCESSED_USDA_DESC.test(f.description);
+      const ing =
+        f.ingredients?.trim() ||
+        (isTrueWholeFood ? `Whole Food: ${f.description}` : "");
+      if (!ing || !isEnglishIngredientText(ing)) continue;
+      const candidateName = `${f.brandName || f.brandOwner || ""} ${f.description || ""}`.trim();
+      if (!isBarcodeQuery && !passesVariantGuard(query, candidateName)) continue;
+      const nut = extractUsdaNutrition(f);
+      if (!isBarcodeQuery && isDietaryOrVariantMismatch(query, candidateName, ing, nut)) continue;
+      let r = 0;
+      if (isBarcodeQuery) {
+        const fCode = (f.gtinUpc || "").replace(/\D/g, "");
+        if (fCode && (fCode === numericBarcode || fCode.padStart(13, "0") === numericBarcode.padStart(13, "0"))) {
+          r = 1;
+        }
+      } else {
+        r = relevance(query, candidateName);
       }
-    } else {
-      r = relevance(query, candidateName);
+      if (r > bestScore) {
+        best = { ...f, ingredients: ing };
+        bestScore = r;
+      }
     }
-    if (r > bestScore) {
-      best = { ...f, ingredients: ing };
-      bestScore = r;
-    }
+  };
+
+  const luceneQuery = !isBarcodeQuery ? buildUsdaLuceneQuery(query) : "";
+  if (luceneQuery) {
+    const brandedData = await getJson<{ foods?: UsdaFood[] }>(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(luceneQuery)}&dataType=Branded&pageSize=18&api_key=${key}`,
+    );
+    evaluateFoods(brandedData?.foods);
+  }
+  if (!best || bestScore < 0.65) {
+    const generalData = await getJson<{ foods?: UsdaFood[] }>(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=${encodeURIComponent("Branded,Foundation,SR Legacy")}&pageSize=20&api_key=${key}`,
+    );
+    evaluateFoods(generalData?.foods);
   }
   if (!best || bestScore < 0.55) return null;
   const titleCase = (s = "") => s.toLowerCase().replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const rawDesc = (best.description || "")
-    .replace(/^(.+?),\s*([^,]+)$/, (full, prefix: string, suffix: string) => {
+    .replace(/^(.+?),\s*([^,]+)$/, (full: string, prefix: string, suffix: string) => {
       const prefixWords = new Set(prefix.toLowerCase().split(/\W+/).filter(Boolean));
       const suffixWords = suffix.toLowerCase().split(/\W+/).filter(Boolean);
       return suffixWords.length > 0 && suffixWords.every((w) => prefixWords.has(w)) ? prefix : full;
@@ -2542,9 +2555,13 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     const qClean = cleanSearchQuery(title) || title;
     const [offRes, usdaRes] = await Promise.all([offSearch(qClean), usdaSearch(qClean)]);
     if (offRes && usdaRes) {
-      const offScore = relevance(qClean, `${offRes.brand || ""} ${offRes.productTitle}`);
-      const usdaScore = relevance(qClean, `${usdaRes.brand || ""} ${usdaRes.productTitle}`);
-      if (usdaScore >= offScore) {
+      const fullCandidate = (r: Omit<LookupResult, "ms">) =>
+        r.brand && !r.productTitle.toLowerCase().startsWith(r.brand.toLowerCase())
+          ? `${r.brand} ${r.productTitle}`
+          : r.productTitle;
+      const offScore = relevance(qClean, fullCandidate(offRes));
+      const usdaScore = relevance(qClean, fullCandidate(usdaRes));
+      if (usdaScore + 0.08 >= offScore) {
         found = {
           ...usdaRes,
           imageUrl:

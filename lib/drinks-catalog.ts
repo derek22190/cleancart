@@ -4984,12 +4984,17 @@ const IMAGE_STOP_TOKENS = new Set([
   "original", "classic", "natural", "flavored", "flavor",
 ]);
 
+const TWO_LETTER_BRANDS = new Set(["hu", "v8", "gv", "bj", "kc"]);
+
 function distinctiveImageTokens(s: string): string[] {
   return s
     .toLowerCase()
+    .replace(/['’]s\b/g, "s")
+    .replace(/['’]/g, "")
+    .replace(/\bcr[eè]me\b/g, "cream")
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
-    .filter((t) => t.length >= 3 && !IMAGE_STOP_TOKENS.has(t) && !/^\d+$/.test(t));
+    .filter((t) => (t.length >= 3 || TWO_LETTER_BRANDS.has(t)) && !IMAGE_STOP_TOKENS.has(t) && !/^\d+$/.test(t));
 }
 
 export function hasProductIdentityMatch(query: string, candidateName: string): boolean {
