@@ -395,6 +395,7 @@ class MainActivity : Activity() {
         })
 
         // Account / Log in pill button
+        val ready = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
         val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
         val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
         val isLoggedIn = !savedEmail.isNullOrBlank()
@@ -409,23 +410,24 @@ class MainActivity : Activity() {
             textColor = if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
             bgColor = if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt(),
             strokeColor = if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt(),
-            marginEndDp = 6,
+            marginEndDp = if (ready) 6 else 0,
             onClick = { showGoCoCoLoginDialog() }
         ))
 
-        // Bubble status pill button
-        val ready = Settings.canDrawOverlays(this) && isAccessibilityEnabled() && AccessibilityConsent.granted(this)
-        pillsRow.addView(buildHeaderPill(
-            text = if (ready) "● Live" else "⚡ Setup",
-            textColor = if (ready) 0xFF16A34A.toInt() else 0xFF92400E.toInt(),
-            bgColor = if (ready) 0xFFE8F7EE.toInt() else 0xFFFEF3C7.toInt(),
-            strokeColor = if (ready) 0xFF86EFAC.toInt() else 0xFFFDE68A.toInt(),
-            onClick = {
-                activeTab = 1
-                topSubTab = "Bubble"
-                renderScreen()
-            }
-        ))
+        // Only show the green "● Live" status pill once the Live Store Bubble is enabled
+        if (ready) {
+            pillsRow.addView(buildHeaderPill(
+                text = "● Live",
+                textColor = 0xFF16A34A.toInt(),
+                bgColor = 0xFFE8F7EE.toInt(),
+                strokeColor = 0xFF86EFAC.toInt(),
+                onClick = {
+                    activeTab = 1
+                    topSubTab = "Bubble"
+                    renderScreen()
+                }
+            ))
+        }
 
         topBarContainer.addView(pillsRow)
     }
