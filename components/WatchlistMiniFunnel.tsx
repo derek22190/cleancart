@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Category } from "@/lib/rubric";
 
 export interface WatchlistMiniFunnelProps {
@@ -69,9 +69,13 @@ export default function WatchlistMiniFunnel({
   onApplyAndSignIn,
   onClose,
 }: WatchlistMiniFunnelProps) {
-  const [selected, setSelected] = useState<Category[]>(
-    initialSelected.length > 0 ? initialSelected : ["seedOils", "dyes", "hfcs"]
-  );
+  const [selected, setSelected] = useState<Category[]>(initialSelected);
+
+  useEffect(() => {
+    if (open) {
+      setSelected(initialSelected);
+    }
+  }, [open, initialSelected]);
 
   if (!open) return null;
 

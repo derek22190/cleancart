@@ -782,6 +782,38 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       safariExtJs.includes("swapIsPaidLink")
   );
 
+  // Family Watchlist 2x strictness verification
+  const yogurtIng =
+    "Cultured Grade A Reduced Fat Milk, Sugar, High Fructose Corn Syrup, Modified Corn Starch, Natural Flavor, Potassium Sorbate, Red 40.";
+  const yogurt1x = scoreProductYuka(yogurtIng, {}, [], {
+    productTitle: "Berry Swirl Strawberry Lowfat Yogurt",
+  });
+  const yogurt2xDyes = scoreProductYuka(yogurtIng, {}, ["dyes"], {
+    productTitle: "Berry Swirl Strawberry Lowfat Yogurt",
+  });
+  const yogurt2xBoth = scoreProductYuka(yogurtIng, {}, ["dyes", "hfcs"], {
+    productTitle: "Berry Swirl Strawberry Lowfat Yogurt",
+  });
+  check(
+    "Family Watchlist 2x Strictness: enabling 2x categories strictly lowers finalScore even when a high-risk additive is already present",
+    yogurt1x.score === 28 &&
+      yogurt2xDyes.score < yogurt1x.score &&
+      yogurt2xBoth.score < yogurt2xDyes.score &&
+      yogurt2xBoth.score === 6
+  );
+
+  check(
+    "Android 1-Switch Overlay + Instant Pre-Scan + Watchlist Live Refresh verification",
+    overlayKt.includes("TYPE_ACCESSIBILITY_OVERLAY") &&
+      overlayKt.includes("ScanApi.applyLocalWatchlistToData") &&
+      readerKt.includes("ScanApi.prewarmScan") &&
+      readerKt.includes("ScanApi.peekCachedScan") &&
+      scanApiKt.includes("fun applyLocalWatchlistToData") &&
+      mainKt.includes("import android.accounts.AccountManager") &&
+      mainKt.includes("import android.content.ClipboardManager") &&
+      mainKt.includes("REQ_PICK_GOOGLE_ACCOUNT")
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);

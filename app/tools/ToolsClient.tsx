@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import {
@@ -8,8 +8,18 @@ import {
   CATEGORY_LABELS,
   RISK_LABEL,
   scoreProductYuka,
+  type Category,
 } from "@/lib/rubric";
 import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
+
+const FAMILY_WATCH_CATS: Category[] = [
+  "seedOils",
+  "dyes",
+  "hfcs",
+  "nitrates",
+  "sweeteners",
+  "preservatives",
+];
 
 const SAMPLE_LABELS = [
   {
@@ -42,12 +52,42 @@ export default function ToolsClient() {
   const [ingInput, setIngInput] = useState(SAMPLE_LABELS[0].ingredients);
   const [additiveFilter, setAdditiveFilter] = useState("");
   const [copiedShortcutUrl, setCopiedShortcutUrl] = useState(false);
+  const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>([
+    "seedOils",
+    "dyes",
+    "hfcs",
+  ]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("heybroc_family_watchlist") || "null"
+      ) as Category[] | null;
+      if (Array.isArray(saved)) {
+        setFamilyWatchlist(saved);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleFamilyCat = (cat: Category) => {
+    setFamilyWatchlist((prev) => {
+      const next = prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat];
+      try {
+        window.localStorage.setItem("heybroc_family_watchlist", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const shortcutEndpointUrl = "https://heybroc.com/api/scan?format=ios_text&q=";
 
   const liveScore = useMemo(
-    () => scoreProductYuka(ingInput, {}, [], { productTitle: titleInput }),
-    [ingInput, titleInput],
+    () => scoreProductYuka(ingInput, {}, familyWatchlist, { productTitle: titleInput }),
+    [ingInput, titleInput, familyWatchlist],
   );
 
   const seedOilHits = liveScore.flagged.filter((f) => f.category === "seedOils");
@@ -82,30 +122,48 @@ export default function ToolsClient() {
           : "#dc2626";
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "28px 18px 64px", fontFamily: "var(--font-sans), system-ui, sans-serif", color: "#0f172a" }}>
+    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "22px 18px 64px", fontFamily: "var(--font-sans), system-ui, sans-serif", color: "#0f172a" }}>
       {/* Top Bar */}
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 28 }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#0f172a" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/broc-mascot.jpg" alt="HeyBroc" style={{ width: 42, height: 42, borderRadius: 12, border: "2px solid #16a34a" }} />
-          <div>
-            <b style={{ fontSize: 18, fontWeight: 900, display: "block" }}>HeyBroc - Online Food Scanner</b>
-            <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>Free Clean Ingredient, Seed Oil &amp; Sugar / Carb Tools</span>
+      <header style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#0f172a", minWidth: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/broc-mascot.jpg" alt="HeyBroc" style={{ width: 40, height: 40, borderRadius: 12, border: "2px solid #16a34a", flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <b style={{ fontSize: 18, fontWeight: 900, display: "block", lineHeight: 1.15 }}>HeyBroc</b>
+              <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                Clean Ingredient, Seed Oil &amp; Sugar Tools
+              </span>
+            </div>
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <Link
+              href="/"
+              style={{ padding: "8px 13px", borderRadius: 999, background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 800, fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" }}
+            >
+              ← Scanner
+            </Link>
+            <Link
+              href="/?login=1"
+              style={{ padding: "8px 14px", borderRadius: 999, background: "#0f172a", color: "#ffffff", fontWeight: 800, fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" }}
+            >
+              Sign in →
+            </Link>
           </div>
-        </Link>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        </div>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
           <Link
             href="/swaps"
-            style={{ padding: "9px 15px", borderRadius: 999, background: "#ecfdf5", border: "1px solid #86efac", color: "#065f46", fontWeight: 800, fontSize: 13, textDecoration: "none" }}
+            style={{ padding: "7px 13px", borderRadius: 999, background: "#ecfdf5", border: "1px solid #86efac", color: "#065f46", fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
           >
             ⇄ Browse Clean Swaps Directory
           </Link>
           <a
             href="/heybroc.apk"
             download="heybroc.apk"
-            style={{ padding: "9px 16px", borderRadius: 999, background: "#16a34a", color: "#ffffff", fontWeight: 800, fontSize: 13, textDecoration: "none" }}
+            style={{ padding: "7px 14px", borderRadius: 999, background: "#16a34a", color: "#ffffff", fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
           >
-            📱 Download Free Android App
+            📲 Download Android App (.apk)
           </a>
         </div>
       </header>
@@ -271,6 +329,35 @@ export default function ToolsClient() {
               Paste Any Ingredient List (0–100 Score + Sugar / Carb &amp; Seed Oil Check)
             </h2>
           </div>
+        </div>
+
+        {/* Family 2x Watchlist Toggles */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 12, padding: "10px 12px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: "#334155", marginRight: 4 }}>
+            🛡️ Family Watchlist (2x Penalty):
+          </span>
+          {FAMILY_WATCH_CATS.map((cat) => {
+            const active = familyWatchlist.includes(cat);
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => toggleFamilyCat(cat)}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 999,
+                  border: active ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
+                  background: active ? "#dcfce7" : "#ffffff",
+                  color: active ? "#14532d" : "#475569",
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {active ? "✓ 2x " : ""}{CATEGORY_LABELS[cat]}
+              </button>
+            );
+          })}
         </div>
 
         {/* Sample Preset Pills */}

@@ -447,7 +447,7 @@ export default function Simulator() {
           const savedWl = JSON.parse(
             window.localStorage.getItem("heybroc_family_watchlist") || "null"
           ) as Category[] | null;
-          if (Array.isArray(savedWl) && savedWl.length > 0 && !cancelled) {
+          if (Array.isArray(savedWl) && !cancelled) {
             setFamilyWatchlist(savedWl);
           }
         } catch {
@@ -1154,7 +1154,21 @@ export default function Simulator() {
     }
   };
 
-  const toggleWatch = (c: Category) => setWatch((w) => ({ ...w, [c]: !w[c] }));
+  const toggleWatch = (c: Category) => {
+    setWatch((w) => {
+      const nextVal = !w[c];
+      if (!nextVal) {
+        setFamilyWatchlist((prev) => {
+          const nextFw = prev.filter((cat) => cat !== c);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("heybroc_family_watchlist", JSON.stringify(nextFw));
+          }
+          return nextFw;
+        });
+      }
+      return { ...w, [c]: nextVal };
+    });
+  };
   const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
 
   const isCartBubbleMode = viewMode === "search" || cartClimbFlash;
@@ -1173,63 +1187,69 @@ export default function Simulator() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/broc-mascot.jpg" alt="Broc mascot" className="brand-mascot" />
-          <div>
-            <h1>HeyBroc <span>Clean Grocery Scanner</span></h1>
-            <p>Instant ingredient grader &amp; 1-tap clean grocery swaps</p>
+        <div className="topbar-main">
+          <div className="brand">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/broc-mascot.jpg" alt="Broc mascot" className="brand-mascot" />
+            <div className="brand-copy">
+              <div className="brand-title-row">
+                <h1>HeyBroc</h1>
+                <span className="brand-badge">Clean Scanner</span>
+              </div>
+              <p>Instant ingredient grader &amp; 1-tap clean grocery swaps</p>
+            </div>
+          </div>
+
+          <div className="topbar-account" aria-label="Account and membership">
+            <button
+              id="open-paywall"
+              type="button"
+              className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
+              onClick={() => setPaywallOpen(true)}
+            >
+              {isPro ? "★ PRO" : "★ Pro"}
+            </button>
+
+            <button
+              id="open-auth-modal"
+              type="button"
+              className={`topbar-btn topbar-btn--signin ${authUser ? "is-authed" : ""}`}
+              onClick={() => setAuthOpen(true)}
+            >
+              {authUser ? `👤 ${authUser.displayName}` : "Sign in →"}
+            </button>
           </div>
         </div>
 
-        <div className="topbar-actions">
+        <nav className="topbar-subnav" aria-label="Quick tools and setup">
           <button
             id="open-watchlist-funnel"
             type="button"
-            className="topbar-btn"
+            className="topbar-pill"
             onClick={() => setWatchlistFunnelOpen(true)}
             title="Personalize your family's 2x additive watchlist"
           >
+            <span className="topbar-pill-dot" aria-hidden />
             🛡️ Avoid ({familyWatchlist.length})
-          </button>
-
-          <button
-            id="open-auth-modal"
-            type="button"
-            className="topbar-btn"
-            onClick={() => setAuthOpen(true)}
-            style={
-              authUser
-                ? {
-                    background: "#ecfdf5",
-                    borderColor: "#86efac",
-                    color: "#065f46",
-                    fontWeight: 800,
-                  }
-                : undefined
-            }
-          >
-            {authUser ? `👤 ${authUser.displayName}` : "👤 Log in"}
-          </button>
-
-          <button
-            id="open-paywall"
-            type="button"
-            className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
-            onClick={() => setPaywallOpen(true)}
-          >
-            {isPro ? "★ PRO Member" : "★ Family Pro"}
           </button>
 
           <a
             id="download-android-apk"
             href="/heybroc.apk"
             download="heybroc.apk"
-            className="topbar-btn"
+            className="topbar-pill"
           >
             📲 Android App (.apk)
           </a>
-        </div>
+
+          <a
+            id="open-free-tools"
+            href="/tools"
+            className="topbar-pill"
+          >
+            🧰 Free Tools &amp; iOS
+          </a>
+        </nav>
       </header>
 
       <main className="layout">

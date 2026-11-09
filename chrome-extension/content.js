@@ -634,6 +634,15 @@
     };
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
     window.addEventListener("popstate", schedule);
+    if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes) => {
+        if (changes.watchlist || changes.familyWatchlist || changes.dietaryWatchlist) {
+          scanCache.clear();
+          lastKey = "";
+          schedule();
+        }
+      });
+    }
     schedule();
   });
 })();

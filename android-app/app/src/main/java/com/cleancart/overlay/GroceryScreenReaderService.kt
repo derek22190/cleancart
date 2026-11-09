@@ -694,7 +694,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                     }
                 }
                 if (cartTitles.isNotEmpty() || removedTitles.isNotEmpty()) {
-                    val cartKey = "$pkg|CART|${cartTitles.joinToString("|")}|REM:${removedTitles.joinToString("|")}"
+                    val wlSig = ScanApi.currentWatchlistSignature(this)
+                    val cartKey = "$pkg|CART|$wlSig|${cartTitles.joinToString("|")}|REM:${removedTitles.joinToString("|")}"
                     if (lastKey != cartKey) {
                         lastKey = cartKey
                         markVisible()
@@ -844,7 +845,8 @@ class GroceryScreenReaderService : AccessibilityService() {
             val inCartOnPdp = pendingAddToCartClick || (isConfirmedSinglePdp && nodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) })
             pendingAddToCartClick = false
 
-            val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
+            val wlSig = ScanApi.currentWatchlistSignature(this)
+            val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp|$wlSig"
             if (key == lastKey) return
             lastKey = key
 
@@ -925,7 +927,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                         } else {
                             lastRowGradedTitle = winningTitle
                         }
-                        val finalKey = "$pkg|$winningTitle|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
+                        val finalKey = "$pkg|$winningTitle|${ingredients?.hashCode() ?: 0}|$inCartOnPdp|$wlSig"
                         lastKey = finalKey
                         sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
                             putExtra(OverlayWindowService.EXTRA_JSON, finalJson)

@@ -24,20 +24,28 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 async function getSettings() {
-  const [{ apiBase, watchlist }, { deviceId, deviceSecret }] = await Promise.all([
-    chrome.storage.sync.get(["apiBase", "watchlist"]),
+  const [syncData, localData, { deviceId, deviceSecret }] = await Promise.all([
+    chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist"]),
+    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist"]),
     getOrCreateDeviceCredentials(),
   ]);
-  const rawBase = (apiBase || DEFAULT_API).replace(/\/+$/, "");
+  const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
   const normalizedBase = rawBase === "https://heybroc.com" ? "https://www.heybroc.com" : rawBase;
-  return { apiBase: normalizedBase, watchlist: watchlist || undefined, deviceId, deviceSecret };
+  return {
+    apiBase: normalizedBase,
+    watchlist: syncData.watchlist || localData.watchlist || undefined,
+    familyWatchlist: syncData.familyWatchlist || localData.familyWatchlist || undefined,
+    dietaryWatchlist: syncData.dietaryWatchlist || localData.dietaryWatchlist || undefined,
+    deviceId,
+    deviceSecret,
+  };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_SCAN") {
     (async () => {
       try {
-        const { apiBase, watchlist, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {
           method: "POST",
           headers: {
@@ -47,6 +55,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           body: JSON.stringify({
             ...msg.payload,
             watchlist,
+            familyWatchlist,
+            dietaryWatchlist,
             deviceId,
             deviceSecret,
             surface: "extension",

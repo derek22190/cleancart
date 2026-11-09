@@ -668,7 +668,7 @@ object ScanApi {
         return alerts
     }
 
-    private fun normalizedCacheKey(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
+    fun currentWatchlistSignature(ctx: Context): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val fw = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
             .map { if (it == "nitrites") "nitrates" else it }
@@ -677,9 +677,107 @@ object ScanApi {
         val dw = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
             .sorted()
             .joinToString(",")
+        return "$fw|$dw"
+    }
+
+    /**
+     * Re-evaluates a scan JSONObject in-place against the user's current familyWatchlist (2x strictness)
+     * so toggling checkboxes in the app immediately updates the active floating pill and drawer score.
+     */
+    fun applyLocalWatchlistToData(ctx: Context, data: JSONObject?) {
+        val result = data?.optJSONObject("result") ?: return
+        val flagged = result.optJSONArray("flagged") ?: return
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val familySet = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
+            .map { if (it == "nitrites") "nitrates" else it }
+            .toSet()
+
+        // Recover the 1x baseline score on first pass so repeated toggles are idempotent
+        val baseScore1x = if (result.has("_baseScore1x")) {
+            result.optInt("_baseScore1x", result.optInt("score", 50))
+        } else {
+            var initial2xDeduction = 0
+            for (i in 0 until flagged.length()) {
+                val item = flagged.optJSONObject(i) ?: continue
+                val risk = item.optString("risk", "low")
+                val pen = item.optInt("penalty", 10)
+                val was2x = (risk == "high" && pen >= 60) || (risk == "moderate" && pen >= 35) || (risk == "low" && pen >= 18)
+                if (was2x) {
+                    initial2xDeduction += when (risk) {
+                        "high" -> 12
+                        "moderate" -> 10
+                        else -> 6
+                    }
+                }
+            }
+            val recovered = (result.optInt("score", 50) + initial2xDeduction).coerceIn(0, 100)
+            result.put("_baseScore1x", recovered)
+            recovered
+        }
+
+        var strictnessDeduction = 0
+        var hasHighOrMod2x = false
+        for (i in 0 until flagged.length()) {
+            val item = flagged.optJSONObject(i) ?: continue
+            val risk = item.optString("risk", "low")
+            val cat = item.optString("category").ifBlank {
+                when (item.optString("id")) {
+                    "red40", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "tio2" -> "dyes"
+                    "hfcs", "corn_syrup" -> "hfcs"
+                    "soybean_oil", "canola_oil", "corn_oil", "cottonseed_oil", "sunflower_oil", "safflower_oil", "grapeseed_oil", "rice_bran_oil", "vegetable_oil" -> "seedOils"
+                    "bha", "bht", "tbhq", "sodium_benzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "potassium_bromate", "propylparaben" -> "preservatives"
+                    "sodium_nitrite", "sodium_nitrate" -> "nitrates"
+                    "sucralose", "aspartame", "ace_k", "saccharin", "neotame", "advantame" -> "sweeteners"
+                    "polysorbate_80", "polysorbate_60", "carboxymethylcellulose", "mono_diglycerides", "datem", "sodium_stearoyl_lactylate", "pgpr" -> "emulsifiers"
+                    "carrageenan", "xanthan_gum", "guar_gum", "locust_bean_gum", "cellulose_gum", "gellan_gum" -> "gums"
+                    "msg", "artificial_flavor", "natural_flavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate" -> "flavors"
+                    else -> ""
+                }
+            }
+            val is2x = cat.isNotEmpty() && (cat in familySet || (cat == "nitrates" && "preservatives" in familySet))
+            val basePen = when (risk) {
+                "high" -> 35
+                "moderate" -> 20
+                else -> 10
+            }
+            item.put("penalty", if (is2x) basePen * 2 else basePen)
+            if (is2x) {
+                strictnessDeduction += when (risk) {
+                    "high" -> 12
+                    "moderate" -> 10
+                    else -> 6
+                }
+                if (risk == "high" || risk == "moderate") {
+                    hasHighOrMod2x = true
+                }
+            }
+        }
+
+        var nextScore = (baseScore1x - strictnessDeduction).coerceIn(0, 100)
+        if (hasHighOrMod2x && nextScore > 39) {
+            nextScore = 39
+        }
+        val nextRating = when {
+            nextScore >= 75 -> "Excellent"
+            nextScore >= 50 -> "Good"
+            nextScore >= 25 -> "Poor"
+            else -> "Bad"
+        }
+        val nextColor = when {
+            nextScore >= 75 -> "green"
+            nextScore >= 50 -> "yellow"
+            else -> "red"
+        }
+        result.put("score", nextScore)
+        result.put("rating", nextRating)
+        result.put("color", nextColor)
+    }
+
+    private fun normalizedCacheKey(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
+        val wlSig = currentWatchlistSignature(ctx)
         val normTitle = productTitle.lowercase().replace(Regex("\\s+"), " ").trim()
         val normIng = rawIngredients?.trim().orEmpty()
-        return "${store.lowercase()}|$normTitle|${normIng.hashCode()}|$fw|$dw"
+        return "${store.lowercase()}|$normTitle|${normIng.hashCode()}|$wlSig"
     }
 
     /** Instant non-blocking lookup into the in-memory responseCache (<1ms). */
@@ -844,12 +942,12 @@ object ScanApi {
 
     /** Offline sample used by "Launch Test Overlay Pill" if the API isn't reachable. */
     const val SAMPLE_JSON = """
-    {"ok":true,"product":{"title":"Berry Swirl Strawberry Lowfat Yogurt"},
-     "result":{"score":35,"rating":"Poor","color":"red","flagged":[
-       {"id":"red40","name":"Red 40","risk":"high","penalty":35,"explanation":"A petroleum-derived dye linked to hyperactivity in sensitive children and requiring a warning label in the EU."},
-       {"id":"hfcs","name":"High Fructose Corn Syrup","risk":"moderate","penalty":20,"explanation":"A highly refined industrial sweetener tied to fatty-liver and metabolic issues when consumed regularly."},
-       {"id":"ksorbate","name":"Potassium Sorbate","risk":"low","penalty":10,"explanation":"A common mold inhibitor that is generally low risk but signals a highly shelf-stabilized product."}]},
-     "swap":{"title":"Stonyfield Organic Whole Milk Plain Yogurt","score":100,
+    {"ok":true,"product":{"title":"Berry Swirl Strawberry Lowfat Yogurt","ingredients":"Cultured Grade A Reduced Fat Milk, Sugar, High Fructose Corn Syrup, Modified Corn Starch, Natural Flavor, Potassium Sorbate, Red 40."},
+     "result":{"score":28,"rating":"Poor","color":"red","flagged":[
+       {"id":"red40","name":"Red 40","category":"dyes","risk":"high","penalty":35,"explanation":"A petroleum-derived dye linked to hyperactivity in sensitive children and requiring a warning label in the EU."},
+       {"id":"hfcs","name":"High Fructose Corn Syrup","category":"hfcs","risk":"moderate","penalty":20,"explanation":"A highly refined industrial sweetener tied to fatty-liver and metabolic issues when consumed regularly."},
+       {"id":"ksorbate","name":"Potassium Sorbate","category":"preservatives","risk":"low","penalty":10,"explanation":"A common mold inhibitor that is generally low risk but signals a highly shelf-stabilized product."}]},
+     "swap":{"title":"Stonyfield Organic Whole Milk Plain Yogurt","score":90,
        "webUrl":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt",
        "deepLink":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt",
        "androidPackage":"com.walmart.android"}}

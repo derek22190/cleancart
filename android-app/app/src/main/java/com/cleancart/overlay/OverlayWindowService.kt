@@ -331,6 +331,21 @@ class OverlayWindowService : Service() {
                 removePill()
             }
             ACTION_REFRESH_PILL -> {
+                ScanApi.applyLocalWatchlistToData(this, data)
+                var cartChanged = false
+                for (item in tripCart) {
+                    val fj = item.fullJson ?: continue
+                    ScanApi.applyLocalWatchlistToData(this, fj)
+                    val newItemScore = fj.optJSONObject("result")?.optInt("score", item.score) ?: item.score
+                    if (newItemScore != item.score) {
+                        item.score = newItemScore
+                        cartChanged = true
+                    }
+                }
+                if (cartChanged) {
+                    displayedCartAvg = calcCartAvg()
+                    savePersistedCart(currentStoreKey)
+                }
                 if (!hiddenForCurrentScreen && card == null && pill != null) {
                     showPill()
                 }
@@ -686,6 +701,9 @@ class OverlayWindowService : Service() {
     private fun showPill(loadingText: String? = null) {
         if (hiddenForCurrentScreen || !canDisplayOverlay()) return
         if (!isCartAvgMode) climbAnimator?.cancel()
+        if (loadingText == null && !isCartAvgMode && !isPdpScrollHint) {
+            ScanApi.applyLocalWatchlistToData(this, data)
+        }
         val result = data?.optJSONObject("result")
         val ok = data?.optBoolean("ok") == true && result != null
         val effectiveScore = result?.optInt("score") ?: 50

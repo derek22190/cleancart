@@ -979,15 +979,22 @@ export function scoreProductYuka(
 
   const hasHighRisk = base.flagged.some((f) => f.risk === "high");
   const seedOilHits = base.flagged.filter((f) => f.category === "seedOils");
+  const familySet = new Set(familyWatchlist);
+  const watched2xHits = base.flagged.filter((f) => {
+    const pref = watchlist[f.category];
+    return pref === "2x" || (typeof pref === "number" && pref === 2) || familySet.has(f.category);
+  });
   const multiAdditiveDeduction = Math.max(0, base.flagged.length - 1) * 3;
   const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45) + multiAdditiveDeduction);
-  const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
+  const has2xHighOrModHit = watched2xHits.some((f) => f.risk === "high" || f.risk === "moderate");
+  const additiveScore = hasHighRisk || has2xHighOrModHit ? 0 : Math.max(0, 30 - additiveDeduction);
   // Yuka 10% Organic bonus (10/10) is awarded strictly to certified Organic items
   const organicScore = !isNonFoodItem && isOrganic ? 10 : 0;
 
   // Always compute finalScore from Yuka's 3 pillars (60% Nutrition + 30% Additives + 10% Organic)
   // so the 0-100 gauge score always equals the sum of the 3 pillars (capped by high-risk / seed-oil caps).
-  // Never subtract additive penalties a second time out of the 60-point Nutrition Pillar.
+  // When the user explicitly activates 2x Family Watchlist strictness on a category, apply an extra
+  // strictness deduction per matched 2x additive so toggling Family Watchlist preferences visibly updates the score and pill.
   const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore);
   let finalScore = yukaPillarScore;
   if (hasHighRisk || seedOilHits.length >= 2) {
@@ -995,6 +1002,16 @@ export function scoreProductYuka(
   } else if (seedOilHits.length === 1) {
     // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
     finalScore = Math.max(0, Math.min(59, finalScore));
+  }
+  if (watched2xHits.length > 0) {
+    const strictnessDeduction = watched2xHits.reduce(
+      (sum, f) => sum + (f.risk === "high" ? 12 : f.risk === "moderate" ? 10 : 6),
+      0,
+    );
+    if (has2xHighOrModHit) {
+      finalScore = Math.min(39, finalScore);
+    }
+    finalScore = Math.max(0, finalScore - strictnessDeduction);
   }
 
   // Surface nutritional risk flags ONLY with measured numbers when measured nutrition was provided;

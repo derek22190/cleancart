@@ -1,7 +1,10 @@
 package com.cleancart.overlay
 
+import android.accounts.AccountManager
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -63,6 +66,8 @@ class MainActivity : Activity() {
     private lateinit var floatingScanBtn: LinearLayout
 
     private val io = Executors.newSingleThreadExecutor()
+    private val REQ_PICK_GOOGLE_ACCOUNT = 9041
+    private var pendingGoogleAccountPicked: ((String) -> Unit)? = null
     private val imgExecutor = Executors.newFixedThreadPool(4)
     private val bmpCache = LruCache<String, Bitmap>(64)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -3281,6 +3286,13 @@ class MainActivity : Activity() {
                             }
                         }
                         prefs.edit().putStringSet("familyWatchlist", next).apply()
+                        runCatching {
+                            startService(
+                                Intent(this@MainActivity, OverlayWindowService::class.java).apply {
+                                    action = OverlayWindowService.ACTION_REFRESH_PILL
+                                }
+                            )
+                        }
                     }
                 })
             }
