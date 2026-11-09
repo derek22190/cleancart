@@ -13,7 +13,33 @@
 - **Google Play Store Icon (512×512 PNG, 32-bit RGBA):** [`store-assets/google-play/icon-512x512.png`](file:///home/antigravity/derek22190/cleancart/store-assets/google-play/icon-512x512.png)
 - **Google Play Feature Graphic (1024×500 PNG, 24-bit RGB):** [`store-assets/google-play/feature-graphic-1024x500.png`](file:///home/antigravity/derek22190/cleancart/store-assets/google-play/feature-graphic-1024x500.png)
 - **Apple App Store Icon (1024×1024 PNG, 24-bit RGB opaque, no alpha):** [`store-assets/apple-app-store/icon-1024x1024.png`](file:///home/antigravity/derek22190/cleancart/store-assets/apple-app-store/icon-1024x1024.png)
+- **Interactive 6-Slide ASO Screenshot Template (1290×2796 App Store / Play Store aspect ratio):** [`store-assets/aso-screenshots/index.html`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/index.html)
 - **Privacy Policy URL (Required by both stores):** `https://www.heybroc.com/privacy`
+
+---
+
+## 1B. Deepstash-Style 6-Slide ASO Screenshot Blueprint (Hard Notes for Store Packaging)
+
+When packaging the final store screenshots for **Apple App Store (1290×2796 px, 6.7")** and **Google Play Store (1080×1920 or 1290×2796 px)**, follow the proven **Deepstash ASO formula** (built in [`store-assets/aso-screenshots/index.html`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/index.html)):
+
+### Core Visual Rules (Why Deepstash Converts)
+1. **Bold Color-Blocking Per Slide**: Every slide uses a distinct, saturated background color (`#F03E2F` Coral Red → `#19D37E` Mint Green → `#7C5CFF` Royal Violet → `#1890FF` Sky Blue → `#F59E0B` Warm Amber → `#E53935` Crimson Red) with high-contrast `#111814` ultra-bold headlines (`3–5 words max` per line).
+2. **Bookend Posters (Slides 1 & 6 Have NO Phone Frame)**:
+   - **Slide 1** is a pure category-defining poster with a strikethrough hook, a laurel-wreath social proof badge, and hero artwork.
+   - **Slide 6** is a pure authority/social-proof closing poster with twin laurel wreaths, a big serif pull-quote, and `★★★★★`.
+3. **Zoomed, Bottom-Bleeding Phone Cards (Slides 2–5)**:
+   - Never shrink a whole tiny phone into the middle of the slide where text is unreadable.
+   - Crop the top 65% of a clean white-card UI inside a bold black bezel (`border: 6px solid #111814; border-radius: 44px 44px 0 0`) bleeding off the bottom edge so every ingredient flag, score ring, and swap button is huge and legible from the search results page.
+
+### Slide-by-Slide Copy & Layout Spec
+| Slide | Background | Headline (Top 25%) | Visual / UI Focus (Bottom 75%) |
+| :--- | :--- | :--- | :--- |
+| **Slide 1 (Hook Poster)** | Coral Red (`#F03E2F`) | `~~Barcode scanning~~ for online grocery` | Laurel wreath (`Works on 13+ Grocery Apps · 0–100 Clean Score`) + 3D Broc mascot with glowing ingredient-radar network nodes (`Seed Oils`, `Red 40`, `HFCS`, `Sucralose`). |
+| **Slide 2 (Core Action)** | Mint Green (`#19D37E`) | `Replace mystery labels with 0–100 scores` | Bottom-cropped phone showing the floating HeyBroc pill + instant `6/100 Bad` → `100/100 Excellent` Product Grade sheet over Walmart, Amazon, Instacart & Shipt. |
+| **Slide 3 (Additive X-Ray)** | Royal Violet (`#7C5CFF`) | `Spot Seed Oils, Red 40 & hidden toxins` | Zoomed-in flagged additive breakdown (`1. Red 40 · −25 pts`, `2. Soybean Oil · −15 pts`, `3. Sucralose · −20 pts`) with plain-English scientific citations. |
+| **Slide 4 (Swaps & Library)** | Sky Blue (`#1890FF`) | `Build your clean grocery library` | `My Scans` & `♥ Saved Swaps` folders (`Clean Drinks`, `Avocado Oil Picks`) + `1-Tap Clean Swap: Guayakí Organic Yerba Mate (100/100) — Find in Shipt ↗`. |
+| **Slide 5 (Mascot + Watchlist)** | Warm Amber (`#F59E0B`) | `Shop cleaner daily, the easy way` | 3D Broc mascot standing proud above `"Clean Cart Streak"` + `🛡️ Allergies & Diabetes` and `Family Watchlist (2x Penalty)` badges. |
+| **Slide 6 (Social Proof Poster)** | Crimson Red (`#E53935`) | `Independent clean-label food scanner` | Twin laurel wreaths (`100% Independent Scoring` · `USDA & Open Food Facts Verified`), big serif quote (*"The health breakthroughs I've had using HeyBroc changed how my family buys groceries forever."*), `★★★★★`, and clean-heart illustration. |
 
 ---
 
