@@ -47,6 +47,7 @@ export interface ScanResponse {
     nutrition?: NutritionInput;
   };
   lookup: {
+    sourceUrl?: string;
     source: LookupResult["source"];
     origin?: LookupResult["origin"];
     sourceUpdatedAt?: string | null;
@@ -628,6 +629,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       nutrition: found.nutrition,
     },
     lookup: {
+      sourceUrl: found.sourceUrl,
       source: found.source,
       origin: found.origin,
       sourceUpdatedAt: found.sourceUpdatedAt,

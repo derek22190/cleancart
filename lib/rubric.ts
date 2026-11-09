@@ -1,3 +1,5 @@
+import { classifyWholeFood, SUPPLEMENT_FORM } from "./nutrition";
+
 /**
  * CleanCart — Deterministic Ingredient & 3-Pillar Nutrition Rubric
  * ----------------------------------------------------------------
@@ -10,7 +12,7 @@
  * This file is dependency-free and isomorphic (server + browser).
  */
 
-export const RUBRIC_VERSION = "1.0.0";
+export const RUBRIC_VERSION = "1.1.0";
 
 export type RiskLevel = "high" | "moderate" | "low";
 
@@ -31,6 +33,8 @@ export type Rating = "Excellent" | "Good" | "Mediocre" | "Poor" | "Bad";
 export type RatingColor = "green" | "yellow" | "red";
 
 export interface NutritionInput {
+  productKind?: "food" | "non-food" | "supplement";
+  inferredPositiveFields?: Array<"fiberG100g" | "proteinG100g" | "fruitsVegNutsPct">;
   caloriesKcal100g?: number;
   sugarsG100g?: number;
   saturatedFatG100g?: number;
@@ -50,7 +54,7 @@ export interface YukaBreakdown {
   nutriScoreGrade: "A" | "B" | "C" | "D" | "E" | "N/A";
   /** 0..30 points (30% of score, based on additive count & risk tier). */
   additiveScore: number;
-  /** 0..10 points (10% of score, awarded for certified Organic or 100% whole foods). */
+  /** 0..10 points, requiring explicit product-level Organic metadata. */
   organicScore: number;
   /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
   highRiskCapped: boolean;
@@ -91,6 +95,7 @@ export interface FlaggedAdditive {
 }
 
 export interface ScoreResult {
+  scoringBasis?: "ingredient-only";
   score: number;
   rating: Rating;
   color: RatingColor;
@@ -420,11 +425,6 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "FDA-permitted umbrella term (21 CFR 101.22) for plant- or animal-derived flavor extracts, which may include permitted carrier solvents or preservatives.",
   },
   {
-    id: "citricacid", name: "Citric Acid (manufactured)", risk: "low", category: "flavors",
-    patterns: ["citric acid", "e ?330"],
-    explanation: "Manufactured citric acid is commonly produced by fermentation and is used to add tartness or preserve shelf life.",
-  },
-  {
     id: "carmine", name: "Carmine", risk: "low", category: "dyes",
     patterns: ["carmine", "cochineal( extract)?", "e ?120"],
     explanation: "An insect-derived red pigment that can trigger allergic reactions in sensitive individuals.",
@@ -588,6 +588,8 @@ export function scoreIngredients(
   const familySet = new Set(familyWatchlist);
 
   for (const { rule, regex } of COMPILED) {
+    // Celery juice/powder in produce is not evidence of a curing additive.
+    if (rule.id === "celerynitrate" && !/\b(cultured celery|pork|beef|turkey|chicken|bacon|ham|sausage|franks?|hot dogs?|cured)\b/.test(normalized)) continue;
     const m = normalized.match(regex);
     if (!m) continue;
     const pref = watchlist[rule.category];
@@ -865,37 +867,22 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   return { caloriesKcal100g: 110, sugarsG100g: 2.0, saturatedFatG100g: 1.2, sodiumMg100g: 65, fiberG100g: 3.0, proteinG100g: 6.5, fruitsVegNutsPct: 65 };
 }
 
-/**
- * Fills missing positive/baseline nutrition fields (such as fiberG100g, proteinG100g, or fruitsVegNutsPct)
- * from product title and ingredient text when an upstream record (e.g. Open Food Facts or USDA) provides
- * partial nutriments, without ever overwriting verified/measured upstream numbers.
- */
-export function inferNutritionFromText(
-  productTitle = "",
-  rawIngredients = "",
-  existing: NutritionInput = {},
-  options?: { onlyPositive?: boolean },
-): NutritionInput {
-  const est = estimateNutritionFromProduct(productTitle, rawIngredients);
-  if (options?.onlyPositive) {
-    return {
-      ...existing,
-      productTitle: existing.productTitle ?? (productTitle || undefined),
-      fiberG100g: existing.fiberG100g ?? est.fiberG100g,
-      proteinG100g: existing.proteinG100g ?? est.proteinG100g,
-      fruitsVegNutsPct: existing.fruitsVegNutsPct ?? est.fruitsVegNutsPct,
-    };
-  }
+/** Infer only missing positive fields; provider zeroes and measured numbers always win. */
+export function inferNutritionFromText(productTitle = "", rawIngredients = "", supplied: NutritionInput = {}, _options?: { onlyPositive?: boolean }): NutritionInput {
+  if (supplied.productKind === "non-food" || supplied.productKind === "supplement") return supplied;
+  const estimate = estimateNutritionFromProduct(productTitle, rawIngredients);
+  const text = `${productTitle} ${rawIngredients}`;
+  if (!/\b(whole[ -]?grain|oats?|quinoa|lentils?|chickpeas?|beans|nuts?|almonds?|walnuts?|cashews?|seeds?|greek\s+yogurt|salmon|tuna|chicken|beef|protein|apples?|bananas?|broccoli|spinach)\b/i.test(text)) return supplied;
+  const whole = classifyWholeFood(productTitle);
+  const singleIngredient = rawIngredients.includes(",") ? {} : classifyWholeFood(rawIngredients);
+  const fields = ["fiberG100g", "proteinG100g", "fruitsVegNutsPct"] as const;
   return {
-    ...existing,
-    productTitle: existing.productTitle ?? (productTitle || undefined),
-    caloriesKcal100g: existing.caloriesKcal100g ?? est.caloriesKcal100g,
-    sugarsG100g: existing.sugarsG100g ?? est.sugarsG100g,
-    saturatedFatG100g: existing.saturatedFatG100g ?? est.saturatedFatG100g,
-    sodiumMg100g: existing.sodiumMg100g ?? est.sodiumMg100g,
-    fiberG100g: existing.fiberG100g ?? est.fiberG100g,
-    proteinG100g: existing.proteinG100g ?? est.proteinG100g,
-    fruitsVegNutsPct: existing.fruitsVegNutsPct ?? est.fruitsVegNutsPct,
+    ...supplied,
+    inferredPositiveFields: [...new Set([...(supplied.inferredPositiveFields || []), ...fields.filter(field => supplied[field] === undefined)])],
+    fiberG100g: supplied.fiberG100g ?? estimate.fiberG100g,
+    proteinG100g: supplied.proteinG100g ?? estimate.proteinG100g,
+    // A protein/whole-grain keyword is not evidence that 65% of a mixed food is produce.
+    fruitsVegNutsPct: supplied.fruitsVegNutsPct ?? whole.fruitsVegNutsPct ?? singleIngredient.fruitsVegNutsPct ?? 0,
   };
 }
 
@@ -915,6 +902,8 @@ export function scoreProductYuka(
   nutrition: NutritionInput = {},
 ): ScoreResult {
   const base = scoreIngredients(rawIngredients, watchlist, familyWatchlist);
+  if (nutrition.productKind === "supplement" || (nutrition.productKind !== "non-food" && SUPPLEMENT_FORM.test(nutrition.productTitle || ""))) return { ...base, scoringBasis: "ingredient-only" };
+  nutrition = inferNutritionFromText(nutrition.productTitle || "", rawIngredients, nutrition);
   const titleAndIng = `${nutrition.productTitle || ""} ${rawIngredients}`;
   const clauses = rawIngredients.toLowerCase().split(/[,;]/).map((c) => c.trim()).filter(Boolean);
   const top3 = clauses.slice(0, 3).join(" ");
@@ -968,6 +957,7 @@ export function scoreProductYuka(
   const isOrganic = nutrition.isOrganic === true;
 
   const isNonFoodItem =
+    nutrition.productKind === "non-food" ||
     (!rawIngredients.trim() && !hasAnyMeasuredNutrition && !isWholeFood) ||
     /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|dishwashing|dishwasher|rinse\s+aid|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|fabric\s+softener|fabric\s+conditioner|dryer\s+sheets?|scent\s+booster|stain\s+remover|air\s+freshener|febreze|glade|candle|wax\s+melt|incense|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|freezer\s+bags?|ziploc|paper\s+plates?|napkins?|facial\s+tissue|kleenex|cotton\s+swabs?|q-tips?|cotton\s+balls?|tampons?|sanitary\s+pads?|pantiliners?|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|serum|cleanser|toner|micellar|retinol|hyaluronic\s+acid|salicylic\s+acid|benzoyl\s+peroxide|witch\s+hazel|eye\s+cream|face\s+mask|lip\s+balm|mascara|foundation|concealer|eyeliner|nail\s+polish|acetone|perfume|cologne|shaving\s+cream|aftershave|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+treats?|cat\s+treats?|kibble|cat\s+litter|kitty\s+litter|purina|pedigree|blue\s+buffalo|fancy\s+feast|friskies|meow\s+mix|iams|greenies|milk-bone|acetaminophen|ibuprofen|naproxen|diphenhydramine|loratadine|cetirizine|fexofenadine|dextromethorphan|guaifenesin|phenylephrine|pseudoephedrine|omeprazole|famotidine|bismuth\s+subsalicylate|loperamide|polyethylene\s+glycol\s+3350|miralax|tylenol|advil|motrin|aleve|zyrtec|claritin|allegra|benadryl|nyquil|dayquil|mucinex|robitussin|pepto-bismol|neosporin|hydrocortisone|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
       titleAndIng,

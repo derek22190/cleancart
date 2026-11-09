@@ -1,9 +1,16 @@
-import { scoreIngredients, scoreProductYuka, normalizeIngredients, isEnglishIngredientText } from "../lib/rubric";
+import { passesVariantGuard } from "../lib/drinks-catalog";
+import { extractOffNutrition, extractUsdaNutrition, classifyWholeFood } from "../lib/nutrition";
+import { dsldLabelResult, matchesDsldLabel, type DsldLabel } from "../lib/dsld";
+import { scoreIngredients, scoreProductYuka, normalizeIngredients, isEnglishIngredientText, inferNutritionFromText } from "../lib/rubric";
 import { PRESETS } from "../lib/presets";
 import { CLEAN_ALTERNATIVES, EXACT_PRODUCT_ALTERNATIVES, resolveSwap } from "../lib/swaps";
 
+Object.assign(process.env, { NODE_ENV: "test" });
+// Deterministic catalog regressions: no real provider, quota, or developer cache dependency.
+globalThis.fetch = async () => Response.json({ status: 0, hits: [], products: [], foods: [] });
 let fail = 0;
-const check = (label: string, cond: boolean) => { if (!cond) { fail++; console.log("FAIL", label); } };
+let checks = 0;
+const check = (label: string, cond: boolean) => { checks++; if (!cond) { fail++; console.log("FAIL", label); } };
 
 for (const p of PRESETS) {
   const r = scoreIngredients(p.ingredients);
@@ -17,22 +24,22 @@ for (const a of Object.values(CLEAN_ALTERNATIVES)) {
   const r = scoreIngredients(a.ingredients);
   const fullTitle = `${a.brand} ${a.name}`;
   const isOrganic = a.isOrganic === true;
-  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: fullTitle, isOrganic });
-  const b = ry.yukaBreakdown!;
+  const ry = scoreProductYuka(a.ingredients, {}, [], { ...a.nutrition, productTitle: fullTitle, isOrganic });
+  const b = ry.yukaBreakdown;
   check(`${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
-  check(`${a.brand} additiveScore === 30 (${b.additiveScore})`, b.additiveScore === 30);
-  check(`${a.brand} 3-pillar sum matches score (${ry.score} vs ${b.nutritionScore + b.additiveScore + b.organicScore})`, ry.score === b.nutritionScore + b.additiveScore + b.organicScore);
+  check(`${a.brand} additive pillar is accurate`, b ? b.additiveScore === 30 : ry.scoringBasis === "ingredient-only");
+  check(`${a.brand} declared score basis matches score`, b ? ry.score === b.nutritionScore + b.additiveScore + b.organicScore : ry.score === r.score);
 }
 for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
   const a = entry.alt;
   const r = scoreIngredients(a.ingredients);
   const fullTitle = `${a.brand} ${a.name}`;
   const isOrganic = a.isOrganic === true;
-  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: fullTitle, isOrganic });
-  const b = ry.yukaBreakdown!;
+  const ry = scoreProductYuka(a.ingredients, {}, [], { ...a.nutrition, productTitle: fullTitle, isOrganic });
+  const b = ry.yukaBreakdown;
   check(`1-for-1 ${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
-  check(`1-for-1 ${a.brand} ${a.name} additiveScore === 30 (${b.additiveScore})`, b.additiveScore === 30);
-  check(`1-for-1 ${a.brand} ${a.name} 3-pillar sum matches score (${ry.score} vs ${b.nutritionScore + b.additiveScore + b.organicScore})`, ry.score === b.nutritionScore + b.additiveScore + b.organicScore);
+  check(`1-for-1 ${a.brand} ${a.name} additive pillar reflects its actual declared flags`, b ? (r.flagged.length === 0 ? b.additiveScore === 30 : b.additiveScore < 30) : ry.scoringBasis === "ingredient-only");
+  check(`1-for-1 ${a.brand} ${a.name} declared score basis matches score`, b ? ry.score === b.nutritionScore + b.additiveScore + b.organicScore : ry.score === r.score);
 }
 const sieteCheck = scoreProductYuka(
   "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt.",
@@ -88,10 +95,10 @@ check("tier 3 avocado oil scores Green >= 80 in Yuka", scoreProductYuka("Organic
 check("adding citric acid never increases Yuka score", scoreProductYuka("Sugar, water, citric acid", {}, [], { nutriScoreGrade: "e" }).score <= scoreProductYuka("Sugar, water", {}, [], { nutriScoreGrade: "e" }).score);
 check("tripotassium & tricalcium phosphate", scoreIngredients("Whole grain oats, tripotassium phosphate, tricalcium phosphate").flagged.some((f) => f.id === "naphosphate"));
 check("swap deepLink uses https universal link", Boolean(resolveSwap({ score: 40, productTitle: "Strawberry Yogurt", store: "walmart" })?.deepLink?.startsWith("https://")));
-check("Capri Sun scores Poor <= 24 and swaps to Spindrift with drink.png", (() => {
+check("Capri Sun remains Poor without falsely penalizing citric acid and swaps to Spindrift", (() => {
   const s = scoreProductYuka("Water, sugar, pear and grape juice concentrate, citric acid, strawberry and kiwi juice concentrate, natural flavor.", {}, [], { productTitle: "Capri Sun Strawberry Kiwi Juice Pouches" });
   const sw = resolveSwap({ score: s.score, productTitle: "Capri Sun Strawberry Kiwi Juice Pouches", store: "aldi" });
-  return s.score <= 24 && s.rating === "Poor" && Boolean(sw?.title.includes("Spindrift")) && sw?.image === "/swaps/drink.png";
+  return s.score < 50 && s.rating === "Poor" && Boolean(sw?.title.includes("Spindrift")) && sw?.image === "/swaps/drink.png";
 })());
 check("100% Orange Juice never scores 100 (scores <= 75)", (() => {
   const conv = scoreProductYuka("100% pure squeezed pasteurized orange juice.", {}, [], { productTitle: "100% Pure Squeezed Orange Juice" });
@@ -215,6 +222,59 @@ check("Monster Energy Zero Sugar / Monster Ultra Zero / Sugar Free Monster never
 })());
 check("1-for-1 Maruchan Ramen Noodle Soup -> Lotus Foods Organic Millet & Brown Rice Ramen", Boolean(resolveSwap({ score: 0, productTitle: "Maruchan Ramen Noodle Soup, Chicken Flavor, 3 oz", store: "walmart" })?.title.includes("Lotus Foods")));
 
+// Clean-label fortifiers, culinary oils, fermentation and naturally occurring sugars.
+const cleanIngredients = ["ascorbic acid", "mixed tocopherols", "riboflavin", "niacinamide", "ferrous sulfate", "zinc oxide", "thiamine mononitrate", "folic acid", "citric acid", "lactic acid", "pectin", "cream of tartar", "baking soda", "sodium bicarbonate", "avocado oil", "extra virgin olive oil", "coconut oil", "grass-fed butter", "ghee", "cocoa butter", "dates", "100% fruit", "unsweetened applesauce", "plain milk lactose", "100% pure maple syrup", "raw honey", "live and active cultures", "S. thermophilus, L. bulgaricus", "cheese cultures, microbial enzymes", "apple cider vinegar", "distilled vinegar", "cold pressed celery juice"];
+for (const ingredient of cleanIngredients) check(`clean ingredient has no additive flags: ${ingredient}`, scoreIngredients(ingredient).flagged.length === 0);
+check("olive oil marketing does not mask soybean/canola", scoreIngredients("Soybean oil, canola oil, extra virgin olive oil, egg yolk, vinegar").flagged.filter(f => f.category === "seedOils").length === 2);
+check("curing celery is still detected", scoreIngredients("Pork, sea salt, celery powder").flagged.some(f => f.id === "celerynitrate"));
+check("HFCS and corn syrup remain detected", scoreIngredients("High fructose corn syrup, corn syrup solids").flagged.some(f => f.id === "hfcs"));
+for (const dataType of ["Branded", "Foundation", "SR Legacy", "Survey (FNDDS)"]) {
+  const n = extractUsdaNutrition({dataType, description:"Almonds, raw", foodNutrients:[
+    {nutrientId:1062,nutrientName:"Energy",unitName:"kJ",value:418.4},
+    {nutrientId:1008,nutrientName:"Energy",unitName:"KCAL",value:100},
+    {nutrientNumber:"269",nutrientName:"Sugars, total including NLEA",unitName:"G",value:0},
+    {nutrientId:1258,unitName:"G",value:1}, {nutrientNumber:"307",unitName:"MG",value:200},
+    {nutrientId:1079,unitName:"G",value:8}, {nutrientNumber:"203",unitName:"G",value:20},
+  ]});
+  check(`${dataType} USDA IDs/numbers/units and zero preserve per100g`, n.caloriesKcal100g===100 && n.sugarsG100g===0 && n.saturatedFatG100g===1 && n.sodiumMg100g===200 && n.fiberG100g===8 && n.proteinG100g===20);
+  if(dataType!=="Branded") check(`${dataType} almonds are whole food/FVN`, n.isWholeFood===true && n.fruitsVegNutsPct===100);
+}
+const usdaKj = extractUsdaNutrition({foodNutrients:[{nutrientId:1062,unitName:"kJ",value:418.4}]});
+check("USDA kJ never treated as kcal", Math.abs(usdaKj.caloriesKcal100g!-100)<0.001);
+check("USDA kJ identifier without a unit is still converted", Math.abs(extractUsdaNutrition({foodNutrients:[{nutrientId:1062,value:418.4}]}).caloriesKcal100g!-100)<0.001);
+check("USDA Branded per100g nutrients are not divided by serving size", extractUsdaNutrition({dataType:"Branded",foodNutrients:[{nutrientId:1008,unitName:"KCAL",value:400}]}).caloriesKcal100g===400);
+check("unsweetened does not turn coated nuts or smoked salmon into plain whole foods", classifyWholeFood("unsweetened chocolate covered almonds").isWholeFood!==true && classifyWholeFood("unsweetened smoked salmon").isWholeFood!==true);
+check("USDA nested detail nutrients support amount and units", extractUsdaNutrition({foodNutrients:[{nutrient:{id:1093,unitName:"g"},amount:0.2}]}).sodiumMg100g===200);
+const offSalt = extractOffNutrition({nutriments:{"energy_100g":418.4,"salt_100g":100,"sugars_100g":0,"proteins_100g":0},labels_tags:["en:usda-organic"]});
+check("OFF salt grams and energy kJ use schema units", Math.abs(offSalt.caloriesKcal100g!-100)<0.001 && offSalt.sodiumMg100g===40000 && offSalt.isOrganic===true);
+check("OFF sodium grams are not guessed as milligrams", extractOffNutrition({nutriments:{sodium_100g:12}}).sodiumMg100g===12000);
+check("OFF kcal wins over kJ", extractOffNutrition({nutriments:{"energy-kcal_100g":50,energy_100g:418.4}}).caloriesKcal100g===50);
+for(const tag of ["en:organic","en:eu-organic","en:usda-organic"]) check(`OFF product organic label ${tag}`,extractOffNutrition({labels_tags:[tag]}).isOrganic===true);
+check("OFF organic ingredient/name is not certification",extractOffNutrition({product_name:"Organic ingredients",nutriments:{}}).isOrganic===false);
+const filled = inferNutritionFromText("Whole Grain Oats", "Whole grain oats", {proteinG100g:0,fiberG100g:0,caloriesKcal100g:80,sugarsG100g:0});
+check("inference never overwrites measured zeroes or baseline",filled.proteinG100g===0 && filled.fiberG100g===0 && filled.caloriesKcal100g===80 && filled.sugarsG100g===0);
+check("missing protein/fiber in oats gets conservative positive estimate",inferNutritionFromText("Whole Grain Oats","Whole grain oats").fiberG100g!>0);
+for (const name of ["Fresh Atlantic salmon", "organic honeycrisp apples", "raw almonds", "chia seeds", "Plain Greek Yogurt", "extra virgin olive oil"]) check(`plain whole food classifier: ${name}`,classifyWholeFood(name).isWholeFood===true);
+for (const name of ["Made with olive oil mayonnaise", "sweet potato chips", "almond milk", "chicken nuggets"]) check(`processed food is not whole produce: ${name}`,classifyWholeFood(name).isWholeFood!==true);
+const dsldFixture: DsldLabel = {id:249498,brandName:"GHOST",fullName:"Legend Swedish Fish",upcSku:"8 10028 29603 9",offMarket:0,entryDate:"2021-05-22",ingredientRows:[{name:"L-Citrulline"},{name:"Beta-Alanine"}],otheringredients:{ingredients:[{name:"Citric Acid"},{name:"Sucralose"},{name:"Acesulfame Potassium"},{name:"FD&C Red #40"}]}};
+const dsldProduct = dsldLabelResult({productTitle:"GHOST Legend Swedish Fish Pre-Workout"},dsldFixture);
+check("NIH exact label includes actives plus excipients",Boolean(dsldProduct?.ingredients.includes("L-Citrulline") && dsldProduct.ingredients.includes("Sucralose")));
+const dsldScore = scoreProductYuka(dsldProduct?.ingredients || "",{},[],dsldProduct?.nutrition);
+check("Supplement Facts uses ingredient-only grading, not invented food nutrition",dsldScore.scoringBasis==="ingredient-only" && !dsldScore.yukaBreakdown && dsldScore.flagged.some(f=>f.id==="red40") && !dsldScore.flagged.some(f=>f.id==="citricacid"));
+check("NIH rejects unspecified/different flavor",!matchesDsldLabel({productTitle:"GHOST Legend Pre-Workout"},dsldFixture) && !matchesDsldLabel({productTitle:"GHOST Legend Lemon Pre-Workout"},dsldFixture));
+check("NIH rejects off-market/incomplete-label records",!dsldLabelResult({barcode:"810028296039"},{...dsldFixture,offMarket:1}) && !dsldLabelResult({barcode:"810028296039"},{...dsldFixture,otheringredients:undefined}));
+check("NIH matches UPC typography but never different barcode",matchesDsldLabel({barcode:"0810028296039"},dsldFixture) && !matchesDsldLabel({barcode:"810028296030"},dsldFixture));
+check("2% milk never matches whole milk even across punctuation", !passesVariantGuard("Organic Valley 2% Milk", "Organic Valley Whole Milk") && passesVariantGuard("Organic Valley 2% Milk", "Organic Valley 2% Reduced Fat Milk"));
+check("specific flavors cannot use pooled or different flavor formulations", !passesVariantGuard("Orgain Vanilla Protein Shake", "Orgain Protein Shake (Creamy Chocolate, Vanilla Bean)") && !passesVariantGuard("Orgain Vanilla Protein Shake", "Orgain Creamy Chocolate Protein Shake") && !passesVariantGuard("Orgain Plant Protein Shake", "Orgain Grass-Fed Milk Protein Shake"));
+check("Spindrift Raspberry Lime is a single verified flavor; Lemon never gets its recipe", matchDrinkCatalog("Spindrift Lemon Sparkling Water")===null && matchDrinkCatalog("Spindrift Raspberry Lime Sparkling Water")?.ingredients==="Carbonated Water, Raspberry Puree, Lime Juice.");
+check("plain, organic, unsweetened and gluten-free variant requests fail closed", !passesVariantGuard("Plain Greek Yogurt", "Vanilla Greek Yogurt") && !passesVariantGuard("Organic Almond Milk", "Almond Milk") && !passesVariantGuard("Unsweetened Almond Milk", "Original Almond Milk") && !passesVariantGuard("Gluten Free Oats", "Rolled Oats"));
+const stokAlt = EXACT_PRODUCT_ALTERNATIVES.find(e=>e.alt.brand==="SToK")?.alt;
+check("SToK label retains natural flavor and has no invented organic bonus", Boolean(stokAlt?.ingredients.toLowerCase().includes("natural flavor") && stokAlt.isOrganic===false && stokAlt.sourceUrl?.includes("stokbrew.com/cold-brew/") && scoreProductYuka(stokAlt.ingredients,{},[],{...stokAlt.nutrition,productTitle:stokAlt.name}).yukaBreakdown?.organicScore===0));
+check("cheddar-cracker swap never invents a seed-oil-free Simple Mills formulation",resolveSwap({score:0,productTitle:"Cheez-It Original Crackers",store:"walmart"})?.brand==="Mary's Gone Crackers");
+check("manufacturer label nutrients, not a hardcoded A, drive the cracker swap score", CLEAN_ALTERNATIVES.Crackers.nutrition?.sodiumMg100g===600 && resolveSwap({score:0,productTitle:"Cheez-It Original Crackers"})?.score===68);
+const brandedSwap = resolveSwap({score:0,productTitle:"Cheez-It Original Crackers",store:"walmart"});
+check("requested dietary variants cannot swap to an incompatible formulation", !resolveSwap({score:0,productTitle:"Gluten Free Sandwich Bread"}) && !resolveSwap({score:0,productTitle:"Lactaid Whole Milk"}) && !resolveSwap({score:0,productTitle:"Skim Milk"}) && !resolveSwap({score:0,productTitle:"Vegan Ranch Dressing"}));
+check("retailer search preserves the scored swap brand and recipe",Boolean(brandedSwap?.webUrl && new URL(brandedSwap.webUrl).searchParams.get("q")===brandedSwap.title));
 import Module from "module";
 const origLoad = (Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown })._load;
 (Module as unknown as { _load: (request: string, parent: unknown, isMain: boolean) => unknown })._load = function (request: string, parent: unknown, isMain: boolean) {
@@ -224,6 +284,70 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
 (async () => {
   const { runScan } = await import("../lib/scan");
+  const {lookupIngredients, matchesGenericWholeFood} = await import("../lib/lookup");
+  check("USDA whole food identity rejects substitute species or cooked preparation", !matchesGenericWholeFood("Fresh Atlantic Salmon","Fish, cod, Atlantic, raw") && !matchesGenericWholeFood("Fresh Atlantic Salmon","Fish, salmon, Atlantic, cooked") && matchesGenericWholeFood("Fresh Atlantic Salmon","Fish, salmon, Atlantic, wild, raw"));
+  const beforeProviders = globalThis.fetch;
+  const providerCalls: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); providerCalls.push(url);
+    if(url.includes("api.nal.usda.gov")) return Response.json({foods:[{fdcId:12345,description:"Fish, salmon, Atlantic, wild, raw",dataType:"Foundation",foodNutrients:[{nutrientId:1008,unitName:"KCAL",value:142},{nutrientId:1003,unitName:"G",value:20}]}]});
+    return beforeProviders(input,init);
+  };
+  const previousKey=process.env.USDA_API_KEY;delete process.env.USDA_API_KEY;
+  const salmon = await lookupIngredients({productTitle:"Fresh Atlantic Salmon"});
+  check("USDA unbranded Foundation path works with public DEMO_KEY",salmon?.source==="usda" && salmon.nutrition?.isWholeFood===true && salmon.nutrition?.proteinG100g===20 && providerCalls.some(u=>u.includes("Foundation")&&u.includes("DEMO_KEY")));
+  if(previousKey===undefined) delete process.env.USDA_API_KEY;else process.env.USDA_API_KEY=previousKey;
+  globalThis.fetch = async (input,init) => {
+    const url=String(input);
+    if(url.includes("openbeautyfacts.org/api/v2/product/"))return Response.json({product:{code:"123456789012",product_name_en:"Sample Cosmetic",ingredients_text_en:"Water, Glycerin",nutriments:{}}});
+    return beforeProviders(input,init);
+  };
+  const nonFood = await lookupIngredients({barcode:"123456789012"});
+  check("non-food UPC vertical supplies explicit classification",nonFood?.source==="openbeautyfacts" && nonFood.nutrition?.productKind==="non-food" && scoreProductYuka(nonFood.ingredients,{},[],nonFood.nutrition).yukaBreakdown?.nutriScoreGrade==="N/A");
+  globalThis.fetch = async (input,init) => {
+    if(String(input).includes("world.openfoodfacts.org/api/v2/product/"))return Response.json({product:{code:"123456789013",product_name_en:"Whole Grain Oats",ingredients_text_en:"Whole grain oats",nutriments:{"energy-kcal_100g":380,sugars_100g:0,"saturated-fat_100g":1,sodium_100g:0},labels_tags:["en:usda-organic"]}});
+    return beforeProviders(input,init);
+  };
+  const partialOff = await lookupIngredients({barcode:"123456789013"});
+  check("live OFF path fills missing positives while preserving verified zeroes and certification", partialOff?.source==="openfoodfacts" && partialOff.nutrition?.caloriesKcal100g===380 && partialOff.nutrition?.sugarsG100g===0 && partialOff.nutrition?.fiberG100g!>0 && partialOff.nutrition?.proteinG100g!>0 && partialOff.nutrition?.isOrganic===true && partialOff.nutrition?.inferredPositiveFields?.includes("fiberG100g")===true);
+  const fallbackCalls: string[] = [];
+  globalThis.fetch = async (input,init) => {
+    const url = String(input); fallbackCalls.push(url);
+    if(url.includes("world.openfoodfacts.org/api/v2/product/123456789014")) return Response.json({}, {status:429});
+    if(url.includes("world.openfoodfacts.org/api/v0/product/123456789014.json")) return Response.json({product:{code:"123456789014",product_name_en:"Plain Rolled Oats",ingredients_text_en:"Whole grain oats"}});
+    if(url.includes("world.openfoodfacts.org/api/v2/product/123456789015")) return Response.json({product:{code:"123456789015",product_name_en:"Plain Rolled Oats",ingredients_text_en:"Whole grain oats"}});
+    return beforeProviders(input,init);
+  };
+  const v0Fallback = await lookupIngredients({barcode:"123456789014"});
+  const followingOff = await lookupIngredients({barcode:"123456789015"});
+  check("OFF rate-limit fallback survives without globally blacking out other barcodes",v0Fallback?.source==="openfoodfacts" && followingOff?.source==="openfoodfacts" && fallbackCalls.some(url=>url.includes("/api/v0/product/123456789014.json")));
+  globalThis.fetch = async (input,init) => {
+    const url=String(input);
+    if(url.includes("api.ods.od.nih.gov") && url.includes("search-filter"))return Response.json({hits:[{_id:"249498",_source:dsldFixture}]});
+    if(url.endsWith("label/249498"))return Response.json(dsldFixture);
+    return beforeProviders(input,init);
+  };
+  const supplement = await lookupIngredients({productTitle:"GHOST Legend Swedish Fish Pre-Workout"});
+  check("specialized NIH lookup is wired into live waterfall",supplement?.source==="dsld" && supplement.ingredients.includes("FD&C Red #40"));
+  const supplementScan = await runScan({productTitle:"GHOST Legend Swedish Fish Pre-Workout"});
+  check("scan API preserves the archived label link and ingredient-only scoring", supplementScan.ok && supplementScan.lookup.sourceUrl==="https://dsld.od.nih.gov/label/249498" && supplementScan.result.scoringBasis==="ingredient-only" && !supplementScan.result.yukaBreakdown);
+  const supplementUpc = await lookupIngredients({barcode:"810028296039"});
+  check("NIH UPC lookup resolves only the exact label barcode",supplementUpc?.source==="dsld" && supplementUpc.barcode==="810028296039");
+  globalThis.fetch=beforeProviders;
+  const genericProduce = await lookupIngredients({productTitle:"Fresh Whole Papayas"});
+  check("whole-food fallback does not present invented measured macros",genericProduce?.source==="catalog" && genericProduce.nutrition?.isWholeFood===true && genericProduce.nutrition?.caloriesKcal100g===undefined && scoreProductYuka(genericProduce.ingredients,{},[],{...genericProduce.nutrition,productTitle:genericProduce.productTitle}).yukaBreakdown?.calorieNote==="Calories Not Measured");
+  const screenSupplement = await lookupIngredients({productTitle:"Sample Pre-Workout Powder",rawIngredients:"L-Citrulline, Sucralose, Citric Acid"});
+  check("screen supplement ingredients are not given food nutrition",screenSupplement?.source==="screen" && screenSupplement.nutrition?.productKind==="supplement");
+  const startBudget = performance.now();
+  const pendingSignals: AbortSignal[] = [];
+  globalThis.fetch = async (_input, init) => new Promise<Response>((_resolve,reject)=> {
+    const signal=init?.signal;
+    if(signal){pendingSignals.push(signal); if(signal.aborted)reject(new Error("aborted"));else signal.addEventListener("abort",()=>reject(new Error("aborted")),{once:true});}
+  });
+  const expired = await lookupIngredients({productTitle:"Unmatchable Deadline Fixture"});
+  const budgetElapsed = performance.now()-startBudget;
+  check("hung upstreams obey shared1800ms deadline and cancel requests",!expired && budgetElapsed<2800 && pendingSignals.length>0 && pendingSignals.every(signal=>signal.aborted));
+  globalThis.fetch=beforeProviders;
   const ramenScan = await runScan({
     productTitle: "Maruchan Ramen Noodle Soup, Chicken Flavor, 3 oz, 12 Count",
     store: "walmart",
@@ -337,11 +461,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
   const owynProElite = matchDrinkCatalog("OWYN Pro Elite Vanilla Protein Shake");
   check(
-    "OWYN Pro Elite Vanilla Protein Shake matches dedicated 0g-sugar Pro Elite entry (no cane sugar)",
+    "OWYN Pro Elite Vanilla cannot borrow an unspecified-flavor recipe",
     Boolean(
-      owynProElite &&
-      owynProElite.id === "owyn-pro-elite-shake" &&
-      !/\bcane\s+sugar\b/i.test(owynProElite.ingredients)
+      owynProElite === null &&
+      matchDrinkCatalog("OWYN Pro Elite Protein Shake")?.nutrition.sugarsG100g === 0
     )
   );
 
@@ -860,11 +983,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
   const lookupTs = fs.readFileSync("lib/lookup.ts", "utf8");
   check(
-    "Open Food Facts & USDA FoodData Central Resilience: DEMO_KEY fallback, 3200ms timeout, v0 barcode fallback, US GS1 UPC priority, and No Salt Added / Spicy variant guards",
-    lookupTs.includes("const TIMEOUT_MS = 3200") &&
+    "Open Food Facts & USDA FoodData Central Resilience: DEMO_KEY fallback, 1800ms shared budget, v0 barcode fallback, US GS1 UPC priority, and No Salt Added / Spicy variant guards",
+    lookupTs.includes("const TIMEOUT_MS = 1800") &&
       lookupTs.includes("fetchOffProductByCode") &&
       lookupTs.includes('/api/v0/product/${code}.json') &&
-      lookupTs.includes('process.env.USDA_API_KEY || "DEMO_KEY"') &&
+      lookupTs.includes('|| "DEMO_KEY"') &&
       !passesVariantGuard("Heinz Tomato Ketchup", "Heinz Tomato Ketchup No Salt Added") &&
       !passesVariantGuard("Heinz Tomato Ketchup", "Heinz No Sugar Added Tomato Ketchup")
   );
@@ -1129,6 +1252,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       falsePositiveAlerts.length === 0
   );
 
+  console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);

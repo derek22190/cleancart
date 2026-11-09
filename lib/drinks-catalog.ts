@@ -2300,7 +2300,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "organic-valley-grassmilk-whole",
-    title: "Organic Valley Grassmilk Grade A Whole Milk, 64 fl oz",
+    title: "Organic Valley Grassmilk Grade A Whole Milk, 59 fl oz",
     brand: "Organic Valley",
     category: "Milk & Dairy Drinks",
     description:
@@ -2308,19 +2308,18 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     keywords: ["organic valley", "grassmilk", "whole milk", "organic milk", "grass fed milk", "milk"],
     ingredients: "Organic Grade A Whole Milk, Vitamin D3.",
     nutrition: {
-      caloriesKcal100g: 62,
-      sugarsG100g: 4.8,
-      saturatedFatG100g: 2.0,
-      sodiumMg100g: 43,
+      caloriesKcal100g: 150 / 2.4,
+      sugarsG100g: 11 / 2.4,
+      saturatedFatG100g: 5 / 2.4,
+      sodiumMg100g: 120 / 2.4,
       fiberG100g: 0,
-      proteinG100g: 3.3,
+      proteinG100g: 8 / 2.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://www.organicvalley.coop/products/milk/grassmilk/whole-grassmilk-half-gallon/",
-    verifiedAt: "2026-11-08",
+    sourceUrl: "https://www.organicvalley.coop/products/grassmilk-whole-milk",
+    verifiedAt: "2026-11-09",
     match: /^(?!.*\b(2%|reduced\s+fat|chocolate)\b).*\b(organic\s+valley.*(?:whole|grassmilk))\b/i,
   },
   {
@@ -3305,7 +3304,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "spindrift-sparkling-water",
-    title: "Spindrift Sparkling Water with Real Squeezed Fruit (Lemon, Raspberry Lime, Strawberry), 12 fl oz",
+    title: "Spindrift Raspberry Lime Sparkling Water, 12 fl oz",
     brand: "Spindrift",
     category: "Waters & Seltzers",
     description:
@@ -3314,26 +3313,25 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       "spindrift",
       "real squeezed fruit",
       "raspberry lime",
-      "lemon sparkling water",
       "sparkling water",
       "seltzer",
       "water",
     ],
-    ingredients: "Carbonated Water, Raspberry Puree, Lemon Juice.",
+    ingredients: "Carbonated Water, Raspberry Puree, Lime Juice.",
     nutrition: {
-      caloriesKcal100g: 3,
-      sugarsG100g: 0.5,
+      caloriesKcal100g: 5 / 3.55,
+      sugarsG100g: 1 / 3.55,
       saturatedFatG100g: 0,
       sodiumMg100g: 0,
       fiberG100g: 0,
       proteinG100g: 0,
-      fruitsVegNutsPct: 8,
+      fruitsVegNutsPct: 3,
       nutriScoreGrade: "a",
       isOrganic: false,
       isWholeFood: false,
     },
     sourceUrl: "https://drinkspindrift.com/products/raspberry-lime-sparkling-water",
-    verifiedAt: "2026-11-08",
+    verifiedAt: "2026-11-09",
     match: /\b(spindrift)\b/i,
   },
   {
@@ -4817,22 +4815,22 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     brand: "SToK",
     category: "Coffee, Tea & Kombucha",
     description:
-      "100% unsweetened cold-steeped black Arabica coffee (water + coffee) — 0g sugar, 0 artificial sweeteners, 0 gums, and 0 synthetic additives.",
+      "Unsweetened black cold brew coffee with natural flavor; verify the current package label.",
     keywords: ["stok", "stok cold brew", "cold brew", "black coffee", "coffee"],
-    ingredients: "Filtered Water, Arabica Coffee.",
+    ingredients: "Coffee (Filtered Water, Coffee), Natural Flavor.",
     nutrition: {
-      caloriesKcal100g: 2,
+      caloriesKcal100g: 15 / 3.6,
       sugarsG100g: 0,
       saturatedFatG100g: 0,
-      sodiumMg100g: 4,
+      sodiumMg100g: 10 / 3.6,
       fiberG100g: 0,
-      proteinG100g: 0.2,
       fruitsVegNutsPct: 0,
       nutriScoreGrade: "a",
       isWholeFood: false,
+      isOrganic: false,
     },
-    sourceUrl: "https://www.stokbrew.com/cold-brew/cold-brew-coffee/unsweet-black-cold-brew-coffee-48oz/",
-    verifiedAt: "2026-11-08",
+    sourceUrl: "https://www.stokbrew.com/cold-brew/cold-brew-coffee/unsweetened-cold-brew-coffee-48oz/",
+    verifiedAt: "2026-11-09",
     match: /^(?!.*\b(starbucks|califia|chamberlain|la\s+colombe|chameleon|bizzy|wandering\s+bear)\b).*\b(stok\s+cold\s+brew|unsweetened.*cold\s+brew|cold\s+brew\s+coffee)\b/i,
   },
   {
@@ -5341,7 +5339,21 @@ export function hasConflictingBrand(query: string, candidateText: string): boole
 export function passesVariantGuard(query: string, candidateTitle: string): boolean {
   const q = query.toLowerCase();
   const t = candidateTitle.toLowerCase();
+  // A pooled flavor title cannot substantiate one requested flavor's formulation.
+  const pooled = t.match(/\(([^)]*,[^)]*)\)/)?.[1];
+  if (pooled && pooled.split(/[^a-z0-9]+/).some(word => word.length >= 3 && new RegExp("\\b" + word + "\\b").test(q))) return false;
+  const flavors = q.match(/\b(vanilla|chocolate|strawberry|raspberry|blueberry|mango|peach|cherry|grape|coconut|caramel|mocha|lemon|lime|orange|watermelon)\b/g) || [];
+  if (flavors.some(flavor => !new RegExp("\\b" + flavor + "\\b").test(t))) return false;
+  // Percent signs are not word characters: a trailing \b after '%' misses '2% Milk'.
+  if (/\bmilk\b/.test(q)) {
+    if (/\bwhole\s+milk\b/.test(q) && !/\b(whole|full[ -]*fat)\b/.test(t)) return false;
+    const requestedFat = q.match(/(?:^|\s)([012])\s*%(?=\s|$)/)?.[1];
+    if (requestedFat && !new RegExp(`(?:^|\\s)${requestedFat}\\s*%(?=\\s|$)`).test(t)) return false;
+    if (/\bwhole\s+milk\b/.test(q) && /(?:^|\s)[012]\s*%|\b(skim|nonfat|fat[ -]*free|reduced[ -]*fat)\b/.test(t)) return false;
+    if (/\b(skim|nonfat|fat[ -]*free)\b/.test(q) && !/\b(skim|nonfat|fat[ -]*free)\b/.test(t)) return false;
+  }
   const variantTokens: [RegExp, RegExp][] = [
+    [/\bplain\b/, /\bplain\b/],
     [/\bunflavored\b/, /\bunflavored\b/],
     [/\bextra\s+creamy\b/, /\bextra\s+creamy\b/],
     [/\bfull\s+fat\b/, /\bfull\s+fat\b/],
@@ -5378,6 +5390,7 @@ export function passesVariantGuard(query: string, candidateTitle: string): boole
     [/\boat\s*milk\b/, /\boat\s*milk\b/],
     [/\balmond\s*milk\b/, /\balmond\s*milk\b|\bmilked\s+almonds\b/],
     [/\borganic\b/, /\borganic\b/],
+    [/\bplant(?:[ -]*based)?\b/, /\bplant(?:[ -]*based)?\b/],
   ];
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;

@@ -78,6 +78,20 @@ interface ApiScan {
 }
 
 type Watch = Record<Category, boolean>;
+const lookupSourceLabel = (lookup?: { source: string; origin?: string }) => {
+  const source = lookup?.origin || lookup?.source || "catalog";
+  const labels: Record<string, string> = {
+    catalog: "Representative catalog formulation",
+    openfoodfacts: "Open Food Facts record (ODbL / CC BY-SA 3.0)",
+    usda: "USDA FoodData Central record",
+    dsld: "NIH DSLD archived label record · Ingredient-only score",
+    openbeautyfacts: "Open Beauty Facts non-food record",
+    openproductsfacts: "Open Products Facts non-food record",
+    openpetfoodfacts: "Open Pet Food Facts record",
+    screen: "User-supplied ingredient text",
+  };
+  return labels[source] || source;
+};
 type OverlayState = "pill" | "card" | "min";
 type ViewMode = "product" | "search";
 
@@ -98,7 +112,7 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
   const alt = replacedItem
     ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat)
     : CLEAN_ALTERNATIVES[cat];
-  const isOrganic = alt.isOrganic === true;
+  const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
   return {
     key: replacedItem ? `clean-${cat}-${replacedItem.key}` : `clean-${cat}`,
     title: alt.name,
@@ -106,7 +120,7 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
     size: alt.size,
     image: alt.image,
     ingredients: alt.ingredients,
-    nutrition: { isOrganic },
+    nutrition: { ...alt.nutrition, isOrganic },
     category: cat,
     origin: "swap",
     replacedItem,
@@ -1413,15 +1427,7 @@ export default function Simulator() {
             {liveState === "error" && <p className="error">{liveError}</p>}
             {active.origin === "live" && active.lookup && (
               <p className="meta">
-                {active.lookup.source === "catalog"
-                  ? "Representative catalog formulation"
-                  : active.lookup.source === "openfoodfacts"
-                    ? "Open Food Facts record"
-                    : active.lookup.source === "usda"
-                      ? "USDA FoodData Central record"
-                      : active.lookup.source === "dsld"
-                        ? "NIH Dietary Supplement Label Database (DSLD) record"
-                        : `Source: ${active.lookup.source}`}
+                {lookupSourceLabel(active.lookup)}
                 {active.lookup.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                 {" · Verify physical label · "}
                 <a
@@ -2012,13 +2018,7 @@ export default function Simulator() {
                             <span>Ingredients Inspected:</span>
                             <p>{active.ingredients}</p>
                             <small style={{ display: "block", marginTop: 6, fontSize: 10.5, color: "#475569", fontWeight: 700, lineHeight: 1.4 }}>
-                              {active.lookup?.source === "openfoodfacts"
-                                ? "Source: Open Food Facts (ODbL / CC BY-SA 3.0)"
-                                : active.lookup?.source === "usda"
-                                  ? "Source: USDA FoodData Central"
-                                  : active.lookup?.source === "dsld"
-                                    ? "Source: NIH Dietary Supplement Label Database (DSLD)"
-                                    : "Source: Representative catalog"}
+                              {lookupSourceLabel(active.lookup)}
                               {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                               {" · "}
                               <a
