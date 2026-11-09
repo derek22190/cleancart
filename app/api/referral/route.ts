@@ -88,6 +88,36 @@ export async function POST(request: Request) {
       );
     }
 
+    if (action === "claim" || action === "courtesy_refill" || action === "record_swap") {
+      if (!deviceId || deviceId === "anon-web" || !deviceSecret) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "A bound deviceId and deviceSecret are required for referral claims, swap tracking, and courtesy refills.",
+          },
+          { status: 400, headers: CORS }
+        );
+      }
+    }
+
+    const device = await getOrCreateDevice(deviceId, deviceSecret);
+    if (!verifyDeviceSecret(device, deviceSecret)) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid device credentials." },
+        { status: 403, headers: CORS }
+      );
+    }
+    if (
+      (action === "claim" || action === "courtesy_refill" || action === "record_swap") &&
+      !device.deviceSecretHash
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Unbound device credentials." },
+        { status: 400, headers: CORS }
+      );
+    }
+
     if (action === "claim") {
       const res = await applyOrActivateReferral({
         deviceId,
@@ -103,33 +133,6 @@ export async function POST(request: Request) {
           entitlement: await serializeEntitlementWithPaidLookup(res.device),
         },
         { headers: CORS }
-      );
-    }
-
-    if (action === "courtesy_refill" || action === "record_swap") {
-      if (!deviceId || deviceId === "anon-web" || !deviceSecret) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "A bound deviceId and deviceSecret are required for swap tracking and courtesy refills.",
-          },
-          { status: 400, headers: CORS }
-        );
-      }
-    }
-
-    const device = await getOrCreateDevice(deviceId, deviceSecret);
-    if (!verifyDeviceSecret(device, deviceSecret)) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid device credentials." },
-        { status: 403, headers: CORS }
-      );
-    }
-    if ((action === "courtesy_refill" || action === "record_swap") && !device.deviceSecretHash) {
-      return NextResponse.json(
-        { ok: false, error: "Unbound device credentials." },
-        { status: 400, headers: CORS }
       );
     }
 

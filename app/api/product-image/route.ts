@@ -1,13 +1,14 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
+import { hasProductIdentityMatch } from "@/lib/drinks-catalog";
 import { checkRateLimit } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const imageUrlCache = new Map<string, string>();
-const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: string }>();
+const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: string; sourceUrl: string }>();
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_HOST_SUFFIXES = [".openfoodfacts.org", ".openfoodfacts.net"];
@@ -74,21 +75,6 @@ function distinctiveTokens(s: string): string[] {
     .filter((t) => t.length >= 3 && !STOP_TOKENS.has(t) && !/^\d+$/.test(t));
 }
 
-function hasProductIdentityMatch(query: string, candidateName: string, candidateBrands = ""): boolean {
-  const qTokens = distinctiveTokens(query);
-  const cTokens = distinctiveTokens(`${candidateBrands} ${candidateName}`);
-  if (qTokens.length < 2 || !cTokens.length) return false;
-  const leadBrandToken = qTokens[0];
-  const hasBrandMatch = cTokens.some(
-    (ct) => ct === leadBrandToken || ct === `${leadBrandToken}s` || leadBrandToken === `${ct}s`
-  );
-  if (!hasBrandMatch) return false;
-  const matched = qTokens.filter((qt) =>
-    cTokens.some((ct) => ct === qt || ct === `${qt}s` || qt === `${ct}s` || (qt.length >= 5 && ct.startsWith(qt)))
-  );
-  return matched.length >= Math.min(2, qTokens.length) && matched.length / qTokens.length >= 0.6;
-}
-
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
   const clean = rawQuery
     .replace(/\(category\s+estimate[^)]*\)/gi, " ")
@@ -136,7 +122,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
           const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
           return (
             (p.image_front_small_url || p.image_front_url) &&
-            hasProductIdentityMatch(searchQ, p.product_name || "", brandsStr)
+            hasProductIdentityMatch(searchQ, `${brandsStr} ${p.product_name || ""}`.trim())
           );
         });
         const url = hit?.image_front_small_url || hit?.image_front_url;
@@ -180,7 +166,7 @@ export async function GET(request: Request) {
         "Content-Type": cachedBytes.contentType,
         "Cache-Control": "public, max-age=604800, immutable",
         "Access-Control-Allow-Origin": "*",
-        "X-Image-Source": "Open Food Facts (https://world.openfoodfacts.org)",
+        "X-Image-Source": `Open Food Facts (${cachedBytes.sourceUrl})`,
         "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
       },
     });
@@ -203,14 +189,14 @@ export async function GET(request: Request) {
               const oldest = imageBytesCache.keys().next().value;
               if (oldest !== undefined) imageBytesCache.delete(oldest);
             }
-            imageBytesCache.set(key, { bytes, contentType });
+            imageBytesCache.set(key, { bytes, contentType, sourceUrl: targetUrl });
             return new NextResponse(bytes, {
               status: 200,
               headers: {
                 "Content-Type": contentType,
                 "Cache-Control": "public, max-age=604800, immutable",
                 "Access-Control-Allow-Origin": "*",
-                "X-Image-Source": "Open Food Facts (https://world.openfoodfacts.org)",
+                "X-Image-Source": `Open Food Facts (${targetUrl})`,
                 "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
               },
             });

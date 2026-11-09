@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import { CATEGORY_LABELS, RISK_LABEL } from "@/lib/rubric";
 import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
 
 export function generateStaticParams() {
-  return SEO_PRODUCTS.map((p) => ({ slug: p.slug }));
+  return SEO_PRODUCTS.filter((p) => hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)).map((p) => ({
+    slug: p.slug,
+  }));
 }
 
 export async function generateMetadata({
@@ -14,7 +17,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const entry = SEO_PRODUCTS.find((p) => p.slug === slug);
+  const entry = SEO_PRODUCTS.find((p) => p.slug === slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt));
   if (!entry) return {};
   const { result, swap } = evaluateSeoProduct(entry);
 
@@ -33,7 +36,7 @@ export default async function SwapReportPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const entry = SEO_PRODUCTS.find((p) => p.slug === slug);
+  const entry = SEO_PRODUCTS.find((p) => p.slug === slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt));
   if (!entry) notFound();
 
   const { result, swap } = evaluateSeoProduct(entry);
@@ -49,20 +52,6 @@ export default async function SwapReportPage({
     },
     category: entry.category,
     description: `Independent clean-label opinion and 0–100 ingredient analysis for ${entry.title} (representative formulation — verify physical package label). Ingredients: ${entry.ingredients}`,
-    review: {
-      "@type": "Review",
-      author: {
-        "@type": "Organization",
-        name: "HeyBroc - Online Food Scanner",
-      },
-      reviewRating: {
-        "@type": "Rating",
-        ratingValue: result.score,
-        bestRating: 100,
-        worstRating: 0,
-      },
-      reviewBody: `Editorial Clean-Label Opinion: ${entry.title} scores ${result.score}/100 (${result.rating}) on HeyBroc's 3-Pillar Rubric (Nutrition ${yb?.nutritionScore}/60, Additives ${yb?.additiveScore}/30, Organic ${yb?.organicScore}/10) based on a representative public database formulation. Formulations vary by batch and region; always check the physical package label. ${yb?.glucoseNote || ""}`,
-    },
   };
 
   return (
@@ -149,7 +138,7 @@ export default async function SwapReportPage({
               ⇄ Recommended 1-for-1 Clean Swap ({swap.category})
             </span>
             <h2 style={{ fontSize: 20, fontWeight: 900, color: "#064e3b", margin: "4px 0" }}>
-              {swap.title} — {swap.score}/100 (Excellent)
+              {swap.title} — {swap.score}/100 ({swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : swap.score >= 25 ? "Mediocre" : "Poor"})
             </h2>
             <p style={{ fontSize: 13.5, color: "#065f46", margin: "4px 0 10px" }}>
               <b>Representative Ingredients:</b> {swap.ingredients}
@@ -163,7 +152,7 @@ export default async function SwapReportPage({
               Shop Clean Swap on Walmart ↗{swap.isPaidLink ? " · paid link" : ""}
             </a>
             <span style={{ display: "block", fontSize: 11, color: "#047857", marginTop: 6 }}>
-              Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. Not affiliated with Walmart or any brand shown.
+              Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. Not affiliated with Walmart or any brand shown.
             </span>
           </div>
         )}
@@ -292,7 +281,7 @@ export default async function SwapReportPage({
             gap: 12,
           }}
         >
-          {SEO_PRODUCTS.filter((p) => p.slug !== entry.slug)
+          {SEO_PRODUCTS.filter((p) => p.slug !== entry.slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt))
             .slice(0, 9)
             .map((rel) => {
               const evalRel = evaluateSeoProduct(rel);

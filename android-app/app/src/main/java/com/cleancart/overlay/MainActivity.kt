@@ -2379,13 +2379,28 @@ class MainActivity : Activity() {
             hasStarchBase || nutGrade == "C" || nutGrade == "D" -> "Moderate Sugar"
             else -> "Low / No Added Sugar"
         }
-        val glucoseImpact = yb?.optString("glucoseImpact")?.takeIf { it.isNotBlank() } ?: defaultGlucoseImpact
-        val glucoseNote = yb?.optString("glucoseNote")?.takeIf { it.isNotBlank() } ?: when (glucoseImpact) {
-            "High Sugar / Refined Carbs" -> "Contains concentrated sugars, syrups, or refined starches."
-            "Moderate Sugar" -> "Contains added sugars or refined starches."
-            else -> "Low added sugar and minimal refined starch."
+        val rawGlucoseImpact = yb?.optString("glucoseImpact")?.takeIf { it.isNotBlank() }.orEmpty()
+        val glucoseImpact = if (rawGlucoseImpact.isBlank() || rawGlucoseImpact.contains("Spike", ignoreCase = true) || rawGlucoseImpact.contains("glycemic", ignoreCase = true)) {
+            defaultGlucoseImpact
+        } else {
+            rawGlucoseImpact
         }
-        val calorieNote = yb?.optString("calorieNote")?.takeIf { it.isNotBlank() } ?: "Calories Not Provided"
+        val rawGlucoseNote = yb?.optString("glucoseNote")?.takeIf { it.isNotBlank() }.orEmpty()
+        val glucoseNote = if (rawGlucoseNote.isBlank() || rawGlucoseNote.contains("Spike", ignoreCase = true) || rawGlucoseNote.contains("glycemic", ignoreCase = true)) {
+            when (glucoseImpact) {
+                "High Sugar / Refined Carbs" -> "Contains concentrated sugars, syrups, or refined starches."
+                "Moderate Sugar" -> "Contains added sugars or refined starches."
+                else -> "Low added sugar and minimal refined starch."
+            }
+        } else {
+            rawGlucoseNote
+        }
+        val rawCalorieNote = yb?.optString("calorieNote")?.takeIf { it.isNotBlank() }.orEmpty()
+        val calorieNote = if (rawCalorieNote.isBlank() || rawCalorieNote.contains("Calorie-Smart", ignoreCase = true)) {
+            "Calories Not Provided"
+        } else {
+            rawCalorieNote
+        }
         val glucoseBadgeColor = when (glucoseImpact) {
             "High Sugar / Refined Carbs" -> 0xFFD93025.toInt()
             "Moderate Sugar" -> 0xFFEA8600.toInt()
@@ -2511,6 +2526,11 @@ class MainActivity : Activity() {
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Swap")
             val swapScore = swap.optInt("score", 92)
+            val swapRating = when {
+                swapScore >= 75 -> "Excellent"
+                swapScore >= 50 -> "Good"
+                else -> "Mediocre"
+            }
             val swapImg = swap.optString("image").ifBlank { swap.optString("imageUrl") }
             val swapIng = swap.optString("ingredients").ifBlank { swap.optString("cleanIngredients") }
             val swapUnlocked = ScanApi.isSwapUnlocked(this, title, swapTitle)
@@ -2533,7 +2553,7 @@ class MainActivity : Activity() {
             }
 
             if (swapUnlocked) {
-                swapCard.addView(label("✓ CLEAN SWAP · $swapScore/100 EXCELLENT", 11f, 0xFF166534.toInt(), bold = true).apply {
+                swapCard.addView(label("✓ CLEAN SWAP · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF166534.toInt(), bold = true).apply {
                     letterSpacing = 0.06f
                 })
                 val swapHeaderRow = LinearLayout(this).apply {
@@ -2586,10 +2606,10 @@ class MainActivity : Activity() {
                     setOnClickListener { openStoreSwap(swapTitle, itemStoreKey, swap) }
                 })
             } else if (rem > 0) {
-                swapCard.addView(label("🔒 CLEAN SWAP FOUND · $swapScore/100 EXCELLENT", 11f, 0xFF166534.toInt(), bold = true).apply {
+                swapCard.addView(label("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF166534.toInt(), bold = true).apply {
                     letterSpacing = 0.06f
                 })
-                swapCard.addView(label("Verified 1-for-1 Clean Alternative (0 Flagged Additives)", 14f, 0xFF111814.toInt(), bold = true).apply {
+                swapCard.addView(label("1-for-1 Clean Alternative (0 Flagged Additives)", 14f, 0xFF111814.toInt(), bold = true).apply {
                     setPadding(0, dp(6), 0, dp(2))
                 })
                 swapCard.addView(label("You have $rem of $lim free weekly Clean Swaps remaining.", 12f, 0xFF166534.toInt()).apply {
@@ -2611,10 +2631,10 @@ class MainActivity : Activity() {
                     }
                 })
             } else {
-                swapCard.addView(label("🔒 CLEAN SWAP LOCKED · $swapScore/100 EXCELLENT", 11f, 0xFF92400E.toInt(), bold = true).apply {
+                swapCard.addView(label("🔒 CLEAN SWAP LOCKED · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF92400E.toInt(), bold = true).apply {
                     letterSpacing = 0.06f
                 })
-                swapCard.addView(label("100/100 Clean Replacement Available", 14f, 0xFF111814.toInt(), bold = true).apply {
+                swapCard.addView(label("$swapScore/100 Clean Replacement Available", 14f, 0xFF111814.toInt(), bold = true).apply {
                     setPadding(0, dp(6), 0, dp(2))
                 })
                 swapCard.addView(label("All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 12f, 0xFF374151.toInt()).apply {
@@ -2638,8 +2658,11 @@ class MainActivity : Activity() {
             sheet.addView(swapCard)
         }
 
-        val rawSource = item.optString("source").ifBlank { prod?.optString("source").orEmpty() }
-        val sourceUpdated = item.optString("sourceUpdatedAt").ifBlank { prod?.optString("sourceUpdatedAt").orEmpty() }
+        val lookupObj = item.optJSONObject("lookup")
+        val rawSource = lookupObj?.optString("origin")?.ifBlank { lookupObj.optString("source") }.orEmpty()
+            .ifBlank { item.optString("source").ifBlank { prod?.optString("source").orEmpty() } }
+        val sourceUpdated = lookupObj?.optString("sourceUpdatedAt").orEmpty()
+            .ifBlank { item.optString("sourceUpdatedAt").ifBlank { prod?.optString("sourceUpdatedAt").orEmpty() } }
         val sourceLabel = when (rawSource) {
             "usda" -> "USDA FoodData Central"
             "openfoodfacts" -> "Open Food Facts"
@@ -3089,10 +3112,10 @@ class MainActivity : Activity() {
             .setMessage(
                 "HeyBroc uses the Android AccessibilityService API solely inside 12 supported grocery apps " +
                     "(Walmart, Instacart, Target, Kroger, ALDI, DoorDash, Uber Eats, Amazon Fresh, Sam's Club, BJ's, Costco, and Shipt) to:\n" +
-                    "1) Detect when you view a grocery product page and read the visible product title and ingredient list, and\n" +
-                    "2) Read visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
-                    "• What is transmitted: Extracted grocery product titles, ingredient text, active store identifier, your selected additive watchlist categories, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
-                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 12 supported grocery apps above, skips password fields, editable text inputs, and non-visible nodes, never reads hardware identifiers, and does not sell personal data."
+                    "1) Inspect visible, non-editable screen text on device to detect grocery product pages and extract the visible product title and ingredient list, and\n" +
+                    "2) Extract visible cart item titles (up to 20 items on Cart screens) and \"in cart\" indicators so your Whole-Cart Health Check reflects your real cart.\n\n" +
+                    "• What is transmitted: Matched grocery product title candidates, extracted ingredient text, active store identifier, your selected additive watchlist categories, any claimed referral code, and a random install-scoped device ID (retained for up to 1 year for Pro entitlement and weekly swap accounting) are sent over HTTPS to heybroc.com/api/scan.\n" +
+                    "• Scope & Safeguards: HeyBroc is restricted by Android package filter to the 12 supported grocery apps above, prunes password fields, editable inputs, search boxes, payment fields, and chat/message containers on device before candidate extraction, never reads hardware identifiers, and does not sell personal data."
             )
             .setCancelable(false)
             .setPositiveButton("I Agree & Continue") { _, _ ->

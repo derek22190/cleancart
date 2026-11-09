@@ -37,8 +37,8 @@ const CONSENT_KEY_PREFIX = "heybroc:consent:";
 /** Retain entitlement & billing records for 400 days (covers annual billing cycle + grace period). */
 export const ENTITLEMENT_TTL_SECONDS = 400 * 24 * 60 * 60;
 
-/** Retain express auto-renewal consent logs for 3 years (California ARL / FTC negative-option compliance). */
-export const CONSENT_TTL_SECONDS = 3 * 365 * 86400;
+/** Retain express auto-renewal consent logs for 5 years (Cal. Bus. & Prof. Code § 17602: >=3 years from consent or >=1 year after termination). */
+export const CONSENT_TTL_SECONDS = 5 * 365 * 86400;
 
 export interface SubscriptionConsentRecord {
   deviceId: string;
@@ -47,12 +47,14 @@ export interface SubscriptionConsentRecord {
   termsVersion: string;
   timestamp: string;
   ip: string;
+  sessionId?: string;
 }
 
 export async function recordSubscriptionConsent(
   consent: SubscriptionConsentRecord
 ): Promise<void> {
-  const idPart = (consent.deviceId || consent.email || "anon")
+  const cleanSessionId = (consent.sessionId || "").trim();
+  const idPart = (cleanSessionId || consent.email || consent.deviceId || "anon")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9@._-]/g, "_");
@@ -67,6 +69,10 @@ export async function recordSubscriptionConsent(
       consent,
       CONSENT_TTL_SECONDS
     );
+  }
+  if (cleanSessionId) {
+    await kvSet(`consent:${cleanSessionId}`, consent, CONSENT_TTL_SECONDS);
+    await kvSet(`${CONSENT_KEY_PREFIX}${cleanSessionId}`, consent, CONSENT_TTL_SECONDS);
   }
 }
 
@@ -476,7 +482,9 @@ export async function verifyStripeCheckoutSession(
 
 /**
  * Resolves a Stripe customer ID (`cus_...`) for the self-serve Stripe Billing Portal
- * using the caller's `sessionId`, `deviceId`, or `email`.
+ * using the caller's verified `deviceId` or verified `email` (and optional `sessionId`).
+ * IMPORTANT: Callers must authenticate `deviceId` (via `verifyDeviceSecret`) or `email`
+ * (via `getAuthenticatedUser`) before invoking this helper.
  */
 export async function resolveBillingPortalCustomer(params: {
   sessionId?: string;
@@ -486,18 +494,22 @@ export async function resolveBillingPortalCustomer(params: {
   const cleanSessionId = (params.sessionId || "").trim();
   const cleanDeviceId = (params.deviceId || "").trim();
   const cleanEmail = (params.email || "").trim().toLowerCase();
+  const hasVerifiedDevice = Boolean(cleanDeviceId && cleanDeviceId !== "anon-web");
+  const hasVerifiedEmail = Boolean(cleanEmail);
+
+  // Never resolve a customer portal session without a verified device or verified account email
+  if (!hasVerifiedDevice && !hasVerifiedEmail) {
+    return null;
+  }
 
   let record: EntitlementRecord | null = null;
-  if (cleanSessionId) {
-    record = await verifyStripeCheckoutSession(
-      cleanSessionId,
-      cleanDeviceId || undefined
-    );
+  if (cleanSessionId && hasVerifiedDevice) {
+    record = await verifyStripeCheckoutSession(cleanSessionId, cleanDeviceId);
   }
-  if (!record && cleanDeviceId && cleanDeviceId !== "anon-web") {
+  if (!record && hasVerifiedDevice) {
     record = await getDevicePaidEntitlement(cleanDeviceId);
   }
-  if (!record && cleanEmail) {
+  if (!record && hasVerifiedEmail) {
     record = await getEmailEntitlement(cleanEmail);
   }
 
@@ -540,7 +552,7 @@ export async function resolveBillingPortalCustomer(params: {
     }
   }
 
-  // Fallback: look up Stripe customer by email if provided
+  // Fallback: look up Stripe customer by verified email (or email stored on a verified device's entitlement)
   const lookupEmail = cleanEmail || record?.customerEmail?.trim().toLowerCase();
   if (lookupEmail) {
     try {

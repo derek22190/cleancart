@@ -15,7 +15,9 @@ for (const p of PRESETS) {
 }
 for (const a of Object.values(CLEAN_ALTERNATIVES)) {
   const r = scoreIngredients(a.ingredients);
-  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: `${a.brand} ${a.name}` });
+  const fullTitle = `${a.brand} ${a.name}`;
+  const isOrganic = a.isOrganic ?? /\b(organic|organics)\b/i.test(fullTitle);
+  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: fullTitle, isOrganic });
   const b = ry.yukaBreakdown!;
   check(`${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
   check(`${a.brand} additiveScore === 30 (${b.additiveScore})`, b.additiveScore === 30);
@@ -24,7 +26,9 @@ for (const a of Object.values(CLEAN_ALTERNATIVES)) {
 for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
   const a = entry.alt;
   const r = scoreIngredients(a.ingredients);
-  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: `${a.brand} ${a.name}` });
+  const fullTitle = `${a.brand} ${a.name}`;
+  const isOrganic = a.isOrganic ?? /\b(organic|organics)\b/i.test(fullTitle);
+  const ry = scoreProductYuka(a.ingredients, {}, [], { productTitle: fullTitle, isOrganic });
   const b = ry.yukaBreakdown!;
   check(`1-for-1 ${a.brand} ${a.name} >= 90 (${r.score} ${r.flagged.map((f) => f.name)})`, r.score >= 90);
   check(`1-for-1 ${a.brand} ${a.name} additiveScore === 30 (${b.additiveScore})`, b.additiveScore === 30);
@@ -91,7 +95,7 @@ check("Capri Sun scores Poor <= 24 and swaps to Spindrift with drink.png", (() =
 })());
 check("100% Orange Juice never scores 100 (scores <= 75)", (() => {
   const conv = scoreProductYuka("100% pure squeezed pasteurized orange juice.", {}, [], { productTitle: "100% Pure Squeezed Orange Juice" });
-  const org = scoreProductYuka("100% organic pasteurized orange juice.", {}, [], { productTitle: "Uncle Matt's Organic 100% Pulp-Free Orange Juice" });
+  const org = scoreProductYuka("100% organic pasteurized orange juice.", {}, [], { productTitle: "Uncle Matt's Organic 100% Pulp-Free Orange Juice", isOrganic: true });
   return conv.score === 64 && org.score === 74;
 })());
 check("Ben & Jerry's Half-Baked scores <= 35 (matches 3-pillar sum, never 100)", (() => {
@@ -397,8 +401,126 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     Boolean(wholeOatsScan.ok && (wholeOatsScan.dietaryAlerts?.length ?? 0) === 0)
   );
 
+  // ==================== FULL AUDIT REGRESSION SUITE (C1, H1–H11, M1–M9, L1–L3) ====================
+  const { hasValidCatalogProvenance, hasProductIdentityMatch } = await import("../lib/drinks-catalog");
+  const { INSTANT_GROCERY_CATALOG } = await import("../lib/lookup");
+  const { SEO_PRODUCTS } = await import("../lib/seo-catalog");
+  const { resolveBillingPortalCustomer } = await import("../lib/entitlements");
+
+  // C1: Unauthenticated requests to resolveBillingPortalCustomer without verified identity return null
+  const unverifiedPortal = await resolveBillingPortalCustomer({ deviceId: "anon-web", email: "" });
+  const unboundDevicePortal = await resolveBillingPortalCustomer({ deviceId: "unbound-victim-device-id" });
+  check(
+    "C1: resolveBillingPortalCustomer rejects unverified/anon and unbound device requests",
+    unverifiedPortal === null && unboundDevicePortal === null
+  );
+
+  // H1 & H2: Every DRINKS_CATALOG, INSTANT_GROCERY_CATALOG, and SEO_PRODUCTS entry has valid provenance & zero '/' in title/brand
+  check(
+    "H1/H2: DRINKS_CATALOG has zero '/' in title or brand and every entry passes hasValidCatalogProvenance",
+    DRINKS_CATALOG.every(
+      (d) => !d.title.includes("/") && !d.brand.includes("/") && hasValidCatalogProvenance(d.sourceUrl, d.verifiedAt)
+    )
+  );
+  check(
+    "H1/H2: INSTANT_GROCERY_CATALOG has zero '/' in title or brand and every entry passes hasValidCatalogProvenance",
+    INSTANT_GROCERY_CATALOG.every(
+      (g) => !g.title.includes("/") && !g.brand.includes("/") && hasValidCatalogProvenance(g.sourceUrl, g.verifiedAt)
+    )
+  );
+  check(
+    "H2/H3: SEO_PRODUCTS every entry passes hasValidCatalogProvenance",
+    SEO_PRODUCTS.every((s) => hasValidCatalogProvenance(s.sourceUrl, s.verifiedAt))
+  );
+  check(
+    "H2: hasValidCatalogProvenance rejects missing, root-only, future, or stale (>90d) provenance",
+    !hasValidCatalogProvenance("https://world.openfoodfacts.org/", "2026-11-08") &&
+      !hasValidCatalogProvenance("https://www.fda.gov/food", "2099-01-01") &&
+      !hasValidCatalogProvenance("https://www.fda.gov/food", "2020-01-01") &&
+      !hasValidCatalogProvenance(undefined, undefined)
+  );
+
+  // H1: Sunkist, Mug, GT's, Doritos Simply NKD vs Simply Organic White Cheddar, Pedialyte Classic, Starbucks Doubleshot, Liquid Death
+  const sunkistMatch = matchDrinkCatalog("Sunkist Orange Soda");
+  const mugMatch = matchDrinkCatalog("Mug Root Beer");
+  const gtsMatch = matchDrinkCatalog("GT's Synergy Raw Kombucha Gingerade");
+  check(
+    "H1: Sunkist, Mug, and GT's resolve to their own dedicated brand entries (never Fanta, A&W, or Health-Ade)",
+    Boolean(
+      sunkistMatch && sunkistMatch.brand === "Sunkist" &&
+      mugMatch && mugMatch.brand === "Mug" &&
+      gtsMatch && gtsMatch.brand === "GT's Living Foods"
+    )
+  );
+
+  const pedialyteClassic = matchDrinkCatalog("Pedialyte Classic Electrolyte Solution");
+  check(
+    "H1: Pedialyte Classic does not list Milk allergens",
+    Boolean(pedialyteClassic && !/\bmilk\b/i.test(pedialyteClassic.ingredients))
+  );
+  check(
+    "H1: Starbucks Doubleshot Espresso does not list taurine, ginseng, or guarana",
+    Boolean(doubleshot && !/\b(taurine|ginseng|guarana)\b/i.test(doubleshot.ingredients))
+  );
+  check(
+    "H1: Liquid Death Severed Lime Sparkling Water never matches plain Mountain Water",
+    matchDrinkCatalog("Liquid Death Severed Lime Sparkling Water")?.id !== "liquid-death-mountain-water"
+  );
+
+  const doritosSimplyOrganicScan = await runScan({
+    productTitle: "Simply Doritos Organic White Cheddar Nacho Tortilla Chips",
+    store: "walmart",
+  });
+  check(
+    "H1: Doritos Simply NKD (non-organic) and Simply Doritos Organic White Cheddar (organic) are distinct",
+    Boolean(
+      doritosNkdScan.ok &&
+      doritosNkdScan.result?.yukaBreakdown?.organicScore === 0 &&
+      doritosSimplyOrganicScan.ok &&
+      doritosSimplyOrganicScan.result?.yukaBreakdown?.organicScore === 10
+    )
+  );
+
+  // H3: Cereal formulations match between INSTANT_GROCERY_CATALOG and SEO_PRODUCTS
+  const seoCtc = SEO_PRODUCTS.find((p) => p.title.includes("Cinnamon Toast Crunch"));
+  const instantCtc = INSTANT_GROCERY_CATALOG.find((p) => p.title.includes("Cinnamon Toast Crunch"));
+  check(
+    "H3: Cinnamon Toast Crunch formulation is consistent across INSTANT_GROCERY_CATALOG and SEO_PRODUCTS",
+    Boolean(seoCtc && instantCtc && /\bbht\b/i.test(seoCtc.ingredients) && /\bbht\b/i.test(instantCtc.ingredients))
+  );
+
+  // H4: Product title containing 'Organic' never grants organicScore when isOrganic is not explicitly true
+  const titleOrganicCheck = scoreProductYuka("Whole milk, vitamin D3.", {}, [], {
+    productTitle: "Organic Valley Whole Milk",
+  });
+  check(
+    "H4: scoreProductYuka never infers USDA Organic bonus from productTitle when isOrganic is not true",
+    titleOrganicCheck.yukaBreakdown?.organicScore === 0
+  );
+
+  // H5: Non-food items receive nutritionScore 0 and nutriScoreGrade 'N/A', never 'A'
+  const nonFoodCheck = scoreProductYuka(
+    "Water, sodium lauryl sulfate, lauramine oxide, fragrance, methylisothiazolinone.",
+    {},
+    [],
+    { productTitle: "Dawn Ultra Dishwashing Liquid Dish Soap" }
+  );
+  check(
+    "H5: Non-food items receive nutritionScore === 0 and nutriScoreGrade === 'N/A'",
+    nonFoodCheck.yukaBreakdown?.nutritionScore === 0 &&
+      nonFoodCheck.yukaBreakdown?.nutriScoreGrade === "N/A"
+  );
+
+  // M5: hasProductIdentityMatch rejects cross-brand generic overlap ('Silk Soymilk' vs 'Great Value Soymilk')
+  check(
+    "M5: hasProductIdentityMatch rejects 'Great Value Soymilk' for query 'Silk Soymilk' and accepts 'Silk Original Soymilk'",
+    !hasProductIdentityMatch("Silk Soymilk", "Great Value Original Soymilk") &&
+      hasProductIdentityMatch("Silk Soymilk", "Silk Original Soymilk, 64 fl oz")
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);
 })();
+
 

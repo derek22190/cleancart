@@ -205,7 +205,7 @@ export async function POST(req: Request) {
       ev.store === "PLAY_STORE" ? "android" : ev.store === "APP_STORE" ? "ios" : "web";
     await trackServerEvent({
       event: "pro_subscribed",
-      distinctId: deviceId || customerEmail || appUserId,
+      distinctId: deviceId || subscriptionId,
       platform,
       properties: {
         plan,

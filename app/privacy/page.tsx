@@ -38,10 +38,10 @@ export default function PrivacyPage() {
         <ul>
           <li>
             <strong>What screen content is accessed:</strong> When one of the 12 supported store apps is actively in the foreground and you have
-            explicitly accepted the in-app Accessibility Service disclosure, HeyBroc inspects visible, non-editable text nodes to:
-            (a) detect when a grocery product page is open and extract the visible <strong>product title</strong>,{" "}
+            explicitly accepted the in-app Accessibility Service disclosure, HeyBroc traverses visible, non-editable accessibility text nodes on device to:
+            (a) detect when a grocery product page or product feed is open and extract candidate <strong>product titles</strong>,{" "}
             <strong>ingredient text</strong> (if expanded on screen), and active <strong>store identifier</strong>, and
-            (b) read visible <strong>cart item titles</strong> (up to 20 items when you view your Cart screen) and <em>&ldquo;in cart&rdquo;</em>{" "}
+            (b) extract visible <strong>cart item titles</strong> (up to 20 items when you view your Cart screen) and <em>&ldquo;in cart&rdquo;</em>{" "}
             badges so your Whole-Cart Health Check reflects the items currently in your cart.
           </li>
           <li>
@@ -50,12 +50,13 @@ export default function PrivacyPage() {
             <em>Whole Foods Market</em>, or pages containing an explicit <em>Ingredients</em> section.
           </li>
           <li>
-            <strong>What is strictly excluded:</strong> HeyBroc never reads password fields, editable text inputs, payment forms, hardware device
-            identifiers (such as <code>ANDROID_ID</code> or IMEI), contacts, notifications, SMS/chat messages, non-food Amazon pages, or any app
-            outside the 12 allowlisted grocery packages.
+            <strong>On-device filtering &amp; exclusions:</strong> HeyBroc restricts Android accessibility events by package name to the 12 allowlisted
+            grocery apps above, prunes password fields, editable text inputs, search boxes, payment/card containers, and chat/message/instruction
+            containers on device before extracting product candidates, and never reads hardware device identifiers (such as <code>ANDROID_ID</code> or
+            IMEI), contacts, system notifications, or SMS apps.
           </li>
           <li>
-            <strong>How extracted product data is transmitted and used:</strong> Extracted grocery product titles (including visible cart item titles
+            <strong>How extracted product data is transmitted and used:</strong> Matched grocery product title candidates (including visible cart item titles
             during a cart sync) and ingredient strings are sent over encrypted HTTPS to <code>https://www.heybroc.com/api/scan</code> (and{" "}
             <code>/api/audit</code> when running a Whole-Cart Health Check) together with your active <strong>store identifier</strong>,{" "}
             <strong>ingredient watchlist preferences</strong> (<code>watchlist</code> / <code>familyWatchlist</code>), an install-scoped random{" "}
@@ -90,9 +91,9 @@ export default function PrivacyPage() {
             and can be disassociated from your device at any time by clearing app storage or browser local storage.
           </li>
           <li>
-            <strong>Subscription &amp; billing records (400 days):</strong> When you subscribe via Stripe Checkout or RevenueCat (App Store / Google Play),
+            <strong>Subscription, billing &amp; auto-renewal consent records (400 days to 5 years):</strong> When you subscribe via Stripe Checkout or RevenueCat (App Store / Google Play),
             our server stores your checkout session ID, subscription status, linked <code>deviceId</code>, and checkout email address (<code>customerEmail</code>)
-            in encrypted key-value storage with an automatic 400-day expiration TTL to verify annual and monthly Pro entitlements.
+            in encrypted key-value storage with an automatic 400-day expiration TTL to verify annual and monthly Pro entitlements, and retains your affirmative auto-renewal consent record for up to 5 years to satisfy state and federal auto-renewal recordkeeping laws.
           </li>
           <li>
             <strong>Optional user accounts (up to 400 days or until deleted):</strong> If you create a HeyBroc account to sync your Family Watchlist and Pro

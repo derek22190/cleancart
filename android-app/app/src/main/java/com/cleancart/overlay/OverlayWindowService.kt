@@ -1455,9 +1455,13 @@ class OverlayWindowService : Service() {
         }
         if (swap != null) {
             val swapTitle = swap.optString("title", "Clean Alternative")
-            val swapScore = swap.optInt("score", 100)
-            val swapRatingLabel = if (swapScore >= 75) "Excellent" else "Good"
-            val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
+            val swapScore = swap.optInt("score", 90)
+            val swapRating = when {
+                swapScore >= 75 -> "Excellent"
+                swapScore >= 50 -> "Good"
+                else -> "Mediocre"
+            }
+            val swapIngredients = swap.optString("ingredients").trim()
             val swapUnlocked = ScanApi.isSwapUnlocked(this, prodTitle, swapTitle)
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
@@ -1487,7 +1491,7 @@ class OverlayWindowService : Service() {
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END
                     })
-                    addView(text("$swapScore/100 $swapRatingLabel", 11f, 0xFF16A34A.toInt(), bold = true))
+                    addView(text("$swapScore/100 $swapRating", 11f, 0xFF16A34A.toInt(), bold = true))
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
 
@@ -1510,10 +1514,10 @@ class OverlayWindowService : Service() {
                 }
             } else if (rem > 0) {
                 // Free user with remaining weekly swaps: hide brand/product name until they tap Reveal!
-                swapBox.addView(text("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRatingLabel.uppercase()}", 9.5f, BRAND, bold = true).apply {
+                swapBox.addView(text("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRating.uppercase()}", 9.5f, BRAND, bold = true).apply {
                     letterSpacing = 0.05f
                 })
-                swapBox.addView(text("Verified 1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
+                swapBox.addView(text("1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
                     setPadding(0, dp(3), 0, 0)
                 })
                 swapBox.addView(text("You have $rem of $lim free weekly Clean Swaps remaining.", 11f, 0xFF0B5E39.toInt()).apply {
@@ -1532,10 +1536,10 @@ class OverlayWindowService : Service() {
                 })
             } else {
                 // Free user out of weekly swaps (0/3 left): keep brand/product name locked behind Pro / Referral!
-                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · $swapScore/100 ${swapRatingLabel.uppercase()}", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
+                swapBox.addView(text("🔒 CLEAN SWAP LOCKED · $swapScore/100 ${swapRating.uppercase()}", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
                     letterSpacing = 0.05f
                 })
-                swapBox.addView(text("100/100 Clean Replacement Available", 12.5f, INK, bold = true).apply {
+                swapBox.addView(text("$swapScore/100 Clean Replacement Available", 12.5f, INK, bold = true).apply {
                     setPadding(0, dp(3), 0, 0)
                 })
                 swapBox.addView(text("All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 11f, INK_2).apply {
@@ -1570,17 +1574,16 @@ class OverlayWindowService : Service() {
                             val myRefCode = ScanApi.myReferralCode(this@OverlayWindowService)
                             val url = "https://www.heybroc.com/r/$myRefCode"
                             val msg = "Check out HeyBroc — this little broccoli floats over Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart & more to grade ingredients (0–100) and swap dirty items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: $url"
-                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            val sendIntent = Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_SUBJECT, "7 Free Days of HeyBroc Pro")
                                 putExtra(Intent.EXTRA_TEXT, msg)
-                            }
-                            val chooser = Intent.createChooser(sendIntent, "Share your HeyBroc invite link").apply {
+                            }, "Share your HeyBroc invite link").apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             removeCard()
                             showPill()
-                            runCatching { startActivity(chooser) }
+                            runCatching { startActivity(sendIntent) }
                         }
                     })
                 })
@@ -1589,8 +1592,11 @@ class OverlayWindowService : Service() {
             swapBox.addView(text("✓ Great pick — 0 Watchlist Additives ($score/100).", 12.5f, 0xFF0B5E39.toInt(), bold = true))
         }
         sheet.addView(swapBox)
-        val rawSource = d.optString("source").ifBlank { prodObj?.optString("source").orEmpty() }
-        val sourceUpdated = d.optString("sourceUpdatedAt").ifBlank { prodObj?.optString("sourceUpdatedAt").orEmpty() }
+        val lookupObj = d.optJSONObject("lookup")
+        val rawSource = lookupObj?.optString("origin")?.ifBlank { lookupObj.optString("source") }.orEmpty()
+            .ifBlank { d.optString("source").ifBlank { prodObj?.optString("source").orEmpty() } }
+        val sourceUpdated = lookupObj?.optString("sourceUpdatedAt").orEmpty()
+            .ifBlank { d.optString("sourceUpdatedAt").ifBlank { prodObj?.optString("sourceUpdatedAt").orEmpty() } }
         val sourceLabel = when (rawSource) {
             "usda" -> "USDA FoodData Central"
             "openfoodfacts" -> "Open Food Facts"
@@ -1644,17 +1650,21 @@ class OverlayWindowService : Service() {
     }
 
     /**
-     * Full Clean Swap Preview modal: lets the user inspect the swap product's photo, 100/100 score,
+     * Full Clean Swap Preview modal: lets the user inspect the swap product's photo, score,
      * and complete ingredient list BEFORE jumping into the store app.
      */
     private fun showSwapPreviewModal(swap: JSONObject) {
         removeCard()
         removePill()
         val swapTitle = swap.optString("title", "Clean Alternative")
-        val swapScore = swap.optInt("score", 100)
-        val swapRatingLabel = if (swapScore >= 75) "Excellent" else "Good"
+        val swapScore = swap.optInt("score", 90)
+        val swapRating = when {
+            swapScore >= 75 -> "Excellent"
+            swapScore >= 50 -> "Good"
+            else -> "Mediocre"
+        }
         val swapSize = swap.optString("size")
-        val swapIngredients = swap.optString("ingredients").ifBlank { cleanIngredientsPreviewFor(swapTitle) }
+        val swapIngredients = swap.optString("ingredients").trim()
         val storeName = storeDisplayName(currentStoreKey)
         val isPaidLink = swap.optBoolean("isPaidLink", false)
         val modalSwapCta = if (isPaidLink) "Find & Swap in $storeName ↗ · paid link" else "Find & Swap in $storeName ↗"
@@ -1710,7 +1720,7 @@ class OverlayWindowService : Service() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(14), 0, dp(10))
-            addView(GaugeView(context, swapScore, swapRatingLabel, 0xFF16A34A.toInt()), LinearLayout.LayoutParams(dp(92), dp(92)).apply { marginEnd = dp(14) })
+            addView(GaugeView(context, swapScore, swapRating, 0xFF16A34A.toInt()), LinearLayout.LayoutParams(dp(92), dp(92)).apply { marginEnd = dp(14) })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text("✓ 0 Watchlist Additives", 14f, 0xFF16A34A.toInt(), bold = true))
@@ -1826,25 +1836,6 @@ class OverlayWindowService : Service() {
             }
         }
         return box
-    }
-
-    private fun cleanIngredientsPreviewFor(title: String): String {
-        val s = title.lowercase()
-        return when {
-            "eggnog" in s -> "Organic Grade A milk, organic cream, organic cane sugar, organic egg yolks, organic vanilla extract, organic nutmeg."
-            "unsalted butter" in s -> "Organic pasteurized sweet cream, microbial culture."
-            "butter" in s -> "Organic pasteurized sweet cream, salt."
-            "yogurt" in s -> "Cultured pasteurized organic whole milk, pectin, vitamin D3."
-            "turkey" in s -> "Organic turkey breast, water, sea salt, organic vinegar, organic cane sugar."
-            "bacon" in s -> "Organic pork, water, sea salt, organic cane sugar, organic rosemary extract."
-            "tortilla" in s && "chips" in s -> "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt."
-            "chips" in s -> "Potatoes, avocado oil, sea salt."
-            "cheddar" in s && "crackers" in s -> "Organic cassava flour, organic cheddar cheese, organic coconut oil, organic chia seeds, sea salt."
-            "crackers" in s -> "Organic whole grain brown rice, organic quinoa, organic flax seeds, organic sesame seeds, sea salt."
-            "ranch" in s -> "Avocado oil, water, organic eggs, organic distilled vinegar, sea salt, organic herbs & spices."
-            "milk" in s -> "Organic Grade A milk, vitamin D3."
-            else -> "100% clean whole-food ingredients — zero watchlist additives."
-        }
     }
 
     private fun removeCard() {

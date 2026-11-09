@@ -47,7 +47,7 @@ export interface NutritionInput {
 export interface YukaBreakdown {
   /** 0..60 points (60% of score, based on Nutri-Score A-E). */
   nutritionScore: number;
-  nutriScoreGrade: "A" | "B" | "C" | "D" | "E";
+  nutriScoreGrade: "A" | "B" | "C" | "D" | "E" | "N/A";
   /** 0..30 points (30% of score, based on additive count & risk tier). */
   additiveScore: number;
   /** 0..10 points (10% of score, awarded for certified Organic or 100% whole foods). */
@@ -55,7 +55,15 @@ export interface YukaBreakdown {
   /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
   highRiskCapped: boolean;
   /** Sugar & refined-carb impact tier. */
-  glucoseImpact?: "Low Sugar / Carb" | "Moderate Sugar / Carb" | "High Sugar / Carb" | "Low / No Added Sugar" | "Moderate Sugar" | "High Sugar / Refined Carbs" | "Unmeasured";
+  glucoseImpact?:
+    | "Low Sugar / Carb"
+    | "Moderate Sugar / Carb"
+    | "High Sugar / Carb"
+    | "Low / No Added Sugar"
+    | "No Added Sugar in Ingredients"
+    | "Moderate Sugar"
+    | "High Sugar / Refined Carbs"
+    | "Unmeasured";
   glucoseColor?: RatingColor;
   glucoseNote?: string;
   calorieNote?: string;
@@ -823,12 +831,14 @@ export function scoreProductYuka(
     !hasTop3AddedSugar &&
     (Boolean(nutrition.isWholeFood) || isWholeProduceIngredient);
 
-  // High 3 Fix: Never infer whole-product USDA Organic certification from an ingredient word in rawIngredients.
-  // Require explicit nutrition.isOrganic === true, or product-level organic designation in productTitle when not explicitly false.
-  const isOrganic =
-    nutrition.isOrganic === true ||
-    (nutrition.isOrganic !== false &&
-      /\b(organic|usda organic|biologique)\b/i.test(nutrition.productTitle || ""));
+  // High 3 Fix: Never infer whole-product USDA Organic certification from rawIngredients or productTitle alone.
+  // Require explicit product-level nutrition.isOrganic === true.
+  const isOrganic = nutrition.isOrganic === true;
+
+  const isNonFoodItem =
+    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
+      titleAndIng,
+    );
 
   const hasMeasuredCalories = typeof nutrition.caloriesKcal100g === "number" && Number.isFinite(nutrition.caloriesKcal100g);
   const hasMeasuredSugars = typeof nutrition.sugarsG100g === "number" && Number.isFinite(nutrition.sugarsG100g);
@@ -862,7 +872,7 @@ export function scoreProductYuka(
   const positivePoints = negativePoints >= 11 && pFvn < 5 ? pFvn + pFib : pFvn + pFib + pPro;
 
   const nutriRaw = negativePoints - positivePoints;
-  let nutriGrade: "A" | "B" | "C" | "D" | "E" = isBeverage
+  let nutriGrade: "A" | "B" | "C" | "D" | "E" | "N/A" = isBeverage
     ? nutriRaw <= 0 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 6 ? "C" : nutriRaw <= 9 ? "D" : "E"
     : nutriRaw <= -1 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 10 ? "C" : nutriRaw <= 18 ? "D" : "E";
   if (nutrition.nutriScoreGrade) {
@@ -879,7 +889,10 @@ export function scoreProductYuka(
     !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
 
   let nutritionScore: number;
-  if (isWholeFood) {
+  if (isNonFoodItem) {
+    nutritionScore = 0;
+    nutriGrade = "N/A";
+  } else if (isWholeFood) {
     nutritionScore = 60;
     nutriGrade = "A";
   } else if (is100PctFruitJuice) {
@@ -952,6 +965,7 @@ export function scoreProductYuka(
   // High-protein real meats/sausages (protein >= 14g/100g, e.g., Beef Smoked Sausage, Kielbasa, Bacon)
   // earn at least 10/60 in the Nutrition Pillar for high protein content rather than dropping to 2/60 or 0/100.
   const isHighProteinMeatOrSausage =
+    !isNonFoodItem &&
     protein >= 14 &&
     /\b(beef|pork|turkey|chicken|sausage|kielbasa|bratwurst|frankfurter|hot\s*dog|bacon|ham|salami|pepperoni|steak|meat)\b/i.test(titleAndIng) &&
     !/\b(ice\s+cream|cookie|candy|chocolate|cake|soda|juice)\b/i.test(titleAndIng);
@@ -966,7 +980,7 @@ export function scoreProductYuka(
   const additiveDeduction = Math.min(30, Math.round(base.totalPenalty * 0.45) + multiAdditiveDeduction);
   const additiveScore = hasHighRisk ? 0 : Math.max(0, 30 - additiveDeduction);
   // Yuka 10% Organic bonus (10/10) is awarded strictly to certified Organic items
-  const organicScore = isOrganic ? 10 : 0;
+  const organicScore = !isNonFoodItem && isOrganic ? 10 : 0;
 
   // Always compute finalScore from Yuka's 3 pillars (60% Nutrition + 30% Additives + 10% Organic)
   // so the 0-100 gauge score always equals the sum of the 3 pillars (capped by high-risk / seed-oil caps).
@@ -983,7 +997,7 @@ export function scoreProductYuka(
   // Surface nutritional risk flags ONLY with measured numbers when measured nutrition was provided;
   // when nutrition is estimated from ingredient order/category, never fabricate specific g/mg/kcal numbers.
   const flagged: FlaggedAdditive[] = [...base.flagged];
-  if (!isWholeFood && finalScore < 90) {
+  if (!isWholeFood && !isNonFoodItem && finalScore < 90) {
     if (is100PctFruitJuice) {
       flagged.push({
         id: "nutri_liquid_fruit_sugar",
@@ -1078,23 +1092,28 @@ export function scoreProductYuka(
   }
 
   // High 4 Fix: Factual sugar/carbohydrate summary without blood-glucose ("Spike") predictions or unmeasured calorie claims
-  const isNonFoodItem =
-    /\b(body\s+wash|face\s+wash|shampoo|conditioner|lotion|sunscreen|soap|detergent|bleach|cleaner|toothpaste|mouthwash|deodorant|diapers?|wipes?)\b/i.test(
-      titleAndIng,
-    );
-
   const hasAddedSweetenerOrSyrup =
     base.flagged.some((f) => f.category === "hfcs") ||
     /\b(maltodextrin|dextrose|corn syrup|glucose syrup|cane sugar|brown sugar|invert sugar)\b/i.test(base.normalizedIngredients);
   const hasRefinedCarbBase =
     /\b(enriched\s+(?:wheat\s+)?flour|bleached\s+flour|corn\s*starch|tapioca\s+starch|potato\s+starch|cassava\s+flour|white\s+rice\s+flour)\b/i.test(base.normalizedIngredients);
 
-  let glucoseImpact: "Low Sugar / Carb" | "Moderate Sugar / Carb" | "High Sugar / Carb" | undefined =
-    isNonFoodItem ? undefined : "Low Sugar / Carb";
+  let glucoseImpact:
+    | "Low Sugar / Carb"
+    | "No Added Sugar in Ingredients"
+    | "Moderate Sugar / Carb"
+    | "High Sugar / Carb"
+    | undefined = isNonFoodItem
+    ? undefined
+    : hasMeasuredSugars || isWholeFood || isBeverage
+      ? "Low Sugar / Carb"
+      : "No Added Sugar in Ingredients";
   let glucoseColor: RatingColor | undefined = isNonFoodItem ? undefined : "green";
   let glucoseNote: string | undefined = isNonFoodItem
     ? undefined
-    : "Sugar & refined-carb note: Low added sugar and minimal refined starch in the ingredient list.";
+    : hasMeasuredSugars || isWholeFood || isBeverage
+      ? "Sugar & refined-carb note: Low added sugar and minimal refined starch in the ingredient list."
+      : "Sugar & refined-carb note: No added sugars or refined starches detected in the ingredient list (total sugars not measured).";
 
   if (!isNonFoodItem) {
     if (
@@ -1119,11 +1138,13 @@ export function scoreProductYuka(
     ? undefined
     : !hasMeasuredCalories
       ? "Calories Not Measured"
-      : kcal <= 120
-        ? `Low Calorie (${Math.round(kcal)} kcal/100g)`
-        : kcal <= 360
-          ? `Moderate Calories (${Math.round(kcal)} kcal/100g)`
-          : `Calorie-Dense (${Math.round(kcal)} kcal/100g)`;
+      : kcal <= 5
+        ? `Zero / Trace Calories (${Math.round(kcal)} kcal/100g)`
+        : kcal <= 120
+          ? `Low-to-Moderate Calories (${Math.round(kcal)} kcal/100g)`
+          : kcal <= 360
+            ? `Moderate Calories (${Math.round(kcal)} kcal/100g)`
+            : `Calorie-Dense (${Math.round(kcal)} kcal/100g)`;
 
   return {
     ...base,

@@ -9,7 +9,6 @@ export interface Preset {
   title: string;
   brand: string;
   size: string;
-  price: number;
   image: string;
   category: SwapCategory;
   ingredients: string;
@@ -21,7 +20,6 @@ export const PRESETS: Preset[] = [
     brand: "Berry Swirl",
     title: "Strawberry Lowfat Yogurt",
     size: "5.3 oz cup",
-    price: 0.98,
     image: "/products/yogurt.jpg",
     category: "Yogurt",
     ingredients:
@@ -32,7 +30,6 @@ export const PRESETS: Preset[] = [
     brand: "Cheddar Bites",
     title: "Baked Cheddar Cheese Crackers",
     size: "7 oz box",
-    price: 3.48,
     image: "/products/crackers.jpg",
     category: "Crackers",
     ingredients:
@@ -43,7 +40,6 @@ export const PRESETS: Preset[] = [
     brand: "Deli Select",
     title: "Oven Roasted Turkey Breast, Thin Sliced",
     size: "16 oz",
-    price: 5.97,
     image: "/products/turkey.jpg",
     category: "Deli Meat",
     ingredients:
@@ -54,7 +50,6 @@ export const PRESETS: Preset[] = [
     brand: "Ranch House",
     title: "Creamy Ranch Salad Dressing",
     size: "16 fl oz",
-    price: 2.94,
     image: "/products/ranch.jpg",
     category: "Dressings",
     ingredients:
@@ -65,7 +60,6 @@ export const PRESETS: Preset[] = [
     brand: "Green Pasture",
     title: "Grass-Fed Salted Butter",
     size: "8 oz",
-    price: 4.48,
     image: "/products/butter.jpg",
     category: "Butter/Dairy",
     ingredients: "Pasteurized Cream (from Grass-Fed Cows), Salt.",

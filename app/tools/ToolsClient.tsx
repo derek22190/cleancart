@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import {
   ADDITIVE_RULES,
   CATEGORY_LABELS,
@@ -24,7 +25,7 @@ const SAMPLE_LABELS = [
       "Vegetable Oil (Soybean and/or Canola Oil), Water, Sugar, Salt, Buttermilk, Egg Yolk, Monosodium Glutamate, Phosphoric Acid, Xanthan Gum, Natural and Artificial Flavor, Disodium Inosinate, Disodium Guanylate, Sorbic Acid, Calcium Disodium EDTA.",
   },
   {
-    label: "Sweetened Yogurt (HFCS + Red 40 — High Glucose Spike)",
+    label: "Sweetened Yogurt (HFCS + Red 40 + Modified Corn Starch)",
     title: "Strawberry Lowfat Yogurt",
     ingredients:
       "Cultured Grade A Reduced Fat Milk, Sugar, High Fructose Corn Syrup, Modified Corn Starch, Natural Flavor, Potassium Sorbate, Red 40.",
@@ -61,7 +62,10 @@ export default function ToolsClient() {
   }, [additiveFilter]);
 
   const evaluatedCatalog = useMemo(
-    () => SEO_PRODUCTS.map((p) => evaluateSeoProduct(p)),
+    () =>
+      SEO_PRODUCTS.filter((p) => hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)).map((p) =>
+        evaluateSeoProduct(p)
+      ),
     [],
   );
 

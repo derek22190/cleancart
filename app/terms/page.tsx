@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PRICING, annualPerMonth } from "@/lib/pricing";
+import { PRICING, TERMS_VERSION, annualPerMonth } from "@/lib/pricing";
 
 export const metadata: Metadata = {
   title: "Terms of Service & Subscription Terms — HeyBroc",
   description:
     "Terms of Service for HeyBroc, covering automatic renewal subscriptions, free trials, self-serve cancellation, refunds, limitation of liability, and informational-opinion disclaimers.",
 };
-
-export const TERMS_VERSION = "2026-11-08";
 
 export default function TermsPage() {
   return (
@@ -190,8 +188,8 @@ export default function TermsPage() {
           Certain Clean Swap links on the web and approved mobile surfaces include retail affiliate attribution
           parameters (such as Amazon Associates or Walmart Impact links) and are labeled with{" "}
           <code>· paid link</code>. When you purchase through an affiliate link, HeyBroc may earn a small commission at
-          no extra cost to you. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by any
-          grocery retailer or food manufacturer.
+          no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. HeyBroc is independent
+          and is not affiliated with, endorsed by, or sponsored by any grocery retailer or food manufacturer.
         </p>
       </section>
 

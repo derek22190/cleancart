@@ -46,14 +46,21 @@ document.getElementById("save").addEventListener("click", async () => {
 document.getElementById("manage-sub")?.addEventListener("click", async () => {
   const checked = validateApiBase(input.value);
   const apiBase = checked.ok ? checked.url : DEFAULT_API;
-  const { heybroc_device_id: deviceId } = await chrome.storage.local.get("heybroc_device_id");
+  const { heybroc_device_id: deviceId, heybroc_device_secret: deviceSecret } =
+    await chrome.storage.local.get(["heybroc_device_id", "heybroc_device_secret"]);
   status.style.color = "";
   status.textContent = "Opening billing portal…";
   try {
     const res = await fetch(`${apiBase}/api/billing/portal`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ deviceId: deviceId || undefined }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(deviceSecret ? { "X-Device-Secret": deviceSecret } : {}),
+      },
+      body: JSON.stringify({
+        deviceId: deviceId || undefined,
+        deviceSecret: deviceSecret || undefined,
+      }),
     });
     const data = await res.json();
     if (data?.ok && data?.url) {
@@ -61,9 +68,9 @@ document.getElementById("manage-sub")?.addEventListener("click", async () => {
       status.textContent = "✓ Opened billing portal";
       return;
     }
-    chrome.tabs.create({ url: `${apiBase}/login` });
+    chrome.tabs.create({ url: `${apiBase}/?login=1` });
     status.textContent = "Log in on web to manage your subscription.";
   } catch {
-    chrome.tabs.create({ url: `${apiBase}/login` });
+    chrome.tabs.create({ url: `${apiBase}/?login=1` });
   }
 });

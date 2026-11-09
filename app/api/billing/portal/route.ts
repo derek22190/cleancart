@@ -71,34 +71,57 @@ async function createPortalUrl(params: {
     };
   }
 
-  let resolvedEmail = (params.email || "").trim().toLowerCase();
-  let resolvedDeviceId = (params.deviceId || "").trim();
+  let resolvedEmail = "";
+  let resolvedDeviceId = "";
 
   if (params.authToken) {
     const authUser = await getAuthenticatedUser(params.authToken);
-    if (authUser) {
-      if (!resolvedEmail && authUser.email) {
+    if (authUser && authUser.emailVerified !== false) {
+      if (authUser.email) {
         resolvedEmail = authUser.email.trim().toLowerCase();
       }
-      if (!resolvedDeviceId && authUser.linkedDevices?.[0]) {
+      const reqDev = (params.deviceId || "").trim();
+      if (reqDev && authUser.linkedDevices?.includes(reqDev)) {
+        resolvedDeviceId = reqDev;
+      } else if (authUser.linkedDevices?.[0]) {
         resolvedDeviceId = authUser.linkedDevices[0];
       }
     }
   }
 
-  if (resolvedDeviceId && resolvedDeviceId !== "anon-web") {
-    const existingDevice = await getExistingDevice(resolvedDeviceId);
+  const candidateDeviceId = (params.deviceId || "").trim();
+  if (!resolvedDeviceId && candidateDeviceId && candidateDeviceId !== "anon-web") {
+    const existingDevice = await getExistingDevice(candidateDeviceId);
     if (
       existingDevice?.deviceSecretHash &&
       params.deviceSecret &&
-      !verifyDeviceSecret(existingDevice, params.deviceSecret)
+      verifyDeviceSecret(existingDevice, params.deviceSecret)
     ) {
+      resolvedDeviceId = candidateDeviceId;
+    } else if (existingDevice?.deviceSecretHash && params.deviceSecret) {
       return {
         ok: false,
         error: "Invalid device credentials for billing portal access.",
         status: 403,
       };
     }
+  }
+
+  if (!resolvedEmail && !resolvedDeviceId) {
+    const portalLoginUrl = (process.env.STRIPE_PORTAL_LOGIN_URL || "").trim();
+    if (portalLoginUrl && /^https:\/\/billing\.stripe\.com\//i.test(portalLoginUrl)) {
+      const rawEmail = (params.email || "").trim().toLowerCase();
+      const url = rawEmail
+        ? `${portalLoginUrl}${portalLoginUrl.includes("?") ? "&" : "?"}prefilled_email=${encodeURIComponent(rawEmail)}`
+        : portalLoginUrl;
+      return { ok: true, url, status: 200 };
+    }
+    return {
+      ok: false,
+      error:
+        "Please sign in to your HeyBroc account to verify ownership and manage or cancel your subscription, or email billing@heybroc.com.",
+      status: 401,
+    };
   }
 
   const resolved = await resolveBillingPortalCustomer({

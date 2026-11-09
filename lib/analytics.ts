@@ -239,17 +239,23 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
     memorySnapshot = snap;
     await kvSet(ANALYTICS_KV_KEY, snap);
 
-    // Optional non-blocking server-side PostHog forwarding
+    // Optional non-blocking server-side PostHog forwarding (never forward raw email addresses)
     const phKey = (process.env.POSTHOG_API_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || "").trim();
     const phHost = (process.env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/+$/, "");
     if (phKey) {
+      const rawDistinct = (input.distinctId || `anon-${platform}`).trim();
+      let safeDistinctId = rawDistinct;
+      if (rawDistinct.includes("@")) {
+        const crypto = await import("node:crypto");
+        safeDistinctId = `anon_${crypto.createHash("sha256").update(rawDistinct.toLowerCase()).digest("hex").slice(0, 16)}`;
+      }
       void fetch(`${phHost}/capture/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           api_key: phKey,
           event: input.event,
-          distinct_id: input.distinctId || `anon-${platform}`,
+          distinct_id: safeDistinctId,
           properties: {
             $lib: "heybroc-server",
             platform,

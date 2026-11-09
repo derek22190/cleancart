@@ -367,18 +367,23 @@ object ScanApi {
     fun billingPortalUrl(ctx: Context): String? {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val email = prefs.getString("auth_email", null)?.trim()
+        val authToken = prefs.getString("auth_token", null)?.trim()
         val body = JSONObject().apply {
             put("deviceId", deviceId(ctx))
             put("deviceSecret", deviceSecret(ctx))
             if (!email.isNullOrBlank()) put("email", email)
         }.toString()
+        val headers = mutableMapOf("X-Device-Secret" to deviceSecret(ctx))
+        if (!authToken.isNullOrBlank()) {
+            headers["Authorization"] = "Bearer $authToken"
+        }
         for (endpoint in BILLING_PORTAL_ENDPOINTS) {
             try {
                 val res = postFollowingRedirects(
                     endpoint,
                     body,
                     maxRedirects = 4,
-                    extraHeaders = mapOf("X-Device-Secret" to deviceSecret(ctx))
+                    extraHeaders = headers
                 )
                 if (res.startsWith("{")) {
                     val json = JSONObject(res)

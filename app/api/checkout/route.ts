@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordSubscriptionConsent } from "@/lib/entitlements";
 import { getCreator } from "@/lib/influencers";
-import { PRICING, type PlanId } from "@/lib/pricing";
-import { isValidReferralCode } from "@/lib/referrals";
+import { PRICING, TERMS_VERSION, type PlanId } from "@/lib/pricing";
+import { getOrCreateDevice, isValidReferralCode } from "@/lib/referrals";
 
 const ALLOWED_ORIGINS = new Set([
   "https://heybroc.com",
@@ -10,8 +10,6 @@ const ALLOWED_ORIGINS = new Set([
   "https://cleancart-teal.vercel.app",
   "http://localhost:3000",
 ]);
-
-const DEFAULT_TERMS_VERSION = "2026-11-08";
 
 function getClientIp(req: NextRequest): string {
   return (
@@ -23,7 +21,7 @@ function getClientIp(req: NextRequest): string {
 
 /**
  * POST /api/checkout
- * Body: { plan: "annual" | "monthly", creatorCode?: string, deviceId?: string, email?: string, termsAccepted: boolean, termsVersion?: string, origin?: string }
+ * Body: { plan: "annual" | "monthly", creatorCode?: string, deviceId?: string, deviceSecret?: string, email?: string, termsAccepted: boolean, termsVersion?: string, origin?: string }
  */
 export async function POST(req: NextRequest) {
   try {
@@ -46,10 +44,12 @@ export async function POST(req: NextRequest) {
     const plan: PlanId = body.plan === "monthly" ? "monthly" : "annual";
     const rawCreatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
     const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
-    const termsVersion =
-      typeof body.termsVersion === "string" && body.termsVersion.trim()
-        ? body.termsVersion.trim().slice(0, 40)
-        : DEFAULT_TERMS_VERSION;
+    const deviceSecret =
+      typeof body.deviceSecret === "string"
+        ? body.deviceSecret.trim()
+        : req.headers.get("x-device-secret")?.trim() || "";
+    // Always record the authoritative server TERMS_VERSION (never trust forged client version strings)
+    const termsVersion = TERMS_VERSION;
     const rawEmail =
       typeof body.email === "string"
         ? body.email
@@ -59,6 +59,10 @@ export async function POST(req: NextRequest) {
     const customerEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(rawEmail.trim())
       ? rawEmail.trim().toLowerCase()
       : "";
+
+    if (deviceId && deviceId !== "anon-web" && deviceSecret) {
+      await getOrCreateDevice(deviceId, deviceSecret).catch(() => {});
+    }
 
     const consentTimestamp = new Date().toISOString();
     const clientIp = getClientIp(req);
@@ -138,7 +142,7 @@ export async function POST(req: NextRequest) {
     );
     params.set(
       "line_items[0][price_data][product_data][description]",
-      "Unlimited live store overlays across 12 grocery apps, 1-tap clean swaps & whole-cart health checks."
+      "Unlimited live store overlays across 15 grocery apps, 1-tap clean swaps & whole-cart health checks."
     );
     params.set("line_items[0][quantity]", "1");
     params.set("metadata[plan]", plan);
@@ -183,11 +187,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (typeof session.id === "string" && session.id.trim()) {
+      await recordSubscriptionConsent({
+        deviceId: deviceId || "anon-web",
+        email: customerEmail,
+        plan,
+        termsVersion,
+        timestamp: consentTimestamp,
+        ip: clientIp,
+        sessionId: session.id.trim(),
+      });
+    }
+
     void import("@/lib/analytics")
       .then(({ assignPaywallVariant, trackServerEvent }) =>
         trackServerEvent({
           event: "checkout_started",
-          distinctId: deviceId || customerEmail || "anon-web",
+          distinctId: deviceId || session.id || "anon-web",
           platform: "web",
           variant: assignPaywallVariant(deviceId, true),
           properties: {

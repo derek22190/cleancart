@@ -95,12 +95,17 @@ object ScanHistoryStore {
         return !already
     }
 
+    private const val MAX_ENTRY_AGE_MS = 90L * 24L * 60L * 60L * 1000L
+
     private fun parseList(raw: String): List<JSONObject> = runCatching {
         val arr = JSONArray(raw)
         val out = ArrayList<JSONObject>(arr.length())
         val seenKeys = HashSet<String>()
+        val now = System.currentTimeMillis()
         for (i in 0 until arr.length()) {
             val item = arr.optJSONObject(i) ?: continue
+            val ts = item.optLong("scannedAtMs", 0L).takeIf { it > 0L } ?: item.optLong("favoritedAtMs", 0L)
+            if (ts <= 0L || now - ts > MAX_ENTRY_AGE_MS) continue
             val rawTitle = extractTitle(item)
             val key = canonicalKey(rawTitle)
             if (key.isBlank() || !seenKeys.add(key)) continue
@@ -122,7 +127,7 @@ object ScanHistoryStore {
         val tokens = q.split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
         if (tokens.isEmpty()) return emptyList()
         val pool = LinkedHashMap<String, JSONObject>()
-        (EXPLORE_CATALOG + getHistory(context) + getFavorites(context)).forEach { item ->
+        (getHistory(context) + getFavorites(context) + EXPLORE_CATALOG).forEach { item ->
             val t = extractTitle(item)
             val k = normKey(t)
             if (k.isNotBlank() && !pool.containsKey(k)) {
@@ -170,9 +175,9 @@ object ScanHistoryStore {
                 imageUrl = productImageUrl("Hidden Valley Original Ranch Salad Dressing"),
                 ingredients = "Vegetable Oil (Soybean and/or Canola), Water, Sugar, Salt, Buttermilk, Egg Yolk, Natural Flavors, Phosphoric Acid, Xanthan Gum, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid, Calcium Disodium EDTA.",
                 flagged = listOf(
-                    FlagInfo("Calcium Disodium EDTA", 25, "high", "Synthetic chelating preservative linked to gut barrier irritation."),
-                    FlagInfo("Soybean Oil", 15, "moderate", "Refined industrial omega-6 seed oil."),
-                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil."),
+                    FlagInfo("Calcium Disodium EDTA", 25, "high", "Synthetic chelating preservative flagged on our clean-label watchlist."),
+                    FlagInfo("Soybean Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
+                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
                     FlagInfo("Monosodium Glutamate (MSG)", 15, "moderate", "Synthetic flavor enhancer."),
                     FlagInfo("Artificial Flavors", 15, "moderate", "Lab-synthesized flavor chemicals.")
                 ),
@@ -208,19 +213,20 @@ object ScanHistoryStore {
                 title = "General Mills Cinnamon Toast Crunch Cereal",
                 brand = "General Mills",
                 category = "Cereals & Granolas",
-                score = 39,
-                rating = "Poor",
-                color = "yellow",
+                score = 9,
+                rating = "Bad",
+                color = "red",
                 imageUrl = productImageUrl("General Mills Cinnamon Toast Crunch Cereal"),
-                ingredients = "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Caramel Color. Rosemary Extract Added to Preserve Freshness.",
+                ingredients = "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Rosemary Extract. BHT Added to Preserve Freshness.",
                 flagged = listOf(
-                    FlagInfo("Caramel Color", 15, "moderate", "Synthetic coloring agent."),
-                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil."),
+                    FlagInfo("BHT / BHA", 25, "high", "Synthetic phenolic antioxidant preservative flagged on our clean-label watchlist."),
+                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
+                    FlagInfo("Sunflower Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
                     FlagInfo("Trisodium Phosphate", 15, "moderate", "Inorganic phosphate additive.")
                 ),
                 nutritionScore = 24,
                 nutriGrade = "D",
-                additiveScore = 15,
+                additiveScore = 0,
                 organicScore = 0,
                 swap = swapObj(
                     "Nature's Path Organic Heritage Flakes Cereal",
@@ -240,7 +246,7 @@ object ScanHistoryStore {
                 imageUrl = productImageUrl("Marketside New England Clam Chowder 16 oz"),
                 ingredients = "Light Cream, Potatoes, Fish Stock, Sea Clams, Chopped Cockle, Onions, Wheat Flour, Soybean Oil, Butter, Clam Broth, Sea Salt, Celery, Salt Pork, Black Pepper, Worcestershire Sauce, Garlic, Natural Flavors.",
                 flagged = listOf(
-                    FlagInfo("Soybean Oil", 15, "moderate", "Refined omega-6 industrial seed oil extracted with hexane."),
+                    FlagInfo("Soybean Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
                     FlagInfo("Natural Flavors", 5, "low", "Proprietary flavor blend that can include solvents and carriers.")
                 ),
                 nutritionScore = 42,
@@ -265,12 +271,12 @@ object ScanHistoryStore {
                 imageUrl = productImageUrl("Campbell's Chunky New England Clam Chowder Soup"),
                 ingredients = "Clam Stock, Potatoes, Clams, Vegetable Oil (Corn, Canola, And/Or Soybean), Celery, Modified Food Starch, Wheat Flour, Salt, Cream, Soy Protein Concentrate, Monosodium Glutamate, Sodium Phosphate, Disodium Inosinate, Disodium Guanylate, Natural Flavoring, Soy Lecithin.",
                 flagged = listOf(
-                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil high in oxidized omega-6 fats."),
-                    FlagInfo("Corn Oil", 15, "moderate", "Highly processed omega-6 seed oil."),
-                    FlagInfo("Soybean Oil", 15, "moderate", "Refined omega-6 industrial seed oil."),
-                    FlagInfo("Monosodium Glutamate (MSG)", 15, "moderate", "Excitatory flavor enhancer."),
+                    FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
+                    FlagInfo("Corn Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
+                    FlagInfo("Soybean Oil", 15, "moderate", "Refined industrial seed oil flagged on our clean-label watchlist."),
+                    FlagInfo("Monosodium Glutamate (MSG)", 15, "moderate", "Synthetic flavor enhancer."),
                     FlagInfo("Sodium Phosphate", 15, "moderate", "Synthetic phosphate additive."),
-                    FlagInfo("Soy Lecithin", 6, "low", "Solvent-extracted industrial emulsifier.")
+                    FlagInfo("Soy Lecithin", 6, "low", "Industrial soy emulsifier.")
                 ),
                 nutritionScore = 27,
                 nutriGrade = "C",
@@ -294,9 +300,9 @@ object ScanHistoryStore {
                 imageUrl = productImageUrl("Doritos Nacho Cheese Tortilla Chips"),
                 ingredients = "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Artificial Color (Yellow 6, Yellow 5, Red 40), Disodium Inosinate, Disodium Guanylate.",
                 flagged = listOf(
-                    FlagInfo("Red 40", 25, "high", "Petroleum-derived synthetic azo dye linked to hyperactivity in children."),
+                    FlagInfo("Red 40", 25, "high", "Petroleum-derived synthetic azo dye flagged on our clean-label watchlist."),
                     FlagInfo("Yellow 5", 25, "high", "Synthetic azo dye requiring warning labels in the EU."),
-                    FlagInfo("Yellow 6", 25, "high", "Synthetic azo dye linked to hypersensitivity reactions."),
+                    FlagInfo("Yellow 6", 25, "high", "Synthetic azo dye flagged on our clean-label watchlist."),
                     FlagInfo("Canola Oil", 15, "moderate", "Refined industrial seed oil."),
                     FlagInfo("Monosodium Glutamate (MSG)", 15, "moderate", "Synthetic flavor enhancer.")
                 ),
@@ -360,7 +366,7 @@ object ScanHistoryStore {
                 title = "Three Wishes Unsweetened Cocoa Grain-Free Cereal",
                 brand = "Three Wishes",
                 category = "Cereals & Granolas",
-                score = 92,
+                score = 82,
                 rating = "Excellent",
                 color = "green",
                 imageUrl = productImageUrl("Three Wishes Cocoa Grain Free Cereal"),
@@ -369,7 +375,7 @@ object ScanHistoryStore {
                 nutritionScore = 52,
                 nutriGrade = "A",
                 additiveScore = 30,
-                organicScore = 10,
+                organicScore = 0,
                 swap = null
             ),
             sampleItem(
@@ -421,7 +427,7 @@ object ScanHistoryStore {
                 swap = null
             ),
             sampleItem(
-                title = "Boulder Canyon Avocado Oil Canyon Poppers / Kettle Chips",
+                title = "Boulder Canyon Avocado Oil Kettle Cooked Potato Chips",
                 brand = "Boulder Canyon",
                 category = "Chips & Snacks",
                 score = 82,
@@ -481,9 +487,9 @@ object ScanHistoryStore {
                 keywords = "monster energy drink original green monster green 16 oz caffeine taurine",
                 ingredients = "Carbonated Water, Sucrose, Glucose, Citric Acid, Natural Flavors, Taurine, Sodium Citrate, Color Added, Panax Ginseng Root Extract, L-Carnitine L-Tartrate, Caffeine, Sorbic Acid (Preservative), Benzoic Acid (Preservative), Niacinamide, Sucralose, Inositol, Pyridoxine Hydrochloride, Riboflavin, Maltodextrin, Cyanocobalamin.",
                 flagged = listOf(
-                    FlagInfo("Sucralose", 15, "moderate", "Synthetic chlorinated sweetener linked to gut microbiome shifts."),
+                    FlagInfo("Sucralose", 15, "moderate", "Synthetic chlorinated sweetener flagged on our clean-label watchlist."),
                     FlagInfo("Potassium Sorbate / Sorbic Acid", 6, "low", "Synthetic mold and yeast preservative."),
-                    FlagInfo("Sodium Benzoate / Benzoic Acid", 15, "moderate", "Synthetic preservative that can form benzene with ascorbic/citric acid.")
+                    FlagInfo("Sodium Benzoate / Benzoic Acid", 15, "moderate", "Synthetic preservative flagged on our clean-label watchlist.")
                 ),
                 nutritionScore = 0,
                 nutriGrade = "E",
@@ -763,7 +769,7 @@ object ScanHistoryStore {
                 keywords = "core power fairlife protein shake chocolate 26g 42g elite muscle milk",
                 ingredients = "Filtered Lowfat Grade A Milk, Alkalized Cocoa, Natural Flavors, Lactase Enzyme, Acesulfame Potassium, Carrageenan, Cellulose Gel, Cellulose Gum, Monk Fruit Juice Concentrate, Salt, Stevia Leaf Extract, Sucralose, Vitamin A Palmitate, Vitamin D3.",
                 flagged = listOf(
-                    FlagInfo("Carrageenan", 25, "high", "Seaweed thickener linked to intestinal inflammation."),
+                    FlagInfo("Carrageenan", 25, "high", "Seaweed-derived thickener flagged on our clean-label watchlist."),
                     FlagInfo("Sucralose", 15, "moderate", "Synthetic chlorinated sweetener."),
                     FlagInfo("Acesulfame Potassium (Ace-K)", 15, "moderate", "Synthetic high-intensity sweetener.")
                 ),
@@ -792,7 +798,7 @@ object ScanHistoryStore {
                 keywords = "coca cola coke classic soda pop soft drink 12 oz",
                 ingredients = "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavors, Caffeine.",
                 flagged = listOf(
-                    FlagInfo("High-Fructose Corn Syrup", 15, "moderate", "Industrial liquid sweetener linked to visceral fat and insulin resistance."),
+                    FlagInfo("High-Fructose Corn Syrup", 15, "moderate", "Industrial liquid corn sweetener flagged on our clean-label watchlist."),
                     FlagInfo("Caramel Color (Class III/IV)", 15, "moderate", "Ammonia-sulfite caramel coloring that may carry 4-MEI.")
                 ),
                 nutritionScore = 0,
@@ -847,7 +853,7 @@ object ScanHistoryStore {
                 keywords = "mountain dew mtn dew citrus soda baja blast code red",
                 ingredients = "Carbonated Water, High Fructose Corn Syrup, Concentrated Orange Juice, Citric Acid, Natural Flavor, Sodium Benzoate (Preserves Freshness), Caffeine, Sodium Citrate, Gum Arabic, Erythorbic Acid, Calcium Disodium EDTA, Yellow 5.",
                 flagged = listOf(
-                    FlagInfo("Yellow 5", 25, "high", "Synthetic azo dye requiring hyperactivity warning labels in the EU."),
+                    FlagInfo("Yellow 5", 25, "high", "Synthetic azo dye requiring warning labels in the EU."),
                     FlagInfo("High-Fructose Corn Syrup", 15, "moderate", "Industrial liquid sweetener."),
                     FlagInfo("Sodium Benzoate", 15, "moderate", "Synthetic preservative.")
                 ),
@@ -948,7 +954,7 @@ object ScanHistoryStore {
                 keywords = "gatorade fruit punch cool blue glacier freeze sports drink electrolytes",
                 ingredients = "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
                 flagged = listOf(
-                    FlagInfo("Red 40", 25, "high", "Petroleum-derived synthetic azo dye linked to hyperactivity in children.")
+                    FlagInfo("Red 40", 25, "high", "Petroleum-derived synthetic azo dye flagged on our clean-label watchlist.")
                 ),
                 nutritionScore = 0,
                 nutriGrade = "E",
@@ -1155,7 +1161,7 @@ object ScanHistoryStore {
                 keywords = "nesquik chocolate milk strawberry milk truemoo darigold",
                 ingredients = "Lowfat Milk with Vitamin A Palmitate and Vitamin D3 Added, Sugar, Less than 2% of Cocoa Processed with Alkali, Nonfat Milk, Salt, Natural and Artificial Flavor, Carrageenan, Cellulose Gel, Cellulose Gum.",
                 flagged = listOf(
-                    FlagInfo("Carrageenan", 25, "high", "Seaweed thickener linked to intestinal inflammation.")
+                    FlagInfo("Carrageenan", 25, "high", "Seaweed-derived thickener flagged on our clean-label watchlist.")
                 ),
                 nutritionScore = 12,
                 nutriGrade = "D",
@@ -1210,6 +1216,11 @@ object ScanHistoryStore {
     ): JSONObject = JSONObject().apply {
         put("ok", true)
         put("category", category)
+        put("lookup", JSONObject().apply {
+            put("source", "catalog")
+            put("origin", "catalog")
+            put("sourceUpdatedAt", "2026-11-08")
+        })
         put("product", JSONObject().apply {
             put("title", title)
             put("brand", brand)

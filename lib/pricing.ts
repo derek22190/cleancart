@@ -3,6 +3,8 @@
  * the influencer API, and the outreach projection calculator).
  */
 
+export const TERMS_VERSION = "2026-11-08";
+
 export const PRICING = {
   annual: 49.99,
   monthly: 9.99,

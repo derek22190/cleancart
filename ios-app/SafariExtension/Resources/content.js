@@ -298,16 +298,18 @@
       )
       .join("");
     const swapPaidSuffix = d.swap?.isPaidLink ? " · paid link" : "";
+    const swapRatingLabel = d.swap ? (Number(d.swap.score) >= 75 ? "Excellent" : Number(d.swap.score) >= 50 ? "Good" : "Mediocre") : "";
     const swap = d.swap
-      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 Excellent</span></div>
+      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 ${swapRatingLabel}</span></div>
            <button class="cc-swap-btn" data-act="swap">Swap Item${swapPaidSuffix}</button></div>`
       : `<div class="cc-swap cc-swap-ok">Great pick — no swap needed.</div>`;
-    const srcKey = d.product?.origin || d.product?.source || "catalog";
+    const srcKey = d.lookup?.origin || d.lookup?.source || d.product?.origin || d.product?.source || "catalog";
     const srcName = srcKey === "screen" ? "Store page ingredients"
       : srcKey === "openfoodfacts" ? "Open Food Facts (crowdsourced)"
       : srcKey === "usda" ? "USDA FoodData Central"
       : "Representative formulation — verify physical label";
-    const updatedPart = d.product?.sourceUpdatedAt ? ` · updated ${esc(d.product.sourceUpdatedAt)}` : "";
+    const updatedVal = d.lookup?.sourceUpdatedAt || d.product?.sourceUpdatedAt;
+    const updatedPart = updatedVal ? ` · updated ${esc(updatedVal)}` : "";
     const reportHref = `mailto:support@heybroc.com?subject=${encodeURIComponent(`Label mismatch: ${d.product?.title || ""}`)}`;
 
     root.innerHTML = `<div class="cc-backdrop" data-act="collapse">

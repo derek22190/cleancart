@@ -50,7 +50,6 @@ interface Product {
   brand: string;
   description?: string;
   size?: string;
-  price?: number;
   image?: string;
   ingredients: string;
   nutrition?: NutritionInput;
@@ -89,7 +88,6 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   title: p.title,
   brand: p.brand,
   size: p.size,
-  price: p.price,
   image: p.image,
   ingredients: p.ingredients,
   category: p.category,
@@ -100,14 +98,16 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
   const alt = replacedItem
     ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat)
     : CLEAN_ALTERNATIVES[cat];
+  const fullTitle = `${alt.brand} ${alt.name}`;
+  const isOrganic = alt.isOrganic ?? /\b(organic|organics)\b/i.test(fullTitle);
   return {
     key: replacedItem ? `clean-${cat}-${replacedItem.key}` : `clean-${cat}`,
     title: alt.name,
     brand: alt.brand,
     size: alt.size,
-    price: alt.price ?? 4.99,
     image: alt.image,
     ingredients: alt.ingredients,
+    nutrition: { isOrganic },
     category: cat,
     origin: "swap",
     replacedItem,
@@ -189,11 +189,67 @@ function Gauge({ score, rating, color, size = 112 }: { score: number; rating: st
   );
 }
 
-function ProductArt({ product, className = "" }: { product: Product; className?: string }) {
+function ProductArt({ product, className = "", showAttribution = false }: { product: Product; className?: string; showAttribution?: boolean }) {
   const [failed, setFailed] = useState<string | null>(null);
+  const [imgLicense, setImgLicense] = useState<string | null>(null);
+  const [imgSource, setImgSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    const src = product.image;
+    if (!src) {
+      setImgLicense(null);
+      setImgSource(null);
+      return;
+    }
+    if (src.includes("openfoodfacts.org") || src.includes("openfoodfacts.net")) {
+      setImgLicense("CC BY-SA 3.0");
+      setImgSource(src);
+      return;
+    }
+    if (src.includes("/api/product-image")) {
+      let cancelled = false;
+      fetch(src, { method: "HEAD" })
+        .then((res) => {
+          if (cancelled) return;
+          const lic = res.headers.get("x-image-license");
+          const srcHeader = res.headers.get("x-image-source");
+          if (lic && lic.includes("CC BY-SA")) {
+            setImgLicense(lic);
+            setImgSource(srcHeader || "Open Food Facts");
+          } else {
+            setImgLicense(null);
+            setImgSource(null);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+    setImgLicense(null);
+    setImgSource(null);
+  }, [product.image]);
+
+  const isCcBySa = Boolean(imgLicense && imgLicense.includes("CC BY-SA")) || product.lookup?.source === "openfoodfacts";
+
   if (product.image && failed !== product.image) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img className={`product-art ${className}`} src={product.image} alt={`${product.brand} ${product.title}`} onError={() => setFailed(product.image ?? null)} />;
+    return (
+      <>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className={`product-art ${className}`}
+          src={product.image}
+          alt={`${product.brand} ${product.title}`}
+          title={isCcBySa ? `Image: ${imgSource || "Open Food Facts"} (CC BY-SA 3.0)` : undefined}
+          onError={() => setFailed(product.image ?? null)}
+        />
+        {showAttribution && isCcBySa && (
+          <small className="product-art-license" style={{ display: "block", fontSize: 9.5, color: "#64748b", marginTop: 2 }}>
+            Image: Open Food Facts (CC BY-SA 3.0)
+          </small>
+        )}
+      </>
+    );
   }
   const initials = product.brand.replace(/[^A-Za-zÄ ]/g, "").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
   return (
@@ -349,20 +405,25 @@ export default function Simulator() {
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
 
-  const [toast, setToast] = useState<{ title: string; body: string; href?: string } | null>(null);
+  const [toast, setToast] = useState<{ title: string; body: string; href?: string; isPaidLink?: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function checkEntitlement() {
       try {
+        const randomHex = (bytes: number) => {
+          const arr = new Uint8Array(bytes);
+          window.crypto.getRandomValues(arr);
+          return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+        };
         let deviceId = window.localStorage.getItem("heybroc_device_id");
         if (!deviceId) {
-          deviceId = `web-${Math.random().toString(36).substring(2, 10)}-${Date.now().toString(36)}`;
+          deviceId = `web-${randomHex(8)}-${Date.now().toString(36)}`;
           window.localStorage.setItem("heybroc_device_id", deviceId);
         }
         let deviceSecret = window.localStorage.getItem("heybroc_device_secret");
         if (!deviceSecret) {
-          deviceSecret = `sec-${Math.random().toString(36).substring(2, 12)}-${Math.random().toString(36).substring(2, 12)}-${Date.now().toString(36)}`;
+          deviceSecret = `sec-${randomHex(16)}`;
           window.localStorage.setItem("heybroc_device_secret", deviceSecret);
         }
         if (!cancelled) setDeviceIdState(deviceId);
@@ -781,12 +842,17 @@ export default function Simulator() {
       setSwapsUsedThisWeek((n) => n + 1);
       if (typeof window !== "undefined") {
         const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+        const devSecret = window.localStorage.getItem("heybroc_device_secret") || "";
         void fetch("/api/referral", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+          },
           body: JSON.stringify({
             action: "record_swap",
             deviceId: devId,
+            deviceSecret: devSecret || undefined,
             productKey: targetItem.key || `${targetItem.brand} ${targetItem.title}`,
           }),
         }).catch(() => {});
@@ -804,6 +870,7 @@ export default function Simulator() {
         title: `Viewing Clean Swap: ${targetSwap.title} (${targetSwap.score}/100)`,
         body: `Tap "Add to cart" on the product page to swap this item in your ${STORE_META[store].label} cart.`,
         href: targetSwap.deepLink || targetSwap.webUrl,
+        isPaidLink: targetSwap.isPaidLink,
       });
     },
     [watch, familyWatchlist, store, isPro, swapsUsedThisWeek, courtesyRefillAvailable],
@@ -864,9 +931,11 @@ export default function Simulator() {
       try {
         const deviceId =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) || undefined;
+        const deviceSecret =
+          (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) || undefined;
         const referredByCode =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
-        const payload = { productTitle: q, store, watchlist: watch, familyWatchlist, deviceId, referredByCode };
+        const payload = { productTitle: q, store, watchlist: watch, familyWatchlist, deviceId, deviceSecret, referredByCode };
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -956,13 +1025,18 @@ export default function Simulator() {
     setSwapsUsedThisWeek((prev) => prev + n);
     if (typeof window !== "undefined") {
       const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+      const devSecret = window.localStorage.getItem("heybroc_device_secret") || "";
       for (const d of dirty) {
         void fetch("/api/referral", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+          },
           body: JSON.stringify({
             action: "record_swap",
             deviceId: devId,
+            deviceSecret: devSecret || undefined,
             productKey: d.item.key || `${d.item.brand} ${d.item.title}`,
           }),
         }).catch(() => {});
@@ -1661,7 +1735,7 @@ export default function Simulator() {
                         <>
                           {/* Yuka Product Hero Header (Photo Left, Title/Brand/Dot/Score Right) */}
                           <div className="yuka-hero">
-                            <ProductArt product={active} className="yuka-hero-img" />
+                            <ProductArt product={active} className="yuka-hero-img" showAttribution />
                             <div className="yuka-hero-info">
                               <b className="yuka-hero-title">{active.title}</b>
                               <span className="yuka-hero-brand">{active.brand}</span>
@@ -1691,8 +1765,10 @@ export default function Simulator() {
                                   onClick={() => setPaywallOpen(true)}
                                 >
                                   <div className="swap-info-copy">
-                                    <span className="eyebrow eyebrow--green">🔒 Clean Swap Locked · {swap.score}/100 Excellent</span>
-                                    <b>100/100 Clean Replacement Available</b>
+                                    <span className="eyebrow eyebrow--green">
+                                      🔒 Clean Swap Locked · {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
+                                    </span>
+                                    <b>{swap.score}/100 Clean Replacement Available</b>
                                     <span className="swap-score">All {FREE_SCAN_LIMIT} free weekly Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
                                   </div>
                                 </button>
@@ -1712,7 +1788,9 @@ export default function Simulator() {
                                   <div className="swap-info-copy">
                                     <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
                                     <b>{swap.title}</b>
-                                    <span className="swap-score">{swap.score}/100 Excellent · <em>Tap to inspect →</em></span>
+                                    <span className="swap-score">
+                                      {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"} · <em>Tap to inspect →</em>
+                                    </span>
                                   </div>
                                 </button>
                                 <button id="swap-item" className="swap-btn" onClick={doSwap}>
@@ -1867,11 +1945,11 @@ export default function Simulator() {
                             <p>{active.ingredients}</p>
                             <small style={{ display: "block", marginTop: 6, fontSize: 10.5, color: "#475569", fontWeight: 700, lineHeight: 1.4 }}>
                               {active.lookup?.source === "openfoodfacts"
-                                ? "Source: Open Food Facts"
+                                ? "Source: Open Food Facts (ODbL / CC BY-SA 3.0)"
                                 : active.lookup?.source === "usda"
                                   ? "Source: USDA FoodData Central"
                                   : "Source: Representative catalog"}
-                              {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : " · updated 2026-11-08"}
+                              {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                               {" · "}
                               <a
                                 href={`mailto:support@heybroc.com?subject=${encodeURIComponent(`Label report: ${active.brand} ${active.title}`)}`}
@@ -1946,9 +2024,18 @@ export default function Simulator() {
                                 `${cleanProd.brand} ${cleanProd.title}`,
                                 cleanProd.ingredients,
                                 watch,
-                                undefined,
+                                cleanProd.nutrition,
                                 familyWatchlist,
                               );
+                              const recSwap = resolveSwap({
+                                score: dirtyScore.score,
+                                productTitle: `${p.brand} ${p.title}`,
+                                ingredients: p.ingredients,
+                                category: p.category,
+                                store,
+                                watchlist: watch,
+                                familyWatchlist,
+                              });
                               return (
                                 <div key={p.id} className="yuka-rec-pair">
                                   {/* Left Dirty Card */}
@@ -1991,7 +2078,7 @@ export default function Simulator() {
                                       className="yuka-rec-swap-btn"
                                       onClick={() => swapCartItem(dirtyProd)}
                                     >
-                                      ⚡ 1-Tap Swap
+                                      ⚡ 1-Tap Swap{recSwap?.isPaidLink ? " · paid link" : ""}
                                     </button>
                                   </div>
                                 </div>
@@ -2418,6 +2505,7 @@ export default function Simulator() {
                 type="button"
                 onClick={async () => {
                   const devId = window.localStorage.getItem("heybroc_device_id") || deviceIdState;
+                  const devSecret = window.localStorage.getItem("heybroc_device_secret") || undefined;
                   const sId = window.localStorage.getItem("heybroc_session_id") || undefined;
                   const tok = window.localStorage.getItem("heybroc_auth_token") || undefined;
                   try {
@@ -2426,17 +2514,23 @@ export default function Simulator() {
                       headers: {
                         "Content-Type": "application/json",
                         ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+                        ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
                       },
-                      body: JSON.stringify({ deviceId: devId, sessionId: sId, email: authUser?.email }),
+                      body: JSON.stringify({
+                        deviceId: devId,
+                        deviceSecret: devSecret,
+                        sessionId: sId,
+                        email: authUser?.email,
+                      }),
                     });
                     const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; error?: string } | null;
                     if (res.ok && data?.ok && data.url) {
                       window.location.href = data.url;
                     } else {
-                      setPaywallOpen(true);
+                      setAuthOpen(true);
                     }
                   } catch {
-                    setPaywallOpen(true);
+                    setAuthOpen(true);
                   }
                 }}
                 style={{

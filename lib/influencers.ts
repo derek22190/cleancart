@@ -305,7 +305,8 @@ export async function trackEvent(
 export async function recordStripeCreatorConversionOnce(
   idempotencyKey: string,
   code: string,
-  event: CreatorEvent
+  event: CreatorEvent,
+  amountPaidUsd?: number
 ): Promise<Creator | null> {
   const norm = normalizeCode(code);
   if (!norm) return null;
@@ -316,38 +317,55 @@ export async function recordStripeCreatorConversionOnce(
   const key = creatorKey(norm);
   const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
 
+  const resolveGrossAndComm = (plan: PlanId) => {
+    const gross =
+      typeof amountPaidUsd === "number" && Number.isFinite(amountPaidUsd) && amountPaidUsd > 0
+        ? round2(amountPaidUsd)
+        : plan === "annual"
+          ? PRICING.annual
+          : PRICING.monthly;
+    const comm =
+      typeof amountPaidUsd === "number" && Number.isFinite(amountPaidUsd) && amountPaidUsd > 0
+        ? round2((gross * creator.commissionPct) / 100)
+        : commissionFor(plan, creator.commissionPct);
+    return { gross, comm };
+  };
+
   if (event === "click") {
     deltas.push({ field: "clicks", delta: 1 });
   } else if (event === "trial") {
     deltas.push({ field: "trials", delta: 1 });
   } else if (event === "paid_annual") {
+    const { gross, comm } = resolveGrossAndComm("annual");
     deltas.push(
       { field: "paidAnnual", delta: 1 },
-      { field: "grossRevenue", delta: PRICING.annual, isFloat: true },
+      { field: "grossRevenue", delta: gross, isFloat: true },
       {
         field: "commissionOwed",
-        delta: commissionFor("annual", creator.commissionPct),
+        delta: comm,
         isFloat: true,
       }
     );
   } else if (event === "checkout_annual") {
+    const { gross, comm } = resolveGrossAndComm("annual");
     deltas.push(
       { field: "trials", delta: 1 },
       { field: "paidAnnual", delta: 1 },
-      { field: "grossRevenue", delta: PRICING.annual, isFloat: true },
+      { field: "grossRevenue", delta: gross, isFloat: true },
       {
         field: "commissionOwed",
-        delta: commissionFor("annual", creator.commissionPct),
+        delta: comm,
         isFloat: true,
       }
     );
   } else if (event === "paid_monthly") {
+    const { gross, comm } = resolveGrossAndComm("monthly");
     deltas.push(
       { field: "paidMonthly", delta: 1 },
-      { field: "grossRevenue", delta: PRICING.monthly, isFloat: true },
+      { field: "grossRevenue", delta: gross, isFloat: true },
       {
         field: "commissionOwed",
-        delta: commissionFor("monthly", creator.commissionPct),
+        delta: comm,
         isFloat: true,
       }
     );

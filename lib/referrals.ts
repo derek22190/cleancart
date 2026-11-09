@@ -242,6 +242,13 @@ export async function applyOrActivateReferral(params: {
 }> {
   const now = Date.now();
   const device = await getOrCreateDevice(params.deviceId, params.deviceSecret);
+  if (!params.activateNow && device.deviceSecretHash && !verifyDeviceSecret(device, params.deviceSecret)) {
+    return {
+      device,
+      rewardedNow: false,
+      message: "Invalid device credentials for referral claim.",
+    };
+  }
   const inputCode = (params.referralCode || device.referredByCode || "")
     .trim()
     .toUpperCase();

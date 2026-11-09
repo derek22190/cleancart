@@ -48,7 +48,11 @@ export function isPersistentKvConfigured(): boolean {
 }
 
 function ensureStorageReady(): RedisConfig | null {
-  return getRedisConfig();
+  const cfg = getRedisConfig();
+  if (!cfg && process.env.VERCEL) {
+    throw new StorageConfigError();
+  }
+  return cfg;
 }
 
 async function upstashCommand<T = unknown>(

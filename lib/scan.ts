@@ -584,7 +584,9 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   } catch {
     entitlement = undefined;
   }
-  const canAccessSwapLinks = !entitlement || entitlement.isProActive || entitlement.swapsRemaining > 0;
+  const canAccessSwapLinks = Boolean(
+    entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)
+  );
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
@@ -667,8 +669,9 @@ export function toIosText(scan: ScanResponse): string {
     lines.push("", "✅ No watchlist additives found.");
   }
   if (scan.swap) {
-    lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}: ${scan.swap.title} (${scan.swap.score}/100)`);
-    if (scan.swap.webUrl) lines.push(scan.swap.webUrl);
+    const paidLabel = scan.swap.isPaidLink ? " (paid link)" : "";
+    lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}${paidLabel}: ${scan.swap.title} (${scan.swap.score}/100)`);
+    if (scan.swap.webUrl) lines.push(`${scan.swap.webUrl}${paidLabel}`);
   }
   return lines.join("\n");
 }

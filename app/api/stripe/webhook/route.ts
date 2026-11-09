@@ -85,22 +85,21 @@ async function resolveSubscriptionFromCharge(
         : "";
 
   if (secretKey && invoiceId) {
-    try {
-      const invRes = await fetch(
-        `https://api.stripe.com/v1/invoices/${encodeURIComponent(invoiceId)}`,
-        {
-          method: "GET",
-          headers: { Authorization: `Bearer ${secretKey}` },
-          cache: "no-store",
-        }
-      );
-      if (invRes.ok) {
-        const invData = (await invRes.json()) as Record<string, unknown>;
-        const subId = extractSubIdFromInvoiceObject(invData);
-        if (subId) return subId;
+    const invRes = await fetch(
+      `https://api.stripe.com/v1/invoices/${encodeURIComponent(invoiceId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+        cache: "no-store",
       }
-    } catch {
-      /* ignore */
+    );
+    if (invRes.status >= 500) {
+      throw new Error(`Stripe invoice lookup failed with HTTP ${invRes.status}`);
+    }
+    if (invRes.ok) {
+      const invData = (await invRes.json()) as Record<string, unknown>;
+      const subId = extractSubIdFromInvoiceObject(invData);
+      if (subId) return subId;
     }
   }
 
@@ -114,48 +113,50 @@ async function resolveSubscriptionFromCharge(
         : "";
 
   if (secretKey && paymentIntentId) {
-    try {
-      const ipUrl = new URL("https://api.stripe.com/v1/invoice_payments");
-      ipUrl.searchParams.set("payment[type]", "payment_intent");
-      ipUrl.searchParams.set("payment[payment_intent]", paymentIntentId);
-      ipUrl.searchParams.set("expand[]", "data.invoice");
-      const ipRes = await fetch(ipUrl.toString(), {
-        method: "GET",
-        headers: { Authorization: `Bearer ${secretKey}` },
-        cache: "no-store",
-      });
-      if (ipRes.ok) {
-        const ipData = (await ipRes.json()) as {
-          data?: Array<{
-            invoice?: string | Record<string, unknown>;
-          }>;
-        };
-        const firstInv = ipData.data?.[0]?.invoice;
-        if (firstInv && typeof firstInv === "object") {
-          const subId = extractSubIdFromInvoiceObject(firstInv);
-          if (subId) return subId;
-        } else if (typeof firstInv === "string" && firstInv) {
-          const invRes = await fetch(
-            `https://api.stripe.com/v1/invoices/${encodeURIComponent(firstInv)}`,
-            {
-              method: "GET",
-              headers: { Authorization: `Bearer ${secretKey}` },
-              cache: "no-store",
-            }
-          );
-          if (invRes.ok) {
-            const invData = (await invRes.json()) as Record<string, unknown>;
-            const subId = extractSubIdFromInvoiceObject(invData);
-            if (subId) return subId;
+    const ipUrl = new URL("https://api.stripe.com/v1/invoice_payments");
+    ipUrl.searchParams.set("payment[type]", "payment_intent");
+    ipUrl.searchParams.set("payment[payment_intent]", paymentIntentId);
+    ipUrl.searchParams.set("expand[]", "data.invoice");
+    const ipRes = await fetch(ipUrl.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${secretKey}` },
+      cache: "no-store",
+    });
+    if (ipRes.status >= 500) {
+      throw new Error(`Stripe invoice_payments lookup failed with HTTP ${ipRes.status}`);
+    }
+    if (ipRes.ok) {
+      const ipData = (await ipRes.json()) as {
+        data?: Array<{
+          invoice?: string | Record<string, unknown>;
+        }>;
+      };
+      const firstInv = ipData.data?.[0]?.invoice;
+      if (firstInv && typeof firstInv === "object") {
+        const subId = extractSubIdFromInvoiceObject(firstInv);
+        if (subId) return subId;
+      } else if (typeof firstInv === "string" && firstInv) {
+        const invRes = await fetch(
+          `https://api.stripe.com/v1/invoices/${encodeURIComponent(firstInv)}`,
+          {
+            method: "GET",
+            headers: { Authorization: `Bearer ${secretKey}` },
+            cache: "no-store",
           }
+        );
+        if (invRes.status >= 500) {
+          throw new Error(`Stripe invoice lookup failed with HTTP ${invRes.status}`);
+        }
+        if (invRes.ok) {
+          const invData = (await invRes.json()) as Record<string, unknown>;
+          const subId = extractSubIdFromInvoiceObject(invData);
+          if (subId) return subId;
         }
       }
-    } catch {
-      /* ignore */
     }
   }
 
-  // Fallback: look up stored entitlement by customerId
+  // Fallback: look up stored entitlement by customerId ONLY when no invoiceId failed resolution
   const rawCustomer = chargeObj.customer;
   const customerId =
     typeof rawCustomer === "string"
@@ -163,7 +164,7 @@ async function resolveSubscriptionFromCharge(
       : rawCustomer && typeof (rawCustomer as { id?: string }).id === "string"
         ? (rawCustomer as { id: string }).id
         : "";
-  if (customerId) {
+  if (customerId && !invoiceId) {
     const byCustomer = await getCustomerEntitlement(customerId);
     if (byCustomer?.subscriptionId) {
       return byCustomer.subscriptionId;
@@ -291,7 +292,7 @@ export async function POST(req: Request) {
             .then(({ assignPaywallVariant, trackServerEvent }) =>
               trackServerEvent({
                 event: "pro_subscribed",
-                distinctId: deviceId || customerDetails?.email || sessionId,
+                distinctId: deviceId || sessionId,
                 platform: "web",
                 variant: assignPaywallVariant(deviceId, true),
                 properties: {
@@ -387,21 +388,37 @@ export async function POST(req: Request) {
           lastStripeEventCreated: eventCreated,
         });
 
-        // Credit creators ONLY from invoice.paid with amount_paid > 0, key invoice:${id}
+        // Credit creators ONLY from invoice.paid with amount_paid > 0, key invoice:${id}, using actual paid USD
         if (creatorCode && amountPaidCents > 0 && invoiceId) {
           await recordStripeCreatorConversionOnce(
             `invoice:${invoiceId}`,
             creatorCode,
-            plan === "monthly" ? "paid_monthly" : "paid_annual"
+            plan === "monthly" ? "paid_monthly" : "paid_annual",
+            amountPaidCents / 100
           );
         }
         break;
       }
 
-      case "charge.refunded": {
-        const chargeId = typeof obj.id === "string" ? obj.id : event.id;
-        const amountRefundedCents =
-          typeof obj.amount_refunded === "number" ? obj.amount_refunded : 0;
+      case "charge.refunded":
+      case "charge.dispute.created": {
+        const isDispute = event.type === "charge.dispute.created";
+        const chargeId = isDispute
+          ? typeof obj.charge === "string"
+            ? obj.charge
+            : typeof obj.id === "string"
+              ? obj.id
+              : event.id
+          : typeof obj.id === "string"
+            ? obj.id
+            : event.id;
+        const amountRefundedCents = isDispute
+          ? typeof obj.amount === "number"
+            ? obj.amount
+            : 0
+          : typeof obj.amount_refunded === "number"
+            ? obj.amount_refunded
+            : 0;
         const amountCapturedCents =
           typeof obj.amount === "number" ? obj.amount : amountRefundedCents;
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
@@ -418,7 +435,15 @@ export async function POST(req: Request) {
             : existing?.plan || "annual";
 
         const isFullRefund =
-          amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0;
+          isDispute ||
+          (amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0);
+
+        if (isFullRefund && !subscriptionId) {
+          throw new Error(
+            `Unable to resolve subscription for refunded/disputed charge ${chargeId}`
+          );
+        }
+
         if (subscriptionId && isFullRefund) {
           await updateSubscriptionEntitlement(subscriptionId, {
             status: "canceled",
@@ -426,13 +451,18 @@ export async function POST(req: Request) {
           });
           const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
           if (secretKey) {
-            fetch(
+            const delRes = await fetch(
               `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
               {
                 method: "DELETE",
                 headers: { Authorization: `Bearer ${secretKey}` },
               }
-            ).catch(() => {});
+            );
+            if (!delRes.ok && delRes.status !== 404) {
+              throw new Error(
+                `Stripe subscription cancellation failed (${delRes.status})`
+              );
+            }
           }
         }
 
@@ -456,7 +486,7 @@ export async function POST(req: Request) {
             }
           } else {
             await recordStripeCreatorRefundOnce(
-              `refund:${chargeId}`,
+              `refund:${chargeId}:${event.id || amountRefundedCents}`,
               creatorCode,
               plan,
               amountRefundedCents / 100

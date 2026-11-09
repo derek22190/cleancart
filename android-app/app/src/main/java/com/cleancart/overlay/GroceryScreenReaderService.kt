@@ -111,6 +111,26 @@ class GroceryScreenReaderService : AccessibilityService() {
             """\b(is easily|are easily|was bought|we bought|we carry|for your everyday|for your buck|great bang|lock in flavor|contains \d+ (bag|box|pack|can|bottle|jar)s? of|if out of stock|replace with best match|edit instructions|this item is not available in your area|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available|these items have been removed from your cart|complete your cart|based on items in your cart|yes,\s*i want \$0 delivery fee|start saving with instacart\+|service fees apply|add \$?\d+(\.\d{2})? of eligible items|buy \$\d+,\s*get \$\d+ off|shopping in \d+|usual items in stock|in stock at|out of stock at|buy in warehouse|join prime to save|prime member price|amazon fresh is not available|choose a store to see|verified purchase|helpful|report abuse|showing \d+[-–—]\d+ of [\d,]+|tasty os|made with care|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|clip\s+coupon|congratulations|pickup\s+benefit|benefit\s+has\s+been\s+applied|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|eligible\s+order|pay\s+once\s+for\s+a\s+year|groceries\s+delivered|lower\s+your\s+delivery\s+fees|select\s+package|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen)\b|&\s*more\.?$|!$""",
             RegexOption.IGNORE_CASE,
         )
+        private val CHAT_OR_MESSAGE_NOISE = Regex(
+            """\b(please\b|can you\b|could you\b|would you\b|thank you\b|thanks\b|shopper\b|driver\b|dasher\b|courier\b|instead of\b|if they don'?t have|let me know|text me\b|call me\b|message me\b|front door|back door|gate code|buzzer|ring the bell|leave at\b|leave by\b|hand it to me|i want\b|i need\b|i prefer\b|don'?t get\b|do not get\b|make sure\b|grab me\b|get me\b|pick up some\b|sent a message|type a message|chat with|message your)\b|[?!]""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val PROTECTED_VIEW_ID_PATTERN = Regex(
+            """(search_src_text|search_bar_text|search_box|search_edit|search_input|password|passcode|pin_entry|card_number|credit_card|debit_card|cvv|cvc|expiry|billing|payment|wallet|ssn|tax_id|chat|message|messenger|conversation|inbox|support|help_center|compose|comment|review_text|review_body|delivery_instructions|driver_note|shopper_note|instructions_input|address_input|phone_number|email_input)""",
+            RegexOption.IGNORE_CASE,
+        )
+        private fun isProtectedViewId(viewId: String): Boolean =
+            viewId.isNotEmpty() && PROTECTED_VIEW_ID_PATTERN.containsMatchIn(viewId)
+
+        private fun isProtectedNode(node: AccessibilityNodeInfo?): Boolean {
+            if (node == null) return false
+            if (node.isPassword || node.isEditable) return true
+            val viewId = node.viewIdResourceName?.lowercase().orEmpty()
+            if (isProtectedViewId(viewId)) return true
+            val cls = node.className?.toString()?.lowercase().orEmpty()
+            if (cls.contains("edittext") || cls.contains("autocompletetextview")) return true
+            return false
+        }
         private val NOISE = Regex(
             """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|express.*|temporarily unavailable|not available.*|this item is not available.*|\d+\s+items?\s+(are|is)\s+no\s+longer\s+available.*|these items have been removed.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|ready by .*|check nearby clubs|out of stock.*|in stock.*|many in stock|likely in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee.*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|edit instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|service fees apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|your carts|personal cart|continue shopping|restaurants|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|go to checkout|checkout|checkout all items|estimated total|item subtotal|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|edit instructions|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|[!?]$""",
             RegexOption.IGNORE_CASE,
@@ -271,17 +291,41 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             if (event.isPassword) return
             val src = runCatching { event.source }.getOrNull()
-            if (src != null && (src.isPassword || src.isEditable)) {
+            if (src == null || isProtectedNode(src)) {
                 recycleNode(src)
                 return
             }
+            // Pre-check ancestors up to 4 levels so clicks inside search, chat, payment, or compose containers are ignored before reading event payloads
+            var checkAncestor = runCatching { src.parent }.getOrNull()
+            var checkDepth = 0
+            var insideProtectedAncestor = false
+            while (checkAncestor != null && checkDepth < 4) {
+                val cur = checkAncestor
+                if (isProtectedNode(cur)) {
+                    insideProtectedAncestor = true
+                    recycleNode(cur)
+                    break
+                }
+                val next = runCatching { cur.parent }.getOrNull()
+                recycleNode(cur)
+                checkAncestor = next
+                checkDepth++
+            }
+            if (!insideProtectedAncestor && checkAncestor != null) {
+                recycleNode(checkAncestor)
+            }
+            if (insideProtectedAncestor) {
+                recycleNode(src)
+                return
+            }
+
             val candidateClickStrings = ArrayList<String>()
             event.text?.forEach { addCandidateStrings(candidateClickStrings, it) }
             addCandidateStrings(candidateClickStrings, event.contentDescription)
             val clickedText = buildString {
                 event.text?.forEach { append(it).append(' ') }
                 event.contentDescription?.let { append(it).append(' ') }
-                if (src != null && !src.isPassword && !src.isEditable && src.isVisibleToUser) {
+                if (!isProtectedNode(src) && src.isVisibleToUser) {
                     src.text?.let {
                         append(it).append(' ')
                         addCandidateStrings(candidateClickStrings, it)
@@ -292,7 +336,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     }
                     for (i in 0 until minOf(src.childCount, 10)) {
                         val ch = runCatching { src.getChild(i) }.getOrNull() ?: continue
-                        if (!ch.isPassword && !ch.isEditable && ch.isVisibleToUser) {
+                        if (!isProtectedNode(ch) && ch.isVisibleToUser) {
                             addCandidateStrings(candidateClickStrings, ch.text)
                             addCandidateStrings(candidateClickStrings, ch.contentDescription)
                             ch.text?.let { append(it).append(' ') }
@@ -305,12 +349,12 @@ class GroceryScreenReaderService : AccessibilityService() {
                     var depth = 0
                     while (ancestor != null && depth < 5) {
                         val curAncestor = ancestor
-                        if (!curAncestor.isPassword && !curAncestor.isEditable && curAncestor.isVisibleToUser) {
+                        if (!isProtectedNode(curAncestor) && curAncestor.isVisibleToUser) {
                             addCandidateStrings(candidateClickStrings, curAncestor.text)
                             addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
                             for (i in 0 until minOf(curAncestor.childCount, 12)) {
                                 val pch = runCatching { curAncestor.getChild(i) }.getOrNull() ?: continue
-                                if (!pch.isPassword && !pch.isEditable && pch.isVisibleToUser) {
+                                if (!isProtectedNode(pch) && pch.isVisibleToUser) {
                                     addCandidateStrings(candidateClickStrings, pch.text)
                                     addCandidateStrings(candidateClickStrings, pch.contentDescription)
                                     for (j in 0 until minOf(pch.childCount, 8)) {
@@ -333,7 +377,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     if (ancestor != null) recycleNode(ancestor)
                 }
             }.trim()
-            val srcViewId = src?.viewIdResourceName?.lowercase().orEmpty()
+            val srcViewId = src.viewIdResourceName?.lowercase().orEmpty()
             recycleNode(src)
 
             var clickedProduct: String? = null
@@ -867,26 +911,17 @@ class GroceryScreenReaderService : AccessibilityService() {
             val node = stack.pollFirst() ?: break
             seen++
             try {
-                if (node.isPassword) continue
+                if (isProtectedNode(node)) continue
                 val viewId = node.viewIdResourceName?.lowercase().orEmpty()
-                val isSearchInput = node.isEditable ||
-                    viewId.contains("search_src_text") ||
-                    viewId.contains("search_bar_text") ||
-                    viewId.endsWith("search_box") ||
-                    viewId.endsWith("search_edit_text") ||
-                    viewId.contains("password") ||
-                    viewId.contains("card_number") ||
-                    viewId.contains("cvv")
-                if (!isSearchInput) {
-                    val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
-                    val visible = node.isVisibleToUser
-                    node.getBoundsInScreen(rect)
-                    val nodeW = rect.width()
-                    val isEdgeClipped = visible && (
+                val heading = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && node.isHeading
+                val visible = node.isVisibleToUser
+                node.getBoundsInScreen(rect)
+                val nodeW = rect.width()
+                if (visible) {
+                    val isEdgeClipped =
                         rect.left < edgeMarginPx ||
                             rect.right > screenW - edgeMarginPx ||
                             (nodeW in 1 until minCardTextWidthPx)
-                        )
                     val emittedForNode = HashSet<String>(6)
                     emitSplitAndCombinedNodes(out, node.text, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)
                     emitSplitAndCombinedNodes(out, node.contentDescription, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)
@@ -1116,10 +1151,11 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun isCandidateProductTitle(t: String): Boolean =
-        t.length in 5..180 &&
+        t.length in 5..140 &&
             t.lowercase() !in rejectedTitles &&
             !SPONSORED_ANYWHERE.containsMatchIn(t) &&
             !PROSE_OR_BULLET_NOISE.containsMatchIn(t) &&
+            !CHAT_OR_MESSAGE_NOISE.containsMatchIn(t) &&
             !NOISE.containsMatchIn(t) &&
             !HOME_OR_AISLE_BANNERS.containsMatchIn(t) &&
             !CART_CHECKOUT_SIGNALS.containsMatchIn(t) &&
@@ -1435,6 +1471,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             val cleaned = raw.trim()
             if (cleaned.length < 12) return null
             if (NOISE.containsMatchIn(cleaned)) return null
+            if (CHAT_OR_MESSAGE_NOISE.containsMatchIn(cleaned)) return null
             if (NON_INGREDIENT_TEXT.containsMatchIn(cleaned)) return null
             if (SINGLE_PDP_DETAILS.matches(cleaned)) return null
             if (CAROUSEL_BOUNDARY.containsMatchIn(cleaned)) return null

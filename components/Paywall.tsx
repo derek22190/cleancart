@@ -270,6 +270,9 @@ export default function Paywall({
         sp?.get("deviceId") ||
         (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) ||
         "";
+      const devSecret =
+        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) ||
+        "";
       let userEmail = sp?.get("email") || "";
       if (!userEmail && typeof window !== "undefined") {
         try {
@@ -285,11 +288,15 @@ export default function Paywall({
       }
       const checkoutRes = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+        },
         body: JSON.stringify({
           plan: selectedPlan,
           creatorCode: appliedCreator?.code,
           deviceId: devId || undefined,
+          deviceSecret: devSecret || undefined,
           email: userEmail || undefined,
           termsAccepted: true,
           termsVersion: "2026-11-08",

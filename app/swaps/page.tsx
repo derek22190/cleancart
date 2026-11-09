@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
 
 export const metadata: Metadata = {
@@ -12,7 +13,9 @@ export const metadata: Metadata = {
 };
 
 export default function SwapsDirectoryPage() {
-  const items = SEO_PRODUCTS.map((p) => evaluateSeoProduct(p));
+  const items = SEO_PRODUCTS.filter((p) => hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)).map((p) =>
+    evaluateSeoProduct(p)
+  );
 
   return (
     <div style={{ maxWidth: 1020, margin: "0 auto", padding: "28px 18px 64px", fontFamily: "var(--font-sans), system-ui, sans-serif", color: "#0f172a" }}>
@@ -50,7 +53,7 @@ export default function SwapsDirectoryPage() {
           Clean Grocery Swaps &amp; Editorial Ingredient Reports (0–100)
         </h1>
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 740, lineHeight: 1.5 }}>
-          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, watchlist additives, and verified <b>1-Tap Clean Swap</b>.
+          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, watchlist additives, and <b>1-Tap Clean Swap</b>.
         </p>
       </section>
 
@@ -140,7 +143,7 @@ export default function SwapsDirectoryPage() {
         }}
       >
         <strong style={{ color: "#334155" }}>Independent Editorial Opinion &amp; Non-Affiliation Disclaimer:</strong>{" "}
-        Scores and summaries in this directory reflect HeyBroc&apos;s subjective clean-label rubric based on representative public ingredient data (Open Food Facts, USDA FoodData Central). Manufacturers reformulate products frequently and ingredients may vary by region or batch—always verify the physical package label before purchasing. Most flagged additives are FDA-permitted or GRAS. Outbound retail links may include affiliate attribution tags that earn HeyBroc a commission at no extra cost to you. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, ALDI, Kroger, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Whole Foods Market, or any food or beverage manufacturer.
+        Scores and summaries in this directory reflect HeyBroc&apos;s subjective clean-label rubric based on representative public ingredient data (Open Food Facts, USDA FoodData Central). Manufacturers reformulate products frequently and ingredients may vary by region or batch—always verify the physical package label before purchasing. Most flagged additives are FDA-permitted or GRAS. Outbound retail links may include affiliate attribution tags that earn HeyBroc a commission at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, ALDI, Kroger, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Whole Foods Market, or any food or beverage manufacturer.
       </footer>
     </div>
   );
