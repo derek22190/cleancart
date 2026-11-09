@@ -3,317 +3,153 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HeyBroc — Deepstash-Style 6-Slide ASO Store Preview</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <title>HeyBroc — App Store & Play Store ASO Screenshot Deck (6 Slides)</title>
   <style>
-    .aso-card {
-      width: 300px;
-      height: 640px;
-      border-radius: 32px;
-      flex-shrink: 0;
-      position: relative;
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #090d16;
+      color: #f8fafc;
+      padding: 28px 20px 48px;
+      line-height: 1.5;
+    }
+    .header {
+      max-width: 1480px;
+      margin: 0 auto 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.14);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 6px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    .carousel {
+      max-width: 1480px;
+      margin: 0 auto;
+      display: flex;
+      gap: 20px;
+      overflow-x: auto;
+      padding-bottom: 18px;
+      scroll-snap-type: x mandatory;
+    }
+    .slide-card {
+      flex: 0 0 280px;
+      scroll-snap-align: start;
+      background: #111827;
+      border: 1px solid #1e293b;
+      border-radius: 24px;
       overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
       display: flex;
       flex-direction: column;
-      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.28);
     }
-    .phone-crop {
-      margin: 0 18px;
-      flex: 1;
-      background: #fdfcf7;
-      border-top: 6px solid #111814;
-      border-left: 6px solid #111814;
-      border-right: 6px solid #111814;
-      border-radius: 38px 38px 0 0;
-      padding: 16px 14px 0 14px;
-      color: #111814;
-      box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.16);
+    .slide-card img {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      object-fit: cover;
+      display: block;
+    }
+    .slide-caption {
+      padding: 12px 14px;
+      border-top: 1px solid #1e293b;
       display: flex;
-      flex-direction: column;
-      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 700;
+      color: #cbd5e1;
     }
-    .strikethrough-yellow {
-      position: relative;
-      display: inline-block;
-    }
-    .strikethrough-yellow::after {
-      content: "";
-      position: absolute;
-      left: -4px;
-      right: -4px;
-      top: 52%;
-      height: 5px;
-      background: #facc15;
-      border-radius: 99px;
-      transform: rotate(-4deg);
+    .slide-num {
+      color: #34d399;
+      font-weight: 800;
     }
   </style>
 </head>
-<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-6">
-  <div class="max-w-7xl mx-auto space-y-5">
-    <!-- Top App Store / Play Store Header Mock -->
-    <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
-      <div class="flex items-center gap-4">
-        <div class="w-16 h-16 rounded-2xl bg-emerald-600 flex items-center justify-center text-3xl shadow-md">
-          🥦
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-xl font-extrabold text-[var(--foreground)]">HeyBroc - Online Food Scanner</h1>
-            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-500">ASO Preview</span>
-          </div>
-          <p class="text-sm text-[var(--muted-foreground)]">Ingredient Score &amp; Clean Swaps · Deepstash-Style 6-Slide Store Deck (Saved in <code class="text-xs">store-assets/</code>)</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="text-xs font-semibold text-[var(--muted-foreground)]">Scroll horizontally →</span>
-        <span class="px-4 py-2 rounded-full bg-blue-600 text-white font-bold text-sm shadow">Get</span>
+<body>
+  <div class="header">
+    <div>
+      <div class="badge">✨ Deepstash-Style 6-Slide ASO Deck</div>
+      <h1>HeyBroc — App Store &amp; Google Play Screenshot Gallery</h1>
+      <p class="subtitle">Featuring the official HeyBroc mascot in a superhero cape + real 0–100 Clean Score &amp; 1-Tap Swap cards.</p>
+    </div>
+  </div>
+
+  <div class="carousel">
+    <div class="slide-card">
+      <img src="./slide-1-hook-poster.jpg" alt="Slide 1 — Stop Eating Mystery Ingredients" />
+      <div class="slide-caption">
+        <span class="slide-num">Slide 1 · Hook Poster</span>
+        <span>Mascot in Cart + Cape</span>
       </div>
     </div>
 
-    <!-- 6-Slide Horizontal Carousel -->
-    <div class="flex gap-5 overflow-x-auto pb-4 pt-1">
-
-      <!-- SLIDE 1: Category-Defining Hook Poster (No Phone Frame) -->
-      <div class="aso-card" style="background: linear-gradient(180deg, #f03e2f 0%, #c8281b 100%); color: #111814;">
-        <div class="px-6 pt-8 text-center">
-          <div class="text-3xl font-black leading-tight tracking-tight text-neutral-950">
-            <span class="strikethrough-yellow">Barcode apps</span><br />
-            for online<br />
-            grocery
-          </div>
-          <!-- Laurel Wreath Social Proof -->
-          <div class="mt-4 flex items-center justify-center gap-2 text-neutral-950">
-            <span class="text-2xl">🌿</span>
-            <div class="text-xs font-extrabold leading-tight">
-              Works on<br />
-              <span class="text-sm font-black">13+ Grocery Apps</span><br />
-              0–100 Clean Score
-            </div>
-            <span class="text-2xl" style="transform: scaleX(-1);">🌿</span>
-          </div>
-        </div>
-
-        <!-- Hero Mascot + Ingredient Constellation -->
-        <div class="mt-auto relative flex-1 flex flex-col items-center justify-end pb-6 px-5">
-          <div class="w-48 h-48 rounded-full bg-amber-400/25 border-2 border-amber-300/60 flex flex-col items-center justify-center relative shadow-inner">
-            <div class="text-7xl">🥦</div>
-            <span class="mt-1 px-2.5 py-0.5 rounded-full bg-neutral-950 text-amber-300 text-xs font-black">100/100 CLEAN</span>
-            <!-- Floating Radar Nodes -->
-            <span class="absolute -top-3 -left-4 px-2.5 py-1 rounded-full bg-white text-red-700 text-xs font-extrabold shadow">⚠️ Seed Oils</span>
-            <span class="absolute top-5 -right-6 px-2.5 py-1 rounded-full bg-white text-red-700 text-xs font-extrabold shadow">⚠️ Red 40</span>
-            <span class="absolute -bottom-2 -left-5 px-2.5 py-1 rounded-full bg-white text-amber-800 text-xs font-extrabold shadow">⚠️ Sucralose</span>
-            <span class="absolute bottom-3 -right-5 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-xs font-extrabold shadow">✓ Organic Swap</span>
-          </div>
-          <p class="mt-4 text-xs font-bold text-white/90 text-center">
-            Walmart · Amazon · Target · Instacart · Shipt · Costco · Kroger · ALDI
-          </p>
-        </div>
+    <div class="slide-card">
+      <img src="./slide-2-score-card.jpg" alt="Slide 2 — Replace mystery labels with 0-100 scores" />
+      <div class="slide-caption">
+        <span class="slide-num">Slide 2 · 0–100 Score</span>
+        <span>18/100 → 95/100 Swap</span>
       </div>
+    </div>
 
-      <!-- SLIDE 2: Mint Green — Replace Mystery Labels with 0-100 Scores -->
-      <div class="aso-card" style="background: #19d37e;">
-        <div class="px-6 pt-8 pb-5 text-center">
-          <div class="text-2xl font-black leading-tight tracking-tight text-neutral-950">
-            Replace mystery<br />
-            labels with live<br />
-            0–100 scores
-          </div>
-        </div>
-        <div class="phone-crop">
-          <div class="flex items-center justify-between text-xs font-extrabold text-neutral-500">
-            <span>HEYBROC · PRODUCT GRADE</span>
-            <span class="px-2 py-0.5 rounded-full bg-neutral-200 text-neutral-700">Live Bubble</span>
-          </div>
-          <div class="flex items-center gap-3 bg-white p-3 rounded-2xl border border-neutral-200 shadow-sm">
-            <div class="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center text-2xl">🥫</div>
-            <div class="flex-1 min-w-0">
-              <div class="text-xs font-extrabold text-emerald-700">HIDDEN VALLEY</div>
-              <div class="text-sm font-black truncate">Original Ranch Dressing</div>
-              <div class="text-xs text-neutral-500 truncate">Soybean Oil, Canola Oil, MSG, EDTA…</div>
-            </div>
-          </div>
-          <!-- Score Ring + Summary -->
-          <div class="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-200">
-            <div class="w-14 h-14 rounded-full border-4 border-red-600 flex flex-col items-center justify-center bg-white shrink-0">
-              <span class="text-lg font-black text-neutral-900 leading-none">12</span>
-              <span class="text-xs font-extrabold text-red-600">Bad</span>
-            </div>
-            <div class="text-xs font-bold text-red-900 leading-snug">
-              ▼ 5 Flagged Watchlist Additives<br />
-              <span class="text-neutral-600 font-semibold">Nutrition 12/60 · Additives 0/30</span>
-            </div>
-          </div>
-          <!-- Pinned Clean Swap Preview -->
-          <div class="mt-auto mb-3 bg-emerald-50 border border-emerald-300 rounded-2xl p-3">
-            <div class="text-xs font-black text-emerald-800">✓ 1-TAP CLEAN SWAP</div>
-            <div class="flex items-center justify-between gap-2 mt-1">
-              <div>
-                <div class="text-xs font-black text-neutral-900">Primal Kitchen Avocado Ranch</div>
-                <div class="text-xs font-extrabold text-emerald-700">90/100 Excellent · 0 Seed Oils</div>
-              </div>
-              <span class="px-3 py-1.5 rounded-full bg-emerald-700 text-white text-xs font-extrabold shrink-0">Find ↗</span>
-            </div>
-          </div>
-        </div>
+    <div class="slide-card">
+      <img src="./slide-3-flagged-additives.jpg" alt="Slide 3 — Spot Seed Oils, Red 40 & hidden toxins" />
+      <div class="slide-caption">
+        <span class="slide-num">Slide 3 · Additive Flags</span>
+        <span>Seed Oils &amp; Red 40</span>
       </div>
+    </div>
 
-      <!-- SLIDE 3: Royal Violet — Spot Seed Oils, Red 40 & Hidden Toxins -->
-      <div class="aso-card" style="background: #7c5cff;">
-        <div class="px-6 pt-8 pb-5 text-center">
-          <div class="text-2xl font-black leading-tight tracking-tight text-neutral-950">
-            Spot Seed Oils,<br />
-            Red 40 &amp; hidden<br />
-            additives fast
-          </div>
-        </div>
-        <div class="phone-crop">
-          <div class="text-xs font-black text-neutral-800">Flagged Ingredient Breakdown</div>
-          <div class="p-3 rounded-2xl bg-red-50 border border-red-200 space-y-1">
-            <div class="text-xs font-black text-red-800">1. Red 40 (Artificial Dye) · −25 pts</div>
-            <p class="text-xs text-neutral-700 leading-snug">
-              Petroleum-derived synthetic azo dye requiring hyperactivity warning labels in the EU.
-            </p>
-          </div>
-          <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-1">
-            <div class="text-xs font-black text-amber-900">2. Soybean &amp; Canola Oil · −15 pts</div>
-            <p class="text-xs text-neutral-700 leading-snug">
-              Refined industrial seed oils high in omega-6 linoleic acid; doubled on your Family Watchlist.
-            </p>
-          </div>
-          <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-1">
-            <div class="text-xs font-black text-amber-900">3. Sucralose · −20 pts</div>
-            <p class="text-xs text-neutral-700 leading-snug">
-              Chlorinated artificial sweetener evaluated for effects on gut microbiota.
-            </p>
-          </div>
-          <div class="mt-auto mb-3 p-2.5 rounded-xl bg-neutral-100 text-xs font-bold text-neutral-600 text-center">
-            USDA FoodData Central &amp; Open Food Facts Verified
-          </div>
-        </div>
+    <div class="slide-card">
+      <img src="./slide-4-clean-library.jpg" alt="Slide 4 — Build your clean grocery library" />
+      <div class="slide-caption">
+        <span class="slide-num">Slide 4 · Clean Library</span>
+        <span>13 Grocery Apps</span>
       </div>
+    </div>
 
-      <!-- SLIDE 4: Sky Blue — Build Your Clean Grocery Library -->
-      <div class="aso-card" style="background: #1890ff;">
-        <div class="px-6 pt-8 pb-5 text-center">
-          <div class="text-2xl font-black leading-tight tracking-tight text-neutral-950">
-            Build your<br />
-            clean grocery<br />
-            library
-          </div>
-        </div>
-        <div class="phone-crop">
-          <div class="flex items-center justify-between">
-            <span class="text-sm font-black text-neutral-900">My Saved Swaps</span>
-            <span class="text-xs font-bold text-emerald-700">♥ Favorites</span>
-          </div>
-          <!-- Two Stash-style Folders -->
-          <div class="grid grid-cols-2 gap-2.5">
-            <div class="rounded-2xl p-3 bg-emerald-500 text-white shadow-sm">
-              <div class="text-2xl">🥑</div>
-              <div class="mt-2 text-xs font-black">Seed-Oil Free</div>
-              <div class="text-xs opacity-90">14 Clean Picks</div>
-            </div>
-            <div class="rounded-2xl p-3 bg-amber-400 text-neutral-950 shadow-sm">
-              <div class="text-2xl">⚡</div>
-              <div class="mt-2 text-xs font-black">Clean Energy</div>
-              <div class="text-xs opacity-90">100/100 Drinks</div>
-            </div>
-          </div>
-          <!-- Saved Swap Cards -->
-          <div class="p-3 rounded-2xl bg-white border border-neutral-200 space-y-1 shadow-sm">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-extrabold text-emerald-700">100/100 EXCELLENT</span>
-              <span class="text-xs font-bold text-neutral-400">Shipt · Walmart</span>
-            </div>
-            <div class="text-xs font-black text-neutral-900">Guayakí Organic Yerba Mate Tea</div>
-            <div class="text-xs text-neutral-600">Replaces Monster Energy (6/100)</div>
-          </div>
-          <div class="p-3 rounded-2xl bg-white border border-neutral-200 space-y-1 shadow-sm mb-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-extrabold text-emerald-700">96/100 EXCELLENT</span>
-              <span class="text-xs font-bold text-neutral-400">Amazon · Target</span>
-            </div>
-            <div class="text-xs font-black text-neutral-900">Santa Cruz Organic Peanut Butter</div>
-            <div class="text-xs text-neutral-600">Organic Roasted Peanuts, Sea Salt</div>
-          </div>
-        </div>
+    <div class="slide-card">
+      <img src="./slide-5-mascot-streak.jpg" alt="Slide 5 — Shop cleaner daily, the easy way" />
+      <div class="slide-caption">
+        <span class="slide-num">Slide 5 · Mascot Streak</span>
+        <span>Day 16 Clean Streak</span>
       </div>
+    </div>
 
-      <!-- SLIDE 5: Warm Amber — Mascot + Family Watchlist & Allergy Alerts -->
-      <div class="aso-card" style="background: #f59e0b;">
-        <div class="px-6 pt-8 pb-5 text-center">
-          <div class="text-2xl font-black leading-tight tracking-tight text-neutral-950">
-            Shop cleaner<br />
-            daily, the<br />
-            easy way
-          </div>
-        </div>
-        <div class="phone-crop items-center text-center">
-          <div class="mt-2 w-24 h-24 rounded-full bg-emerald-100 border-2 border-emerald-400 flex items-center justify-center text-5xl shadow-sm">
-            🥦
-          </div>
-          <div class="text-base font-black text-neutral-900">Cart Average: 92/100</div>
-          <p class="text-xs text-neutral-600 px-2">
-            Your Family Watchlist &amp; Allergy guardrails automatically flag problem items before checkout.
-          </p>
-          <div class="w-full bg-neutral-100 rounded-2xl p-3 text-left space-y-2 mt-1">
-            <div class="text-xs font-black text-neutral-800">🛡️ Active Family Guardrails</div>
-            <div class="flex flex-wrap gap-1.5">
-              <span class="px-2.5 py-1 rounded-full bg-red-100 text-red-800 text-xs font-extrabold">Seed Oils (2x)</span>
-              <span class="px-2.5 py-1 rounded-full bg-red-100 text-red-800 text-xs font-extrabold">Red 40 &amp; Dyes (2x)</span>
-              <span class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold">Gluten &amp; Peanuts</span>
-              <span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold">Added Sugar Watch</span>
-            </div>
-          </div>
-          <div class="mt-auto mb-3 w-full flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black">
-            <span>🥦 Clean Cart Streak</span>
-            <span>7 Trips in a Row 🔥</span>
-          </div>
-        </div>
+    <div class="slide-card">
+      <img src="./slide-6-awards-quote.jpg" alt="Slide 6 — Award-worthy clean grocery scanner" />
+      <div class="slide-caption">
+        <span class="slide-num">Slide 6 · Social Proof</span>
+        <span>4.9★ Rating &amp; Quote</span>
       </div>
-
-      <!-- SLIDE 6: Crimson Red — Award / Authority Quote Poster (No Phone Frame) -->
-      <div class="aso-card" style="background: linear-gradient(180deg, #e53935 0%, #b71c1c 100%); color: #111814;">
-        <div class="px-6 pt-8 text-center">
-          <div class="text-2xl font-black leading-tight tracking-tight text-neutral-950">
-            Independent<br />
-            clean-label<br />
-            food scanner
-          </div>
-
-          <!-- Twin Laurel Wreath Badges -->
-          <div class="mt-5 grid grid-cols-2 gap-2 text-neutral-950">
-            <div class="p-2 rounded-xl bg-black/10">
-              <div class="text-base font-black">🌿 100% 🌿</div>
-              <div class="text-xs font-extrabold leading-tight mt-0.5">Independent<br />Zero Brand Ads</div>
-            </div>
-            <div class="p-2 rounded-xl bg-black/10">
-              <div class="text-base font-black">🌿 USDA 🌿</div>
-              <div class="text-xs font-extrabold leading-tight mt-0.5">&amp; Open Food<br />Facts Verified</div>
-            </div>
-          </div>
-
-          <!-- Serif Pull Quote -->
-          <blockquote class="mt-6 px-2 font-serif text-base font-bold italic text-neutral-950 leading-snug">
-            “Seeing the 0–100 score pop up automatically while I shop on Walmart, Amazon, and Instacart changed how my family buys groceries forever.”
-          </blockquote>
-
-          <!-- 5 Stars -->
-          <div class="mt-4 text-xl tracking-widest text-neutral-950">
-            ★ ★ ★ ★ ★
-          </div>
-        </div>
-
-        <!-- Bottom Graphic -->
-        <div class="mt-auto pb-8 flex flex-col items-center">
-          <div class="w-24 h-24 rounded-full bg-neutral-950 text-white flex items-center justify-center text-4xl shadow-lg">
-            🥦💚
-          </div>
-          <span class="mt-3 text-xs font-extrabold text-white/90">No Barcodes Needed · Works While You Scroll</span>
-        </div>
-      </div>
-
     </div>
   </div>
 </body>

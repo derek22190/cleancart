@@ -13,14 +13,20 @@
 - **Google Play Store Icon (512×512 PNG, 32-bit RGBA):** [`store-assets/google-play/icon-512x512.png`](file:///home/antigravity/derek22190/cleancart/store-assets/google-play/icon-512x512.png)
 - **Google Play Feature Graphic (1024×500 PNG, 24-bit RGB):** [`store-assets/google-play/feature-graphic-1024x500.png`](file:///home/antigravity/derek22190/cleancart/store-assets/google-play/feature-graphic-1024x500.png)
 - **Apple App Store Icon (1024×1024 PNG, 24-bit RGB opaque, no alpha):** [`store-assets/apple-app-store/icon-1024x1024.png`](file:///home/antigravity/derek22190/cleancart/store-assets/apple-app-store/icon-1024x1024.png)
-- **Interactive 6-Slide ASO Screenshot Template (1290×2796 App Store / Play Store aspect ratio):** [`store-assets/aso-screenshots/index.html`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/index.html)
+- **Interactive 6-Slide ASO Screenshot Gallery:** [`store-assets/aso-screenshots/index.html`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/index.html)
+  - Slide 1 (Hook Poster — HeyBroc Mascot in Cart with Red Superhero Cape): [`store-assets/aso-screenshots/slide-1-hook-poster.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-1-hook-poster.jpg)
+  - Slide 2 (0–100 Clean Score & 1-Tap Swap): [`store-assets/aso-screenshots/slide-2-score-card.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-2-score-card.jpg)
+  - Slide 3 (Flagged Additives Breakdown): [`store-assets/aso-screenshots/slide-3-flagged-additives.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-3-flagged-additives.jpg)
+  - Slide 4 (Clean Grocery Library & 13 Apps): [`store-assets/aso-screenshots/slide-4-clean-library.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-4-clean-library.jpg)
+  - Slide 5 (HeyBroc Mascot in Red Cape + Clean Cart Streak): [`store-assets/aso-screenshots/slide-5-mascot-streak.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-5-mascot-streak.jpg)
+  - Slide 6 (Award & 4.9★ Social Proof Poster): [`store-assets/aso-screenshots/slide-6-awards-quote.jpg`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/slide-6-awards-quote.jpg)
 - **Privacy Policy URL (Required by both stores):** `https://www.heybroc.com/privacy`
 
 ---
 
 ## 1B. Deepstash-Style 6-Slide ASO Screenshot Blueprint (Hard Notes for Store Packaging)
 
-When packaging the final store screenshots for **Apple App Store (1290×2796 px, 6.7")** and **Google Play Store (1080×1920 or 1290×2796 px)**, follow the proven **Deepstash ASO formula** (built in [`store-assets/aso-screenshots/index.html`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/index.html)):
+When packaging the final store screenshots for **Apple App Store (1290×2796 px, 6.7")** and **Google Play Store (1080×1920 or 1290×2796 px)**, follow the proven **Deepstash ASO formula** (saved in [`store-assets/aso-screenshots/`](file:///home/antigravity/derek22190/cleancart/store-assets/aso-screenshots/index.html)):
 
 ### Core Visual Rules (Why Deepstash Converts)
 1. **Bold Color-Blocking Per Slide**: Every slide uses a distinct, saturated background color (`#F03E2F` Coral Red → `#19D37E` Mint Green → `#7C5CFF` Royal Violet → `#1890FF` Sky Blue → `#F59E0B` Warm Amber → `#E53935` Crimson Red) with high-contrast `#111814` ultra-bold headlines (`3–5 words max` per line).
