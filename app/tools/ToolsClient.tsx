@@ -41,6 +41,9 @@ export default function ToolsClient() {
   const [titleInput, setTitleInput] = useState(SAMPLE_LABELS[0].title);
   const [ingInput, setIngInput] = useState(SAMPLE_LABELS[0].ingredients);
   const [additiveFilter, setAdditiveFilter] = useState("");
+  const [copiedShortcutUrl, setCopiedShortcutUrl] = useState(false);
+
+  const shortcutEndpointUrl = "https://heybroc.com/api/scan?format=ios_text&q=";
 
   const liveScore = useMemo(
     () => scoreProductYuka(ingInput, {}, [], { productTitle: titleInput }),
@@ -118,6 +121,143 @@ export default function ToolsClient() {
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 760, lineHeight: 1.5 }}>
           Paste any food or beverage ingredient label below for an instant <b>0–100 clean-label score</b>, <b>3-Pillar Breakdown</b>, <b>Seed Oil &amp; Red 40 check</b>, and <b>Sugar &amp; refined-carb note</b>.
         </p>
+      </section>
+
+      {/* MOBILE SETUP: Android 1-Switch Floating Pill & iPhone 1-Tap Shortcut + Safari Extension */}
+      <section
+        id="mobile-setup"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))",
+          gap: 16,
+          marginBottom: 28,
+        }}
+      >
+        {/* Android 1-Switch Card */}
+        <div
+          style={{
+            background: "#f0fdf4",
+            border: "1px solid #86efac",
+            borderRadius: 20,
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              🤖 Android · New 1-Switch Store Bubble
+            </span>
+            <h2 style={{ fontSize: 19, fontWeight: 900, marginTop: 4, marginBottom: 6, color: "#064e3b" }}>
+              Live Floating Pill in Walmart, Instacart, Target &amp; 12 Apps
+            </h2>
+            <p style={{ fontSize: 13, color: "#166534", lineHeight: 1.5, margin: 0 }}>
+              Draws the floating 0–100 score pill directly through Android&apos;s Accessibility Overlay in <b>1 switch</b>—no separate &ldquo;Appear on top&rdquo; permission step required, plus instant tap pre-scanning.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <a
+              href="/heybroc.apk"
+              download="heybroc.apk"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                background: "#16a34a",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: 13,
+                textDecoration: "none",
+              }}
+            >
+              📲 Download Android App (.apk)
+            </a>
+            <span style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>
+              ✓ 1-Switch Setup · ✓ Instant Tap Pre-Scan
+            </span>
+          </div>
+        </div>
+
+        {/* iPhone 1-Tap Shortcut + Safari Extension Card */}
+        <div
+          style={{
+            background: "#eff6ff",
+            border: "1px solid #93c5fd",
+            borderRadius: 20,
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              🍎 iPhone · Safari Floating Pill + 1-Line Share Sheet / Back Tap
+            </span>
+            <h2 style={{ fontSize: 19, fontWeight: 900, marginTop: 4, marginBottom: 6, color: "#1e3a8a" }}>
+              Scan Any iPhone Grocery App in 1 Tap (Zero JSON Setup)
+            </h2>
+            <p style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5, margin: "0 0 8px" }}>
+              <b>1. Safari Floating Pill:</b> Enable <b>HeyBroc</b> in <i>Settings → Apps → Safari → Extensions</i> for the automatic floating pill on grocery websites.<br />
+              <b>2. Native Store Apps (Share Sheet / Back Tap / Action Button):</b> No manual JSON or POST setup needed—paste this single GET URL into Apple Shortcuts&apos; <i>Get Contents of URL</i> → <i>Show Result</i>:
+            </p>
+            <code
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                borderRadius: 10,
+                background: "#dbeafe",
+                color: "#1e3a8a",
+                fontSize: 11.5,
+                fontWeight: 700,
+                wordBreak: "break-all",
+              }}
+            >
+              {shortcutEndpointUrl}[Shortcut Input]
+            </code>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                  navigator.clipboard.writeText(shortcutEndpointUrl);
+                  setCopiedShortcutUrl(true);
+                  setTimeout(() => setCopiedShortcutUrl(false), 2500);
+                }
+              }}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 12,
+                border: "none",
+                background: "#2563eb",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: "pointer",
+              }}
+            >
+              {copiedShortcutUrl ? "✓ Copied 1-Line Shortcut URL!" : "📋 Copy 1-Line Shortcut URL"}
+            </button>
+            <a
+              href="shortcuts://create-shortcut"
+              style={{
+                padding: "9px 14px",
+                borderRadius: 12,
+                background: "#ffffff",
+                border: "1px solid #93c5fd",
+                color: "#1d4ed8",
+                fontWeight: 800,
+                fontSize: 12.5,
+                textDecoration: "none",
+              }}
+            >
+              ⚡ Open Apple Shortcuts App
+            </a>
+          </div>
+        </div>
       </section>
 
       {/* TOOL 1: Instant Ingredient Label & Paste Calculator */}

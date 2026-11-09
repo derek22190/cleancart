@@ -1,24 +1,25 @@
-# CleanCart on iPhone — Share Sheet, Back Tap & Action Button
+# CleanCart on iPhone — Safari Floating Pill, Share Sheet, Back Tap & Action Button
 
-iOS doesn't allow apps to float over other apps, so CleanCart on iPhone runs as a **Shortcut** that calls the same deterministic `POST /api/scan` endpoint used by Android and Chrome.
+CleanCart on iPhone supports **two instant ways** to scan groceries:
+1. **Safari Floating Pill (`ios-app/SafariExtension`)**: Enable **HeyBroc** in *Settings → Apps → Safari → Extensions* (`Allow on All Websites` or grocery domains) to get the live floating `0–100` score pill automatically on `walmart.com`, `instacart.com`, `target.com`, `kroger.com`, `aldi.us`, `amazon.com`, and `costco.com`.
+2. **1-Line Apple Shortcut (for Native Store Apps via Share Sheet, Back Tap, or Action Button)**: Calls `GET /api/scan?format=ios_text&q=...` (or `POST /api/scan`) with zero manual JSON dictionary setup required.
 
 > **Live Production API URL:** `https://heybroc.com` (fallback: `https://cleancart-teal.vercel.app`)
 
 ---
 
-## Step 1 — Build the "CleanCart Scan" shortcut (2 min)
+## Step 1 — 30-Second "CleanCart Scan" Shortcut (Zero JSON Setup)
 
-Open the **Shortcuts** app → **+** → name it **CleanCart Scan**, then add these actions in order:
+Open the **Shortcuts** app (`shortcuts://create-shortcut`) → name it **CleanCart Scan**, then add just **3 simple blocks** (no POST body or JSON dictionary keys needed!):
 
 | # | Action | Setting |
 |---|--------|---------|
 | 1 | **Receive** *Text, URLs, Safari web pages* input from **Share Sheet** | If there's no input: **Get Clipboard** |
-| 2 | **Text** | `Shortcut Input` (the shared product title / page title) |
-| 3 | **Get Contents of URL** | URL: `https://heybroc.com/api/scan` · Method: **POST** · Request Body: **JSON** |
-|   |   | `productTitle` → *Text* (from step 2) |
-|   |   | `store` → `walmart` *(or instacart / target / kroger / aldi / doordash / ubereats / amazon / sams / bjs / costco / shipt)* |
-|   |   | `format` → `ios_text` |
+| 2 | **URL Encode** | *Shortcut Input* |
+| 3 | **Get Contents of URL** | `https://heybroc.com/api/scan?format=ios_text&q=[URL Encoded Text]` *(Method: default **GET**)* |
 | 4 | **Show Result** | *Contents of URL* |
+
+*(Advanced POST option: `POST https://heybroc.com/api/scan` with JSON `{ "productTitle": Shortcut Input, "store": "walmart", "format": "ios_text" }` continues to work identically.)*
 
 The `ios_text` response is a ready-to-read summary:
 

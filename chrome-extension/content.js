@@ -22,7 +22,7 @@
 
   const HIDE_SESSION_KEY = `cleancart_hide_trip_${STORE}`;
   const CART_STORAGE_KEY = `cleancart_trip_cart_${STORE}`;
-  const DEBOUNCE_MS = 1200;
+  const DEBOUNCE_MS = 220;
 
   let lastKey = "";
   let timer = null;
@@ -512,8 +512,37 @@
     });
   }
 
-  /* ---------------- Scan loop ---------------- */
+  /* ---------------- Scan loop & instant pre-warm ---------------- */
   let scanSeq = 0;
+  const scanCache = new Map();
+
+  function normCacheKey(title, rawIng) {
+    return `${STORE}|${String(title || "").toLowerCase().replace(/\s+/g, " ").trim()}|${String(rawIng || "").trim()}`;
+  }
+
+  function applyScanResult(resp, productTitle) {
+    if (!resp?.ok) {
+      state = {
+        ...state,
+        mode: "cart_avg",
+        expanded: false,
+        openFlag: null,
+      };
+      render();
+      return;
+    }
+    state = {
+      ...state,
+      mode: "product",
+      data: resp,
+      expanded: false,
+      openFlag: null,
+    };
+    if (resp.result && isCurrentProductInCart()) {
+      recordProductInCart(resp, productTitle);
+    }
+    render();
+  }
 
   function scan() {
     if (sessionStorage.getItem(HIDE_SESSION_KEY) === "1") return;
@@ -541,38 +570,49 @@
     const key = `${location.pathname}|${productTitle}|${rawIngredients}|${inCart ? 1 : 0}`;
     if (key === lastKey) return;
     lastKey = key;
+
+    const cKey = normCacheKey(productTitle, rawIngredients);
+    const cached = scanCache.get(cKey) || (!rawIngredients ? scanCache.get(normCacheKey(productTitle, "")) : null);
+    if (cached?.ok) {
+      applyScanResult(cached, productTitle);
+      return;
+    }
+
     const reqSeq = ++scanSeq;
     chrome.runtime.sendMessage(
       { type: "CLEANCART_SCAN", payload: { productTitle, rawIngredients: rawIngredients || undefined, store: STORE } },
       (resp) => {
+        if (resp?.ok) {
+          scanCache.set(cKey, resp);
+        }
         if (reqSeq !== scanSeq || !isProductPage()) return;
-        if (!resp?.ok) {
-          state = {
-            ...state,
-            mode: "cart_avg",
-            expanded: false,
-            openFlag: null,
-          };
-          render();
-          return;
-        }
-        state = {
-          ...state,
-          mode: "product",
-          data: resp,
-          expanded: false,
-          openFlag: null,
-        };
-        if (resp.result && isCurrentProductInCart()) {
-          recordProductInCart(resp, productTitle);
-        }
-        render();
+        applyScanResult(resp, productTitle);
       },
     );
   }
 
+  // Pre-warm score the exact millisecond a shopper presses down on any product card link
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const link = e.target?.closest?.('a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/product/"], [data-testid*="product" i] a');
+      if (!link) return;
+      const rawText = (link.getAttribute("aria-label") || link.textContent || "").replace(/\s+/g, " ").trim();
+      if (rawText.length < 4 || rawText.length > 180 || NON_TITLE_RE.test(rawText)) return;
+      const cKey = normCacheKey(rawText, "");
+      if (scanCache.has(cKey)) return;
+      chrome.runtime.sendMessage(
+        { type: "CLEANCART_SCAN", payload: { productTitle: rawText, store: STORE } },
+        (resp) => {
+          if (resp?.ok) scanCache.set(cKey, resp);
+        },
+      );
+    },
+    { passive: true, capture: true },
+  );
+
   loadTripCart().then(() => {
-    const MAX_DEBOUNCE_WAIT_MS = 2500;
+    const MAX_DEBOUNCE_WAIT_MS = 600;
     let firstQueuedAt = 0;
     const runScheduledScan = () => {
       firstQueuedAt = 0;

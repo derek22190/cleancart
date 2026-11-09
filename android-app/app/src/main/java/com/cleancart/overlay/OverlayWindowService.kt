@@ -196,11 +196,11 @@ class OverlayWindowService : Service() {
         super.onConfigurationChanged(newConfig)
         val maxH = (resources.displayMetrics.heightPixels - dp(80)).coerceAtLeast(dp(48))
         pillY = pillY.coerceIn(dp(24), maxH)
-        pill?.let { p -> pillParams?.let { lp -> lp.y = pillY; runCatching { wm.updateViewLayout(p, lp) } } }
+        pill?.let { p -> pillParams?.let { lp -> lp.y = pillY; updateOverlayView(p, lp) } }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!Settings.canDrawOverlays(this)) {
+        if (!canDisplayOverlay()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -594,15 +594,62 @@ class OverlayWindowService : Service() {
         }
     }
 
-    /* ---------------- Window params ---------------- */
+    /* ---------------- Window params & 1-Switch Accessibility Overlay ---------------- */
 
-    private fun overlayParams(w: Int, h: Int, focusable: Boolean = false) = WindowManager.LayoutParams(
-        w, h,
-        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        (if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-        PixelFormat.TRANSLUCENT,
-    )
+    private val viewOwners = java.util.IdentityHashMap<View, WindowManager>()
+
+    private fun canDisplayOverlay(): Boolean =
+        GroceryScreenReaderService.activeWindowManager() != null || Settings.canDrawOverlays(this)
+
+    private fun overlayParams(w: Int, h: Int, focusable: Boolean = false): WindowManager.LayoutParams {
+        val windowType = if (GroceryScreenReaderService.activeWindowManager() != null) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        }
+        return WindowManager.LayoutParams(
+            w, h,
+            windowType,
+            (if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        )
+    }
+
+    private fun addOverlayView(view: View, params: WindowManager.LayoutParams): Boolean {
+        val a11yWm = GroceryScreenReaderService.activeWindowManager()
+        if (a11yWm != null) {
+            params.type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            if (runCatching { a11yWm.addView(view, params) }.isSuccess) {
+                viewOwners[view] = a11yWm
+                return true
+            }
+        }
+        if (Settings.canDrawOverlays(this)) {
+            params.type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            if (runCatching { wm.addView(view, params) }.isSuccess) {
+                viewOwners[view] = wm
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun updateOverlayView(view: View, params: WindowManager.LayoutParams) {
+        val owner = viewOwners[view] ?: GroceryScreenReaderService.activeWindowManager() ?: wm
+        runCatching { owner.updateViewLayout(view, params) }
+    }
+
+    private fun removeOverlayView(view: View?) {
+        if (view == null) return
+        val owner = viewOwners.remove(view)
+        if (owner != null) {
+            runCatching { owner.removeView(view) }
+        } else {
+            runCatching { GroceryScreenReaderService.activeWindowManager()?.removeView(view) }
+            runCatching { wm.removeView(view) }
+        }
+    }
 
     /* ---------------- Bottom-Center Drag-to-Hide Target ---------------- */
 
@@ -620,15 +667,16 @@ class OverlayWindowService : Service() {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 y = dp(32)
             }
-            runCatching { wm.addView(tv, p) }
-            hideTarget = tv
+            if (addOverlayView(tv, p)) {
+                hideTarget = tv
+            }
         } else {
             (hideTarget?.background as? GradientDrawable)?.setColor(if (hot) 0xFFDC2626.toInt() else 0xDD141A17.toInt())
         }
     }
 
     private fun removeHideTarget() {
-        hideTarget?.let { runCatching { wm.removeView(it) } }
+        removeOverlayView(hideTarget)
         hideTarget = null
     }
 
@@ -636,7 +684,7 @@ class OverlayWindowService : Service() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun showPill(loadingText: String? = null) {
-        if (hiddenForCurrentScreen || !Settings.canDrawOverlays(this)) return
+        if (hiddenForCurrentScreen || !canDisplayOverlay()) return
         if (!isCartAvgMode) climbAnimator?.cancel()
         val result = data?.optJSONObject("result")
         val ok = data?.optBoolean("ok") == true && result != null
@@ -670,7 +718,7 @@ class OverlayWindowService : Service() {
         }
 
         // CRITICAL: If the pill window is already attached, update text and dot color IN-PLACE
-        // instead of calling wm.removeView() + wm.addView(). Removing and re-adding a hardware overlay
+        // instead of calling removeOverlayView() + addOverlayView(). Removing and re-adding a hardware overlay
         // window causes Android's InputDispatcher to cancel active touch events (ACTION_CANCEL) and glitch the screen!
         if (pill != null && pillTextView != null && pillDotView != null) {
             if (pillTextView?.text?.toString() != label) {
@@ -742,7 +790,7 @@ class OverlayWindowService : Service() {
                         pillY = params.y
                         overHide = e.rawY > curH * 0.80f && e.rawX > curW * 0.2f && e.rawX < curW * 0.8f
                         showHideTarget(overHide)
-                        runCatching { wm.updateViewLayout(v, params) }
+                        updateOverlayView(v, params)
                     }
                     true
                 }
@@ -754,7 +802,7 @@ class OverlayWindowService : Service() {
                     } else {
                         params.x = 0
                         persistCart()
-                        runCatching { wm.updateViewLayout(v, params) }
+                        updateOverlayView(v, params)
                         if (!moved) {
                             val currentlyOk = data?.optBoolean("ok") == true && data?.optJSONObject("result") != null
                             if (isPdpScrollHint) {
@@ -778,7 +826,7 @@ class OverlayWindowService : Service() {
             }
         }
 
-        if (runCatching { wm.addView(view, params) }.isFailure) return
+        if (!addOverlayView(view, params)) return
         pill = view
         pillDotView = dotView
         pillTextView = labelView
@@ -786,7 +834,7 @@ class OverlayWindowService : Service() {
     }
 
     private fun removePill() {
-        pill?.let { runCatching { wm.removeView(it) } }
+        removeOverlayView(pill)
         pill = null
         pillDotView = null
         pillTextView = null
@@ -1012,7 +1060,7 @@ class OverlayWindowService : Service() {
         backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             setMargins(dp(10), dp(10), dp(10), dp(24))
         })
-        if (runCatching { wm.addView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)) }.isSuccess) {
+        if (addOverlayView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true))) {
             card = backdrop
             isAuditorOpen = true
         }
@@ -1133,7 +1181,7 @@ class OverlayWindowService : Service() {
         backdrop.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             setMargins(dp(10), dp(10), dp(10), dp(24))
         })
-        if (runCatching { wm.addView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)) }.isSuccess) {
+        if (addOverlayView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true))) {
             card = backdrop
             isAuditorOpen = true
         }
@@ -1645,7 +1693,7 @@ class OverlayWindowService : Service() {
         })
 
         val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)
-        if (runCatching { wm.addView(backdrop, params) }.isSuccess) {
+        if (addOverlayView(backdrop, params)) {
             card = backdrop
         }
     }
@@ -1771,7 +1819,7 @@ class OverlayWindowService : Service() {
         })
 
         val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)
-        if (runCatching { wm.addView(backdrop, params) }.isSuccess) {
+        if (addOverlayView(backdrop, params)) {
             card = backdrop
         }
     }
@@ -1843,7 +1891,7 @@ class OverlayWindowService : Service() {
     }
 
     private fun removeCard() {
-        card?.let { runCatching { wm.removeView(it) } }
+        removeOverlayView(card)
         card = null
         isAuditorOpen = false
     }
@@ -1953,7 +2001,7 @@ class OverlayWindowService : Service() {
     /* ---------------- Helpers ---------------- */
 
     private fun removeSetupGuide() {
-        setupGuideView?.let { runCatching { wm.removeView(it) } }
+        removeOverlayView(setupGuideView)
         setupGuideView = null
     }
 
@@ -2098,8 +2146,9 @@ class OverlayWindowService : Service() {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             y = dp(64)
         }
-        setupGuideView = banner
-        runCatching { wm.addView(banner, lp) }
+        if (addOverlayView(banner, lp)) {
+            setupGuideView = banner
+        }
     }
 
     private fun dp(v: Int): Int = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()

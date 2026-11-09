@@ -16,13 +16,46 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
-/** GET returns the rubric so clients can inspect the exact deterministic rules. */
-export function GET() {
+/**
+ * GET returns the rubric when called without query params, or executes a fast
+ * 1-step scan when ?q= / ?productTitle= / ?barcode= is provided (used by the
+ * 1-step iPhone Share Sheet / Back Tap / Action Button Shortcut).
+ */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const q = (searchParams.get("q") || searchParams.get("productTitle") || "").trim();
+  const barcode = (searchParams.get("barcode") || "").trim();
+  if (q || barcode) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+    if (!checkRateLimit(`scan:${ip}`, 90)) {
+      return NextResponse.json({ ok: false, error: "Too many scan requests. Please wait a moment." }, { status: 429, headers: CORS });
+    }
+    const format = (searchParams.get("format") || "ios_text").trim();
+    const store = (searchParams.get("store") || "walmart").trim() as ScanRequest["store"];
+    const scan = await runScan({
+      productTitle: q || undefined,
+      barcode: barcode || undefined,
+      store,
+      format: format === "json" ? "json" : "ios_text",
+    });
+    if (format !== "json") {
+      const text = scan.ok ? toIosText(scan) : `⚠️ CleanCart: ${scan.error}`;
+      return new NextResponse(text, {
+        status: scan.ok ? 200 : scan.status,
+        headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+    if (!scan.ok) {
+      return NextResponse.json({ ok: false, error: scan.error }, { status: scan.status, headers: CORS });
+    }
+    return NextResponse.json(scan, { headers: CORS });
+  }
+
   return NextResponse.json(
     {
       service: "CleanCart scan API",
       rubricVersion: RUBRIC_VERSION,
-      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, surface?, watchlist?, format?: 'json' | 'ios_text' }",
+      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, surface?, watchlist?, format?: 'json' | 'ios_text' } or GET /api/scan?q=<title>&format=ios_text",
       categories: CATEGORY_LABELS,
       rules: ADDITIVE_RULES.map(({ id, name, risk, category }) => ({ id, name, risk, category })),
     },

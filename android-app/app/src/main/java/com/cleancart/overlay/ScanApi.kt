@@ -84,8 +84,10 @@ object ScanApi {
         return emptyList()
     }
 
-    private const val MAX_CACHE_SIZE = 150
-    private val responseCache = object : LinkedHashMap<String, String>(64, 0.75f, true) {
+    private const val MAX_CACHE_SIZE = 250
+    private val prewarmExecutor = java.util.concurrent.Executors.newFixedThreadPool(2)
+    private val inFlightPrewarms = java.util.Collections.synchronizedSet(HashSet<String>())
+    private val responseCache = object : LinkedHashMap<String, String>(96, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean =
             size > MAX_CACHE_SIZE
     }
@@ -666,6 +668,55 @@ object ScanApi {
         return alerts
     }
 
+    private fun normalizedCacheKey(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val fw = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
+            .map { if (it == "nitrites") "nitrates" else it }
+            .sorted()
+            .joinToString(",")
+        val dw = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
+            .sorted()
+            .joinToString(",")
+        val normTitle = productTitle.lowercase().replace(Regex("\\s+"), " ").trim()
+        val normIng = rawIngredients?.trim().orEmpty()
+        return "${store.lowercase()}|$normTitle|${normIng.hashCode()}|$fw|$dw"
+    }
+
+    /** Instant non-blocking lookup into the in-memory responseCache (<1ms). */
+    fun peekCachedScan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String? {
+        if (productTitle.isBlank()) return null
+        val key = normalizedCacheKey(ctx, productTitle, rawIngredients, store)
+        synchronized(responseCache) {
+            responseCache[key]?.let { return it }
+            if (rawIngredients.isNullOrBlank()) {
+                return null
+            }
+            // If rawIngredients weren't cached yet, do NOT return a title-only entry so exact screen ingredients get scored
+            return null
+        }
+    }
+
+    /** Fire-and-forget background pre-warm triggered on product tap or visible aisle card detection. */
+    fun prewarmScan(ctx: Context, productTitle: String, rawIngredients: String?, store: String) {
+        val clean = productTitle.trim()
+        if (clean.length < 3) return
+        val appCtx = ctx.applicationContext
+        val key = normalizedCacheKey(appCtx, clean, rawIngredients, store)
+        synchronized(responseCache) {
+            if (responseCache.containsKey(key)) return
+        }
+        if (!inFlightPrewarms.add(key)) return
+        prewarmExecutor.execute {
+            try {
+                scan(appCtx, clean, rawIngredients, store)
+            } catch (_: Exception) {
+                // ignore background prewarm failure
+            } finally {
+                inFlightPrewarms.remove(key)
+            }
+        }
+    }
+
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
     fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -674,6 +725,10 @@ object ScanApi {
             .toSet()
         val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
         val refCode = referredByCode(ctx)
+        val normKey = normalizedCacheKey(ctx, productTitle, rawIngredients, store)
+        synchronized(responseCache) {
+            responseCache[normKey]?.let { return it }
+        }
         val body = JSONObject().apply {
             put("productTitle", productTitle)
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
@@ -707,6 +762,7 @@ object ScanApi {
                             saveEntitlementSnapshot(ctx, JSONObject(res).optJSONObject("entitlement"))
                         }
                         synchronized(responseCache) {
+                            responseCache[normKey] = res
                             responseCache[body] = res
                         }
                     }

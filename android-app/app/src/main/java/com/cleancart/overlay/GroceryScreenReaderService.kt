@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.ArrayDeque
@@ -16,7 +17,7 @@ import kotlin.math.abs
 
 /**
  * Reads ONLY the product title (and visible ingredient text, if on screen) from the 12
- * supported grocery apps, debounced by 750ms, then posts to /api/scan and hands the result
+ * supported grocery apps, debounced by 180ms, then posts to /api/scan and hands the result
  * to [OverlayWindowService]. Automatically detects when the user navigates back to a
  * search / aisle scroll view and switches the corner bubble to Mode B (`🛒 Cart Avg`).
  */
@@ -25,6 +26,11 @@ class GroceryScreenReaderService : AccessibilityService() {
     companion object {
         @Volatile
         private var activeInstance: GroceryScreenReaderService? = null
+
+        fun activeWindowManager(): WindowManager? {
+            val svc = activeInstance ?: return null
+            return runCatching { svc.getSystemService(WINDOW_SERVICE) as? WindowManager }.getOrNull()
+        }
 
         fun requestInAppSearch(
             targetPkg: String,
@@ -60,8 +66,8 @@ class GroceryScreenReaderService : AccessibilityService() {
             "com.android.permissioncontroller",
             "com.google.android.permissioncontroller"
         )
-        private const val DEBOUNCE_MS = 420L
-        private const val MAX_DEBOUNCE_WAIT_MS = 1100L
+        private const val DEBOUNCE_MS = 180L
+        private const val MAX_DEBOUNCE_WAIT_MS = 480L
         private const val FOREGROUND_CHECK_MS = 1500L
         private const val MAX_NODES = 1000
         private val TITLE_ID_HINTS = listOf(
@@ -260,15 +266,8 @@ class GroceryScreenReaderService : AccessibilityService() {
             sendToOverlay(OverlayWindowService.ACTION_HIDE)
             overlayVisible = false
         } else {
-            handler.postDelayed(scanRunnable, 250L)
+            handler.postDelayed(scanRunnable, 150L)
         }
-    }
-
-    override fun onDestroy() {
-        if (activeInstance === this) {
-            activeInstance = null
-        }
-        super.onDestroy()
     }
 
     private fun addCandidateStrings(target: MutableList<String>, raw: CharSequence?) {
@@ -313,7 +312,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 lastHorizontalScrollAtMs = System.currentTimeMillis()
             }
             handler.removeCallbacks(scrollSettleScanRunnable)
-            handler.postDelayed(scrollSettleScanRunnable, 850L)
+            handler.postDelayed(scrollSettleScanRunnable, 300L)
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -433,6 +432,13 @@ class GroceryScreenReaderService : AccessibilityService() {
                     lastClickedProductPkg = pkg
                     lastClickedProductAtMs = System.currentTimeMillis()
                     rejectedTitles.clear()
+                    val store = ScanApi.storeForPackage(pkg)
+                    ScanApi.prewarmScan(applicationContext, clickedProduct, null, store)
+                    validClickedCandidates.distinct().take(2).forEach { cand ->
+                        if (cand != clickedProduct) {
+                            ScanApi.prewarmScan(applicationContext, cand, null, store)
+                        }
+                    }
                 }
             }
 
@@ -485,7 +491,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 lastKey = "" // Force re-evaluation so the clicked product is recorded in cart automatically
                 pendingSinceMs = System.currentTimeMillis()
                 handler.removeCallbacks(scanRunnable)
-                handler.postDelayed(scanRunnable, 350L)
+                handler.postDelayed(scanRunnable, 240L)
                 return
             }
         }
@@ -496,14 +502,14 @@ class GroceryScreenReaderService : AccessibilityService() {
             pendingSinceMs = now
             handler.removeCallbacks(scanRunnable)
             handler.removeCallbacks(followUpScanRunnable)
-            handler.postDelayed(scanRunnable, 240L)
-            handler.postDelayed(followUpScanRunnable, 900L)
+            handler.postDelayed(scanRunnable, 110L)
+            handler.postDelayed(followUpScanRunnable, 550L)
             return
         }
         // When waiting on "Scroll down to grade item" (or before any item has been graded), scan rapidly during scroll!
         val waitingForPdpTitle = lastKey.isEmpty() || lastKey.endsWith("|PDP_SCROLL_HINT")
-        val debounceMs = if (waitingForPdpTitle) 180L else DEBOUNCE_MS
-        val maxWaitMs = if (waitingForPdpTitle) 400L else MAX_DEBOUNCE_WAIT_MS
+        val debounceMs = if (waitingForPdpTitle) 110L else DEBOUNCE_MS
+        val maxWaitMs = if (waitingForPdpTitle) 280L else MAX_DEBOUNCE_WAIT_MS
         if (pendingSinceMs == 0L) pendingSinceMs = now
         if (now - pendingSinceMs >= maxWaitMs) {
             handler.removeCallbacks(scanRunnable)
@@ -521,6 +527,9 @@ class GroceryScreenReaderService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        if (activeInstance === this) {
+            activeInstance = null
+        }
         sendToOverlay(OverlayWindowService.ACTION_HIDE)
         handler.removeCallbacksAndMessages(null)
         io.shutdownNow()
@@ -813,13 +822,40 @@ class GroceryScreenReaderService : AccessibilityService() {
             val key = "$pkg|$title|${ingredients?.hashCode() ?: 0}|$inCartOnPdp"
             if (key == lastKey) return
             lastKey = key
+
+            val store = ScanApi.storeForPackage(pkg)
+            val appContext = applicationContext
+            candidates.drop(1).take(2).forEach { cand ->
+                if (cand.lowercase() !in rejectedTitles) {
+                    ScanApi.prewarmScan(appContext, cand, null, store)
+                }
+            }
+
+            // 0ms Fast-Path: if tap pre-scan or aisle pre-warm already cached this exact item, skip "Scanning…" completely!
+            val instantCached = ScanApi.peekCachedScan(appContext, title, ingredients, store)
+            if (instantCached != null && instantCached.contains("\"ok\":true")) {
+                inFlightScanKey = ""
+                if (isConfirmedSinglePdp) {
+                    lastConfirmedPdpTitle = title
+                    lastConfirmedPdpPkg = pkg
+                    lastConfirmedPdpAtMs = System.currentTimeMillis()
+                } else {
+                    lastRowGradedTitle = title
+                }
+                markVisible()
+                sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
+                    putExtra(OverlayWindowService.EXTRA_JSON, instantCached)
+                    putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                    putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
+                }
+                return
+            }
+
             inFlightScanKey = key
             inFlightAtMs = System.currentTimeMillis()
 
             sendToOverlay(OverlayWindowService.ACTION_LOADING) { putExtra(OverlayWindowService.EXTRA_TITLE, title) }
             markVisible()
-            val store = ScanApi.storeForPackage(pkg)
-            val appContext = applicationContext
             io.execute {
                 var winningTitle = title
                 var winningJson: String? = null
