@@ -1212,15 +1212,8 @@ class OverlayWindowService : Service() {
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(android.widget.ImageView(context).apply {
-                setImageResource(R.drawable.broc_mascot)
-                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(8) }
-            })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(text(cartAvgBadge, 10f, INK_3, bold = true).apply { letterSpacing = 0.07f })
-                addView(text("Product Analysis", 17f, INK, bold = true))
+            addView(text(cartAvgBadge, 11f, INK_3, bold = true).apply {
+                letterSpacing = 0.07f
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
             if (prodTitle.isNotBlank()) {
@@ -1423,7 +1416,7 @@ class OverlayWindowService : Service() {
         // Scanned Product Ingredients box (tap to expand/collapse)
         if (prodIngredients.isNotBlank()) {
             var ingExpanded = false
-            val ingHeaderTv = text("INGREDIENTS · TAP TO EXPAND", 9.5f, INK_3, bold = true).apply {
+            val ingHeaderTv = text("INGREDIENTS", 9.5f, INK_3, bold = true).apply {
                 letterSpacing = 0.06f
             }
             val ingBodyTv = text(prodIngredients, 11f, INK_2).apply {
@@ -1447,7 +1440,6 @@ class OverlayWindowService : Service() {
                 setOnClickListener {
                     ingExpanded = !ingExpanded
                     ingBodyTv.maxLines = if (ingExpanded) 12 else 2
-                    ingHeaderTv.text = if (ingExpanded) "INGREDIENTS · TAP TO COLLAPSE" else "INGREDIENTS · TAP TO EXPAND"
                 }
             })
         }

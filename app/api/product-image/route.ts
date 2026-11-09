@@ -49,8 +49,8 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   if (/\b(cookie|cookies|oreo|wafer)\b/.test(s)) return { relPath: "public/swaps/cookies.png", contentType: "image/png" };
   if (/\b(chocolate|hershey|reese|snickers|twix|m&m|kit\s*kat|brownie)\b/.test(s)) return { relPath: "public/swaps/chocolate.png", contentType: "image/png" };
   if (/\b(bread|bagel|bun|roll|tortilla|waffle|pancake|muffin|pastry|donut)\b/.test(s)) return { relPath: "public/swaps/bread.jpg", contentType: "image/jpeg" };
-  if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|mustard|bbq|sauce|marinara|salsa|soup|chowder|broth)\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
-  if (/\b(turkey|chicken|beef|pork|bacon|sausage|hot\s*dog|salami|ham|deli|meat)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
+  if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|mustard|bbq|wasabi|horseradish|sauce|marinara|salsa|soup|chowder|broth)\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
+  if (/\b(turkey|chicken|beef|pork|bacon|sausage|hot\s*dog|salami|ham|deli|meat|jerky)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
   return { relPath: "public/swaps/drink.png", contentType: "image/png" };
 }
 
@@ -82,7 +82,8 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
     .replace(/\([^)]*$/g, " ")
     .replace(/\b(natural\s+sweeteners|creamery\s+butter|conventional\s+grocery)\b/gi, " ")
     .replace(/\s*,\s*ratings?\b/gi, " ")
-    .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|pk|g|kg|ml|l|cup|bag|box|can|jar|bottle|as|assorted))\b/gi, " ")
+    .replace(/\b(\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pack|pk|g|kg|ml|l|cup|bag|box|can|jar|bottle|as|assorted)s?)\b/gi, " ")
+    .replace(/\bpack\s+of\s+\d+\b/gi, " ")
     .replace(/\b(snack\s+size|family\s+size|party\s+size|share\s+size|fun\s+size|candy\s+bag|candy\s+bars?|gourmet\s+gift\s+box)\b/gi, " ")
     .replace(/\btruffl\.*/gi, "Truffles")
     .replace(/\bchocolat\.*/gi, "Chocolate")
@@ -96,7 +97,10 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
   const cached = imageUrlCache.get(cacheKey);
   if (cached) return cached;
 
-  const queriesToTry = [clean];
+  const queriesToTry = [
+    `brands_tags:${tokens[0]} ${tokens.slice(1).join(" ")}`,
+    clean,
+  ];
   if (tokens.length > 3) {
     queriesToTry.push(tokens.slice(0, 3).join(" "));
   }
@@ -104,7 +108,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
   // OpenFoodFacts Search-a-licious v3 open-licensed product image lookup (ODbL / CC-BY-SA 3.0)
   for (const searchQ of queriesToTry) {
     try {
-      const offUrl = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(searchQ)}&page_size=6&fields=code,product_name,brands,image_front_small_url,image_front_url`;
+      const offUrl = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(searchQ)}&page_size=6&fields=code,product_name,product_name_en,brands,image_front_small_url,image_front_url`;
       const res = await fetch(offUrl, {
         headers: { "User-Agent": "HeyBroc/2.0 (https://www.heybroc.com)" },
         signal: AbortSignal.timeout(3800),
@@ -113,6 +117,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
         const data = (await res.json()) as {
           hits?: Array<{
             product_name?: string;
+            product_name_en?: string;
             brands?: string | string[];
             image_front_small_url?: string;
             image_front_url?: string;
@@ -122,7 +127,7 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
           const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
           return (
             (p.image_front_small_url || p.image_front_url) &&
-            hasProductIdentityMatch(searchQ, `${brandsStr} ${p.product_name || ""}`.trim())
+            hasProductIdentityMatch(clean, `${brandsStr} ${p.product_name_en || p.product_name || ""}`.trim())
           );
         });
         const url = hit?.image_front_small_url || hit?.image_front_url;

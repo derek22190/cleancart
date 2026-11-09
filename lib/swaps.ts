@@ -672,6 +672,17 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
+    match: /\b(wasabi|horseradish|inglehoffer|beaver\s+brand)\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Bubbies",
+      name: "Organic Pure Prepared Horseradish & Wasabi",
+      size: "6.5 oz jar",
+      image: "/swaps/mustard.png",
+      ingredients: "Organic grated horseradish roots, water, organic white distilled vinegar, organic wasabi root, sea salt.",
+    },
+  },
+  {
     match: /\b(bbq|barbecue|sweet\s+baby\s+ray'?s|kc\s+masterpiece|bull'?s-?eye|steak\s+sauce|a\.?1\.?|heinz\s+57|worcestershire)\b/i,
     alt: {
       category: "Dressings",
@@ -1004,8 +1015,8 @@ const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
   ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat thins|graham)\b/i],
   ["Chips", /\b(chips|crisps|tortilla chips|doritos|pringles|cheetos|cheese puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
   ["Cereal", /\b(cereal|flakes|granola|loops|o'?s|oreo\s+puffs?|reese'?s\s+puffs?|cocoa\s+puffs?|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran|syrup)\b/i],
-  ["Dressings", /\b(gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|bbq|barbecue|sauce|salsa|marinara|hummus|guacamole|tzatziki)\b/i],
-  ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|kielbasa|lunch ?meat|roast beef|chicken breast|chicken patties|nuggets|tenders|beef|steak|pork)\b/i],
+  ["Dressings", /\b(gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|wasabi|horseradish|bbq|barbecue|sauce|salsa|marinara|hummus|guacamole|tzatziki)\b/i],
+  ["Deli Meat", /\b(turkey|ham|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|kielbasa|lunch ?meat|roast beef|chicken breast|chicken patties|nuggets|tenders|beef|steak|pork|jerky)\b/i],
   ["Butter/Dairy", /\b(butter|margarine|spread|milk|eggnog|egg nog|cheese|velveeta|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
   ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza|hot pockets?)\b/i],
   ["Snacks", /\b(bars?|cookies?|wafers?|knoppers|storck|merci|kinder|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|monster|red\s*bull|celsius|pre[- ]?workout|water|tea|coffee|peanut butter|almond butter|nutella|jam|jelly|cake\s+roll)\b/i],
@@ -1164,6 +1175,7 @@ function conciseClubQuery(q: string): string {
   if (/\b(bread|ezekiel|sprouted)\b/.test(s)) return "Ezekiel Sprouted Bread";
   if (/\b(mayonnaise|mayo)\b/.test(s)) return "Primal Kitchen Avocado Oil Mayo";
   if (/\b(ketchup)\b/.test(s)) return "Organic Ketchup";
+  if (/\b(wasabi|horseradish)\b/.test(s)) return "Organic Prepared Horseradish";
   if (/\b(mustard)\b/.test(s)) return "Organic Mustard";
   if (/\b(bbq)\b/.test(s)) return "Organic BBQ Sauce";
   if (/\b(marinara|rao)\b/.test(s)) return "Rao's Marinara";

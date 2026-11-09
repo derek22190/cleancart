@@ -237,8 +237,8 @@ function relevance(query: string, candidate: string): number {
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
-  const isOff = url.includes("openfoodfacts.org");
-  if (isOff && Date.now() < offUnavailableUntil) {
+  const isOffV2Product = url.includes("world.openfoodfacts.org/api/v2/product/");
+  if (isOffV2Product && Date.now() < offUnavailableUntil) {
     return null;
   }
   try {
@@ -248,14 +248,13 @@ async function getJson<T>(url: string): Promise<T | null> {
       cache: "no-store",
     });
     if (!res.ok) {
-      if (isOff && (res.status === 429 || res.status >= 502)) {
-        offUnavailableUntil = Date.now() + 60 * 1000;
+      if (isOffV2Product && (res.status === 429 || res.status >= 502)) {
+        offUnavailableUntil = Date.now() + 30 * 1000;
       }
       return null;
     }
     const type = res.headers.get("content-type") || "";
     if (!type.includes("json")) {
-      if (isOff) offUnavailableUntil = Date.now() + 60 * 1000;
       return null;
     }
     return (await res.json()) as T;
@@ -272,7 +271,7 @@ interface OffProduct {
   code?: string;
   product_name?: string;
   product_name_en?: string;
-  brands?: string;
+  brands?: string | string[];
   ingredients_text?: string;
   ingredients_text_en?: string;
   lang?: string;
@@ -283,6 +282,12 @@ interface OffProduct {
   labels_tags?: string[];
   last_modified_t?: number;
   nutriments?: Record<string, number | string | undefined>;
+}
+
+function normalizeOffBrand(brands?: string | string[]): string {
+  if (!brands) return "";
+  if (Array.isArray(brands)) return brands.filter(Boolean).join(", ");
+  return brands;
 }
 
 const OFF_FIELDS =
@@ -329,19 +334,23 @@ function bestOffImage(p?: OffProduct): string | undefined {
 function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | null {
   let best: OffProduct | null = null;
   let bestScore = 0;
+  const qToks = tokens(query);
+  const firstTok = qToks[0] || "";
   for (const p of products) {
     const ing = englishIngredients(p);
     if (!ing) continue;
-    const name = `${p.brands || ""} ${p.product_name_en || p.product_name || ""}`;
+    const brandStr = normalizeOffBrand(p.brands);
+    const name = `${brandStr} ${p.product_name_en || p.product_name || ""}`.trim();
     if (!passesVariantGuard(query, name)) continue;
     const nutrition = extractOffNutrition(p);
     if (isDietaryOrVariantMismatch(query, name, ing, nutrition)) continue;
     const r = relevance(query, name);
     if (r < 0.45) continue;
-    const bonus = bestOffImage(p) ? 0.03 : 0;
-    if (r + bonus > bestScore) {
+    const brandMatchBonus = firstTok.length >= 3 && brandStr.toLowerCase().includes(firstTok) ? 0.08 : 0;
+    const imgBonus = bestOffImage(p) ? 0.03 : 0;
+    if (r + brandMatchBonus + imgBonus > bestScore) {
       best = p;
-      bestScore = r + bonus;
+      bestScore = r + brandMatchBonus + imgBonus;
     }
   }
   return best;
@@ -388,9 +397,15 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
     typeof p.last_modified_t === "number" && p.last_modified_t > 0
       ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10)
       : null;
+  const brandStr = normalizeOffBrand(p.brands).split(",")[0]?.trim() || undefined;
+  const rawName = (p.product_name_en || p.product_name || fallbackTitle).trim();
+  const fullTitle =
+    brandStr && !rawName.toLowerCase().startsWith(brandStr.toLowerCase())
+      ? `${brandStr} ${rawName}`
+      : rawName;
   return {
-    productTitle: p.product_name_en || p.product_name || fallbackTitle,
-    brand: p.brands?.split(",")[0]?.trim() || undefined,
+    productTitle: fullTitle,
+    brand: brandStr,
     barcode: p.code,
     ingredients: englishIngredients(p),
     imageUrl: bestOffImage(p),
@@ -456,7 +471,9 @@ async function openFactsVerticalSearch(title: string): Promise<Omit<LookupResult
     : ["https://world.openbeautyfacts.org", "https://world.openproductsfacts.org"];
   const responses = await Promise.all(
     hosts.map((host) =>
-      getJson<{ products?: OffProduct[] }>(`${host}/api/v2/search?search_terms=${q}&fields=${OFF_FIELDS}&page_size=20`),
+      getJson<{ products?: OffProduct[] }>(
+        `${host}/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=20&fields=${OFF_FIELDS}`,
+      ),
     ),
   );
   for (const res of responses) {
@@ -478,37 +495,51 @@ interface OffSearchHit {
 }
 
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
-  const q = encodeURIComponent(title);
-  // 1. Run Open Food Facts Search-a-licious v3 full-text search + vertical search concurrently
-  // (Note: world.openfoodfacts.org/api/v2/search ignores search_terms and returns random French products;
-  //  search.openfoodfacts.org/search is Open Food Facts' actual full-text search index.)
-  const [searchRes, vertical] = await Promise.all([
+  const toks = tokens(title);
+  const firstTok = toks[0] || "";
+  const brandQuery =
+    toks.length >= 2 ? `brands_tags:${firstTok} ${toks.slice(1).join(" ")}` : title;
+
+  // 1. Run Open Food Facts Search-a-licious v3 (brand-tagged + full text) and vertical search concurrently
+  const [v3Brand, v3Text, vertical] = await Promise.all([
     getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${q}&page_size=16&fields=code,product_name,product_name_en,brands,states_tags,image_front_url,image_url,image_front_small_url`,
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=10&fields=code,product_name,product_name_en,brands,states_tags,image_front_url,image_url,image_front_small_url`,
+    ),
+    getJson<{ hits?: OffSearchHit[] }>(
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(title)}&page_size=16&fields=code,product_name,product_name_en,brands,states_tags,image_front_url,image_url,image_front_small_url`,
     ),
     openFactsVerticalSearch(title),
   ]);
   if (vertical) return vertical;
 
-  const hits = searchRes?.hits || [];
-  const ranked = hits
+  const combinedHits: OffSearchHit[] = [];
+  const seenCodes = new Set<string>();
+  for (const h of [...(v3Brand?.hits || []), ...(v3Text?.hits || [])]) {
+    const code = (h.code || "").trim();
+    if (!code || seenCodes.has(code)) continue;
+    seenCodes.add(code);
+    combinedHits.push(h);
+  }
+
+  const ranked = combinedHits
     .filter(
       (h) =>
         h.code &&
         (!Array.isArray(h.states_tags) || h.states_tags.includes("en:ingredients-completed")),
     )
     .map((h) => {
-      const brandStr = Array.isArray(h.brands) ? h.brands.join(" ") : h.brands || "";
+      const brandStr = normalizeOffBrand(h.brands);
       const name = `${brandStr} ${h.product_name_en || h.product_name || ""}`.trim();
       if (!passesVariantGuard(title, name)) return { h, score: 0 };
       const r = relevance(title, name);
-      if (r < 0.55) return { h, score: 0 };
+      if (r < 0.5) return { h, score: 0 };
+      const brandBonus = firstTok.length >= 3 && brandStr.toLowerCase().includes(firstTok) ? 0.08 : 0;
       const hasImg = Boolean(h.image_front_url || h.image_url || h.image_front_small_url);
-      return { h, score: r + (hasImg ? 0.03 : 0) };
+      return { h, score: r + brandBonus + (hasImg ? 0.03 : 0) };
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 2);
+    .slice(0, 3);
 
   if (!ranked.length) return null;
 
@@ -520,14 +551,19 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     ),
   );
 
-  for (const detail of productDetails) {
-    const p = detail?.product;
+  for (let i = 0; i < productDetails.length; i++) {
+    const p = productDetails[i]?.product;
     if (!p) continue;
     const ing = englishIngredients(p);
     if (!ing) continue;
-    const name = `${p.brands || ""} ${p.product_name_en || p.product_name || ""}`.trim();
+    const brandStr = normalizeOffBrand(p.brands);
+    const name = `${brandStr} ${p.product_name_en || p.product_name || ""}`.trim();
     if (!passesVariantGuard(title, name)) continue;
     if (isDietaryOrVariantMismatch(title, name, ing, extractOffNutrition(p))) continue;
+    if (!bestOffImage(p)) {
+      const hitImg = bestOffImage(ranked[i].h);
+      if (hitImg) p.image_front_url = hitImg;
+    }
     return offToResult(p, title);
   }
   return null;
@@ -1965,10 +2001,60 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     sourceUrl: "https://www.kindsnacks.com/products/dark-chocolate-nuts-sea-salt",
     verifiedAt: "2026-11-08",
   },
+  {
+    match: /\binglehoffer\b.*\b(wasabi|horseradish)\b|\b(hot\s+creamy\s+wasabi\s+horseradish)\b/i,
+    brand: "Inglehoffer",
+    title: "Inglehoffer Hot Creamy Wasabi Horseradish Sauce",
+    ingredients: "Soybean Oil, Water, Horseradish, High Fructose Corn Syrup, White Distilled Vinegar, Egg Yolks, Corn Syrup, Modified Food Starch, Contains Less than 2% of Wasabi Powder, Salt, Mustard Seed, Citric Acid, Mustard Bran, Spices, Xanthan Gum, Sodium Benzoate and Calcium Disodium EDTA (to Preserve Freshness), Artificial Flavor, Yellow 5, Blue 1.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/007/182/800/9124/front_en.11.400.jpg",
+    nutrition: { caloriesKcal100g: 340, sugarsG100g: 12.0, saturatedFatG100g: 5.0, sodiumMg100g: 780, fiberG100g: 2.0, proteinG100g: 1.0, fruitsVegNutsPct: 20, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://world.openfoodfacts.org/product/0071828009124",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\bbeaver(\s+brand)?\b.*\b(wasabi|horseradish)\b|\b(extra\s+hot\s+wasabi\s+horseradish)\b/i,
+    brand: "Beaver Brand",
+    title: "Beaver Brand Extra Hot Wasabi Horseradish Sauce",
+    ingredients: "Grated Horseradish and Wasabi Roots, Water, White Distilled Vinegar, Soybean Oil, Mustard Seed, Sugar, High Fructose Corn Syrup, Eggs, Salt, Modified Food Starch, Xanthan Gum, Citric Acid, Sodium Benzoate, Calcium Disodium EDTA, Artificial Flavor, Yellow 5, Blue 1.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/007/182/800/3009/front_en.14.400.jpg",
+    nutrition: { caloriesKcal100g: 200, sugarsG100g: 10.0, saturatedFatG100g: 2.5, sodiumMg100g: 920, fiberG100g: 3.0, proteinG100g: 1.5, fruitsVegNutsPct: 35, nutriScoreGrade: "c", isWholeFood: false },
+    sourceUrl: "https://world.openfoodfacts.org/product/0071828003009",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\bkikkoman\b.*\bwasabi\b/i,
+    brand: "Kikkoman",
+    title: "Kikkoman Wasabi Sauce",
+    ingredients: "Water, Soybean Oil, Root Blend (Horseradish and Wasabi), Distilled Vinegar, High Fructose Corn Syrup, Corn Starch, Sugar, Salt, Egg Yolks, Mustard Flour, Lemon Juice Concentrate, Artificial Flavoring, Xanthan Gum, Calcium Disodium EDTA (to Protect Flavor and Color), Natural Wasabi Flavor, Yellow 5, Blue 1.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/004/139/000/7002/front_en.11.400.jpg",
+    nutrition: { caloriesKcal100g: 220, sugarsG100g: 14.0, saturatedFatG100g: 2.0, sodiumMg100g: 1600, fiberG100g: 2.0, proteinG100g: 1.5, fruitsVegNutsPct: 20, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://world.openfoodfacts.org/product/0041390007002",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(wasabi[- ]?o|s\s*&\s*b.*wasabi|real\s+wasabi\s+paste|authentic\s+japanese.*wasabi|wasabi\s+paste)\b/i,
+    brand: "Wasabi-O",
+    title: "Wasabi-O Real Prepared Wasabi Paste",
+    ingredients: "Water, Wasabi Japonica, Horseradish, Rice Bran Oil, Salt, Sorbitol, Citric Acid, Xanthan Gum, Turmeric, Spirulina Extract.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/490/100/207/5484/front_en.101.400.jpg",
+    nutrition: { caloriesKcal100g: 240, sugarsG100g: 8.0, saturatedFatG100g: 1.5, sodiumMg100g: 1850, fiberG100g: 4.0, proteinG100g: 2.0, fruitsVegNutsPct: 45, nutriScoreGrade: "c", isWholeFood: false },
+    sourceUrl: "https://world.openfoodfacts.org/product/4901002075484",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\bwicked\s+cutz\b.*\b(bacon|jerky)\b/i,
+    brand: "Wicked Cutz",
+    title: "Wicked Cutz Thick Cut Bacon Jerky",
+    ingredients: "Pork, Water, Brown Sugar, Sugar, Salt, Maple Syrup, Vinegar, Celery Powder, Sea Salt, Natural Smoke Flavor.",
+    imageUrl: "/products/turkey.jpg",
+    nutrition: { caloriesKcal100g: 390, sugarsG100g: 14.0, saturatedFatG100g: 8.5, sodiumMg100g: 1250, fiberG100g: 0, proteinG100g: 35.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://wickedcutz.com/products/maple-bacon-jerky",
+    verifiedAt: "2026-11-08",
+  },
 ];
 
 const UI_NOISE_QUERY =
-  /\b(bought \d+\+?\s*times?|stay stocked|last purchased|price may vary|max \d+ per order|final cost by weight|instant savings|really philly good|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|usual items in stock|out of stock|replace with best match|add note for shopper|item instructions|visit the store|freshness guarantee|see customer images|from the manufacturer|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|&\s*more\.?$|^(?:(?:flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|.*\bsam'?s\s+club|\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(?:street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
+  /\b(bought \d+\+?\s*times?|purchased \d+\+?\s*times?|stay stocked|last purchased|price may vary|max \d+ per order|final cost by weight|instant savings|really philly good|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|usual items in stock|out of stock|replace with best match|add note for shopper|item instructions|visit the store|freshness guarantee|see customer images|from the manufacturer|excellent source of|good source of|hear the highlights|copy associates link|ways to buy|price history|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|&\s*more\.?$|^(?:(?:flavor|flavor\s+name|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|.*\bsam'?s\s+club|\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(?:street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
 const NON_FOOD_GUARD =
   /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i;
@@ -1998,31 +2084,37 @@ const CATEGORY_FALLBACK_CATALOG: Array<{
     nutrition: { caloriesKcal100g: 235, sugarsG100g: 1.0, saturatedFatG100g: 7.5, sodiumMg100g: 740, fiberG100g: 0, proteinG100g: 14.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
   },
   {
-    match: /^(?!.*\b(redhot|wing\s+sauce|buffalo\s+sauce|hot\s+sauce)\b).*\b(hot\s*dogs?|franks?|frankfurters?|wieners?|bologna|salami|pepperoni|pastrami|deli\s+(ham|turkey|chicken|roast\s+beef)|sliced\s+(ham|turkey|chicken)|lunch\s*meat|beef\s+jerky|turkey\s+jerky)\b/i,
+    match: /^(?!.*\b(redhot|wing\s+sauce|buffalo\s+sauce|hot\s+sauce)\b).*\b(hot\s*dogs?|franks?|frankfurters?|wieners?|bologna|salami|pepperoni|pastrami|deli\s+(ham|turkey|chicken|roast\s+beef)|sliced\s+(ham|turkey|chicken)|lunch\s*meat|beef\s+jerky|turkey\s+jerky|bacon\s+jerky|jerky)\b/i,
     brand: "Deli & Cured Meats",
     ingredients: "Beef, Pork, or Poultry, Water, Corn Syrup, Contains 2% or Less of Salt, Dextrose, Sodium Phosphates, Sodium Propionate, Sodium Diacetate, Sodium Benzoate, Flavorings, Sodium Erythorbate, Sodium Nitrite.",
     nutrition: { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 8.5, sodiumMg100g: 980, fiberG100g: 0, proteinG100g: 13.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
   },
   {
-    match: /\b(ketchup|catsup|bbq\s+sauce|barbecue\s+sauce|teriyaki\s+sauce|cocktail\s+sauce|sweet\s*(&|and)\s*sour\s+sauce|hoisin\s+sauce)\b/i,
+    match: /\b(wasabi|horseradish|inglehoffer|beaver\s+brand)\b/i,
+    brand: "Horseradish & Wasabi Condiments",
+    ingredients: "Grated Horseradish and Wasabi Roots, Water, Distilled Vinegar, Soybean Oil, High Fructose Corn Syrup, Salt, Mustard Seed, Xanthan Gum, Citric Acid, Sodium Benzoate, Calcium Disodium EDTA, Artificial Flavor, Yellow 5, Blue 1.",
+    nutrition: { caloriesKcal100g: 220, sugarsG100g: 11.0, saturatedFatG100g: 2.5, sodiumMg100g: 950, fiberG100g: 2.5, proteinG100g: 1.5, fruitsVegNutsPct: 30, nutriScoreGrade: "d", isWholeFood: false },
+  },
+  {
+    match: /\b(ketchup|catsup|bbq\s+sauce|barbecue\s+sauce|teriyaki\s+sauce|teriyaki|cocktail\s+sauce|sweet\s*(&|and)\s*sour\s+sauce|sweet\s+chili|hoisin\s+sauce|hoisin|eel\s+sauce|tonkatsu|duck\s+sauce|plum\s+sauce)\b/i,
     brand: "Condiments & Sauces",
     ingredients: "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
     nutrition: { caloriesKcal100g: 112, sugarsG100g: 22.8, saturatedFatG100g: 0.1, sodiumMg100g: 905, fiberG100g: 0.5, proteinG100g: 1.1, fruitsVegNutsPct: 45, nutriScoreGrade: "d", isWholeFood: false },
   },
   {
-    match: /\b(mayo|mayonnaise|salad\s+dressing|caesar\s+dressing|italian\s+dressing|thousand\s+island|blue\s+cheese\s+dressing|vinaigrette|tartar\s+sauce|aioli|french\s+onion\s+dip|spinach\s+dip)\b/i,
+    match: /\b(mayo|mayonnaise|salad\s+dressing|caesar\s+dressing|italian\s+dressing|thousand\s+island|blue\s+cheese\s+dressing|vinaigrette|tartar\s+sauce|aioli|yum\s+yum\s+sauce|fry\s+sauce|burger\s+sauce|remoulade|dipping\s+sauce|french\s+onion\s+dip|spinach\s+dip)\b/i,
     brand: "Dressings & Spreads",
     ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors, Xanthan Gum.",
     nutrition: { caloriesKcal100g: 640, sugarsG100g: 1.8, saturatedFatG100g: 10.0, sodiumMg100g: 620, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
   },
   {
-    match: /\b(pasta\s+sauce|marinara|spaghetti\s+sauce|tomato\s+sauce|pizza\s+sauce|vodka\s+sauce|meat\s+sauce|salsa|picante|pico\s+de\s+gallo)\b/i,
+    match: /\b(pasta\s+sauce|marinara|spaghetti\s+sauce|tomato\s+sauce|pizza\s+sauce|vodka\s+sauce|meat\s+sauce|enchilada\s+sauce|taco\s+sauce|salsa|picante|pico\s+de\s+gallo)\b/i,
     brand: "Tomato Sauce & Salsa",
     ingredients: "Tomato Puree (Water, Tomato Paste), Diced Tomatoes in Tomato Juice, Onions, Olive Oil, Salt, Garlic, Basil, Oregano, Black Pepper, Citric Acid.",
     nutrition: { caloriesKcal100g: 55, sugarsG100g: 4.5, saturatedFatG100g: 0.4, sodiumMg100g: 360, fiberG100g: 1.8, proteinG100g: 1.5, fruitsVegNutsPct: 85, nutriScoreGrade: "b", isWholeFood: false },
   },
   {
-    match: /\b(mustard|dijon|yellow\s+mustard|hot\s+sauce|buffalo\s+sauce|wing\s+sauce|sriracha|soy\s+sauce|tamari|worcestershire)\b/i,
+    match: /\b(mustard|dijon|yellow\s+mustard|hot\s+sauce|buffalo\s+sauce|wing\s+sauce|sriracha|chili\s+sauce|gochujang|harissa|chimichurri|ponzu|fish\s+sauce|oyster\s+sauce|soy\s+sauce|tamari|worcestershire|relish|chutney|marinade|glaze|simmer\s+sauce|stir[- ]?fry\s+sauce|curry\s+sauce|sauce)\b/i,
     brand: "Condiments",
     ingredients: "Distilled Vinegar, Water, Mustard Seed or Aged Cayenne Red Peppers, Salt, Turmeric, Paprika, Spice, Garlic Powder, Xanthan Gum.",
     nutrition: { caloriesKcal100g: 60, sugarsG100g: 1.0, saturatedFatG100g: 0.2, sodiumMg100g: 1120, fiberG100g: 3.0, proteinG100g: 3.8, fruitsVegNutsPct: 20, nutriScoreGrade: "c", isWholeFood: false },
@@ -2280,11 +2372,14 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         ? entry.title
         : `${entry.brand} ${entry.title}`;
       const resolvedTitle = wordCount <= 2 ? fullEntryTitle : cleanTitle;
+      const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
+        ? entry.imageUrl
+        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}`;
       return {
         productTitle: resolvedTitle,
         brand: entry.brand,
         ingredients: entry.ingredients,
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}`,
+        imageUrl: resolvedImageUrl,
         nutrition: { ...entry.nutrition, isOrganic: entry.nutrition?.isOrganic === true },
         source: "catalog",
         sourceUpdatedAt: entry.verifiedAt,
@@ -2358,6 +2453,9 @@ function cleanSearchQuery(title: string): string {
   return title
     .replace(/[®™©]/g, "")
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
+    .replace(/\s+for\s+(?:sandwiches|sushi|sashimi|dipping|prime\s+rib|steak|salads?|marinades?)\b.*$/i, "")
+    .replace(/\s*[-–—|]\s*pack\s+of\s+\d+.*$/i, "")
+    .replace(/\s*\(\d+(\.\d+)?\s*(?:oz|fl\s*oz|lb|lbs|ct|count|pk|pack|g|kg|ml)\)\s*[-–—|]?.*$/i, "")
     .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:lbs?|oz|fl\s*oz|ct|count|pk|pack|g|kg)\b.*$/i, "")
     .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\b).*$/i, "")
     .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack|dozen)\b.*$/i, "")
@@ -2408,7 +2506,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz)\b/i;
 
   if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
     const directCat = catalogFallback(title);
