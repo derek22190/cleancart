@@ -118,7 +118,7 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
     title: alt.name,
     brand: alt.brand,
     size: alt.size,
-    image: alt.image,
+    image: `/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}`,
     ingredients: alt.ingredients,
     nutrition: { ...alt.nutrition, isOrganic },
     category: cat,

@@ -3072,18 +3072,26 @@ class MainActivity : Activity() {
         val box = FrameLayout(this)
         val fallback = label(
             when {
+                title.contains("sweet potato", true) || title.contains("yam", true) -> "🍠"
+                title.contains("potato", true) -> "🥔"
+                title.contains("turkey", true) || title.contains("chicken", true) || title.contains("rotisserie", true) -> "🍗"
+                title.contains("beef", true) || title.contains("angus", true) || title.contains("patties", true) || title.contains("steak", true) -> "🥩"
+                title.contains("spinach", true) || title.contains("romaine", true) || title.contains("lettuce", true) || title.contains("kale", true) -> "🥬"
                 title.contains("monster", true) || title.contains("red bull", true) || title.contains("energy", true) || title.contains("celsius", true) || title.contains("c4", true) || title.contains("pre-workout", true) || title.contains("alani", true) || title.contains("ghost", true) -> "⚡"
-                title.contains("coca-cola", true) || title.contains("coke", true) || title.contains("pepsi", true) || title.contains("soda", true) || title.contains("mountain dew", true) || title.contains("olipop", true) || title.contains("poppi", true) -> "🥤"
+                title.contains("coca-cola", true) || title.contains("coke", true) || title.contains("pepsi", true) || title.contains("soda", true) || title.contains("mountain dew", true) || title.contains("olipop", true) || title.contains("poppi", true) || title.contains("cola", true) -> "🥤"
                 title.contains("water", true) || title.contains("seltzer", true) || title.contains("spindrift", true) || title.contains("lacroix", true) || title.contains("fiji", true) || title.contains("gatorade", true) || title.contains("prime", true) -> "💧"
                 title.contains("juice", true) || title.contains("orange", true) || title.contains("lemonade", true) || title.contains("sunnyd", true) || title.contains("smoothie", true) -> "🧃"
                 title.contains("coffee", true) || title.contains("frappuccino", true) || title.contains("tea", true) || title.contains("mate", true) || title.contains("kombucha", true) -> "☕"
                 title.contains("ranch", true) || title.contains("salad", true) -> "🥗"
-                title.contains("milk", true) || title.contains("butter", true) || title.contains("oat", true) || title.contains("protein", true) -> "🥛"
+                title.contains("peanut", true) || title.contains("almond butter", true) -> "🥜"
+                title.contains("yogurt", true) || title.contains("cereal", true) || title.contains("granola", true) || title.contains("oats", true) -> "🥣"
+                title.contains("ice cream", true) -> "🍨"
+                title.contains("butter", true) || title.contains("cheese", true) -> "🧈"
+                title.contains("milk", true) || title.contains("oat", true) || title.contains("protein", true) -> "🥛"
                 title.contains("soup", true) || title.contains("chowder", true) -> "🍲"
-                title.contains("cereal", true) || title.contains("granola", true) -> "🥣"
-                title.contains("peanut", true) -> "🥜"
                 title.contains("bread", true) -> "🍞"
                 title.contains("chocolate", true) -> "🍫"
+                title.contains("chips", true) || title.contains("doritos", true) || title.contains("tortilla", true) || title.contains("crackers", true) -> "🥨"
                 else -> "🛒"
             },
             22f, 0xFF111814.toInt()
@@ -3103,8 +3111,8 @@ class MainActivity : Activity() {
         }
         box.addView(iv)
 
-        val fallbackApiUrl = ScanHistoryStore.productImageUrl(title)
-        val primaryUrl = if (imgUrl.startsWith("http") && !imgUrl.contains("/swaps/") && !imgUrl.contains("/products/")) imgUrl else fallbackApiUrl
+        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(title)
+        val primaryUrl = ScanHistoryStore.resolveBestImageUrl(title, imgUrl)
         loadThumbnailAsync(primaryUrl, fallbackApiUrl, iv, fallback)
         return box
     }
@@ -3217,7 +3225,12 @@ class MainActivity : Activity() {
         }
         try {
             if (conn.responseCode in 200..299) {
-                conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                val imgSource = conn.getHeaderField("X-Image-Source").orEmpty()
+                if (imgSource.contains("Category Illustration", ignoreCase = true)) {
+                    null
+                } else {
+                    conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                }
             } else null
         } finally {
             conn.disconnect()

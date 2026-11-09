@@ -1878,10 +1878,8 @@ class OverlayWindowService : Service() {
     private fun buildSwapThumbnailView(swap: JSONObject, sizePx: Int): FrameLayout {
         val swapTitle = swap.optString("title", "Clean Alternative")
         val rawImage = swap.optString("image", "").ifBlank { swap.optString("imageUrl", "") }
-        val fullUrl = when {
-            rawImage.startsWith("https://") && !rawImage.contains("/swaps/") && !rawImage.contains("/products/") -> rawImage
-            else -> ScanHistoryStore.productImageUrl(swapTitle)
-        }
+        val fullUrl = ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage)
+        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(swapTitle)
         val radius = dp(14).toFloat()
         val box = FrameLayout(this).apply {
             background = GradientDrawable().apply {
@@ -1911,18 +1909,19 @@ class OverlayWindowService : Service() {
         }
 
         imageExecutor.execute {
-            val bmp = runCatching {
-                val parsed = URL(fullUrl)
+            fun fetchSwapBitmap(targetUrl: String): Bitmap? = runCatching {
+                val parsed = URL(targetUrl)
                 if (!parsed.protocol.equals("https", ignoreCase = true)) return@runCatching null
                 val conn = (parsed.openConnection() as HttpURLConnection).apply {
                     connectTimeout = 5000
                     readTimeout = 7500
                     instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "HeyBroc-Android/2.0")
                 }
                 try {
                     if (conn.responseCode in 200..299) {
                         val imgSource = conn.getHeaderField("X-Image-Source").orEmpty()
-                        if (swap.optBoolean("isProductHeader", false) && imgSource.contains("Illustration", ignoreCase = true)) {
+                        if (imgSource.contains("Illustration", ignoreCase = true)) {
                             null
                         } else {
                             conn.inputStream.use { stream ->
@@ -1935,8 +1934,15 @@ class OverlayWindowService : Service() {
                     conn.disconnect()
                 }
             }.getOrNull()
+
+            var bmp = fetchSwapBitmap(fullUrl)
+            var cacheKey = fullUrl
+            if (bmp == null && fullUrl != fallbackApiUrl) {
+                bmp = fetchSwapBitmap(fallbackApiUrl)
+                cacheKey = fallbackApiUrl
+            }
             if (bmp != null) {
-                swapBitmapCache.put(fullUrl, bmp)
+                swapBitmapCache.put(cacheKey, bmp)
                 mainUiHandler.post {
                     iv.setPadding(0, 0, 0, 0)
                     iv.setImageBitmap(bmp)

@@ -1385,6 +1385,23 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     Boolean(frapSwap && frapSwap.brand === "SToK" && frapSwap.score === 85)
   );
 
+  const productImageRouteTs = fs.readFileSync("app/api/product-image/route.ts", "utf8");
+  const simulatorTsx = fs.readFileSync("components/Simulator.tsx", "utf8");
+  check(
+    "Product Image Resolution & Brand-Neutral Fallbacks: Verified Open Food Facts catalog mapping, peanut butter before butter routing, hyphenated multi-word brands_tags, and Android history URL auto-upgrade",
+    productImageRouteTs.includes("VERIFIED_PRODUCT_IMAGES") &&
+      productImageRouteTs.indexOf("peanutbutter.png") < productImageRouteTs.indexOf("butter.jpg") &&
+      productImageRouteTs.includes('brands_tags:"${tokens[0]}-${tokens[1]}"') &&
+      productImageRouteTs.includes("BLOCKED_ROTATED_OFF_IMAGE_RE") &&
+      historyStoreKt.includes("VERIFIED_OFF_IMAGES") &&
+      historyStoreKt.includes("fun resolveBestImageUrl") &&
+      historyStoreKt.includes("fun productImageApiFallbackUrl") &&
+      mainKt.includes("ScanHistoryStore.resolveBestImageUrl(title, imgUrl)") &&
+      mainKt.includes('imgSource.contains("Category Illustration", ignoreCase = true)') &&
+      overlayKt.includes("ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage)") &&
+      simulatorTsx.includes("/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}")
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

@@ -290,6 +290,96 @@ object ScanHistoryStore {
         return Regex("\\b(?:canola|sunflower|safflower|soybean|vegetable|palm|corn)\\s+oil\\b", RegexOption.IGNORE_CASE).containsMatchIn(ing)
     }
 
+    private val VERIFIED_OFF_IMAGES: List<Pair<Regex, String>> = listOf(
+        Regex("\\bhidden\\s+valley\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/110/000/3116/front_en.7.400.jpg",
+        Regex("\\bprimal\\s+kitchen\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/468/112/060/0422/front_en.7.400.jpg",
+        Regex("\\bmarketside\\b.*\\b(?:spinach|romaine)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/068/113/139/5502/front_en.3.400.jpg",
+        Regex("\\bcinnamon\\s+toast\\s+crunch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/10167730/front_en.3.400.jpg",
+        Regex("\\bnature'?s\\s+path\\b.*\\bheritage\\s+flakes\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/991/360/277/0206/front_en.4.400.jpg",
+        Regex("\\bmarketside\\b.*\\bclam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/084/013/430/8029/front_en.3.400.jpg",
+        Regex("\\bcampbell'?s\\b.*\\bclam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/100/000/5540/front_en.11.400.jpg",
+        Regex("\\bamy'?s\\b.*\\blentil\\b.*\\bsoup\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/223/400/5833/front_en.3.400.jpg",
+        Regex("\\bdoritos\\b.*\\bnacho\\s+cheese\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/120/010/800/0721/front_en.3.400.jpg",
+        Regex("\\bdoritos\\b.*\\bcool\\s+ranch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/000/284/000/9151/front_en.7.400.jpg",
+        Regex("\\bsiete\\b.*\\btortilla\\s+chips\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/176/900/7003/front_en.13.400.jpg",
+        Regex("\\bsanta\\s+cruz\\b.*\\bpeanut\\s+butter\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/150/090/2882/front_en.28.400.jpg",
+        Regex("\\bgood\\s*(?:&|and)?\\s*gather\\b.*\\bpeanut\\s+butter\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/934/0400/front_en.3.400.jpg",
+        Regex("\\bthree\\s+wishes\\b.*\\bcereal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/001/681/3046/front_en.11.400.jpg",
+        Regex("\\borganic\\s+valley\\b.*\\bbutter\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/396/600/6469/front_en.3.400.jpg",
+        Regex("\\blactaid\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/410/012/2392/front_en.3.400.jpg",
+        Regex("\\bboulder\\s+canyon\\b.*\\b(?:avocado|chips)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/39369635/front_en.3.400.jpg",
+        Regex("\\bdave'?s\\s+killer\\s+bread\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/376/400/5043/front_en.3.400.jpg",
+        Regex("\\bhu\\b.*\\b(?:simple|dark\\s+chocolate|chocolate)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/123/000/009/7000/front_en.18.400.jpg",
+        Regex("\\bmonster\\b.*\\b(?:zero\\s+ultra|ultra\\s+white)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/084/789/2519/front_en.3.400.jpg",
+        Regex("\\bmonster\\s+energy\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/084/703/7712/front_en.8.400.jpg",
+        Regex("\\bred\\s*bull\\b.*\\bsugar\\s*free\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/900/249/025/7064/front_en.4.400.jpg",
+        Regex("\\bred\\s*bull\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/900/249/020/5973/front.24.400.jpg",
+        Regex("\\bcelsius\\b.*\\borange\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/088/939/200/0412/front_en.3.400.jpg",
+        Regex("\\bcelsius\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/088/939/201/0145/front_en.10.400.jpg",
+        Regex("\\bc4\\b.*\\b(?:pre[- ]?workout|icy\\s+blue|powder)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/084/259/510/5575/front_en.3.400.jpg",
+        Regex("\\bc4\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/084/259/512/0349/front_en.17.400.jpg",
+        Regex("\\balani\\s+nu\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/003/051/0024/front_en.3.400.jpg",
+        Regex("\\bghost\\b.*\\benergy\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/002/829/5988/front_en.3.400.jpg",
+        Regex("\\b(?:guayaki|guayakí)\\b.*\\byerba\\s+mate\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/063/243/200/0046/front_en.6.400.jpg",
+        Regex("\\bora\\s+organic\\b.*\\b(?:renewable|pre[- ]?workout)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/672/000/7115/front_en.3.400.jpg",
+        Regex("\\bcore\\s+power\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/061/134/003/2066/front_en.3.400.jpg",
+        Regex("\\borgain\\b.*\\bprotein\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/177/000/8938/front_en.3.400.jpg",
+        Regex("\\bdiet\\s+coke\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/900/002/4692/front_en.11.400.jpg",
+        Regex("\\bcoca[- ]?cola\\b.*\\b(?:classic|original)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/500/011/254/6415/front_de.137.400.jpg",
+        Regex("\\b(?:mountain|mtn)\\s+dew\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/200/003/2448/front_en.12.400.jpg",
+        Regex("\\bolipop\\b.*\\b(?:vintage\\s+cola|cola)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/948/401/5005/front_en.3.400.jpg",
+        Regex("\\bpoppi\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/006/371/0309/front_en.3.400.jpg",
+        Regex("\\bfiji\\b.*\\bwater\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/941/757/400/1424/front_en.3.400.jpg",
+        Regex("\\bspindrift\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/657/900/2910/front_en.19.400.jpg",
+        Regex("\\bgatorade\\b.*\\bfruit\\s+punch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/200/012/2022/front_en.3.400.jpg",
+        Regex("\\bnooma\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/137/300/5044/front_en.5.400.jpg",
+        Regex("\\bprime\\b.*\\b(?:hydration|ice\\s+pop)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/004/000/5226/front_en.3.400.jpg",
+        Regex("\\bsimply\\s+orange\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/500/010/0000/front_en.30.400.jpg",
+        Regex("\\buncle\\s+matt'?s\\b.*\\borange\\s+juice\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/069/706/852/0139/front_en.12.400.jpg",
+        Regex("\\bharmless\\s+harvest\\b.*\\bcoconut\\s+water\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/85902800/front_en.3.400.jpg",
+        Regex("\\bsunny\\s*d\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/020/012/1005/front_en.3.400.jpg",
+        Regex("\\bstarbucks\\b.*\\bfrappuccino\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/200/000/4520/front_en.4.400.jpg",
+        Regex("\\bstok\\b.*\\bcold\\s+brew\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/663/207/2634/front_en.3.400.jpg",
+        Regex("\\bfairlife\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/162/002/0169/front_en.83.400.jpg",
+        Regex("\\bmalk\\b.*\\b(?:almond|milk)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/003/046/4040/front_en.3.400.jpg",
+        Regex("\\boatly\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/906/466/4110/front_en.3.400.jpg",
+        Regex("\\bnesquik\\b.*\\bchocolate\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/800/077/1720/front_en.3.400.jpg",
+        Regex("\\bhorizon\\s+organic\\b.*\\bchocolate\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/663/207/8513/front_en.3.400.jpg",
+        Regex("\\bsimple\\s+truth\\b.*\\bgreek\\s+yogurt\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/010/8333/front_en.3.400.jpg",
+        Regex("\\bbig\\s+k\\b.*\\bcola\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/000/5526/front_en.13.400.jpg",
+        Regex("\\bprivate\\s+selection\\b.*\\bangus\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/022/0691/front_en.3.400.jpg",
+        Regex("\\bfavorite\\s+day\\b.*\\bcookies\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/927/0233/front_en.3.400.jpg",
+        Regex("\\bfavorite\\s+day\\b.*\\bvanilla\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg",
+        Regex("\\bbutterball\\b.*\\bturkey\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg"
+    )
+
+    fun verifiedDirectImageUrl(title: String): String? {
+        val t = title.trim()
+        if (t.isEmpty()) return null
+        return VERIFIED_OFF_IMAGES.firstOrNull { (re, _) -> re.containsMatchIn(t) }?.second
+    }
+
+    fun productImageApiFallbackUrl(title: String): String =
+        "https://www.heybroc.com/api/product-image?q=${java.net.URLEncoder.encode(title.trim(), "UTF-8")}&v=3"
+
+    fun productImageUrl(title: String): String =
+        verifiedDirectImageUrl(title) ?: productImageApiFallbackUrl(title)
+
+    fun resolveBestImageUrl(title: String, rawImageUrl: String): String {
+        verifiedDirectImageUrl(title)?.let { return it }
+        val trimmed = rawImageUrl.trim()
+        if (
+            trimmed.startsWith("https://") &&
+            !trimmed.contains("/swaps/") &&
+            !trimmed.contains("/products/") &&
+            !trimmed.contains("/10603499/") &&
+            (!trimmed.contains("/api/product-image") || trimmed.contains("v=3"))
+        ) {
+            return trimmed
+        }
+        return productImageUrl(title)
+    }
+
     private fun parseList(raw: String): List<JSONObject> = runCatching {
         val arr = JSONArray(raw)
         val out = ArrayList<JSONObject>(arr.length())
@@ -303,13 +393,21 @@ object ScanHistoryStore {
             if (isPoisonedProduceEntry(rawTitle, item)) continue
             val key = canonicalKey(rawTitle)
             if (key.isBlank() || !seenKeys.add(key)) continue
+            item.optJSONObject("product")?.let { prod ->
+                val curImg = prod.optString("imageUrl")
+                prod.put("imageUrl", resolveBestImageUrl(rawTitle, curImg))
+            }
+            item.optJSONObject("swap")?.let { sw ->
+                val swTitle = sw.optString("title")
+                if (swTitle.isNotBlank()) {
+                    val curSwImg = sw.optString("imageUrl").ifBlank { sw.optString("image") }
+                    sw.put("imageUrl", resolveBestImageUrl(swTitle, curSwImg))
+                }
+            }
             out.add(item)
         }
         out
     }.getOrDefault(emptyList())
-
-    fun productImageUrl(title: String): String =
-        "https://www.heybroc.com/api/product-image?q=${java.net.URLEncoder.encode(title.trim(), "UTF-8")}&v=2"
 
     /**
      * Instant 0ms on-device prefix/token matcher across user History, Favorites, and Explore catalog
