@@ -518,9 +518,84 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       hasProductIdentityMatch("Silk Soymilk", "Silk Original Soymilk, 64 fl oz")
   );
 
+  // C1 Triple-Audit: Direct call to resolveBillingPortalCustomer with email or deviceId but no authToken/deviceSecret returns null
+  const spoofedEmailPortal = await resolveBillingPortalCustomer({ email: "victim@example.com" });
+  const spoofedDevicePortal = await resolveBillingPortalCustomer({ deviceId: "victim-device", deviceSecret: "wrong-secret" });
+  check(
+    "C1 Triple-Audit: resolveBillingPortalCustomer enforces authToken / deviceSecret inside lib/entitlements.ts",
+    spoofedEmailPortal === null && spoofedDevicePortal === null
+  );
+
+  // Kroger, Shipt, and DoorDash store-brand catalog & swap verification
+  const bigKMatch = matchDrinkCatalog("Big K Cola Soda");
+  const simpleTruthKombuchaMatch = matchDrinkCatalog("Simple Truth Organic Kombucha Gingerberry");
+  const goodGatherSparklingMatch = matchDrinkCatalog("Good & Gather Sparkling Water Pomegranate Dragonfruit");
+  check(
+    "Kroger/Shipt/DoorDash Drinks: Big K Cola, Simple Truth Organic Kombucha, and Good & Gather Sparkling Water resolve accurately",
+    Boolean(
+      bigKMatch && bigKMatch.brand === "Big K" &&
+      simpleTruthKombuchaMatch && simpleTruthKombuchaMatch.brand === "Simple Truth Organic" && simpleTruthKombuchaMatch.nutrition.isOrganic === true &&
+      goodGatherSparklingMatch && goodGatherSparklingMatch.brand === "Good & Gather" && !goodGatherSparklingMatch.nutrition.isOrganic
+    )
+  );
+
+  const simpleTruthYogurtScan = await runScan({
+    productTitle: "Simple Truth Organic Whole Milk Plain Greek Yogurt",
+    store: "kroger",
+  });
+  const goodGatherPbScan = await runScan({
+    productTitle: "Good & Gather Organic Creamy Peanut Butter",
+    store: "shipt",
+  });
+  const favoriteDayIceCreamScan = await runScan({
+    productTitle: "Favorite Day Classic Vanilla Ice Cream",
+    store: "doordash",
+  });
+  check(
+    "Kroger/Shipt/DoorDash Foods: Simple Truth Organic Greek Yogurt (100/100), Good & Gather Organic PB (85/100), and Favorite Day Vanilla Ice Cream resolve accurately",
+    Boolean(
+      simpleTruthYogurtScan.ok && simpleTruthYogurtScan.result?.score === 100 && simpleTruthYogurtScan.result?.yukaBreakdown?.organicScore === 10 &&
+      goodGatherPbScan.ok && goodGatherPbScan.result?.score === 85 && goodGatherPbScan.result?.yukaBreakdown?.organicScore === 10 &&
+      favoriteDayIceCreamScan.ok && (favoriteDayIceCreamScan.result?.score ?? 100) < 50 &&
+      favoriteDayIceCreamScan.swap?.deepLink?.includes("doordash.com/search/store/")
+    )
+  );
+
+  const shiptSwap = resolveSwap({ score: 20, productTitle: "Big K Cola Soda", store: "shipt", surface: "android" });
+  const krogerSwap = resolveSwap({ score: 20, productTitle: "Big K Cola Soda", store: "kroger", surface: "android" });
+  check(
+    "Kroger/Shipt Swap Routing: Shipt uses /shop/search?query= and Kroger uses kroger.com/search?query=",
+    Boolean(
+      shiptSwap?.deepLink?.startsWith("https://www.shipt.com/shop/search?query=") &&
+      krogerSwap?.deepLink?.startsWith("https://www.kroger.com/search?query=")
+    )
+  );
+
+  // Source-file verification for M4, M6, H5 badge colors, and Shipt onboarding gate
+  const fs = await import("fs");
+  const overlayKt = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt", "utf8");
+  const readerKt = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt", "utf8");
+  const mainKt = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt", "utf8");
+  const productImgRoute = fs.readFileSync("app/api/product-image/route.ts", "utf8");
+  const simTsx = fs.readFileSync("components/Simulator.tsx", "utf8");
+  const authModalTsx = fs.readFileSync("components/AuthModal.tsx", "utf8");
+
+  check(
+    "M4/M6/Shipt UX: OverlayWindowService paid-link + CC BY-SA 3.0, product-image HEAD + CORS, Simulator CC BY-SA 3.0, and Shipt onboarding gate + Continue as guest",
+    overlayKt.includes("Open Food Facts (CC BY-SA 3.0)") &&
+      productImgRoute.includes("Access-Control-Expose-Headers") &&
+      productImgRoute.includes("export const HEAD = GET") &&
+      simTsx.includes("CC BY-SA 3.0") &&
+      readerKt.includes("STORE_ONBOARDING_OR_AUTH_GATE") &&
+      readerKt.includes("ONBOARDING_AUTH_GATE") &&
+      mainKt.includes("Continue as guest") &&
+      authModalTsx.includes("Continue as guest")
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);
 })();
+
 
 

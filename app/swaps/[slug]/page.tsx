@@ -113,13 +113,13 @@ export default async function SwapReportPage({
                 fontSize: 13,
                 fontWeight: 800,
                 background:
-                  yb.glucoseImpact === "Low Sugar / Carb"
+                  yb.glucoseImpact === "Low Sugar / Carb" || yb.glucoseImpact === "No Added Sugar in Ingredients"
                     ? "#dcfce7"
                     : yb.glucoseImpact === "Moderate Sugar / Carb"
                       ? "#fef3c7"
                       : "#fee2e2",
                 color:
-                  yb.glucoseImpact === "Low Sugar / Carb"
+                  yb.glucoseImpact === "Low Sugar / Carb" || yb.glucoseImpact === "No Added Sugar in Ingredients"
                     ? "#166534"
                     : yb.glucoseImpact === "Moderate Sugar / Carb"
                       ? "#92400e"
@@ -152,7 +152,7 @@ export default async function SwapReportPage({
               Shop Clean Swap on Walmart ↗{swap.isPaidLink ? " · paid link" : ""}
             </a>
             <span style={{ display: "block", fontSize: 11, color: "#047857", marginTop: 6 }}>
-              Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. Not affiliated with Walmart or any brand shown.
+              Affiliate disclosure: HeyBroc may earn a commission on qualifying retail purchases at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. Not affiliated with Walmart, Target, Kroger, Shipt, DoorDash, or any brand shown.
             </span>
           </div>
         )}
@@ -206,7 +206,7 @@ export default async function SwapReportPage({
           </b>
           <p style={{ fontSize: 13, color: "#334155", margin: 0, lineHeight: 1.55 }}>{entry.ingredients}</p>
           <p style={{ fontSize: 11.5, color: "#64748b", margin: "8px 0 0", lineHeight: 1.45 }}>
-            <strong>Editorial Opinion &amp; Label Verification Notice:</strong> Scores and explanations reflect HeyBroc&apos;s subjective clean-label rubric for informational comparison only and are not medical, nutritional, or regulatory safety determinations. Most flagged ingredients are permitted for food use or recognized as GRAS by the U.S. FDA. Manufacturers reformulate products periodically and ingredients may vary by region or batch—always check the physical product package. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by {entry.brand}, Walmart, or any retailer or manufacturer.
+            <strong>Editorial Opinion &amp; Label Verification Notice:</strong> Scores and explanations reflect HeyBroc&apos;s subjective clean-label rubric for informational comparison only and are not medical, nutritional, or regulatory safety determinations. Most flagged ingredients are permitted for food use or recognized as GRAS by the U.S. FDA. Manufacturers reformulate products periodically and ingredients may vary by region or batch—always check the physical product package. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by {entry.brand}, Walmart, Target, Kroger, Shipt, DoorDash, or any retailer or manufacturer.
           </p>
         </div>
 
@@ -232,7 +232,7 @@ export default async function SwapReportPage({
               Stop Googling ingredients one by one.
             </h3>
             <p style={{ fontSize: 13.5, color: "#d1fae5", margin: 0, lineHeight: 1.45 }}>
-              HeyBroc floats over Walmart, Sam&apos;s Club, Target, Costco, BJ&apos;s, ALDI, Amazon Fresh &amp; Instacart to grade every item (0–100) and find 1-for-1 Clean Swaps in 1 tap.
+              HeyBroc floats over Walmart, Target, Kroger, Shipt, DoorDash, Sam&apos;s Club, Costco, BJ&apos;s, ALDI, Amazon Fresh &amp; Instacart to grade every item (0–100) and find 1-for-1 Clean Swaps in 1 tap.
             </p>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>

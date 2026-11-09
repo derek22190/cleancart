@@ -1174,6 +1174,69 @@ object ScanHistoryStore {
                     productImageUrl("Horizon Organic Lowfat Chocolate Milk"),
                     "Organic Grade A Lowfat Milk, Organic Cane Sugar, Organic Fair Trade Cocoa, Gellan Gum, Vitamin A Palmitate, Vitamin D3."
                 )
+            ),
+            sampleItem(
+                title = "Simple Truth Organic Whole Milk Plain Greek Yogurt",
+                brand = "Simple Truth Organic",
+                category = "Milk & Dairy",
+                score = 100,
+                rating = "Excellent",
+                color = "green",
+                imageUrl = productImageUrl("Simple Truth Organic Whole Milk Plain Greek Yogurt"),
+                description = "Kroger Simple Truth USDA Organic whole milk plain Greek yogurt with live and active probiotic cultures and zero added sugar.",
+                keywords = "simple truth organic greek yogurt kroger plain greek yogurt yogurt",
+                ingredients = "Cultured Pasteurized Organic Whole Milk. Live and Active Cultures: S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei.",
+                flagged = emptyList(),
+                nutritionScore = 60,
+                nutriGrade = "A",
+                additiveScore = 30,
+                organicScore = 10,
+                swap = null
+            ),
+            sampleItem(
+                title = "Good & Gather Organic Creamy Peanut Butter",
+                brand = "Good & Gather",
+                category = "Peanut Butter",
+                score = 85,
+                rating = "Excellent",
+                color = "green",
+                imageUrl = productImageUrl("Good & Gather Organic Creamy Peanut Butter"),
+                description = "Target & Shipt Good & Gather USDA Organic 2-ingredient creamy peanut butter made with organic dry-roasted peanuts and sea salt.",
+                keywords = "good & gather good and gather organic creamy peanut butter target shipt peanut butter",
+                ingredients = "Organic Dry Roasted Peanuts, Sea Salt.",
+                flagged = emptyList(),
+                nutritionScore = 45,
+                nutriGrade = "A",
+                additiveScore = 30,
+                organicScore = 10,
+                swap = null
+            ),
+            sampleItem(
+                title = "Big K Cola Soda, 12 fl oz",
+                brand = "Big K",
+                category = "Sodas & Prebiotic Drinks",
+                score = 0,
+                rating = "Bad",
+                color = "red",
+                imageUrl = productImageUrl("Big K Cola Soda 12 fl oz"),
+                description = "Kroger store-brand carbonated cola sweetened with high fructose corn syrup and colored with Class IV caramel color.",
+                keywords = "big k cola soda kroger cola soda pop",
+                ingredients = "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavor, Caffeine.",
+                flagged = listOf(
+                    FlagInfo("High Fructose Corn Syrup (HFCS)", 18, "high", "Concentrated industrial fructose syrup."),
+                    FlagInfo("Caramel Color (Class III/IV)", 18, "high", "Synthetic coloring agent.")
+                ),
+                nutritionScore = 0,
+                nutriGrade = "E",
+                additiveScore = 0,
+                organicScore = 0,
+                swap = swapObj(
+                    "OLIPOP Classic Vintage Cola Prebiotic Soda",
+                    "OLIPOP",
+                    82,
+                    productImageUrl("OLIPOP Vintage Cola"),
+                    "Carbonated Water, OLISMART (Cassava Root Fiber, Chicory Root Inulin, Jerusalem Artichoke Inulin, Nopal Cactus, Marshmallow Root, Calendula Flower, Kudzu Root), Apple Juice Concentrate, Cassava Root Syrup, Cane Sugar, Caramel, Natural Vanilla Flavor, Cinnamon Extract, Stevia Leaf, Himalayan Pink Salt, Green Tea Caffeine."
+                )
             )
         )
     }

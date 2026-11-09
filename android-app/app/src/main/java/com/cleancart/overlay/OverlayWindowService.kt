@@ -899,7 +899,8 @@ class OverlayWindowService : Service() {
                     setPadding(dp(8), dp(4), dp(8), dp(4))
                 })
                 if (item.score < 75 && item.swapObj != null) {
-                    addView(text("Swap", 12f, Color.WHITE, bold = true).apply {
+                    val itemPaid = item.swapObj?.optBoolean("isPaidLink", false) == true
+                    addView(text(if (itemPaid) "Swap · paid link" else "Swap", 12f, Color.WHITE, bold = true).apply {
                         setPadding(dp(10), dp(5), dp(10), dp(5))
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                         setOnClickListener { openSwap(item.swapObj!!, item) }
@@ -932,6 +933,8 @@ class OverlayWindowService : Service() {
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
             val count = dirtyWithSwaps.size
+            val anyPaidLink = dirtyWithSwaps.any { it.swapObj?.optBoolean("isPaidLink", false) == true }
+            val paidSuffix = if (anyPaidLink) " · paid link" else ""
             val ctaText = when {
                 count == 1 -> {
                     val onlyItem = dirtyWithSwaps[0]
@@ -940,13 +943,13 @@ class OverlayWindowService : Service() {
                     val swapScore = swapObj.optInt("score", 90)
                     val unlocked = ScanApi.isSwapUnlocked(this, onlyItem.title, swapTitle)
                     when {
-                        unlocked -> "🔁 Swap Flagged Item → $swapTitle ($swapScore/100)"
-                        rem > 0 -> "🔓 Reveal Clean Swap ($swapScore/100) · $rem/$lim Free Left"
+                        unlocked -> "🔁 Swap Flagged Item → $swapTitle ($swapScore/100)$paidSuffix"
+                        rem > 0 -> "🔓 Reveal Clean Swap ($swapScore/100) · $rem/$lim Free Left$paidSuffix"
                         else -> "🔒 Unlock Clean Swap ($swapScore/100) — Go Pro"
                     }
                 }
                 ScanApi.isProActive(this) || rem > 0 ->
-                    "🔁 Swap All $count Flagged Items (Cart Avg $avg → $projectedAvg/100)"
+                    "🔁 Swap All $count Flagged Items (Cart Avg $avg → $projectedAvg/100)$paidSuffix"
                 else ->
                     "🔒 Swap All $count Flagged Items (Avg $avg → $projectedAvg/100) — Go Pro"
             }
@@ -1071,6 +1074,7 @@ class OverlayWindowService : Service() {
             val swapObj = item.swapObj ?: continue
             val swapTitle = swapObj.optString("title", "Clean Alternative")
             val swapScore = swapObj.optInt("score", 90)
+            val swapPaid = swapObj.optBoolean("isPaidLink", false)
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -1094,7 +1098,7 @@ class OverlayWindowService : Service() {
                         ellipsize = TextUtils.TruncateAt.END
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     })
-                    addView(text("Swap ↗", 12f, Color.WHITE, bold = true).apply {
+                    addView(text(if (swapPaid) "Swap ↗ · paid link" else "Swap ↗", 12f, Color.WHITE, bold = true).apply {
                         setPadding(dp(12), dp(7), dp(12), dp(7))
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
@@ -1106,7 +1110,9 @@ class OverlayWindowService : Service() {
 
         val worstItem = sortedDirty.firstOrNull()
         if (worstItem?.swapObj != null) {
-            sheet.addView(text("⚡ Start with Lowest Score (${worstItem.score}/100) in $storeName ↗", 13.5f, Color.WHITE, bold = true).apply {
+            val worstPaid = worstItem.swapObj?.optBoolean("isPaidLink", false) == true
+            val worstSuffix = if (worstPaid) " · paid link" else ""
+            sheet.addView(text("⚡ Start with Lowest Score (${worstItem.score}/100) in $storeName ↗$worstSuffix", 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
@@ -1607,7 +1613,7 @@ class OverlayWindowService : Service() {
         val provenanceLine = buildString {
             append("Source: $sourceLabel")
             if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
-            append(" · Tap to report a mistake")
+            append(" · Photos: Open Food Facts (CC BY-SA 3.0) · Tap to report a mistake")
         }
         sheet.addView(
             text(provenanceLine, 9.5f, BRAND, bold = true).apply {
@@ -1848,6 +1854,10 @@ class OverlayWindowService : Service() {
         if (raw.contains("aldi.us/results?q=", ignoreCase = true)) {
             val q = raw.substringAfter("results?q=", "")
             return "https://shop.aldi.us/store/aldi/s?k=$q"
+        }
+        if (raw.contains("shipt.com/up/search?query=", ignoreCase = true)) {
+            val q = raw.substringAfter("search?query=", "")
+            return "https://www.shipt.com/shop/search?query=$q"
         }
         return raw
     }

@@ -208,14 +208,16 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
     }
     if (src.includes("/api/product-image")) {
       let cancelled = false;
-      fetch(src, { method: "HEAD" })
+      const probeUrl = src.replace(/^https?:\/\/(www\.)?heybroc\.com/i, "");
+      fetch(probeUrl, { method: "HEAD" })
         .then((res) => {
           if (cancelled) return;
           const lic = res.headers.get("x-image-license");
           const srcHeader = res.headers.get("x-image-source");
           if (lic && lic.includes("CC BY-SA")) {
             setImgLicense(lic);
-            setImgSource(srcHeader || "Open Food Facts");
+            const urlMatch = srcHeader?.match(/https:\/\/[^\s)]+/);
+            setImgSource(urlMatch ? urlMatch[0] : srcHeader || "https://world.openfoodfacts.org");
           } else {
             setImgLicense(null);
             setImgSource(null);
@@ -231,6 +233,12 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
   }, [product.image]);
 
   const isCcBySa = Boolean(imgLicense && imgLicense.includes("CC BY-SA")) || product.lookup?.source === "openfoodfacts";
+  const resolvedSourceUrl =
+    imgSource && imgSource.startsWith("https://")
+      ? imgSource
+      : product.image && (product.image.includes("openfoodfacts.org") || product.image.includes("openfoodfacts.net"))
+        ? product.image
+        : "https://world.openfoodfacts.org";
 
   if (product.image && failed !== product.image) {
     return (
@@ -240,12 +248,20 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
           className={`product-art ${className}`}
           src={product.image}
           alt={`${product.brand} ${product.title}`}
-          title={isCcBySa ? `Image: ${imgSource || "Open Food Facts"} (CC BY-SA 3.0)` : undefined}
+          title={isCcBySa ? `Image: Open Food Facts (${resolvedSourceUrl}) — CC BY-SA 3.0` : undefined}
           onError={() => setFailed(product.image ?? null)}
         />
         {showAttribution && isCcBySa && (
           <small className="product-art-license" style={{ display: "block", fontSize: 9.5, color: "#64748b", marginTop: 2 }}>
-            Image: Open Food Facts (CC BY-SA 3.0)
+            Image:{" "}
+            <a href={resolvedSourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
+              Open Food Facts
+            </a>{" "}
+            (
+            <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
+              CC BY-SA 3.0
+            </a>
+            )
           </small>
         )}
       </>
@@ -1536,7 +1552,7 @@ export default function Simulator() {
                   </div>
                 ) : (
                   <div className="pdp">
-                    <div className="pdp-art"><ProductArt product={active} /></div>
+                    <div className="pdp-art"><ProductArt product={active} showAttribution /></div>
                     <p className="pdp-brand">{active.brand}</p>
                     <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
                     <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
@@ -2382,7 +2398,7 @@ export default function Simulator() {
             {/* Row 1 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Floats on Walmart, Instacart, Target, ALDI &amp; more</b>
+                <b>Floats on Walmart, Target, Kroger, Shipt, DoorDash, Instacart, ALDI &amp; more</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-yes">✓</span>

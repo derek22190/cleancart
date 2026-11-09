@@ -39,6 +39,98 @@ export interface DrinkCatalogEntry {
 }
 
 export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
+  {
+    id: "big-k-cola-soda",
+    title: "Big K Cola Soda, 12 fl oz",
+    brand: "Big K",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Kroger store-brand carbonated cola sweetened with high fructose corn syrup and colored with Class IV caramel color.",
+    keywords: ["big k", "big k cola", "kroger cola", "kroger soda", "cola", "soda"],
+    ingredients:
+      "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavor, Caffeine.",
+    nutrition: {
+      caloriesKcal100g: 42,
+      sugarsG100g: 11.0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 11,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "e",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.kroger.com/p/big-k-cola-soda-cans/0001111049105",
+    verifiedAt: "2026-11-08",
+    match: /\b(big\s+k\s+(?:cola|soda|root\s+beer|dr\s+k|citrus\s+drop)|kroger\s+big\s+k)\b/i,
+  },
+  {
+    id: "simple-truth-organic-kombucha-gingerberry",
+    title: "Simple Truth Organic Kombucha Gingerberry, 16 fl oz",
+    brand: "Simple Truth Organic",
+    category: "Coffee, Tea & Kombucha",
+    description:
+      "Kroger Simple Truth USDA Organic raw fermented probiotic tea with organic ginger juice, blueberry juice, and live active cultures.",
+    keywords: [
+      "simple truth kombucha",
+      "simple truth organic kombucha",
+      "gingerberry kombucha",
+      "kroger kombucha",
+      "kombucha",
+      "tea",
+    ],
+    ingredients:
+      "Purified Water, Organic Kombucha Culture (Water, Organic Cane Sugar, Organic Black Tea, Organic Green Tea, Active Cultures), Organic Ginger Juice, Organic Blueberry Juice, Organic Cane Sugar, Bacillus Coagulans GBI-30 6086.",
+    nutrition: {
+      caloriesKcal100g: 13,
+      sugarsG100g: 2.9,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 2,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 15,
+      nutriScoreGrade: "a",
+      isOrganic: true,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.kroger.com/p/simple-truth-organic-gingerberry-kombucha/0001111002555",
+    verifiedAt: "2026-11-08",
+    match: /\b(simple\s+truth.*kombucha|kombucha.*simple\s+truth)\b/i,
+  },
+  {
+    id: "good-and-gather-sparkling-water",
+    title: "Good & Gather Sparkling Water Pomegranate Dragonfruit, 12 fl oz",
+    brand: "Good & Gather",
+    category: "Waters & Seltzers",
+    description:
+      "Target Good & Gather unsweetened carbonated water with natural fruit essence — 0 calories, 0g sugar, and 0 artificial sweeteners.",
+    keywords: [
+      "good & gather sparkling water",
+      "good and gather sparkling water",
+      "target sparkling water",
+      "pomegranate dragonfruit sparkling water",
+      "sparkling water",
+      "seltzer",
+      "water",
+    ],
+    ingredients: "Carbonated Water, Natural Flavors.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 0,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "a",
+      isOrganic: false,
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.target.com/p/pomegranate-dragon-fruit-sparkling-water-8pk-12-fl-oz-cans-good-38-gather-8482/-/A-54545721",
+    verifiedAt: "2026-11-08",
+    match: /\b(good\s*(?:&|and)\s*gather.*(?:sparkling\s+water|seltzer)|(?:sparkling\s+water|seltzer).*good\s*(?:&|and)\s*gather)\b/i,
+  },
   /* ======================================================================== */
   /* 1. ENERGY DRINKS                                                         */
   /* ======================================================================== */

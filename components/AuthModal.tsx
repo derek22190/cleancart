@@ -655,7 +655,7 @@ export default function AuthModal({
               </button>
             </div>
 
-            {/* Mode Switch + Continue as Guest */}
+            {/* Mode Switch + Shipt-style Outlined Continue as Guest Pill + Terms/Privacy Footer */}
             <div className="gococo-footer-links">
               <button
                 type="button"
@@ -671,14 +671,60 @@ export default function AuthModal({
                   : "New to HeyBroc? Create a free account"}
               </button>
 
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  width: "100%",
+                  margin: "4px 0",
+                  color: "#9ca3af",
+                  fontSize: 12,
+                }}
+                aria-hidden="true"
+              >
+                <span style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                <span>or</span>
+                <span style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+              </div>
+
               <button
                 id="auth-continue-guest"
                 type="button"
-                className="gococo-guest-link"
                 onClick={onClose}
+                style={{
+                  width: "100%",
+                  padding: "12px 18px",
+                  borderRadius: 999,
+                  background: "#ffffff",
+                  border: "1.5px solid #18181b",
+                  color: "#18181b",
+                  fontWeight: 800,
+                  fontSize: 14,
+                  cursor: "pointer",
+                }}
               >
-                Continue as Guest →
+                Continue as guest
               </button>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 12,
+                  fontSize: 11.5,
+                  color: "#6b7280",
+                }}
+              >
+                <a href="/terms" style={{ color: "#4b5563", textDecoration: "underline" }}>
+                  Terms of Service
+                </a>
+                <span>|</span>
+                <a href="/privacy" style={{ color: "#4b5563", textDecoration: "underline" }}>
+                  Privacy &amp; Health Data Notice
+                </a>
+              </div>
             </div>
           </form>
         )}

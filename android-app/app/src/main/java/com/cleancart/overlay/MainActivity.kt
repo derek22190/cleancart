@@ -548,7 +548,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     addView(label("Enable Live Store Bubble ($done/2 ON)", 13.5f, 0xFF14532D.toInt(), bold = true))
-                    addView(label("Auto-scan foods in Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart, ALDI & more", 12f, 0xFF166534.toInt()))
+                    addView(label("Auto-scan foods in Walmart, Target, Kroger, Shipt, DoorDash, Costco, Sam's, BJ's, Amazon Fresh, Instacart, ALDI & more", 12f, 0xFF166534.toInt()))
                 })
                 addView(label("Turn ON →", 12.5f, Color.WHITE, bold = true).apply {
                     setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -1068,7 +1068,7 @@ class MainActivity : Activity() {
         heroBanner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(label("All top picks are 100% unlocked — plus auto-scan inside Walmart & Target", 14.5f, 0xFF111814.toInt()))
+            addView(label("All top picks are 100% unlocked — plus auto-scan inside Walmart, Target, Kroger, Shipt, DoorDash & all 12 stores", 14.5f, 0xFF111814.toInt()))
             addView(label("Manage Live Store Bubble →", 14f, 0xFF2E9E5B.toInt(), bold = true).apply {
                 setPadding(0, dp(6), 0, 0)
             })
@@ -1243,7 +1243,7 @@ class MainActivity : Activity() {
             key = "bubble",
             icon = "MASCOT",
             title = "Live Store Bubble",
-            subtitle = "Auto-grade foods in Walmart, Target, Costco, Sam's Club, BJ's, Amazon Fresh, Instacart, ALDI & more."
+            subtitle = "Auto-grade foods in Walmart, Target, Kroger, Shipt, DoorDash, Costco, Sam's Club, BJ's, Amazon Fresh, Instacart, ALDI & more."
         ) {
             val inner = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1409,7 +1409,7 @@ class MainActivity : Activity() {
             target.addView(stepCard(
                 "Store Bubble Active",
                 "HeyBroc Floats Over Your Grocery Apps",
-                "Open Walmart, Target, Costco, Sam's Club, BJ's, Amazon Fresh, Whole Foods, Instacart, ALDI, Kroger & more — the score bubble pops up automatically when you view food items.",
+                "Open Walmart, Target, Kroger, Shipt, DoorDash, Costco, Sam's Club, BJ's, Amazon Fresh, Whole Foods, Instacart, ALDI & more — the score bubble pops up automatically when you view food items.",
                 statusBadge,
                 primaryButton("Preview Score Bubble Here") { launchTestPill() },
                 primaryButton("Hide Preview Bubble", filled = false) {
@@ -1932,11 +1932,33 @@ class MainActivity : Activity() {
                     onClick = { renderStep("email_register") }
                 ))
 
-                // Subtle Guest Mode link at the bottom
-                card.addView(label("Continue as Guest", 13.5f, 0xFF6B7280.toInt(), bold = true).apply {
+                // Shipt-style "— or —" divider + full-width outlined "Continue as guest" pill button
+                card.addView(label("— or —", 12.5f, 0xFF9CA3AF.toInt()).apply {
                     gravity = Gravity.CENTER
-                    setPadding(dp(8), dp(8), dp(8), dp(2))
+                    setPadding(0, dp(2), 0, dp(10))
+                })
+                card.addView(label("Continue as guest", 15f, 0xFF1F2937.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        setStroke(dp(2), 0xFFD1D5DB.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(12) }
                     setOnClickListener { authDialog?.dismiss() }
+                })
+                card.addView(label("Terms of Service   |   Privacy & Health Data Notice", 11.5f, 0xFF6B7280.toInt()).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(2), dp(8), dp(2))
+                    setOnClickListener {
+                        runCatching {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+                        }
+                    }
                 })
                 return
             }
@@ -2673,7 +2695,7 @@ class MainActivity : Activity() {
         val provenanceLine = buildString {
             append("Source: $sourceLabel")
             if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
-            append(" · Tap to report a mistake")
+            append(" · Photos: Open Food Facts (CC BY-SA 3.0) · Tap to report a mistake")
         }
         sheet.addView(
             label(provenanceLine, 11f, 0xFF0F7A4A.toInt(), bold = true).apply {
@@ -2905,6 +2927,12 @@ class MainActivity : Activity() {
             "aldi" -> " · ALDI"
             "bjs" -> " · BJ's"
             "costco" -> " · Costco"
+            "kroger" -> " · Kroger"
+            "sams" -> " · Sam's Club"
+            "amazon" -> " · Amazon Fresh"
+            "doordash" -> " · DoorDash"
+            "ubereats" -> " · Uber Eats"
+            "shipt" -> " · Shipt"
             "search" -> " · Searched"
             else -> ""
         }
@@ -2970,7 +2998,7 @@ class MainActivity : Activity() {
             "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh"
             "doordash" -> "https://www.doordash.com/search/store/$encoded/"
             "ubereats" -> "https://www.ubereats.com/search?q=$encoded"
-            "shipt" -> "https://www.shipt.com/up/search?query=$encoded"
+            "shipt" -> "https://www.shipt.com/shop/search?query=$encoded"
             else -> "https://www.walmart.com/search?q=$encoded"
         }
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }

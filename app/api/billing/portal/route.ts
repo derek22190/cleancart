@@ -127,7 +127,9 @@ async function createPortalUrl(params: {
   const resolved = await resolveBillingPortalCustomer({
     sessionId: params.sessionId,
     deviceId: resolvedDeviceId || undefined,
+    deviceSecret: params.deviceSecret,
     email: resolvedEmail || undefined,
+    authToken: params.authToken,
   });
 
   if (!resolved?.customerId) {

@@ -153,6 +153,71 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
+    title: "Simple Truth Organic Whole Milk Plain Greek Yogurt",
+    brand: "Simple Truth Organic",
+    ingredients:
+      "Cultured Pasteurized Organic Whole Milk. Live and Active Cultures: S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei.",
+    nutrition: { isOrganic: true, isWholeFood: true },
+    sourceUrl: "https://www.kroger.com/p/simple-truth-organic-plain-whole-milk-greek-yogurt/0001111089910",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Simple Truth Organic Unsweetened Applesauce",
+    brand: "Simple Truth Organic",
+    ingredients: "Organic Apples, Water, Ascorbic Acid (Vitamin C) to Maintain Color.",
+    nutrition: { isOrganic: true, isWholeFood: true },
+    sourceUrl: "https://www.kroger.com/p/simple-truth-organic-unsweetened-applesauce-cups/0001111085432",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Private Selection Angus Beef Patties",
+    brand: "Private Selection",
+    ingredients: "100% USDA Choice Angus Beef.",
+    nutrition: { isOrganic: false, isWholeFood: true },
+    sourceUrl: "https://www.kroger.com/p/private-selection-80-lean-20-fat-angus-beef-chuck-patties/0001111097111",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Good & Gather Organic Creamy Peanut Butter",
+    brand: "Good & Gather",
+    ingredients: "Organic Dry Roasted Peanuts, Sea Salt.",
+    nutrition: { isOrganic: true, isWholeFood: true },
+    sourceUrl: "https://www.target.com/p/organic-unsweetened-creamy-peanut-butter-16oz-good-38-gather-8482/-/A-54516890",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Favorite Day Classic Vanilla Ice Cream",
+    brand: "Favorite Day",
+    ingredients:
+      "Milk, Cream, Skim Milk, Sugar, Corn Syrup, Egg Yolks, Natural Flavor, Mono and Diglycerides, Guar Gum, Locust Bean Gum, Carrageenan, Annatto Extract (Color).",
+    sourceUrl: "https://www.target.com/p/vanilla-bean-ice-cream-48oz-favorite-day-8482/-/A-81502235",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Big K Cola Soda, 12 fl oz",
+    brand: "Big K",
+    ingredients:
+      "Carbonated Water, High Fructose Corn Syrup, Caramel Color, Phosphoric Acid, Natural Flavor, Caffeine.",
+    sourceUrl: "https://www.kroger.com/p/big-k-cola-soda-cans/0001111049105",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Simple Truth Organic Kombucha Gingerberry, 16 fl oz",
+    brand: "Simple Truth Organic",
+    ingredients:
+      "Purified Water, Organic Kombucha Culture (Water, Organic Cane Sugar, Organic Black Tea, Organic Green Tea, Active Cultures), Organic Ginger Juice, Organic Blueberry Juice, Organic Cane Sugar, Bacillus Coagulans GBI-30 6086.",
+    nutrition: { isOrganic: true },
+    sourceUrl: "https://www.kroger.com/p/simple-truth-organic-gingerberry-kombucha/0001111002555",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    title: "Good & Gather Sparkling Water Pomegranate Dragonfruit, 12 fl oz",
+    brand: "Good & Gather",
+    ingredients: "Carbonated Water, Natural Flavors.",
+    sourceUrl: "https://www.target.com/p/pomegranate-dragon-fruit-sparkling-water-8pk-12-fl-oz-cans-good-38-gather-8482/-/A-54545721",
+    verifiedAt: "2026-11-08",
+  },
+  {
     title: "General Mills Cinnamon Toast Crunch Cereal",
     brand: "General Mills",
     ingredients:

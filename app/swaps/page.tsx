@@ -6,7 +6,7 @@ import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
 export const metadata: Metadata = {
   title: "Clean Grocery Swaps Directory (Seed-Oil Free & Dye-Free Alternatives)",
   description:
-    "Browse 1-for-1 healthier grocery swaps and 0–100 ingredient reports for popular snacks, dressings, cereals, yogurts, deli meats, and condiments on Walmart, Target, Instacart & ALDI.",
+    "Browse 1-for-1 healthier grocery swaps and 0–100 ingredient reports for popular snacks, dressings, cereals, yogurts, deli meats, and condiments on Walmart, Target, Kroger, Shipt, DoorDash, Instacart & ALDI.",
   alternates: {
     canonical: "https://www.heybroc.com/swaps",
   },
@@ -53,7 +53,7 @@ export default function SwapsDirectoryPage() {
           Clean Grocery Swaps &amp; Editorial Ingredient Reports (0–100)
         </h1>
         <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 740, lineHeight: 1.5 }}>
-          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, watchlist additives, and <b>1-Tap Clean Swap</b>.
+          Click any popular grocery product below to inspect its full <b>3-Pillar Score (0–100)</b>, <b>Sugar &amp; refined-carb note</b>, watchlist additives, and <b>1-Tap Clean Swap</b> across Walmart, Target, Kroger, Shipt, DoorDash, Instacart, ALDI &amp; all 12 stores.
         </p>
       </section>
 
@@ -143,7 +143,7 @@ export default function SwapsDirectoryPage() {
         }}
       >
         <strong style={{ color: "#334155" }}>Independent Editorial Opinion &amp; Non-Affiliation Disclaimer:</strong>{" "}
-        Scores and summaries in this directory reflect HeyBroc&apos;s subjective clean-label rubric based on representative public ingredient data (Open Food Facts, USDA FoodData Central). Manufacturers reformulate products frequently and ingredients may vary by region or batch—always verify the physical package label before purchasing. Most flagged additives are FDA-permitted or GRAS. Outbound retail links may include affiliate attribution tags that earn HeyBroc a commission at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, ALDI, Kroger, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Whole Foods Market, or any food or beverage manufacturer.
+        Scores and summaries in this directory reflect HeyBroc&apos;s subjective clean-label rubric based on representative public ingredient data (Open Food Facts, USDA FoodData Central). Manufacturers reformulate products frequently and ingredients may vary by region or batch—always verify the physical package label before purchasing. Most flagged additives are FDA-permitted or GRAS. Outbound retail links may include affiliate attribution tags that earn HeyBroc a commission at no extra cost to you. As an Amazon Associate, HeyBroc earns from qualifying purchases. HeyBroc is independent and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, ALDI, Kroger, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer.
       </footer>
     </div>
   );

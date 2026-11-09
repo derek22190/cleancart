@@ -482,35 +482,65 @@ export async function verifyStripeCheckoutSession(
 
 /**
  * Resolves a Stripe customer ID (`cus_...`) for the self-serve Stripe Billing Portal
- * using the caller's verified `deviceId` or verified `email` (and optional `sessionId`).
- * IMPORTANT: Callers must authenticate `deviceId` (via `verifyDeviceSecret`) or `email`
- * (via `getAuthenticatedUser`) before invoking this helper.
+ * only after verifying caller ownership via `authToken` (verified account session) or
+ * `deviceId` + `deviceSecret` (HMAC-verified device credential).
+ * Unauthenticated email-only or deviceId-only calls always return `null`.
  */
 export async function resolveBillingPortalCustomer(params: {
   sessionId?: string;
   deviceId?: string;
+  deviceSecret?: string;
   email?: string;
+  authToken?: string;
 }): Promise<{ customerId: string; record?: EntitlementRecord } | null> {
   const cleanSessionId = (params.sessionId || "").trim();
-  const cleanDeviceId = (params.deviceId || "").trim();
-  const cleanEmail = (params.email || "").trim().toLowerCase();
-  const hasVerifiedDevice = Boolean(cleanDeviceId && cleanDeviceId !== "anon-web");
-  const hasVerifiedEmail = Boolean(cleanEmail);
+  const rawDeviceId = (params.deviceId || "").trim();
+  const rawDeviceSecret = (params.deviceSecret || "").trim();
+  const rawAuthToken = (params.authToken || "").trim();
 
-  // Never resolve a customer portal session without a verified device or verified account email
-  if (!hasVerifiedDevice && !hasVerifiedEmail) {
+  let verifiedEmail = "";
+  let verifiedDeviceId = "";
+
+  if (rawAuthToken) {
+    const { getAuthenticatedUser } = await import("./auth");
+    const authUser = await getAuthenticatedUser(rawAuthToken);
+    if (authUser && authUser.emailVerified !== false) {
+      if (authUser.email) {
+        verifiedEmail = authUser.email.trim().toLowerCase();
+      }
+      if (rawDeviceId && authUser.linkedDevices?.includes(rawDeviceId)) {
+        verifiedDeviceId = rawDeviceId;
+      } else if (authUser.linkedDevices?.[0]) {
+        verifiedDeviceId = authUser.linkedDevices[0];
+      }
+    }
+  }
+
+  if (!verifiedDeviceId && rawDeviceId && rawDeviceId !== "anon-web" && rawDeviceSecret) {
+    const { getExistingDevice, verifyDeviceSecret } = await import("./referrals");
+    const existingDevice = await getExistingDevice(rawDeviceId);
+    if (
+      existingDevice?.deviceSecretHash &&
+      verifyDeviceSecret(existingDevice, rawDeviceSecret)
+    ) {
+      verifiedDeviceId = rawDeviceId;
+    }
+  }
+
+  // Never resolve a customer portal session without a verified device or verified account session
+  if (!verifiedDeviceId && !verifiedEmail) {
     return null;
   }
 
   let record: EntitlementRecord | null = null;
-  if (cleanSessionId && hasVerifiedDevice) {
-    record = await verifyStripeCheckoutSession(cleanSessionId, cleanDeviceId);
+  if (cleanSessionId && verifiedDeviceId) {
+    record = await verifyStripeCheckoutSession(cleanSessionId, verifiedDeviceId);
   }
-  if (!record && hasVerifiedDevice) {
-    record = await getDevicePaidEntitlement(cleanDeviceId);
+  if (!record && verifiedDeviceId) {
+    record = await getDevicePaidEntitlement(verifiedDeviceId);
   }
-  if (!record && hasVerifiedEmail) {
-    record = await getEmailEntitlement(cleanEmail);
+  if (!record && verifiedEmail) {
+    record = await getEmailEntitlement(verifiedEmail);
   }
 
   if (record?.customerId) {
@@ -553,7 +583,7 @@ export async function resolveBillingPortalCustomer(params: {
   }
 
   // Fallback: look up Stripe customer by verified email (or email stored on a verified device's entitlement)
-  const lookupEmail = cleanEmail || record?.customerEmail?.trim().toLowerCase();
+  const lookupEmail = verifiedEmail || record?.customerEmail?.trim().toLowerCase();
   if (lookupEmail) {
     try {
       const cusUrl = new URL("https://api.stripe.com/v1/customers");

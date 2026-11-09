@@ -603,6 +603,56 @@ interface CatalogEntry {
 
 export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
   {
+    match: /\b(simple\s+truth\s+organic.*(?:greek\s+yogurt|plain\s+greek\s+yogurt)|(?:greek\s+yogurt|plain\s+greek\s+yogurt).*simple\s+truth\s+organic)\b/i,
+    brand: "Simple Truth Organic",
+    title: "Simple Truth Organic Whole Milk Plain Greek Yogurt",
+    ingredients: "Cultured Pasteurized Organic Whole Milk. Live and Active Cultures: S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei.",
+    imageUrl: "/swaps/yogurt.jpg",
+    nutrition: { caloriesKcal100g: 94, sugarsG100g: 3.5, saturatedFatG100g: 3.0, sodiumMg100g: 35, fiberG100g: 0, proteinG100g: 8.8, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
+    sourceUrl: "https://www.kroger.com/p/simple-truth-organic-plain-whole-milk-greek-yogurt/0001111089910",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(simple\s+truth\s+organic.*applesauce|applesauce.*simple\s+truth\s+organic)\b/i,
+    brand: "Simple Truth Organic",
+    title: "Simple Truth Organic Unsweetened Applesauce",
+    ingredients: "Organic Apples, Water, Ascorbic Acid (Vitamin C) to Maintain Color.",
+    imageUrl: "/swaps/snacks.jpg",
+    nutrition: { caloriesKcal100g: 44, sugarsG100g: 9.7, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 1.8, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
+    sourceUrl: "https://www.kroger.com/p/simple-truth-organic-unsweetened-applesauce-cups/0001111085432",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(private\s+selection.*(?:angus\s+beef|beef\s+patties|burger\s+patties)|(?:angus\s+beef\s+patties).*private\s+selection)\b/i,
+    brand: "Private Selection",
+    title: "Private Selection Angus Beef Patties",
+    ingredients: "100% USDA Choice Angus Beef.",
+    imageUrl: "/swaps/turkey.jpg",
+    nutrition: { caloriesKcal100g: 254, sugarsG100g: 0, saturatedFatG100g: 7.7, sodiumMg100g: 66, fiberG100g: 0, proteinG100g: 17.2, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isOrganic: false, isWholeFood: true },
+    sourceUrl: "https://www.kroger.com/p/private-selection-80-lean-20-fat-angus-beef-chuck-patties/0001111097111",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(good\s*(?:&|and)\s*gather.*organic.*peanut\s+butter|organic.*peanut\s+butter.*good\s*(?:&|and)\s*gather)\b/i,
+    brand: "Good & Gather",
+    title: "Good & Gather Organic Creamy Peanut Butter",
+    ingredients: "Organic Dry Roasted Peanuts, Sea Salt.",
+    imageUrl: "/swaps/peanut-butter.jpg",
+    nutrition: { caloriesKcal100g: 593, sugarsG100g: 6.2, saturatedFatG100g: 7.8, sodiumMg100g: 250, fiberG100g: 6.2, proteinG100g: 25.0, fruitsVegNutsPct: 99, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
+    sourceUrl: "https://www.target.com/p/organic-unsweetened-creamy-peanut-butter-16oz-good-38-gather-8482/-/A-54516890",
+    verifiedAt: "2026-11-08",
+  },
+  {
+    match: /\b(favorite\s+day.*(?:vanilla.*ice\s+cream|ice\s+cream)|vanilla\s+ice\s+cream.*favorite\s+day)\b/i,
+    brand: "Favorite Day",
+    title: "Favorite Day Classic Vanilla Ice Cream",
+    ingredients: "Milk, Cream, Skim Milk, Sugar, Corn Syrup, Egg Yolks, Natural Flavor, Mono and Diglycerides, Guar Gum, Locust Bean Gum, Carrageenan, Annatto Extract (Color).",
+    imageUrl: "/products/yogurt.jpg",
+    nutrition: { caloriesKcal100g: 207, sugarsG100g: 20.7, saturatedFatG100g: 7.0, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.target.com/p/vanilla-bean-ice-cream-48oz-favorite-day-8482/-/A-81502235",
+    verifiedAt: "2026-11-08",
+  },
+  {
     match: /\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|fritter|danish|cinnamon roll|honey bun|eclair|strudel|turnover|glazed donut|jelly donut|raspberry filled)\b/i,
     brand: "Representative Bakery Formulation",
     title: "Bakery Donuts and Filled Pastries (Representative Formulation)",
@@ -2263,7 +2313,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?)\b/i;
 
   if (!input.barcode && title && DIRECT_CATALOG_PRIORITY.test(title)) {
     const directCat = catalogFallback(title);

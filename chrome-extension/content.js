@@ -96,7 +96,7 @@
   }
 
   /* ---------------- DOM reading ---------------- */
-  const NON_TITLE_RE = /^(search|your cart|shopping cart|cart|checkout|items to add next|product information|similar items|customers also.*|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|uber\s*eats|shipt|departments|grocery|savings|deals|weekly\s+ad)$/i;
+  const NON_TITLE_RE = /^(search|your cart|shopping cart|cart|checkout|items to add next|product information|similar items|customers also.*|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|savings|deals|weekly\s+ad)$/i;
   const NON_INGREDIENT_RE = /\b(items to add next|product information|similar items|customers also|you might also|related items|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
   const REAL_ING_HINT_RE = /\b(water|milk|cream|sugar|salt|flour|wheat|corn|soy|oil|butter|egg|cheese|cocoa|chocolate|vanilla|syrup|starch|acid|lecithin|gum|flavor|natural|organic|vitamin|potassium|sodium|calcium|turkey|chicken|beef|pork|apple|berry|oat|rice|potato|tomato|onion|garlic|spice|vinegar|yeast|honey|almond|peanut|hazelnut|extract|culture|enzyme)\b/i;
 
@@ -121,6 +121,14 @@
     const selectors = [
       '[data-testid*="item-details" i] h1',
       '[data-testid*="item-details" i] h2',
+      '[data-testid="product-page-title"]',
+      'h1.ProductDetails-header',
+      '[data-testid*="product-title" i]',
+      '[data-testid*="product-name" i]',
+      '[data-anchor-id*="ItemModal" i] h1',
+      '[data-anchor-id*="ItemModal" i] h2',
+      '[data-testid*="itemHeader" i]',
+      '[data-testid*="retail-item" i] h1',
       '[role="dialog"] h1',
       '[aria-modal="true"] h1',
       '[role="dialog"] [data-testid*="title" i]',
@@ -187,13 +195,13 @@
   function isProductPage() {
     const p = location.pathname;
     const s = location.search;
-    const hasModalTitle = !!document.querySelector('[data-testid*="item-details" i] h1, [role="dialog"] h1, [aria-modal="true"] h1');
+    const hasModalTitle = !!document.querySelector('[data-testid*="item-details" i] h1, [data-anchor-id*="ItemModal" i] h1, [data-anchor-id*="ItemModal" i] h2, [role="dialog"] h1, [aria-modal="true"] h1');
     if (STORE === "walmart") return /\/ip\//.test(p);
     if (STORE === "instacart") return /\/products?\//.test(p) || /item_id=|product_id=/i.test(s) || hasModalTitle;
     if (STORE === "target") return /\/p\//.test(p);
-    if (STORE === "kroger") return /\/p\//.test(p);
+    if (STORE === "kroger") return /\/p\//.test(p) || hasModalTitle;
     if (STORE === "aldi") return /\/products?\//.test(p) || /\/detail\/ps\/p\//.test(p);
-    if (STORE === "doordash") return /\/products?\//.test(p) || /item-details|product_id|item_id/i.test(s) || hasModalTitle;
+    if (STORE === "doordash") return /\/(products?|item)\//.test(p) || /item-details|product_id|item_id/i.test(s) || hasModalTitle;
     if (STORE === "ubereats") return /\/product\//.test(p) || /mod=quickView|item/i.test(s) || hasModalTitle;
     if (STORE === "amazon") {
       if (HOST.includes("wholefoods")) return /\/products?\//.test(p);
@@ -202,7 +210,7 @@
     if (STORE === "sams") return /\/(p|product|ip|sams\/shop\/product)\//.test(p);
     if (STORE === "bjs") return /\/product\//.test(p);
     if (STORE === "costco") return /\/p\/|\.product\./i.test(p);
-    if (STORE === "shipt") return /\/products?\//.test(p) || hasModalTitle;
+    if (STORE === "shipt") return /\/(shop\/)?products?\//.test(p) || /product_id=|item_id=/i.test(s) || hasModalTitle;
     return !!readTitle();
   }
 

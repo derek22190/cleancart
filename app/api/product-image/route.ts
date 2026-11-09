@@ -166,6 +166,7 @@ export async function GET(request: Request) {
         "Content-Type": cachedBytes.contentType,
         "Cache-Control": "public, max-age=604800, immutable",
         "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
         "X-Image-Source": `Open Food Facts (${cachedBytes.sourceUrl})`,
         "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
       },
@@ -196,6 +197,7 @@ export async function GET(request: Request) {
                 "Content-Type": contentType,
                 "Cache-Control": "public, max-age=604800, immutable",
                 "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
                 "X-Image-Source": `Open Food Facts (${targetUrl})`,
                 "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
               },
@@ -219,6 +221,7 @@ export async function GET(request: Request) {
         "Content-Type": fallback.contentType,
         "Cache-Control": "public, max-age=86400",
         "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
         "X-Image-Source": "HeyBroc Category Illustration",
         "X-Image-License": "Proprietary",
       },
@@ -228,3 +231,5 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL(publicPath, request.url), 302);
   }
 }
+
+export const HEAD = GET;
