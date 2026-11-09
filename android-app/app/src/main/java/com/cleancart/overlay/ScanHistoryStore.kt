@@ -208,6 +208,15 @@ object ScanHistoryStore {
         return true
     }
 
+    private fun isPoisonedProduceEntry(rawTitle: String, item: JSONObject): Boolean {
+        val t = rawTitle.lowercase()
+        val isPlainProduce = Regex("\\b(?:fresh\\s+whole|sweet\\s+potat(?:o|oes)|russet\\s+potat(?:o|oes)|idaho\\s+potat(?:o|oes)|yukon\\s+gold\\s+potat(?:o|oes)|red\\s+potat(?:o|oes)|yellow\\s+potat(?:o|oes))\\b").containsMatchIn(t) &&
+            !Regex("\\b(?:chips?|crisps?|fries|fried|tots|puffs?|hash\\s*browns?|casserole|pie)\\b").containsMatchIn(t)
+        if (!isPlainProduce) return false
+        val ing = item.optJSONObject("product")?.optString("ingredients").orEmpty()
+        return Regex("\\b(?:canola|sunflower|safflower|soybean|vegetable|palm|corn)\\s+oil\\b", RegexOption.IGNORE_CASE).containsMatchIn(ing)
+    }
+
     private fun parseList(raw: String): List<JSONObject> = runCatching {
         val arr = JSONArray(raw)
         val out = ArrayList<JSONObject>(arr.length())
@@ -218,6 +227,7 @@ object ScanHistoryStore {
             val ts = item.optLong("scannedAtMs", 0L).takeIf { it > 0L } ?: item.optLong("favoritedAtMs", 0L)
             if (!isEntryFresh(ts, now)) continue
             val rawTitle = extractTitle(item)
+            if (isPoisonedProduceEntry(rawTitle, item)) continue
             val key = canonicalKey(rawTitle)
             if (key.isBlank() || !seenKeys.add(key)) continue
             out.add(item)
@@ -1423,6 +1433,62 @@ object ScanHistoryStore {
                     productImageUrl("Alden's Organic Cookies & Cream Ice Cream"),
                     "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Cookies (Organic Wheat Flour, Organic Cane Sugar, Organic Coconut Oil, Organic Cocoa, Baking Soda, Salt), Organic Vanilla Extract."
                 )
+            ),
+            sampleItem(
+                title = "Fresh Whole Sweet Potato",
+                brand = "Fresh Produce",
+                category = "Produce & Whole Foods",
+                score = 90,
+                rating = "Excellent",
+                color = "green",
+                imageUrl = productImageUrl("Fresh Whole Sweet Potato"),
+                description = "Single-ingredient whole fresh sweet potato. Naturally rich in beta-carotene (vitamin A), dietary fiber, and potassium with 0g fat and zero seed oils or additives.",
+                keywords = "fresh whole sweet potato sweet potatoes yam yams produce",
+                ingredients = "100% Fresh Whole Sweet Potato (Single-Ingredient Whole Produce).",
+                flagged = emptyList(),
+                nutritionScore = 60,
+                nutriGrade = "A",
+                additiveScore = 30,
+                organicScore = 0,
+                swap = null
+            ),
+            sampleItem(
+                title = "Fresh Whole Russet Potatoes, 5 lb Bag",
+                brand = "Fresh Produce",
+                category = "Produce & Whole Foods",
+                score = 90,
+                rating = "Excellent",
+                color = "green",
+                imageUrl = productImageUrl("Fresh Whole Russet Potatoes"),
+                description = "Single-ingredient whole fresh russet potatoes with 0g fat and zero seed oils or additives.",
+                keywords = "fresh whole russet potatoes idaho potatoes baking potatoes 5 lb bag produce",
+                ingredients = "100% Fresh Whole Russet Potatoes (Single-Ingredient Whole Produce).",
+                flagged = emptyList(),
+                nutritionScore = 60,
+                nutriGrade = "A",
+                additiveScore = 30,
+                organicScore = 0,
+                swap = null
+            ),
+            sampleItem(
+                title = "Butterball Frozen Whole Turkey, All Natural, 10-16 lbs.",
+                brand = "Butterball",
+                category = "Meat, Poultry & Deli",
+                score = 70,
+                rating = "Good",
+                color = "green",
+                imageUrl = productImageUrl("Butterball Frozen Whole Turkey"),
+                description = "All-natural whole young turkey basted with water, salt, spices, and natural flavoring (no MSG, no artificial preservatives, no gluten).",
+                keywords = "butterball frozen whole turkey all natural 10-16 lbs thanksgiving turkey",
+                ingredients = "Young Turkey, Contains up to 8% of a Solution of Water, Salt, Spices, and Natural Flavoring to Deeply Baste the Turkey.",
+                flagged = listOf(
+                    FlagInfo("Natural Flavors", 5, "low", "Proprietary flavor blend that can include solvents and carriers.")
+                ),
+                nutritionScore = 45,
+                nutriGrade = "B",
+                additiveScore = 25,
+                organicScore = 0,
+                swap = null
             )
         )
     }

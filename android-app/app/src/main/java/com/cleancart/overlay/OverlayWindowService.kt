@@ -1585,14 +1585,14 @@ class OverlayWindowService : Service() {
                     })
                 }
             } else if (rem > 0) {
-                // Free user with remaining weekly swaps: hide brand/product name until they tap Reveal!
+                // Free user with remaining free swaps: hide brand/product name until they tap Reveal!
                 swapBox.addView(text("🔒 CLEAN SWAP FOUND · ${swapScoreBadge.uppercase()}", 9.5f, BRAND, bold = true).apply {
                     letterSpacing = 0.05f
                 })
                 swapBox.addView(text("1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
                     setPadding(0, dp(3), 0, 0)
                 })
-                swapBox.addView(text("You have $rem of $lim free weekly Clean Swaps remaining.", 11f, 0xFF0B5E39.toInt()).apply {
+                swapBox.addView(text("You have $rem of $lim free Clean Swaps remaining.", 11f, 0xFF0B5E39.toInt()).apply {
                     setPadding(0, dp(2), 0, dp(7))
                 })
                 swapBox.addView(text("🔓 Reveal Clean Swap ($rem/$lim Free)", 12.5f, Color.WHITE, bold = true).apply {
@@ -1607,14 +1607,14 @@ class OverlayWindowService : Service() {
                     }
                 })
             } else {
-                // Free user out of weekly swaps (0/3 left): keep brand/product name locked behind Pro / Referral!
+                // Free user out of free swaps (0/5 left): keep brand/product name locked behind Pro / Referral!
                 swapBox.addView(text("🔒 CLEAN SWAP LOCKED · ${swapScoreBadge.uppercase()}", 9.5f, 0xFF92400E.toInt(), bold = true).apply {
                     letterSpacing = 0.05f
                 })
                 swapBox.addView(text("${if (swapScore > 0) "$swapScore/100 " else ""}Clean Replacement Available", 12.5f, INK, bold = true).apply {
                     setPadding(0, dp(3), 0, 0)
                 })
-                swapBox.addView(text("All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 11f, INK_2).apply {
+                swapBox.addView(text("All $lim free Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 11f, INK_2).apply {
                     setPadding(0, dp(2), 0, dp(8))
                 })
                 swapBox.addView(LinearLayout(this).apply {

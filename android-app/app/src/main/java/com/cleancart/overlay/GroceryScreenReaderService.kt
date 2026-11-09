@@ -176,7 +176,11 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|dinner rolls?|cinnamon rolls?|sweet rolls?|crescent rolls?|hawaiian rolls?|sausage rolls?|pizza rolls?|egg rolls?|bread rolls?|kaiser rolls?|sub rolls?|hoagie rolls?|sandwich rolls?|potato rolls?|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|crunchmaster|mary'?s gone|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|french toast|breakfast|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|wasabi|inglehoffer|kikkoman|beaver|wicked cutz|koops|tamari|sriracha|hoisin|teriyaki|ponzu|kimchi|miso|gochujang|harissa|chimichurri|remoulade|chutney|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|pompeian|bertolli|vinegar|turkey|chicken|rotisserie|poultry|beef|angus|usda choice|usda prime|steak|ribeye|sirloin|new york strip|strip steak|roast|chuck|tenderloin|brisket|pork|bacon|crumbled bacon|bac'?n|mccormick|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets?|cutlets?|chicken strips?|beef strips?|ham|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dogs?|franks?|frankfurters?|wieners?|ball park|nathan'?s|hebrew national|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|soda pop|ice pop|pop[- ]?tarts?|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang energy|reign|rockstar|prime hydration|prime energy|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit energy|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost original|boost high protein|boost nutritional|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|carvel|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|truffles?|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|honeycrisp|gala|fuji|granny smith|pink lady|mcintosh|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|florets?|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|sweet potato|sweet potatoes|yam|yams|mashed|idahoan|ore-ida|tater|tots|hash\s*browns?|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichokes?|beet|beets|radish|turnip|eggplant|okra|corn|peas|edamame|green beans|brussels|vegetables?|veggies?|frozen|steamfresh|birds eye|green giant|medley|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|de cecco|barilla|rao'?s|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|(?:chicken|beef|vegetable|bone|seafood|turkey|fish)\s+stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|rocher|tony'?s|chocolonely|haribo|lindt|lindor|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|freihofer'?s|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|kellogg'?s?|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|big\s+k|dashmart|wegmans|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|prego|ragu|classico|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|redhot|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|diaper|diapers|wipes|disinfecting|tide|gain|persil|downy|purex|detergent|laundry|dawn|palmolive|cascade|dish soap|dish detergent|clorox|lysol|bleach|cleaner|scott|charmin|bounty|angel soft|cottonelle|quilted northern|brawny|sparkle|kleenex|toilet paper|paper towels?|bath tissue|shampoo|conditioner|body wash|shower gel|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|soap|cleanser|serum|dove|pantene|olay|old spice|suave|cerave|cetaphil|neutrogena|aveeno|native|colgate|crest|sensodyne|listerine|degree|secret|vaseline|aquaphor|coppertone|banana boat|huggies|pampers|vitamin|protein|collagen|creatine|purina|dog chow|pedigree|friskies|blue buffalo|dog food|cat food|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
+            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|dinner rolls?|cinnamon rolls?|sweet rolls?|crescent rolls?|hawaiian rolls?|sausage rolls?|pizza rolls?|egg rolls?|bread rolls?|kaiser rolls?|sub rolls?|hoagie rolls?|sandwich rolls?|potato rolls?|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|crunchmaster|mary'?s gone|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|french toast|breakfast|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|wasabi|inglehoffer|kikkoman|beaver|wicked cutz|koops|tamari|sriracha|hoisin|teriyaki|ponzu|kimchi|miso|gochujang|harissa|chimichurri|remoulade|chutney|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|pompeian|bertolli|vinegar|turkey|butterball|jennie-?o|chicken|rotisserie|poultry|beef|angus|usda choice|usda prime|steak|ribeye|sirloin|new york strip|strip steak|roast|chuck|tenderloin|brisket|pork|bacon|crumbled bacon|bac'?n|mccormick|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets?|cutlets?|chicken strips?|beef strips?|ham|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dogs?|franks?|frankfurters?|wieners?|ball park|nathan'?s|hebrew national|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|soda pop|ice pop|pop[- ]?tarts?|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang energy|reign|rockstar|prime hydration|prime energy|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit energy|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost original|boost high protein|boost nutritional|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|carvel|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|truffles?|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|honeycrisp|gala|fuji|granny smith|pink lady|mcintosh|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|florets?|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|sweet potato|sweet potatoes|russet|yukon gold|yam|yams|mashed|idahoan|ore-ida|tater|tots|hash\s*browns?|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichokes?|beet|beets|radish|turnip|eggplant|okra|corn|peas|edamame|green beans|brussels|vegetables?|veggies?|frozen|steamfresh|birds eye|green giant|medley|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|de cecco|barilla|rao'?s|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|(?:chicken|beef|vegetable|bone|seafood|turkey|fish)\s+stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|rocher|tony'?s|chocolonely|haribo|lindt|lindor|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|freihofer'?s|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|kellogg'?s?|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|big\s+k|dashmart|wegmans|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|prego|ragu|classico|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|redhot|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|protein|collagen|creatine|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val NON_FOOD_PRODUCT = Regex(
+            """\b(paper\s+towels?|toilet\s+paper|bath\s+tissue|facial\s+tissue|kleenex|bounty|charmin|angel\s+soft|cottonelle|quilted\s+northern|brawny|sparkle|scott\s+\d+|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|tableware)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?|wrap)|paper\s+(?:plates?|bowls?|cups?|napkins?)|napkins?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|ziploc|aluminum\s+foil|parchment\s+paper|wax\s+paper|wipes?|disinfect\w*|detergent|laundry|fabric\s+softener|dryer\s+sheets?|bleach|clorox|lysol|cleaner|dish\s+soap|dish\s+detergent|dishwasher|cascade|dawn\s+(?:ultra|platinum|powerwash)|palmolive|tide|gain|persil|downy|purex|shampoo|conditioner|body\s+wash|shower\s+gel|face\s+wash|lotion|moisturizer|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|toothbrushes?|floss|hand\s+soap|bar\s+soap|cleanser|serum|diapers?|pull-ups|huggies|pampers|luvs|cat\s+litter|kitty\s+litter|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+chow|purina|pedigree|friskies|blue\s+buffalo|fancy\s+feast|meow\s+mix|iams|candles?|air\s+freshener|febreze|glade|light\s+bulbs?|batteries|motor\s+oil)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2}|\s+\d{2})?|\b\d+\s*dollars?(\s*(and\s*)?\d+\s*cents?)?\b)""", RegexOption.IGNORE_CASE)
@@ -1003,7 +1007,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         val density = dm.density.coerceAtLeast(1f)
         val screenW = dm.widthPixels.coerceAtLeast(720)
         val screenH = dm.heightPixels.coerceAtLeast(1280)
-        val edgeMarginPx = (14f * density).toInt()
+        val edgeMarginPx = (10f * density).toInt()
         val minCardTextWidthPx = (54f * density).toInt()
         val belowFoldThresholdY = (screenH * 0.52f).toInt()
         val rect = Rect()
@@ -1199,7 +1203,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(?:\.\d+)?\s*(?:¢|cents?)\s*(?:/|per)\s*(?:oz|fl\s*oz|lb|ea|each|ct|count|pt|qt|gal|\d+\s*ct)\b"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]\s*(now|was|current\s+price|price|add)\s*$"""), "")
         s = s.replace(Regex("""(?i)^\+?\s*add\s*[,•|\-]?\s*"""), "")
-        // Strip truncated trailing weight/count fragments from narrow Instacart/Walmart cards (e.g. "(6.35 ...", "(6 C...", ", 12 As...", ", 9...")
+        // Strip truncated trailing weight/count/protein fragments from narrow Instacart/Walmart cards (e.g. ", Serves 7-11, 21g of P...", "(6.35 ...", "(6 C...", ", 12 As...", ", 9...")
+        s = s.replace(Regex("""(?i)\s*,\s*serves\s+\d+(?:\s*[-–—]\s*\d+)?(?:\s*,\s*\d+\s*g\s+of\s+p[a-z]*(?:\.\.\.+|…)?)?\s*$"""), "")
+        s = s.replace(Regex("""(?i)\s*,\s*\d+\s*g\s+of\s+p[a-z]*(?:\.\.\.+|…)?\s*$"""), "")
         s = s.replace(Regex("""\s*\(\d+(?:\.\d+)?\s*(?:[a-zA-Z]{0,6}\s*)?(?:\.\.\.+|…)?\s*$"""), "")
         s = s.replace(Regex("""\s*,\s*\d+\s*(?:[a-zA-Z]{1,4}\s*)?(?:\.\.\.+|…)\s*$"""), "")
         s = s.replace(Regex("""(?i)\btruffl(?:\.\.\.+|…)?$"""), "Truffles")
@@ -1259,7 +1265,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun looksLikeFoodTitle(t: String): Boolean =
-        FOOD_HINTS.containsMatchIn(t) || SINGLE_WORD_PRODUCE.matches(t.trim())
+        !NON_FOOD_PRODUCT.containsMatchIn(t) && (FOOD_HINTS.containsMatchIn(t) || SINGLE_WORD_PRODUCE.matches(t.trim()))
 
     private fun hasProductContext(
         isConfirmedSinglePdp: Boolean,
@@ -1405,28 +1411,36 @@ class GroceryScreenReaderService : AccessibilityService() {
             postOrphanNodes
         }
 
-        // 1. Explicit product title viewId on the visible product page
-        for (n in searchNodes) {
-            val c = cleanTitleCandidate(n.text)
-            if (isCandidateProductTitle(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }) {
-                addCandidate(c)
-            }
-        }
-
-        // 2. Accessibility heading on the visible page that matches food/product hints (including 1-word produce like "Raspberries")
-        for (n in searchNodes) {
-            val c = cleanTitleCandidate(n.text)
-            if (n.isHeading && isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)) {
-                addCandidate(c)
-            }
-        }
-
-        // 3. Visible multi-word nodes containing recognizable grocery/household keywords
         val maxSearchNodes = if (isConfirmedSinglePdp) searchNodes.size else minOf(searchNodes.size, 110)
         if (isConfirmedSinglePdp) {
+            // 1. Explicit product title viewId on the visible single PDP
+            for (n in searchNodes) {
+                val c = cleanTitleCandidate(n.text)
+                if (isCandidateProductTitle(c) && !NON_FOOD_PRODUCT.containsMatchIn(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }) {
+                    addCandidate(c)
+                }
+            }
+
+            // 2. Accessibility heading on the visible single PDP that matches food hints
+            for (n in searchNodes) {
+                val c = cleanTitleCandidate(n.text)
+                if (n.isHeading && isCandidateProductTitle(c) && looksLikeFoodTitle(c)) {
+                    addCandidate(c)
+                }
+            }
+
+            // 3. Visible multi-word nodes containing recognizable food keywords
             for (n in searchNodes.take(maxSearchNodes)) {
                 val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)) {
+                if (isCandidateProductTitle(c) && c.split(' ').size >= 2 && looksLikeFoodTitle(c)) {
+                    addCandidate(c)
+                }
+            }
+
+            // 4. Single-word produce title on single PDP
+            for (n in searchNodes.take(maxSearchNodes)) {
+                val c = cleanTitleCandidate(n.text)
+                if (isCandidateProductTitle(c) && SINGLE_WORD_PRODUCE.matches(c.trim())) {
                     addCandidate(c)
                 }
             }
@@ -1434,12 +1448,17 @@ class GroceryScreenReaderService : AccessibilityService() {
             val dm = resources.displayMetrics
             val density = dm.density.coerceAtLeast(1f)
             val screenW = dm.widthPixels.coerceAtLeast(720)
+            val edgeClipPx = (10f * density).toInt()
             val rowBandPx = (140f * density).toInt().coerceAtLeast(1)
             data class CarouselCandidate(val node: TextNode, val cleaned: String, val width: Int, val rowBand: Int)
             val rawCandidates = ArrayList<CarouselCandidate>()
             for (n in searchNodes.take(maxSearchNodes)) {
                 val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)) {
+                if (
+                    isCandidateProductTitle(c) &&
+                    ((c.split(' ').size >= 2 && (FOOD_HINTS.containsMatchIn(c) || NON_FOOD_PRODUCT.containsMatchIn(c))) ||
+                        SINGLE_WORD_PRODUCE.matches(c.trim()))
+                ) {
                     if (rawCandidates.none { it.cleaned.equals(c, ignoreCase = true) }) {
                         val w = (n.right - n.left).coerceAtLeast(0)
                         val band = if (n.top > 0) n.top / rowBandPx else 0
@@ -1455,65 +1474,47 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 fun isPartiallyClippedInRow(rc: CarouselCandidate): Boolean {
                     if (rc.node.isEdgeClipped) return true
-                    // If a card's right edge doesn't even reach 26% of the screen width, it's a departing left-edge card!
-                    if (rc.node.right in 1 until (screenW * 0.26f).toInt()) return true
+                    if (rc.node.left < edgeClipPx) return true
+                    // If a card's right edge doesn't reach 34% of the screen width, it's a departing left-edge card.
+                    if (rc.node.right in 1 until (screenW * 0.34f).toInt()) return true
+                    // If a card's left edge starts past 56% of the screen width, it's a 3rd-column / right-edge card off to the side.
+                    if (rc.node.left > (screenW * 0.56f).toInt()) return true
+                    if (rc.node.right > screenW - edgeClipPx) return true
                     val maxW = maxWidthByBand[rc.rowBand] ?: 0
                     // When a card in a horizontal carousel slides partially off the left or right edge,
                     // Android clamps getBoundsInScreen(rect) to the viewport so its visible width shrinks
-                    // compared to the full card next to it!
-                    return maxW >= (64f * density).toInt() && rc.width < (maxW * 0.85f).toInt()
+                    // compared to the full card next to it.
+                    return maxW >= (64f * density).toInt() && rc.width < (maxW * 0.82f).toInt()
                 }
-                val sorted = rawCandidates.sortedWith(
-                    compareBy<CarouselCandidate> { isPartiallyClippedInRow(it) }
-                        .thenBy { it.rowBand }
-                        .thenBy { it.node.left }
-                        .thenBy { it.node.index }
-                ).toMutableList()
-
-                // When 2 unclipped cards sit side-by-side in the top visual row (`c0` on the left, `c1` on the right
-                // directly under the right-aligned HeyBroc pill), promote `c1` immediately whenever:
-                // 1) A 3rd clipped card sits on the far left edge of the same row (proving the carousel has been scrolled), OR
-                // 2) The user scrolled horizontally within the last 5 seconds, OR
-                // 3) `c0` shifted left compared to the previous scan, OR
-                // 4) `c0` was already graded and sits on the left half of the screen while `c1` is under the pill!
-                if (sorted.size >= 2) {
-                    val c0 = sorted[0]
-                    val c1 = sorted[1]
-                    val sameTopRow = c0.rowBand == c1.rowBand && !isPartiallyClippedInRow(c0) && !isPartiallyClippedInRow(c1)
-                    if (sameTopRow && c1.node.left > c0.node.left + (44f * density).toInt()) {
-                        val now = System.currentTimeMillis()
-                        val hasClippedLeftSibling = rawCandidates.any {
-                            it.rowBand == c0.rowBand && it.node.left < c0.node.left - (12f * density).toInt()
+                // Always select the leftmost unclipped card (`unclipped[0]`) in the top visible row so the
+                // scanner stays aligned with the primary card on screen (e.g. Butterball Turkey when Butterball is
+                // in the left/center slot) and never jumps ahead to the right card or a clipped edge card.
+                val unclipped = rawCandidates
+                    .filterNot { isPartiallyClippedInRow(it) }
+                    .sortedWith(
+                        compareBy<CarouselCandidate> { it.rowBand }
+                            .thenBy { it.node.left }
+                            .thenBy { it.node.index }
+                    )
+                if (unclipped.isNotEmpty()) {
+                    val topBand = unclipped.first().rowBand
+                    val topRowCards = unclipped.filter { it.rowBand == topBand }
+                    val primaryCard = topRowCards.firstOrNull()
+                    if (primaryCard != null) {
+                        lastRowLeadTitle = primaryCard.cleaned
+                        lastRowLeadLeftX = primaryCard.node.left
+                    }
+                    // When the primary card in the active carousel is a non-food household item (e.g. Paper Towels
+                    // or Disposable Plastic Forks & Spoons in "Shop everyday essentials"), return emptyList() so
+                    // readAndScan() immediately displays 🛒 Cart Avg instead of scanning a peripheral card off to the side.
+                    if (primaryCard != null && !NON_FOOD_PRODUCT.containsMatchIn(primaryCard.cleaned)) {
+                        for (sc in topRowCards) {
+                            if (!NON_FOOD_PRODUCT.containsMatchIn(sc.cleaned)) {
+                                addCandidate(sc.cleaned)
+                            }
                         }
-                        val scrolledHorizontallyRecently = now - lastHorizontalScrollAtMs <= 5000L && lastHorizontalScrollDir >= 0
-                        val shiftedLeft = lastRowLeadTitle != null &&
-                            lastRowLeadTitle.equals(c0.cleaned, ignoreCase = true) &&
-                            lastRowLeadLeftX > 0 &&
-                            c0.node.left < lastRowLeadLeftX - (10f * density).toInt()
-                        val leftAlreadyGraded = lastRowGradedTitle != null &&
-                            lastRowGradedTitle.equals(c0.cleaned, ignoreCase = true)
-                        if (hasClippedLeftSibling ||
-                            ((scrolledHorizontallyRecently || shiftedLeft) && leftAlreadyGraded)
-                        ) {
-                            sorted[0] = c1
-                            sorted[1] = c0
-                        }
-                        lastRowLeadTitle = c0.cleaned
-                        lastRowLeadLeftX = c0.node.left
                     }
                 }
-                for (sc in sorted) {
-                    addCandidate(sc.cleaned)
-                }
-            }
-        }
-
-        // 4. Single-word produce title (e.g. "Raspberries", "Strawberries", "Bananas", "Avocados", "Parsley" in ALDI)
-        // Strictly restricted to SINGLE_WORD_PRODUCE so 1-word packaged brand logos ("Cheerios", "Velveeta") are never matched!
-        for (n in searchNodes.take(maxSearchNodes)) {
-            val c = cleanTitleCandidate(n.text)
-            if (isCandidateProductTitle(c) && SINGLE_WORD_PRODUCE.matches(c.trim())) {
-                addCandidate(c)
             }
         }
 
@@ -1523,19 +1524,19 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (isConfirmedSinglePdp && out.isEmpty() && preBodyAllNodes.isNotEmpty()) {
             for (n in preBodyAllNodes) {
                 val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }) {
+                if (isCandidateProductTitle(c) && !NON_FOOD_PRODUCT.containsMatchIn(c) && TITLE_ID_HINTS.any { n.viewId.contains(it) }) {
                     addCandidate(c)
                 }
             }
             for (n in preBodyAllNodes) {
                 val c = cleanTitleCandidate(n.text)
-                if (n.isHeading && isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)) {
+                if (n.isHeading && isCandidateProductTitle(c) && looksLikeFoodTitle(c)) {
                     addCandidate(c)
                 }
             }
             for (n in preBodyAllNodes) {
                 val c = cleanTitleCandidate(n.text)
-                if (isCandidateProductTitle(c) && c.split(' ').size >= 2 && FOOD_HINTS.containsMatchIn(c)) {
+                if (isCandidateProductTitle(c) && c.split(' ').size >= 2 && looksLikeFoodTitle(c)) {
                     addCandidate(c)
                 }
             }

@@ -2708,7 +2708,7 @@ class MainActivity : Activity() {
                 swapCard.addView(label("1-for-1 Clean Alternative (0 Flagged Additives)", 14f, 0xFF111814.toInt(), bold = true).apply {
                     setPadding(0, dp(6), 0, dp(2))
                 })
-                swapCard.addView(label("You have $rem of $lim free weekly Clean Swaps remaining.", 12f, 0xFF166534.toInt()).apply {
+                swapCard.addView(label("You have $rem of $lim free Clean Swaps remaining.", 12f, 0xFF166534.toInt()).apply {
                     setPadding(0, 0, 0, dp(10))
                 })
                 swapCard.addView(label("🔓 Reveal Clean Swap ($rem/$lim Free)", 13.5f, Color.WHITE, bold = true).apply {
@@ -2733,7 +2733,7 @@ class MainActivity : Activity() {
                 swapCard.addView(label("$swapScore/100 Clean Replacement Available", 14f, 0xFF111814.toInt(), bold = true).apply {
                     setPadding(0, dp(6), 0, dp(2))
                 })
-                swapCard.addView(label("All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 12f, 0xFF374151.toInt()).apply {
+                swapCard.addView(label("All $lim free Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap swaps, or invite a friend for +7 free Pro days!", 12f, 0xFF374151.toInt()).apply {
                     setPadding(0, 0, 0, dp(10))
                 })
                 swapCard.addView(label("⚡ Unlock Unlimited Swaps — Pro ↗", 13.5f, Color.WHITE, bold = true).apply {

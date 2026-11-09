@@ -48,7 +48,7 @@ object ScanApi {
     private const val KEY_PAYWALL_HEADLINE = "entitlement_paywall_headline"
     private const val KEY_PAYWALL_VARIANT = "entitlement_paywall_variant"
     private const val KEY_UNLOCKED_SWAP_PRODUCTS = "unlocked_swap_products_v1"
-    private const val DEFAULT_FREE_WEEKLY_SWAPS = 3
+    private const val DEFAULT_FREE_WEEKLY_SWAPS = 5
 
     /** Blocking call — returns up to 8 live product suggestions from GET /api/suggest?q=<query>. */
     fun suggest(rawQuery: String): List<JSONObject> {

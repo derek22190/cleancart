@@ -814,6 +814,50 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       mainKt.includes("REQ_PICK_GOOGLE_ACCOUNT")
   );
 
+  // --- Walmart Screenshot Regression Suite: Whole Sweet Potato (90/100), Russet Potatoes (90/100), Butterball Turkey (70/100), and Non-Food Paper Towels / Plastic Cutlery ---
+  const sweetPotatoScan = await runScan({
+    productTitle: "Fresh Whole Sweet Potato",
+    store: "walmart",
+  });
+  const russetPotatoScan = await runScan({
+    productTitle: "Fresh Whole Russet Potatoes, 5 lb Bag",
+    store: "walmart",
+  });
+  const butterballTurkeyScan = await runScan({
+    productTitle: "Butterball Frozen Whole Turkey, All Natural, 10-16 lbs., Serves 7-11, 21g of P...",
+    store: "walmart",
+  });
+  const plasticForksScan = await runScan({
+    productTitle: "Great Value Disposable Plastic Forks and Spoons, White, 48 Count",
+    store: "walmart",
+  });
+  const paperTowelsScan = await runScan({
+    productTitle: "Great Value Everyday Strong Paper Towels, 2 Double Rolls",
+    store: "walmart",
+  });
+  check(
+    "Walmart Produce & Turkey Accuracy: Fresh Whole Sweet Potato (90/100, 0 seed oils), Fresh Whole Russet Potatoes (90/100), Butterball Frozen Whole Turkey (70/100), and Paper Towels / Plastic Forks rejected as non-food",
+    Boolean(
+      sweetPotatoScan.ok &&
+        sweetPotatoScan.result?.score === 90 &&
+        sweetPotatoScan.result?.rating === "Excellent" &&
+        (sweetPotatoScan.result?.flagged?.length ?? 1) === 0 &&
+        !/\boil\b/i.test(sweetPotatoScan.product?.ingredients ?? "") &&
+        russetPotatoScan.ok &&
+        russetPotatoScan.result?.score === 90 &&
+        russetPotatoScan.result?.rating === "Excellent" &&
+        butterballTurkeyScan.ok &&
+        butterballTurkeyScan.product?.brand === "Butterball" &&
+        butterballTurkeyScan.result?.score === 70 &&
+        !plasticForksScan.ok &&
+        plasticForksScan.status === 404 &&
+        !paperTowelsScan.ok &&
+        paperTowelsScan.status === 404 &&
+        readerKt.includes("NON_FOOD_PRODUCT") &&
+        historyStoreKt.includes("isPoisonedProduceEntry")
+    )
+  );
+
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);

@@ -432,6 +432,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       .replace(/\bappl(?:\.\.\.+|…|\b)/gi, "Apples")
       .replace(/\bwing\s+sa(?:\.\.\.+|…|\b)/gi, "Wing Sauce")
       .replace(/\band\s+re(?:\.\.\.+|…|\b)/gi, "and Reese's")
+      .replace(/\s*,\s*serves\s+\d+(?:\s*[-–—]\s*\d+)?(?:\s*,\s*\d+\s*g\s+of\s+p[a-z]*(?:\.\.\.+|…)?)?\s*$/i, "")
+      .replace(/\s*,\s*\d+\s*g\s+of\s+p[a-z]*(?:\.\.\.+|…)?\s*$/i, "")
       .replace(/\s*\(\d+(?:\.\d+)?\s*[a-z]{0,4}\s*(?:\.\.\.+|…)?\s*$/i, "")
       .replace(/\s*,\s*\d+\s*[a-z]{0,3}\s*(?:\.\.\.+|…)\s*$/i, "")
       .replace(/\.\.\.+$/, "")

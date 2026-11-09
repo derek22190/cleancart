@@ -51,6 +51,9 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   if (/\b(bread|bagel|bun|roll|tortilla|waffle|pancake|muffin|pastry|donut)\b/.test(s)) return { relPath: "public/swaps/bread.jpg", contentType: "image/jpeg" };
   if (/\b(ranch|dressing|mayo|mayonnaise|ketchup|mustard|bbq|wasabi|horseradish|sauce|marinara|salsa|soup|chowder|broth)\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
   if (/\b(turkey|chicken|beef|pork|bacon|sausage|hot\s*dog|salami|ham|deli|meat|jerky)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
+  if (/\b(fresh\s+whole|fresh\s+produce|sweet\s+potato|russet\s+potato|yukon\s+gold|idaho\s+potato|red\s+potato|yellow\s+potato|potatoes?|yams?|bananas?|apples?|oranges?|lemons?|limes?|avocados?|tomatoes?|onions?|garlic|carrots?|celery|broccoli|cauliflower|spinach|lettuce|romaine|kale|cabbage|cucumbers?|peppers?|mushrooms?|zucchini|squash|strawberries|blueberries|raspberries|blackberries|grapes?|watermelon|pineapple|mangoes?|peaches?|pears?|produce|vegetables?|fruit)\b/.test(s)) {
+    return { relPath: "public/swaps/produce.png", contentType: "image/png" };
+  }
   return { relPath: "public/swaps/drink.png", contentType: "image/png" };
 }
 
@@ -75,7 +78,18 @@ function distinctiveTokens(s: string): string[] {
     .filter((t) => t.length >= 3 && !STOP_TOKENS.has(t) && !/^\d+$/.test(t));
 }
 
+const PROCESSED_FOOD_IMAGE_QUERY =
+  /\b(chips?|crisps?|crispy|fries|fried|tots|hash\s*browns?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|pie|cake|muffin|waffles?|pancakes?|cookies?|crackers?|bars?|cereal|puffs?|candy|candied|gummies|juice|drink|soda|sauce|salsa|ketchup|jam|jelly|syrup|canned|soup|chowder|salad\s+kit|dressing|dip)\b/i;
+
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
+  if (
+    !PROCESSED_FOOD_IMAGE_QUERY.test(rawQuery) &&
+    /\b(fresh\s+whole\b|fresh\s+produce\b|sweet\s+potato(?:es)?|russet\s+potato(?:es)?|yukon\s+gold|idaho\s+potato(?:es)?|red\s+potato(?:es)?|yellow\s+potato(?:es)?|yams?\s*\(sweet\s+potatoes?\)|fresh\s+banana|honeycrisp\s+apples?|baby\s+cut\s+carrots?)\b/i.test(
+      rawQuery,
+    )
+  ) {
+    return null;
+  }
   const clean = rawQuery
     .replace(/\(category\s+estimate[^)]*\)/gi, " ")
     .replace(/\(representative\s+formulation[^)]*\)/gi, " ")
