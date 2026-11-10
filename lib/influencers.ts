@@ -92,8 +92,8 @@ function hashToCreator(
   fields: Record<string, string> | null
 ): Creator | null {
   if (!fields || !fields.code) return null;
-  const grossRevenue = round2(Number(fields.grossRevenue ?? 0));
-  const commissionOwed = round2(Number(fields.commissionOwed ?? 0));
+  const grossRevenue = Math.max(0, round2(Number(fields.grossRevenue ?? 0)));
+  const commissionOwed = Math.max(0, round2(Number(fields.commissionOwed ?? 0)));
   return {
     code: fields.code || code,
     name: fields.name || code,
@@ -397,11 +397,14 @@ export async function recordStripeCreatorRefundOnce(
       : fullPrice;
   const commDelta = round2(grossDelta * (creator.commissionPct / 100));
 
+  const isFullRefund = grossDelta >= fullPrice * 0.99;
+  const planField = plan === "annual" ? "paidAnnual" : "paidMonthly";
   const key = creatorKey(norm);
   await kvAtomicHashUpdateOnce(
     markerKey,
     key,
     [
+      ...(isFullRefund ? [{ field: planField, delta: -1 }] : []),
       { field: "grossRevenue", delta: -grossDelta, isFloat: true },
       { field: "commissionOwed", delta: -commDelta, isFloat: true },
     ],

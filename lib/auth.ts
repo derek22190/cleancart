@@ -8,6 +8,7 @@ import {
 } from "./entitlements";
 import {
   codeFromDeviceId,
+  ensureReferralCodeRegistered,
   getExistingDevice,
   getOrCreateDevice,
   verifyDeviceSecret,
@@ -220,6 +221,14 @@ export async function getUserByEmail(rawEmail: string): Promise<UserAccount | nu
 export async function saveUser(user: UserAccount): Promise<void> {
   user.updatedAt = new Date().toISOString();
   await kvSet(`${USER_EMAIL_PREFIX}${user.email}`, user, KV_TTL_SECONDS);
+  if (user.referralCode && !user.deleted) {
+    const preferredDeviceId =
+      user.linkedDevices[0] || `user:${user.userId}`;
+    await ensureReferralCodeRegistered(
+      user.referralCode,
+      preferredDeviceId
+    ).catch(() => null);
+  }
 }
 
 export async function getAuthenticatedUser(
@@ -239,7 +248,10 @@ export async function toPublicProfile(
   deviceId?: string
 ): Promise<PublicUserProfile> {
   const now = Date.now();
-  const proUntil = user.proUntil || 0;
+  const backingRefDevice = await getExistingDevice(
+    user.linkedDevices[0] || `user:${user.userId}`
+  ).catch(() => null);
+  const proUntil = Math.max(user.proUntil || 0, backingRefDevice?.proUntil || 0);
   let isStripePro = false;
   const isVerified = Boolean(user.emailVerified);
 

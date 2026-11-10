@@ -119,11 +119,17 @@ export async function POST(req: Request) {
   const deviceId =
     attrDeviceId || (!appUserId.includes("@") && !appUserId.startsWith("$RCAnonymousID") ? appUserId : undefined);
 
-  const creatorCode = extractAttr(attrs, "$creatorCode", "creatorCode", "creator_code", "$campaign");
-  const referralCode = extractAttr(attrs, "referredByCode", "referral_code");
+  const rawCreatorCode = extractAttr(attrs, "$creatorCode", "creatorCode", "creator_code", "$campaign");
+  const isFriendCreatorAttr = Boolean(
+    rawCreatorCode && /^BROC-[A-Z0-9]{4,10}$/i.test(rawCreatorCode)
+  );
+  const creatorCode = isFriendCreatorAttr ? undefined : rawCreatorCode;
+  const referralCode =
+    extractAttr(attrs, "referredByCode", "referral_code") ||
+    (isFriendCreatorAttr ? rawCreatorCode?.toUpperCase() : undefined);
   const plan = inferPlanFromProductId(ev.product_id);
   const subscriptionId = `rc_${ev.original_transaction_id || ev.transaction_id || appUserId || ev.id || "sub"}`;
-  const sessionId = `rc_evt_${ev.id || Date.now()}`;
+  const sessionId = `rc_sess_${subscriptionId}`;
   const eventCreatedSec = ev.event_timestamp_ms
     ? Math.floor(ev.event_timestamp_ms / 1000)
     : Math.floor(Date.now() / 1000);
@@ -166,6 +172,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: ev.type });
   }
 
+  const expiresAtMs =
+    status === "canceled"
+      ? typeof ev.expiration_at_ms === "number"
+        ? Math.min(ev.expiration_at_ms, nowMs)
+        : nowMs
+      : typeof ev.expiration_at_ms === "number"
+        ? ev.expiration_at_ms
+        : undefined;
+
   await saveEntitlement({
     sessionId,
     subscriptionId,
@@ -176,8 +191,7 @@ export async function POST(req: Request) {
     creatorCode,
     status,
     active: status === "active" || status === "trialing",
-    expiresAtMs:
-      typeof ev.expiration_at_ms === "number" ? ev.expiration_at_ms : undefined,
+    expiresAtMs,
     lastStripeEventCreated: eventCreatedSec,
     updatedAt: new Date().toISOString(),
   });

@@ -163,6 +163,18 @@ export async function POST(request: Request) {
         activateNow: false,
         deviceSecret,
       });
+      if (!res.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            rewardedNow: false,
+            error: res.message,
+            message: res.message,
+            entitlement: await serializeEntitlementWithPaidLookup(res.device),
+          },
+          { status: 400, headers: CORS }
+        );
+      }
       return NextResponse.json(
         {
           ok: true,

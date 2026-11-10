@@ -1424,6 +1424,52 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     .update(`${nowSec}.${testPayload}`, "utf8")
     .digest("hex");
 
+  const paywallTsx = fs.readFileSync("components/Paywall.tsx", "utf8");
+  const referralRouteTs = fs.readFileSync("app/api/referral/route.ts", "utf8");
+  const stripeWebhookRouteTs = fs.readFileSync("app/api/stripe/webhook/route.ts", "utf8");
+  const {
+    applyOrActivateReferral,
+    ensureReferralCodeRegistered,
+    getOrCreateDevice,
+    isValidReferralCode,
+  } = await import("../lib/referrals");
+  const {
+    createCreator,
+    recordStripeCreatorConversionOnce,
+    recordStripeCreatorRefundOnce,
+  } = await import("../lib/influencers");
+
+  const reauditDev = await getOrCreateDevice("dev_reaudit_friend_1", "secret_reaudit_12345");
+  const invalidClaimRes = await applyOrActivateReferral({
+    deviceId: reauditDev.deviceId,
+    deviceSecret: "secret_reaudit_12345",
+    referralCode: "BROC-ZZZZ9999",
+    activateNow: false,
+  });
+  const selfClaimRes = await applyOrActivateReferral({
+    deviceId: reauditDev.deviceId,
+    deviceSecret: "secret_reaudit_12345",
+    referralCode: reauditDev.referralCode,
+    activateNow: false,
+  });
+  await ensureReferralCodeRegistered("BROC-AUTH7777", "user:usr_reaudit_777");
+  const validUserCode = await isValidReferralCode("BROC-AUTH7777");
+  const validClaimRes = await applyOrActivateReferral({
+    deviceId: reauditDev.deviceId,
+    deviceSecret: "secret_reaudit_12345",
+    referralCode: "BROC-AUTH7777",
+    activateNow: false,
+  });
+  const validActivateRes = await applyOrActivateReferral({
+    deviceId: reauditDev.deviceId,
+    activateNow: true,
+  });
+
+  await createCreator({ code: "REAUDIT25", name: "Reaudit Creator", commissionPct: 25 });
+  await recordStripeCreatorConversionOnce("inv_reaudit_1", "REAUDIT25", "paid_annual", 49.99);
+  const afterRefund1 = await recordStripeCreatorRefundOnce("ref_reaudit_1", "REAUDIT25", "annual", 49.99);
+  const afterRefund2 = await recordStripeCreatorRefundOnce("ref_reaudit_2", "REAUDIT25", "annual", 49.99);
+
   check(
     "Affiliate Links, Creator Promo Codes, Friend Referrals & Stripe/RevenueCat Audit Verification",
     Boolean(
@@ -1448,8 +1494,23 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         creatorsPageTsx.includes('cleanCode.startsWith("BROC")') &&
         infRouteTs.includes('rawCode.startsWith("BROC")') &&
         rcWebhookTs.includes("amountPaidUsd") &&
+        rcWebhookTs.includes("rc_sess_${subscriptionId}") &&
+        rcWebhookTs.includes("isFriendCreatorAttr") &&
         checkoutRouteTs.includes("resolveAllowedOrigin") &&
-        simulatorTsx.includes('params.get("upgrade") === "1"')
+        simulatorTsx.includes('params.get("upgrade") === "1"') &&
+        paywallTsx.includes('window.localStorage.getItem("heybroc_device_secret")') &&
+        referralRouteTs.includes("if (!res.ok)") &&
+        stripeWebhookRouteTs.includes("invoiceRefCode") &&
+        invalidClaimRes.ok === false &&
+        selfClaimRes.ok === false &&
+        validUserCode === true &&
+        validClaimRes.ok === true &&
+        validActivateRes.ok === true &&
+        validActivateRes.rewardedNow === true &&
+        afterRefund1?.paidAnnual === 0 &&
+        afterRefund1?.grossRevenue === 0 &&
+        afterRefund2?.grossRevenue === 0 &&
+        afterRefund2?.commissionOwed === 0
     )
   );
 

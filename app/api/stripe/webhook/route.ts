@@ -411,8 +411,28 @@ export async function POST(req: Request) {
           plan,
         });
 
+        const invoiceDeviceId =
+          metadata.device_id || updated?.deviceId || existing?.deviceId;
+        const invoiceRefCode =
+          metadata.referral_code ||
+          (creatorCode && /^BROC-[A-Z0-9]{4,10}$/.test(creatorCode)
+            ? creatorCode
+            : undefined);
+        if (invoiceDeviceId && invoiceRefCode) {
+          await applyOrActivateReferral({
+            deviceId: invoiceDeviceId,
+            referralCode: invoiceRefCode,
+            activateNow: true,
+          });
+        }
+
         // Credit creators ONLY from invoice.paid / invoice.payment_succeeded with amount_paid > 0, key invoice:${id}, using actual paid USD
-        if (creatorCode && amountPaidCents > 0 && invoiceId) {
+        if (
+          creatorCode &&
+          !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) &&
+          amountPaidCents > 0 &&
+          invoiceId
+        ) {
           await recordStripeCreatorConversionOnce(
             `invoice:${invoiceId}`,
             creatorCode,

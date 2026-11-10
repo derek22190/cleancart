@@ -140,14 +140,27 @@ export default function Paywall({
         const devId =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) ||
           "anon-web";
+        const devSecret =
+          (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) ||
+          "";
         const refRes = await fetch("/api/referral", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "claim", deviceId: devId, referralCode: target }),
+          headers: {
+            "Content-Type": "application/json",
+            ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+          },
+          body: JSON.stringify({
+            action: "claim",
+            deviceId: devId,
+            deviceSecret: devSecret || undefined,
+            referralCode: target,
+          }),
         }).catch(() => null);
         const refData = refRes ? await refRes.json().catch(() => null) : null;
-        if (refData && refData.ok === false) {
-          setCodeError(refData.error || "Could not apply friend code.");
+        if (!refRes || !refRes.ok || !refData || refData.ok === false) {
+          setCodeError(
+            refData?.error || refData?.message || "Invalid or unrecognized friend referral code."
+          );
           return;
         }
         if (typeof window !== "undefined") {

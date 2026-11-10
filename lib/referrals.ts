@@ -230,6 +230,49 @@ export async function getOrCreateDevice(
 }
 
 /**
+ * Ensures an account-level `BROC-XXXXXXXX` referral code has a registered KV mapping
+ * and backing `DeviceEntitlement` record so friends can claim and activate it even
+ * when the account was created via email/OAuth before binding a mobile device.
+ */
+export async function ensureReferralCodeRegistered(
+  rawReferralCode: string,
+  preferredDeviceId: string
+): Promise<DeviceEntitlement | null> {
+  const code = (rawReferralCode || "").trim().toUpperCase();
+  if (!/^BROC-[A-Z0-9]{4,10}$/.test(code)) return null;
+
+  const existingOwnerId = await getDeviceIdByReferralCode(code);
+  if (existingOwnerId) {
+    const existingOwner = await getExistingDevice(existingOwnerId);
+    if (existingOwner) return existingOwner;
+  }
+
+  const deviceId = (preferredDeviceId || "").trim().slice(0, 128);
+  if (!deviceId || deviceId === "anon-web") return null;
+
+  let entry = await getExistingDevice(deviceId);
+  const now = Date.now();
+  if (!entry) {
+    entry = {
+      deviceId,
+      referralCode: code,
+      referralActivated: false,
+      firstSeenAt: now,
+      proUntil: 0,
+      referralsCompleted: 0,
+      weeklySwapsUsed: [],
+      weekResetAt: now + WEEK_MS,
+      courtesyRefillUsedThisWeek: false,
+    };
+    await saveDevice(entry);
+  } else {
+    await kvSetNx(`heybroc:refcode:${code}`, entry.deviceId, ACTIVE_KV_TTL_SECONDS);
+    codeToDevice.set(code, entry.deviceId);
+  }
+  return entry;
+}
+
+/**
  * Links a referred device to an existing inviter's referral code (`claim`), or activates
  * a previously claimed referral when triggered by an internal verified event.
  */
@@ -239,6 +282,7 @@ export async function applyOrActivateReferral(params: {
   activateNow?: boolean;
   deviceSecret?: string;
 }): Promise<{
+  ok: boolean;
   device: DeviceEntitlement;
   rewardedNow: boolean;
   message: string;
@@ -247,6 +291,7 @@ export async function applyOrActivateReferral(params: {
   const device = await getOrCreateDevice(params.deviceId, params.deviceSecret);
   if (!params.activateNow && device.deviceSecretHash && !verifyDeviceSecret(device, params.deviceSecret)) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "Invalid device credentials for referral claim.",
@@ -258,6 +303,7 @@ export async function applyOrActivateReferral(params: {
 
   if (!inputCode) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "No referral code provided.",
@@ -265,6 +311,7 @@ export async function applyOrActivateReferral(params: {
   }
   if (inputCode === device.referralCode) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "You cannot use your own referral code.",
@@ -272,6 +319,7 @@ export async function applyOrActivateReferral(params: {
   }
   if (device.referralActivated) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "Referral bonus already activated on this device.",
@@ -281,6 +329,7 @@ export async function applyOrActivateReferral(params: {
   const inviterDeviceId = await getDeviceIdByReferralCode(inputCode);
   if (!inviterDeviceId || inviterDeviceId === device.deviceId) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "Invalid or unrecognized referral code.",
@@ -292,6 +341,7 @@ export async function applyOrActivateReferral(params: {
   if (!params.activateNow) {
     await saveDevice(device);
     return {
+      ok: true,
       device,
       rewardedNow: false,
       message: `Code ${inputCode} saved! Scan an item in the Android app or start a trial to unlock +${PRICING.referralBonusDays} Free Pro Days for both you and your friend.`,
@@ -301,6 +351,7 @@ export async function applyOrActivateReferral(params: {
   const inviter = await getExistingDevice(inviterDeviceId);
   if (!inviter) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "Inviter account not found.",
@@ -309,6 +360,7 @@ export async function applyOrActivateReferral(params: {
 
   if (inviter.referralsCompleted >= MAX_REFERRALS_PER_DEVICE) {
     return {
+      ok: false,
       device,
       rewardedNow: false,
       message: "This referral code has reached the maximum number of redemptions.",
@@ -330,6 +382,7 @@ export async function applyOrActivateReferral(params: {
   await saveDevice(inviter);
 
   return {
+    ok: true,
     device,
     rewardedNow: true,
     message: `🎉 +${PRICING.referralBonusDays} Free Days of HeyBroc Pro unlocked for you and your friend!`,
@@ -346,11 +399,29 @@ export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
   if (base.isProActive) return base;
   const paid = await getDevicePaidEntitlement(d.deviceId);
   if (paid && paid.active) {
+    const now = Date.now();
+    const defaultHorizonDays =
+      paid.status === "trialing"
+        ? paid.creatorCode
+          ? PRICING.creatorTrialDays
+          : PRICING.trialDays
+        : paid.plan === "annual"
+          ? 365
+          : 30;
+    const paidUntil =
+      typeof paid.expiresAtMs === "number" && paid.expiresAtMs > now
+        ? paid.expiresAtMs
+        : now + defaultHorizonDays * DAY_MS;
+    const effectiveProUntil = Math.max(base.proUntil, paidUntil);
+    const effectiveDays = Math.max(
+      base.proDaysRemaining,
+      Math.max(1, Math.ceil((effectiveProUntil - now) / DAY_MS))
+    );
     return {
       ...base,
       isProActive: true,
-      proDaysRemaining: Math.max(base.proDaysRemaining, 30),
-      proUntil: Math.max(base.proUntil, Date.now() + 30 * DAY_MS),
+      proDaysRemaining: effectiveDays,
+      proUntil: effectiveProUntil,
     };
   }
   return base;
