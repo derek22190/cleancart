@@ -129,7 +129,7 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
   Crackers: {
     category: "Crackers",
     brand: "Mary's Gone Crackers",
-    name: "Original Seed Crackers",
+    name: "Organic Original Seed Crackers",
     size: "6.5 oz box",
     isOrganic: true,
     image: "/swaps/crackers.jpg",
@@ -171,6 +171,7 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
     size: "5.25 oz bag",
     image: "/swaps/chips.jpg",
     ingredients: "Potatoes, avocado oil, sea salt.",
+    nutrition: { caloriesKcal100g: 535, sugarsG100g: 0, saturatedFatG100g: 5.3, sodiumMg100g: 392, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 80 },
     itemIds: { walmart: "44391408" },
   },
   "Butter/Dairy": {
@@ -227,7 +228,7 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
  * cheese swaps to cheese, bacon swaps to bacon, tortilla chips swap to tortilla chips, etc.
  */
 export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative }[] = [
-  // --- Butter / Margarine / Spreads (1-for-1 Butter, excluding nut/fruit/cookie butters) ---
+  // --- Butter / Margarine / Spreads (1-for-1 Butter, excluding nut/fruit/cookie butters & butter-seasoned entrees) ---
   {
     match: /^(?!.*\b(peanut|almond|cashew|sunflower|sun|cookie|apple|cocoa|shea|body)\s+butter\b).*\b(unsalted\s+butter|butter\s+unsalted)\b/i,
     alt: {
@@ -244,7 +245,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(peanut|almond|cashew|sunflower|sun|cookie|apple|cocoa|shea|body|butter\s+milk|buttermilk|butter\s+pecan|butter\s+lettuce|butter\s+beans?)\b).*\b(butter|margarine|buttery spread|country crock|imperial|blue bonnet|parkay|smart balance|earth balance|i can'?t believe it'?s not butter|kerrygold|land o'? ?lakes)\b/i,
+    match: /^(?!.*\b(peanut|almond|cashew|sunflower|sun|cookie|apple|cocoa|shea|body|butter\s+milk|buttermilk|butter\s+pecan|butter\s+lettuce|butter\s+beans?|butter\s+potato\w*|butternut|steak|salmon|shrimp|fish|chicken|turkey|beef|pork|jam|jelly|preserves|fruit\s+spread|latte|matcha|tea|coffee|popcorn|crackers?|cookies?|wafers?|croissants?|rolls?|buns?|bread|pasta|noodles?|ramen|shells|macaroni|sauce|soup|chowder|candy|toffee|butterfinger)\b).*\b(butter|margarine|buttery spread|country crock|imperial|blue bonnet|parkay|smart balance|earth balance|i can'?t believe it'?s not butter|kerrygold|land o'? ?lakes)\b/i,
     alt: CLEAN_ALTERNATIVES["Butter/Dairy"],
   },
 
@@ -488,7 +489,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(cheese|cheddar|velveeta|kraft\s+singles|american\s+singles|queso|colby|monterey\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\b/i,
+    match: /^(?!.*\b(mac.*cheese|macaroni|shells?\s*(?:&|and)\s*(?:real\s+aged\s+|white\s+)?cheddar|annie'?s.*shells|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(cheese|cheddar|velveeta|kraft\s+singles|american\s+singles|queso|colby|monterey\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\b/i,
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -518,7 +519,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
+    match: /^(?!.*\b(noodles?|rolls?|soup|salad|fried\s+rice|pasta|waffles?|mcmuffin|sandwich|custard|nog|mayo|mayonnaise|cookies?|cake|pastry|pastries)\b).*\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
     alt: {
       category: "Butter/Dairy",
       brand: "Vital Farms",
@@ -782,7 +783,21 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+    match: /\b(fruit\s+cups?|fruit\s+bowls?|dole\s+.*\b(?:peaches?|pears?|pineapple|mandarins?|fruit)|del\s+monte\s+.*\b(?:peaches?|pears?|pineapple|mandarins?|fruit)|(?:peaches?|pears?|mandarin\s+oranges?|fruit\s+cocktail)\s+in\s+(?:heavy|light|extra\s+light|100%\s*juice|syrup))\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Mott's",
+      name: "No Sugar Added Unsweetened Applesauce",
+      sourceUrl: "https://www.motts.com/products/applesauce/unsweetened-applesauce",
+      verifiedAt: "2026-11-10",
+      size: "6 count cups",
+      image: "/swaps/produce.png",
+      ingredients: "Apples, water, ascorbic acid (vitamin C).",
+      nutrition: { caloriesKcal100g: 45, sugarsG100g: 9.9, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 0.9, proteinG100g: 0, fruitsVegNutsPct: 100, isWholeFood: true },
+    },
+  },
+  {
+    match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
     alt: {
       category: "Cereal",
       brand: "Coombs Family Farms",
@@ -808,7 +823,6 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/soup.png",
       ingredients: "Organic brown rice flour, organic millet flour, water.",
-      itemIds: { walmart: "42708184" },
     },
   },
   {
@@ -1083,7 +1097,21 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning|jerky|stick|broth|stock)\b).*\b(ground\s+beef|ground\s+chuck|beef\s+patties|burger\s+patties|\d{2}%\s*lean\s*\/?\s*\d{1,2}%\s*fat\s*(?:ground\s+)?beef)\b/i,
+    match: /\b((?:beyond|impossible|morningstar|boca|gardenburger)\b.*\b(?:burger|patt(?:y|ies)|beef|meat)|(?:plant[- ]?based|vegan|veggie|black\s+bean)\s+(?:burger|patt(?:y|ies)|ground))\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Dr. Praeger's",
+      name: "California Veggie Burgers",
+      sourceUrl: "https://drpraegers.com/our-food/california-veggie-burgers/",
+      verifiedAt: "2026-11-10",
+      size: "10 oz box (4 patties)",
+      image: "/swaps/produce.png",
+      ingredients: "Carrots, onions, string beans, oat bran, soybeans, zucchini, peas, broccoli, corn, spinach, expeller pressed avocado oil, sea salt, garlic, black pepper.",
+      nutrition: { caloriesKcal100g: 155, sugarsG100g: 2.8, saturatedFatG100g: 0.7, sodiumMg100g: 352, fiberG100g: 5.6, proteinG100g: 7.0, fruitsVegNutsPct: 75 },
+    },
+  },
+  {
+    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning|jerky|stick|broth|stock|beyond|impossible|plant[- ]?based|vegan|veggie|black\s+bean|morningstar|boca|gardenburger)\b).*\b(ground\s+beef|ground\s+chuck|beef\s+patties|burger\s+patties|\d{2}%\s*lean\s*\/?\s*\d{1,2}%\s*fat\s*(?:ground\s+)?beef)\b/i,
     alt: {
       category: "Deli Meat",
       brand: "Marketside Butcher",
@@ -1095,11 +1123,10 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg",
       ingredients: "100% Organic Grass-Fed Beef.",
-      itemIds: { walmart: "51259058" },
     },
   },
   {
-    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning)\b).*\b(roast\s+beef|steak|sirloin|ribeye)\b/i,
+    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning)\b).*\b(roast\s+beef|deli\s+beef|sliced\s+beef|corned\s+beef|pastrami)\b/i,
     alt: {
       category: "Deli Meat",
       brand: "Applegate Organics",
@@ -1114,10 +1141,41 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       itemIds: { walmart: "15610518" },
     },
   },
+  {
+    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning|jerky|broth|stock|plant[- ]?based|vegan)\b).*\b(steak|sirloin|ribeye|strip\s+steak|flank|brisket|chuck\s+roast|beef\s+roast|tenderloin)\b/i,
+    alt: {
+      category: "Deli Meat",
+      brand: "Verde Farms",
+      name: "Organic 100% Grass-Fed Beef Ribeye Steak",
+      searchQuery: "Organic Grass Fed Steak",
+      sourceUrl: "https://verdefarms.com/product/organic-grass-fed-ribeye-steak/",
+      verifiedAt: "2026-11-10",
+      size: "10 oz steak",
+      isOrganic: true,
+      image: "/swaps/beef.png",
+      ingredients: "100% organic grass-fed beef.",
+      nutrition: { caloriesKcal100g: 191, sugarsG100g: 0, saturatedFatG100g: 4.5, sodiumMg100g: 58, fiberG100g: 0, proteinG100g: 21.5, isOrganic: true, isWholeFood: true },
+    },
+  },
+  {
+    match: /^(?!.*\b(sauce|soup|chowder|cat\s+food|pet\s+food)\b).*\b(salmon|tuna|cod|tilapia|halibut|haddock|fish\s+sticks?|fish\s+fillets?|battered\s+fish|breaded\s+(?:fish|shrimp)|popcorn\s+shrimp|fried\s+shrimp|crab\s+cakes?|gorton'?s|van\s+de\s+kamp'?s|mrs\.?\s*paul'?s|starkist|bumble\s+bee)\b/i,
+    alt: {
+      category: "Deli Meat",
+      brand: "Wild Planet",
+      name: "Wild Pink Salmon",
+      searchQuery: "Wild Caught Salmon",
+      sourceUrl: "https://wildplanetfoods.com/products/wild-pink-salmon",
+      verifiedAt: "2026-11-10",
+      size: "6 oz can",
+      image: "/swaps/fish.png",
+      ingredients: "Wild pink salmon (Oncorhynchus gorbuscha), sea salt.",
+      nutrition: { caloriesKcal100g: 129, sugarsG100g: 0, saturatedFatG100g: 0.6, sodiumMg100g: 294, fiberG100g: 0, proteinG100g: 21.2, isWholeFood: true },
+    },
+  },
 
   // --- Bread, Bagels, Tortillas, Buns, Waffles, Pasta, Mac & Cheese, Pizza ---
   {
-    match: /\b(mac\s*(&|and)\s*cheese|macaroni\s*(&|and)\s*cheese|kraft\s+mac|velveeta\s+shells)\b/i,
+    match: /\b(mac\s*(&|and)\s*cheese|macaroni\s*(&|and)\s*cheese|kraft\s+mac|velveeta\s+shells|shells?\s*(?:&|and)\s*(?:real\s+aged\s+|white\s+)?cheddar)\b/i,
     alt: {
       category: "Bread",
       brand: "Annie's Homegrown",
@@ -1203,7 +1261,6 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/pasta.png",
       ingredients: "Organic durum wheat semolina, water.",
-      itemIds: { walmart: "51259268" },
     },
   },
   {
@@ -1224,7 +1281,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Snacks, Cookies, Candy, Chocolate, Soda, Sports Drinks, Juice ---
   {
-    match: /^(?!.*\b(cereal|puffs?|o'?s)\b).*\b(cookies?|oreos?|chips\s+ahoy|nutter\s+butter|keebler|wafers?|knoppers|biscuits?|biscoff|cake\s+rolls?|swiss\s+rolls?|snack\s+cakes?|little\s+debbie|hostess|twinkies?|cupcakes?|donuts?|doughnuts?|danish|cinnamon\s+rolls?|honey\s+buns?)\b/i,
+    match: /^(?!.*\b(cereal|puffs?|o'?s)\b).*\b(cookies?|oreos?|chips\s+ahoy|nutter\s+butter|keebler|wafers?|knoppers|biscuits?|biscoff|cake\s+rolls?|swiss\s+rolls?|snack\s+cakes?|little\s+debbie|hostess|twinkies?|cupcakes?|donuts?|doughnuts?|bismarks?|fritters?|eclairs?|strudels?|turnovers?|muffins?|pastries|pastry|toaster\s+pastr(?:y|ies)|pop[- ]?tarts?|danish|cinnamon\s+rolls?|honey\s+buns?)\b/i,
     alt: {
       category: "Snacks",
       brand: "Simple Mills",
@@ -1413,7 +1470,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; alt: CleanAlternative }[]>> = {
   sams: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Member's Mark",
@@ -1469,7 +1526,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
+      match: /^(?!.*\b(noodles?|rolls?|soup|salad|fried\s+rice|pasta|waffles?|mcmuffin|sandwich|custard|nog|mayo|mayonnaise|cookies?|cake|pastry|pastries)\b).*\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Member's Mark",
@@ -1511,7 +1568,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "Member's Mark",
@@ -1541,7 +1598,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   costco: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1588,8 +1645,8 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
         name: "Organic Unsweetened Almond Beverage",
-        sourceUrl: "https://www.costco.com/kirkland-signature-organic-almond-beverage%2C-unsweetened%2C-vanilla%2C-32-fl-oz%2C-6-count.product.100334946.html",
-        verifiedAt: "2026-11-09",
+        sourceUrl: "https://www.costco.com/kirkland-signature-organic-unsweetened-almond-non-dairy-beverage%2C-32-fl-oz%2C-6-count.product.100438695.html",
+        verifiedAt: "2026-11-10",
         size: "32 fl oz (6 pack)",
         isOrganic: true,
         image: "/swaps/milk.png",
@@ -1611,7 +1668,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
+      match: /^(?!.*\b(noodles?|rolls?|soup|salad|fried\s+rice|pasta|waffles?|mcmuffin|sandwich|custard|nog|mayo|mayonnaise|cookies?|cake|pastry|pastries)\b).*\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1695,7 +1752,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "Kirkland Signature",
@@ -1739,7 +1796,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   aldi: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Simply Nature",
@@ -1781,7 +1838,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
+      match: /^(?!.*\b(noodles?|rolls?|soup|salad|fried\s+rice|pasta|waffles?|mcmuffin|sandwich|custard|nog|mayo|mayonnaise|cookies?|cake|pastry|pastries)\b).*\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Simply Nature",
@@ -1851,7 +1908,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "Simply Nature",
@@ -1923,7 +1980,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   bjs: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Wellsley Farms",
@@ -1965,7 +2022,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
+      match: /^(?!.*\b(noodles?|rolls?|soup|salad|fried\s+rice|pasta|waffles?|mcmuffin|sandwich|custard|nog|mayo|mayonnaise|cookies?|cake|pastry|pastries)\b).*\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Wellsley Farms",
@@ -1993,7 +2050,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "Wellsley Farms",
@@ -2023,7 +2080,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   target: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Good & Gather",
@@ -2079,7 +2136,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "Good & Gather",
@@ -2092,10 +2149,25 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
         ingredients: "100% pure organic Grade A amber maple syrup.",
       },
     },
+    {
+      match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning|jerky|stick|broth|stock|beyond|impossible|plant[- ]?based|vegan|veggie|black\s+bean|morningstar|boca|gardenburger)\b).*\b(ground\s+beef|ground\s+chuck|beef\s+patties|burger\s+patties|\d{2}%\s*lean\s*\/?\s*\d{1,2}%\s*fat\s*(?:ground\s+)?beef)\b/i,
+      alt: {
+        category: "Deli Meat",
+        brand: "Good & Gather",
+        name: "Organic 100% Grass-Fed 85% Lean 15% Fat Ground Beef",
+        searchQuery: "Organic Grass Fed Ground Beef",
+        sourceUrl: "https://www.target.com/p/organic-100-grass-fed-85-15-ground-beef-1lb-good-38-gather-8482/-/A-54582406",
+        verifiedAt: "2026-11-10",
+        size: "1 lb brick",
+        isOrganic: true,
+        image: "/swaps/beef.png",
+        ingredients: "100% Organic Grass-Fed Beef.",
+      },
+    },
   ],
   kroger: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
@@ -2165,7 +2237,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "Simple Truth Organic",
@@ -2178,10 +2250,25 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
         ingredients: "100% pure organic Grade A amber maple syrup.",
       },
     },
+    {
+      match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning|jerky|stick|broth|stock|beyond|impossible|plant[- ]?based|vegan|veggie|black\s+bean|morningstar|boca|gardenburger)\b).*\b(ground\s+beef|ground\s+chuck|beef\s+patties|burger\s+patties|\d{2}%\s*lean\s*\/?\s*\d{1,2}%\s*fat\s*(?:ground\s+)?beef)\b/i,
+      alt: {
+        category: "Deli Meat",
+        brand: "Simple Truth Organic",
+        name: "Organic 100% Grass-Fed Ground Beef",
+        searchQuery: "Organic Grass Fed Ground Beef",
+        sourceUrl: "https://www.kroger.com/p/simple-truth-organic-85-lean-15-fat-grass-fed-ground-beef/0001111097023",
+        verifiedAt: "2026-11-10",
+        size: "1 lb brick",
+        isOrganic: true,
+        image: "/swaps/beef.png",
+        ingredients: "100% Organic Grass-Fed Beef.",
+      },
+    },
   ],
   amazon: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|apple|cocoa|body|shea)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "365 by Whole Foods Market",
@@ -2237,7 +2324,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+      match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
       alt: {
         category: "Cereal",
         brand: "365 by Whole Foods Market",
@@ -2751,19 +2838,52 @@ function evaluateCandidateForSwap(
 
   const fullTitle = formatSwapFullTitle(alt);
   if (params.productTitle) {
+    const normTitle = params.productTitle.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    const normBrand = alt.brand.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    const coreAltWords = alt.name
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4 && !/^(organic|natural|pure|real|made|with|from|pack|count|original|classic)$/.test(w));
+    if (
+      normBrand &&
+      normTitle.includes(normBrand) &&
+      coreAltWords.length > 0 &&
+      coreAltWords.every((w) => normTitle.includes(w))
+    ) {
+      return null;
+    }
+
     const requested = params.productTitle.replace(/\blactaid\b/gi, "lactose-free");
     const variantTitle = (
       (alt.isOrganic === true || alt.nutrition?.isOrganic === true ? "Organic " : "") + fullTitle
     )
       .replace(/\b(organic)\s+\1\b/gi, "$1")
       .trim();
+    const isPlainDairyMilk =
+      /\bmilk\b/i.test(requested) &&
+      !/\b(chocolate|strawberry|yogurt|yoghurt|ice\s+cream|cheese|butter|condensed|evaporated|almond|oat|soy|coconut|cashew)\b/i.test(requested);
+    const altHasZeroAddedSugar =
+      !/\b(sugar|cane\s+sugar|maple\s+syrup|honey|agave|corn\s+syrup|dextrose|fructose|malt\s+syrup|date\s+paste|concentrated\s+.*juice)\b/i.test(
+        alt.ingredients
+      );
     // A named alternative can have a different flavor or protein amount, but must
     // preserve explicit dietary/formulation restrictions requested by the shopper.
-    const restrictions =
+    const rawRestrictions =
       requested.match(
         /\b(?:plain|unflavored|unsweetened|extra\s+creamy|zero\s+sugar|sugar[ -]*free|organic|gluten[ -]*free|grain[ -]*free|lactose[ -]*free|skim|nonfat|fat[ -]*free|whole\s+milk)\b|\b[012]\s*%/gi
       ) || [];
-    const guardQuery = restrictions.join(" ") + (/\bmilk\b/i.test(requested) ? " milk" : "");
+    const restrictions = rawRestrictions.filter((tok) => {
+      if (/^(?:[012]\s*%|skim|nonfat|fat[ -]*free|whole\s+milk)$/i.test(tok) && !isPlainDairyMilk) {
+        return false;
+      }
+      if (/^(?:zero\s+sugar|sugar[ -]*free)$/i.test(tok) && altHasZeroAddedSugar && !/\b(soda|cola|pop|energy|drink|tea|lemonade)\b/i.test(requested)) {
+        return false;
+      }
+      return true;
+    });
+    const guardQuery = restrictions.join(" ") + (isPlainDairyMilk ? " milk" : "");
     if (!passesVariantGuard(guardQuery, variantTitle, { allowCleanerSwap: true })) return null;
     if (
       /\b(vegan|dairy[ -]*free|non[ -]*dairy)\b/i.test(requested) &&

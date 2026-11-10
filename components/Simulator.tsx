@@ -299,12 +299,20 @@ function Gauge({ score, rating, color, size = 112 }: { score: number | null; rat
 }
 
 function ProductArt({ product, className = "", showAttribution = false }: { product: Product; className?: string; showAttribution?: boolean }) {
-  const [failed, setFailed] = useState<string | null>(null);
+  const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}&v=5`;
+  const primarySrc = product.image || apiFallbackSrc;
+  const [failedSrcs, setFailedSrcs] = useState<Record<string, boolean>>({});
   const [imgLicense, setImgLicense] = useState<string | null>(null);
   const [imgSource, setImgSource] = useState<string | null>(null);
 
+  const activeSrc = !failedSrcs[primarySrc]
+    ? primarySrc
+    : !failedSrcs[apiFallbackSrc]
+      ? apiFallbackSrc
+      : "/swaps/snacks.jpg";
+
   useEffect(() => {
-    const src = product.image;
+    const src = activeSrc;
     if (!src) {
       setImgLicense(null);
       setImgSource(null);
@@ -339,50 +347,45 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
     }
     setImgLicense(null);
     setImgSource(null);
-  }, [product.image]);
+  }, [activeSrc]);
 
   const isCcBySa = Boolean(imgLicense && imgLicense.includes("CC BY-SA")) || product.lookup?.source === "openfoodfacts";
   const resolvedSourceUrl =
     imgSource && imgSource.startsWith("https://")
       ? imgSource
-      : product.image && (product.image.includes("openfoodfacts.org") || product.image.includes("openfoodfacts.net"))
-        ? product.image
+      : activeSrc.includes("openfoodfacts.org") || activeSrc.includes("openfoodfacts.net")
+        ? activeSrc
         : "https://world.openfoodfacts.org";
 
-  if (product.image && failed !== product.image) {
+  const imgEl = (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      className={`product-art ${className}`}
+      src={activeSrc}
+      alt={`${product.brand} ${product.title}`}
+      title={isCcBySa ? `Image: Open Food Facts (${resolvedSourceUrl}) — CC BY-SA 3.0` : undefined}
+      onError={() => setFailedSrcs((prev) => (prev[activeSrc] ? prev : { ...prev, [activeSrc]: true }))}
+    />
+  );
+
+  if (showAttribution && isCcBySa) {
     return (
-      <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className={`product-art ${className}`}
-          src={product.image}
-          alt={`${product.brand} ${product.title}`}
-          title={isCcBySa ? `Image: Open Food Facts (${resolvedSourceUrl}) — CC BY-SA 3.0` : undefined}
-          onError={() => setFailed(product.image ?? null)}
-        />
-        {showAttribution && isCcBySa && (
-          <small className="product-art-license" style={{ display: "block", fontSize: 9.5, color: "#64748b", marginTop: 2 }}>
-            Image:{" "}
-            <a href={resolvedSourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
-              Open Food Facts
-            </a>{" "}
-            (
-            <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
-              CC BY-SA 3.0
-            </a>
-            )
-          </small>
-        )}
-      </>
+      <div className="product-art-attr-wrap" style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "center", maxWidth: 88 }}>
+        {imgEl}
+        <small className="product-art-license" style={{ display: "block", fontSize: 9, color: "#64748b", marginTop: 3, lineHeight: 1.2, textAlign: "center" }}>
+          <a href={resolvedSourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
+            OFF
+          </a>{" "}
+          ·{" "}
+          <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
+            CC BY-SA
+          </a>
+        </small>
+      </div>
     );
   }
-  const initials = product.brand.replace(/[^A-Za-zÄ ]/g, "").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
-  return (
-    <div className={`product-art product-art--tile ${product.origin === "swap" ? "is-clean" : ""} ${className}`} aria-label={product.title}>
-      <span>{initials}</span>
-      <small>{product.brand}</small>
-    </div>
-  );
+
+  return imgEl;
 }
 
 function ScoreChip({ score, color }: { score: number; color: string }) {
@@ -1457,6 +1460,7 @@ export default function Simulator({
           quantity: 1,
         };
         showProduct(p, true, Boolean(opts.openCard) || adTestMode);
+        setFreeTestCompleted(true);
         setLiveState("idle");
         fetch("/api/scan", {
           method: "POST",
@@ -1867,7 +1871,7 @@ export default function Simulator({
                 <h1>HeyBroc</h1>
                 <span className="brand-badge">Clean Scanner</span>
               </div>
-              <p>Instant ingredient grader &amp; 1-tap clean swaps</p>
+              <p>Instant food grader &amp; 1-tap clean swaps</p>
             </div>
           </div>
 
@@ -1918,7 +1922,7 @@ export default function Simulator({
             download="heybroc.apk"
             className="topbar-pill"
           >
-            📲 Android (.apk)
+            📲 Android APK
           </a>
 
           <a
@@ -1926,12 +1930,12 @@ export default function Simulator({
             href="/tools"
             className="topbar-pill"
           >
-            🧰 Free Tools &amp; iOS
+            🧰 Tools &amp; iOS
           </a>
         </nav>
       </header>
 
-      <main className={`layout ${adTestMode ? "layout--ad-test" : ""}`}>
+      <main className={`layout ${adTestMode ? "layout--ad-test" : ""} ${adTestMode && !freeTestCompleted ? "is-ad-test-step1" : ""}`.trim()}>
         {/* ============ CONTROL PANEL ============ */}
         <section className="controls" aria-label="Store and product controls">
           {adTestMode && (
@@ -1978,7 +1982,10 @@ export default function Simulator({
                       key={`ad-test-${p.id}`}
                       id={`ad-test-${p.id}`}
                       type="button"
-                      onClick={() => showProduct(presetToProduct(p), true, true)}
+                      onClick={() => {
+                        setFreeTestCompleted(true);
+                        showProduct(presetToProduct(p), true, true);
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -2428,7 +2435,7 @@ export default function Simulator({
               setWatchlistFunnelStep(1);
               setWatchlistFunnelOpen(true);
             }}
-            style={adTestMode ? { display: "none" } : { width: "100%", textAlign: "left" }}
+            style={{ width: "100%", textAlign: "left", ...(adTestMode && !freeTestCompleted ? { display: "none" } : {}) }}
           >
             <span className="tool-icon">🛡️</span>
             <span>
@@ -2579,7 +2586,7 @@ export default function Simulator({
                   </div>
                 ) : (
                   <div className="pdp">
-                    <div className="pdp-art"><ProductArt product={active} showAttribution /></div>
+                    <div className="pdp-art"><ProductArt product={active} /></div>
                     <p className="pdp-brand">{active.brand}</p>
                     <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
                     <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
@@ -2935,7 +2942,7 @@ export default function Simulator({
                                   className="swap-info swap-info--btn"
                                   onClick={() => inspectCleanSwap(swap.category, active, swap)}
                                 >
-                                  <ProductArt product={swapResultToProduct(swap, active, store)} className="swap-art" showAttribution />
+                                  <ProductArt product={swapResultToProduct(swap, active, store)} className="swap-art" />
                                   <div className="swap-info-copy">
                                     <span className="eyebrow eyebrow--green">
                                       ✓ Verified Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}
@@ -3819,11 +3826,19 @@ export default function Simulator({
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Clean, Compact Footer + Collapsible FAQ & Legal Notice */}
-        <footer
+      {/* Clean, Compact Top-Level Footer + Collapsible FAQ & Legal Notice */}
+      <footer
+        className="site-footer-wrap"
+        style={{
+          maxWidth: 1184,
+          margin: "0 auto 40px",
+          padding: "0 28px",
+        }}
+      >
+        <div
           style={{
-            marginTop: 18,
             padding: "16px 18px",
             background: "#ffffff",
             border: "1px solid rgba(21, 32, 27, 0.09)",
@@ -3893,7 +3908,7 @@ export default function Simulator({
                   cursor: "pointer",
                 }}
               >
-                Manage Subscription
+                Manage / Cancel subscription
               </button>
             </div>
           </div>
@@ -3946,8 +3961,8 @@ export default function Simulator({
               </div>
             </details>
           </div>
-        </footer>
-      </section>
+        </div>
+      </footer>
 
       {/* ============ PHASE 6 MODALS ============ */}
       <WatchlistMiniFunnel

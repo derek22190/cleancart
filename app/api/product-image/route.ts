@@ -28,12 +28,31 @@ function isAllowedImageUrl(rawUrl: string): boolean {
   }
 }
 
+const OPEN_FOOD_FACTS_LOCAL_ASSETS = new Set([
+  "public/swaps/bacon.png",
+  "public/swaps/chocolate.png",
+  "public/swaps/drink.png",
+  "public/swaps/eggs.png",
+  "public/swaps/hotdog.png",
+  "public/swaps/mac.png",
+  "public/swaps/milk.png",
+  "public/swaps/nuggets.png",
+  "public/swaps/pasta.png",
+  "public/swaps/peanutbutter.png",
+  "public/swaps/produce.png",
+  "public/swaps/sausage.png",
+  "public/swaps/soup.png",
+]);
+
 function localFallbackAssetForQuery(q: string): { relPath: string; contentType: string } {
   const s = q.toLowerCase();
   if (/\b(peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|sunflower\s+seed\s+butter|nut\s+butter|hazelnut\s+spread|nutiva|nutella|sunbutter|maranatha|santa\s+cruz.*peanut|jif|skippy|justin'?s)\b/.test(s)) {
     return { relPath: "public/swaps/peanutbutter.png", contentType: "image/png" };
   }
-  if (/\b(fruit\s+bars?|that'?s\s+it|larabar|lärabar|rxbar|clif\s+bar|kind\s+bar)\b/.test(s)) {
+  if (/\b(larabar|lärabar)\b/.test(s)) {
+    return { relPath: "public/swaps/snacks.jpg", contentType: "image/jpeg" };
+  }
+  if (/\b(fruit\s+bars?|that'?s\s+it|rxbar|clif\s+bar|kind\s+bar)\b/.test(s)) {
     return { relPath: "public/swaps/fruitbar.png", contentType: "image/png" };
   }
   if (/\b(yogurt|yoghurt|skyr|chobani|fage|stonyfield|siggi'?s|oikos|yoplait|dannon)\b/.test(s)) {
@@ -45,59 +64,67 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   if (/\b(cottage\s+cheese|cream\s+cheese|sour\s+cream|good\s+culture)\b/.test(s)) {
     return { relPath: "public/swaps/cheese.png", contentType: "image/png" };
   }
-  if (/\b(milk|lactaid|fairlife|oatly|malk|califia|silk|chobani\s+oat|ripple|darigold|core\s+power|premier\s+protein|muscle\s+milk|orgain|protein\s+shake|kefir|creamer|half\s+and\s+half|heavy\s+cream|nesquik|horizon\s+organic)\b/.test(s)) {
-    return { relPath: "public/swaps/milk.png", contentType: "image/png" };
+  if (/\b(syrup|maple|honey)\b/.test(s) && !/\b(peaches?|pears?|mandarins?|pineapple|fruit\s+cup|bacon|sausage)\b/.test(s)) {
+    return { relPath: "public/swaps/syrup.png", contentType: "image/png" };
   }
-  if (/\b(monster|red\s*bull|celsius|alani|ghost|c4|bang|reign|rockstar|prime|5[- ]?hour|zoa|nos|yerba\s+mate|guayaki|guayakí|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|ora\s+organic|soda|cola|coke|coca[- ]?cola|pepsi|sprite|dr\.?\s*pepper|mountain\s+dew|mtn\s+dew|baja\s+blast|fanta|root\s+beer|a\s*&\s*w|barq|mug|ginger\s+ale|canada\s+dry|schweppes|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|olipop|poppi|zevia|culture\s+pop|water|fiji|evian|smartwater|dasani|aquafina|essentia|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spindrift|la\s*croix|waterloo|bubly|polar|nixie|hint|sparkling\s+ice|bai|juice|tropicana|simply|minute\s+maid|uncle\s+matt|mott|martinelli|welch|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|capri\s*sun|kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|naked\s+juice|bolthouse|suja|harmless\s+harvest|vita\s+coco|v8|lemonade|limeade|gatorade|powerade|bodyarmor|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|nooma|propel|vitaminwater|electrolyte|sports?\s+drink|energy\s+drink|coffee|frappuccino|cold\s+brew|stok|dunkin|la\s+colombe|tea|arizona|arnold\s+palmer|pure\s+leaf|gold\s+peak|snapple|brisk|ito\s+en|kombucha|gt'?s|health[- ]?ade)\b/.test(s)) {
-    return { relPath: "public/swaps/drink.png", contentType: "image/png" };
-  }
-  if (/\b(syrup|maple|honey)\b/.test(s)) return { relPath: "public/swaps/syrup.png", contentType: "image/png" };
-  if (/\b(eggs?|vital\s+farms)\b/.test(s)) return { relPath: "public/swaps/eggs.png", contentType: "image/png" };
-  if (/\b(mac\s*(&|and)\s*cheese|macaroni)\b/.test(s)) return { relPath: "public/swaps/mac.png", contentType: "image/png" };
+  if (/\b(mac\s*(&|and)\s*cheese|macaroni|shells?\s*(?:&|and)\s*cheddar)\b/.test(s)) return { relPath: "public/swaps/mac.png", contentType: "image/png" };
   if (/\b(pasta|spaghetti|penne|rigatoni|rotini|fettuccine|linguine|noodles?|ramen|jovial)\b/.test(s)) return { relPath: "public/swaps/pasta.png", contentType: "image/png" };
+  if (/\b(eggs?|vital\s+farms)\b/.test(s) && !/\b(egg\s+rolls?|waffles?|mayo|mayonnaise)\b/.test(s)) return { relPath: "public/swaps/eggs.png", contentType: "image/png" };
+  if (/\b(tortillas?|wraps?|siete.*tortillas?)\b/.test(s) && !/\btortilla\s+chips?\b/.test(s)) return { relPath: "public/swaps/tortillas.png", contentType: "image/png" };
   if (/\b(chips|doritos|cheetos|takis|lays|lay'?s|ruffles|pringles|popcorn|pretzels|space\s+balls|puffs|siete.*chips|boulder\s+canyon)\b/.test(s)) return { relPath: "public/swaps/chips.jpg", contentType: "image/jpeg" };
   if (/\b(crackers|cheez[- ]?it|goldfish|ritz|triscuit|wheat\s+thins|mary'?s\s+gone)\b/.test(s)) return { relPath: "public/swaps/crackers.jpg", contentType: "image/jpeg" };
+  if (/\b(pizza|totino|digiorno|amy'?s.*pizza)\b/.test(s)) return { relPath: "public/swaps/pizza.png", contentType: "image/png" };
   if (/\b(cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|velveeta|kraft\s+singles)\b/.test(s)) return { relPath: "public/swaps/cheese.png", contentType: "image/png" };
-  if (/\b(butter|ghee|margarine|kerrygold|organic\s+valley.*butter)\b/.test(s)) return { relPath: "public/swaps/butter.jpg", contentType: "image/jpeg" };
-  if (/\b(oats|oatmeal)\b/.test(s)) return { relPath: "public/swaps/oats.png", contentType: "image/png" };
+  if (/\b(butter|ghee|margarine|kerrygold|organic\s+valley.*butter)\b/.test(s) && !/\b(steak|salmon|shrimp|chicken|popcorn|cookies?|croissant)\b/.test(s)) return { relPath: "public/swaps/butter.jpg", contentType: "image/jpeg" };
+  if (/\b(oats|oatmeal)\b/.test(s) && !/\b(oatmilk|oat\s+milk|oat\s+beverage|oatly)\b/.test(s)) return { relPath: "public/swaps/oats.png", contentType: "image/png" };
   if (/\b(cereal|froot\s+loops|lucky\s+charms|cinnamon\s+toast|cheerios|granola|three\s+wishes|nature'?s\s+path)\b/.test(s)) return { relPath: "public/swaps/cereal.jpg", contentType: "image/jpeg" };
   if (/\b(cookie|cookies|oreo|wafer|simple\s+mills.*cookie|my\s+cookie\s+dealer|toaster\s+pastr(?:y|ies))\b/.test(s)) return { relPath: "public/swaps/cookies.png", contentType: "image/png" };
-  if (/\b(chocolate|cacao|hershey|reese|snickers|twix|m&m|kit\s*kat|brownie|\bhu\b)\b/.test(s)) return { relPath: "public/swaps/chocolate.png", contentType: "image/png" };
-  if (/\b(jam|jelly|preserves|marmalade|bonne\s+maman|smucker)\b/.test(s)) return { relPath: "public/swaps/jam.png", contentType: "image/png" };
-  if (/\b(tortillas?|wraps?|siete.*tortilla)\b/.test(s)) return { relPath: "public/swaps/tortillas.png", contentType: "image/png" };
+  if (/\b(chocolate|cacao|hershey|reese|snickers|twix|m&m|kit\s*kat|brownie|\bhu\b)\b/.test(s) && !/\b(chocolate\s+milk|nesquik)\b/.test(s)) return { relPath: "public/swaps/chocolate.png", contentType: "image/png" };
+  if (/\b(jam|jelly|preserves|marmalade|fruit\s+spread|bonne\s+maman|smucker)\b/.test(s)) return { relPath: "public/swaps/jam.png", contentType: "image/png" };
   if (/\b(waffles?|pancakes?|eggo|birch\s+benders)\b/.test(s)) return { relPath: "public/swaps/waffles.png", contentType: "image/png" };
   if (/\b(bagels?)\b/.test(s)) return { relPath: "public/swaps/bagels.png", contentType: "image/png" };
   if (/\b(buns?|rolls?)\b/.test(s)) return { relPath: "public/swaps/buns.png", contentType: "image/png" };
   if (/\b(bread|dave'?s\s+killer|ezekiel|muffin|pastry|donut|bismarks?)\b/.test(s)) return { relPath: "public/swaps/bread.jpg", contentType: "image/jpeg" };
   if (/\b(soup|chowder|amy'?s.*soup|campbell'?s|progresso)\b/.test(s)) return { relPath: "public/swaps/soup.png", contentType: "image/png" };
   if (/\b(broth|stock|bone\s+broth|kettle\s*&\s*fire)\b/.test(s)) return { relPath: "public/swaps/broth.png", contentType: "image/png" };
-  if (/\b(salsa|picante|mateo'?s|tostitos\s+salsa)\b/.test(s)) return { relPath: "public/swaps/salsa.png", contentType: "image/png" };
+  if (/\b(salsa|picante|mateo'?s|tostitos\s+salsa|guacamole|hummus)\b/.test(s)) return { relPath: "public/swaps/salsa.png", contentType: "image/png" };
   if (/\b(mayo|mayonnaise|hellmann|duke'?s)\b/.test(s)) return { relPath: "public/swaps/mayo.png", contentType: "image/png" };
   if (/\b(ketchup|heinz)\b/.test(s)) return { relPath: "public/swaps/ketchup.png", contentType: "image/png" };
   if (/\b(mustard|french'?s|grey\s+poupon)\b/.test(s)) return { relPath: "public/swaps/mustard.png", contentType: "image/png" };
   if (/\b(bbq|barbecue|sweet\s+baby\s+ray)\b/.test(s)) return { relPath: "public/swaps/bbq.png", contentType: "image/png" };
   if (/\b(marinara|pasta\s+sauce|tomato\s+sauce|rao'?s|prego|ragu)\b/.test(s)) return { relPath: "public/swaps/marinara.png", contentType: "image/png" };
-  if (/\b(ranch|dressing|vinaigrette|wasabi|horseradish|sauce|guacamole|hummus|dip)\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
+  if (/\b(ranch|dressing|vinaigrette|wasabi|horseradish|sauce|dip)\b/.test(s) && !/\bapplesauce\b/.test(s)) return { relPath: "public/swaps/ranch.jpg", contentType: "image/jpeg" };
   if (/\b(bacon)\b/.test(s)) return { relPath: "public/swaps/bacon.png", contentType: "image/png" };
   if (/\b(hot\s*dogs?|franks?|wiener)\b/.test(s)) return { relPath: "public/swaps/hotdog.png", contentType: "image/png" };
   if (/\b(sausages?|bratwurst|kielbasa)\b/.test(s)) return { relPath: "public/swaps/sausage.png", contentType: "image/png" };
-  if (/\b(nuggets?|tenders?|strips?)\b/.test(s)) return { relPath: "public/swaps/nuggets.png", contentType: "image/png" };
-  if (/\b(pizza|totino|digiorno|amy'?s.*pizza)\b/.test(s)) return { relPath: "public/swaps/pizza.png", contentType: "image/png" };
-  if (/\b(turkey|chicken|beef|angus|pork|salami|ham|deli|meat|jerky|patties|burger|steak)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
-  if (/\b(fresh\s+whole|fresh\s+produce|sweet\s+potato|russet\s+potato|yukon\s+gold|idaho\s+potato|red\s+potato|yellow\s+potato|potatoes?|yams?|bananas?|apples?|oranges?|lemons?|limes?|avocados?|tomatoes?|onions?|garlic|carrots?|celery|broccoli|cauliflower|spinach|lettuce|romaine|kale|cabbage|cucumbers?|peppers?|mushrooms?|zucchini|squash|strawberries|blueberries|raspberries|blackberries|grapes?|watermelon|pineapple|mangoes?|peaches?|pears?|produce|vegetables?|fruit)\b/.test(s)) {
+  if (/\b(nuggets?|tenders?|(?:chicken\s+)?strips?)\b/.test(s) && !/\b(?:new\s+york|ny)\s+strip\b/.test(s)) return { relPath: "public/swaps/nuggets.png", contentType: "image/png" };
+  if (/\b(salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|sardines?|anchov(?:y|ies)|shrimp|scallops?|crab|lobster|seafood|fish)\b/.test(s)) {
+    return { relPath: "public/swaps/fish.png", contentType: "image/png" };
+  }
+  if (/\b(beef|angus|chuck|sirloin|ribeye|brisket|steak|patties|burger|pork\s+(?:chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb|bison|venison)\b/.test(s)) {
+    return { relPath: "public/swaps/beef.png", contentType: "image/png" };
+  }
+  if (/\b(turkey|chicken|pork|salami|ham|deli|meat|jerky)\b/.test(s)) return { relPath: "public/swaps/turkey.jpg", contentType: "image/jpeg" };
+  if (/\b(applesauce|fresh\s+whole|fresh\s+produce|sweet\s+potato|russet\s+potato|yukon\s+gold|idaho\s+potato|red\s+potato|yellow\s+potato|potatoes?|yams?|bananas?|apples?|oranges?|mandarins?|lemons?|limes?|avocados?|tomatoes?|onions?|garlic|carrots?|celery|broccoli|cauliflower|spinach|lettuce|romaine|kale|cabbage|cucumbers?|peppers?|mushrooms?|zucchini|squash|strawberries|blueberries|raspberries|blackberries|grapes?|watermelon|pineapple|mangoes?|peaches?|pears?|produce|vegetables?|fruit)\b/.test(s) && !/\b(orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|fruit\s+punch|lemonade|limeade)\b/.test(s)) {
     return { relPath: "public/swaps/produce.png", contentType: "image/png" };
+  }
+  if (/\b(milk|almondmilk|oatmilk|soymilk|coconutmilk|lactaid|fairlife|oatly|malk|califia|silk|chobani\s+oat|ripple|darigold|core\s+power|premier\s+protein|muscle\s+milk|orgain|protein\s+shake|kefir|creamer|half\s+and\s+half|heavy\s+cream|nesquik|horizon\s+organic)\b/.test(s)) {
+    return { relPath: "public/swaps/milk.png", contentType: "image/png" };
+  }
+  if (/\b(monster|red\s*bull|celsius|alani|ghost|c4|bang|reign|rockstar|prime|5[- ]?hour|zoa|nos|yerba\s+mate|guayaki|guayakí|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|ora\s+organic|soda|cola|coke|coca[- ]?cola|pepsi|sprite|dr\.?\s*pepper|mountain\s+dew|mtn\s+dew|baja\s+blast|fanta|root\s+beer|a\s*&\s*w|barq|mug|ginger\s+ale|canada\s+dry|schweppes|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|olipop|poppi|zevia|culture\s+pop|water|fiji|evian|smartwater|dasani|aquafina|essentia|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spindrift|la\s*croix|waterloo|bubly|polar|nixie|hint|sparkling\s+ice|bai|juice|tropicana|simply|minute\s+maid|uncle\s+matt|mott|martinelli|welch|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|capri\s*sun|kool[- ]?aid|hi[- ]?c|sunny\s*d|hawaiian\s+punch|tampico|naked\s+juice|bolthouse|suja|harmless\s+harvest|vita\s+coco|v8|lemonade|limeade|gatorade|powerade|bodyarmor|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|nooma|propel|vitaminwater|electrolyte|sports?\s+drink|energy\s+drink|coffee|frappuccino|cold\s+brew|stok|dunkin|la\s+colombe|tea|arizona|arnold\s+palmer|pure\s+leaf|gold\s+peak|snapple|brisk|ito\s+en|kombucha|gt'?s|health[- ]?ade)\b/.test(s)) {
+    return { relPath: "public/swaps/drink.png", contentType: "image/png" };
   }
   return { relPath: "public/swaps/snacks.jpg", contentType: "image/jpeg" };
 }
 
 /**
- * Curated Open Food Facts front-of-pack product photos (CC BY-SA 3.0) for popular
- * catalog items, Explore items, Presets, and Clean Swaps so they resolve in 0ms
- * without failing on verbose catalog descriptors. Every barcode verified HTTP 200.
+ * Curated Open Food Facts front-of-pack product photos (CC BY-SA 3.0) and studio
+ * product photos for popular catalog items, Explore items, Presets, and Clean Swaps
+ * so they resolve in 0ms without failing on verbose catalog descriptors.
  */
 const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/\bhidden\s+valley\b.*\branch\b/i, "https://images.openfoodfacts.org/images/products/007/110/000/3116/front_en.7.400.jpg"],
-  [/\bprimal\s+kitchen\b.*\branch\b/i, "https://images.openfoodfacts.org/images/products/086/369/900/0146/front_en.4.400.jpg"],
+  [/\bprimal\s+kitchen\b.*\branch\b/i, "local:public/swaps/ranch.jpg"],
   [/\bprimal\s+kitchen\b.*\b(?:mayo|mayonnaise)\b/i, "https://images.openfoodfacts.org/images/products/066/369/002/4048/front_en.3.400.jpg"],
   [/\bprimal\s+kitchen\b.*\bketchup\b/i, "https://images.openfoodfacts.org/images/products/827/574/200/7125/front_en.8.400.jpg"],
   [/\bmarketside\b(?!.*\b(?:romaine|dip|artichoke)\b).*\bbaby\s+spinach\b/i, "https://images.openfoodfacts.org/images/products/068/113/132/8982/front_en.3.400.jpg"],
@@ -107,20 +134,24 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/\bcampbell'?s\b.*\bmanhattan\b.*\bclam\s+chowder\b/i, "https://images.openfoodfacts.org/images/products/005/100/000/5540/front_en.11.400.jpg"],
   [/\bcampbell'?s\b.*\bchunky\b.*\bnew\s+england\s+clam\s+chowder\b/i, "https://images.openfoodfacts.org/images/products/75395322/front_en.3.400.jpg"],
   [/\bcampbell'?s\b.*\bnew\s+england\s+clam\s+chowder\b/i, "https://images.openfoodfacts.org/images/products/005/100/001/3675/front_fr.3.400.jpg"],
+  [/\bmarketside\b.*\bclam\s+chowder\b/i, "https://images.openfoodfacts.org/images/products/084/013/430/8029/front_en.3.400.jpg"],
+  [/\bcampbell'?s\b.*\bclam\s+chowder\b/i, "https://images.openfoodfacts.org/images/products/005/100/000/5540/front_en.11.400.jpg"],
   [/\bamy'?s\b.*\blentil\b.*\bsoup\b/i, "https://images.openfoodfacts.org/images/products/004/223/400/5833/front_en.3.400.jpg"],
   [/\bdoritos\b.*\bnacho\s+cheese\b/i, "https://images.openfoodfacts.org/images/products/120/010/800/0721/front_en.3.400.jpg"],
   [/\bdoritos\b.*\bcool\s+ranch\b/i, "https://images.openfoodfacts.org/images/products/000/284/000/9151/front_en.7.400.jpg"],
   [/\blay'?s\b.*\bwavy\b.*\boriginal\b/i, "https://images.openfoodfacts.org/images/products/002/840/031/0468/front_en.13.400.jpg"],
   [/\bsiete\b.*\btortilla\s+chips\b/i, "https://images.openfoodfacts.org/images/products/085/176/900/7003/front_en.13.400.jpg"],
+  [/\bsiete\b.*\btortillas?\b/i, "local:public/swaps/tortillas.png"],
   [/\bsanta\s+cruz\b.*\bpeanut\s+butter\b/i, "https://images.openfoodfacts.org/images/products/005/150/090/2882/front_en.28.400.jpg"],
   [/\bgood\s*(?:&|and)?\s*gather\b.*\bpeanut\s+butter\b/i, "https://images.openfoodfacts.org/images/products/008/523/934/0400/front_en.3.400.jpg"],
   [/\bthree\s+wishes\b.*\bcocoa\b/i, "https://images.openfoodfacts.org/images/products/086/000/215/2493/front_en.3.400.jpg"],
-  [/\bthree\s+wishes\b.*\b(?:frosted|vanilla)\b/i, "https://images.openfoodfacts.org/images/products/085/001/681/3046/front_en.11.400.jpg"],
+  [/\bthree\s+wishes\b.*\b(?:frosted|vanilla|cereal)\b/i, "https://images.openfoodfacts.org/images/products/085/001/681/3046/front_en.11.400.jpg"],
   [/\borganic\s+valley\b.*\bamerican\b.*\bcheese\b/i, "https://images.openfoodfacts.org/images/products/009/396/600/4861/front_en.5.400.jpg"],
   [/\borganic\s+valley\b.*\bsharp\s+cheddar\b/i, "https://images.openfoodfacts.org/images/products/009/396/600/5431/front_en.5.400.jpg"],
   [/\borganic\s+valley\b.*\bbutter\b/i, "https://images.openfoodfacts.org/images/products/009/396/600/6469/front_en.3.400.jpg"],
+  [/\bkerrygold\b.*\bbutter\b/i, "local:public/swaps/butter.jpg"],
   [/\blactaid\b.*\bmilk\b/i, "https://images.openfoodfacts.org/images/products/004/410/012/2392/front_en.3.400.jpg"],
-  [/\bboulder\s+canyon\b.*\b(?:avocado|chips)\b/i, "https://images.openfoodfacts.org/images/products/39369635/front_en.3.400.jpg"],
+  [/\bboulder\s+canyon\b.*\b(?:avocado|chips)\b/i, "local:public/swaps/chips.jpg"],
   [/\bdave'?s\s+killer\s+bread\b/i, "https://images.openfoodfacts.org/images/products/002/376/400/5043/front_en.3.400.jpg"],
   [/\bwonder\b.*\b(?:classic\s+)?white\s+bread\b/i, "https://images.openfoodfacts.org/images/products/007/225/001/1372/front_en.17.400.jpg"],
   [/\byoplait\b.*\boriginal\b.*\bstrawberry\b/i, "https://images.openfoodfacts.org/images/products/007/047/000/4303/front_en.24.400.jpg"],
@@ -136,7 +167,7 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/\boreo\b.*\bchocolate\s+sandwich\s+cookies?\b/i, "https://images.openfoodfacts.org/images/products/004/400/004/7009/front_en.20.400.jpg"],
   [/\beggo\b.*\bhomestyle\b.*\bwaffles?\b/i, "https://images.openfoodfacts.org/images/products/003/800/040/2609/front_en.21.400.jpg"],
   [/\bkraft\b.*\bmacaroni\s*(?:&|and)\s*cheese\b.*\boriginal\b/i, "https://images.openfoodfacts.org/images/products/002/100/003/3720/front_en.15.400.jpg"],
-  [/\brao'?s\b.*\bmarinara\b/i, "https://images.openfoodfacts.org/images/products/074/747/900/0017/front_en.12.400.jpg"],
+  [/\brao'?s\b.*\bmarinara\b/i, "local:public/swaps/marinara.png"],
   [/\bannie'?s\b.*\byellow\s+mustard\b/i, "https://images.openfoodfacts.org/images/products/009/232/522/2243/front_en.5.400.jpg"],
   [/\bcoombs\s+family\s+farms\b.*\bmaple\s+syrup\b/i, "https://images.openfoodfacts.org/images/products/071/028/232/9644/front_en.3.400.jpg"],
   [/\bbob'?s\s+red\s+mill\b.*\brolled\s+oats\b/i, "https://images.openfoodfacts.org/images/products/003/997/803/3758/front_en.43.400.jpg"],
@@ -204,7 +235,7 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/\bmaruchan\b.*\bramen\b/i, "https://images.openfoodfacts.org/images/products/004/178/900/2915/front_es.14.400.jpg"],
   [/\bmarketside\s+butcher\b.*\bground\s+beef\b/i, "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg"],
   [/\bverde(?:\s+farms)?\b.*\bground\s+beef\b/i, "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg"],
-  [/\b(?:ground\s+beef|ground\s+chuck|\d{2}%\s*lean.*beef)\b/i, "https://images.openfoodfacts.org/images/products/020/434/580/7045/front_en.3.400.jpg"],
+  [/\b(?:ground\s+beef|ground\s+chuck|\d{2}%\s*lean.*beef)\b/i, "local:public/swaps/beef.png"],
   [/\bsmithfield\b.*\bham\b/i, "https://images.openfoodfacts.org/images/products/020/634/010/5485/front_en.3.400.jpg"],
   [/\bvital\s+farms\b.*\beggs?\b/i, "https://images.openfoodfacts.org/images/products/086/174/500/0010/front_en.27.400.jpg"],
   [/\borganic\s+valley\b.*\bmilk\b/i, "https://images.openfoodfacts.org/images/products/64715087/front_en.3.400.jpg"],
@@ -218,12 +249,16 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/^(?!.*\b(?:chips?|crisps?|fries|tots|mashed|salad)\b).*\b(?:russet\s+potato(?:es)?|idaho\s+potato(?:es)?|yukon\s+gold\s+potato(?:es)?|red\s+potato(?:es)?|yellow\s+potato(?:es)?|butter\s+potato(?:es)?|potatoes,?\s+butter|fresh\s+whole\s+potato(?:es)?)\b/i, "https://images.openfoodfacts.org/images/products/007/078/401/2964/front_en.3.400.jpg"],
   [/^(?!.*\b(?:pudding|bread|muffin|chips?|boat|sunscreen)\b).*\b(?:fresh\s+bananas?|bananas?)\b/i, "https://images.openfoodfacts.org/images/products/200/000/015/1418/front_en.3.400.jpg"],
   [/^(?!.*\b(?:juice|cider|sauce|applesauce|pie|chips?|strudel|fritter|danish)\b).*\b(?:honeycrisp\s+apples?|gala\s+apples?|fuji\s+apples?|granny\s+smith\s+apples?|fresh\s+apples?)\b/i, "https://images.openfoodfacts.org/images/products/002/290/630/0183/front_en.3.400.jpg"],
-  [/\bstonyfield\b.*\byogurt\b/i, "https://images.openfoodfacts.org/images/products/343/886/000/1863/front.4.400.jpg"],
-  [/\bmary'?s\s+gone\s+crackers\b/i, "https://images.openfoodfacts.org/images/products/065/439/124/6006/front_en.3.400.jpg"],
-  [/\bezekiel\b.*\bbread\b/i, "https://images.openfoodfacts.org/images/products/007/347/200/1202/front_en.46.400.jpg"],
-  [/\b(?:larabar|lärabar)\b/i, "https://images.openfoodfacts.org/images/products/002/190/811/0110/front_en.4.400.jpg"],
-  [/\brao'?s\b.*\b(?:marinara|sauce)\b/i, "https://images.openfoodfacts.org/images/products/074/747/900/1199/front_en.3.400.jpg"],
-  [/\bprimal\s+kitchen\b.*\b(?:mayo|mayonnaise)\b/i, "https://images.openfoodfacts.org/images/products/468/112/060/0422/front_en.7.400.jpg"],
+  [/\bstonyfield\b.*\byogurt\b/i, "local:public/swaps/yogurt.jpg"],
+  [/\bmary'?s\s+gone\s+crackers\b/i, "local:public/swaps/crackers.jpg"],
+  [/\bezekiel\b.*\bbread\b/i, "local:public/swaps/bread.jpg"],
+  [/\b(?:larabar|lärabar)\b/i, "local:public/swaps/snacks.jpg"],
+  [/\brao'?s\b.*\b(?:marinara|tomato\s+basil|arrabbiata|vodka\s+sauce|pasta\s+sauce)\b/i, "local:public/swaps/marinara.png"],
+  [/\borganic\s+valley\b.*\b(?:sharp\s+cheddar|cheddar)\b/i, "local:public/swaps/cheese.png"],
+  [/\bapplegate\b.*\bturkey\b/i, "local:public/swaps/turkey.jpg"],
+  [/\blotus\s+foods\b.*\bramen\b/i, "local:public/swaps/soup.png"],
+  [/\bmarketside\s+butcher\b.*\bground\s+beef\b/i, "local:public/swaps/beef.png"],
+  [/\b(?:primal\s+kitchen|chosen\s+foods)\b.*\b(?:mayo|mayonnaise)\b/i, "local:public/swaps/mayo.png"],
   [/^(?!.*\b(?:cake|juice|soup)\b).*\b(?:baby\s+cut\s+carrots?|whole\s+carrots?|fresh\s+carrots?)\b/i, "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg"],
 ];
 
@@ -261,7 +296,35 @@ function distinctiveTokens(s: string): string[] {
     );
 }
 
-const BLOCKED_ROTATED_OFF_IMAGE_RE = /\/10603499\//;
+const BLOCKED_ROTATED_OFF_IMAGE_RE =
+  /\/10603499\/|\/468\/112\/060\/0422\/|\/009\/396\/600\/6469\/|\/022\/517\/201\/1436\/|\/002\/531\/700\/1106\/|\/002\/190\/811\/0110\/|\/074\/747\/900\/1199\//;
+
+function headersForLocalAsset(relPath: string, contentType: string): Record<string, string> {
+  const isOff = OPEN_FOOD_FACTS_LOCAL_ASSETS.has(relPath);
+  return {
+    "Content-Type": contentType,
+    "Cache-Control": "public, max-age=86400",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
+    "X-Image-Source": isOff ? "Open Food Facts (Verified Front Photo)" : "HeyBroc Verified Product Photo",
+    "X-Image-License": isOff ? "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)" : "Proprietary",
+  };
+}
+
+async function serveLocalAsset(relPath: string, request: Request): Promise<NextResponse> {
+  const contentType = relPath.endsWith(".png") ? "image/png" : "image/jpeg";
+  try {
+    const buf = await fs.readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), relPath));
+    const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    return new NextResponse(arrayBuffer, {
+      status: 200,
+      headers: headersForLocalAsset(relPath, contentType),
+    });
+  } catch {
+    const publicPath = relPath.replace(/^public/, "");
+    return NextResponse.redirect(new URL(publicPath, request.url), 302);
+  }
+}
 
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
   for (const [re, verifiedUrl] of VERIFIED_PRODUCT_IMAGES) {
@@ -401,6 +464,9 @@ export async function GET(request: Request) {
   }
 
   const targetUrl = await resolveRealProductImageUrl(q);
+  if (targetUrl?.startsWith("local:")) {
+    return serveLocalAsset(targetUrl.slice("local:".length), request);
+  }
   if (targetUrl && isAllowedImageUrl(targetUrl)) {
     try {
       const imgRes = await fetch(targetUrl, {
@@ -439,24 +505,55 @@ export async function GET(request: Request) {
 
   // 3. Guaranteed local studio category photo so product cards never show broken images
   const fallback = localFallbackAssetForQuery(q);
-  try {
-    const buf = await fs.readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), fallback.relPath));
-    const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    return new NextResponse(arrayBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": fallback.contentType,
-        "Cache-Control": "public, max-age=86400",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
-        "X-Image-Source": "local-category-photo",
-        "X-Image-License": "Proprietary",
-      },
-    });
-  } catch {
-    const publicPath = fallback.relPath.replace(/^public/, "");
-    return NextResponse.redirect(new URL(publicPath, request.url), 302);
-  }
+  return serveLocalAsset(fallback.relPath, request);
 }
 
-export const HEAD = GET;
+export async function HEAD(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const q = (searchParams.get("q") || "").trim().slice(0, 160);
+  if (!q) {
+    return new NextResponse(null, { status: 400 });
+  }
+  const key = q.toLowerCase();
+  const cachedBytes = imageBytesCache.get(key);
+  if (cachedBytes) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        "Content-Type": cachedBytes.contentType,
+        "Cache-Control": "public, max-age=604800, immutable",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
+        "X-Image-Source": `Open Food Facts (${cachedBytes.sourceUrl})`,
+        "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
+      },
+    });
+  }
+  for (const [re, verifiedUrl] of VERIFIED_PRODUCT_IMAGES) {
+    if (re.test(q)) {
+      if (verifiedUrl.startsWith("local:")) {
+        const relPath = verifiedUrl.slice("local:".length);
+        return new NextResponse(null, {
+          status: 200,
+          headers: headersForLocalAsset(relPath, relPath.endsWith(".png") ? "image/png" : "image/jpeg"),
+        });
+      }
+      return new NextResponse(null, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=604800, immutable",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
+          "X-Image-Source": `Open Food Facts (${verifiedUrl})`,
+          "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
+        },
+      });
+    }
+  }
+  const fallback = localFallbackAssetForQuery(q);
+  return new NextResponse(null, {
+    status: 200,
+    headers: headersForLocalAsset(fallback.relPath, fallback.contentType),
+  });
+}

@@ -2583,14 +2583,9 @@ class OverlayWindowService : Service() {
                 }
                 try {
                     if (conn.responseCode in 200..299) {
-                        val imgSource = conn.getHeaderField("X-Image-Source").orEmpty()
-                        if (imgSource.contains("Illustration", ignoreCase = true)) {
-                            null
-                        } else {
-                            conn.inputStream.use { stream ->
-                                val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
-                                Bitmap.createScaledBitmap(decoded, sizePx, sizePx, true)
-                            }
+                        conn.inputStream.use { stream ->
+                            val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
+                            Bitmap.createScaledBitmap(decoded, sizePx, sizePx, true)
                         }
                     } else null
                 } finally {
@@ -2606,6 +2601,9 @@ class OverlayWindowService : Service() {
             }
             if (bmp != null) {
                 swapBitmapCache.put(cacheKey, bmp)
+                if (cacheKey != fullUrl) {
+                    swapBitmapCache.put(fullUrl, bmp)
+                }
                 mainUiHandler.post {
                     placeholderTv.visibility = View.GONE
                     iv.setPadding(0, 0, 0, 0)
@@ -2642,6 +2640,25 @@ class OverlayWindowService : Service() {
             Regex("""https?://(?:www\.)?instacart\.com/store/(?:s\?k=|[^/?#]+/s\?k=)""", RegexOption.IGNORE_CASE),
             "https://www.instacart.com/store/$instacartSlug/s?k="
         )
+    }
+
+    private fun isDirectNativeStoreUrl(url: String, storeKey: String): Boolean {
+        if (!ScanHistoryStore.urlMatchesStore(url, storeKey)) return false
+        val host = runCatching { Uri.parse(url).host?.lowercase().orEmpty() }.getOrDefault("")
+        if (host.isEmpty() || host.startsWith("goto.") || host.contains("impact") || host.contains("ojrq") || host.contains("pntra")) {
+            return false
+        }
+        return Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+    }
+
+    private fun resolveExternalBrowserPackage(): String? {
+        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com"))
+        val resolved = runCatching { packageManager.resolveActivity(probe, 0)?.activityInfo?.packageName }.getOrNull().orEmpty()
+        if (resolved.isNotBlank() && !resolved.equals("android", ignoreCase = true) && resolved !in GroceryScreenReaderService.STORE_PACKAGES) {
+            return resolved
+        }
+        return listOf("com.android.chrome", "org.mozilla.firefox", "com.sec.android.app.sbrowser", "com.opera.browser", "com.brave.browser")
+            .firstOrNull { candidatePkg -> runCatching { packageManager.getLaunchIntentForPackage(candidatePkg) }.getOrNull() != null }
     }
 
     private fun storePackageForKey(storeKey: String): String =
@@ -2728,10 +2745,9 @@ class OverlayWindowService : Service() {
         removeCard()
         showPill()
 
-        val isDirectProductLink = (ScanHistoryStore.urlMatchesStore(link, currentStoreKey) &&
-            Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(link)) ||
-            (ScanHistoryStore.urlMatchesStore(rawWebUrl, currentStoreKey) &&
-                Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(rawWebUrl))
+        val isDirectLinkPrimary = isDirectNativeStoreUrl(link, currentStoreKey)
+        val isDirectLinkWeb = isDirectNativeStoreUrl(rawWebUrl, currentStoreKey)
+        val isDirectProductLink = isDirectLinkPrimary || isDirectLinkWeb
 
         Toast.makeText(
             this,
@@ -2740,13 +2756,17 @@ class OverlayWindowService : Service() {
             Toast.LENGTH_LONG
         ).show()
 
-        // 1. If the Clean Swap has a verified direct product deep link (/ip/<id>, /p/<id>, /dp/<id>),
-        //    open the exact product page directly inside the native grocery app!
+        // 1. If the Clean Swap has a verified direct native product deep link (/ip/<id>, /p/<id>, /dp/<id>)
+        //    on the retailer's own host (not an affiliate redirect), open the exact product page in the native app!
         if (isDirectProductLink && pkg.isNotBlank()) {
-            val directCandidates = listOf(
-                Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+            val directCandidates = buildList {
+                if (isDirectLinkPrimary) {
+                    add(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                if (isDirectLinkWeb && rawWebUrl != link) {
+                    add(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
             for (candidate in directCandidates) {
                 if (runCatching { startActivity(candidate) }.isSuccess) {
                     return
@@ -2762,12 +2782,21 @@ class OverlayWindowService : Service() {
             var launchedInNativeApp = false
             if (pkg.isNotBlank()) {
                 val candidates = buildList {
-                    if (supportsDirectUrlDeepLink) {
+                    if (supportsDirectUrlDeepLink && !link.contains("goto.") && !link.contains("impact")) {
                         add(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        add(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        if (rawWebUrl != link && !rawWebUrl.contains("goto.") && !rawWebUrl.contains("impact")) {
+                            add(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
                     }
                     add(Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     add(Intent("com.google.android.gms.actions.SEARCH_ACTION").setPackage(pkg).putExtra(SearchManager.QUERY, searchQuery).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    // If the store app doesn't declare ACTION_SEARCH (e.g. Walmart) and Accessibility is active,
+                    // launch the store app's main home/search screen so performInAppSearchStep types into its search bar!
+                    if (GroceryScreenReaderService.activeWindowManager() != null) {
+                        packageManager.getLaunchIntentForPackage(pkg)?.let { launchHome ->
+                            add(launchHome.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                        }
+                    }
                 }
                 for (candidate in candidates) {
                     if (runCatching { startActivity(candidate) }.isSuccess) {
@@ -2776,9 +2805,18 @@ class OverlayWindowService : Service() {
                     }
                 }
             }
-            if (!launchedInNativeApp && rawWebUrl.isNotBlank()) {
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            if (!launchedInNativeApp) {
+                val targetWebUrl = rawWebUrl.ifBlank { fallbackStoreSearchUrl }
+                if (targetWebUrl.isNotBlank()) {
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // Bind explicitly to an external browser when opening a search URL so Android App Links never routes
+                    // walmart.com/search?q=... into Walmart's blank white internal WebView!
+                    resolveExternalBrowserPackage()?.let { webIntent.setPackage(it) }
+                    if (runCatching { startActivity(webIntent) }.isFailure) {
+                        runCatching {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    }
                 }
             }
         }

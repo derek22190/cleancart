@@ -707,7 +707,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     "M4/M6/Shipt UX: OverlayWindowService paid-link + CC BY-SA 3.0, product-image HEAD + CORS, Simulator CC BY-SA 3.0, and Shipt onboarding gate + Continue as guest",
     overlayKt.includes("Open Food Facts (CC BY-SA 3.0)") &&
       productImgRoute.includes("Access-Control-Expose-Headers") &&
-      productImgRoute.includes("export const HEAD = GET") &&
+      (productImgRoute.includes("export const HEAD = GET") || productImgRoute.includes("export async function HEAD")) &&
       simTsx.includes("CC BY-SA 3.0") &&
       readerKt.includes("STORE_ONBOARDING_OR_AUTH_GATE") &&
       readerKt.includes("ONBOARDING_AUTH_GATE") &&
@@ -1397,7 +1397,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       historyStoreKt.includes("fun resolveBestImageUrl") &&
       historyStoreKt.includes("fun productImageApiFallbackUrl") &&
       mainKt.includes("ScanHistoryStore.resolveBestImageUrl(title, imgUrl)") &&
-      mainKt.includes('imgSource.contains("Category Illustration", ignoreCase = true)') &&
+      !mainKt.includes('imgSource.contains("Category Illustration", ignoreCase = true)') &&
       overlayKt.includes("ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage)") &&
       simulatorTsx.includes("/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}")
   );
@@ -1554,7 +1554,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         sargentoAmericanSwap.deepLink === "https://www.walmart.com/ip/1814292019" &&
         creamOfChickenSwap?.title === "Pacific Foods Organic Cream of Chicken Condensed Soup" &&
         creamOfChickenSwap.deepLink === "https://www.walmart.com/ip/541659748" &&
-        ramenWalmartSwap?.deepLink === "https://www.walmart.com/ip/42708184" &&
+        ramenWalmartSwap?.deepLink === "https://www.walmart.com/search?q=Lotus%20Foods%20Organic%20Millet%20%26%20Brown%20Rice%20Ramen" &&
         sausageWalmartSwap?.deepLink === "https://www.walmart.com/ip/967953484" &&
         a11yXml.includes("flagRetrieveInteractiveWindows") &&
         readerKt.includes("fun findStoreWindowRoot") &&
@@ -1796,7 +1796,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         toasterPastryScan.ok &&
         toasterPastryScan.result.score < 50 &&
         !prodImgRouteTs.includes("PROCESSED_FOOD_IMAGE_QUERY") &&
-        prodImgRouteTs.includes("front_en.14.400.jpg") &&
+        prodImgRouteTs.includes("local:public/swaps/ranch.jpg") &&
         historyStoreKtSrc.includes("&v=4") &&
         !mainActivityKtSrc.includes('"● Live"') &&
         mainActivityKtSrc.includes("includeWatchlist: Boolean = false") &&
@@ -2299,6 +2299,78 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   } catch {
     /* ignore */
   }
+
+  // Full end-to-end audit regressions: whole-food beef patties & NY strip, distilled/purified water, olive oil, egg noodles vs eggs, plant burger vs beef, and 43 unique swap studio images
+  const cryptoMod = await import("node:crypto");
+  const swapAssetFiles = fs
+    .readdirSync("public/swaps")
+    .filter((f: string) => /\.(?:png|jpe?g)$/i.test(f));
+  const swapAssetHashes = new Set(
+    swapAssetFiles.map((f: string) =>
+      cryptoMod.createHash("sha256").update(fs.readFileSync(`public/swaps/${f}`)).digest("hex")
+    )
+  );
+  const beefPattyScan = await runScan({
+    productTitle: "Private Selection Angus Beef Patties, 4 ct",
+    store: "kroger",
+  });
+  const nyStripScan = await runScan({
+    productTitle: "USDA Choice Boneless New York Strip Steak, 1 lb",
+    store: "walmart",
+  });
+  const distilledWaterScan = await runScan({
+    productTitle: "Great Value Distilled Water, 1 Gallon",
+    store: "walmart",
+  });
+  const membersMarkWaterScan = await runScan({
+    productTitle: "Member's Mark Purified Water, 40 pk",
+    store: "sams",
+  });
+  const oliveOilScan = await runScan({
+    productTitle: "Extra Virgin Olive Oil, 17 fl oz",
+    store: "walmart",
+  });
+  const fgDonutBrandScan = await runScan({
+    productTitle: "Freshness Guaranteed Glazed Donuts, 12 Count",
+    store: "walmart",
+  });
+  const eggNoodlesAlt = resolveCleanAlternative(
+    "Great Value Wide Egg Noodles, 16 oz",
+    undefined,
+    "walmart",
+  );
+  const beyondBurgerAlt = resolveCleanAlternative(
+    "Beyond Burger Plant-Based Patties, 8 oz",
+    "Snacks",
+    "walmart",
+  );
+  check(
+    "Full Post-Commit Audit: zero duplicate swap photos (43/43 unique), Angus patties & NY strip 90/100, Distilled water 100/100, Purified water & Olive Oil 90/100, Egg Noodles -> Pasta, Beyond Burger -> Dr. Praeger's, no placeholder tiles, and safe Android swap browser routing",
+    Boolean(
+      swapAssetFiles.length === 43 &&
+        swapAssetHashes.size === 43 &&
+        beefPattyScan.ok &&
+        beefPattyScan.result.score === 90 &&
+        nyStripScan.ok &&
+        nyStripScan.result.score === 90 &&
+        distilledWaterScan.ok &&
+        distilledWaterScan.result.score === 100 &&
+        membersMarkWaterScan.ok &&
+        membersMarkWaterScan.result.score === 90 &&
+        !String(membersMarkWaterScan.product?.brand || "").toLowerCase().includes("glacéau") &&
+        oliveOilScan.ok &&
+        oliveOilScan.result.score === 90 &&
+        fgDonutBrandScan.ok &&
+        fgDonutBrandScan.product?.brand === "Freshness Guaranteed" &&
+        eggNoodlesAlt.brand === "Barilla" &&
+        eggNoodlesAlt.name.includes("Organic Spaghetti Pasta") &&
+        beyondBurgerAlt.brand === "Dr. Praeger's" &&
+        !latestSimulatorTsx.includes("product-art--tile") &&
+        mainActivityKtSrc.includes("resolveExternalBrowserPackage") &&
+        overlayKtSrc.includes("resolveExternalBrowserPackage") &&
+        readerKtSrc.includes("activeCartSectionNodes")
+    )
+  );
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

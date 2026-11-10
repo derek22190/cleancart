@@ -98,7 +98,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val EMPTY_CART_SIGNALS = Regex(
-            """(\byour\s+(?:shopping\s+)?(?:cart|bag|basket)\s+is\s+empty\b|\btime\s+to\s+start\s+shopping\b|\bnothing\s+in\s+your\s+(?:cart|bag|basket)\b|\bcart\s*\(\s*0(?:\s+items?)?\s*\)|\b0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)\b)""",
+            """(\byour\s+(?:[a-z]+\s+){0,2}(?:cart|bag|basket)\s+(?:is\s+)?(?:currently\s+)?empty\b|\btime\s+to\s+start\s+shopping\b|\blet'?s\s+get\s+shopping\b|\badd\s+items\s+to\s+(?:get\s+started|start\s+a\s+basket)\b|\bnothing\s+in\s+your\s+(?:cart|bag|basket)\b|\b(?:cart|subtotal)\s*\(\s*0(?:\s+items?)?\s*\)|\b0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)\b)""",
             RegexOption.IGNORE_CASE,
         )
         private val SINGLE_PDP_CTA = Regex(
@@ -443,11 +443,13 @@ class GroceryScreenReaderService : AccessibilityService() {
                         }
                         recycleNode(ch)
                     }
-                    // Walk up to 5 ancestor levels (and grandchildren) so tapping a product photo or '+' button inside a nested CardView/Compose node captures the product card's title
+                    // Walk up to 5 ancestor levels (and grandchildren) so tapping a product photo, '+' button, or 'Remove'
+                    // inside a nested CardView/Compose row captures that card's title without climbing into sibling rows!
                     var ancestor = runCatching { src.parent }.getOrNull()
                     var depth = 0
                     while (ancestor != null && depth < 5) {
                         val curAncestor = ancestor
+                        val beforeCount = candidateClickStrings.size
                         if (!isProtectedNode(curAncestor) && curAncestor.isVisibleToUser) {
                             addCandidateStrings(candidateClickStrings, curAncestor.text)
                             addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
@@ -468,10 +470,15 @@ class GroceryScreenReaderService : AccessibilityService() {
                                 recycleNode(pch)
                             }
                         }
+                        val foundCardTitleAtThisLevel = candidateClickStrings.subList(beforeCount, candidateClickStrings.size).any { raw ->
+                            val c = cleanTitleCandidate(raw)
+                            isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
+                        }
                         val nextParent = runCatching { curAncestor.parent }.getOrNull()
                         recycleNode(curAncestor)
                         ancestor = nextParent
                         depth++
+                        if (foundCardTitleAtThisLevel) break
                     }
                     if (ancestor != null) recycleNode(ancestor)
                 }
@@ -518,7 +525,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
 
             val isRemoveOrCartEditClick =
-                Regex("""(?i)\b(remove|delete|save for later|decrease quantity|undo)\b""").containsMatchIn(clickedText) ||
+                Regex("""(?i)\b(remove|delete|save for later|decrease quantity|remove item|undo)\b""").containsMatchIn(clickedText) ||
                     srcViewId.contains("remove") ||
                     srcViewId.contains("delete") ||
                     srcViewId.contains("stepper_minus") ||
@@ -526,7 +533,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     srcViewId.contains("decrement")
             if (isRemoveOrCartEditClick) {
                 val isStepperMinusAtQtyOne =
-                    (Regex("""(?i)\bdecrease\s+quantity\b""").containsMatchIn(clickedText) ||
+                    (Regex("""(?i)\b(decrease\s+quantity|remove\s+item)\b""").containsMatchIn(clickedText) ||
                         srcViewId.contains("stepper_minus") ||
                         srcViewId.contains("minus_button") ||
                         srcViewId.contains("decrement")) &&
@@ -707,7 +714,12 @@ class GroceryScreenReaderService : AccessibilityService() {
             val hasClubItemNumber = nodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
             val isMultiCartSwitcher = nodes.any { it.text.trim().equals("Your carts", ignoreCase = true) }
-            val hasEmptyCartScreenSignal = !isMultiCartSwitcher && nodes.any { EMPTY_CART_SIGNALS.containsMatchIn(it.text.trim()) }
+            val cartBoundaryIdx = nodes.indexOfFirst { CART_END_BOUNDARY.matches(it.text.trim()) }
+            val activeCartSectionNodes = if (cartBoundaryIdx >= 0) nodes.subList(0, cartBoundaryIdx) else nodes
+            val hasEmptyCartScreenSignal = !isMultiCartSwitcher && (
+                activeCartSectionNodes.any { EMPTY_CART_SIGNALS.containsMatchIn(it.text.trim()) } ||
+                    nodes.any { EMPTY_CART_SIGNALS.containsMatchIn(it.text.trim()) }
+                )
             val hasZeroCartBadgeInHeader = nodes.take(15).any {
                 Regex("""(?i)^cart\s*,?\s*(?:\(\s*0(?:\s+items?)?\s*\)|0\s+items?\b)(?:\s*,\s*\$0\.00)?$""").matches(it.text.trim())
             }
@@ -720,7 +732,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
             }
             val hasCartCheckoutSignal = nodes.any { CART_CHECKOUT_SIGNALS.containsMatchIn(it.text.trim()) }
-            val hasCartItemControls = nodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
+            // Check CART_ITEM_CONTROLS ONLY inside activeCartSectionNodes (above "Saved for later" / "Buy it again")
+            // so "Remove" buttons on saved-for-later items never block clearing an emptied cart!
+            val hasCartItemControls = activeCartSectionNodes.any { CART_ITEM_CONTROLS.matches(it.text.trim()) }
             val hasDefinitiveCartScreenSignal = !isMultiCartSwitcher && (hasEmptyCartScreenSignal || (hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
                 val t = it.text.trim()
                 t.contains("continue to checkout", ignoreCase = true) ||
@@ -797,7 +811,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                     return
                 }
                 val prevCartSnapshot = lastCartTitleNodes.map { it.second }
-                val explicitRemovedTitles = extractRemovedCartTitles(nodes)
+                val explicitRemovedTitles = extractRemovedCartTitles(activeCartSectionNodes)
                 val visibleCartTitles = extractCartScreenTitles(nodes, explicitRemovedTitles, recordNodes = true)
                 val allCartTitles = extractCartScreenTitles(allNodes, explicitRemovedTitles, recordNodes = false)
                 val cartTitles = ArrayList<String>(visibleCartTitles)
@@ -880,7 +894,12 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 return
             }
-            if (isConfirmedSinglePdp || hasHomeOrAisleBanners || totalTileAddCount >= 2) {
+            val hasCartHeaderTitle = nodes.take(16).any {
+                val t = it.text.trim()
+                t.equals("Cart", ignoreCase = true) ||
+                    t.matches(Regex("""(?i)^(?:your\s+|shopping\s+|personal\s+|family\s+)?cart(?:\s*\(\d+(?:\s+items?)?\))?$"""))
+            }
+            if (isConfirmedSinglePdp || hasHomeOrAisleBanners || totalTileAddCount >= 2 || (!hasCartHeaderTitle && !hasCartCheckoutSignal)) {
                 wasOnCartScreen = false
             }
 

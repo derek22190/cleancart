@@ -4258,6 +4258,25 @@ class MainActivity : Activity() {
         return raw
     }
 
+    private fun isDirectNativeStoreProductLink(url: String, storeKey: String): Boolean {
+        if (!ScanHistoryStore.urlMatchesStore(url, storeKey)) return false
+        val host = runCatching { Uri.parse(url).host?.lowercase().orEmpty() }.getOrDefault("")
+        if (host.isEmpty() || host.startsWith("goto.") || host.contains("impact") || host.contains("ojrq") || host.contains("pntra")) {
+            return false
+        }
+        return Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+    }
+
+    private fun resolveExternalBrowserPackage(): String? {
+        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com"))
+        val resolved = runCatching { packageManager.resolveActivity(probe, 0)?.activityInfo?.packageName }.getOrNull().orEmpty()
+        if (resolved.isNotBlank() && !resolved.equals("android", ignoreCase = true) && resolved !in GroceryScreenReaderService.STORE_PACKAGES) {
+            return resolved
+        }
+        return listOf("com.android.chrome", "org.mozilla.firefox", "com.sec.android.app.sbrowser", "com.opera.browser", "com.brave.browser")
+            .firstOrNull { candidatePkg -> runCatching { packageManager.getLaunchIntentForPackage(candidatePkg) }.getOrNull() != null }
+    }
+
     private fun openStoreSwap(
         query: String,
         storeKey: String = "walmart",
@@ -4309,27 +4328,49 @@ class MainActivity : Activity() {
         val explicitPkg = ScanHistoryStore.storePackageForKey(storeKey).ifBlank {
             swapObj?.optString("androidPackage").orEmpty()
         }
-        val isDirectProductLink = Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(explicitDeepLink)
-        val supportsDirectUrlDeepLink = isDirectProductLink || explicitPkg in setOf(
-            "com.target.ui",
-            "com.amazon.mShop.android.shopping"
-        )
-        if (explicitDeepLink.startsWith("http")) {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(explicitDeepLink))
-            if (supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
-                if (runCatching { startActivity(Intent(intent).setPackage(explicitPkg)) }.isSuccess) return
+        val isDirectProductLink = isDirectNativeStoreProductLink(explicitDeepLink, storeKey)
+        val supportsDirectUrlDeepLink = isDirectProductLink || (
+            explicitPkg in setOf("com.target.ui", "com.amazon.mShop.android.shopping") &&
+                !explicitDeepLink.contains("goto.") &&
+                !explicitDeepLink.contains("impact")
+            )
+        if (explicitDeepLink.startsWith("http") && supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
+            if (runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(explicitDeepLink)).setPackage(explicitPkg)) }.isSuccess) {
+                return
             }
-            if (explicitPkg.isNotBlank() && effectiveQuery.isNotBlank()) {
-                val searchIntent = Intent(Intent.ACTION_SEARCH)
-                    .setPackage(explicitPkg)
-                    .putExtra(android.app.SearchManager.QUERY, effectiveQuery)
-                if (runCatching { startActivity(searchIntent) }.isSuccess) return
-            }
-            if (runCatching { startActivity(intent) }.isSuccess) return
         }
 
-        val url = ScanHistoryStore.storeSearchUrl(storeKey, effectiveQuery)
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        if (explicitPkg.isNotBlank() && effectiveQuery.isNotBlank()) {
+            val searchIntent = Intent(Intent.ACTION_SEARCH)
+                .setPackage(explicitPkg)
+                .putExtra(android.app.SearchManager.QUERY, effectiveQuery)
+            if (runCatching { startActivity(searchIntent) }.isSuccess) return
+
+            val gmsSearchIntent = Intent("com.google.android.gms.actions.SEARCH_ACTION")
+                .setPackage(explicitPkg)
+                .putExtra(android.app.SearchManager.QUERY, effectiveQuery)
+            if (runCatching { startActivity(gmsSearchIntent) }.isSuccess) return
+
+            // If Accessibility is active and the store app is installed (e.g. Walmart), launch the native app
+            // and drive its search bar directly so Android App Links never opens a blank white WebView!
+            if (GroceryScreenReaderService.activeWindowManager() != null) {
+                val launchHome = runCatching { packageManager.getLaunchIntentForPackage(explicitPkg) }.getOrNull()
+                if (launchHome != null && runCatching {
+                        startActivity(launchHome.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                    }.isSuccess
+                ) {
+                    GroceryScreenReaderService.requestInAppSearch(explicitPkg, effectiveQuery)
+                    return
+                }
+            }
+        }
+
+        val targetWebUrl = explicitDeepLink.ifBlank { ScanHistoryStore.storeSearchUrl(storeKey, effectiveQuery) }
+        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl))
+        resolveExternalBrowserPackage()?.let { browserIntent.setPackage(it) }
+        if (runCatching { startActivity(browserIntent) }.isFailure) {
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl))) }
+        }
     }
 
     private fun openWalmartSearch(query: String) {
@@ -4345,12 +4386,7 @@ class MainActivity : Activity() {
         }
         try {
             if (conn.responseCode in 200..299) {
-                val imgSource = conn.getHeaderField("X-Image-Source").orEmpty()
-                if (imgSource.contains("Category Illustration", ignoreCase = true)) {
-                    null
-                } else {
-                    conn.inputStream.use { BitmapFactory.decodeStream(it) }
-                }
+                conn.inputStream.use { BitmapFactory.decodeStream(it) }
             } else null
         } finally {
             conn.disconnect()
@@ -4377,6 +4413,9 @@ class MainActivity : Activity() {
             }
             if (bmp != null) {
                 bmpCache.put(resolvedKey, bmp)
+                if (resolvedKey != primaryUrl) {
+                    bmpCache.put(primaryUrl, bmp)
+                }
                 mainHandler.post {
                     if (!isDestroyed && !isFinishing) {
                         target.setImageBitmap(bmp)
