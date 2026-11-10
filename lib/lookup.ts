@@ -2263,6 +2263,76 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     sourceUrl: "https://www.walmart.com/ip/My-Cookie-Dealer-Protein-Toaster-Pastry-Powdered-Strawberry-3-88-oz/5470560138",
     verifiedAt: "2026-11-09",
   },
+  {
+    match: /\b(marketside\s+butcher|organic\s+grass[- ]?fed)\b.*\bground\s+beef\b|\bground\s+beef\b.*\b(organic\s+grass[- ]?fed|marketside\s+butcher)\b/i,
+    brand: "Marketside Butcher",
+    title: "Marketside Butcher Organic Grass-Fed 93% Lean 7% Fat Ground Beef",
+    ingredients: "100% Organic Grass-Fed Beef.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/068/113/117/9232/front_en.10.400.jpg",
+    nutrition: { caloriesKcal100g: 152, sugarsG100g: 0, saturatedFatG100g: 2.9, sodiumMg100g: 66, fiberG100g: 0, proteinG100g: 20.8, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    sourceUrl: "https://www.walmart.com/ip/Marketside-Butcher-Organic-Grass-Fed-93-Lean-7-Fat-Ground-Beef-1-lb-Tray-Fresh-All-Natural/44391005",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\bstonyfield\b.*\b(whole\s+milk\s+plain|plain.*yogurt)\b/i,
+    brand: "Stonyfield Organic",
+    title: "Stonyfield Organic Whole Milk Plain Yogurt",
+    ingredients: "Cultured Pasteurized Organic Whole Milk, Pectin, Vitamin D3. Live and Active Cultures: S. thermophilus, L. bulgaricus, L. acidophilus, Bifidus, L. paracasei, and L. rhamnosus.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/005/215/900/1308/front_en.35.400.jpg",
+    nutrition: { caloriesKcal100g: 65, sugarsG100g: 4.1, saturatedFatG100g: 2.1, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    sourceUrl: "https://www.stonyfield.com/products/whole-milk-plain-32oz/",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\borganic\s+valley\b.*\b(sharp\s+cheddar|cheddar\s+cheese|raw\s+sharp\s+cheddar)\b/i,
+    brand: "Organic Valley",
+    title: "Organic Valley Organic Raw Sharp Cheddar Cheese",
+    ingredients: "Organic Unpasteurized Cultured Milk, Salt, Vegetarianal Enzymes.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/009/396/600/0337/front_en.28.400.jpg",
+    nutrition: { caloriesKcal100g: 393, sugarsG100g: 0, saturatedFatG100g: 21.4, sodiumMg100g: 643, fiberG100g: 0, proteinG100g: 25.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: true, isOrganic: true },
+    sourceUrl: "https://www.organicvalley.coop/products/cheese/cheddar/raw-sharp-cheddar-cheese-8-oz/",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\bapplegate\b.*\b(oven\s+roasted\s+turkey|turkey\s+breast)\b/i,
+    brand: "Applegate Organics",
+    title: "Applegate Organics Oven Roasted Turkey Breast",
+    ingredients: "Organic Turkey Breast, Water. Contains Less Than 2% Of The Following: Salt, Organic Potato Starch, Organic Rosemary Extract.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/002/531/700/1106/front_en.48.400.jpg",
+    nutrition: { caloriesKcal100g: 89, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 607, fiberG100g: 0, proteinG100g: 19.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    sourceUrl: "https://applegate.com/products/applegate-organics-oven-roasted-turkey-breast",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\blotus\s+foods\b.*\b(millet\s*(?:&|and)\s*brown\s+rice|ramen)\b/i,
+    brand: "Lotus Foods",
+    title: "Lotus Foods Organic Millet & Brown Rice Ramen",
+    ingredients: "Organic Brown Rice Flour, Organic Millet Flour.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/007/067/000/3322/front_en.41.400.jpg",
+    nutrition: { caloriesKcal100g: 371, sugarsG100g: 0, saturatedFatG100g: 0.7, sodiumMg100g: 0, fiberG100g: 4.3, proteinG100g: 8.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    sourceUrl: "https://www.lotusfoods.com/products/organic-millet-brown-rice-ramen-4-pack",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\brao'?s\b.*\b(marinara|tomato\s+basil|arrabbiata|vodka\s+sauce|pasta\s+sauce)\b/i,
+    brand: "Rao's Homemade",
+    title: "Rao's Homemade Marinara Sauce",
+    ingredients: "Italian Whole Peeled Tomatoes, Olive Oil, Onions, Salt, Garlic, Basil, Black Pepper, Oregano.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/074/747/900/0017/front_en.77.400.jpg",
+    nutrition: { caloriesKcal100g: 80, sugarsG100g: 3.2, saturatedFatG100g: 0.8, sodiumMg100g: 336, fiberG100g: 1.6, proteinG100g: 1.6, fruitsVegNutsPct: 90, nutriScoreGrade: "a", isWholeFood: true, isOrganic: false },
+    sourceUrl: "https://www.raos.com/products/marinara-sauce",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\b(hellmann'?s|best\s+foods)\s+real\s+mayonnaise\b/i,
+    brand: "Hellmann's",
+    title: "Hellmann's Real Mayonnaise",
+    ingredients: "Soybean Oil, Water, Whole Eggs and Egg Yolks, Distilled Vinegar, Salt, Sugar, Lemon Juice Concentrate, Calcium Disodium EDTA (Used to Protect Quality), Natural Flavors.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/004/800/121/3487/front_en.103.400.jpg",
+    nutrition: { caloriesKcal100g: 692, sugarsG100g: 0, saturatedFatG100g: 11.5, sodiumMg100g: 692, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.hellmanns.com/us/en/p/real-mayonnaise.html/00048001213487",
+    verifiedAt: "2026-11-09",
+  },
 ];
 
 const UI_NOISE_QUERY =
@@ -2577,18 +2647,18 @@ function isDietaryOrVariantMismatch(
     return true;
   }
 
-  // 7. Plain whole-produce query vs processed / fried / oil-added / snack candidate (e.g. "Fresh Whole Sweet Potato" vs "Simply Nature Sweet Potato Chips")
+  // 7. Plain whole-produce or plain fresh meat/seafood query vs processed / seasoned / buttered / oil-added candidate
   if (
     !PROCESSED_FOOD_GUARD.test(q) &&
-    /\b(sweet\s+potato(?:es)?|yams?|potato(?:es)?|russet|yukon\s+gold|carrots?|apples?|bananas?|broccoli|cauliflower|spinach|kale|lettuce|avocados?|tomatoes?|onions?|peppers?|mushrooms?|zucchini|squash|celery|cucumbers?|berries|strawberries|blueberries|raspberries|grapes?|oranges?|peaches?|pears?|mangoes?|pineapple|fresh\s+whole|fresh\s+produce)\b/.test(
+    /\b(sweet\s+potato(?:es)?|yams?|potato(?:es)?|russet|yukon\s+gold|carrots?|apples?|bananas?|broccoli|cauliflower|spinach|kale|lettuce|avocados?|tomatoes?|onions?|peppers?|mushrooms?|zucchini|squash|celery|cucumbers?|berries|strawberries|blueberries|raspberries|grapes?|oranges?|peaches?|pears?|mangoes?|pineapple|fresh\s+whole|fresh\s+produce|salmon|cod|tilapia|halibut|trout|mahi|shrimp|scallops?|pork\s+chops?|pork\s+loin|pork\s+tenderloin|ribeye|sirloin|new\s+york\s+strip|flank\s+steak|skirt\s+steak|chuck\s+roast|beef\s+stew\s+meat|chicken\s+breasts?|chicken\s+thighs?|chicken\s+drumsticks?|chicken\s+tenderloins?)\b/.test(
       q
     )
   ) {
     if (
-      /\b(chips?|crisps?|crispy|fries|fried|tots|puffs?|crackers?|cookies?|bars?|cereal|pie|cake|muffin|waffles?|pancakes?|pasta|gnocchi|ramen|noodles?|soup|sauce|dressing|dip|salsa|ketchup|jam|jelly|syrup|candy|gummies|soda|drink|beverage|juice)\b/.test(
+      /\b(chips?|crisps?|crispy|fries|fried|tots|puffs?|crackers?|cookies?|bars?|cereal|pie|cake|muffin|waffles?|pancakes?|pasta|gnocchi|ramen|noodles?|soup|sauce|dressing|dip|salsa|ketchup|jam|jelly|syrup|candy|gummies|soda|drink|beverage|juice|herb\s+butter|garlic\s+butter|stuffed|breaded|battered|marinated|teriyaki|bbq|barbecue|glazed|smoked|jerky|sausage|bacon|ham|hot\s+dog|frank|deli|sliced\s+oven\s+roasted)\b/.test(
         t
       ) ||
-      /\b(canola\s+oil|sunflower\s+oil|safflower\s+oil|soybean\s+oil|vegetable\s+oil|palm\s+oil|palm\s+kernel\s+oil|corn\s+oil|cottonseed\s+oil|peanut\s+oil|coconut\s+oil|avocado\s+oil|olive\s+oil|rice\s+bran\s+oil|shortening|lard|tallow|hydrogenated|corn\s+syrup|high\s+fructose\s+corn\s+syrup|maltodextrin|dextrose|enriched\s+flour|wheat\s+flour|modified\s+(?:food|corn|potato)\s+starch)\b/.test(
+      /\b(canola\s+oil|sunflower\s+oil|safflower\s+oil|soybean\s+oil|vegetable\s+oil|palm\s+oil|palm\s+kernel\s+oil|corn\s+oil|cottonseed\s+oil|peanut\s+oil|coconut\s+oil|avocado\s+oil|olive\s+oil|rice\s+bran\s+oil|shortening|lard|tallow|hydrogenated|corn\s+syrup|high\s+fructose\s+corn\s+syrup|maltodextrin|dextrose|enriched\s+flour|wheat\s+flour|modified\s+(?:food|corn|potato)\s+starch|sodium\s+nitrite|sodium\s+phosphate|caramel\s+color| monosodium\s+glutamate)\b/.test(
         ing
       )
     ) {
@@ -2819,7 +2889,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&

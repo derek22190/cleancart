@@ -185,6 +185,12 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/^(?!.*\b(?:chips?|crisps?|fries|tots|mashed|salad)\b).*\b(?:russet\s+potato(?:es)?|idaho\s+potato(?:es)?|yukon\s+gold\s+potato(?:es)?|red\s+potato(?:es)?|yellow\s+potato(?:es)?|butter\s+potato(?:es)?|potatoes,?\s+butter|fresh\s+whole\s+potato(?:es)?)\b/i, "https://images.openfoodfacts.org/images/products/007/078/401/2964/front_en.3.400.jpg"],
   [/^(?!.*\b(?:pudding|bread|muffin|chips?|boat|sunscreen)\b).*\b(?:fresh\s+bananas?|bananas?)\b/i, "https://images.openfoodfacts.org/images/products/200/000/015/1418/front_en.3.400.jpg"],
   [/^(?!.*\b(?:juice|cider|sauce|applesauce|pie|chips?|strudel|fritter|danish)\b).*\b(?:honeycrisp\s+apples?|gala\s+apples?|fuji\s+apples?|granny\s+smith\s+apples?|fresh\s+apples?)\b/i, "https://images.openfoodfacts.org/images/products/002/290/630/0183/front_en.3.400.jpg"],
+  [/\bstonyfield\b.*\byogurt\b/i, "https://images.openfoodfacts.org/images/products/343/886/000/1863/front.4.400.jpg"],
+  [/\bmary'?s\s+gone\s+crackers\b/i, "https://images.openfoodfacts.org/images/products/065/439/124/6006/front_en.3.400.jpg"],
+  [/\bezekiel\b.*\bbread\b/i, "https://images.openfoodfacts.org/images/products/007/347/200/1202/front_en.46.400.jpg"],
+  [/\b(?:larabar|lärabar)\b/i, "https://images.openfoodfacts.org/images/products/002/190/811/0110/front_en.4.400.jpg"],
+  [/\brao'?s\b.*\b(?:marinara|sauce)\b/i, "https://images.openfoodfacts.org/images/products/074/747/900/1199/front_en.3.400.jpg"],
+  [/\bprimal\s+kitchen\b.*\b(?:mayo|mayonnaise)\b/i, "https://images.openfoodfacts.org/images/products/468/112/060/0422/front_en.7.400.jpg"],
   [/^(?!.*\b(?:cake|juice|soup)\b).*\b(?:baby\s+cut\s+carrots?|whole\s+carrots?|fresh\s+carrots?)\b/i, "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg"],
 ];
 

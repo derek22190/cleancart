@@ -1408,7 +1408,7 @@ export default function Simulator({
                 <h1>HeyBroc</h1>
                 <span className="brand-badge">Clean Scanner</span>
               </div>
-              <p>Instant ingredient grader &amp; 1-tap clean grocery swaps</p>
+              <p>Instant ingredient grader &amp; 1-tap clean swaps</p>
             </div>
           </div>
 
@@ -1455,7 +1455,7 @@ export default function Simulator({
             download="heybroc.apk"
             className="topbar-pill"
           >
-            📲 Android App (.apk)
+            📲 Android (.apk)
           </a>
 
           <a
@@ -1915,8 +1915,6 @@ export default function Simulator({
               ref={screenRef}
               style={{ ["--store-bg" as string]: theme.bg, ["--store-fg" as string]: theme.fg, ["--store-accent" as string]: theme.accent, ["--store-accent-fg" as string]: theme.accentFg }}
             >
-              <div className="statusbar"><span>9:41</span><span className="notch" /><span>5G ▮▮▮</span></div>
-
               <div className="store-header">
                 <div className="store-row">
                   <span className="store-logo"><StoreBadge store={store} inHeader />{STORE_META[store].label}</span>
@@ -2967,53 +2965,39 @@ export default function Simulator({
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Semantic SEO & GEO FAQ Section (Matches Schema.org FAQPage JSON-LD) */}
-          <div style={{ marginTop: 28, borderTop: "1px solid #e2e8f0", paddingTop: 22 }}>
-            <span className="eyebrow eyebrow--green">CLEAN INGREDIENT &amp; SCORING FAQ</span>
-            <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "6px 0 14px" }}>
-              How HeyBroc Grades Groceries &amp; Finds Clean Swaps
-            </h3>
-            <div style={{ display: "grid", gap: 10 }}>
-              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
-                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
-                  How does HeyBroc calculate its 0 to 100 food and ingredient score?
-                </summary>
-                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-                  HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Clean-Label Additives (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
-                </p>
-              </details>
-              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
-                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
-                  Which grocery stores work with the HeyBroc floating bubble?
-                </summary>
-                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-                  HeyBroc&apos;s Live Store Bubble works automatically across 12 major grocery stores and delivery apps: <b>Walmart, Instacart, Target, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale, Amazon Fresh, DoorDash, Uber Eats, and Shipt</b>—without needing to scan physical barcodes.
-                </p>
-              </details>
-              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
-                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
-                  What ingredients and additives does HeyBroc flag?
-                </summary>
-                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-                  HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), and synthetic emulsifiers or gums (Carrageenan, Polysorbate 80).
-                </p>
-              </details>
-              <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px" }}>
-                <summary style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", cursor: "pointer" }}>
-                  Does HeyBroc accept payments from brands to change product scores?
-                </summary>
-                <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-                  No. HeyBroc is 100% independent. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
-                </p>
-              </details>
-            </div>
-            <div style={{ marginTop: 16, display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
-              <a href="/tools" style={{ color: "#15803d", fontWeight: 700 }}>🧪 Free Ingredient &amp; Seed Oil Tools</a>
-              <a href="/swaps" style={{ color: "#15803d", fontWeight: 700 }}>⇄ Clean Grocery Swaps Directory</a>
-              <a href="/creators" style={{ color: "#15803d", fontWeight: 700 }}>🤝 Creator Partner Program (25%)</a>
-              <a href="/terms" style={{ color: "#15803d", fontWeight: 600 }}>Terms of Service</a>
-              <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy &amp; Disclaimers</a>
+        {/* Clean, Compact Footer + Collapsible FAQ & Legal Notice */}
+        <footer
+          style={{
+            marginTop: 18,
+            padding: "16px 18px",
+            background: "#ffffff",
+            border: "1px solid rgba(21, 32, 27, 0.09)",
+            borderRadius: 18,
+            boxShadow: "0 1px 2px rgba(21, 32, 27, 0.04)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              fontSize: 12.5,
+              color: "#475569",
+            }}
+          >
+            <span style={{ fontWeight: 800, color: "#0f172a" }}>
+              🥦 HeyBroc Clean Scanner
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <a href="/tools" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Free Tools</a>
+              <a href="/swaps" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Clean Swaps</a>
+              <a href="/creators" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Creators (25%)</a>
+              <a href="/terms" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Terms</a>
+              <a href="/privacy" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Privacy</a>
               <button
                 type="button"
                 onClick={async () => {
@@ -3050,35 +3034,66 @@ export default function Simulator({
                   background: "none",
                   border: "none",
                   padding: 0,
-                  color: "#15803d",
+                  color: "#475569",
                   fontWeight: 600,
-                  fontSize: 12,
+                  fontSize: 12.5,
                   cursor: "pointer",
-                  textDecoration: "underline",
                 }}
               >
-                Manage / Cancel subscription
+                Manage Subscription
               </button>
-              <a href="/llms.txt" style={{ color: "#15803d", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
-              <a href="/sitemap.xml" style={{ color: "#15803d", fontWeight: 600 }}>Sitemap</a>
-            </div>
-            <div
-              style={{
-                marginTop: 16,
-                padding: "12px 14px",
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 12,
-                fontSize: 11.5,
-                lineHeight: 1.55,
-                color: "#64748b",
-              }}
-            >
-              <strong style={{ color: "#334155" }}>Independent Opinion, Label Verification, Pricing &amp; Non-Affiliation Notice:</strong>{" "}
-              HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
             </div>
           </div>
-        </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px" }}>
+              <summary style={{ fontWeight: 700, fontSize: 12.5, color: "#334155", cursor: "pointer" }}>
+                How HeyBroc Grades Groceries &amp; Scoring FAQ
+              </summary>
+              <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, lineHeight: 1.5, color: "#475569" }}>
+                <div>
+                  <strong style={{ color: "#0f172a" }}>How does HeyBroc calculate its 0 to 100 food and ingredient score?</strong>
+                  <p style={{ marginTop: 2 }}>
+                    HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Clean-Label Additives (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
+                  </p>
+                </div>
+                <div>
+                  <strong style={{ color: "#0f172a" }}>Which grocery stores work with the HeyBroc floating bubble?</strong>
+                  <p style={{ marginTop: 2 }}>
+                    HeyBroc&apos;s Live Store Bubble works automatically across 12 major grocery stores and delivery apps: <b>Walmart, Instacart, Target, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale, Amazon Fresh, DoorDash, Uber Eats, and Shipt</b>—without needing to scan physical barcodes.
+                  </p>
+                </div>
+                <div>
+                  <strong style={{ color: "#0f172a" }}>What ingredients and additives does HeyBroc flag?</strong>
+                  <p style={{ marginTop: 2 }}>
+                    HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), and synthetic emulsifiers or gums (Carrageenan, Polysorbate 80).
+                  </p>
+                </div>
+                <div>
+                  <strong style={{ color: "#0f172a" }}>Does HeyBroc accept payments from brands to change product scores?</strong>
+                  <p style={{ marginTop: 2 }}>
+                    No. HeyBroc is 100% independent. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
+                  </p>
+                </div>
+              </div>
+            </details>
+
+            <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px" }}>
+              <summary style={{ fontWeight: 700, fontSize: 12.5, color: "#64748b", cursor: "pointer" }}>
+                Independent Opinion, Label Verification, Pricing &amp; Non-Affiliation Notice
+              </summary>
+              <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.55, color: "#64748b" }}>
+                <p>
+                  HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
+                </p>
+                <div style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11.5 }}>
+                  <a href="/llms.txt" style={{ color: "#0f7a4a", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
+                  <a href="/sitemap.xml" style={{ color: "#0f7a4a", fontWeight: 600 }}>Sitemap</a>
+                </div>
+              </div>
+            </details>
+          </div>
+        </footer>
       </section>
 
       {/* ============ PHASE 6 MODALS ============ */}
