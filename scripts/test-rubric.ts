@@ -1809,17 +1809,24 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
   const watchlistFunnelSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
   check(
-    "4-Step Onboarding Funnel (Goals -> Problem -> Solution -> Personalized Plan / Free Trial + Free Plan) on Web & Android",
+    "8-Step Micro-Commitment Onboarding Funnel (Household -> Priority -> Store -> 2x Watchlist -> Allergy Guard -> Problem -> Mini-Test & Solution -> Personalized Plan) on Web & Android",
     Boolean(
-      watchlistFunnelSrc.includes("What are your clean-eating goals?") &&
+      watchlistFunnelSrc.includes("Who are you protecting with HeyBroc?") &&
+        watchlistFunnelSrc.includes("What is your #1 clean-eating priority?") &&
+        watchlistFunnelSrc.includes("Where do you usually grocery shop?") &&
+        watchlistFunnelSrc.includes("What are your clean-eating goals?") &&
+        watchlistFunnelSrc.includes("Any family allergies or dietary watches?") &&
         watchlistFunnelSrc.includes("See How HeyBroc Solves This") &&
         watchlistFunnelSrc.includes("How HeyBroc Protects Your Cart in 1 Second") &&
         watchlistFunnelSrc.includes("Choose How You Want to Start") &&
+        watchlistFunnelSrc.includes("Step {step} of 8") &&
         watchlistFunnelSrc.includes("onApplyAndStartTrial") &&
         watchlistFunnelSrc.includes("appliedCreator") &&
         watchlistFunnelSrc.includes("aria-pressed={active}") &&
         watchlistFunnelSrc.includes("Continue with Free Plan") &&
         mainActivityKtSrc.includes("fun showOnboardingFunnelDialog()") &&
+        mainActivityKtSrc.includes("STEP 1 OF 8 · HOUSEHOLD") &&
+        mainActivityKtSrc.includes("STEP 8 OF 8 · YOUR PLAN") &&
         mainActivityKtSrc.includes("onboarding_funnel_done_v1") &&
         mainActivityKtSrc.includes("KEYCODE_BACK") &&
         mainActivityKtSrc.includes('"nitrates" to "Nitrites & Curing Nitrates (2x)"') &&

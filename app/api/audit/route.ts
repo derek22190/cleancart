@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     deviceSecret?: string;
     watchlist?: Watchlist;
     familyWatchlist?: Category[];
+    dietaryWatchlist?: string[];
   };
   try {
     const parsed = await request.json();
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
               deviceSecret: effectiveSecret,
               watchlist: body.watchlist,
               familyWatchlist: body.familyWatchlist,
+              dietaryWatchlist: body.dietaryWatchlist,
             });
             memo.set(dedupKey, pending);
           }
@@ -116,6 +118,7 @@ export async function POST(request: Request) {
             deviceSecret: reqItem.deviceSecret ?? effectiveSecret,
             watchlist: body.watchlist,
             familyWatchlist: reqItem.familyWatchlist ?? body.familyWatchlist,
+            dietaryWatchlist: reqItem.dietaryWatchlist ?? body.dietaryWatchlist,
           });
           memo.set(dedupKey, pending);
         }

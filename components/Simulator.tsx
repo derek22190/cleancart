@@ -38,7 +38,7 @@ import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import PostCheckoutOtoModal from "./PostCheckoutOtoModal";
 import Scorecard, { type SwapRecord } from "./Scorecard";
-import WatchlistMiniFunnel from "./WatchlistMiniFunnel";
+import WatchlistMiniFunnel, { type DietaryOptionId, type OnboardingSelections } from "./WatchlistMiniFunnel";
 
 /* ------------------------------------------------------------------ */
 /* Types & helpers                                                     */
@@ -441,6 +441,7 @@ export default function Simulator({
   const [authOpen, setAuthOpen] = useState(false);
   const [watchlistFunnelOpen, setWatchlistFunnelOpen] = useState(false);
   const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>(["seedOils", "dyes", "hfcs"]);
+  const [dietaryWatchlist, setDietaryWatchlist] = useState<DietaryOptionId[]>([]);
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
   const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
@@ -475,6 +476,16 @@ export default function Simulator({
           ) as Category[] | null;
           if (Array.isArray(savedWl) && !cancelled) {
             setFamilyWatchlist(savedWl);
+          }
+          const savedDiet = JSON.parse(
+            window.localStorage.getItem("heybroc_dietary_watchlist") || "null"
+          ) as DietaryOptionId[] | null;
+          if (Array.isArray(savedDiet) && !cancelled) {
+            setDietaryWatchlist(savedDiet);
+          }
+          const savedStore = (window.localStorage.getItem("heybroc_preferred_store") || "").trim();
+          if (savedStore && (STORES as string[]).includes(savedStore) && !cancelled) {
+            setStore(savedStore as Store);
           }
         } catch {
           /* ignore */
@@ -1158,7 +1169,16 @@ export default function Simulator({
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) || undefined;
         const referredByCode =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
-        const payload = { productTitle: q, store, watchlist: watch, familyWatchlist, deviceId, deviceSecret, referredByCode };
+        const payload = {
+          productTitle: q,
+          store,
+          watchlist: watch,
+          familyWatchlist,
+          dietaryWatchlist,
+          deviceId,
+          deviceSecret,
+          referredByCode,
+        };
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1208,7 +1228,7 @@ export default function Simulator({
         setLiveError("Network error — is the server reachable?");
       }
     },
-    [query, store, watch, familyWatchlist, showProduct],
+    [query, store, watch, familyWatchlist, dietaryWatchlist, showProduct],
   );
 
   /* ---------------- Whole-Cart Audit ---------------- */
@@ -1224,6 +1244,7 @@ export default function Simulator({
           store,
           watchlist: watch,
           familyWatchlist,
+          dietaryWatchlist,
           items: cart.map((i) => ({ productTitle: `${i.brand} ${i.title}`, rawIngredients: i.ingredients })),
         }),
       });
@@ -1235,7 +1256,7 @@ export default function Simulator({
     } finally {
       setAuditBusy(false);
     }
-  }, [cart, store, watch, familyWatchlist]);
+  }, [cart, store, watch, familyWatchlist, dietaryWatchlist]);
 
   const swapAll = useCallback(() => {
     const n = dirty.length;
@@ -3100,7 +3121,10 @@ export default function Simulator({
       <WatchlistMiniFunnel
         open={watchlistFunnelOpen}
         initialSelected={familyWatchlist}
+        initialStore={store}
+        initialDietary={dietaryWatchlist}
         appliedCreator={appliedCreator}
+        onSelectStore={switchStore}
         onClose={() => {
           if (typeof window !== "undefined") {
             if (!window.localStorage.getItem("heybroc_family_watchlist")) {
@@ -3113,8 +3137,10 @@ export default function Simulator({
           }
           setWatchlistFunnelOpen(false);
         }}
-        onApplyAndGuest={(selected) => {
+        onApplyAndGuest={(selected, extras?: OnboardingSelections) => {
           setFamilyWatchlist(selected);
+          if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
+          if (extras?.store) switchStore(extras.store);
           setWatch((prev) => {
             const next = { ...prev };
             for (const c of ALL_CATEGORIES) {
@@ -3127,6 +3153,21 @@ export default function Simulator({
               "heybroc_family_watchlist",
               JSON.stringify(selected)
             );
+            if (extras?.dietaryWatchlist) {
+              window.localStorage.setItem(
+                "heybroc_dietary_watchlist",
+                JSON.stringify(extras.dietaryWatchlist)
+              );
+            }
+            if (extras?.store) {
+              window.localStorage.setItem("heybroc_preferred_store", extras.store);
+            }
+            if (extras?.householdProfile) {
+              window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
+            }
+            if (extras?.primaryGoal) {
+              window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
+            }
             window.localStorage.setItem("heybroc_onboarding_done", "1");
           }
           setWatchlistFunnelOpen(false);
@@ -3135,8 +3176,10 @@ export default function Simulator({
             body: "2x strictness enabled — scan any product or tap Swap ↗ as a Guest anytime.",
           });
         }}
-        onApplyAndSignIn={(selected) => {
+        onApplyAndSignIn={(selected, extras?: OnboardingSelections) => {
           setFamilyWatchlist(selected);
+          if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
+          if (extras?.store) switchStore(extras.store);
           setWatch((prev) => {
             const next = { ...prev };
             for (const c of ALL_CATEGORIES) {
@@ -3149,13 +3192,30 @@ export default function Simulator({
               "heybroc_family_watchlist",
               JSON.stringify(selected)
             );
+            if (extras?.dietaryWatchlist) {
+              window.localStorage.setItem(
+                "heybroc_dietary_watchlist",
+                JSON.stringify(extras.dietaryWatchlist)
+              );
+            }
+            if (extras?.store) {
+              window.localStorage.setItem("heybroc_preferred_store", extras.store);
+            }
+            if (extras?.householdProfile) {
+              window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
+            }
+            if (extras?.primaryGoal) {
+              window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
+            }
             window.localStorage.setItem("heybroc_onboarding_done", "1");
           }
           setWatchlistFunnelOpen(false);
           setAuthOpen(true);
         }}
-        onApplyAndStartTrial={(selected) => {
+        onApplyAndStartTrial={(selected, extras?: OnboardingSelections) => {
           setFamilyWatchlist(selected);
+          if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
+          if (extras?.store) switchStore(extras.store);
           setWatch((prev) => {
             const next = { ...prev };
             for (const c of ALL_CATEGORIES) {
@@ -3168,6 +3228,21 @@ export default function Simulator({
               "heybroc_family_watchlist",
               JSON.stringify(selected)
             );
+            if (extras?.dietaryWatchlist) {
+              window.localStorage.setItem(
+                "heybroc_dietary_watchlist",
+                JSON.stringify(extras.dietaryWatchlist)
+              );
+            }
+            if (extras?.store) {
+              window.localStorage.setItem("heybroc_preferred_store", extras.store);
+            }
+            if (extras?.householdProfile) {
+              window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
+            }
+            if (extras?.primaryGoal) {
+              window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
+            }
             window.localStorage.setItem("heybroc_onboarding_done", "1");
           }
           setWatchlistFunnelOpen(false);

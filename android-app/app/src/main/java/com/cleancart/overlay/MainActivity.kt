@@ -845,6 +845,11 @@ class MainActivity : Activity() {
      * Exact Yuka Recommendations 2-column row:
      *   [ Left Card: ⊗ Bad Item ]  <-- ( ⇄ ) -->  [ Right Card: ✓ Clean Swap ]
      */
+    private fun preferredStoreKey(): String {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        return prefs.getString("preferredStore", "walmart")?.takeIf { it.isNotBlank() } ?: "walmart"
+    }
+
     private fun buildYukaSideBySideSwapRow(badItem: JSONObject, swapObj: JSONObject): View {
         val prod = badItem.optJSONObject("product")
         val res = badItem.optJSONObject("result")
@@ -853,7 +858,8 @@ class MainActivity : Activity() {
         val badImg = prod?.optString("imageUrl").orEmpty().ifBlank { badItem.optString("imageUrl") }
         val badScore = res?.optInt("score") ?: 20
         val badRating = res?.optString("rating").orEmpty().ifBlank { ratingForScore(badScore) }
-        val itemStoreKey = badItem.optString("storeKey", "walmart").ifBlank { "walmart" }
+        val rawStoreKey = badItem.optString("storeKey", "")
+        val itemStoreKey = if (rawStoreKey.isBlank() || rawStoreKey == "search") preferredStoreKey() else rawStoreKey
         ScanHistoryStore.upgradeSwapForStore(swapObj, badTitle, itemStoreKey)
 
         val swapTitle = swapObj.optString("title", "Clean Swap")
@@ -1763,7 +1769,54 @@ class MainActivity : Activity() {
     private fun showOnboardingFunnelDialog() {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val initialSet = prefs.getStringSet("familyWatchlist", null)
-        val selectedGoals = initialSet?.toMutableSet() ?: mutableSetOf("seedOils", "dyes", "hfcs")
+        val selectedGoals = initialSet?.map { if (it == "nitrites") "nitrates" else it }?.toMutableSet()
+            ?: mutableSetOf("seedOils", "dyes", "hfcs")
+        val selectedDietary = prefs.getStringSet("dietaryWatchlist", null)?.toMutableSet() ?: mutableSetOf()
+        var selectedHousehold = prefs.getString("householdProfile", "kids_family") ?: "kids_family"
+        var selectedPrimaryGoal = prefs.getString("primaryGoal", "seed_oil_free") ?: "seed_oil_free"
+        var selectedStore = prefs.getString("preferredStore", "walmart") ?: "walmart"
+        var activeSampleIdx = 0
+
+        data class HouseholdOpt(
+            val id: String,
+            val icon: String,
+            val title: String,
+            val subtitle: String,
+            val recCats: List<String>
+        )
+
+        val householdOptions = listOf(
+            HouseholdOpt("kids_family", "👨‍👩‍👧‍👦", "My Kids & Family", "Keep Red 40, seed oils & hidden syrups out of family meals", listOf("seedOils", "dyes", "hfcs", "nitrates")),
+            HouseholdOpt("partner", "💑", "Me & My Partner", "Upgrade our shared grocery cart to clean whole-food staples", listOf("seedOils", "hfcs", "preservatives")),
+            HouseholdOpt("myself", "🏃", "Just Myself", "Hit my personal clean-eating, fitness & ingredient goals", listOf("seedOils", "hfcs", "sweeteners")),
+            HouseholdOpt("sensitivity", "🛡️", "Managing Food Sensitivities", "Strict ingredient, additive & allergen screening on every label", listOf("seedOils", "dyes", "hfcs", "preservatives", "sweeteners"))
+        )
+
+        data class PrimaryGoalOpt(
+            val id: String,
+            val icon: String,
+            val title: String,
+            val subtitle: String,
+            val boostCats: List<String>
+        )
+
+        val primaryGoalOptions = listOf(
+            PrimaryGoalOpt("seed_oil_free", "🌻", "Eliminate Industrial Seed Oils", "Swap soybean, canola & corn oil for 100% avocado, olive & grass-fed butter", listOf("seedOils")),
+            PrimaryGoalOpt("kids_dye_free", "🧪", "Protect Against Red 40 & Dyes", "Spot petroleum-derived synthetic dyes disguised in snacks, cereals & drinks", listOf("dyes")),
+            PrimaryGoalOpt("whole_foods", "🥑", "Cut Ultra-Processed Additives & HFCS", "Ditch high-fructose corn syrup, curing nitrates & harsh BHA/BHT preservatives", listOf("hfcs", "nitrates", "preservatives")),
+            PrimaryGoalOpt("clean_swaps", "⇄", "Save Time with 1-Tap Clean Swaps", "Stop reading 40-ingredient labels — get instant 90–100/100 store replacements", listOf("seedOils", "dyes", "hfcs"))
+        )
+
+        val storeOptions = listOf(
+            Triple("walmart", "🏬 Walmart", "Pickup, Delivery & In-Store"),
+            Triple("target", "🎯 Target", "Drive Up & Same-Day"),
+            Triple("costco", "🏷️ Costco", "Warehouse & Bulk Picks"),
+            Triple("sams", "💎 Sam's Club", "Club Pickup & Scan & Go"),
+            Triple("aldi", "🏪 ALDI", "Simply Nature & Aisle Swaps"),
+            Triple("kroger", "🛒 Kroger", "Simple Truth & Pickup"),
+            Triple("instacart", "🥕 Instacart", "All Local Supermarkets"),
+            Triple("amazon", "📦 Amazon / Whole Foods", "365 & Prime Delivery")
+        )
 
         data class GoalOption(
             val id: String,
@@ -1818,6 +1871,55 @@ class MainActivity : Activity() {
             )
         )
 
+        val dietaryOptions = listOf(
+            Triple("sugar_diabetes", "🩸 Added Sugar & Syrup Watch", "Flags added cane sugar, corn syrups, >=10g sugar/100g & refined starches"),
+            Triple("dairy", "🥛 Dairy & Lactose Guard", "Flags milk, cream, butter, whey, casein, lactose, cheese & yogurt"),
+            Triple("wheat_gluten", "🌾 Wheat & Gluten Guard", "Flags wheat, enriched flour, barley, malt, rye, spelt & semolina"),
+            Triple("peanuts_nuts", "🥜 Peanut & Tree Nut Guard", "Flags peanuts, almonds, cashews, walnuts, pecans & pistachios"),
+            Triple("soy", "🫘 Soy Guard", "Flags soy protein, soy lecithin, soybean oil, tofu & edamame"),
+            Triple("egg", "🥚 Egg Guard", "Flags whole egg, egg whites/yolks, albumin & mayonnaise")
+        )
+
+        data class MiniTestSample(
+            val label: String,
+            val dirtyTitle: String,
+            val dirtyScore: Int,
+            val dirtyFlags: String,
+            val cleanTitle: String,
+            val cleanScore: Int,
+            val cleanPerks: String
+        )
+
+        val miniTestSamples = listOf(
+            MiniTestSample(
+                label = "🍓 Yogurt",
+                dirtyTitle = "Berry Swirl Lowfat Yogurt",
+                dirtyScore = 22,
+                dirtyFlags = "Flagged (2x): Red 40, High-Fructose Corn Syrup & Potassium Sorbate",
+                cleanTitle = "Organic Whole Milk Berry Yogurt",
+                cleanScore = 94,
+                cleanPerks = "Organic milk & real strawberries — 0 synthetic dyes, 0 corn syrup"
+            ),
+            MiniTestSample(
+                label = "🥗 Ranch",
+                dirtyTitle = "\"Homestyle\" Creamy Ranch Dressing",
+                dirtyScore = 18,
+                dirtyFlags = "Flagged (2x): Soybean Oil (#1 ingredient), MSG, EDTA & Polysorbate 60",
+                cleanTitle = "100% Avocado Oil Ranch Dressing",
+                cleanScore = 92,
+                cleanPerks = "Made with 100% pure avocado oil & organic herbs — 0 seed oils, 0 EDTA"
+            ),
+            MiniTestSample(
+                label = "🧀 Crackers",
+                dirtyTitle = "Baked Cheddar Snack Crackers",
+                dirtyScore = 24,
+                dirtyFlags = "Flagged (2x): Soybean & Canola Oil, TBHQ Preservative & Yellow 6",
+                cleanTitle = "Organic Grass-Fed Cheddar Crackers",
+                cleanScore = 95,
+                cleanPerks = "Organic wheat & grass-fed cheddar — 0 seed oils, 0 TBHQ, 0 artificial dyes"
+            )
+        )
+
         var funnelDialog: AlertDialog? = null
         var currentStep = 1
 
@@ -1836,6 +1938,10 @@ class MainActivity : Activity() {
             val toSave = selectedGoals.toMutableSet()
             prefs.edit()
                 .putStringSet("familyWatchlist", toSave)
+                .putStringSet("dietaryWatchlist", selectedDietary.toMutableSet())
+                .putString("householdProfile", selectedHousehold)
+                .putString("primaryGoal", selectedPrimaryGoal)
+                .putString("preferredStore", selectedStore)
                 .putBoolean("onboarding_funnel_done_v1", true)
                 .apply()
             if ("seedOils" in toSave) {
@@ -1851,9 +1957,21 @@ class MainActivity : Activity() {
             renderScreen()
         }
 
+        fun storeDisplayNameForKey(key: String): String = when (key) {
+            "target" -> "Target"
+            "costco" -> "Costco"
+            "sams" -> "Sam's Club"
+            "aldi" -> "ALDI"
+            "kroger" -> "Kroger"
+            "instacart" -> "Instacart"
+            "amazon" -> "Amazon / Whole Foods"
+            else -> "Walmart"
+        }
+
         fun renderFunnelStep(step: Int) {
             currentStep = step
             card.removeAllViews()
+            scroll.post { scroll.scrollTo(0, 0) }
 
             // Top Row: Back button + Step badge + Skip button
             val headerRow = LinearLayout(this).apply {
@@ -1877,10 +1995,14 @@ class MainActivity : Activity() {
             }
 
             val stepLabelText = when (step) {
-                1 -> "🥦 STEP 1 OF 4 · YOUR GOALS"
-                2 -> "🥦 STEP 2 OF 4 · THE PROBLEM"
-                3 -> "🥦 STEP 3 OF 4 · HOW BROC WORKS"
-                else -> "🥦 STEP 4 OF 4 · YOUR PLAN"
+                1 -> "🥦 STEP 1 OF 8 · HOUSEHOLD"
+                2 -> "🥦 STEP 2 OF 8 · #1 PRIORITY"
+                3 -> "🥦 STEP 3 OF 8 · YOUR STORE"
+                4 -> "🥦 STEP 4 OF 8 · YOUR GOALS"
+                5 -> "🥦 STEP 5 OF 8 · ALLERGY GUARD"
+                6 -> "🥦 STEP 6 OF 8 · THE PROBLEM"
+                7 -> "🥦 STEP 7 OF 8 · HOW BROC WORKS"
+                else -> "🥦 STEP 8 OF 8 · YOUR PLAN"
             }
             headerRow.addView(label(stepLabelText, 10.5f, 0xFF0B5E39.toInt(), bold = true).apply {
                 setPadding(dp(10), dp(5), dp(10), dp(5))
@@ -1905,7 +2027,7 @@ class MainActivity : Activity() {
             })
             card.addView(headerRow)
 
-            // 4-Segment Progress Bar
+            // 8-Segment Progress Bar
             val progressRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
@@ -1913,23 +2035,231 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(14) }
             }
-            for (i in 1..4) {
+            for (i in 1..8) {
                 progressRow.addView(View(this).apply {
                     background = GradientDrawable().apply {
                         setColor(if (i <= step) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                         cornerRadius = dp(99).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(0, dp(5), 1f).apply {
-                        if (i < 4) marginEnd = dp(6)
+                        if (i < 8) marginEnd = dp(4)
                     }
                 })
             }
             card.addView(progressRow)
 
+            val storeDisplayName = storeDisplayNameForKey(selectedStore)
+            val activeHouseholdTitle = householdOptions.find { it.id == selectedHousehold }?.title ?: "My Kids & Family"
+
+            // Step 1: Household Profile
             if (step == 1) {
+                card.addView(label("Who are you protecting with HeyBroc?", 21f, 0xFF111814.toInt(), bold = true))
+                card.addView(label(
+                    "We'll calibrate your 0–100 food grading strictness and 1-tap Clean Swaps for your household in 60 seconds:",
+                    13.5f,
+                    0xFF4B5563.toInt()
+                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+
+                householdOptions.forEach { h ->
+                    val isSelected = selectedHousehold == h.id
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = GradientDrawable().apply {
+                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            cornerRadius = dp(14).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(8) }
+                        setOnClickListener {
+                            selectedHousehold = h.id
+                            selectedGoals.clear()
+                            selectedGoals.addAll(h.recCats)
+                            renderFunnelStep(1)
+                        }
+                    }
+                    row.addView(label(h.icon, 20f, 0xFF111814.toInt()).apply { setPadding(0, 0, dp(10), 0) })
+                    row.addView(LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(label(h.title, 14.5f, 0xFF111814.toInt(), bold = true))
+                        addView(label(h.subtitle, 12f, 0xFF6B7280.toInt()))
+                    })
+                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                        }
+                    })
+                    card.addView(row)
+                }
+
+                card.addView(label("Continue →", 15f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(8) }
+                    setOnClickListener {
+                        if (selectedGoals.isEmpty()) {
+                            val h = householdOptions.find { it.id == selectedHousehold } ?: householdOptions.first()
+                            selectedGoals.addAll(h.recCats)
+                        }
+                        renderFunnelStep(2)
+                    }
+                })
+                return
+            }
+
+            // Step 2: #1 Clean-Eating Priority
+            if (step == 2) {
+                card.addView(label("What is your #1 clean-eating priority?", 21f, 0xFF111814.toInt(), bold = true))
+                card.addView(label(
+                    "Pick what matters most right now — we'll prioritize Clean Swaps that match this first:",
+                    13.5f,
+                    0xFF4B5563.toInt()
+                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+
+                primaryGoalOptions.forEach { pg ->
+                    val isSelected = selectedPrimaryGoal == pg.id
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = GradientDrawable().apply {
+                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            cornerRadius = dp(14).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(8) }
+                        setOnClickListener {
+                            selectedPrimaryGoal = pg.id
+                            selectedGoals.addAll(pg.boostCats)
+                            renderFunnelStep(2)
+                        }
+                    }
+                    row.addView(label(pg.icon, 20f, 0xFF111814.toInt()).apply { setPadding(0, 0, dp(10), 0) })
+                    row.addView(LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(label(pg.title, 14.5f, 0xFF111814.toInt(), bold = true))
+                        addView(label(pg.subtitle, 12f, 0xFF6B7280.toInt()))
+                    })
+                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                        }
+                    })
+                    card.addView(row)
+                }
+
+                card.addView(label("Continue →", 15f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(8) }
+                    setOnClickListener {
+                        val pg = primaryGoalOptions.find { it.id == selectedPrimaryGoal } ?: primaryGoalOptions.first()
+                        selectedGoals.addAll(pg.boostCats)
+                        renderFunnelStep(3)
+                    }
+                })
+                return
+            }
+
+            // Step 3: Favorite Grocery Store
+            if (step == 3) {
+                card.addView(label("Where do you usually grocery shop?", 21f, 0xFF111814.toInt(), bold = true))
+                card.addView(label(
+                    "HeyBroc supports all 13 major grocery stores. Pick your main store so 1-tap Clean Swaps open directly in your store:",
+                    13.5f,
+                    0xFF4B5563.toInt()
+                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+
+                storeOptions.forEach { (storeId, storeTitle, storeSub) ->
+                    val isSelected = selectedStore == storeId
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(12), dp(9), dp(12), dp(9))
+                        background = GradientDrawable().apply {
+                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            cornerRadius = dp(14).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(7) }
+                        setOnClickListener {
+                            selectedStore = storeId
+                            renderFunnelStep(3)
+                        }
+                    }
+                    row.addView(LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(label(storeTitle, 14f, 0xFF111814.toInt(), bold = true))
+                        addView(label(storeSub, 11.5f, 0xFF6B7280.toInt()))
+                    })
+                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                        }
+                    })
+                    card.addView(row)
+                }
+
+                card.addView(label("Continue with $storeDisplayName →", 15f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(8) }
+                    setOnClickListener { renderFunnelStep(4) }
+                })
+                return
+            }
+
+            // Step 4: 2x Watchlist Goals
+            if (step == 4) {
                 card.addView(label("What are your clean-eating goals?", 21f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Tap the ingredients you want out of your kitchen. HeyBroc applies 2x strictness to your goals and finds 90–100/100 Clean Swaps automatically.",
+                    "Tap the ingredients you want out of your kitchen. HeyBroc applies 2x strictness to your goals and finds 90–100/100 Clean Swaps at $storeDisplayName automatically.",
                     13.5f,
                     0xFF4B5563.toInt()
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
@@ -1951,7 +2281,7 @@ class MainActivity : Activity() {
                         ).apply { bottomMargin = dp(8) }
                         setOnClickListener {
                             if (g.id in selectedGoals) selectedGoals.remove(g.id) else selectedGoals.add(g.id)
-                            renderFunnelStep(1)
+                            renderFunnelStep(4)
                         }
                     }
                     row.addView(label(g.icon, 20f, 0xFF111814.toInt()).apply {
@@ -1991,15 +2321,84 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = dp(8) }
-                    setOnClickListener { renderFunnelStep(2) }
+                    setOnClickListener { renderFunnelStep(5) }
                 })
                 return
             }
 
-            if (step == 2) {
+            // Step 5: Allergy & Dietary Guard
+            if (step == 5) {
+                card.addView(label("Any family allergies or dietary watches?", 21f, 0xFF111814.toInt(), bold = true))
+                card.addView(label(
+                    "Optional — check any boxes below and HeyBroc will display instant 🛡️ Allergy & Sugar badges on your floating store pill:",
+                    13.5f,
+                    0xFF4B5563.toInt()
+                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+
+                dietaryOptions.forEach { (dietId, dietTitle, dietSub) ->
+                    val isSelected = dietId in selectedDietary
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(12), dp(9), dp(12), dp(9))
+                        background = GradientDrawable().apply {
+                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            cornerRadius = dp(14).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(7) }
+                        setOnClickListener {
+                            if (dietId in selectedDietary) selectedDietary.remove(dietId) else selectedDietary.add(dietId)
+                            renderFunnelStep(5)
+                        }
+                    }
+                    row.addView(LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(label(dietTitle, 14f, 0xFF111814.toInt(), bold = true))
+                        addView(label(dietSub, 11.5f, 0xFF6B7280.toInt()))
+                    })
+                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                        }
+                    })
+                    card.addView(row)
+                }
+
+                val dietCta = if (selectedDietary.isNotEmpty()) {
+                    "Save ${selectedDietary.size} ${if (selectedDietary.size == 1) "Alert" else "Alerts"} & Continue →"
+                } else {
+                    "No Allergies — Continue →"
+                }
+                card.addView(label(dietCta, 15f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(8) }
+                    setOnClickListener { renderFunnelStep(6) }
+                })
+                return
+            }
+
+            // Step 6: The Problem
+            if (step == 6) {
                 card.addView(label("Why \"Healthy-Looking\" Groceries Fail Your Goals", 20.5f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Big food brands print \"Natural\" or \"Made with Real Fruit\" on the front while hiding ultra-processed additives in tiny 6-point text on the back:",
+                    "Big food brands print \"Natural\" or \"Made with Real Fruit\" on the front at $storeDisplayName while hiding ultra-processed additives in tiny 6-point text on the back:",
                     13.5f,
                     0xFF4B5563.toInt()
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
@@ -2018,7 +2417,7 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { bottomMargin = dp(12) }
                 }
-                trapBox.addView(label("⚠️ HIDDEN IN EVERYDAY AISLE STAPLES:", 11f, 0xFF991B1B.toInt(), bold = true).apply {
+                trapBox.addView(label("⚠️ HIDDEN IN EVERYDAY $storeDisplayName STAPLES ($activeHouseholdTitle):", 11f, 0xFF991B1B.toInt(), bold = true).apply {
                     setPadding(0, 0, 0, dp(6))
                 })
                 activeList.take(3).forEach { g ->
@@ -2046,7 +2445,7 @@ class MainActivity : Activity() {
                 compareBox.addView(label("Hides Soybean Oil, High-Fructose Corn Syrup & Red 40.", 12f, 0xFF7F1D1D.toInt()).apply {
                     setPadding(0, dp(2), 0, dp(8))
                 })
-                compareBox.addView(label("✓ 1-Tap HeyBroc Clean Swap: 95/100 (Excellent)", 13f, 0xFF14532D.toInt(), bold = true))
+                compareBox.addView(label("✓ 1-Tap $storeDisplayName Clean Swap: 95/100 (Excellent)", 13f, 0xFF14532D.toInt(), bold = true))
                 compareBox.addView(label("100% Avocado/Olive Oil or Organic whole ingredients — 0 seed oils, 0 dyes.", 12f, 0xFF166534.toInt()))
                 card.addView(compareBox)
 
@@ -2057,28 +2456,76 @@ class MainActivity : Activity() {
                         setColor(0xFF16A34A.toInt())
                         cornerRadius = dp(999).toFloat()
                     }
-                    setOnClickListener { renderFunnelStep(3) }
+                    setOnClickListener { renderFunnelStep(7) }
                 })
                 return
             }
 
-            if (step == 3) {
+            // Step 7: Interactive Mini-Test & How Broc Works
+            if (step == 7) {
                 card.addView(label("How HeyBroc Protects Your Cart in 1 Second", 20.5f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Stop squinting at 40-ingredient labels in the aisle. We do the homework across 1.5M+ foods and 13 grocery stores:",
-                    13.5f,
+                    "Tap an everyday staple below to see how your 2x Watchlist grades it and swaps it at $storeDisplayName across 1.5M+ foods:",
+                    13f,
                     0xFF4B5563.toInt()
-                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+                ).apply { setPadding(0, dp(4), 0, dp(10)) })
+
+                val tabsRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(8) }
+                }
+                miniTestSamples.forEachIndexed { idx, sample ->
+                    val active = activeSampleIdx == idx
+                    tabsRow.addView(label(sample.label, 12f, if (active) 0xFF14532D.toInt() else 0xFF374151.toInt(), bold = true).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        background = GradientDrawable().apply {
+                            setColor(if (active) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (active) 2 else 1), if (active) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            cornerRadius = dp(12).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            if (idx < miniTestSamples.lastIndex) marginEnd = dp(6)
+                        }
+                        setOnClickListener {
+                            activeSampleIdx = idx
+                            renderFunnelStep(7)
+                        }
+                    })
+                }
+                card.addView(tabsRow)
+
+                val sample = miniTestSamples[activeSampleIdx]
+                val previewBox = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF8FAFC.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                        cornerRadius = dp(14).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(10) }
+                }
+                previewBox.addView(label("✕ ${sample.dirtyTitle} · ${sample.dirtyScore}/100 (Poor)", 12.5f, 0xFF991B1B.toInt(), bold = true))
+                previewBox.addView(label(sample.dirtyFlags, 11.5f, 0xFF7F1D1D.toInt()).apply { setPadding(0, dp(2), 0, dp(6)) })
+                previewBox.addView(label("⇄ ${sample.cleanTitle} ($storeDisplayName) · ${sample.cleanScore}/100", 12.5f, 0xFF14532D.toInt(), bold = true))
+                previewBox.addView(label(sample.cleanPerks, 11.5f, 0xFF166534.toInt()).apply { setPadding(0, dp(2), 0, 0) })
+                card.addView(previewBox)
 
                 val pillars = listOf(
                     Triple("📷", "1. Instant 0–100 Barcode & Search Grading (Always Free)", "Scan any barcode in the aisle or search 1.5M+ foods for a transparent Yuka-grade breakdown with 2x strictness on your goals."),
-                    Triple("⇄", "2. 1-Tap Store-Specific Clean Swaps", "Tap once to jump straight to a verified 90–100/100 Clean Swap sold at Walmart, Target, Costco, Sam's Club, ALDI, Kroger, Amazon Fresh or Instacart."),
-                    Triple("🟢", "3. Live Store Bubble & Whole-Cart Check", "Floating score pill grades items automatically while you browse your favorite grocery apps and checks your whole cart before checkout.")
+                    Triple("🟢", "2. Live Store Bubble & Whole-Cart Check", "Floating score pill grades items automatically while you browse $storeDisplayName and checks your whole cart before checkout.")
                 )
                 pillars.forEach { (icon, title, desc) ->
                     card.addView(LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL
-                        setPadding(dp(14), dp(11), dp(14), dp(11))
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
                         background = GradientDrawable().apply {
                             setColor(0xFFF8FAFC.toInt())
                             setStroke(dp(1), 0xFFE2E8F0.toInt())
@@ -2088,8 +2535,8 @@ class MainActivity : Activity() {
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT
                         ).apply { bottomMargin = dp(8) }
-                        addView(label("$icon  $title", 13.5f, 0xFF111814.toInt(), bold = true))
-                        addView(label(desc, 12f, 0xFF4B5563.toInt()).apply { setPadding(0, dp(3), 0, 0) })
+                        addView(label("$icon  $title", 13f, 0xFF111814.toInt(), bold = true))
+                        addView(label(desc, 11.5f, 0xFF4B5563.toInt()).apply { setPadding(0, dp(2), 0, 0) })
                     })
                 }
 
@@ -2103,13 +2550,20 @@ class MainActivity : Activity() {
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = dp(6) }
-                    setOnClickListener { renderFunnelStep(4) }
+                    ).apply { topMargin = dp(4) }
+                    setOnClickListener { renderFunnelStep(8) }
                 })
                 return
             }
 
-            // Step 4: Personalized Plan (Start 7-Day Free Pro Trial / Continue with Free Plan / Sign In)
+            // Step 8: Personalized Plan (Start 7-Day Free Pro Trial / Continue with Free Plan / Sign In)
+            val goalSuffix = if (selectedGoals.size == 1) "" else "s"
+            val dietSuffix = if (selectedDietary.isNotEmpty()) {
+                val ds = if (selectedDietary.size == 1) "" else "s"
+                " · ${selectedDietary.size} Allergy/Diet alert$ds"
+            } else {
+                ""
+            }
             card.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -2123,7 +2577,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(10) }
                 addView(label(
-                    "✅ Your Custom Watchlist Is Ready: ${selectedGoals.size} priority goals active with 2x strictness.",
+                    "✅ Your Custom Profile Is Calibrated: $activeHouseholdTitle · $storeDisplayName · ${selectedGoals.size} 2x Watchlist goal$goalSuffix$dietSuffix.",
                     12.5f,
                     0xFF065F46.toInt(),
                     bold = true
@@ -2132,7 +2586,7 @@ class MainActivity : Activity() {
 
             card.addView(label("Choose How You Want to Start", 21f, 0xFF111814.toInt(), bold = true))
             card.addView(label(
-                "Barcode & search grading is always 100% free. Unlock unlimited 1-tap Clean Swaps & Whole-Cart Checks with a 7-Day Free Pro Trial ($0 today), or start on the Free Plan:",
+                "Barcode & search grading is always 100% free. Unlock unlimited 1-tap $storeDisplayName Clean Swaps & Whole-Cart Checks with a 7-Day Free Pro Trial ($0 today), or start on the Free Plan:",
                 13f,
                 0xFF4B5563.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(12)) })
@@ -2152,7 +2606,7 @@ class MainActivity : Activity() {
             }
             proCard.addView(label("⭐ HeyBroc Family Pro · 7 DAYS FREE ($0 TODAY)", 13.5f, 0xFF14532D.toInt(), bold = true))
             proCard.addView(label(
-                "• Unlimited 1-Tap Clean Swaps across all 13 stores\n• Whole-Cart Health Check & Swap-All Cart Cleaner\n• Unlimited Live Store Bubble & Family Cloud Sync",
+                "• Unlimited 1-Tap Clean Swaps at $storeDisplayName & all 13 stores\n• Whole-Cart Health Check & Swap-All Cart Cleaner\n• Unlimited Live Store Bubble & Family Cloud Sync",
                 12.5f,
                 0xFF166534.toInt()
             ).apply { setPadding(0, dp(6), 0, dp(6)) })
@@ -2232,7 +2686,6 @@ class MainActivity : Activity() {
                         renderFunnelStep(currentStep - 1)
                         true
                     } else {
-                        saveWatchlistAndMarkDone()
                         false
                     }
                 } else {
@@ -2946,14 +3399,15 @@ class MainActivity : Activity() {
         renderScreen()
 
         val appCtx = applicationContext
+        val storeKey = preferredStoreKey()
         io.execute {
-            val raw = runCatching { ScanApi.scan(appCtx, query, "", "walmart") }.getOrNull()
+            val raw = runCatching { ScanApi.scan(appCtx, query, "", storeKey) }.getOrNull()
             val parsed = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
             runOnUiThread {
                 if (isDestroyed || isFinishing) return@runOnUiThread
                 isSearching = false
                 if (parsed?.optBoolean("ok") == true) {
-                    ScanHistoryStore.recordScan(this, parsed, "search")
+                    ScanHistoryStore.recordScan(this, parsed, storeKey)
                     renderScreen()
                     showProductDetailDialog(parsed)
                 } else {
@@ -3224,7 +3678,8 @@ class MainActivity : Activity() {
             })
         }
 
-        val itemStoreKey = item.optString("storeKey").ifBlank { item.optString("store", "walmart") }
+        val rawItemStore = item.optString("storeKey").ifBlank { item.optString("store", "") }
+        val itemStoreKey = if (rawItemStore.isBlank() || rawItemStore == "search") preferredStoreKey() else rawItemStore
         val storeDisplayName = when (itemStoreKey.lowercase()) {
             "walmart" -> "Walmart"
             "target" -> "Target"
