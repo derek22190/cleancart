@@ -82,6 +82,8 @@ function setMemCache(entry: DeviceEntitlement) {
 
 function isDeviceActiveForLongRetention(entry: DeviceEntitlement): boolean {
   return (
+    entry.deviceId.startsWith("user:") ||
+    Boolean(entry.referredByCode) ||
     entry.proUntil > Date.now() ||
     entry.referralActivated ||
     entry.referralsCompleted > 0 ||
@@ -242,16 +244,29 @@ export async function ensureReferralCodeRegistered(
   if (!/^BROC-[A-Z0-9]{4,10}$/.test(code)) return null;
 
   const existingOwnerId = await getDeviceIdByReferralCode(code);
+  const now = Date.now();
   if (existingOwnerId) {
     const existingOwner = await getExistingDevice(existingOwnerId);
     if (existingOwner) return existingOwner;
+    const restoredOwner: DeviceEntitlement = {
+      deviceId: existingOwnerId,
+      referralCode: code,
+      referralActivated: false,
+      firstSeenAt: now,
+      proUntil: 0,
+      referralsCompleted: 0,
+      weeklySwapsUsed: [],
+      weekResetAt: now + WEEK_MS,
+      courtesyRefillUsedThisWeek: false,
+    };
+    await saveDevice(restoredOwner);
+    return restoredOwner;
   }
 
   const deviceId = (preferredDeviceId || "").trim().slice(0, 128);
   if (!deviceId || deviceId === "anon-web") return null;
 
   let entry = await getExistingDevice(deviceId);
-  const now = Date.now();
   if (!entry) {
     entry = {
       deviceId,

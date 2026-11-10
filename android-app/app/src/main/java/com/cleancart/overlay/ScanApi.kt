@@ -539,7 +539,7 @@ object ScanApi {
             !Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|plant[\\s-]*based|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
         ) {
             val cleanedDairyText = combined.replace(
-                Regex("\\b(coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|rice\\s+milk|cashew\\s+milk|peanut\\s+butter|cocoa\\s+butter|shea\\s+butter|apple\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|cream\\s+of\\s+tartar)\\b", RegexOption.IGNORE_CASE),
+                Regex("\\b(coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|rice\\s+milk|cashew\\s+milk|milk\\s+thistle|peanut\\s+butter|cocoa\\s+butter|shea\\s+butter|apple\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|butter\\s+beans?|butternut|cream\\s+of\\s+tartar)\\b", RegexOption.IGNORE_CASE),
                 " "
             )
             val m = Regex(
@@ -594,11 +594,14 @@ object ScanApi {
             }
         }
 
-        if ("soy" in selected) {
+        if ("soy" in selected &&
+            !Regex("\\bsoy[\\s-]*free\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        ) {
+            val cleanedSoyText = combined.replace(Regex("\\b(soy[\\s-]*free|no\\s+soy)\\b", RegexOption.IGNORE_CASE), " ")
             val m = Regex(
                 "\\b(soy|soya|soybeans?|soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\\s+vegetable\\s+protein)\\b",
                 RegexOption.IGNORE_CASE
-            ).find(combined)
+            ).find(cleanedSoyText)
             if (m != null) {
                 alerts.add(
                     DietaryAlert(
@@ -611,8 +614,13 @@ object ScanApi {
             }
         }
 
-        if ("egg" in selected) {
-            val cleanedEggText = combined.replace(Regex("\\beggplants?\\b", RegexOption.IGNORE_CASE), " ")
+        if ("egg" in selected &&
+            !Regex("\\b(egg[\\s-]*free|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+        ) {
+            val cleanedEggText = combined.replace(
+                Regex("\\b(eggplants?|egg[\\s-]*free(?:\\s+vegan)?(?:\\s+mayonnaise)?|vegan\\s+mayonnaise|eggless(?:\\s+mayonnaise)?)\\b", RegexOption.IGNORE_CASE),
+                " "
+            )
             val m = Regex(
                 "\\b(eggs?|egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
                 RegexOption.IGNORE_CASE
@@ -763,6 +771,7 @@ object ScanApi {
         val yuka = result.optJSONObject("yukaBreakdown")
         if (yuka != null && !yuka.has("_origAdditiveScore")) {
             yuka.put("_origAdditiveScore", yuka.optInt("additiveScore", 30))
+            yuka.put("_origHighRiskCapped", yuka.optBoolean("highRiskCapped", false))
         }
 
         val activeFlagged = JSONArray()
@@ -827,6 +836,7 @@ object ScanApi {
             }
         } else if (yuka != null && yuka.has("_origAdditiveScore")) {
             yuka.put("additiveScore", yuka.optInt("_origAdditiveScore", yuka.optInt("additiveScore", 30)))
+            yuka.put("highRiskCapped", yuka.optBoolean("_origHighRiskCapped", remainingHighRisk))
         }
 
         var nextScore = (effectiveBaseScore - strictnessDeduction).coerceIn(0, 100)
@@ -835,9 +845,8 @@ object ScanApi {
         }
         val nextRating = when {
             nextScore >= 75 -> "Excellent"
-            nextScore >= 50 -> "Good"
-            nextScore >= 25 -> "Poor"
-            else -> "Bad"
+            nextScore >= 50 -> "Mediocre"
+            else -> "Poor"
         }
         val nextColor = when {
             nextScore >= 75 -> "green"
@@ -1038,8 +1047,8 @@ object ScanApi {
        {"id":"hfcs","name":"High Fructose Corn Syrup","category":"hfcs","risk":"moderate","penalty":20,"explanation":"A highly refined industrial sweetener tied to fatty-liver and metabolic issues when consumed regularly."},
        {"id":"ksorbate","name":"Potassium Sorbate","category":"preservatives","risk":"low","penalty":10,"explanation":"A common mold inhibitor that is generally low risk but signals a highly shelf-stabilized product."}]},
      "swap":{"title":"Stonyfield Organic Whole Milk Plain Yogurt","score":90,
-       "webUrl":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt",
-       "deepLink":"https://www.walmart.com/search?q=Stonyfield%20Organic%20Whole%20Milk%20Plain%20Yogurt",
+       "webUrl":"https://www.walmart.com/ip/10535275",
+       "deepLink":"https://www.walmart.com/ip/10535275",
        "androidPackage":"com.walmart.android"}}
     """
 }

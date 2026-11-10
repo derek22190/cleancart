@@ -129,6 +129,7 @@ class OverlayWindowService : Service() {
     private var isCartAvgMode = false
     private var isPdpScrollHint = false
     private var isAuditorOpen = false
+    private var openedCardFromAuditor = false
     private var isTestMode = false
     private var hiddenForCurrentScreen = false
     private var currentStoreKey = "walmart"
@@ -346,8 +347,16 @@ class OverlayWindowService : Service() {
                     displayedCartAvg = calcCartAvg()
                     persistCart()
                 }
-                if (!hiddenForCurrentScreen && card == null && pill != null) {
-                    showPill()
+                if (!hiddenForCurrentScreen) {
+                    if (card != null) {
+                        if (isAuditorOpen) {
+                            showAuditorDrawer()
+                        } else {
+                            showCard()
+                        }
+                    } else if (pill != null) {
+                        showPill()
+                    }
                 }
             }
         }
@@ -456,6 +465,7 @@ class OverlayWindowService : Service() {
         for (i in 0 until arr.length()) {
             val d = runCatching { JSONObject(arr.optString(i, "{}")) }.getOrNull() ?: continue
             if (d.optBoolean("ok") != true) continue
+            ScanApi.applyLocalWatchlistToData(this, d)
             val result = d.optJSONObject("result") ?: continue
             val prod = d.optJSONObject("product") ?: continue
             val rawTitle = cleanCartTitle(prod.optString("title"))
@@ -500,6 +510,7 @@ class OverlayWindowService : Service() {
 
     private fun recordScannedItem(d: JSONObject?) {
         if (d?.optBoolean("ok") != true) return
+        ScanApi.applyLocalWatchlistToData(this, d)
         val result = d.optJSONObject("result") ?: return
         val prod = d.optJSONObject("product") ?: return
         val rawTitle = cleanCartTitle(prod.optString("title"))
@@ -570,7 +581,8 @@ class OverlayWindowService : Service() {
                 val o = arr.getJSONObject(i)
                 val title = cleanCartTitle(o.optString("title"))
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
-                if (ScanHistoryStore.isPoisonedProduceEntry(title, o.optJSONObject("fullJson") ?: o)) continue
+                val fj = o.optJSONObject("fullJson")
+                if (ScanHistoryStore.isPoisonedProduceEntry(title, fj ?: o)) continue
                 val existing = tripCart.firstOrNull { isSameCartItem(it.key, title) || isSameCartItem(it.title, title) }
                 if (existing != null) {
                     if (title.length > existing.title.length && !title.endsWith("...")) {
@@ -578,7 +590,10 @@ class OverlayWindowService : Service() {
                     }
                     continue
                 }
-                val score = o.optInt("score", 50)
+                if (fj != null) {
+                    ScanApi.applyLocalWatchlistToData(this, fj)
+                }
+                val score = fj?.optJSONObject("result")?.optInt("score", o.optInt("score", 50)) ?: o.optInt("score", 50)
                 tripCart.add(
                     TripCartItem(
                         key = cleanCartTitle(o.optString("key")).ifBlank { title },
@@ -586,7 +601,7 @@ class OverlayWindowService : Service() {
                         score = score,
                         swapObj = o.optJSONObject("swap"),
                         isSeed = false,
-                        fullJson = o.optJSONObject("fullJson"),
+                        fullJson = fj,
                         fromCartScreen = o.optBoolean("fromCartScreen", false),
                         lastSeenAtMs = o.optLong("lastSeenAtMs", 0L),
                     )
@@ -866,7 +881,14 @@ class OverlayWindowService : Service() {
     private fun showAuditorDrawer() {
         removeCard()
         removePill()
-        tripCart.forEach { it.title = cleanCartTitle(it.title) }
+        tripCart.forEach { item ->
+            item.title = cleanCartTitle(item.title)
+            val fj = item.fullJson
+            if (fj != null) {
+                ScanApi.applyLocalWatchlistToData(this, fj)
+                item.score = fj.optJSONObject("result")?.optInt("score", item.score) ?: item.score
+            }
+        }
         tripCart.removeAll {
             it.isSeed ||
                 it.title.isBlank() ||
@@ -961,6 +983,7 @@ class OverlayWindowService : Service() {
 
         for (item in tripCart.toList()) {
             val swapObj = item.swapObj
+            if (swapObj != null) upgradeCachedSwapObj(swapObj, item.title)
             val hasCleanSwap = item.score < 75 && swapObj != null
             val swapTitle = swapObj?.optString("title", "Clean Alternative").orEmpty()
             val swapScore = swapObj?.optInt("score", 0) ?: 0
@@ -1178,6 +1201,7 @@ class OverlayWindowService : Service() {
 
         for (item in sortedDirty) {
             val swapObj = item.swapObj ?: continue
+            upgradeCachedSwapObj(swapObj, item.title)
             val swapTitle = swapObj.optString("title", "Clean Alternative")
             val swapScore = swapObj.optInt("score", 0)
             val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
@@ -1265,9 +1289,8 @@ class OverlayWindowService : Service() {
     private fun openCartItemAnalysis(item: TripCartItem) {
         val rating = when {
             item.score >= 75 -> "Excellent"
-            item.score >= 50 -> "Good"
-            item.score >= 25 -> "Poor"
-            else -> "Bad"
+            item.score >= 50 -> "Mediocre"
+            else -> "Poor"
         }
         val fallbackJson = JSONObject().apply {
             put("ok", true)
@@ -1282,6 +1305,7 @@ class OverlayWindowService : Service() {
         }
         data = item.fullJson ?: fallbackJson
         openFlag = null
+        openedCardFromAuditor = true
         showCard()
     }
 
@@ -1289,24 +1313,31 @@ class OverlayWindowService : Service() {
 
     private fun showCard() {
         val d = data ?: return
+        ScanApi.applyLocalWatchlistToData(this, d)
         val result = d.optJSONObject("result") ?: return
         val flagged = result.optJSONArray("flagged")
         val score = result.optInt("score")
         val ratingLabel = when {
             score >= 75 -> "Excellent"
-            score >= 50 -> "Good"
-            score >= 25 -> "Poor"
-            else -> "Bad"
+            score >= 50 -> "Mediocre"
+            else -> "Poor"
         }
         val tone = toneColor(colorNameForScore(score))
         val swap = d.optJSONObject("swap")
+        val returnToAuditorOnClose = openedCardFromAuditor
         removeCard()
+        openedCardFromAuditor = returnToAuditorOnClose
         removePill()
+        val closeCard: () -> Unit = {
+            val backToAuditor = openedCardFromAuditor
+            removeCard()
+            if (backToAuditor) showAuditorDrawer() else showPill()
+        }
 
         val backdrop = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    removeCard(); showPill(); return true
+                    closeCard(); return true
                 }
                 return super.dispatchKeyEvent(event)
             }
@@ -1314,7 +1345,7 @@ class OverlayWindowService : Service() {
             setBackgroundColor(0x660C100E)
             isFocusableInTouchMode = true
             requestFocus()
-            setOnClickListener { removeCard(); showPill() }
+            setOnClickListener { closeCard() }
         }
 
         val sheet = LinearLayout(this).apply {
@@ -1356,7 +1387,7 @@ class OverlayWindowService : Service() {
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
                 layoutParams = LinearLayout.LayoutParams(dp(30), dp(30))
-                setOnClickListener { removeCard(); showPill() }
+                setOnClickListener { closeCard() }
             })
         })
         if (prodTitle.isNotBlank()) {
@@ -1581,9 +1612,8 @@ class OverlayWindowService : Service() {
             val swapScore = swap.optInt("score", 0)
             val swapRating = when {
                 swapScore >= 75 -> "Excellent"
-                swapScore >= 50 -> "Good"
-                swapScore >= 25 -> "Poor"
-                else -> "Bad"
+                swapScore >= 50 -> "Mediocre"
+                else -> "Poor"
             }
             val swapScoreBadge = if (swapScore > 0) "$swapScore/100 $swapRating" else "Clean Alternative"
             val swapIngredients = swap.optString("ingredients").trim()
@@ -1810,15 +1840,17 @@ class OverlayWindowService : Service() {
         returnToAuditor: Boolean = false,
         returnToSwapAll: Triple<List<TripCartItem>, Int, Int>? = null
     ) {
+        val preserveOpenedFromAuditor = openedCardFromAuditor
         removeCard()
+        openedCardFromAuditor = preserveOpenedFromAuditor
         removePill()
+        upgradeCachedSwapObj(swap, fromCartItem?.title ?: data?.optJSONObject("product")?.optString("title").orEmpty())
         val swapTitle = swap.optString("title", "Clean Alternative")
         val swapScore = swap.optInt("score", 0)
         val swapRating = when {
             swapScore >= 75 -> "Excellent"
-            swapScore >= 50 -> "Good"
-            swapScore >= 25 -> "Poor"
-            else -> "Bad"
+            swapScore >= 50 -> "Mediocre"
+            else -> "Poor"
         }
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").trim()
@@ -1915,14 +1947,70 @@ class OverlayWindowService : Service() {
             })
         }
 
-        // Primary CTA: Open in Store App
-        sheet.addView(text(modalSwapCta, 14f, Color.WHITE, bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(18), dp(14), dp(18), dp(14))
-            background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
-            setOnClickListener { openSwap(swap, fromCartItem) }
-        })
+        // Primary CTA: Open in Store App (or Upgrade / Invite if all 3 free swaps used)
+        val previewProdTitle = fromCartItem?.title?.takeIf { it.isNotBlank() }
+            ?: data?.optJSONObject("product")?.optString("title").orEmpty()
+        val canOpenSwapNow = ScanApi.isSwapUnlocked(this, previewProdTitle, swapTitle) || ScanApi.canUseSwap(this)
+        if (canOpenSwapNow) {
+            sheet.addView(text(modalSwapCta, 14f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(18), dp(14), dp(18), dp(14))
+                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
+                setOnClickListener { openSwap(swap, fromCartItem) }
+            })
+        } else {
+            val lim = ScanApi.weeklySwapsLimit(this)
+            sheet.addView(text(
+                "All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap store navigation, or invite a friend for +7 free Pro days!",
+                11.5f,
+                INK_2
+            ).apply {
+                setPadding(dp(2), dp(12), dp(2), dp(6))
+            })
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(text("⚡ Go Pro — Unlimited ↗", 13f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                    background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) }
+                    setOnClickListener {
+                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        removeCard()
+                        showPill()
+                        runCatching { startActivity(i) }
+                    }
+                })
+                addView(text("🎁 Invite (+7d Free)", 13f, BRAND, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        cornerRadius = dp(999).toFloat()
+                        setStroke(dp(1), BRAND)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    setOnClickListener {
+                        val myRefCode = ScanApi.myReferralCode(this@OverlayWindowService)
+                        val url = "https://www.heybroc.com/r/$myRefCode"
+                        val msg = "Check out HeyBroc — this little broccoli floats over Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart & more to grade ingredients (0–100) and swap dirty items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: $url"
+                        val sendIntent = Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "7 Free Days of HeyBroc Pro")
+                            putExtra(Intent.EXTRA_TEXT, msg)
+                        }, "Share your HeyBroc invite link").apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        removeCard()
+                        showPill()
+                        runCatching { startActivity(sendIntent) }
+                    }
+                })
+            })
+        }
 
         // Secondary CTA: Back to Cart Check / Checklist / Current Product Analysis
         val backLabel = when {
@@ -2030,6 +2118,7 @@ class OverlayWindowService : Service() {
         removeOverlayView(card)
         card = null
         isAuditorOpen = false
+        openedCardFromAuditor = false
     }
 
     private fun normalizeStoreUrl(raw: String): String {
@@ -2044,140 +2133,11 @@ class OverlayWindowService : Service() {
         return raw
     }
 
+    private fun storePackageForKey(storeKey: String): String =
+        ScanHistoryStore.storePackageForKey(storeKey)
+
     private fun upgradeCachedSwapObj(swap: JSONObject, prodTitle: String) {
-        val lowProd = prodTitle.lowercase()
-        val lowSwap = swap.optString("title").lowercase()
-        val pkg = swap.optString("androidPackage").ifBlank {
-            if (currentStoreKey == "walmart") "com.walmart.android" else ""
-        }
-        val isWalmart = currentStoreKey == "walmart" || pkg == "com.walmart.android"
-        if (Regex("""\b(american\s+(?:sliced\s+|cheese|pasteurized|singles)|kraft\s+singles|velveeta\s+slices|sargento.*\bamerican\b|borden.*\bamerican\b)\b""").containsMatchIn(lowProd) &&
-            lowSwap.contains("sharp cheddar")
-        ) {
-            swap.put("title", "Organic Valley Organic American Cheese Slices")
-            swap.put("name", "Organic American Cheese Slices")
-            swap.put("brand", "Organic Valley")
-            swap.put("size", "6 oz pack")
-            swap.put("score", 85)
-            swap.put("searchQuery", "Organic Valley Organic American Cheese Slices")
-            swap.put("ingredients", "Organic cultured pasteurized milk, organic cream, water, sodium citrate, salt, organic annatto (color), vegetarian enzyme.")
-            if (isWalmart) {
-                swap.put("webUrl", "https://www.walmart.com/ip/1814292019")
-                swap.put("deepLink", "https://www.walmart.com/ip/1814292019")
-            }
-        } else if (Regex("""\b(cream\s+of\s+(?:chicken|mushroom|celery)|condensed\s+.*soup)\b""").containsMatchIn(lowProd) &&
-            lowSwap.contains("lentil vegetable soup")
-        ) {
-            swap.put("title", "Pacific Foods Organic Cream of Chicken Condensed Soup")
-            swap.put("name", "Organic Cream of Chicken Condensed Soup")
-            swap.put("brand", "Pacific Foods")
-            swap.put("size", "10.5 oz can")
-            swap.put("score", 88)
-            swap.put("searchQuery", "Pacific Foods Organic Cream of Chicken Condensed Soup")
-            swap.put("ingredients", "Water, organic chicken, organic rice flour, organic heavy cream, organic chicken broth, organic cornstarch, sea salt, organic onion powder, organic garlic powder, organic spices.")
-            if (isWalmart) {
-                swap.put("webUrl", "https://www.walmart.com/ip/541659748")
-                swap.put("deepLink", "https://www.walmart.com/ip/541659748")
-            }
-        } else if (lowSwap.contains("food for life ezekiel")) {
-            swap.put("title", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
-            swap.put("name", "Organic 21 Whole Grains & Seeds Bread")
-            swap.put("brand", "Dave's Killer Bread")
-            swap.put("searchQuery", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
-        } else if (lowSwap.contains("malk organic unsweetened oat")) {
-            swap.put("title", "Califia Farms Organic Unsweetened Oatmilk")
-            swap.put("name", "Organic Unsweetened Oatmilk")
-            swap.put("brand", "Califia Farms")
-            swap.put("searchQuery", "Califia Farms Organic Unsweetened Oatmilk")
-        } else if (lowSwap.contains("malk organic unsweetened almond")) {
-            swap.put("title", "Califia Farms Organic Unsweetened Almondmilk")
-            swap.put("name", "Organic Unsweetened Almondmilk")
-            swap.put("brand", "Califia Farms")
-            swap.put("searchQuery", "Califia Farms Organic Unsweetened Almondmilk")
-        } else if (lowSwap.contains("raw sharp cheddar")) {
-            swap.put("title", "Organic Valley Organic Sharp Cheddar Cheese")
-            swap.put("name", "Organic Sharp Cheddar Cheese")
-            swap.put("brand", "Organic Valley")
-            swap.put("searchQuery", "Organic Valley Organic Sharp Cheddar Cheese")
-        } else if (lowSwap.contains("alec's ice cream")) {
-            swap.put("title", "Alden's Organic Organic Vanilla Bean Ice Cream")
-            swap.put("name", "Organic Vanilla Bean Ice Cream")
-            swap.put("brand", "Alden's Organic")
-            swap.put("searchQuery", "Alden's Organic Vanilla Bean Ice Cream")
-        } else if (lowSwap.contains("crown maple")) {
-            swap.put("title", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
-            swap.put("name", "Organic 100% Pure Grade A Amber Maple Syrup")
-            swap.put("brand", "Coombs Family Farms")
-            swap.put("searchQuery", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
-        } else if (lowSwap.contains("jovial")) {
-            swap.put("title", "Barilla Organic Spaghetti Pasta")
-            swap.put("name", "Organic Spaghetti Pasta")
-            swap.put("brand", "Barilla")
-            swap.put("searchQuery", "Barilla Organic Spaghetti Pasta")
-        } else if (lowSwap.contains("nooma")) {
-            swap.put("title", "Harmless Harvest Organic Coconut Water")
-            swap.put("name", "Organic Coconut Water")
-            swap.put("brand", "Harmless Harvest")
-            swap.put("searchQuery", "Harmless Harvest Organic Coconut Water")
-        }
-        if (isWalmart) {
-            val latestSwapLow = swap.optString("title").lowercase()
-            val curLink = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
-            if (!curLink.contains("/ip/")) {
-                val walmartItemId = when {
-                    latestSwapLow.contains("american cheese slices") -> "1814292019"
-                    latestSwapLow.contains("sharp cheddar") && latestSwapLow.contains("organic valley") -> "19757363"
-                    latestSwapLow.contains("millet") && latestSwapLow.contains("ramen") -> "42708184"
-                    latestSwapLow.contains("cream of chicken") && latestSwapLow.contains("pacific") -> "541659748"
-                    latestSwapLow.contains("lentil vegetable soup") -> "29873666"
-                    latestSwapLow.contains("chicken & maple breakfast sausage") -> "967953484"
-                    latestSwapLow.contains("21 whole grains") && latestSwapLow.contains("buns") -> "975361545"
-                    latestSwapLow.contains("21 whole grains") && latestSwapLow.contains("bread") -> "45804393"
-                    latestSwapLow.contains("plain awesome bagels") -> "109128726"
-                    latestSwapLow.contains("stonyfield") && latestSwapLow.contains("yogurt") -> "10535275"
-                    latestSwapLow.contains("heritage flakes") -> "10898744"
-                    latestSwapLow.contains("oven roasted turkey breast") && latestSwapLow.contains("applegate") -> "15610519"
-                    latestSwapLow.contains("boulder canyon") && latestSwapLow.contains("kettle chips") -> "44391408"
-                    latestSwapLow.contains("unsalted butter") && latestSwapLow.contains("organic valley") -> "10804557"
-                    latestSwapLow.contains("salted butter") && latestSwapLow.contains("organic valley") -> "10804556"
-                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("ranch") -> "262135036"
-                    latestSwapLow.contains("larabar") && latestSwapLow.contains("cashew cookie") -> "10311442"
-                    latestSwapLow.contains("simple mills") && latestSwapLow.contains("chocolate chip cookies") -> "189635069"
-                    latestSwapLow.contains("2% reduced fat milk") && latestSwapLow.contains("organic valley") -> "142608569"
-                    latestSwapLow.contains("whole milk") && latestSwapLow.contains("organic valley") -> "142608568"
-                    latestSwapLow.contains("sweet cream coffee creamer") && latestSwapLow.contains("organic valley") -> "46330062"
-                    latestSwapLow.contains("califia") && latestSwapLow.contains("oatmilk") -> "269553533"
-                    latestSwapLow.contains("califia") && latestSwapLow.contains("almondmilk") -> "520102935"
-                    latestSwapLow.contains("sour cream") && latestSwapLow.contains("organic valley") -> "24524912"
-                    latestSwapLow.contains("cream cheese") && latestSwapLow.contains("organic valley") -> "24524911"
-                    latestSwapLow.contains("vital farms") && latestSwapLow.contains("eggs") -> "47908222"
-                    latestSwapLow.contains("santa cruz") && latestSwapLow.contains("peanut butter") -> "10308907"
-                    latestSwapLow.contains("siete") && latestSwapLow.contains("tortilla chips") -> "526863587"
-                    latestSwapLow.contains("siete") && latestSwapLow.contains("tortillas") -> "506938184"
-                    latestSwapLow.contains("bob's red mill") && latestSwapLow.contains("rolled oats") -> "10449439"
-                    latestSwapLow.contains("coombs family farms") && latestSwapLow.contains("maple syrup") -> "10315075"
-                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("mayonnaise") -> "673755804"
-                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("ketchup") -> "904602875"
-                    latestSwapLow.contains("annie's") && latestSwapLow.contains("yellow mustard") -> "15556013"
-                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("bbq sauce") -> "478556215"
-                    latestSwapLow.contains("rao's") && latestSwapLow.contains("marinara") -> "47228945"
-                    latestSwapLow.contains("mateo's") && latestSwapLow.contains("salsa") -> "37552509"
-                    latestSwapLow.contains("sunday bacon") && latestSwapLow.contains("applegate") -> "22210691"
-                    latestSwapLow.contains("beef hot dog") && latestSwapLow.contains("applegate") -> "15610515"
-                    latestSwapLow.contains("chicken nuggets") && latestSwapLow.contains("applegate") -> "21296165"
-                    latestSwapLow.contains("barilla") && latestSwapLow.contains("spaghetti") -> "51259268"
-                    latestSwapLow.contains("spindrift") && latestSwapLow.contains("raspberry lime") -> "895065260"
-                    latestSwapLow.contains("olipop") && latestSwapLow.contains("vintage cola") -> "848292458"
-                    latestSwapLow.contains("harmless harvest") && latestSwapLow.contains("coconut water") -> "46330157"
-                    latestSwapLow.contains("stok") && latestSwapLow.contains("cold brew") -> "172959656"
-                    else -> null
-                }
-                if (walmartItemId != null) {
-                    swap.put("webUrl", "https://www.walmart.com/ip/$walmartItemId")
-                    swap.put("deepLink", "https://www.walmart.com/ip/$walmartItemId")
-                }
-            }
-        }
+        ScanHistoryStore.upgradeSwapForStore(swap, prodTitle, currentStoreKey)
     }
 
     /**
@@ -2216,16 +2176,24 @@ class OverlayWindowService : Service() {
             cm?.setPrimaryClip(ClipData.newPlainText("HeyBroc Clean Swap", searchQuery))
         }
 
-        val rawWebUrl = normalizeStoreUrl(swap.optString("webUrl"))
-        val link = normalizeStoreUrl(swap.optString("deepLink").ifBlank { rawWebUrl })
-        val pkg = swap.optString("androidPackage")
+        val fallbackStoreSearchUrl = ScanHistoryStore.storeSearchUrl(currentStoreKey, searchQuery)
+        val rawWebUrl = normalizeStoreUrl(swap.optString("webUrl")).let {
+            if (ScanHistoryStore.urlMatchesStore(it, currentStoreKey)) it else fallbackStoreSearchUrl
+        }
+        val link = normalizeStoreUrl(swap.optString("deepLink").ifBlank { rawWebUrl }).let {
+            if (ScanHistoryStore.urlMatchesStore(it, currentStoreKey)) it else rawWebUrl
+        }
+        val pkg = storePackageForKey(currentStoreKey).ifBlank { swap.optString("androidPackage") }
         val storeName = storeDisplayName(currentStoreKey)
 
+        openedCardFromAuditor = false
         removeCard()
         showPill()
 
-        val isDirectProductLink = Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(link) ||
-            Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(rawWebUrl)
+        val isDirectProductLink = (ScanHistoryStore.urlMatchesStore(link, currentStoreKey) &&
+            Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(link)) ||
+            (ScanHistoryStore.urlMatchesStore(rawWebUrl, currentStoreKey) &&
+                Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(rawWebUrl))
 
         Toast.makeText(
             this,

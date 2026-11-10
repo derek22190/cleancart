@@ -12,11 +12,14 @@ const SEO_RETAILERS: Array<{ id: RetailerId; label: string }> = [
   { id: "walmart", label: "Walmart" },
   { id: "target", label: "Target" },
   { id: "kroger", label: "Kroger" },
-  { id: "shipt", label: "Shipt" },
-  { id: "doordash", label: "DoorDash" },
+  { id: "sams", label: "Sam's Club" },
+  { id: "costco", label: "Costco" },
+  { id: "aldi", label: "ALDI" },
+  { id: "bjs", label: "BJ's" },
   { id: "instacart", label: "Instacart" },
   { id: "amazon", label: "Amazon Fresh" },
-  { id: "costco", label: "Costco" },
+  { id: "shipt", label: "Shipt" },
+  { id: "doordash", label: "DoorDash" },
 ];
 
 export function generateStaticParams() {

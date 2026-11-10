@@ -37,7 +37,10 @@ export default function SelfServeCreatorsPage() {
         void fetch(`/api/influencers?code=${encodeURIComponent(saved)}`)
           .then((r) => r.json())
           .then((d) => {
-            if (d?.ok && d.creator) setCreator(d.creator);
+            if (d?.ok && d.creator) {
+              setCreator(d.creator);
+              setHandle((prev) => prev || d.creator.name || d.creator.code);
+            }
           })
           .catch(() => {});
       }

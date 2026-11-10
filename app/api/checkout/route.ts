@@ -95,6 +95,9 @@ export async function POST(req: NextRequest) {
       if (devRes?.referredByCode) {
         deviceReferredBy = devRes.referredByCode.trim().toUpperCase();
       }
+      if (devRes?.referralCode) {
+        ownReferralCode = devRes.referralCode;
+      }
     }
 
     const consentTimestamp = new Date().toISOString();

@@ -108,10 +108,10 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   origin: "preset",
 });
 
-const cleanToProduct = (cat: SwapCategory, replacedItem?: Product, store?: Store): Product => {
+const cleanToProduct = (cat: SwapCategory, replacedItem?: Product, store: Store = "walmart"): Product => {
   const alt = replacedItem
     ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat, store)
-    : resolveCleanAlternative("", cat, store);
+    : resolveCleanAlternative(cat, cat, store);
   const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
   return {
     key: replacedItem ? `clean-${cat}-${replacedItem.key}-${store || "default"}` : `clean-${cat}-${store || "default"}`,
@@ -536,6 +536,7 @@ export default function Simulator() {
           /* ignore */
         }
         const creatorCandidate = urlCreatorCandidate || storedCreatorCandidate;
+        let hasVerifiedCreator = false;
         if (creatorCandidate) {
           const creatorRes = await fetch(
             `/api/influencers?code=${encodeURIComponent(creatorCandidate)}`
@@ -544,6 +545,7 @@ export default function Simulator() {
             creatorRes ? await creatorRes.json().catch(() => null) : null
           ) as { ok?: boolean; creator?: { code: string; name: string } } | null;
           if (!cancelled && creatorData?.ok && creatorData.creator?.code) {
+            hasVerifiedCreator = true;
             const verifiedCreator = {
               code: creatorData.creator.code,
               name: creatorData.creator.name || creatorData.creator.code,
@@ -577,6 +579,7 @@ export default function Simulator() {
 
         const storedRef = (window.localStorage.getItem("heybroc_referred_by") || "").trim().toUpperCase();
         const validStoredFriendRef = /^BROC-[A-Z0-9]{4,10}$/.test(storedRef) ? storedRef : "";
+        const candidateFriendRef = friendRefParam || validStoredFriendRef;
         const refRes = await fetch("/api/referral", {
           method: "POST",
           headers: {
@@ -584,10 +587,10 @@ export default function Simulator() {
             ...(deviceSecret ? { "X-Device-Secret": deviceSecret } : {}),
           },
           body: JSON.stringify({
-            action: friendRefParam ? "claim" : "status",
+            action: candidateFriendRef ? "claim" : "status",
             deviceId,
             deviceSecret,
-            referralCode: friendRefParam || validStoredFriendRef || undefined,
+            referralCode: candidateFriendRef || undefined,
           }),
         }).catch(() => null);
         const refData = (refRes ? await refRes.json().catch(() => null) : null) as {
@@ -855,6 +858,18 @@ export default function Simulator() {
   const switchStore = useCallback((s: Store) => {
     setStore(s);
     setHiddenForTrip(false);
+    setActive((prev) =>
+      prev.origin === "swap" && prev.category
+        ? cleanToProduct(prev.category, prev.replacedItem, s)
+        : prev
+    );
+    setCart((prevCart) =>
+      prevCart.map((item) =>
+        item.origin === "swap" && item.category
+          ? cleanToProduct(item.category, item.replacedItem, s)
+          : item
+      )
+    );
   }, []);
 
   const showProduct = useCallback(

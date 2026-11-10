@@ -1809,7 +1809,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
         val firstWord = query.lowercase().replace(Regex("[^a-z0-9\\s]"), "").trim().substringBefore(" ")
         return currentText.equals(query, ignoreCase = true) ||
-            (firstWord.length >= 3 && currentText.lowercase().contains(firstWord))
+            (firstWord.length >= 2 && currentText.lowercase().contains(firstWord))
     }
 
     private fun fireImeEnter(node: AccessibilityNodeInfo) {

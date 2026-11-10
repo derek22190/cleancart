@@ -862,6 +862,8 @@ class MainActivity : Activity() {
         val badImg = prod?.optString("imageUrl").orEmpty().ifBlank { badItem.optString("imageUrl") }
         val badScore = res?.optInt("score") ?: 20
         val badRating = res?.optString("rating").orEmpty().ifBlank { ratingForScore(badScore) }
+        val itemStoreKey = badItem.optString("storeKey", "walmart").ifBlank { "walmart" }
+        ScanHistoryStore.upgradeSwapForStore(swapObj, badTitle, itemStoreKey)
 
         val swapTitle = swapObj.optString("title", "Clean Swap")
         val swapBrand = swapObj.optString("brand", "Clean Pick")
@@ -965,8 +967,14 @@ class MainActivity : Activity() {
             }
             setOnClickListener {
                 if (swapUnlocked) {
+                    val isOrg = swapTitle.contains("organic", ignoreCase = true) ||
+                        swapObj.optString("ingredients").contains("organic", ignoreCase = true)
+                    val orgScore = if (isOrg) 10 else 0
+                    val addScore = 30
+                    val nutScore = (swapScore - addScore - orgScore).coerceIn(0, 60)
                     val swapPreview = JSONObject().apply {
                         put("ok", true)
+                        put("storeKey", itemStoreKey)
                         put("product", JSONObject().apply {
                             put("title", swapTitle)
                             put("brand", swapBrand)
@@ -976,9 +984,17 @@ class MainActivity : Activity() {
                         put("result", JSONObject().apply {
                             put("score", swapScore)
                             put("rating", swapRating)
-                            put("color", "green")
+                            put("color", if (swapScore >= 75) "green" else if (swapScore >= 50) "yellow" else "red")
                             put("flagged", JSONArray())
+                            put("yukaBreakdown", JSONObject().apply {
+                                put("nutritionScore", nutScore)
+                                put("nutriScoreGrade", if (nutScore >= 48) "A" else "B")
+                                put("additiveScore", addScore)
+                                put("organicScore", orgScore)
+                                put("highRiskCapped", false)
+                            })
                         })
+                        put("storeSwapLink", JSONObject(swapObj.toString()))
                     }
                     showProductDetailDialog(swapPreview)
                 } else {
@@ -1015,11 +1031,11 @@ class MainActivity : Activity() {
             }
         })
         if (swapUnlocked) {
-            // Top-right ⋮ on the swap card (opens in Walmart)
+            // Top-right ⋮ on the swap card (opens in active store)
             rightTopBox.addView(label("⋮", 18f, 0xFF374151.toInt(), bold = true).apply {
                 gravity = Gravity.CENTER
                 layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END)
-                setOnClickListener { openWalmartSearch(swapTitle) }
+                setOnClickListener { openStoreSwap(swapTitle, itemStoreKey, swapObj, badTitle) }
             })
         }
         rightCard.addView(rightTopBox)
@@ -2474,6 +2490,7 @@ class MainActivity : Activity() {
     }
 
     private fun showProductDetailDialog(item: JSONObject) {
+        ScanApi.applyLocalWatchlistToData(this, item)
         val prod = item.optJSONObject("product")
         val res = item.optJSONObject("result")
         val title = ScanHistoryStore.extractTitle(item)
@@ -2488,6 +2505,7 @@ class MainActivity : Activity() {
         val rating = ratingForScore(score)
         val tone = yukaDotColor(score)
         val swap = item.optJSONObject("swap")
+        val storeSwapLink = item.optJSONObject("storeSwapLink")
 
         val sheetScroll = ScrollView(this)
         val sheet = LinearLayout(this).apply {
@@ -2727,9 +2745,28 @@ class MainActivity : Activity() {
             })
         }
 
+        val itemStoreKey = item.optString("storeKey").ifBlank { item.optString("store", "walmart") }
+        val storeDisplayName = when (itemStoreKey.lowercase()) {
+            "walmart" -> "Walmart"
+            "target" -> "Target"
+            "instacart" -> "Instacart"
+            "aldi" -> "ALDI"
+            "bjs" -> "BJ's"
+            "costco" -> "Costco"
+            "kroger" -> "Kroger"
+            "sams" -> "Sam's Club"
+            "amazon" -> "Amazon Fresh"
+            "wholefoods" -> "Whole Foods"
+            "doordash" -> "DoorDash"
+            "ubereats" -> "Uber Eats"
+            "shipt" -> "Shipt"
+            else -> "Store"
+        }
+
         // Clean Swap Card (gated behind 3 free weekly reveals / Pro so users cannot read the swap brand without unlocking)
         var dialogRef: AlertDialog? = null
         if (swap != null) {
+            ScanHistoryStore.upgradeSwapForStore(swap, title, itemStoreKey)
             val swapTitle = swap.optString("title", "Clean Swap")
             val swapScore = swap.optInt("score", 0)
             val swapRating = ratingForScore(swapScore)
@@ -2777,22 +2814,6 @@ class MainActivity : Activity() {
                     }
                 })
                 swapCard.addView(swapHeaderRow)
-                val itemStoreKey = item.optString("storeKey").ifBlank { item.optString("store", "walmart") }
-                val storeDisplayName = when (itemStoreKey.lowercase()) {
-                    "walmart" -> "Walmart"
-                    "target" -> "Target"
-                    "instacart" -> "Instacart"
-                    "aldi" -> "ALDI"
-                    "bjs" -> "BJ's"
-                    "costco" -> "Costco"
-                    "kroger" -> "Kroger"
-                    "sams" -> "Sam's Club"
-                    "amazon" -> "Amazon Fresh"
-                    "doordash" -> "DoorDash"
-                    "ubereats" -> "Uber Eats"
-                    "shipt" -> "Shipt"
-                    else -> "Store"
-                }
                 val swapCtaText = if (isPaidLink) {
                     "🛒 Find Clean Swap in $storeDisplayName ↗ · paid link"
                 } else {
@@ -2805,7 +2826,7 @@ class MainActivity : Activity() {
                         setColor(0xFF2E9E5B.toInt())
                         cornerRadius = dp(999).toFloat()
                     }
-                    setOnClickListener { openStoreSwap(swapTitle, itemStoreKey, swap) }
+                    setOnClickListener { openStoreSwap(swapTitle, itemStoreKey, swap, title) }
                 })
             } else if (rem > 0) {
                 swapCard.addView(label("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF166534.toInt(), bold = true).apply {
@@ -2858,6 +2879,27 @@ class MainActivity : Activity() {
                 })
             }
             sheet.addView(swapCard)
+        } else if (storeSwapLink != null) {
+            ScanHistoryStore.upgradeSwapForStore(storeSwapLink, "", itemStoreKey)
+            val isPaidLink = storeSwapLink.optBoolean("isPaidLink", false)
+            val directCta = if (isPaidLink) {
+                "🛒 Find in $storeDisplayName ↗ · paid link"
+            } else {
+                "🛒 Find in $storeDisplayName ↗"
+            }
+            sheet.addView(label(directCta, 13.5f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(0xFF2E9E5B.toInt())
+                    cornerRadius = dp(999).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(14) }
+                setOnClickListener { openStoreSwap(title, itemStoreKey, storeSwapLink, title) }
+            })
         }
 
         val lookupObj = item.optJSONObject("lookup")
@@ -3128,6 +3170,7 @@ class MainActivity : Activity() {
             "kroger" -> " · Kroger"
             "sams" -> " · Sam's Club"
             "amazon" -> " · Amazon Fresh"
+            "wholefoods" -> " · Whole Foods"
             "doordash" -> " · DoorDash"
             "ubereats" -> " · Uber Eats"
             "shipt" -> " · Shipt"
@@ -3145,8 +3188,31 @@ class MainActivity : Activity() {
         return "$base$storeSuffix"
     }
 
-    private fun openStoreSwap(query: String, storeKey: String = "walmart", swapObj: JSONObject? = null) {
-        if (!ScanApi.canUseSwap(this)) {
+    private fun normalizeSwapUrl(raw: String): String {
+        if (raw.contains("aldi.us/results?q=", ignoreCase = true)) {
+            val q = raw.substringAfter("results?q=", "")
+            return "https://shop.aldi.us/store/aldi/s?k=$q"
+        }
+        if (raw.contains("shipt.com/up/search?query=", ignoreCase = true)) {
+            val q = raw.substringAfter("search?query=", "")
+            return "https://www.shipt.com/shop/search?query=$q"
+        }
+        return raw
+    }
+
+    private fun openStoreSwap(
+        query: String,
+        storeKey: String = "walmart",
+        swapObj: JSONObject? = null,
+        prodTitle: String = ""
+    ) {
+        if (swapObj != null) {
+            ScanHistoryStore.upgradeSwapForStore(swapObj, prodTitle, storeKey)
+        }
+        val effectiveQuery = swapObj?.optString("searchQuery").orEmpty()
+            .ifBlank { swapObj?.optString("title").orEmpty() }
+            .ifBlank { query }
+        if (!ScanApi.isSwapUnlocked(this, prodTitle, effectiveQuery) && !ScanApi.canUseSwap(this)) {
             ScanApi.trackEvent(this, "paywall_viewed")
             val limit = ScanApi.weeklySwapsLimit(this)
             val builder = AlertDialog.Builder(this)
@@ -3168,20 +3234,25 @@ class MainActivity : Activity() {
             return
         }
 
-        if (query.isNotBlank()) {
-            ScanApi.consumeSwap(this, query)
+        if (effectiveQuery.isNotBlank()) {
+            ScanApi.consumeSwap(this, effectiveQuery, prodTitle)
             if (swapObj != null) {
-                ScanHistoryStore.saveSwapToFavorites(this, swapObj, "", storeKey)
+                ScanHistoryStore.saveSwapToFavorites(this, swapObj, prodTitle, storeKey)
             }
             runCatching {
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                cm?.setPrimaryClip(ClipData.newPlainText("HeyBroc Clean Swap", query))
+                cm?.setPrimaryClip(ClipData.newPlainText("HeyBroc Clean Swap", effectiveQuery))
             }
         }
 
-        val explicitDeepLink = swapObj?.optString("deepLink").orEmpty().ifBlank { swapObj?.optString("webUrl").orEmpty() }
-        val explicitPkg = swapObj?.optString("androidPackage").orEmpty()
-        val supportsDirectUrlDeepLink = explicitPkg in setOf(
+        val rawDeepLink = swapObj?.optString("deepLink").orEmpty().ifBlank { swapObj?.optString("webUrl").orEmpty() }
+        val normalizedLink = normalizeSwapUrl(rawDeepLink)
+        val explicitDeepLink = if (ScanHistoryStore.urlMatchesStore(normalizedLink, storeKey)) normalizedLink else ""
+        val explicitPkg = ScanHistoryStore.storePackageForKey(storeKey).ifBlank {
+            swapObj?.optString("androidPackage").orEmpty()
+        }
+        val isDirectProductLink = Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(explicitDeepLink)
+        val supportsDirectUrlDeepLink = isDirectProductLink || explicitPkg in setOf(
             "com.walmart.android",
             "com.target.ui",
             "com.amazon.mShop.android.shopping"
@@ -3191,24 +3262,16 @@ class MainActivity : Activity() {
             if (supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
                 if (runCatching { startActivity(Intent(intent).setPackage(explicitPkg)) }.isSuccess) return
             }
+            if (explicitPkg.isNotBlank() && effectiveQuery.isNotBlank()) {
+                val searchIntent = Intent(android.app.SearchManager.ACTION_SEARCH)
+                    .setPackage(explicitPkg)
+                    .putExtra(android.app.SearchManager.QUERY, effectiveQuery)
+                if (runCatching { startActivity(searchIntent) }.isSuccess) return
+            }
             if (runCatching { startActivity(intent) }.isSuccess) return
         }
 
-        val encoded = Uri.encode(query)
-        val url = when (storeKey.lowercase()) {
-            "target" -> "https://www.target.com/s?searchTerm=$encoded"
-            "instacart" -> "https://www.instacart.com/store/s?k=$encoded"
-            "aldi" -> "https://shop.aldi.us/store/aldi/s?k=$encoded"
-            "bjs" -> "https://www.bjs.com/search/$encoded"
-            "costco" -> "https://www.costco.com/CatalogSearch?keyword=$encoded"
-            "kroger" -> "https://www.kroger.com/search?query=$encoded"
-            "sams" -> "https://www.samsclub.com/s/$encoded"
-            "amazon" -> "https://www.amazon.com/s?k=$encoded&i=amazonfresh"
-            "doordash" -> "https://www.doordash.com/search/store/$encoded/"
-            "ubereats" -> "https://www.ubereats.com/search?q=$encoded"
-            "shipt" -> "https://www.shipt.com/shop/search?query=$encoded"
-            else -> "https://www.walmart.com/search?q=$encoded"
-        }
+        val url = ScanHistoryStore.storeSearchUrl(storeKey, effectiveQuery)
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     }
 
@@ -3675,9 +3738,8 @@ class MainActivity : Activity() {
 
     private fun ratingForScore(score: Int): String = when {
         score >= 75 -> "Excellent"
-        score >= 50 -> "Good"
-        score >= 25 -> "Poor"
-        else -> "Bad"
+        score >= 50 -> "Mediocre"
+        else -> "Poor"
     }
 
     private fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()

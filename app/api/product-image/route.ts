@@ -30,14 +30,20 @@ function isAllowedImageUrl(rawUrl: string): boolean {
 
 function localFallbackAssetForQuery(q: string): { relPath: string; contentType: string } {
   const s = q.toLowerCase();
-  if (/\b(peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|nut\s+butter|santa\s+cruz.*peanut|jif|skippy|justin'?s)\b/.test(s)) {
+  if (/\b(peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|sunflower\s+seed\s+butter|nut\s+butter|hazelnut\s+spread|nutiva|nutella|sunbutter|maranatha|santa\s+cruz.*peanut|jif|skippy|justin'?s)\b/.test(s)) {
     return { relPath: "public/swaps/peanutbutter.png", contentType: "image/png" };
+  }
+  if (/\b(fruit\s+bars?|that'?s\s+it|larabar|lärabar|rxbar|clif\s+bar|kind\s+bar)\b/.test(s)) {
+    return { relPath: "public/swaps/fruitbar.png", contentType: "image/png" };
   }
   if (/\b(yogurt|yoghurt|skyr|chobani|fage|stonyfield|siggi'?s|oikos|yoplait|dannon)\b/.test(s)) {
     return { relPath: "public/swaps/yogurt.jpg", contentType: "image/jpeg" };
   }
   if (/\b(ice\s+cream|gelato|sorbet|ben\s*&\s*jerry|häagen|haagen|alden'?s|alec'?s|favorite\s+day.*ice\s+cream|breyers|talenti)\b/.test(s)) {
     return { relPath: "public/swaps/icecream.png", contentType: "image/png" };
+  }
+  if (/\b(cottage\s+cheese|cream\s+cheese|sour\s+cream|good\s+culture)\b/.test(s)) {
+    return { relPath: "public/swaps/cheese.png", contentType: "image/png" };
   }
   if (/\b(milk|lactaid|fairlife|oatly|malk|califia|silk|chobani\s+oat|ripple|darigold|core\s+power|premier\s+protein|muscle\s+milk|orgain|protein\s+shake|kefir|creamer|half\s+and\s+half|heavy\s+cream|nesquik|horizon\s+organic)\b/.test(s)) {
     return { relPath: "public/swaps/milk.png", contentType: "image/png" };
@@ -49,10 +55,10 @@ function localFallbackAssetForQuery(q: string): { relPath: string; contentType: 
   if (/\b(eggs?|vital\s+farms)\b/.test(s)) return { relPath: "public/swaps/eggs.png", contentType: "image/png" };
   if (/\b(mac\s*(&|and)\s*cheese|macaroni)\b/.test(s)) return { relPath: "public/swaps/mac.png", contentType: "image/png" };
   if (/\b(pasta|spaghetti|penne|rigatoni|rotini|fettuccine|linguine|noodles?|ramen|jovial)\b/.test(s)) return { relPath: "public/swaps/pasta.png", contentType: "image/png" };
+  if (/\b(chips|doritos|cheetos|takis|lays|lay'?s|ruffles|pringles|popcorn|pretzels|space\s+balls|puffs|siete.*chips|boulder\s+canyon)\b/.test(s)) return { relPath: "public/swaps/chips.jpg", contentType: "image/jpeg" };
+  if (/\b(crackers|cheez[- ]?it|goldfish|ritz|triscuit|wheat\s+thins|mary'?s\s+gone)\b/.test(s)) return { relPath: "public/swaps/crackers.jpg", contentType: "image/jpeg" };
   if (/\b(cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|velveeta|kraft\s+singles)\b/.test(s)) return { relPath: "public/swaps/cheese.png", contentType: "image/png" };
   if (/\b(butter|ghee|margarine|kerrygold|organic\s+valley.*butter)\b/.test(s)) return { relPath: "public/swaps/butter.jpg", contentType: "image/jpeg" };
-  if (/\b(chips|doritos|cheetos|takis|lays|lay'?s|ruffles|pringles|popcorn|pretzels|siete.*chips|boulder\s+canyon)\b/.test(s)) return { relPath: "public/swaps/chips.jpg", contentType: "image/jpeg" };
-  if (/\b(crackers|cheez[- ]?it|goldfish|ritz|triscuit|wheat\s+thins|mary'?s\s+gone)\b/.test(s)) return { relPath: "public/swaps/crackers.jpg", contentType: "image/jpeg" };
   if (/\b(oats|oatmeal)\b/.test(s)) return { relPath: "public/swaps/oats.png", contentType: "image/png" };
   if (/\b(cereal|froot\s+loops|lucky\s+charms|cinnamon\s+toast|cheerios|granola|three\s+wishes|nature'?s\s+path)\b/.test(s)) return { relPath: "public/swaps/cereal.jpg", contentType: "image/jpeg" };
   if (/\b(cookie|cookies|oreo|wafer|simple\s+mills.*cookie)\b/.test(s)) return { relPath: "public/swaps/cookies.png", contentType: "image/png" };

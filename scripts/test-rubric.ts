@@ -1439,6 +1439,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     recordStripeCreatorRefundOnce,
   } = await import("../lib/influencers");
 
+  try {
+    fs.rmSync(".cache/heybroc-kv.json", { force: true });
+  } catch {
+    /* ignore */
+  }
   const runSuffix = Date.now().toString(36).toUpperCase();
   const reauditDev = await getOrCreateDevice(`dev_reaudit_friend_${runSuffix}`, "secret_reaudit_12345");
   const invalidClaimRes = await applyOrActivateReferral({
@@ -1630,18 +1635,25 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         ) &&
         samsButterSwap?.brand === "Member's Mark" &&
         samsButterSwap.title.includes("Salted Butter") &&
+        samsButterSwap.webUrl?.includes("samsclub.com") &&
         costcoMilkSwap?.brand === "Kirkland Signature" &&
         costcoMilkSwap.title.includes("Organic Whole Milk") &&
+        costcoMilkSwap.webUrl?.includes("costco.com") &&
         aldiPbSwap?.brand === "Simply Nature" &&
         aldiPbSwap.title.includes("Organic Creamy Peanut Butter") &&
+        aldiPbSwap.webUrl?.includes("shop.aldi.us") &&
         bjsEggsSwap?.brand === "Wellsley Farms" &&
         bjsEggsSwap.title.includes("Eggs") &&
+        bjsEggsSwap.webUrl?.includes("bjs.com") &&
         targetSyrupSwap?.brand === "Good & Gather" &&
         targetSyrupSwap.title.includes("Maple Syrup") &&
+        targetSyrupSwap.webUrl?.includes("target.com") &&
         krogerMilkSwap?.brand === "Simple Truth Organic" &&
         krogerMilkSwap.title.includes("2% Reduced Fat Milk") &&
+        krogerMilkSwap.webUrl?.includes("kroger.com") &&
         amazonButterSwap?.brand === "365 by Whole Foods Market" &&
         amazonButterSwap.title.includes("Salted Butter") &&
+        amazonButterSwap.webUrl?.includes("amazon.com") &&
         walmartBreadSwap?.brand === "Dave's Killer Bread" &&
         walmartBreadSwap.deepLink === "https://www.walmart.com/ip/45804393" &&
         walmartOatMilkSwap?.brand === "Califia Farms" &&
@@ -1690,6 +1702,36 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !iosPopupHtml.includes("https://www.heybroc.com/login") &&
         scanApiKt.includes("val limit = weeklySwapsLimit(ctx)") &&
         scanApiKt.includes("val limit = weeklySwapsLimit(appCtx)")
+    )
+  );
+
+  const registeredOwner = await ensureReferralCodeRegistered("BROC-AUDIT7", "user:audit-owner-7");
+  const auditFriendDev = await getOrCreateDevice("device-audit-friend-7", "secret_audit_777");
+  const auditClaimRes = await applyOrActivateReferral({
+    deviceId: auditFriendDev.deviceId,
+    deviceSecret: "secret_audit_777",
+    referralCode: "BROC-AUDIT7",
+    activateNow: false,
+  });
+  const auditSelfClaimRes = await applyOrActivateReferral({
+    deviceId: "user:audit-owner-7",
+    referralCode: "BROC-AUDIT7",
+    activateNow: false,
+  });
+  const prodImgRouteTs = fs.readFileSync("app/api/product-image/route.ts", "utf8");
+  const seoSwapsPageTsx = fs.readFileSync("app/swaps/[slug]/page.tsx", "utf8");
+  check(
+    "Audit Pass 6–7 regression: ensureReferralCodeRegistered registers owner, self-referral is rejected, and SEO/image/Android guards hold",
+    Boolean(
+      brocCreatorBlocked &&
+        registeredOwner?.referralCode === "BROC-AUDIT7" &&
+        auditClaimRes.ok &&
+        auditClaimRes.device.referredByCode === "BROC-AUDIT7" &&
+        !auditSelfClaimRes.ok &&
+        prodImgRouteTs.includes('"public/swaps/fruitbar.png"') &&
+        seoSwapsPageTsx.includes('{ id: "sams", label: "Sam\'s Club" }') &&
+        seoSwapsPageTsx.includes('{ id: "aldi", label: "ALDI" }') &&
+        seoSwapsPageTsx.includes('{ id: "bjs", label: "BJ\'s" }')
     )
   );
 
