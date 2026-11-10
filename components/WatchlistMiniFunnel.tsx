@@ -15,6 +15,7 @@ export interface OnboardingSelections {
   watchlist: Category[];
   dietaryWatchlist?: DietaryOptionId[];
   store?: Store;
+  stores?: Store[];
   householdProfile?: HouseholdProfileId;
   primaryGoal?: PrimaryGoalId;
 }
@@ -23,6 +24,7 @@ export interface WatchlistMiniFunnelProps {
   open: boolean;
   initialSelected: Category[];
   initialStore?: Store;
+  initialStores?: Store[];
   initialDietary?: DietaryOptionId[];
   initialStep?: FunnelStep;
   isReturningUser?: boolean;
@@ -292,7 +294,7 @@ const MINI_TEST_SAMPLES: Array<{
 const STEP_TITLES: Record<FunnelStep, string> = {
   1: "Household",
   2: "#1 Priority",
-  3: "Your Store",
+  3: "Your Stores",
   4: "Your Goals",
   5: "Allergy Guard",
   6: "The Problem",
@@ -316,10 +318,27 @@ function trackOnboardingEvent(event: string, properties: Record<string, unknown>
   }).catch(() => {});
 }
 
+function resolveStoreLabel(id: Store): string {
+  return STORE_CHOICES.find((s) => s.id === id)?.label || STORE_META[id]?.label || "Walmart";
+}
+
+function formatStoresSummary(stores: Store[]): string {
+  if (stores.length === 0) return "all 12+ stores";
+  if (stores.length === 1) return resolveStoreLabel(stores[0]);
+  if (stores.length === 2) {
+    return `${resolveStoreLabel(stores[0])} & ${resolveStoreLabel(stores[1])}`;
+  }
+  if (stores.length === 3) {
+    return `${resolveStoreLabel(stores[0])}, ${resolveStoreLabel(stores[1])} & ${resolveStoreLabel(stores[2])}`;
+  }
+  return `${resolveStoreLabel(stores[0])}, ${resolveStoreLabel(stores[1])} + ${stores.length - 2} more`;
+}
+
 export default function WatchlistMiniFunnel({
   open,
   initialSelected,
   initialStore = "walmart",
+  initialStores,
   initialDietary = [],
   initialStep = 1,
   isReturningUser = false,
@@ -330,9 +349,19 @@ export default function WatchlistMiniFunnel({
   onDismissFirstTime,
   onClose,
 }: WatchlistMiniFunnelProps) {
+  const normalizeChoiceStores = (storesArg?: Store[], fallbackStore: Store = "walmart"): Store[] => {
+    const choiceIds = new Set<Store>(STORE_CHOICES.map((s) => s.id));
+    if (storesArg !== undefined) {
+      return storesArg.filter((s) => choiceIds.has(s));
+    }
+    return [choiceIds.has(fallbackStore) ? fallbackStore : "walmart"];
+  };
+
   const [selected, setSelected] = useState<Category[]>(initialSelected);
   const [dietarySelected, setDietarySelected] = useState<DietaryOptionId[]>(initialDietary);
-  const [selectedStore, setSelectedStore] = useState<Store>(initialStore);
+  const [selectedStores, setSelectedStores] = useState<Store[]>(() =>
+    normalizeChoiceStores(initialStores, initialStore)
+  );
   const [household, setHousehold] = useState<HouseholdProfileId>("kids_family");
   const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoalId>("seed_oil_free");
   const [sampleIdx, setSampleIdx] = useState<number>(0);
@@ -347,7 +376,7 @@ export default function WatchlistMiniFunnel({
         typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
       setSelected(initialSelected);
       setDietarySelected(initialDietary);
-      setSelectedStore(initialStore);
+      setSelectedStores(normalizeChoiceStores(initialStores, initialStore));
       if (typeof window !== "undefined") {
         const savedHousehold = window.localStorage.getItem("heybroc_household_profile") as HouseholdProfileId | null;
         if (savedHousehold && HOUSEHOLD_OPTIONS.some((h) => h.id === savedHousehold)) {
@@ -372,7 +401,7 @@ export default function WatchlistMiniFunnel({
       prevFocusRef.current = null;
     }
     wasOpenRef.current = open;
-  }, [open, initialSelected, initialDietary, initialStore, initialStep]);
+  }, [open, initialSelected, initialDietary, initialStore, initialStores, initialStep]);
 
   useEffect(() => {
     if (open) {
@@ -385,10 +414,13 @@ export default function WatchlistMiniFunnel({
     }
   }, [open, step, isReturningUser]);
 
+  const primaryStore: Store = selectedStores[0] ?? initialStore ?? "walmart";
+
   const buildExtras = (): OnboardingSelections => ({
     watchlist: selected,
     dietaryWatchlist: dietarySelected,
-    store: selectedStore,
+    store: primaryStore,
+    stores: selectedStores,
     householdProfile: household,
     primaryGoal,
   });
@@ -407,7 +439,11 @@ export default function WatchlistMiniFunnel({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        handleBackdropOrEscapeDismiss();
+        if (isReturningUser) {
+          handleBackdropOrEscapeDismiss();
+        } else if (step > 1) {
+          setStep((s) => (s > 1 ? ((s - 1) as FunnelStep) : 1));
+        }
         return;
       }
       if (e.key === "Tab" && cardRef.current) {
@@ -447,6 +483,12 @@ export default function WatchlistMiniFunnel({
     );
   };
 
+  const toggleStore = (storeId: Store) => {
+    setSelectedStores((prev) =>
+      prev.includes(storeId) ? prev.filter((s) => s !== storeId) : [...prev, storeId]
+    );
+  };
+
   const toggleDietary = (id: DietaryOptionId) => {
     setDietarySelected((prev) =>
       prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
@@ -460,10 +502,8 @@ export default function WatchlistMiniFunnel({
     HOUSEHOLD_OPTIONS.find((h) => h.id === household) || HOUSEHOLD_OPTIONS[0];
   const activePrimaryGoalObj =
     PRIMARY_GOAL_OPTIONS.find((g) => g.id === primaryGoal) || PRIMARY_GOAL_OPTIONS[0];
-  const storeDisplayName =
-    STORE_CHOICES.find((s) => s.id === selectedStore)?.label ||
-    STORE_META[selectedStore]?.label ||
-    "Walmart";
+  const storeDisplayName = resolveStoreLabel(primaryStore);
+  const storesSummaryLabel = formatStoresSummary(selectedStores);
   const activeSample = MINI_TEST_SAMPLES[sampleIdx] || MINI_TEST_SAMPLES[0];
 
   return (
@@ -472,7 +512,7 @@ export default function WatchlistMiniFunnel({
       role="dialog"
       aria-modal="true"
       aria-labelledby="heybroc-onboarding-heading"
-      onClick={handleBackdropOrEscapeDismiss}
+      onClick={isReturningUser ? handleBackdropOrEscapeDismiss : undefined}
       style={{
         position: "fixed",
         inset: 0,
@@ -503,7 +543,7 @@ export default function WatchlistMiniFunnel({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header: Back Button / Step Pill + Skip / Close Button */}
+        {/* Top Header: Back Button / Step Pill + Returning-User Close Button */}
         <div
           style={{
             display: "flex",
@@ -555,7 +595,7 @@ export default function WatchlistMiniFunnel({
             </span>
           </div>
 
-          {isReturningUser ? (
+          {isReturningUser && (
             <button
               type="button"
               onClick={() => {
@@ -577,38 +617,6 @@ export default function WatchlistMiniFunnel({
               }}
             >
               ✕ Close
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                const extras = buildExtras();
-                trackOnboardingEvent("onboarding_completed", {
-                  exitAction: "skip",
-                  step,
-                  householdProfile: extras.householdProfile,
-                  primaryGoal: extras.primaryGoal,
-                  store: extras.store,
-                  watchlistCount: selected.length,
-                  dietaryCount: dietarySelected.length,
-                });
-                onApplyAndGuest(selected, extras);
-              }}
-              aria-label="Skip and continue with Free Plan"
-              style={{
-                background: "#f3f4f6",
-                border: "none",
-                borderRadius: 999,
-                padding: "5px 11px",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#4b5563",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              Skip →
             </button>
           )}
         </div>
@@ -927,7 +935,7 @@ export default function WatchlistMiniFunnel({
           </>
         )}
 
-        {/* ==================== STEP 3: FAVORITE GROCERY STORE ==================== */}
+        {/* ==================== STEP 3: FAVORITE GROCERY STORES (MULTI-SELECT) ==================== */}
         {step === 3 && (
           <>
             <h2
@@ -946,36 +954,77 @@ export default function WatchlistMiniFunnel({
               style={{
                 fontSize: 13.5,
                 color: "#4b5563",
-                margin: "0 0 14px",
+                margin: "0 0 10px",
                 lineHeight: 1.45,
               }}
             >
-              HeyBroc supports <b>all 12+ grocery &amp; delivery stores</b>. Pick your main store so 1-tap Clean Swaps open directly in your store:
+              Select <b>all the stores</b> you shop at — we&apos;ll pin your favorites first for 1-tap Clean Swaps:
             </p>
 
             <div
               style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                background: "#ecfdf5",
+                border: "1.5px solid #86efac",
+                borderRadius: 12,
+                padding: "8px 11px",
+                marginBottom: 10,
+              }}
+            >
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: "#14532d", lineHeight: 1.35 }}>
+                ✓ All 12+ grocery &amp; delivery stores + 1.5M+ barcodes stay unlocked
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const allChecked = STORE_CHOICES.every((s) => selectedStores.includes(s.id));
+                  if (allChecked) {
+                    setSelectedStores(normalizeChoiceStores(undefined, initialStore));
+                  } else {
+                    setSelectedStores(STORE_CHOICES.map((s) => s.id));
+                  }
+                }}
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #86efac",
+                  borderRadius: 999,
+                  padding: "3px 9px",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#15803d",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {STORE_CHOICES.every((s) => selectedStores.includes(s.id)) ? "Reset" : "Select all"}
+              </button>
+            </div>
+
+            <div
+              style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))",
                 gap: 8,
               }}
             >
               {STORE_CHOICES.map((st) => {
-                const active = selectedStore === st.id;
+                const active = selectedStores.includes(st.id);
                 return (
                   <button
                     key={st.id}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => {
-                      setSelectedStore(st.id);
-                    }}
+                    onClick={() => toggleStore(st.id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
                       textAlign: "left",
-                      padding: "11px 12px",
+                      padding: "10px 12px",
                       borderRadius: 15,
                       border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
                       background: active ? "#f0fdf4" : "#ffffff",
@@ -1009,24 +1058,30 @@ export default function WatchlistMiniFunnel({
                         {st.sub}
                       </div>
                     </div>
-                    {active && (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "#16a34a",
-                          flexShrink: 0,
-                        }}
-                      >
-                        ✓
-                      </span>
-                    )}
+                    <span
+                      style={{
+                        width: 21,
+                        height: 21,
+                        borderRadius: 6,
+                        background: active ? "#16a34a" : "#ffffff",
+                        border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
+                        color: "#ffffff",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {active ? "✓" : ""}
+                    </span>
                   </button>
                 );
               })}
             </div>
 
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 14 }}>
               <button
                 type="button"
                 onClick={() => setStep(4)}
@@ -1043,7 +1098,9 @@ export default function WatchlistMiniFunnel({
                   boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
                 }}
               >
-                Continue with {storeDisplayName} →
+                {selectedStores.length === 0
+                  ? "Continue (All 12+ Stores Unlocked) →"
+                  : `Continue (${selectedStores.length} ${selectedStores.length === 1 ? "Store" : "Stores"} Selected) →`}
               </button>
             </div>
           </>
@@ -1074,7 +1131,7 @@ export default function WatchlistMiniFunnel({
             >
               Tap the ingredients you want out of your kitchen. HeyBroc applies{" "}
               <b>2x strictness</b> to your goals and finds{" "}
-              <b>90–100/100 Clean Swaps</b> at {storeDisplayName} automatically.
+              <b>90–100/100 Clean Swaps</b> across <b>{storesSummaryLabel}</b> automatically.
             </p>
 
             <div
@@ -1169,7 +1226,7 @@ export default function WatchlistMiniFunnel({
                       style={{
                         width: 23,
                         height: 23,
-                        borderRadius: 999,
+                        borderRadius: 7,
                         background: active ? "#16a34a" : "#ffffff",
                         border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
                         color: "#ffffff",
@@ -1303,7 +1360,7 @@ export default function WatchlistMiniFunnel({
                       style={{
                         width: 23,
                         height: 23,
-                        borderRadius: 999,
+                        borderRadius: 7,
                         background: active ? "#16a34a" : "#ffffff",
                         border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
                         color: "#ffffff",
@@ -1371,7 +1428,7 @@ export default function WatchlistMiniFunnel({
               }}
             >
               Big food brands print <b>&ldquo;Natural&rdquo;</b> or{" "}
-              <b>&ldquo;Made with Real Fruit&rdquo;</b> on the front at {storeDisplayName} while hiding ultra-processed additives in tiny 6-point text on the back:
+              <b>&ldquo;Made with Real Fruit&rdquo;</b> on the front while hiding ultra-processed additives in tiny 6-point text on the back:
             </p>
 
             {/* Personalized Trigger Traps Based on Selected Goals */}
@@ -1394,7 +1451,7 @@ export default function WatchlistMiniFunnel({
                   marginBottom: 8,
                 }}
               >
-                ⚠️ Hidden in Everyday {storeDisplayName} Staples ({activeHouseholdObj.title}):
+                ⚠️ Hidden Across {storesSummaryLabel} ({activeHouseholdObj.title}):
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 {displayGoalItems.slice(0, 3).map((g) => (
@@ -1479,10 +1536,10 @@ export default function WatchlistMiniFunnel({
                   ✓ 95/100 · Excellent
                 </div>
                 <div style={{ fontSize: 13.5, fontWeight: 800, color: "#111814" }}>
-                  1-Tap {storeDisplayName} Swap
+                  1-Tap Clean Swap
                 </div>
                 <div style={{ fontSize: 11.5, color: "#166534", marginTop: 4, lineHeight: 1.35 }}>
-                  100% Avocado/Olive Oil or Organic whole ingredients — 0 seed oils, 0 dyes.
+                  100% Avocado/Olive Oil or Organic whole ingredients across {storesSummaryLabel}.
                 </div>
               </div>
             </div>
@@ -1531,7 +1588,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.42,
               }}
             >
-              Tap an everyday staple below to see how your <b>2x Watchlist</b> grades it and swaps it at <b>{storeDisplayName}</b> across <b>1.5M+ foods</b>:
+              Tap an everyday staple below to see how your <b>2x Watchlist</b> grades it and swaps it across <b>{storesSummaryLabel}</b> &amp; <b>1.5M+ foods</b>:
             </p>
 
             {/* 1-Tap Interactive Sample Switcher */}
@@ -1607,7 +1664,11 @@ export default function WatchlistMiniFunnel({
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 800, color: "#14532d" }}>
-                  ⇄ {activeSample.cleanTitle} ({storeDisplayName})
+                  ⇄ {activeSample.cleanTitle} (
+                  {selectedStores.length > 1
+                    ? `${storeDisplayName} + ${selectedStores.length - 1} more`
+                    : storeDisplayName}
+                  )
                 </span>
                 <span
                   style={{
@@ -1668,7 +1729,7 @@ export default function WatchlistMiniFunnel({
                     2. Live Store Bubble &amp; Whole-Cart Health Check
                   </div>
                   <div style={{ fontSize: 12, color: "#166534", marginTop: 1, lineHeight: 1.35 }}>
-                    Grades items automatically while you browse {storeDisplayName} and swaps your whole cart in 1 tap.
+                    Grades items automatically while you browse {storesSummaryLabel} and swaps your whole cart in 1 tap.
                   </div>
                 </div>
               </div>
@@ -1713,7 +1774,12 @@ export default function WatchlistMiniFunnel({
               <span style={{ fontSize: 20 }}>✅</span>
               <div style={{ fontSize: 12, color: "#065f46", lineHeight: 1.4 }}>
                 <b>Your Custom Profile Is Calibrated:</b> {activeHouseholdObj.title} ·{" "}
-                <b>{storeDisplayName}</b> · <b>{selected.length}</b> 2x Watchlist{" "}
+                <b>
+                  {selectedStores.length > 0
+                    ? `${storesSummaryLabel} (+ all 12+ unlocked)`
+                    : "All 12+ stores unlocked"}
+                </b>{" "}
+                · <b>{selected.length}</b> 2x Watchlist{" "}
                 {selected.length === 1 ? "goal" : "goals"}
                 {dietarySelected.length > 0
                   ? ` · ${dietarySelected.length} Allergy/Diet ${dietarySelected.length === 1 ? "alert" : "alerts"}`
@@ -1769,7 +1835,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              Barcode &amp; search grading is <b>always 100% free</b>. Unlock unlimited 1-tap {storeDisplayName} Clean Swaps &amp; Whole-Cart Checks with a{" "}
+              Barcode &amp; search grading is <b>always 100% free</b>. Unlock unlimited 1-tap Clean Swaps across <b>{storesSummaryLabel}</b> &amp; Whole-Cart Checks with a{" "}
               <b>{effectiveTrialDays}-Day Free Pro Trial ($0 today)</b>, or start on the Free Plan:
             </p>
 
@@ -1817,7 +1883,10 @@ export default function WatchlistMiniFunnel({
                 }}
               >
                 <li>
-                  <b>Unlimited 1-Tap Clean Swaps</b> at {storeDisplayName} &amp; all 12+ stores
+                  <b>Unlimited 1-Tap Clean Swaps</b> across{" "}
+                  {selectedStores.length > 0
+                    ? `${storesSummaryLabel} & all 12+ stores`
+                    : "all 12+ grocery & delivery stores"}
                 </li>
                 <li>
                   <b>Whole-Cart Health Check</b> &amp; Swap-All Cart Cleaner
@@ -1841,6 +1910,8 @@ export default function WatchlistMiniFunnel({
                     householdProfile: extras.householdProfile,
                     primaryGoal: extras.primaryGoal,
                     store: extras.store,
+                    stores: extras.stores,
+                    storesCount: selectedStores.length,
                     watchlistCount: selected.length,
                     dietaryCount: dietarySelected.length,
                   });
@@ -1875,6 +1946,8 @@ export default function WatchlistMiniFunnel({
                     householdProfile: extras.householdProfile,
                     primaryGoal: extras.primaryGoal,
                     store: extras.store,
+                    stores: extras.stores,
+                    storesCount: selectedStores.length,
                     watchlistCount: selected.length,
                     dietaryCount: dietarySelected.length,
                   });
@@ -1904,6 +1977,8 @@ export default function WatchlistMiniFunnel({
                     householdProfile: extras.householdProfile,
                     primaryGoal: extras.primaryGoal,
                     store: extras.store,
+                    stores: extras.stores,
+                    storesCount: selectedStores.length,
                     watchlistCount: selected.length,
                     dietaryCount: dietarySelected.length,
                   });

@@ -850,6 +850,22 @@ class MainActivity : Activity() {
         return prefs.getString("preferredStore", "walmart")?.takeIf { it.isNotBlank() } ?: "walmart"
     }
 
+    private fun storeNameForKey(key: String): String = when (key) {
+        "target" -> "Target"
+        "costco" -> "Costco"
+        "sams" -> "Sam's Club"
+        "bjs" -> "BJ's Wholesale"
+        "aldi" -> "ALDI"
+        "kroger" -> "Kroger"
+        "instacart" -> "Instacart"
+        "amazon" -> "Amazon / Whole Foods"
+        "wholefoods" -> "Whole Foods Market"
+        "doordash" -> "DoorDash"
+        "ubereats" -> "Uber Eats"
+        "shipt" -> "Shipt"
+        else -> "Walmart"
+    }
+
     private fun buildYukaSideBySideSwapRow(badItem: JSONObject, swapObj: JSONObject): View {
         val prod = badItem.optJSONObject("product")
         val res = badItem.optJSONObject("result")
@@ -1717,8 +1733,8 @@ class MainActivity : Activity() {
                 val q = input.text.toString().trim()
                 if (q.isNotBlank()) performLiveProductSearch(q)
             }
-            .setNeutralButton("Open Walmart App ↗") { _, _ ->
-                openWalmartSearch("")
+            .setNeutralButton("Open ${storeNameForKey(preferredStoreKey())} ↗") { _, _ ->
+                openStoreSwap("", preferredStoreKey(), null)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -1775,7 +1791,21 @@ class MainActivity : Activity() {
         val selectedDietary = prefs.getStringSet("dietaryWatchlist", null)?.toMutableSet() ?: mutableSetOf()
         var selectedHousehold = prefs.getString("householdProfile", "kids_family") ?: "kids_family"
         var selectedPrimaryGoal = prefs.getString("primaryGoal", "seed_oil_free") ?: "seed_oil_free"
-        var selectedStore = prefs.getString("preferredStore", "walmart") ?: "walmart"
+        val fallbackStore = prefs.getString("preferredStore", "walmart")?.takeIf { it.isNotBlank() } ?: "walmart"
+        val storeChoiceKeys = setOf(
+            "walmart", "target", "costco", "sams", "aldi", "kroger", "instacart", "amazon"
+        )
+        val normalizedFallbackStore = if (fallbackStore in storeChoiceKeys) fallbackStore else "walmart"
+        val rawStoresCsv = prefs.getString("preferredStoresCsv", null)
+        val selectedStores = if (rawStoresCsv != null) {
+            rawStoresCsv.split(",")
+                .map { it.trim() }
+                .filter { it in storeChoiceKeys }
+                .distinct()
+                .toMutableList()
+        } else {
+            mutableListOf(normalizedFallbackStore)
+        }
         var activeSampleIdx = 0
 
         data class HouseholdOpt(
@@ -1938,12 +1968,24 @@ class MainActivity : Activity() {
         }
         scroll.addView(card)
 
+        fun primaryStoreKey(): String = selectedStores.firstOrNull() ?: fallbackStore
+
+        fun formatStoresSummary(): String = when (selectedStores.size) {
+            0 -> "all 12+ stores"
+            1 -> storeNameForKey(selectedStores[0])
+            2 -> "${storeNameForKey(selectedStores[0])} & ${storeNameForKey(selectedStores[1])}"
+            3 -> "${storeNameForKey(selectedStores[0])}, ${storeNameForKey(selectedStores[1])} & ${storeNameForKey(selectedStores[2])}"
+            else -> "${storeNameForKey(selectedStores[0])}, ${storeNameForKey(selectedStores[1])} + ${selectedStores.size - 2} more"
+        }
+
         fun buildAnalyticsProps(extraAction: String? = null): JSONObject = JSONObject().apply {
             put("step", currentStep)
             put("isReturningUser", alreadyDone)
             put("householdProfile", selectedHousehold)
             put("primaryGoal", selectedPrimaryGoal)
-            put("store", selectedStore)
+            put("store", primaryStoreKey())
+            put("stores", JSONArray(selectedStores))
+            put("storesCount", selectedStores.size)
             put("watchlistCount", selectedGoals.size)
             put("dietaryCount", selectedDietary.size)
             if (extraAction != null) put("exitAction", extraAction)
@@ -1956,7 +1998,8 @@ class MainActivity : Activity() {
                 .putStringSet("dietaryWatchlist", selectedDietary.toMutableSet())
                 .putString("householdProfile", selectedHousehold)
                 .putString("primaryGoal", selectedPrimaryGoal)
-                .putString("preferredStore", selectedStore)
+                .putString("preferredStore", primaryStoreKey())
+                .putString("preferredStoresCsv", selectedStores.joinToString(","))
                 .putBoolean("onboarding_funnel_done_v1", true)
                 .apply()
             if ("seedOils" in toSave) {
@@ -1972,32 +2015,19 @@ class MainActivity : Activity() {
             renderScreen()
         }
 
-        fun storeDisplayNameForKey(key: String): String = when (key) {
-            "target" -> "Target"
-            "costco" -> "Costco"
-            "sams" -> "Sam's Club"
-            "bjs" -> "BJ's Wholesale"
-            "aldi" -> "ALDI"
-            "kroger" -> "Kroger"
-            "instacart" -> "Instacart"
-            "amazon" -> "Amazon / Whole Foods"
-            "wholefoods" -> "Whole Foods Market"
-            "doordash" -> "DoorDash"
-            "ubereats" -> "Uber Eats"
-            "shipt" -> "Shipt"
-            else -> "Walmart"
-        }
-
         fun renderFunnelStep(step: Int) {
             currentStep = step
-            if (lastTrackedStep != step) {
+            val stepChanged = lastTrackedStep != step
+            if (stepChanged) {
                 lastTrackedStep = step
                 ScanApi.trackEvent(this@MainActivity, "onboarding_step_viewed", buildAnalyticsProps())
             }
             card.removeAllViews()
-            scroll.post { scroll.scrollTo(0, 0) }
+            if (stepChanged) {
+                scroll.post { scroll.scrollTo(0, 0) }
+            }
 
-            // Top Row: Back button + weighted Step badge + Close / Skip button (320dp–360dp safe)
+            // Top Row: Back button + weighted Step badge + Returning-User Close button (no Skip leak for first-time users)
             val headerRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -2023,7 +2053,7 @@ class MainActivity : Activity() {
             val stepLabelText = when (step) {
                 1 -> "🥦 STEP 1 OF 8 · HOUSEHOLD"
                 2 -> "🥦 STEP 2 OF 8 · #1 PRIORITY"
-                3 -> "🥦 STEP 3 OF 8 · YOUR STORE"
+                3 -> "🥦 STEP 3 OF 8 · YOUR STORES"
                 4 -> "🥦 STEP 4 OF 8 · YOUR GOALS"
                 5 -> "🥦 STEP 5 OF 8 · ALLERGY GUARD"
                 6 -> "🥦 STEP 6 OF 8 · THE PROBLEM"
@@ -2032,7 +2062,7 @@ class MainActivity : Activity() {
             }
             val badgeWrap = FrameLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = dp(6)
+                    if (alreadyDone) marginEnd = dp(6)
                 }
             }
             badgeWrap.addView(label(stepLabelText, 10.5f, 0xFF0B5E39.toInt(), bold = true).apply {
@@ -2051,26 +2081,21 @@ class MainActivity : Activity() {
             })
             headerRow.addView(badgeWrap)
 
-            val dismissLabel = if (alreadyDone) "✕ Close" else "Skip →"
-            headerRow.addView(label(dismissLabel, 12f, 0xFF4B5563.toInt(), bold = true).apply {
-                setSingleLine(true)
-                setPadding(dp(10), dp(5), dp(10), dp(5))
-                background = GradientDrawable().apply {
-                    setColor(0xFFF3F4F6.toInt())
-                    cornerRadius = dp(999).toFloat()
-                }
-                contentDescription = if (alreadyDone) "Close watchlist calibration without saving" else "Skip onboarding and continue with Free Plan"
-                setOnClickListener {
-                    if (alreadyDone) {
+            if (alreadyDone) {
+                headerRow.addView(label("✕ Close", 12f, 0xFF4B5563.toInt(), bold = true).apply {
+                    setSingleLine(true)
+                    setPadding(dp(10), dp(5), dp(10), dp(5))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF3F4F6.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    contentDescription = "Close watchlist calibration without saving"
+                    setOnClickListener {
                         ScanApi.trackEvent(this@MainActivity, "onboarding_dismissed", buildAnalyticsProps("close"))
                         funnelDialog?.dismiss()
-                    } else {
-                        ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("skip"))
-                        saveWatchlistAndMarkDone()
-                        funnelDialog?.dismiss()
                     }
-                }
-            })
+                })
+            }
             card.addView(headerRow)
 
             // 8-Segment Progress Bar (tappable for returning users)
@@ -2099,7 +2124,8 @@ class MainActivity : Activity() {
             }
             card.addView(progressRow)
 
-            val storeDisplayName = storeDisplayNameForKey(selectedStore)
+            val storeDisplayName = storeNameForKey(primaryStoreKey())
+            val storesSummary = formatStoresSummary()
             val activeHouseholdTitle = householdOptions.find { it.id == selectedHousehold }?.title ?: "My Kids & Family"
 
             // Step 1: Household Profile
@@ -2249,17 +2275,67 @@ class MainActivity : Activity() {
                 return
             }
 
-            // Step 3: Favorite Grocery Store
+            // Step 3: Favorite Grocery Stores (Multi-Select)
             if (step == 3) {
                 card.addView(label("Where do you usually grocery shop?", 21f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "HeyBroc supports all 12+ grocery & delivery stores. Pick your main store so 1-tap Clean Swaps open directly in your store:",
+                    "Select all the stores you shop at — we'll pin your favorites first for 1-tap Clean Swaps:",
                     13.5f,
                     0xFF4B5563.toInt()
-                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+                ).apply { setPadding(0, dp(4), 0, dp(8)) })
+
+                val unlockedBanner = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(11), dp(8), dp(11), dp(8))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFECFDF5.toInt())
+                        setStroke(dp(1), 0xFF86EFAC.toInt())
+                        cornerRadius = dp(12).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(10) }
+                }
+                unlockedBanner.addView(label(
+                    "✓ All 12+ grocery & delivery stores + 1.5M+ barcodes stay unlocked",
+                    11.5f,
+                    0xFF14532D.toInt(),
+                    bold = true
+                ).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginEnd = dp(8)
+                    }
+                })
+                val allStoresSelected = storeOptions.all { it.first in selectedStores }
+                unlockedBanner.addView(label(
+                    if (allStoresSelected) "Reset" else "Select all",
+                    11f,
+                    0xFF15803D.toInt(),
+                    bold = true
+                ).apply {
+                    setSingleLine(true)
+                    setPadding(dp(9), dp(4), dp(9), dp(4))
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        setStroke(dp(1), 0xFF86EFAC.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    setOnClickListener {
+                        selectedStores.clear()
+                        if (allStoresSelected) {
+                            selectedStores.add(normalizedFallbackStore)
+                        } else {
+                            selectedStores.addAll(storeOptions.map { it.first })
+                        }
+                        renderFunnelStep(3)
+                    }
+                })
+                card.addView(unlockedBanner)
 
                 storeOptions.forEach { (storeId, storeTitle, storeSub) ->
-                    val optActive = selectedStore == storeId
+                    val optActive = storeId in selectedStores
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
@@ -2276,7 +2352,11 @@ class MainActivity : Activity() {
                             ViewGroup.LayoutParams.WRAP_CONTENT
                         ).apply { bottomMargin = dp(7) }
                         setOnClickListener {
-                            selectedStore = storeId
+                            if (optActive) {
+                                selectedStores.remove(storeId)
+                            } else {
+                                selectedStores.add(storeId)
+                            }
                             renderFunnelStep(3)
                         }
                     }
@@ -2288,9 +2368,10 @@ class MainActivity : Activity() {
                     })
                     row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        layoutParams = LinearLayout.LayoutParams(dp(23), dp(23))
                         background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = dp(7).toFloat()
                             setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
                             setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
@@ -2298,7 +2379,12 @@ class MainActivity : Activity() {
                     card.addView(row)
                 }
 
-                card.addView(label("Continue with $storeDisplayName →", 15f, Color.WHITE, bold = true).apply {
+                val storeCta = if (selectedStores.isEmpty()) {
+                    "Continue (All 12+ Stores Unlocked) →"
+                } else {
+                    "Continue (${selectedStores.size} ${if (selectedStores.size == 1) "Store" else "Stores"} Selected) →"
+                }
+                card.addView(label(storeCta, 15f, Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(16), dp(14), dp(16), dp(14))
                     background = GradientDrawable().apply {
@@ -2318,7 +2404,7 @@ class MainActivity : Activity() {
             if (step == 4) {
                 card.addView(label("What are your clean-eating goals?", 21f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Tap the ingredients you want out of your kitchen. HeyBroc applies 2x strictness to your goals and finds 90–100/100 Clean Swaps at $storeDisplayName automatically.",
+                    "Tap the ingredients you want out of your kitchen. HeyBroc applies 2x strictness to your goals and finds 90–100/100 Clean Swaps across $storesSummary automatically.",
                     13.5f,
                     0xFF4B5563.toInt()
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
@@ -2356,9 +2442,10 @@ class MainActivity : Activity() {
                     })
                     row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        layoutParams = LinearLayout.LayoutParams(dp(23), dp(23))
                         background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = dp(7).toFloat()
                             setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
                             setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
@@ -2426,9 +2513,10 @@ class MainActivity : Activity() {
                     })
                     row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+                        layoutParams = LinearLayout.LayoutParams(dp(23), dp(23))
                         background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = dp(7).toFloat()
                             setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
                             setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
@@ -2461,7 +2549,7 @@ class MainActivity : Activity() {
             if (step == 6) {
                 card.addView(label("Why \"Healthy-Looking\" Groceries Fail Your Goals", 20.5f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Big food brands print \"Natural\" or \"Made with Real Fruit\" on the front at $storeDisplayName while hiding ultra-processed additives in tiny 6-point text on the back:",
+                    "Big food brands print \"Natural\" or \"Made with Real Fruit\" on the front while hiding ultra-processed additives in tiny 6-point text on the back:",
                     13.5f,
                     0xFF4B5563.toInt()
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
@@ -2480,7 +2568,7 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { bottomMargin = dp(12) }
                 }
-                trapBox.addView(label("⚠️ HIDDEN IN EVERYDAY $storeDisplayName STAPLES ($activeHouseholdTitle):", 11f, 0xFF991B1B.toInt(), bold = true).apply {
+                trapBox.addView(label("⚠️ HIDDEN ACROSS ${storesSummary.uppercase()} ($activeHouseholdTitle):", 11f, 0xFF991B1B.toInt(), bold = true).apply {
                     setPadding(0, 0, 0, dp(6))
                 })
                 activeList.take(3).forEach { g ->
@@ -2508,8 +2596,8 @@ class MainActivity : Activity() {
                 compareBox.addView(label("Hides Soybean Oil, High-Fructose Corn Syrup & Red 40.", 12f, 0xFF7F1D1D.toInt()).apply {
                     setPadding(0, dp(2), 0, dp(8))
                 })
-                compareBox.addView(label("✓ 1-Tap $storeDisplayName Clean Swap: 95/100 (Excellent)", 13f, 0xFF14532D.toInt(), bold = true))
-                compareBox.addView(label("100% Avocado/Olive Oil or Organic whole ingredients — 0 seed oils, 0 dyes.", 12f, 0xFF166534.toInt()))
+                compareBox.addView(label("✓ 1-Tap Clean Swap: 95/100 (Excellent)", 13f, 0xFF14532D.toInt(), bold = true))
+                compareBox.addView(label("100% Avocado/Olive Oil or Organic whole ingredients across $storesSummary — 0 seed oils, 0 dyes.", 12f, 0xFF166534.toInt()))
                 card.addView(compareBox)
 
                 card.addView(label("See How HeyBroc Solves This →", 15f, Color.WHITE, bold = true).apply {
@@ -2528,7 +2616,7 @@ class MainActivity : Activity() {
             if (step == 7) {
                 card.addView(label("How HeyBroc Protects Your Cart in 1 Second", 20.5f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Tap an everyday staple below to see how your 2x Watchlist grades it and swaps it at $storeDisplayName across 1.5M+ foods:",
+                    "Tap an everyday staple below to see how your 2x Watchlist grades it and swaps it across $storesSummary & 1.5M+ foods:",
                     13f,
                     0xFF4B5563.toInt()
                 ).apply { setPadding(0, dp(4), 0, dp(10)) })
@@ -2566,6 +2654,11 @@ class MainActivity : Activity() {
                 card.addView(tabsRow)
 
                 val sample = miniTestSamples[activeSampleIdx]
+                val sampleStoreBadge = if (selectedStores.size > 1) {
+                    "$storeDisplayName + ${selectedStores.size - 1} more"
+                } else {
+                    storeDisplayName
+                }
                 val previewBox = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -2581,13 +2674,13 @@ class MainActivity : Activity() {
                 }
                 previewBox.addView(label("✕ ${sample.dirtyTitle} · ${sample.dirtyScore}/100 (Poor)", 12.5f, 0xFF991B1B.toInt(), bold = true))
                 previewBox.addView(label(sample.dirtyFlags, 11.5f, 0xFF7F1D1D.toInt()).apply { setPadding(0, dp(2), 0, dp(6)) })
-                previewBox.addView(label("⇄ ${sample.cleanTitle} ($storeDisplayName) · ${sample.cleanScore}/100", 12.5f, 0xFF14532D.toInt(), bold = true))
+                previewBox.addView(label("⇄ ${sample.cleanTitle} ($sampleStoreBadge) · ${sample.cleanScore}/100", 12.5f, 0xFF14532D.toInt(), bold = true))
                 previewBox.addView(label(sample.cleanPerks, 11.5f, 0xFF166534.toInt()).apply { setPadding(0, dp(2), 0, 0) })
                 card.addView(previewBox)
 
                 val pillars = listOf(
                     Triple("📷", "1. Instant 0–100 Barcode & Search Grading (Always Free)", "Scan any barcode in the aisle or search 1.5M+ foods for a transparent Yuka-grade breakdown with 2x strictness on your goals."),
-                    Triple("🟢", "2. Live Store Bubble & Whole-Cart Check", "Floating score pill grades items automatically while you browse $storeDisplayName and checks your whole cart before checkout.")
+                    Triple("🟢", "2. Live Store Bubble & Whole-Cart Check", "Floating score pill grades items automatically while you browse $storesSummary and checks your whole cart before checkout.")
                 )
                 pillars.forEach { (icon, title, desc) ->
                     card.addView(LinearLayout(this).apply {
@@ -2636,6 +2729,11 @@ class MainActivity : Activity() {
             } else {
                 ""
             }
+            val calibratedStoresText = if (selectedStores.isNotEmpty()) {
+                "$storesSummary (+ all 12+ unlocked)"
+            } else {
+                "All 12+ stores unlocked"
+            }
             card.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -2649,7 +2747,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(10) }
                 addView(label(
-                    "✅ Your Custom Profile Is Calibrated: $activeHouseholdTitle · $storeDisplayName · ${selectedGoals.size} 2x Watchlist goal$goalSuffix$dietSuffix.",
+                    "✅ Your Custom Profile Is Calibrated: $activeHouseholdTitle · $calibratedStoresText · ${selectedGoals.size} 2x Watchlist goal$goalSuffix$dietSuffix.",
                     12.5f,
                     0xFF065F46.toInt(),
                     bold = true
@@ -2680,11 +2778,16 @@ class MainActivity : Activity() {
 
             card.addView(label("Choose How You Want to Start", 21f, 0xFF111814.toInt(), bold = true))
             card.addView(label(
-                "Barcode & search grading is always 100% free. Unlock unlimited 1-tap $storeDisplayName Clean Swaps & Whole-Cart Checks with a $effectiveTrialDays-Day Free Pro Trial ($0 today), or start on the Free Plan:",
+                "Barcode & search grading is always 100% free. Unlock unlimited 1-tap Clean Swaps across $storesSummary & Whole-Cart Checks with a $effectiveTrialDays-Day Free Pro Trial ($0 today), or start on the Free Plan:",
                 13f,
                 0xFF4B5563.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
+            val proStoresBullet = if (selectedStores.isNotEmpty()) {
+                "$storesSummary & all 12+ stores"
+            } else {
+                "all 12+ grocery & delivery stores"
+            }
             val proCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(12))
@@ -2700,7 +2803,7 @@ class MainActivity : Activity() {
             }
             proCard.addView(label("⭐ HeyBroc Family Pro · $effectiveTrialDays DAYS FREE ($0 TODAY)", 13.5f, 0xFF14532D.toInt(), bold = true))
             proCard.addView(label(
-                "• Unlimited 1-Tap Clean Swaps at $storeDisplayName & all 12+ stores\n• Whole-Cart Health Check & Swap-All Cart Cleaner\n• Unlimited Live Store Bubble & Family Cloud Sync",
+                "• Unlimited 1-Tap Clean Swaps across $proStoresBullet\n• Whole-Cart Health Check & Swap-All Cart Cleaner\n• Unlimited Live Store Bubble & Family Cloud Sync",
                 12.5f,
                 0xFF166534.toInt()
             ).apply { setPadding(0, dp(6), 0, dp(6)) })
@@ -2777,10 +2880,15 @@ class MainActivity : Activity() {
 
         funnelDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
             dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            dlg.setCanceledOnTouchOutside(alreadyDone)
             dlg.setOnKeyListener { _, keyCode, event ->
                 if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
                     if (currentStep > 1) {
                         renderFunnelStep(currentStep - 1)
+                        true
+                    } else if (!alreadyDone) {
+                        dlg.dismiss()
+                        finish()
                         true
                     } else {
                         false
@@ -2792,10 +2900,24 @@ class MainActivity : Activity() {
             dlg.setOnCancelListener {
                 ScanApi.trackEvent(this@MainActivity, "onboarding_dismissed", buildAnalyticsProps("cancel"))
                 if (!alreadyDone) {
-                    saveWatchlistAndMarkDone()
+                    finish()
                 }
             }
             dlg.show()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                dlg.onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT
+                ) {
+                    if (currentStep > 1) {
+                        renderFunnelStep(currentStep - 1)
+                    } else if (!alreadyDone) {
+                        dlg.dismiss()
+                        finish()
+                    } else {
+                        dlg.cancel()
+                    }
+                }
+            }
         }
     }
 

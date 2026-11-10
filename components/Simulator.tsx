@@ -563,9 +563,11 @@ export default function Simulator({
   const [authOpen, setAuthOpen] = useState(false);
   const [watchlistFunnelOpen, setWatchlistFunnelOpen] = useState(false);
   const [watchlistFunnelStep, setWatchlistFunnelStep] = useState<FunnelStep>(1);
+  const [manualFunnelOpen, setManualFunnelOpen] = useState(false);
   const [onboardingDoneState, setOnboardingDoneState] = useState(false);
   const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>(["seedOils", "dyes", "hfcs"]);
   const [dietaryWatchlist, setDietaryWatchlist] = useState<DietaryOptionId[]>([]);
+  const [preferredStores, setPreferredStores] = useState<Store[] | undefined>(undefined);
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
   const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
@@ -613,6 +615,16 @@ export default function Simulator({
           if (Array.isArray(savedDiet) && !cancelled) {
             setDietaryWatchlist(savedDiet);
           }
+          const rawSavedStores = window.localStorage.getItem("heybroc_preferred_stores");
+          if (rawSavedStores !== null && !cancelled) {
+            const parsedStores = JSON.parse(rawSavedStores) as unknown;
+            if (Array.isArray(parsedStores)) {
+              const validStores = parsedStores.filter(
+                (s): s is Store => typeof s === "string" && (STORES as readonly string[]).includes(s)
+              );
+              setPreferredStores(Array.from(new Set(validStores)));
+            }
+          }
           const savedStore = (window.localStorage.getItem("heybroc_preferred_store") || "").trim();
           if (savedStore && (STORES as string[]).includes(savedStore) && !cancelled) {
             const nextStore = savedStore as Store;
@@ -650,6 +662,7 @@ export default function Simulator({
             params.get("checkout") !== "cancelled" &&
             !isAdTestLanding)
         ) {
+          setManualFunnelOpen(false);
           setWatchlistFunnelStep(1);
           setWatchlistFunnelOpen(true);
         }
@@ -1809,6 +1822,9 @@ export default function Simulator({
     (selected: Category[], extras?: OnboardingSelections) => {
       setFamilyWatchlist(selected);
       if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
+      if (extras?.stores !== undefined) {
+        setPreferredStores(extras.stores);
+      }
       if (extras?.store) switchStore(extras.store);
       setWatch((prev) => {
         const next = { ...prev };
@@ -1829,6 +1845,12 @@ export default function Simulator({
             JSON.stringify(extras.dietaryWatchlist)
           );
         }
+        if (extras?.stores !== undefined) {
+          window.localStorage.setItem(
+            "heybroc_preferred_stores",
+            JSON.stringify(extras.stores)
+          );
+        }
         if (extras?.store) {
           window.localStorage.setItem("heybroc_preferred_store", extras.store);
         }
@@ -1843,6 +1865,13 @@ export default function Simulator({
     },
     [switchStore]
   );
+
+  const orderedStores = useMemo<Store[]>(() => {
+    if (!preferredStores || preferredStores.length === 0) return [...STORES];
+    const pinned = preferredStores.filter((s) => (STORES as readonly string[]).includes(s));
+    const rest = STORES.filter((s) => !pinned.includes(s));
+    return [...pinned, ...rest];
+  }, [preferredStores]);
 
   const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
 
@@ -1906,6 +1935,7 @@ export default function Simulator({
             type="button"
             className="topbar-pill"
             onClick={() => {
+              setManualFunnelOpen(true);
               setWatchlistFunnelStep(1);
               setWatchlistFunnelOpen(true);
             }}
@@ -2116,7 +2146,7 @@ export default function Simulator({
             </div>
             {storeExpanded ? (
               <div className="store-grid-all" role="tablist" aria-label="All supported grocery stores">
-                {STORES.map((s) => (
+                {orderedStores.map((s) => (
                   <button
                     key={s}
                     id={`store-${s}`}
@@ -2141,7 +2171,7 @@ export default function Simulator({
                   ‹
                 </button>
                 <div className="store-rail" ref={storeRailRef} role="tablist" aria-label="Supported grocery stores">
-                  {STORES.map((s) => (
+                  {orderedStores.map((s) => (
                     <button
                       key={s}
                       id={`store-${s}`}
@@ -2432,6 +2462,7 @@ export default function Simulator({
             type="button"
             className="tool"
             onClick={() => {
+              setManualFunnelOpen(true);
               setWatchlistFunnelStep(1);
               setWatchlistFunnelOpen(true);
             }}
@@ -2882,6 +2913,7 @@ export default function Simulator({
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    setManualFunnelOpen(true);
                                     setWatchlistFunnelStep(5);
                                     setWatchlistFunnelOpen(true);
                                   }}
@@ -3198,6 +3230,7 @@ export default function Simulator({
                                     key={badge}
                                     type="button"
                                     onClick={() => {
+                                      setManualFunnelOpen(true);
                                       setWatchlistFunnelStep(badge === "Allergy Guard" ? 5 : 4);
                                       setWatchlistFunnelOpen(true);
                                     }}
@@ -3968,9 +4001,10 @@ export default function Simulator({
       <WatchlistMiniFunnel
         open={watchlistFunnelOpen}
         initialStep={watchlistFunnelStep}
-        isReturningUser={onboardingDoneState}
+        isReturningUser={onboardingDoneState || manualFunnelOpen}
         initialSelected={familyWatchlist}
         initialStore={store}
+        initialStores={preferredStores}
         initialDietary={dietaryWatchlist}
         appliedCreator={appliedCreator}
         onClose={() => {
