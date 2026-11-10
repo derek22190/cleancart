@@ -116,10 +116,8 @@ export default function ToolsClient() {
     liveScore.score >= 75
       ? "#16a34a"
       : liveScore.score >= 50
-        ? "#65a30d"
-        : liveScore.score >= 25
-          ? "#ea580c"
-          : "#dc2626";
+        ? "#d97706"
+        : "#dc2626";
 
   return (
     <div style={{ maxWidth: 1040, margin: "0 auto", padding: "22px 18px 64px", fontFamily: "var(--font-sans), system-ui, sans-serif", color: "#0f172a" }}>
@@ -415,14 +413,33 @@ export default function ToolsClient() {
         {/* Live Result Card */}
         <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 16, padding: "18px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
-            <div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{titleInput || "Custom Ingredient Analysis"}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-                <span style={{ width: 16, height: 16, borderRadius: "50%", background: badgeTone, display: "inline-block" }} />
-                <strong style={{ fontSize: 28, fontWeight: 900 }}>{liveScore.score}/100</strong>
-                <span style={{ fontSize: 15, fontWeight: 800, color: badgeTone }}>
-                  {liveScore.score < 25 ? "Bad" : liveScore.rating}
-                </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {titleInput.trim() && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={`/api/product-image?title=${encodeURIComponent(titleInput.trim())}`}
+                  alt={titleInput.trim()}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    objectFit: "contain",
+                    borderRadius: 12,
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    padding: 4,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{titleInput || "Custom Ingredient Analysis"}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                  <span style={{ width: 16, height: 16, borderRadius: "50%", background: badgeTone, display: "inline-block" }} />
+                  <strong style={{ fontSize: 28, fontWeight: 900 }}>{liveScore.score}/100</strong>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: badgeTone }}>
+                    {liveScore.score >= 75 ? "Excellent" : liveScore.score >= 50 ? "Mediocre" : "Poor"}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -537,58 +554,118 @@ export default function ToolsClient() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(295px, 1fr))", gap: 14 }}>
-          {evaluatedCatalog.map(({ entry, result, swap }) => (
-            <Link
-              key={entry.slug}
-              href={`/swaps/${entry.slug}`}
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e2e8f0",
-                borderRadius: 16,
-                padding: "16px",
-                textDecoration: "none",
-                color: "#0f172a",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                gap: 10,
-              }}
-            >
-              <div>
-                <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
-                  {entry.category} · {entry.brand}
-                </span>
-                <h3 style={{ fontSize: 16, fontWeight: 800, margin: "4px 0 6px" }}>{entry.title}</h3>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
+          {evaluatedCatalog.map(({ entry, result, swap }) => {
+            const scoreLabel = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
+            return (
+              <Link
+                key={entry.slug}
+                href={`/swaps/${entry.slug}`}
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 16,
+                  padding: "16px",
+                  textDecoration: "none",
+                  color: "#0f172a",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/product-image?title=${encodeURIComponent(entry.title)}`}
+                    alt={entry.title}
+                    loading="lazy"
                     style={{
-                      padding: "3px 9px",
-                      borderRadius: 999,
+                      width: 54,
+                      height: 54,
+                      objectFit: "contain",
+                      borderRadius: 12,
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      padding: 4,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+                      {entry.category} · {entry.brand}
+                    </span>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, margin: "4px 0 6px" }}>{entry.title}</h3>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          padding: "3px 9px",
+                          borderRadius: 999,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          background:
+                            result.score >= 75
+                              ? "#dcfce7"
+                              : result.score >= 50
+                                ? "#fef3c7"
+                                : "#fee2e2",
+                          color:
+                            result.score >= 75
+                              ? "#166534"
+                              : result.score >= 50
+                                ? "#92400e"
+                                : "#991b1b",
+                        }}
+                      >
+                        Score: {result.score}/100 ({scoreLabel})
+                      </span>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>
+                        {result.flagged.length} flag{result.flagged.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {swap ? (
+                  <div
+                    style={{
+                      background: "#ecfdf5",
+                      border: "1px solid #a7f3d0",
+                      borderRadius: 10,
+                      padding: "8px 10px",
                       fontSize: 12,
-                      fontWeight: 800,
-                      background: result.score >= 70 ? "#dcfce7" : "#fee2e2",
-                      color: result.score >= 70 ? "#166534" : "#991b1b",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
                     }}
                   >
-                    Score: {result.score}/100 ({result.score < 25 ? "Bad" : result.rating})
-                  </span>
-                  <span style={{ fontSize: 12, color: "#64748b" }}>
-                    {result.flagged.length} flag{result.flagged.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-              </div>
-              {swap ? (
-                <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}>
-                  <b style={{ color: "#065f46", display: "block" }}>⇄ Clean Swap ({swap.score}/100):</b>
-                  <span style={{ color: "#047857", fontWeight: 700 }}>{swap.title}</span>
-                </div>
-              ) : (
-                <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "8px 10px", fontSize: 12, color: "#166534", fontWeight: 700 }}>
-                  ✓ Clean Category Pick — Inspect Full Report →
-                </div>
-              )}
-            </Link>
-          ))}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/product-image?title=${encodeURIComponent(swap.title)}`}
+                      alt={swap.title}
+                      loading="lazy"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        objectFit: "contain",
+                        borderRadius: 8,
+                        background: "#ffffff",
+                        border: "1px solid #a7f3d0",
+                        padding: 2,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <b style={{ color: "#065f46", display: "block" }}>⇄ Clean Swap ({swap.score}/100):</b>
+                      <span style={{ color: "#047857", fontWeight: 700 }}>{swap.title}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "8px 10px", fontSize: 12, color: "#166534", fontWeight: 700 }}>
+                    ✓ Clean Category Pick — Inspect Full Report →
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       </section>
 

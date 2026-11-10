@@ -522,7 +522,7 @@ object ScanApi {
                 if (sugarMatch != null) {
                     reasons.add("Added sweetener (${sugarMatch.value.lowercase()})")
                 } else if (refinedCarbMatch != null) {
-                    reasons.add("Refined glycemic starch (${refinedCarbMatch.value.lowercase()})")
+                    reasons.add("Refined starch (${refinedCarbMatch.value.lowercase()})")
                 }
                 alerts.add(
                     DietaryAlert(
@@ -709,25 +709,41 @@ object ScanApi {
         val id = item.optString("id").lowercase()
         val name = item.optString("name").lowercase()
         return when {
-            id in setOf("red40", "red3", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "caramelcolor", "tio2") ||
+            id in setOf("red3", "red40", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "caramelcolor", "tio2") ||
                 Regex("\\b(red\\s*(40|3)|yellow\\s*(5|6)|blue\\s*(1|2)|green\\s*3|caramel\\s*color|titanium\\s*dioxide|artificial\\s*color)\\b").containsMatchIn(name) -> "dyes"
             id in setOf("hfcs", "corn_syrup", "cornsyrup") ||
                 Regex("\\b(high[\\s-]*fructose\\s+corn\\s+syrup|hfcs|corn\\s+syrup)\\b").containsMatchIn(name) -> "hfcs"
             id in setOf("soybean_oil", "soybeanoil", "canola_oil", "canolaoil", "corn_oil", "cornoil", "cottonseed_oil", "cottonseedoil", "sunflower_oil", "sunfloweroil", "safflower_oil", "saffloweroil", "grapeseed_oil", "grapeseedoil", "rice_bran_oil", "ricebranoil", "vegetable_oil", "vegoil", "phoil", "hydrogoil") ||
-                Regex("\\b(soybean|canola|rapeseed|corn|cottonseed|sunflower|safflower|grapeseed|rice\\s*bran|vegetable|hydrogenated)\\s+oil\\b").containsMatchIn(name) -> "seedOils"
-            id in setOf("sodium_nitrite", "nanitrite", "sodium_nitrate", "nanitrate", "celerynitrate", "potassium_nitrite", "potassium_nitrate") ||
+                (id != "fully_hydrog_oil" && Regex("\\b(soybean|canola|rapeseed|corn|cottonseed|sunflower|safflower|grapeseed|rice\\s*bran|vegetable|(?<!fully\\s)hydrogenated)\\s+oil\\b", RegexOption.IGNORE_CASE).containsMatchIn(name)) -> "seedOils"
+            id in setOf("nitrite", "sodium_nitrite", "nanitrite", "sodium_nitrate", "nanitrate", "celerynitrate", "potassium_nitrite", "potassium_nitrate") ||
                 Regex("\\b(sodium\\s+nitrite|sodium\\s+nitrate|potassium\\s+nitrite|potassium\\s+nitrate|celery\\s+(powder|juice)|nitrates?|nitrites?)\\b").containsMatchIn(name) -> "nitrates"
-            id in setOf("bha", "bht", "tbhq", "sodium_benzoate", "nabenzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "capropionate", "potassium_bromate", "propylparaben", "edta") ||
+            id in setOf("bha", "bht", "tbhq", "propylgallate", "propyl_gallate", "ada", "azodicarbonamide", "kbromate", "potassium_bromate", "propylparaben", "sulfites", "aluminum_additives", "sodium_benzoate", "nabenzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "capropionate", "propionates", "sodium_diacetate", "edta") ||
                 Regex("\\b(bha|bht|tbhq|sodium\\s+benzoate|potassium\\s+sorbate|calcium\\s+propionate|potassium\\s+bromate|propylparaben|edta|butylated)\\b").containsMatchIn(name) -> "preservatives"
-            id in setOf("sucralose", "aspartame", "ace_k", "acek", "saccharin", "neotame", "advantame") ||
-                Regex("\\b(sucralose|aspartame|acesulfame|ace[\\s-]*k|saccharin|neotame|advantame)\\b").containsMatchIn(name) -> "sweeteners"
-            id in setOf("polysorbate_80", "polysorbate80", "polysorbate_60", "polysorbate60", "carboxymethylcellulose", "cmc", "mono_diglycerides", "monodiglycerides", "datem", "sodium_stearoyl_lactylate", "pgpr", "carrageenan") ||
+            id in setOf("sucralose", "aspartame", "ace_k", "acek", "saccharin", "neotame", "advantame", "cyclamate", "sugar_alcohols", "erythritol") ||
+                Regex("\\b(sucralose|aspartame|acesulfame|ace[\\s-]*k|saccharin|neotame|advantame|cyclamate|erythritol)\\b").containsMatchIn(name) -> "sweeteners"
+            id in setOf("bvo", "saib", "ester_gum", "fully_hydrog_oil", "polysorbate_80", "polysorbate80", "polysorbate_60", "polysorbate60", "polysorbate_40", "polysorbate40", "polysorbate_20", "polysorbate20", "carboxymethylcellulose", "cmc", "mono_diglycerides", "monodiglycerides", "datem", "ssl_csl", "ethoxylated_glycerides", "sodium_stearoyl_lactylate", "pgpr", "pga", "naphosphate", "phosphoric_acid", "carrageenan") ||
                 Regex("\\b(polysorbate|carboxymethylcellulose|mono[\\s-]*and[\\s-]*diglycerides|datem|sodium\\s+stearoyl\\s+lactylate|pgpr|carrageenan)\\b").containsMatchIn(name) -> "emulsifiers"
             id in setOf("xanthan_gum", "xanthan", "guar_gum", "locust_bean_gum", "cellulose_gum", "gellan_gum", "soylecithin") ||
                 Regex("\\b(xanthan\\s+gum|guar\\s+gum|locust\\s+bean\\s+gum|cellulose\\s+gum|gellan\\s+gum|soy\\s+lecithin)\\b").containsMatchIn(name) -> "gums"
-            id in setOf("msg", "artificial_flavor", "artificialflavor", "natural_flavor", "naturalflavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate") ||
+            id in setOf("msg", "artificial_flavor", "artificialflavor", "natural_flavor", "naturalflavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate", "inosinate_guanylate", "yeast_hydrolyzed_protein") ||
                 Regex("\\b(monosodium\\s+glutamate|msg|artificial\\s+flavors?|natural\\s+flavors?|autolyzed\\s+yeast|disodium\\s+inosinate|disodium\\s+guanylate)\\b").containsMatchIn(name) -> "flavors"
             else -> ""
+        }
+    }
+
+    private fun defaultBasePenalty1x(id: String, name: String, risk: String): Int {
+        val normId = id.lowercase()
+        return when {
+            risk == "high" -> 35
+            normId == "nabenzoate" && name.contains("benzene", ignoreCase = true) -> 18
+            normId in setOf("neotame", "advantame", "cyclamate") -> 16
+            normId in setOf("sulfites", "aluminum_additives") -> 14
+            normId in setOf("saib", "ester_gum") -> 12
+            risk == "moderate" -> 20
+            normId in setOf("fully_hydrog_oil", "pgpr", "pga", "capropionate", "propionates", "sodium_diacetate", "inosinate_guanylate", "yeast_hydrolyzed_protein", "sugar_alcohols") -> 8
+            normId == "erythritol" -> 5
+            normId == "phosphoric_acid" -> 4
+            else -> 10
         }
     }
 
@@ -737,6 +753,8 @@ object ScanApi {
      */
     fun applyLocalWatchlistToData(ctx: Context, data: JSONObject?) {
         val result = data?.optJSONObject("result") ?: return
+        val yuka = result.optJSONObject("yukaBreakdown")
+        if (yuka != null && yuka.optString("nutriScoreGrade") == "N/A") return
         val currentFlagged = result.optJSONArray("flagged") ?: return
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val seedOilsOn = isSeedOilsEnabled(ctx)
@@ -758,11 +776,25 @@ object ScanApi {
             result.optInt("_baseScore1x", result.optInt("score", 50))
         } else {
             var initial2xDeduction = 0
+            var initialBasePenaltySum = 0
+            var initialNonNutriCount = 0
+            var initialHasHighRisk = false
+            var initialSeedOilCount = 0
+            var hasBevSugarCap = false
             for (i in 0 until origFlagged.length()) {
                 val item = origFlagged.optJSONObject(i) ?: continue
+                val idStr = item.optString("id")
+                if (idStr == "nutri_beverage_sugar") hasBevSugarCap = true
+                if (idStr.startsWith("nutri_")) continue
                 val risk = item.optString("risk", "low")
-                val pen = item.optInt("penalty", 10)
-                val was2x = (risk == "high" && pen >= 60) || (risk == "moderate" && pen >= 35) || (risk == "low" && pen >= 18)
+                val basePen = defaultBasePenalty1x(idStr, item.optString("name"), risk)
+                val pen = item.optInt("penalty", basePen)
+                val cat = resolveAdditiveCategory(item)
+                initialBasePenaltySum += basePen
+                initialNonNutriCount++
+                if (risk == "high") initialHasHighRisk = true
+                if (cat == "seedOils") initialSeedOilCount++
+                val was2x = pen >= basePen * 2
                 if (was2x) {
                     initial2xDeduction += when (risk) {
                         "high" -> 12
@@ -771,15 +803,28 @@ object ScanApi {
                     }
                 }
             }
-            val recovered = (result.optInt("score", 50) + initial2xDeduction).coerceIn(0, 100)
+            val recovered = if (yuka != null) {
+                val nutriScore = yuka.optInt("nutritionScore", 36)
+                val orgScore = yuka.optInt("organicScore", 0)
+                val multiDed = (initialNonNutriCount - 1).coerceAtLeast(0) * 3
+                val addDed = (Math.round(initialBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
+                val addScore1x = if (initialHasHighRisk) 0 else (30 - addDed).coerceAtLeast(0)
+                var pillar = (nutriScore + addScore1x + orgScore).coerceIn(0, 100)
+                if (initialHasHighRisk || initialSeedOilCount >= 2 || hasBevSugarCap) {
+                    pillar = pillar.coerceAtMost(49)
+                } else if (initialSeedOilCount == 1) {
+                    pillar = pillar.coerceAtMost(59)
+                }
+                pillar
+            } else if (result.optString("scoringBasis") == "ingredient-only") {
+                val raw = (100 - initialBasePenaltySum).coerceIn(0, 100)
+                if (initialHasHighRisk) raw.coerceAtMost(49) else raw
+            } else {
+                val raw = (result.optInt("score", 50) + initial2xDeduction).coerceIn(0, 100)
+                if (initialHasHighRisk) raw.coerceAtMost(49) else raw
+            }
             result.put("_baseScore1x", recovered)
             recovered
-        }
-
-        val yuka = result.optJSONObject("yukaBreakdown")
-        if (yuka != null && !yuka.has("_origAdditiveScore")) {
-            yuka.put("_origAdditiveScore", yuka.optInt("additiveScore", 30))
-            yuka.put("_origHighRiskCapped", yuka.optBoolean("highRiskCapped", false))
         }
 
         val activeFlagged = JSONArray()
@@ -787,11 +832,20 @@ object ScanApi {
         var hasHighOrMod2x = false
         var hadSeedOilRemoved = false
         var remainingBasePenaltySum = 0
+        var remainingNonNutriCount = 0
         var remainingHighRisk = false
+        var remainingSeedOilCount = 0
+        var hasBevSugarCap = false
 
         for (i in 0 until origFlagged.length()) {
             val rawItem = origFlagged.optJSONObject(i) ?: continue
             val item = JSONObject(rawItem.toString())
+            val idStr = item.optString("id")
+            if (idStr == "nutri_beverage_sugar") hasBevSugarCap = true
+            if (idStr.startsWith("nutri_")) {
+                activeFlagged.put(item)
+                continue
+            }
             val risk = item.optString("risk", "low")
             val cat = resolveAdditiveCategory(item)
             if (cat == "seedOils" && !seedOilsOn) {
@@ -799,16 +853,11 @@ object ScanApi {
                 continue
             }
             val is2x = cat.isNotEmpty() && cat in familySet
-            val basePen = when (risk) {
-                "high" -> 35
-                "moderate" -> 20
-                else -> 10
-            }
-            val idStr = item.optString("id")
-            if (!idStr.startsWith("nutri_")) {
-                remainingBasePenaltySum += basePen
-                if (risk == "high") remainingHighRisk = true
-            }
+            val basePen = defaultBasePenalty1x(idStr, item.optString("name"), risk)
+            remainingBasePenaltySum += basePen
+            remainingNonNutriCount++
+            if (risk == "high") remainingHighRisk = true
+            if (cat == "seedOils") remainingSeedOilCount++
             item.put("penalty", if (is2x) basePen * 2 else basePen)
             if (is2x) {
                 strictnessDeduction += when (risk) {
@@ -825,31 +874,35 @@ object ScanApi {
         result.put("flagged", activeFlagged)
 
         var effectiveBaseScore = baseScore1x
-        if (!seedOilsOn && hadSeedOilRemoved) {
-            if (yuka != null) {
-                val nutriScore = yuka.optInt("nutritionScore", 36)
-                val orgScore = yuka.optInt("organicScore", 0)
-                val nonNutriCount = (0 until activeFlagged.length()).count { idx ->
-                    !activeFlagged.optJSONObject(idx)?.optString("id").orEmpty().startsWith("nutri_")
-                }
-                val multiDed = (nonNutriCount - 1).coerceAtLeast(0) * 3
-                val addDed = (Math.round(remainingBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
-                val newAddScore = if (remainingHighRisk) 0 else (30 - addDed).coerceAtLeast(0)
-                yuka.put("additiveScore", newAddScore)
-                yuka.put("highRiskCapped", remainingHighRisk)
-                val pillarSum = (nutriScore + newAddScore + orgScore).coerceIn(0, 100)
-                effectiveBaseScore = if (remainingHighRisk) pillarSum.coerceAtMost(49) else pillarSum
-            } else {
-                effectiveBaseScore = (baseScore1x + 26).coerceIn(0, 88)
+        if (yuka != null) {
+            val nutriScore = yuka.optInt("nutritionScore", 36)
+            val orgScore = yuka.optInt("organicScore", 0)
+            val multiDed = (remainingNonNutriCount - 1).coerceAtLeast(0) * 3
+            val addDed = (Math.round(remainingBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
+            val newAddScore = if (remainingHighRisk || hasHighOrMod2x) 0 else (30 - addDed).coerceAtLeast(0)
+            yuka.put("additiveScore", newAddScore)
+            yuka.put("highRiskCapped", remainingHighRisk)
+            var pillarSum = (nutriScore + newAddScore + orgScore).coerceIn(0, 100)
+            if (remainingHighRisk || remainingSeedOilCount >= 2 || hasBevSugarCap) {
+                pillarSum = pillarSum.coerceAtMost(49)
+            } else if (remainingSeedOilCount == 1) {
+                pillarSum = pillarSum.coerceAtMost(59)
             }
-        } else if (yuka != null && yuka.has("_origAdditiveScore")) {
-            yuka.put("additiveScore", yuka.optInt("_origAdditiveScore", yuka.optInt("additiveScore", 30)))
-            yuka.put("highRiskCapped", yuka.optBoolean("_origHighRiskCapped", remainingHighRisk))
+            effectiveBaseScore = pillarSum
+        } else if (!seedOilsOn && hadSeedOilRemoved) {
+            effectiveBaseScore = if (remainingHighRisk) {
+                (baseScore1x + 26).coerceIn(0, 49)
+            } else {
+                (baseScore1x + 26).coerceIn(0, 88)
+            }
         }
 
-        var nextScore = (effectiveBaseScore - strictnessDeduction).coerceIn(0, 100)
-        if (hasHighOrMod2x && nextScore > 39) {
-            nextScore = 39
+        var nextScore = effectiveBaseScore
+        if (strictnessDeduction > 0) {
+            if (hasHighOrMod2x) {
+                nextScore = nextScore.coerceAtMost(39)
+            }
+            nextScore = (nextScore - strictnessDeduction).coerceIn(0, 100)
         }
         val nextRating = when {
             nextScore >= 75 -> "Excellent"

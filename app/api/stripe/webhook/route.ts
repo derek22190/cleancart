@@ -28,6 +28,8 @@ interface StripeEventPayload {
   };
 }
 
+const DAY_MS = 86_400_000;
+
 function normalizeStripeSubStatus(raw: unknown): EntitlementStatus {
   switch (raw) {
     case "active":
@@ -64,6 +66,40 @@ function extractSubIdFromInvoiceObject(inv: Record<string, unknown>): string {
   return "";
 }
 
+function extractInvoicePeriodEndMs(inv: Record<string, unknown>): number | undefined {
+  const lines = inv.lines as
+    | { data?: Array<{ period?: { end?: number } }> }
+    | undefined;
+  const lineEnd = lines?.data?.[0]?.period?.end;
+  if (typeof lineEnd === "number" && lineEnd > 0) {
+    return lineEnd * 1000;
+  }
+  if (typeof inv.period_end === "number" && inv.period_end > 0) {
+    return inv.period_end * 1000;
+  }
+  return undefined;
+}
+
+function extractSubscriptionExpiryMs(
+  sub: Record<string, unknown>,
+  status: EntitlementStatus
+): number | undefined {
+  if (status === "trialing" && typeof sub.trial_end === "number" && sub.trial_end > 0) {
+    return sub.trial_end * 1000;
+  }
+  if (typeof sub.current_period_end === "number" && sub.current_period_end > 0) {
+    return sub.current_period_end * 1000;
+  }
+  const items = sub.items as
+    | { data?: Array<{ current_period_end?: number }> }
+    | undefined;
+  const itemPeriodEnd = items?.data?.[0]?.current_period_end;
+  if (typeof itemPeriodEnd === "number" && itemPeriodEnd > 0) {
+    return itemPeriodEnd * 1000;
+  }
+  return undefined;
+}
+
 function chargeObjHasSubscriptionLink(
   chargeObj: Record<string, unknown>
 ): boolean {
@@ -76,6 +112,41 @@ function chargeObjHasSubscriptionLink(
   if ("invoice" in chargeObj && chargeObj.invoice === null) return false;
   if (chargeObj.payment_intent) return true;
   return false;
+}
+
+async function resolveChargeObjectForRefundOrDispute(
+  rawObj: Record<string, unknown>,
+  isDispute: boolean
+): Promise<Record<string, unknown>> {
+  if (!isDispute) return rawObj;
+
+  if (rawObj.charge && typeof rawObj.charge === "object") {
+    return rawObj.charge as Record<string, unknown>;
+  }
+
+  const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+  const chargeId = typeof rawObj.charge === "string" ? rawObj.charge : "";
+  if (secretKey && chargeId) {
+    const chRes = await fetch(
+      `https://api.stripe.com/v1/charges/${encodeURIComponent(chargeId)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${secretKey}` },
+        cache: "no-store",
+      }
+    );
+    if (chRes.ok) {
+      return (await chRes.json()) as Record<string, unknown>;
+    }
+  }
+
+  return {
+    id: chargeId || rawObj.id,
+    amount: rawObj.amount,
+    invoice: rawObj.invoice ?? null,
+    payment_intent: rawObj.payment_intent ?? null,
+    metadata: rawObj.metadata ?? {},
+  };
 }
 
 async function resolveSubscriptionFromCharge(
@@ -142,7 +213,9 @@ async function resolveSubscriptionFromCharge(
       cache: "no-store",
     });
     if (!ipRes.ok) {
-      throw new Error(`Stripe invoice_payments lookup failed with HTTP ${ipRes.status}`);
+      throw new Error(
+        `Stripe invoice_payments lookup failed with HTTP ${ipRes.status}`
+      );
     }
     const ipData = (await ipRes.json()) as {
       data?: Array<{
@@ -228,12 +301,19 @@ export async function POST(req: Request) {
         if (!sessionId) break;
 
         const mode = typeof obj.mode === "string" ? obj.mode : "";
-        const subscriptionId =
+        const metadata = (obj.metadata ?? {}) as Record<string, string>;
+        const otoOffer = metadata.oto_offer || "";
+        const rawSubscriptionId =
           typeof obj.subscription === "string"
             ? obj.subscription
             : typeof (obj.subscription as { id?: string } | null)?.id === "string"
               ? (obj.subscription as { id: string }).id
               : undefined;
+        const isOneTimeOtoPass =
+          (mode === "payment" || !rawSubscriptionId) && otoOffer === "oto_gift_year";
+        const subscriptionId =
+          rawSubscriptionId ||
+          (isOneTimeOtoPass ? `oto_pass_${sessionId}` : undefined);
         const customerId =
           typeof obj.customer === "string"
             ? obj.customer
@@ -243,8 +323,6 @@ export async function POST(req: Request) {
         const customerDetails = obj.customer_details as
           | { email?: string | null }
           | undefined;
-        const metadata = (obj.metadata ?? {}) as Record<string, string>;
-        const otoOffer = metadata.oto_offer || "";
         const plan: PlanId = metadata.plan === "monthly" ? "monthly" : "annual";
         const creatorCode = metadata.creator_code || undefined;
         const deviceId =
@@ -256,14 +334,16 @@ export async function POST(req: Request) {
           customerDetails?.email || metadata.customer_email || "";
         const amountTotalCents =
           typeof obj.amount_total === "number" ? obj.amount_total : 0;
+        const amountSubtotalCents =
+          typeof obj.amount_subtotal === "number" && obj.amount_subtotal > 0
+            ? Math.min(amountTotalCents || obj.amount_subtotal, obj.amount_subtotal)
+            : amountTotalCents;
 
         // Require explicit payment_status ("paid" or "no_payment_required" for trial)
         const paymentStatus =
           typeof obj.payment_status === "string" ? obj.payment_status : "";
         const isPaid = paymentStatus === "paid";
         const isTrial = paymentStatus === "no_payment_required";
-        const isOneTimeOtoPass =
-          (mode === "payment" || !subscriptionId) && otoOffer === "oto_gift_year";
 
         if (isOneTimeOtoPass) {
           if (isPaid) {
@@ -282,13 +362,14 @@ export async function POST(req: Request) {
                   referralCode: creatorCode,
                   activateNow: true,
                 });
-              } else if (amountTotalCents > 0) {
-                // One-time payment (`mode=payment`) does not emit `invoice.paid`; credit creator here idempotently
+              } else if (amountSubtotalCents > 0) {
+                // One-time payment (`mode=payment`) does not emit `invoice.paid`; credit creator here idempotently on pre-tax subtotal
                 await recordStripeCreatorConversionOnce(
                   `session:${sessionId}`,
                   creatorCode,
                   "paid_annual",
-                  amountTotalCents / 100
+                  amountSubtotalCents / 100,
+                  resolvedEmail
                 );
               }
             }
@@ -299,6 +380,12 @@ export async function POST(req: Request) {
             : isTrial
               ? "trialing"
               : "incomplete";
+          const nowMs = Date.now();
+          const initialExpiresAtMs = isTrial
+            ? nowMs + (creatorCode ? PRICING.creatorTrialDays : PRICING.trialDays) * DAY_MS
+            : isPaid
+              ? nowMs + (plan === "monthly" ? 32 : 366) * DAY_MS
+              : undefined;
 
           await saveEntitlement({
             sessionId,
@@ -310,6 +397,7 @@ export async function POST(req: Request) {
             creatorCode,
             status,
             active: isPaid || isTrial,
+            ...(initialExpiresAtMs ? { expiresAtMs: initialExpiresAtMs } : {}),
             lastStripeEventCreated: eventCreated,
             updatedAt: new Date().toISOString(),
           });
@@ -334,7 +422,11 @@ export async function POST(req: Request) {
           });
 
           // If this is a Monthly -> VIP Annual OTO upgrade (`oto_annual`), cancel the superseded monthly subscription
-          const prevSubId = (metadata.previous_subscription_id || "").trim();
+          const prevSubId = (
+            metadata.previous_subscription_id ||
+            metadata.replaces_subscription_id ||
+            ""
+          ).trim();
           if (
             (isPaid || isTrial) &&
             otoOffer === "oto_annual" &&
@@ -376,7 +468,9 @@ export async function POST(req: Request) {
               await recordStripeCreatorConversionOnce(
                 `trial:${refKey}`,
                 creatorCode,
-                "trial"
+                "trial",
+                undefined,
+                resolvedEmail
               );
             }
           }
@@ -397,13 +491,13 @@ export async function POST(req: Request) {
                 userEmail: resolvedEmail || undefined,
                 properties: {
                   plan,
+                  otoOffer: otoOffer || null,
                   status: isTrial ? "trialing" : "active",
                   source: "stripe",
-                  otoOffer: otoOffer || null,
                   amountUsd: paidUsd,
                   creatorCode: creatorCode || null,
                 },
-              }),
+              })
             )
             .catch(() => {});
         }
@@ -427,6 +521,7 @@ export async function POST(req: Request) {
         const customerEmail = metadata.customer_email || undefined;
         const customerId =
           typeof obj.customer === "string" ? obj.customer : undefined;
+        const expiresAtMs = extractSubscriptionExpiryMs(obj, status);
 
         await updateSubscriptionEntitlement(subscriptionId, {
           status,
@@ -435,9 +530,9 @@ export async function POST(req: Request) {
           customerEmail,
           creatorCode,
           deviceId,
+          expiresAtMs,
           lastStripeEventCreated: eventCreated,
         });
-        // Paid creator commissions are credited strictly in invoice.paid (when amount_paid > 0)
         break;
       }
 
@@ -460,6 +555,15 @@ export async function POST(req: Request) {
 
         const amountPaidCents =
           typeof obj.amount_paid === "number" ? obj.amount_paid : 0;
+        const preTaxPaidCents =
+          typeof obj.total_excluding_tax === "number" &&
+          obj.total_excluding_tax > 0
+            ? Math.min(amountPaidCents, obj.total_excluding_tax)
+            : typeof obj.subtotal_excluding_tax === "number" &&
+                obj.subtotal_excluding_tax > 0
+              ? Math.min(amountPaidCents, obj.subtotal_excluding_tax)
+              : amountPaidCents;
+
         const customerId =
           typeof obj.customer === "string"
             ? obj.customer
@@ -482,6 +586,7 @@ export async function POST(req: Request) {
               : existing?.plan || "annual";
         const creatorCode =
           metadata.creator_code || existing?.creatorCode || undefined;
+        const periodEndMs = extractInvoicePeriodEndMs(obj);
 
         // If a trialing annual subscriber who bought a +366d pass converts to paid Year 1, stack the paid year
         const convertedPassMs =
@@ -498,6 +603,7 @@ export async function POST(req: Request) {
           plan,
           customerId,
           creatorCode,
+          ...(periodEndMs ? { expiresAtMs: periodEndMs } : {}),
           ...(convertedPassMs ? { paidPassExpiresAtMs: convertedPassMs } : {}),
           lastStripeEventCreated: eventCreated,
         });
@@ -548,18 +654,19 @@ export async function POST(req: Request) {
             .catch(() => {});
         }
 
-        // Credit creators ONLY from invoice.paid / invoice.payment_succeeded with amount_paid > 0, key invoice:${id}, using actual paid USD
+        // Credit creators strictly from invoice.paid / invoice.payment_succeeded with amount_paid > 0 on pre-tax net USD
         if (
           creatorCode &&
           !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) &&
-          amountPaidCents > 0 &&
+          preTaxPaidCents > 0 &&
           invoiceId
         ) {
           await recordStripeCreatorConversionOnce(
             `invoice:${invoiceId}`,
             creatorCode,
             plan === "monthly" ? "paid_monthly" : "paid_annual",
-            amountPaidCents / 100
+            preTaxPaidCents / 100,
+            resolvedInvoiceEmail
           );
         }
         break;
@@ -568,12 +675,18 @@ export async function POST(req: Request) {
       case "charge.refunded":
       case "charge.dispute.created": {
         const isDispute = event.type === "charge.dispute.created";
+        const chargeSource = await resolveChargeObjectForRefundOrDispute(
+          obj,
+          isDispute
+        );
         const chargeId = isDispute
           ? typeof obj.charge === "string"
             ? obj.charge
-            : typeof obj.id === "string"
-              ? obj.id
-              : event.id
+            : typeof (obj.charge as { id?: string } | null)?.id === "string"
+              ? (obj.charge as { id: string }).id
+              : typeof obj.id === "string"
+                ? obj.id
+                : event.id
           : typeof obj.id === "string"
             ? obj.id
             : event.id;
@@ -585,10 +698,17 @@ export async function POST(req: Request) {
             ? obj.amount_refunded
             : 0;
         const amountCapturedCents =
-          typeof obj.amount === "number" ? obj.amount : amountRefundedCents;
-        const metadata = (obj.metadata ?? {}) as Record<string, string>;
+          typeof chargeSource.amount === "number"
+            ? chargeSource.amount
+            : typeof obj.amount === "number"
+              ? obj.amount
+              : amountRefundedCents;
+        const metadata = {
+          ...((chargeSource.metadata ?? {}) as Record<string, string>),
+          ...((obj.metadata ?? {}) as Record<string, string>),
+        };
 
-        const subscriptionId = await resolveSubscriptionFromCharge(obj);
+        const subscriptionId = await resolveSubscriptionFromCharge(chargeSource);
         const existing = subscriptionId
           ? await getSubscriptionEntitlement(subscriptionId)
           : null;
@@ -605,7 +725,7 @@ export async function POST(req: Request) {
         const isOneTimeOtoPassCharge = metadata.oto_offer === "oto_gift_year";
 
         const hasInvoiceReference = Boolean(
-          chargeObjHasSubscriptionLink(obj)
+          chargeObjHasSubscriptionLink(chargeSource)
         );
         if (isFullRefund && !subscriptionId && hasInvoiceReference) {
           throw new Error(
@@ -629,7 +749,7 @@ export async function POST(req: Request) {
             lastStripeEventCreated: eventCreated,
           });
           const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
-          if (secretKey) {
+          if (secretKey && subscriptionId.startsWith("sub_")) {
             const delRes = await fetch(
               `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
               {
@@ -645,15 +765,19 @@ export async function POST(req: Request) {
           }
         }
 
-        if (creatorCode && amountRefundedCents > 0) {
-          const refundsObj = obj.refunds as
+        if (creatorCode && !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) && amountRefundedCents > 0) {
+          const refundsObj = chargeSource.refunds as
             | { data?: Array<{ id?: string; amount?: number }> }
             | undefined;
-          const refundList = Array.isArray(refundsObj?.data)
-            ? refundsObj.data.filter(
-                (r) => typeof r?.id === "string" && typeof r?.amount === "number" && r.amount > 0
-              )
-            : [];
+          const refundList =
+            !isDispute && Array.isArray(refundsObj?.data)
+              ? refundsObj.data.filter(
+                  (r) =>
+                    typeof r?.id === "string" &&
+                    typeof r?.amount === "number" &&
+                    r.amount > 0
+                )
+              : [];
           if (refundList.length > 0) {
             for (const r of refundList) {
               const itemIsFullRefund =
@@ -678,7 +802,7 @@ export async function POST(req: Request) {
                 isDispute ||
                 (amountCapturedCents > 0 && deltaCents >= amountCapturedCents);
               const recorded = await recordStripeCreatorRefundOnce(
-                `refund:${chargeId}:${event.id || amountRefundedCents}`,
+                `${isDispute ? "dispute" : "refund"}:${chargeId}:${event.id || amountRefundedCents}`,
                 creatorCode,
                 plan,
                 deltaCents / 100,
@@ -716,7 +840,8 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : "Webhook processing failed.",
+        error:
+          err instanceof Error ? err.message : "Webhook processing failed.",
       },
       { status: 500 }
     );

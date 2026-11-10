@@ -75,16 +75,20 @@ class OverlayWindowService : Service() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_IN_CART = "in_cart"
         const val EXTRA_IS_SINGLE_PDP = "is_single_pdp"
+        const val EXTRA_PAGE_OUT_OF_STOCK = "page_out_of_stock"
         const val EXTRA_CART_ARRAY = "cart_array"
+        const val EXTRA_CART_QUANTITIES = "cart_quantities"
         const val EXTRA_REPLACE_CART = "replace_cart"
         const val EXTRA_REMOVED_TITLES = "removed_titles"
         const val EXTRA_STORE_PKG = "store_pkg"
+        const val EXTRA_STORE_BUCKET = "store_bucket"
         const val EXTRA_KEEP_MODE = "keep_mode"
 
         private const val INK = 0xFF15201B.toInt()
         private const val INK_2 = 0xFF4A5550.toInt()
         private const val INK_3 = 0xFF85908A.toInt()
         private const val BRAND = 0xFF0F7A4A.toInt()
+        private const val NEUTRAL_SLATE = 0xFF64748B.toInt()
         private const val PREFS_NAME = "heybroc_overlay_prefs"
         private const val LEGACY_KEY_TRIP_CART = "trip_cart_json"
         private const val LEGACY_KEY_TRIP_CART_V2 = "trip_cart_v2_json"
@@ -96,6 +100,10 @@ class OverlayWindowService : Service() {
             "strawberry lowfat yogurt",
             "baked cheddar crackers",
             "grass-fed salted butter"
+        )
+        private val NON_FOOD_CART_ITEM = Regex(
+            """\b(paper\s+towels?|toilet\s+paper|bath\s+tissue|facial\s+tissue|kleenex|bounty|charmin|angel\s+soft|cottonelle|quilted\s+northern|brawny|sparkle|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|tableware)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?|wrap)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|ziploc|aluminum\s+foil|parchment\s+paper|detergent|laundry|fabric\s+softener|dryer\s+sheets?|bleach|clorox|lysol|dish\s+soap|dishwasher|cascade|dawn\s+(?:ultra|platinum|powerwash)|tide|gain|persil|downy|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|toothpaste|mouthwash|toothbrushes?|diapers?|pull-ups|huggies|pampers|cat\s+litter|dog\s+food|cat\s+food|pet\s+food|batteries|motor\s+oil)\b""",
+            RegexOption.IGNORE_CASE
         )
         private val VARIANT_NOISE_TITLE = Regex(
             """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|for\s+[a-z0-9].*|.*notify\s+me\s+when\s+back\s+in\s+stock.*|.*back\s+in\s+stock.*|.*out\s+of\s+stock.*|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|no\s+longer\s+available|not\s+available\s+in\s+your\s+area|based\s+on\s+items\s+in\s+your\s+cart|complete\s+your\s+cart)\b.*|.*&\s*more\.?$|.*,\s*was|.*[!?])$"""
@@ -111,6 +119,8 @@ class OverlayWindowService : Service() {
         var fullJson: JSONObject? = null,
         var fromCartScreen: Boolean = false,
         var lastSeenAtMs: Long = System.currentTimeMillis(),
+        var quantity: Int = 1,
+        var isNonFood: Boolean = false,
     )
 
     private lateinit var wm: WindowManager
@@ -133,10 +143,14 @@ class OverlayWindowService : Service() {
     private var isTestMode = false
     private var hiddenForCurrentScreen = false
     private var currentStoreKey = "walmart"
+    private var currentStoreBucket = "walmart"
     private val tripCart = mutableListOf<TripCartItem>()
-    private var displayedCartAvg = 100
+    private var displayedCartAvg: Int? = null
     private var pendingSwapFromKey: String? = null
     private var pendingSwapTitle: String? = null
+    private var pendingSwapCandidates: List<JSONObject> = emptyList()
+    private var pendingSwapCandidateIdx: Int = 0
+    private var pendingSwapExplicitItem: TripCartItem? = null
     private val mainUiHandler = Handler(Looper.getMainLooper())
     private val imageExecutor = Executors.newFixedThreadPool(2)
     private val swapBitmapCache = LruCache<String, Bitmap>(24)
@@ -156,11 +170,11 @@ class OverlayWindowService : Service() {
             editor.apply()
         }
         pillY = prefs.getInt(KEY_PILL_Y, dp(220))
-        loadPersistedCart(currentStoreKey)
+        loadPersistedCart(currentStoreBucket)
         displayedCartAvg = calcCartAvg()
     }
 
-    private fun storeDisplayName(key: String): String = when (key) {
+    private fun retailerSlugDisplayName(slug: String): String = when (slug.lowercase()) {
         "walmart" -> "Walmart"
         "bjs" -> "BJ's"
         "aldi" -> "ALDI"
@@ -170,25 +184,74 @@ class OverlayWindowService : Service() {
         "costco" -> "Costco"
         "sams" -> "Sam's Club"
         "amazon" -> "Amazon"
+        "amazon_fresh" -> "Amazon Fresh"
         "wholefoods" -> "Whole Foods"
         "doordash" -> "DoorDash"
         "ubereats" -> "Uber Eats"
         "shipt" -> "Shipt"
-        else -> "Store"
+        "publix" -> "Publix"
+        "sprouts" -> "Sprouts"
+        "safeway" -> "Safeway"
+        "wegmans" -> "Wegmans"
+        "albertsons" -> "Albertsons"
+        "heb" -> "H-E-B"
+        "meijer" -> "Meijer"
+        "food-lion" -> "Food Lion"
+        "stop-and-shop" -> "Stop & Shop"
+        "shoprite" -> "ShopRite"
+        "harris-teeter" -> "Harris Teeter"
+        "fred-meyer" -> "Fred Meyer"
+        "giant" -> "Giant"
+        "ralphs" -> "Ralphs"
+        "vons" -> "Vons"
+        "jewel-osco" -> "Jewel-Osco"
+        "hy-vee" -> "Hy-Vee"
+        "winco" -> "WinCo"
+        "the-fresh-market" -> "The Fresh Market"
+        "natural-grocers" -> "Natural Grocers"
+        "cvs" -> "CVS"
+        "walgreens" -> "Walgreens"
+        "total-wine" -> "Total Wine"
+        "dashmart" -> "DashMart"
+        else -> slug.split('-', '_').filter { it.isNotBlank() }
+            .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
+            .ifBlank { "Store" }
+    }
+
+    private fun storeDisplayName(key: String): String {
+        if (key.contains(':')) {
+            val base = key.substringBefore(':')
+            val sub = key.substringAfter(':')
+            if (sub.isNotBlank()) {
+                return "${retailerSlugDisplayName(base)} · ${retailerSlugDisplayName(sub)}"
+            }
+        }
+        return retailerSlugDisplayName(key)
     }
 
     private fun switchStoreIfNeeded(intent: Intent?) {
         val pkg = intent?.getStringExtra(EXTRA_STORE_PKG).orEmpty()
-        if (pkg.isBlank()) return
-        val nextStore = ScanApi.storeForPackage(pkg)
-        if (nextStore != currentStoreKey) {
+        val rawBucket = intent?.getStringExtra(EXTRA_STORE_BUCKET).orEmpty().trim()
+        if (pkg.isBlank() && rawBucket.isBlank()) return
+        val nextStore = if (pkg.isNotBlank()) ScanApi.storeForPackage(pkg) else currentStoreKey
+        val nextBucket = when {
+            rawBucket.isNotBlank() -> rawBucket
+            pkg == "com.wholefoods.wholefoodsmarket" -> "wholefoods"
+            nextStore != currentStoreKey -> nextStore
+            else -> currentStoreBucket
+        }
+        if (nextStore != currentStoreKey || nextBucket != currentStoreBucket) {
+            val storeAppChanged = nextStore != currentStoreKey
             persistCart()
             currentStoreKey = nextStore
-            data = null
-            openFlag = null
-            hiddenForCurrentScreen = false
-            removeCard()
-            loadPersistedCart(currentStoreKey)
+            currentStoreBucket = nextBucket
+            if (storeAppChanged) {
+                data = null
+                openFlag = null
+                hiddenForCurrentScreen = false
+                removeCard()
+            }
+            loadPersistedCart(currentStoreBucket)
             displayedCartAvg = calcCartAvg()
         }
     }
@@ -233,7 +296,34 @@ class OverlayWindowService : Service() {
             ACTION_SHOW_RESULT -> {
                 isTestMode = false
                 val incoming = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
+                val pageOutOfStock = intent.getBooleanExtra(EXTRA_PAGE_OUT_OF_STOCK, false)
                 if (incoming?.optBoolean("ok") == true) {
+                    val incomingTitle = cleanCartTitle(incoming.optJSONObject("product")?.optString("title").orEmpty())
+                    if (pageOutOfStock && pendingSwapTitle != null && matchesPendingSwap(incomingTitle)) {
+                        if (pendingSwapCandidateIdx + 1 < pendingSwapCandidates.size) {
+                            val nextIdx = pendingSwapCandidateIdx + 1
+                            val nextCandidate = pendingSwapCandidates[nextIdx]
+                            val nextTitle = nextCandidate.optString("title", "Clean Alternative")
+                            Toast.makeText(
+                                this,
+                                "⚠️ $incomingTitle is out of stock — trying next clean swap: $nextTitle…",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            openSwap(
+                                swap = nextCandidate,
+                                explicitItem = pendingSwapExplicitItem,
+                                candidateList = pendingSwapCandidates,
+                                candidateIndex = nextIdx
+                            )
+                            return START_NOT_STICKY
+                        } else {
+                            Toast.makeText(
+                                this,
+                                "⚠️ $incomingTitle appears out of stock at ${storeDisplayName(currentStoreBucket)}.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                     data = incoming
                     isCartAvgMode = false
                     isPdpScrollHint = false
@@ -281,17 +371,18 @@ class OverlayWindowService : Service() {
                 if (!keepMode) {
                     isPdpScrollHint = false
                 }
-                val prevSize = tripCart.size
+                val prevSize = totalCartUnits()
                 val prevAvg = displayedCartAvg
                 val arrRaw = intent.getStringExtra(EXTRA_CART_ARRAY) ?: "[]"
                 val remRaw = intent.getStringExtra(EXTRA_REMOVED_TITLES) ?: "[]"
+                val qtyRaw = intent.getStringExtra(EXTRA_CART_QUANTITIES) ?: "{}"
                 val replaceCart = intent.getBooleanExtra(EXTRA_REPLACE_CART, false)
-                syncCartFromScreen(arrRaw, remRaw, replaceCart, keepMode)
+                syncCartFromScreen(arrRaw, remRaw, replaceCart, keepMode, qtyRaw)
                 if (!keepMode) {
                     isCartAvgMode = true
                 }
                 if (card != null && isAuditorOpen) {
-                    if (tripCart.size != prevSize || displayedCartAvg != prevAvg) {
+                    if (totalCartUnits() != prevSize || displayedCartAvg != prevAvg) {
                         showAuditorDrawer()
                     }
                 } else if (!hiddenForCurrentScreen && card == null && (!keepMode || isCartAvgMode)) {
@@ -337,7 +428,12 @@ class OverlayWindowService : Service() {
                 for (item in tripCart) {
                     val fj = item.fullJson ?: continue
                     ScanApi.applyLocalWatchlistToData(this, fj)
-                    val newItemScore = fj.optJSONObject("result")?.optInt("score", item.score) ?: item.score
+                    val resObj = fj.optJSONObject("result")
+                    val newItemScore = if (resObj != null && resObj.has("score") && !resObj.isNull("score")) {
+                        resObj.optInt("score", item.score)
+                    } else {
+                        item.score
+                    }
                     if (newItemScore != item.score) {
                         item.score = newItemScore
                         cartChanged = true
@@ -373,9 +469,27 @@ class OverlayWindowService : Service() {
         super.onDestroy()
     }
 
-    private fun calcCartAvg(): Int {
-        if (tripCart.isEmpty()) return 100
-        return tripCart.sumOf { it.score } / tripCart.size
+    private fun isNonFoodCartEntry(title: String, d: JSONObject?): Boolean {
+        if (NON_FOOD_CART_ITEM.containsMatchIn(title)) return true
+        val prod = d?.optJSONObject("product")
+        if (prod?.optBoolean("isNonFood", false) == true) return true
+        val cat = prod?.optString("category").orEmpty().ifBlank { d?.optString("category").orEmpty() }
+        return cat.equals("non_food", ignoreCase = true) || cat.equals("household", ignoreCase = true)
+    }
+
+    private fun scoredFoodItems(): List<TripCartItem> =
+        tripCart.filter { !it.isNonFood && !NON_FOOD_CART_ITEM.containsMatchIn(it.title) }
+
+    private fun totalCartUnits(): Int =
+        scoredFoodItems().sumOf { it.quantity.coerceIn(1, 99) }
+
+    private fun calcCartAvg(): Int? {
+        val items = scoredFoodItems()
+        if (items.isEmpty()) return null
+        val totalUnits = items.sumOf { it.quantity.coerceIn(1, 99) }
+        if (totalUnits <= 0) return null
+        val weightedSum = items.sumOf { it.score.coerceIn(0, 100) * it.quantity.coerceIn(1, 99) }
+        return Math.round(weightedSum.toFloat() / totalUnits.toFloat())
     }
 
     private fun colorNameForScore(score: Int): String = when {
@@ -438,9 +552,29 @@ class OverlayWindowService : Service() {
         return words.size >= 2 && words.take(2).all { lower.contains(it) }
     }
 
-    private fun syncCartFromScreen(arrRaw: String, remRaw: String, replaceCart: Boolean, keepMode: Boolean = false) {
+    private fun lookupScrapedQuantity(qtyObj: JSONObject?, rawTitle: String): Int? {
+        if (qtyObj == null || qtyObj.length() == 0) return null
+        val keys = qtyObj.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            if (isSameCartItem(k, rawTitle)) {
+                val v = qtyObj.optInt(k, 0)
+                if (v in 1..99) return v
+            }
+        }
+        return null
+    }
+
+    private fun syncCartFromScreen(
+        arrRaw: String,
+        remRaw: String,
+        replaceCart: Boolean,
+        keepMode: Boolean = false,
+        qtyRaw: String = "{}"
+    ) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
+        val qtyObj = runCatching { JSONObject(qtyRaw) }.getOrNull()
         val prevAvg = calcCartAvg()
         val now = System.currentTimeMillis()
         var swapDetectedInCart = false
@@ -451,6 +585,8 @@ class OverlayWindowService : Service() {
             // and items from previous shopping sessions (>30 min old), while retaining items scrolled during the active Cart session.
             tripCart.removeAll {
                 it.isSeed ||
+                    it.isNonFood ||
+                    NON_FOOD_CART_ITEM.containsMatchIn(it.title) ||
                     it.title.lowercase() in DEMO_SEED_TITLES ||
                     VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
                     (!keepMode && arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
@@ -474,11 +610,14 @@ class OverlayWindowService : Service() {
             if (d.optBoolean("ok") != true) continue
             ScanApi.applyLocalWatchlistToData(this, d)
             val result = d.optJSONObject("result") ?: continue
+            if (!result.has("score") || result.isNull("score")) continue
             val prod = d.optJSONObject("product") ?: continue
             val rawTitle = cleanCartTitle(prod.optString("title"))
             if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) continue
-            val score = result.optInt("score", 50)
+            if (isNonFoodCartEntry(rawTitle, d)) continue
+            val score = result.optInt("score", 0).coerceIn(0, 100)
             val swap = d.optJSONObject("swap")
+            val scrapedQty = lookupScrapedQuantity(qtyObj, rawTitle)
             if (matchesPendingSwap(rawTitle)) {
                 val fromKey = pendingSwapFromKey
                 if (!fromKey.isNullOrBlank()) {
@@ -486,6 +625,9 @@ class OverlayWindowService : Service() {
                 }
                 pendingSwapFromKey = null
                 pendingSwapTitle = null
+                pendingSwapCandidates = emptyList()
+                pendingSwapCandidateIdx = 0
+                pendingSwapExplicitItem = null
                 swapDetectedInCart = true
             }
             val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
@@ -493,6 +635,9 @@ class OverlayWindowService : Service() {
                 existing.score = score
                 existing.swapObj = swap
                 existing.fullJson = d
+                if (scrapedQty != null) {
+                    existing.quantity = scrapedQty
+                }
                 if (!keepMode) {
                     existing.fromCartScreen = true
                 }
@@ -501,8 +646,21 @@ class OverlayWindowService : Service() {
                     existing.title = rawTitle
                 }
             } else {
-                tripCart.add(TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d, fromCartScreen = !keepMode, lastSeenAtMs = now))
-                while (tripCart.size > 40) {
+                tripCart.add(
+                    TripCartItem(
+                        key = rawTitle,
+                        title = rawTitle,
+                        score = score,
+                        swapObj = swap,
+                        isSeed = false,
+                        fullJson = d,
+                        fromCartScreen = !keepMode,
+                        lastSeenAtMs = now,
+                        quantity = (scrapedQty ?: 1).coerceIn(1, 99),
+                        isNonFood = false,
+                    )
+                )
+                while (tripCart.size > 60) {
                     tripCart.removeAt(tripCart.size - 1)
                 }
             }
@@ -510,7 +668,7 @@ class OverlayWindowService : Service() {
         val nextAvg = calcCartAvg()
         displayedCartAvg = nextAvg
         persistCart()
-        if (swapDetectedInCart && nextAvg > prevAvg) {
+        if (swapDetectedInCart && prevAvg != null && nextAvg != null && nextAvg > prevAvg) {
             animateCartAvgClimb(prevAvg, nextAvg)
         }
     }
@@ -519,17 +677,26 @@ class OverlayWindowService : Service() {
         if (d?.optBoolean("ok") != true) return
         ScanApi.applyLocalWatchlistToData(this, d)
         val result = d.optJSONObject("result") ?: return
+        if (!result.has("score") || result.isNull("score")) return
         val prod = d.optJSONObject("product") ?: return
         val rawTitle = cleanCartTitle(prod.optString("title"))
         if (rawTitle.isBlank() || rawTitle.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(rawTitle)) return
+        if (isNonFoodCartEntry(rawTitle, d)) return
         if (ScanHistoryStore.isPoisonedProduceEntry(rawTitle, d)) return
         if (Regex("(?i)(gas savings|walmart\\+|notification|scan barcodes|qr code|account|sparky)").containsMatchIn(rawTitle)) return
         val prevAvg = calcCartAvg()
         val now = System.currentTimeMillis()
         var swapDetectedInCart = false
-        val score = result.optInt("score", 50)
+        val score = result.optInt("score", 0).coerceIn(0, 100)
         val swap = d.optJSONObject("swap")
-        tripCart.removeAll { it.isSeed || it.title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(it.title.trim()) || ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) }
+        tripCart.removeAll {
+            it.isSeed ||
+                it.isNonFood ||
+                NON_FOOD_CART_ITEM.containsMatchIn(it.title) ||
+                it.title.lowercase() in DEMO_SEED_TITLES ||
+                VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
+                ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson)
+        }
         if (matchesPendingSwap(rawTitle)) {
             val fromKey = pendingSwapFromKey
             if (!fromKey.isNullOrBlank()) {
@@ -537,6 +704,9 @@ class OverlayWindowService : Service() {
             }
             pendingSwapFromKey = null
             pendingSwapTitle = null
+            pendingSwapCandidates = emptyList()
+            pendingSwapCandidateIdx = 0
+            pendingSwapExplicitItem = null
             swapDetectedInCart = true
         }
         val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
@@ -546,26 +716,48 @@ class OverlayWindowService : Service() {
             existing.fullJson = d
             existing.lastSeenAtMs = now
         } else {
-            tripCart.add(0, TripCartItem(rawTitle, rawTitle, score, swap, isSeed = false, fullJson = d, fromCartScreen = false, lastSeenAtMs = now))
-            while (tripCart.size > 40) {
+            tripCart.add(
+                0,
+                TripCartItem(
+                    key = rawTitle,
+                    title = rawTitle,
+                    score = score,
+                    swapObj = swap,
+                    isSeed = false,
+                    fullJson = d,
+                    fromCartScreen = false,
+                    lastSeenAtMs = now,
+                    quantity = 1,
+                    isNonFood = false,
+                )
+            )
+            while (tripCart.size > 60) {
                 tripCart.removeAt(tripCart.size - 1)
             }
         }
         val nextAvg = calcCartAvg()
         displayedCartAvg = nextAvg
         persistCart()
-        if (swapDetectedInCart && nextAvg > prevAvg) {
+        if (swapDetectedInCart && prevAvg != null && nextAvg != null && nextAvg > prevAvg) {
             animateCartAvgClimb(prevAvg, nextAvg)
         }
     }
 
     private fun persistCart() {
         val arr = JSONArray()
-        for (item in tripCart.filter { !it.isSeed && it.title.lowercase() !in DEMO_SEED_TITLES && !VARIANT_NOISE_TITLE.matches(it.title.trim()) && !ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) }) {
+        for (item in tripCart.filter {
+            !it.isSeed &&
+                !it.isNonFood &&
+                !NON_FOOD_CART_ITEM.containsMatchIn(it.title) &&
+                it.title.lowercase() !in DEMO_SEED_TITLES &&
+                !VARIANT_NOISE_TITLE.matches(it.title.trim()) &&
+                !ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson)
+        }) {
             arr.put(JSONObject().apply {
                 put("key", item.key)
                 put("title", item.title)
                 put("score", item.score)
+                put("quantity", item.quantity.coerceIn(1, 99))
                 put("fromCartScreen", item.fromCartScreen)
                 put("lastSeenAtMs", item.lastSeenAtMs)
                 item.swapObj?.let { put("swap", it) }
@@ -573,15 +765,15 @@ class OverlayWindowService : Service() {
             })
         }
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString("$KEY_TRIP_CART_PREFIX$currentStoreKey", arr.toString())
+            .putString("$KEY_TRIP_CART_PREFIX$currentStoreBucket", arr.toString())
             .putInt(KEY_PILL_Y, pillY)
             .apply()
     }
 
-    private fun loadPersistedCart(storeKey: String) {
+    private fun loadPersistedCart(bucketKey: String) {
         tripCart.clear()
-        val raw = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString("$KEY_TRIP_CART_PREFIX$storeKey", null) ?: return
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString("$KEY_TRIP_CART_PREFIX$bucketKey", null) ?: return
         runCatching {
             val arr = JSONArray(raw)
             for (i in 0 until arr.length()) {
@@ -589,6 +781,7 @@ class OverlayWindowService : Service() {
                 val title = cleanCartTitle(o.optString("title"))
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
                 val fj = o.optJSONObject("fullJson")
+                if (isNonFoodCartEntry(title, fj)) continue
                 if (ScanHistoryStore.isPoisonedProduceEntry(title, fj ?: o)) continue
                 val existing = tripCart.firstOrNull { isSameCartItem(it.key, title) || isSameCartItem(it.title, title) }
                 if (existing != null) {
@@ -600,7 +793,14 @@ class OverlayWindowService : Service() {
                 if (fj != null) {
                     ScanApi.applyLocalWatchlistToData(this, fj)
                 }
-                val score = fj?.optJSONObject("result")?.optInt("score", o.optInt("score", 50)) ?: o.optInt("score", 50)
+                val resObj = fj?.optJSONObject("result")
+                val score = if (resObj != null && resObj.has("score") && !resObj.isNull("score")) {
+                    resObj.optInt("score", 0).coerceIn(0, 100)
+                } else if (o.has("score") && !o.isNull("score")) {
+                    o.optInt("score", 0).coerceIn(0, 100)
+                } else {
+                    continue
+                }
                 tripCart.add(
                     TripCartItem(
                         key = cleanCartTitle(o.optString("key")).ifBlank { title },
@@ -611,6 +811,8 @@ class OverlayWindowService : Service() {
                         fullJson = fj,
                         fromCartScreen = o.optBoolean("fromCartScreen", false),
                         lastSeenAtMs = o.optLong("lastSeenAtMs", 0L),
+                        quantity = o.optInt("quantity", 1).coerceIn(1, 99),
+                        isNonFood = false,
                     )
                 )
             }
@@ -621,13 +823,14 @@ class OverlayWindowService : Service() {
         climbAnimator?.cancel()
         isCartAvgMode = true
         showPill()
+        val units = totalCartUnits()
         climbAnimator = ValueAnimator.ofInt(from, to).apply {
             duration = 750L
             addUpdateListener { anim ->
                 if (!isCartAvgMode) return@addUpdateListener
                 val v = anim.animatedValue as Int
                 displayedCartAvg = v
-                pillTextView?.text = "🛒 Cart Avg: $v/100"
+                pillTextView?.text = if (units > 0) "🛒 Cart Avg: $v/100 ($units)" else "🛒 Cart Avg: $v/100"
                 (pillDotView?.background as? GradientDrawable)?.setColor(toneColor(colorNameForScore(v)))
             }
             start()
@@ -730,27 +933,28 @@ class OverlayWindowService : Service() {
             ScanApi.applyLocalWatchlistToData(this, data)
         }
         val result = data?.optJSONObject("result")
-        val ok = data?.optBoolean("ok") == true && result != null
-        val effectiveScore = result?.optInt("score") ?: 50
+        val ok = data?.optBoolean("ok") == true && result != null && result.has("score") && !result.isNull("score")
+        val effectiveScore = if (ok) result!!.optInt("score", 0).coerceIn(0, 100) else 0
         val avg = displayedCartAvg
+        val units = totalCartUnits()
         val dietaryAlerts = if (ok && !isCartAvgMode && loadingText == null && !isPdpScrollHint) {
             ScanApi.evaluateDietaryAlerts(this, data?.optJSONObject("product"), result, data)
         } else {
             emptyList()
         }
         val tone = when {
-            loadingText != null || isPdpScrollHint -> Color.GRAY
-            isCartAvgMode && tripCart.isEmpty() -> BRAND
-            isCartAvgMode -> toneColor(colorNameForScore(avg))
-            !ok -> Color.GRAY
+            loadingText != null || isPdpScrollHint -> NEUTRAL_SLATE
+            isCartAvgMode && avg == null -> NEUTRAL_SLATE
+            isCartAvgMode && avg != null -> toneColor(colorNameForScore(avg))
+            !ok -> NEUTRAL_SLATE
             dietaryAlerts.isNotEmpty() -> 0xFFEF4444.toInt()
             else -> toneColor(colorNameForScore(effectiveScore))
         }
         val label = when {
             loadingText != null -> loadingText
             isPdpScrollHint -> "Scroll down to grade item"
-            isCartAvgMode && tripCart.isEmpty() -> "🛒 Cart: Open Cart to Grade"
-            isCartAvgMode -> "🛒 Cart Avg: $avg/100 (${tripCart.size})"
+            isCartAvgMode && avg == null -> "🛒 Cart Avg: --"
+            isCartAvgMode && avg != null -> "🛒 Cart Avg: $avg/100 ($units)"
             ok && dietaryAlerts.isNotEmpty() -> {
                 val badgeSummary = dietaryAlerts.take(2).joinToString(" + ") { it.shortBadge }
                 val extraCount = if (dietaryAlerts.size > 2) " +${dietaryAlerts.size - 2}" else ""
@@ -893,11 +1097,16 @@ class OverlayWindowService : Service() {
             val fj = item.fullJson
             if (fj != null) {
                 ScanApi.applyLocalWatchlistToData(this, fj)
-                item.score = fj.optJSONObject("result")?.optInt("score", item.score) ?: item.score
+                val resObj = fj.optJSONObject("result")
+                if (resObj != null && resObj.has("score") && !resObj.isNull("score")) {
+                    item.score = resObj.optInt("score", item.score).coerceIn(0, 100)
+                }
             }
         }
         tripCart.removeAll {
             it.isSeed ||
+                it.isNonFood ||
+                NON_FOOD_CART_ITEM.containsMatchIn(it.title) ||
                 it.title.isBlank() ||
                 it.title.lowercase() in DEMO_SEED_TITLES ||
                 VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
@@ -905,8 +1114,9 @@ class OverlayWindowService : Service() {
         }
         val avg = calcCartAvg()
         displayedCartAvg = avg
-        val tone = toneColor(colorNameForScore(avg))
-        val storeName = storeDisplayName(currentStoreKey)
+        val tone = if (avg != null) toneColor(colorNameForScore(avg)) else NEUTRAL_SLATE
+        val storeName = storeDisplayName(currentStoreBucket)
+        val totalUnits = totalCartUnits()
 
         val backdrop = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -938,9 +1148,9 @@ class OverlayWindowService : Service() {
             })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                val itemCountLabel = if (tripCart.size == 1) "1 ITEM" else "${tripCart.size} ITEMS"
+                val itemCountLabel = if (totalUnits == 1) "1 ITEM" else "$totalUnits ITEMS"
                 addView(text("HEYBROC · ${storeName.uppercase()} CART ($itemCountLabel)", 11f, BRAND, bold = true))
-                val headerText = if (tripCart.isEmpty()) "$storeName Cart: Empty" else "Cart Average: $avg/100"
+                val headerText = if (avg == null) "$storeName Cart: -- (Empty)" else "Cart Average: $avg/100"
                 addView(text(headerText, 20f, INK, bold = true))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -951,7 +1161,7 @@ class OverlayWindowService : Service() {
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
                     setOnClickListener {
                         tripCart.clear()
-                        displayedCartAvg = 100
+                        displayedCartAvg = null
                         persistCart()
                         showAuditorDrawer()
                     }
@@ -965,24 +1175,24 @@ class OverlayWindowService : Service() {
             })
         })
 
-        if (tripCart.isEmpty()) {
+        if (avg == null) {
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 background = GradientDrawable().apply {
-                    setColor(0xFFF0FDF4.toInt())
-                    setStroke(dp(1), 0xFFBBF7D0.toInt())
+                    setColor(0xFFF8FAFC.toInt())
+                    setStroke(dp(1), 0xFFE2E8F0.toInt())
                     cornerRadius = dp(12).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = dp(10); bottomMargin = dp(6) }
-                addView(text("💡 ALREADY HAVE ITEMS IN YOUR ${storeName.uppercase()} CART?", 11f, 0xFF166534.toInt(), bold = true))
+                addView(text("💡 YOUR ${storeName.uppercase()} CART IS EMPTY", 11f, NEUTRAL_SLATE, bold = true))
                 addView(text(
-                    "Open your $storeName Cart and scroll from top to bottom once — HeyBroc automatically scans every visible item as you scroll (no need to remove and re-add items!).",
+                    "Open your $storeName Cart and scroll from top to bottom once — HeyBroc automatically scans every visible food item in this store's cart.",
                     12.5f,
-                    0xFF14532D.toInt()
+                    INK_2
                 ).apply { setPadding(0, dp(3), 0, 0) })
             })
         } else {
@@ -993,7 +1203,7 @@ class OverlayWindowService : Service() {
                 addView(GaugeView(context, avg, "Cart Avg", tone), LinearLayout.LayoutParams(dp(84), dp(84)).apply { marginEnd = dp(14) })
                 addView(
                     text(
-                        "Showing ${tripCart.size} graded ${if (tripCart.size == 1) "item" else "items"} in your $storeName cart.",
+                        "Showing $totalUnits graded ${if (totalUnits == 1) "item" else "items"} (${tripCart.size} unique) in your $storeName cart.",
                         12.5f,
                         INK_2
                     ),
@@ -1028,6 +1238,8 @@ class OverlayWindowService : Service() {
             val swapTitle = swapObj?.optString("title", "Clean Alternative").orEmpty()
             val swapScore = swapObj?.optInt("score", 0) ?: 0
             val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
+            val swapUnlocked = hasCleanSwap && ScanApi.isSwapUnlocked(this, item.title, swapTitle)
+            val canUseSwapNow = swapUnlocked || ScanApi.canUseSwap(this)
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -1044,27 +1256,100 @@ class OverlayWindowService : Service() {
                         ellipsize = TextUtils.TruncateAt.END
                     })
                     if (hasCleanSwap && swapTitle.isNotBlank()) {
-                        addView(text("↳ Clean Swap: $swapTitle$swapScoreSuffix", 11.5f, 0xFF0B5E39.toInt(), bold = true).apply {
+                        val subLine = when {
+                            swapUnlocked -> "↳ Clean Swap: $swapTitle$swapScoreSuffix"
+                            canUseSwapNow -> "↳ 🔒 Clean Swap Available$swapScoreSuffix · Tap to reveal"
+                            else -> "↳ 🔒 Clean Swap Locked$swapScoreSuffix · Go Pro"
+                        }
+                        val subColor = if (!swapUnlocked && !canUseSwapNow) 0xFF92400E.toInt() else 0xFF0B5E39.toInt()
+                        addView(text(subLine, 11.5f, subColor, bold = true).apply {
                             maxLines = 1
                             ellipsize = TextUtils.TruncateAt.END
                             setPadding(0, dp(2), 0, 0)
                         })
                     }
                 })
+                // Compact quantity stepper (− / qty / +)
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        cornerRadius = dp(999).toFloat()
+                        setStroke(dp(1), 0x2215201B)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        marginStart = dp(4)
+                        marginEnd = dp(4)
+                    }
+                    addView(text("−", 12.5f, INK_2, bold = true).apply {
+                        setPadding(dp(7), dp(3), dp(6), dp(3))
+                        setOnClickListener {
+                            if (item.quantity <= 1) {
+                                tripCart.removeAll { it.key == item.key }
+                            } else {
+                                item.quantity = (item.quantity - 1).coerceIn(1, 99)
+                            }
+                            displayedCartAvg = calcCartAvg()
+                            persistCart()
+                            showAuditorDrawer()
+                        }
+                    })
+                    addView(text("${item.quantity}", 11.5f, INK, bold = true).apply {
+                        setPadding(dp(2), dp(3), dp(2), dp(3))
+                    })
+                    addView(text("+", 12.5f, INK_2, bold = true).apply {
+                        setPadding(dp(6), dp(3), dp(7), dp(3))
+                        setOnClickListener {
+                            item.quantity = (item.quantity + 1).coerceIn(1, 99)
+                            displayedCartAvg = calcCartAvg()
+                            persistCart()
+                            showAuditorDrawer()
+                        }
+                    })
+                })
                 addView(text("${item.score}/100", 12.5f, toneColor(colorNameForScore(item.score)), bold = true).apply {
-                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                    setPadding(dp(6), dp(4), dp(6), dp(4))
                 })
                 if (hasCleanSwap && swapObj != null) {
                     val itemPaid = swapObj.optBoolean("isPaidLink", false)
-                    addView(text(if (itemPaid) "Preview · paid" else "Preview Swap", 11.5f, Color.WHITE, bold = true).apply {
+                    val btnLabel = when {
+                        swapUnlocked -> if (itemPaid) "Preview · paid" else "Preview Swap"
+                        canUseSwapNow -> "🔓 Reveal"
+                        else -> "🔒 Go Pro"
+                    }
+                    addView(text(btnLabel, 11.5f, Color.WHITE, bold = true).apply {
                         setPadding(dp(10), dp(6), dp(10), dp(6))
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                         setOnClickListener {
-                            showSwapPreviewModal(
-                                swap = swapObj,
-                                fromCartItem = item,
-                                returnToAuditor = true
-                            )
+                            if (swapUnlocked) {
+                                val candidates = extractSwapCandidatesForItem(item.fullJson, swapObj)
+                                showSwapPreviewModal(
+                                    swap = swapObj,
+                                    fromCartItem = item,
+                                    returnToAuditor = true,
+                                    candidates = candidates,
+                                    candidateIdx = 0
+                                )
+                            } else if (canUseSwapNow) {
+                                if (ScanApi.unlockSwapForProduct(this@OverlayWindowService, item.title, swapTitle)) {
+                                    val candidates = extractSwapCandidatesForItem(item.fullJson, swapObj)
+                                    showSwapPreviewModal(
+                                        swap = swapObj,
+                                        fromCartItem = item,
+                                        returnToAuditor = true,
+                                        candidates = candidates,
+                                        candidateIdx = 0
+                                    )
+                                }
+                            } else {
+                                val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                removeCard()
+                                showPill()
+                                runCatching { startActivity(i) }
+                            }
                         }
                     })
                 }
@@ -1081,23 +1366,28 @@ class OverlayWindowService : Service() {
             })
         }
 
-        val dirtyWithSwaps = tripCart.filter { it.score < 75 && it.swapObj != null }
-        if (dirtyWithSwaps.isNotEmpty()) {
-            val projectedAvg = if (tripCart.isEmpty()) 100 else {
-                tripCart.sumOf { item ->
-                    if (item.score < 75 && item.swapObj != null) {
-                        val s = item.swapObj!!.optInt("score", 0)
-                        if (s > 0) s.coerceAtLeast(item.score) else item.score
-                    } else {
-                        item.score
-                    }
-                } / tripCart.size
+        val foodItems = scoredFoodItems()
+        val dirtyWithSwaps = foodItems.filter { it.score < 75 && it.swapObj != null }
+        if (dirtyWithSwaps.isNotEmpty() && avg != null) {
+            val unitsDenom = foodItems.sumOf { it.quantity.coerceIn(1, 99) }.coerceAtLeast(1)
+            val projectedWeightedSum = foodItems.sumOf { item ->
+                val itemScore = if (item.score < 75 && item.swapObj != null) {
+                    val s = item.swapObj!!.optInt("score", 0)
+                    if (s > 0) s.coerceAtLeast(item.score) else item.score
+                } else {
+                    item.score
+                }
+                itemScore.coerceIn(0, 100) * item.quantity.coerceIn(1, 99)
             }
+            val projectedAvg = Math.round(projectedWeightedSum.toFloat() / unitsDenom.toFloat())
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
             val count = dirtyWithSwaps.size
+            val anyUnlocked = dirtyWithSwaps.any {
+                ScanApi.isSwapUnlocked(this, it.title, it.swapObj?.optString("title").orEmpty())
+            }
             val anyPaidLink = dirtyWithSwaps.any { it.swapObj?.optBoolean("isPaidLink", false) == true }
-            val paidSuffix = if (anyPaidLink) " · paid link" else ""
+            val paidSuffix = if (anyPaidLink && (ScanApi.isProActive(this) || rem > 0 || anyUnlocked)) " · paid link" else ""
             val ctaText = when {
                 count == 1 -> {
                     val onlyItem = dirtyWithSwaps[0]
@@ -1112,7 +1402,7 @@ class OverlayWindowService : Service() {
                         else -> "🔒 Unlock Clean Swap$scoreTag — Go Pro"
                     }
                 }
-                ScanApi.isProActive(this) || rem > 0 ->
+                ScanApi.isProActive(this) || rem > 0 || anyUnlocked ->
                     "✨ Review All $count Clean Swaps (Cart Avg $avg → $projectedAvg/100)$paidSuffix"
                 else ->
                     "🔒 Review All $count Clean Swaps (Avg $avg → $projectedAvg/100) — Go Pro"
@@ -1136,12 +1426,25 @@ class OverlayWindowService : Service() {
                             showPill()
                             runCatching { startActivity(i) }
                         } else {
+                            if (!swapUnlocked) {
+                                ScanApi.unlockSwapForProduct(this@OverlayWindowService, onlyItem.title, swapTitle)
+                            }
+                            val candidates = extractSwapCandidatesForItem(onlyItem.fullJson, firstSwap)
                             showSwapPreviewModal(
                                 swap = firstSwap,
                                 fromCartItem = onlyItem,
-                                returnToAuditor = true
+                                returnToAuditor = true,
+                                candidates = candidates,
+                                candidateIdx = 0
                             )
                         }
+                    } else if (!ScanApi.isProActive(this@OverlayWindowService) && rem <= 0 && !anyUnlocked) {
+                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        removeCard()
+                        showPill()
+                        runCatching { startActivity(i) }
                     } else {
                         showSwapAllModal(dirtyWithSwaps, avg, projectedAvg)
                     }
@@ -1194,7 +1497,7 @@ class OverlayWindowService : Service() {
     private fun showSwapAllModal(dirtyWithSwaps: List<TripCartItem>, currentAvg: Int, projectedAvg: Int) {
         removeCard()
         removePill()
-        val storeName = storeDisplayName(currentStoreKey)
+        val storeName = storeDisplayName(currentStoreBucket)
         val sortedDirty = dirtyWithSwaps.sortedBy { it.score }
 
         val backdrop = object : FrameLayout(this) {
@@ -1246,6 +1549,8 @@ class OverlayWindowService : Service() {
             val swapScore = swapObj.optInt("score", 0)
             val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
             val swapPaid = swapObj.optBoolean("isPaidLink", false)
+            val swapUnlocked = ScanApi.isSwapUnlocked(this, item.title, swapTitle)
+            val canUseRowSwap = swapUnlocked || ScanApi.canUseSwap(this)
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -1257,12 +1562,27 @@ class OverlayWindowService : Service() {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
                 isClickable = true
                 setOnClickListener {
-                    showSwapPreviewModal(
-                        swap = swapObj,
-                        fromCartItem = item,
-                        returnToAuditor = false,
-                        returnToSwapAll = Triple(dirtyWithSwaps, currentAvg, projectedAvg)
-                    )
+                    if (swapUnlocked || canUseRowSwap) {
+                        if (!swapUnlocked) {
+                            ScanApi.unlockSwapForProduct(this@OverlayWindowService, item.title, swapTitle)
+                        }
+                        val candidates = extractSwapCandidatesForItem(item.fullJson, swapObj)
+                        showSwapPreviewModal(
+                            swap = swapObj,
+                            fromCartItem = item,
+                            returnToAuditor = false,
+                            returnToSwapAll = Triple(dirtyWithSwaps, currentAvg, projectedAvg),
+                            candidates = candidates,
+                            candidateIdx = 0
+                        )
+                    } else {
+                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        removeCard()
+                        showPill()
+                        runCatching { startActivity(i) }
+                    }
                 }
 
                 addView(text("Instead of: ${item.title} (${item.score}/100)", 12f, 0xFFB91C1C.toInt(), bold = true).apply {
@@ -1273,29 +1593,65 @@ class OverlayWindowService : Service() {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(6), 0, 0)
-                    addView(buildSwapThumbnailView(swapObj, dp(40)).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(10) }
-                    })
+                    if (swapUnlocked) {
+                        addView(buildSwapThumbnailView(swapObj, dp(40)).apply {
+                            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(10) }
+                        })
+                    }
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                        addView(text("➔ $swapTitle$swapScoreSuffix", 13f, 0xFF0B5E39.toInt(), bold = true).apply {
+                        val rowHeadline = when {
+                            swapUnlocked -> "➔ $swapTitle$swapScoreSuffix"
+                            canUseRowSwap -> "🔒 Clean Swap Available$swapScoreSuffix"
+                            else -> "🔒 Clean Replacement Locked$swapScoreSuffix"
+                        }
+                        addView(text(rowHeadline, 13f, if (!swapUnlocked && !canUseRowSwap) 0xFF92400E.toInt() else 0xFF0B5E39.toInt(), bold = true).apply {
                             maxLines = 2
                             ellipsize = TextUtils.TruncateAt.END
                         })
-                        addView(text("Tap card to preview clean ingredients", 11f, INK_2))
+                        val rowSub = when {
+                            swapUnlocked -> "Tap card to preview clean ingredients"
+                            canUseRowSwap -> "Tap to unlock & preview clean ingredients"
+                            else -> "Upgrade to HeyBroc Pro to unlock unlimited swaps"
+                        }
+                        addView(text(rowSub, 11f, INK_2))
                     })
-                    addView(text(if (swapPaid) "Find in $storeName ↗ · paid" else "Find in $storeName ↗", 11.5f, Color.WHITE, bold = true).apply {
+                    val rowActionText = when {
+                        swapUnlocked -> if (swapPaid) "Find in $storeName ↗ · paid" else "Find in $storeName ↗"
+                        canUseRowSwap -> "🔓 Reveal"
+                        else -> "Go Pro ↗"
+                    }
+                    addView(text(rowActionText, 11.5f, Color.WHITE, bold = true).apply {
                         setPadding(dp(11), dp(7), dp(11), dp(7))
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
-                        setOnClickListener { openSwap(swapObj, item) }
+                        setOnClickListener {
+                            if (swapUnlocked) {
+                                val candidates = extractSwapCandidatesForItem(item.fullJson, swapObj)
+                                openSwap(swapObj, item, candidates, 0)
+                            } else if (canUseRowSwap) {
+                                if (ScanApi.unlockSwapForProduct(this@OverlayWindowService, item.title, swapTitle)) {
+                                    showSwapAllModal(dirtyWithSwaps, currentAvg, projectedAvg)
+                                }
+                            } else {
+                                val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                removeCard()
+                                showPill()
+                                runCatching { startActivity(i) }
+                            }
+                        }
                     })
                 })
             })
         }
 
-        val worstItem = sortedDirty.firstOrNull()
+        val worstItem = sortedDirty.firstOrNull {
+            val st = it.swapObj?.optString("title").orEmpty()
+            ScanApi.isSwapUnlocked(this, it.title, st) || ScanApi.canUseSwap(this)
+        }
         if (worstItem?.swapObj != null) {
             val worstPaid = worstItem.swapObj?.optBoolean("isPaidLink", false) == true
             val worstSuffix = if (worstPaid) " · paid link" else ""
@@ -1304,7 +1660,10 @@ class OverlayWindowService : Service() {
                 setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
-                setOnClickListener { openSwap(worstItem.swapObj!!, worstItem) }
+                setOnClickListener {
+                    val candidates = extractSwapCandidatesForItem(worstItem.fullJson, worstItem.swapObj)
+                    openSwap(worstItem.swapObj!!, worstItem, candidates, 0)
+                }
             })
         }
 
@@ -1347,6 +1706,29 @@ class OverlayWindowService : Service() {
         openFlag = null
         openedCardFromAuditor = true
         showCard()
+    }
+
+    private fun extractSwapCandidatesForItem(sourceJson: JSONObject?, primarySwap: JSONObject?): List<JSONObject> {
+        val out = mutableListOf<JSONObject>()
+        val seen = HashSet<String>()
+        fun addCandidate(cand: JSONObject?) {
+            if (cand == null) return
+            val title = cand.optString("title").trim()
+            if (title.isBlank()) return
+            val norm = title.lowercase()
+            if (seen.add(norm)) {
+                out.add(cand)
+            }
+        }
+        addCandidate(primarySwap)
+        val arr = sourceJson?.optJSONArray("swapCandidates")
+            ?: sourceJson?.optJSONObject("result")?.optJSONArray("swapCandidates")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                addCandidate(arr.optJSONObject(i))
+            }
+        }
+        return out
     }
 
     /* ---------------- Health Insights card (Mode A tap) ---------------- */
@@ -1397,7 +1779,8 @@ class OverlayWindowService : Service() {
         }
 
         // Compact Header
-        val cartAvgBadge = if (tripCart.isEmpty()) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG ${calcCartAvg()}/100"
+        val cAvg = calcCartAvg()
+        val cartAvgBadge = if (cAvg == null) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG $cAvg/100"
         val prodObj = d.optJSONObject("product")
         val prodTitle = prodObj?.optString("title").orEmpty()
         val prodBrand = prodObj?.optString("brand").orEmpty()
@@ -1648,8 +2031,10 @@ class OverlayWindowService : Service() {
         }
         if (swap != null) {
             upgradeCachedSwapObj(swap, prodTitle)
+            val cardCandidates = extractSwapCandidatesForItem(d, swap)
             val swapTitle = swap.optString("title", "Clean Alternative")
             val swapScore = swap.optInt("score", 0)
+            val swapFlagCount = swap.optJSONArray("flagged")?.length() ?: 0
             val swapRating = when {
                 swapScore >= 75 -> "Excellent"
                 swapScore >= 50 -> "Mediocre"
@@ -1661,7 +2046,7 @@ class OverlayWindowService : Service() {
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
             val isPaidLink = swap.optBoolean("isPaidLink", false)
-            val storeName = storeDisplayName(currentStoreKey)
+            val storeName = storeDisplayName(currentStoreBucket)
             val baseSwapCta = "Find in $storeName ↗"
             val swapBtnLabel = if (isPaidLink) "$baseSwapCta · paid link" else baseSwapCta
 
@@ -1674,7 +2059,7 @@ class OverlayWindowService : Service() {
                 // Product photo thumbnail (46dp x 46dp rounded) — tapping opens full Swap Preview
                 val thumbView = buildSwapThumbnailView(swap, dp(46)).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(9) }
-                    setOnClickListener { showSwapPreviewModal(swap) }
+                    setOnClickListener { showSwapPreviewModal(swap, candidates = cardCandidates, candidateIdx = 0) }
                 }
                 topRow.addView(thumbView)
 
@@ -1682,7 +2067,7 @@ class OverlayWindowService : Service() {
                 topRow.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     isClickable = true
-                    setOnClickListener { showSwapPreviewModal(swap) }
+                    setOnClickListener { showSwapPreviewModal(swap, candidates = cardCandidates, candidateIdx = 0) }
                     addView(text("CLEAN SWAP · TAP TO PREVIEW", 9.5f, BRAND, bold = true).apply { letterSpacing = 0.05f })
                     addView(text(swapTitle, 12.5f, INK, bold = true).apply {
                         maxLines = 2
@@ -1697,7 +2082,7 @@ class OverlayWindowService : Service() {
                     setPadding(dp(12), dp(9), dp(12), dp(9))
                     background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
-                    setOnClickListener { openSwap(swap) }
+                    setOnClickListener { openSwap(swap, null, cardCandidates, 0) }
                 })
                 swapBox.addView(topRow)
 
@@ -1706,7 +2091,18 @@ class OverlayWindowService : Service() {
                         maxLines = 1
                         ellipsize = TextUtils.TruncateAt.END
                         setPadding(0, dp(5), 0, 0)
-                        setOnClickListener { showSwapPreviewModal(swap) }
+                        setOnClickListener { showSwapPreviewModal(swap, candidates = cardCandidates, candidateIdx = 0) }
+                    })
+                }
+                if (cardCandidates.size > 1) {
+                    swapBox.addView(text(
+                        "⇄ ${cardCandidates.size} clean options available · Tap to switch if out of stock",
+                        10.5f,
+                        BRAND,
+                        bold = true
+                    ).apply {
+                        setPadding(0, dp(4), 0, 0)
+                        setOnClickListener { showSwapPreviewModal(swap, candidates = cardCandidates, candidateIdx = 0) }
                     })
                 }
             } else if (rem > 0) {
@@ -1714,7 +2110,12 @@ class OverlayWindowService : Service() {
                 swapBox.addView(text("🔒 CLEAN SWAP FOUND · ${swapScoreBadge.uppercase()}", 9.5f, BRAND, bold = true).apply {
                     letterSpacing = 0.05f
                 })
-                swapBox.addView(text("1-for-1 Clean Alternative (0 Flagged Additives)", 12.5f, INK, bold = true).apply {
+                val teaserText = if (swapFlagCount == 0) {
+                    "1-for-1 Clean Alternative (0 Flagged Additives)"
+                } else {
+                    "1-for-1 Clean Alternative (Higher Score)"
+                }
+                swapBox.addView(text(teaserText, 12.5f, INK, bold = true).apply {
                     setPadding(0, dp(3), 0, 0)
                 })
                 swapBox.addView(text("You have $rem of $lim free Clean Swaps remaining.", 11f, 0xFF0B5E39.toInt()).apply {
@@ -1786,7 +2187,13 @@ class OverlayWindowService : Service() {
                 })
             }
         } else {
-            swapBox.addView(text("✓ Great pick — 0 Watchlist Additives ($score/100).", 12.5f, 0xFF0B5E39.toInt(), bold = true))
+            val cleanSummaryText = if (flagCount == 0) {
+                "✓ Great pick — 0 Watchlist Additives ($score/100)."
+            } else {
+                "✓ Score $score/100 · $flagCount Watchlist Additive${if (flagCount == 1) "" else "s"} Flagged above."
+            }
+            val summaryColor = if (flagCount == 0) 0xFF0B5E39.toInt() else INK_2
+            swapBox.addView(text(cleanSummaryText, 12.5f, summaryColor, bold = true))
         }
         sheet.addView(swapBox)
         val lookupObj = d.optJSONObject("lookup")
@@ -1878,15 +2285,24 @@ class OverlayWindowService : Service() {
         swap: JSONObject,
         fromCartItem: TripCartItem? = null,
         returnToAuditor: Boolean = false,
-        returnToSwapAll: Triple<List<TripCartItem>, Int, Int>? = null
+        returnToSwapAll: Triple<List<TripCartItem>, Int, Int>? = null,
+        candidates: List<JSONObject> = emptyList(),
+        candidateIdx: Int = 0
     ) {
         val preserveOpenedFromAuditor = openedCardFromAuditor
         removeCard()
         openedCardFromAuditor = preserveOpenedFromAuditor
         removePill()
-        upgradeCachedSwapObj(swap, fromCartItem?.title ?: data?.optJSONObject("product")?.optString("title").orEmpty())
+        val previewProdTitle = fromCartItem?.title?.takeIf { it.isNotBlank() }
+            ?: data?.optJSONObject("product")?.optString("title").orEmpty()
+        upgradeCachedSwapObj(swap, previewProdTitle)
+        val effectiveCandidates = candidates.ifEmpty {
+            extractSwapCandidatesForItem(fromCartItem?.fullJson ?: data, swap)
+        }
+        val safeIdx = if (effectiveCandidates.isNotEmpty()) candidateIdx.coerceIn(0, effectiveCandidates.size - 1) else 0
         val swapTitle = swap.optString("title", "Clean Alternative")
         val swapScore = swap.optInt("score", 0)
+        val swapFlagCount = swap.optJSONArray("flagged")?.length() ?: 0
         val swapRating = when {
             swapScore >= 75 -> "Excellent"
             swapScore >= 50 -> "Mediocre"
@@ -1894,7 +2310,7 @@ class OverlayWindowService : Service() {
         }
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").trim()
-        val storeName = storeDisplayName(currentStoreKey)
+        val storeName = storeDisplayName(currentStoreBucket)
         val isPaidLink = swap.optBoolean("isPaidLink", false)
         val baseModalCta = "🔍 Find in $storeName ↗"
         val modalSwapCta = if (isPaidLink) "$baseModalCta · paid link" else baseModalCta
@@ -1937,7 +2353,12 @@ class OverlayWindowService : Service() {
             })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("CLEAN SWAP PREVIEW", 11f, BRAND, bold = true).apply { letterSpacing = 0.08f })
+                val headerTag = if (effectiveCandidates.size > 1) {
+                    "CLEAN SWAP PREVIEW · OPTION ${safeIdx + 1} OF ${effectiveCandidates.size}"
+                } else {
+                    "CLEAN SWAP PREVIEW"
+                }
+                addView(text(headerTag, 11f, BRAND, bold = true).apply { letterSpacing = 0.08f })
                 addView(text(swapTitle, 18f, INK, bold = true))
                 if (swapSize.isNotBlank()) {
                     addView(text(swapSize, 12.5f, INK_2).apply { setPadding(0, dp(2), 0, 0) })
@@ -1959,7 +2380,7 @@ class OverlayWindowService : Service() {
             })
         })
 
-        // Score Gauge + Zero Watchlist Additives badge
+        // Score Gauge + Watchlist Additives badge
         sheet.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1967,7 +2388,13 @@ class OverlayWindowService : Service() {
             addView(GaugeView(context, swapScore, swapRating, 0xFF16A34A.toInt()), LinearLayout.LayoutParams(dp(92), dp(92)).apply { marginEnd = dp(14) })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("✓ 0 Watchlist Additives", 14f, 0xFF16A34A.toInt(), bold = true))
+                val flagHeadline = if (swapFlagCount == 0) {
+                    "✓ 0 Watchlist Additives"
+                } else {
+                    "$swapFlagCount Watchlist Additive${if (swapFlagCount == 1) "" else "s"}"
+                }
+                val flagTone = if (swapFlagCount == 0) 0xFF16A34A.toInt() else 0xFFCA8A04.toInt()
+                addView(text(flagHeadline, 14f, flagTone, bold = true))
                 addView(text("Clean 1-for-1 replacement with whole-food ingredients.", 12.5f, INK_2).apply {
                     setPadding(0, dp(4), 0, 0)
                 })
@@ -1987,17 +2414,46 @@ class OverlayWindowService : Service() {
             })
         }
 
-        // Primary CTA: Open in Store App (or Upgrade / Invite if all 3 free swaps used)
-        val previewProdTitle = fromCartItem?.title?.takeIf { it.isNotBlank() }
-            ?: data?.optJSONObject("product")?.optString("title").orEmpty()
+        // Primary CTA: Open in Store App (or Upgrade / Invite if all free swaps used)
         val canOpenSwapNow = ScanApi.isSwapUnlocked(this, previewProdTitle, swapTitle) || ScanApi.canUseSwap(this)
         if (canOpenSwapNow) {
+            if (effectiveCandidates.size > 1) {
+                sheet.addView(text(
+                    "⇄ Option ${safeIdx + 1} of ${effectiveCandidates.size} · Try Next Clean Alternative (if out of stock)",
+                    12f,
+                    BRAND,
+                    bold = true
+                ).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF0FDF4.toInt())
+                        cornerRadius = dp(999).toFloat()
+                        setStroke(dp(1), 0x4416A34A)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(12) }
+                    setOnClickListener {
+                        val nextIdx = (safeIdx + 1) % effectiveCandidates.size
+                        showSwapPreviewModal(
+                            swap = effectiveCandidates[nextIdx],
+                            fromCartItem = fromCartItem,
+                            returnToAuditor = returnToAuditor,
+                            returnToSwapAll = returnToSwapAll,
+                            candidates = effectiveCandidates,
+                            candidateIdx = nextIdx
+                        )
+                    }
+                })
+            }
             sheet.addView(text(modalSwapCta, 14f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(18), dp(14), dp(18), dp(14))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
-                setOnClickListener { openSwap(swap, fromCartItem) }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = if (effectiveCandidates.size > 1) dp(8) else dp(16) }
+                setOnClickListener { openSwap(swap, fromCartItem, effectiveCandidates, safeIdx) }
             })
         } else {
             val lim = ScanApi.weeklySwapsLimit(this)
@@ -2085,9 +2541,9 @@ class OverlayWindowService : Service() {
         val radius = dp(14).toFloat()
         val box = FrameLayout(this).apply {
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
+                setColor(0xFFF8FAFC.toInt())
                 cornerRadius = radius
-                setStroke(dp(1), 0x3316A34A)
+                setStroke(dp(1), 0x2615201B)
             }
             clipToOutline = true
             outlineProvider = object : ViewOutlineProvider() {
@@ -2096,16 +2552,21 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        val iv = ImageView(this).apply {
-            setImageResource(R.drawable.broc_mascot)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setPadding(dp(6), dp(6), dp(6), dp(6))
+        val initialChar = swapTitle.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "•"
+        val placeholderTv = text(initialChar, 15f, NEUTRAL_SLATE, bold = true).apply {
+            gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
+        val iv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        box.addView(placeholderTv)
         box.addView(iv)
 
         swapBitmapCache.get(fullUrl)?.let { cached ->
-            iv.setPadding(dp(2), dp(2), dp(2), dp(2))
+            placeholderTv.visibility = View.GONE
             iv.setImageBitmap(cached)
             return box
         }
@@ -2146,6 +2607,7 @@ class OverlayWindowService : Service() {
             if (bmp != null) {
                 swapBitmapCache.put(cacheKey, bmp)
                 mainUiHandler.post {
+                    placeholderTv.visibility = View.GONE
                     iv.setPadding(0, 0, 0, 0)
                     iv.setImageBitmap(bmp)
                 }
@@ -2173,6 +2635,15 @@ class OverlayWindowService : Service() {
         return raw
     }
 
+    private fun rewriteInstacartRetailerUrl(raw: String, instacartSlug: String): String {
+        if (instacartSlug.isBlank() || raw.isBlank()) return raw
+        if (!raw.contains("instacart.com", ignoreCase = true)) return raw
+        return raw.replace(
+            Regex("""https?://(?:www\.)?instacart\.com/store/(?:s\?k=|[^/?#]+/s\?k=)""", RegexOption.IGNORE_CASE),
+            "https://www.instacart.com/store/$instacartSlug/s?k="
+        )
+    }
+
     private fun storePackageForKey(storeKey: String): String =
         ScanHistoryStore.storePackageForKey(storeKey)
 
@@ -2186,7 +2657,12 @@ class OverlayWindowService : Service() {
      * to Favorites & Scan History.
      * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
      */
-    private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
+    private fun openSwap(
+        swap: JSONObject,
+        explicitItem: TripCartItem? = null,
+        candidateList: List<JSONObject> = emptyList(),
+        candidateIndex: Int = 0
+    ) {
         val prodTitle = explicitItem?.title?.takeIf { it.isNotBlank() }
             ?: data?.optJSONObject("product")?.optString("title").orEmpty()
         upgradeCachedSwapObj(swap, prodTitle)
@@ -2207,8 +2683,18 @@ class OverlayWindowService : Service() {
         ScanHistoryStore.saveSwapToFavorites(this, swap, prodTitle, currentStoreKey)
 
         val target = explicitItem ?: tripCart.firstOrNull { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
+        val resolvedCandidates = candidateList.ifEmpty {
+            extractSwapCandidatesForItem(explicitItem?.fullJson ?: data, swap)
+        }
         pendingSwapFromKey = target?.key ?: prodTitle.takeIf { it.isNotBlank() }
         pendingSwapTitle = swap.optString("title").takeIf { it.isNotBlank() }
+        pendingSwapCandidates = resolvedCandidates
+        pendingSwapCandidateIdx = if (resolvedCandidates.isNotEmpty()) {
+            candidateIndex.coerceIn(0, resolvedCandidates.size - 1)
+        } else {
+            0
+        }
+        pendingSwapExplicitItem = explicitItem
 
         val searchQuery = swap.optString("searchQuery").ifBlank { swap.optString("title", "Clean Swap") }
         runCatching {
@@ -2216,15 +2702,27 @@ class OverlayWindowService : Service() {
             cm?.setPrimaryClip(ClipData.newPlainText("HeyBroc Clean Swap", searchQuery))
         }
 
-        val fallbackStoreSearchUrl = ScanHistoryStore.storeSearchUrl(currentStoreKey, searchQuery)
+        val instacartSlug = if (currentStoreBucket.startsWith("instacart:")) {
+            currentStoreBucket.substringAfter("instacart:").trim()
+        } else {
+            ""
+        }
+        val encodedQuery = runCatching { java.net.URLEncoder.encode(searchQuery, "UTF-8") }.getOrDefault(searchQuery)
+        val fallbackStoreSearchUrl = if (instacartSlug.isNotBlank()) {
+            "https://www.instacart.com/store/$instacartSlug/s?k=$encodedQuery"
+        } else {
+            ScanHistoryStore.storeSearchUrl(currentStoreKey, searchQuery)
+        }
         val rawWebUrl = normalizeStoreUrl(swap.optString("webUrl")).let {
-            if (ScanHistoryStore.urlMatchesStore(it, currentStoreKey)) it else fallbackStoreSearchUrl
+            val base = if (ScanHistoryStore.urlMatchesStore(it, currentStoreKey)) it else fallbackStoreSearchUrl
+            rewriteInstacartRetailerUrl(base, instacartSlug)
         }
         val link = normalizeStoreUrl(swap.optString("deepLink").ifBlank { rawWebUrl }).let {
-            if (ScanHistoryStore.urlMatchesStore(it, currentStoreKey)) it else rawWebUrl
+            val base = if (ScanHistoryStore.urlMatchesStore(it, currentStoreKey)) it else rawWebUrl
+            rewriteInstacartRetailerUrl(base, instacartSlug)
         }
         val pkg = storePackageForKey(currentStoreKey).ifBlank { swap.optString("androidPackage") }
-        val storeName = storeDisplayName(currentStoreKey)
+        val storeName = storeDisplayName(currentStoreBucket)
 
         openedCardFromAuditor = false
         removeCard()
@@ -2297,6 +2795,7 @@ class OverlayWindowService : Service() {
             launchFallbackIntent()
         }
     }
+
 
     /* ---------------- Helpers ---------------- */
 

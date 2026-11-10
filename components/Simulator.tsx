@@ -29,6 +29,7 @@ import {
   detectCategory,
   resolveCleanAlternative,
   resolveSwap,
+  resolveSwapCandidates,
   type Store,
   type SwapCategory,
   type SwapResult,
@@ -63,11 +64,15 @@ interface Product {
   category?: SwapCategory;
   origin: Origin;
   replacedItem?: Product;
+  quantity?: number;
+  isNonFood?: boolean;
   lookup?: { source: string; origin?: string; sourceUpdatedAt?: string | null; ms: number };
 }
 
 interface ApiScan {
   ok: boolean;
+  ignored?: boolean;
+  reason?: string;
   error?: string;
   product?: {
     title: string;
@@ -82,6 +87,49 @@ interface ApiScan {
   lookup?: { source: string; origin?: string; sourceUpdatedAt?: string | null; ms: number };
   result?: ScoreResult;
   swap?: SwapResult | null;
+  swapCandidates?: SwapResult[];
+}
+
+interface DetectedBarcodeLike {
+  rawValue?: string;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+}
+
+const clampQty = (q?: number): number => {
+  if (typeof q !== "number" || !Number.isFinite(q)) return 1;
+  return Math.max(1, Math.min(99, Math.round(q)));
+};
+
+/**
+ * Multi-barcode disambiguation: when >1 barcode appears in a camera frame or photo,
+ * select the barcode whose bounding-box center is closest to the center reticle (frameW/2, frameH/2).
+ */
+function pickClosestBarcodeToCenter(
+  barcodes: DetectedBarcodeLike[],
+  frameWidth: number,
+  frameHeight: number,
+): string | null {
+  const valid = barcodes.filter((b) => typeof b.rawValue === "string" && b.rawValue.trim().length > 0);
+  if (valid.length === 0) return null;
+  if (valid.length === 1 || frameWidth <= 0 || frameHeight <= 0) {
+    return valid[0].rawValue!.trim();
+  }
+  const cx = frameWidth / 2;
+  const cy = frameHeight / 2;
+  let best = valid[0];
+  let bestDistSq = Number.POSITIVE_INFINITY;
+  for (const b of valid) {
+    const box = b.boundingBox;
+    if (!box) continue;
+    const bx = box.x + box.width / 2;
+    const by = box.y + box.height / 2;
+    const distSq = (bx - cx) * (bx - cx) + (by - cy) * (by - cy);
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      best = b;
+    }
+  }
+  return best.rawValue!.trim();
 }
 
 type Watch = Record<Category, boolean>;
@@ -113,6 +161,7 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   ingredients: p.ingredients,
   category: p.category,
   origin: "preset",
+  quantity: 1,
 });
 
 const cleanToProduct = (cat: SwapCategory, replacedItem?: Product, store: Store = "walmart"): Product => {
@@ -131,6 +180,29 @@ const cleanToProduct = (cat: SwapCategory, replacedItem?: Product, store: Store 
     category: cat,
     origin: "swap",
     replacedItem,
+    quantity: replacedItem ? clampQty(replacedItem.quantity) : 1,
+  };
+};
+
+const swapResultToProduct = (sw: SwapResult, replacedItem?: Product, store: Store = "walmart"): Product => {
+  const cleanTitle = sw.title.replace(
+    new RegExp(`^${sw.brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
+    "",
+  ) || sw.title;
+  return {
+    key: `swap-${sw.brand}-${cleanTitle}-${replacedItem?.key ?? "direct"}-${store}`
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-"),
+    title: cleanTitle,
+    brand: sw.brand,
+    size: sw.size,
+    image: sw.image || `/api/product-image?q=${encodeURIComponent(`${sw.brand} ${cleanTitle}`)}`,
+    ingredients: sw.ingredients,
+    nutrition: sw.nutrition,
+    category: sw.category,
+    origin: "swap",
+    replacedItem,
+    quantity: replacedItem ? clampQty(replacedItem.quantity) : 1,
   };
 };
 
@@ -186,24 +258,41 @@ function useAnimatedNumber(target: number, durationMs = 720): number {
 /* Small presentational pieces                                         */
 /* ------------------------------------------------------------------ */
 
-function Gauge({ score, rating, color, size = 112 }: { score: number; rating: string; color: string; size?: number }) {
+function Gauge({ score, rating, color, size = 112 }: { score: number | null; rating: string; color: string; size?: number }) {
   const r = 44;
   const c = 2 * Math.PI * r;
+  const isEmpty = score === null || !Number.isFinite(score);
+  const safeScore = isEmpty ? 0 : Math.max(0, Math.min(100, score));
   return (
-    <div className={`gauge tone-${color}`} style={{ width: size, height: size }} aria-label={`${score} out of 100, ${rating}`}>
+    <div
+      className={`gauge tone-${isEmpty ? "neutral" : color}`}
+      style={{ width: size, height: size }}
+      aria-label={isEmpty ? `Empty cart, ${rating}` : `${safeScore} out of 100, ${rating}`}
+    >
       <svg viewBox="0 0 100 100" width={size} height={size}>
-        <circle cx="50" cy="50" r={r} className="gauge-track" />
-        <circle
-          cx="50" cy="50" r={r}
-          className="gauge-fill"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - score / 100)}
-          transform="rotate(-90 50 50)"
-        />
+        <circle cx="50" cy="50" r={r} className="gauge-track" style={isEmpty ? { stroke: "#e2e8f0" } : undefined} />
+        {!isEmpty && (
+          <circle
+            cx="50" cy="50" r={r}
+            className="gauge-fill"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - safeScore / 100)}
+            transform="rotate(-90 50 50)"
+          />
+        )}
       </svg>
       <div className="gauge-label">
-        <strong>{score}<span>/100</span></strong>
-        <em>{rating}</em>
+        {isEmpty ? (
+          <>
+            <strong style={{ color: "#64748b" }}>--</strong>
+            <em style={{ color: "#64748b" }}>{rating}</em>
+          </>
+        ) : (
+          <>
+            <strong>{safeScore}<span>/100</span></strong>
+            <em>{rating}</em>
+          </>
+        )}
       </div>
     </div>
   );
@@ -417,7 +506,32 @@ export default function Simulator({
   const [watch, setWatch] = useState<Watch>(DEFAULT_WATCHLIST);
   const [active, setActive] = useState<Product>(presetToProduct(PRESETS[0]));
   const [previousDirtyItem, setPreviousDirtyItem] = useState<Product | null>(null);
-  const [cart, setCart] = useState<Product[]>(() => PRESETS.map(presetToProduct));
+  const [cartsByStore, setCartsByStore] = useState<Record<Store, Product[]>>(() => {
+    const initial = {} as Record<Store, Product[]>;
+    for (const s of STORES) {
+      initial[s] = s === "walmart" ? PRESETS.map(presetToProduct) : [];
+    }
+    return initial;
+  });
+  const cart = useMemo(() => cartsByStore[store] ?? [], [cartsByStore, store]);
+  const setCart = useCallback(
+    (updater: Product[] | ((prev: Product[]) => Product[])) => {
+      setCartsByStore((prev) => {
+        const current = prev[store] ?? [];
+        const next = typeof updater === "function" ? updater(current) : updater;
+        return { ...prev, [store]: next };
+      });
+    },
+    [store],
+  );
+  const [selectedSwapIdx, setSelectedSwapIdx] = useState(0);
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
+  const [barcodeCameraActive, setBarcodeCameraActive] = useState(false);
+  const [barcodeStatus, setBarcodeStatus] = useState("");
+  const barcodeVideoRef = useRef<HTMLVideoElement | null>(null);
+  const barcodeStreamRef = useRef<MediaStream | null>(null);
+  const barcodeRafRef = useRef<number>(0);
+
   const [overlay, setOverlay] = useState<OverlayState>("pill");
   const [openFlag, setOpenFlag] = useState<string | null>(null);
   const [pillY, setPillY] = useState(56);
@@ -613,15 +727,19 @@ export default function Simulator({
               JSON.stringify(verifiedCreator)
             );
             if (urlCreatorCandidate) {
-              void fetch("/api/influencers", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  action: "track",
-                  code: verifiedCreator.code,
-                  event: "click",
-                }),
-              }).catch(() => {});
+              const clickSessionKey = `heybroc_creator_click_${verifiedCreator.code}`;
+              if (!window.sessionStorage.getItem(clickSessionKey)) {
+                window.sessionStorage.setItem(clickSessionKey, "1");
+                void fetch("/api/influencers", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "track",
+                    code: verifiedCreator.code,
+                    event: "click",
+                  }),
+                }).catch(() => {});
+              }
               setToast({
                 title: `🎉 Creator Code ${verifiedCreator.code} Applied`,
                 body: `${verifiedCreator.name} unlocked your 14-Day Extended Free Pro Trial!`,
@@ -856,10 +974,33 @@ export default function Simulator({
       ),
     [dietaryWatchlist, active],
   );
-  const swap = useMemo(
-    () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store, watchlist: watch, familyWatchlist }),
+  const swapCandidates = useMemo(
+    () =>
+      resolveSwapCandidates({
+        score: score.score,
+        productTitle: `${active.brand} ${active.title}`,
+        ingredients: active.ingredients,
+        category: active.category,
+        store,
+        watchlist: watch,
+        familyWatchlist,
+      }),
     [score.score, active, store, watch, familyWatchlist],
   );
+  const swap = useMemo(() => {
+    if (swapCandidates.length > 0) {
+      return swapCandidates[selectedSwapIdx % swapCandidates.length] ?? swapCandidates[0];
+    }
+    return resolveSwap({
+      score: score.score,
+      productTitle: `${active.brand} ${active.title}`,
+      ingredients: active.ingredients,
+      category: active.category,
+      store,
+      watchlist: watch,
+      familyWatchlist,
+    });
+  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist]);
   const theme = STORE_THEME[store];
 
   /* ---------------- Cart scoring & animated Cart Avg ---------------- */
@@ -880,12 +1021,27 @@ export default function Simulator({
       }),
     [cart, watch, store, familyWatchlist],
   );
-  const cartAvg = cartScored.length
-    ? Math.round(cartScored.reduce((a, r) => a + r.s.score, 0) / cartScored.length)
-    : 0;
-  const animatedCartAvg = useAnimatedNumber(cartAvg, 750);
-  const cartAvgTone = animatedCartAvg >= 75 ? "green" : animatedCartAvg >= 50 ? "yellow" : "red";
-  const dirty = cartScored.filter((r) => r.sw);
+  const totalCartUnits = useMemo(
+    () => cart.reduce((sum, item) => sum + clampQty(item.quantity), 0),
+    [cart],
+  );
+  const scoredFoodCartRows = useMemo(
+    () => cartScored.filter((r) => !r.item.isNonFood && Number.isFinite(r.s.score)),
+    [cartScored],
+  );
+  const cartAvg: number | null = useMemo(() => {
+    const totalFoodQty = scoredFoodCartRows.reduce((sum, r) => sum + clampQty(r.item.quantity), 0);
+    if (totalFoodQty === 0) return null;
+    const weightedSum = scoredFoodCartRows.reduce(
+      (sum, r) => sum + (r.s.score ?? 0) * clampQty(r.item.quantity),
+      0,
+    );
+    return Math.round(weightedSum / totalFoodQty);
+  }, [scoredFoodCartRows]);
+  const animatedCartAvg = useAnimatedNumber(cartAvg ?? 0, 750);
+  const cartAvgTone =
+    cartAvg === null ? "neutral" : animatedCartAvg >= 75 ? "green" : animatedCartAvg >= 50 ? "yellow" : "red";
+  const dirty = scoredFoodCartRows.filter((r) => r.sw);
 
   const fallbackDodged = useMemo(
     () =>
@@ -961,23 +1117,18 @@ export default function Simulator({
   const switchStore = useCallback((s: Store) => {
     setStore(s);
     setHiddenForTrip(false);
+    setSelectedSwapIdx(0);
     setActive((prev) =>
       prev.origin === "swap" && prev.category
         ? cleanToProduct(prev.category, prev.replacedItem, s)
         : prev
-    );
-    setCart((prevCart) =>
-      prevCart.map((item) =>
-        item.origin === "swap" && item.category
-          ? cleanToProduct(item.category, item.replacedItem, s)
-          : item
-      )
     );
   }, []);
 
   const showProduct = useCallback(
     (p: Product, countAsScan = true, openCardImmediately = false) => {
       setActive(p);
+      setSelectedSwapIdx(0);
       setPreviousDirtyItem(null);
       setViewMode("product");
       setYukaTab("inspect");
@@ -997,13 +1148,15 @@ export default function Simulator({
 
   /** Inspects the Clean Swap item when the user clicks its photo or title inside Health Insights. */
   const inspectCleanSwap = useCallback(
-    (cat: SwapCategory, replaced?: Product) => {
+    (cat: SwapCategory, replaced?: Product, chosenSwap?: SwapResult | null) => {
       if (!isPro && swapsUsedThisWeek >= weeklySwapLimit) {
         setPaywallOpen(true);
         return;
       }
       const target = replaced ?? (active.origin !== "swap" ? active : previousDirtyItem ?? undefined);
-      const clean = cleanToProduct(cat, target, store);
+      const clean = chosenSwap
+        ? swapResultToProduct(chosenSwap, target, store)
+        : cleanToProduct(cat, target, store);
       if (active.origin !== "swap") {
         setPreviousDirtyItem(active);
       }
@@ -1027,20 +1180,21 @@ export default function Simulator({
     return () => clearTimeout(t);
   }, []);
 
-  /** Commits a product (or a pending clean swap) to the simulated cart when added by the user. */
+  /** Commits a product (or a pending clean swap) to the active store's isolated cart. */
   const commitItemToCart = useCallback(
     (itemToAdd: Product) => {
+      const normalizedItem: Product = { ...itemToAdd, quantity: clampQty(itemToAdd.quantity) };
       const cleanScore = gradeProduct(
-        `${itemToAdd.brand} ${itemToAdd.title}`,
-        itemToAdd.ingredients,
+        `${normalizedItem.brand} ${normalizedItem.title}`,
+        normalizedItem.ingredients,
         watch,
-        itemToAdd.nutrition,
+        normalizedItem.nutrition,
         familyWatchlist,
       );
       const replacedDirty =
-        itemToAdd.origin === "swap"
-          ? itemToAdd.replacedItem ??
-            (previousDirtyItem && previousDirtyItem.category === itemToAdd.category
+        normalizedItem.origin === "swap"
+          ? normalizedItem.replacedItem ??
+            (previousDirtyItem && previousDirtyItem.category === normalizedItem.category
               ? previousDirtyItem
               : null)
           : null;
@@ -1054,17 +1208,17 @@ export default function Simulator({
           familyWatchlist,
         );
         setCart((c) => {
-          if (c.some((i) => i.key === itemToAdd.key)) return c;
+          if (c.some((i) => i.key === normalizedItem.key)) return c;
           const idx = c.findIndex((i) => i.key === replacedDirty.key);
-          if (idx === -1) return [...c, itemToAdd];
+          if (idx === -1) return [...c, normalizedItem];
           const next = [...c];
-          next[idx] = itemToAdd;
+          next[idx] = { ...normalizedItem, quantity: clampQty(c[idx].quantity) };
           return next;
         });
         setSwapHistory((prev) => [
           {
             fromTitle: `${replacedDirty.brand} ${replacedDirty.title}`,
-            toTitle: `${itemToAdd.brand} ${itemToAdd.title}`,
+            toTitle: `${normalizedItem.brand} ${normalizedItem.title}`,
             toScore: cleanScore.score,
             store,
             dodged: dirtyScore.flagged.map((f) => f.name),
@@ -1073,24 +1227,60 @@ export default function Simulator({
         ]);
         triggerClimbFlash();
         setToast({
-          title: `✓ Swapped to ${itemToAdd.brand} ${itemToAdd.title} (${cleanScore.score}/100)`,
+          title: `✓ Swapped to ${normalizedItem.brand} ${normalizedItem.title} (${cleanScore.score}/100)`,
           body: `Added clean swap to your ${STORE_META[store].label} cart · Cart Avg updated!`,
         });
         return;
       }
 
-      setCart((c) => (c.some((i) => i.key === itemToAdd.key) ? c : [...c, itemToAdd]));
+      setCart((c) => (c.some((i) => i.key === normalizedItem.key) ? c : [...c, normalizedItem]));
       setToast({
         title: "Added to cart",
-        body: `${itemToAdd.brand} ${itemToAdd.title} (${cleanScore.score}/100)`,
+        body: `${normalizedItem.brand} ${normalizedItem.title} (${cleanScore.score}/100)`,
       });
     },
-    [watch, familyWatchlist, previousDirtyItem, store, triggerClimbFlash],
+    [watch, familyWatchlist, previousDirtyItem, store, triggerClimbFlash, setCart],
   );
+
+  const removeCartItem = useCallback(
+    (itemKey: string) => {
+      setCart((prev) => prev.filter((i) => i.key !== itemKey));
+    },
+    [setCart],
+  );
+
+  const updateCartItemQty = useCallback(
+    (itemKey: string, delta: number) => {
+      setCart((prev) => {
+        const next: Product[] = [];
+        for (const item of prev) {
+          if (item.key !== itemKey) {
+            next.push(item);
+            continue;
+          }
+          const updatedQty = clampQty(item.quantity) + delta;
+          if (updatedQty <= 0) {
+            continue;
+          }
+          next.push({ ...item, quantity: clampQty(updatedQty) });
+        }
+        return next;
+      });
+    },
+    [setCart],
+  );
+
+  const clearStoreCart = useCallback(() => {
+    setCart([]);
+    setToast({
+      title: `Cleared ${STORE_META[store].label} cart`,
+      body: "Cart Avg reset to -- until new items are added.",
+    });
+  }, [setCart, store]);
 
   /* ---------------- Swap (single item or from auditor) ---------------- */
   const swapCartItem = useCallback(
-    (targetItem: Product) => {
+    (targetItem: Product, explicitSwap?: SwapResult | null) => {
       const weeklyAllowance = weeklySwapLimit;
       if (!isPro && swapsUsedThisWeek >= weeklyAllowance) {
         setPaywallOpen(true);
@@ -1103,15 +1293,17 @@ export default function Simulator({
         targetItem.nutrition,
         familyWatchlist,
       );
-      const targetSwap = resolveSwap({
-        score: itemScore.score,
-        productTitle: `${targetItem.brand} ${targetItem.title}`,
-        ingredients: targetItem.ingredients,
-        category: targetItem.category,
-        store,
-        watchlist: watch,
-        familyWatchlist,
-      });
+      const targetSwap =
+        explicitSwap ??
+        resolveSwap({
+          score: itemScore.score,
+          productTitle: `${targetItem.brand} ${targetItem.title}`,
+          ingredients: targetItem.ingredients,
+          category: targetItem.category,
+          store,
+          watchlist: watch,
+          familyWatchlist,
+        });
       if (!targetSwap) return;
       setSwapsUsedThisWeek((n) => n + 1);
       if (typeof window !== "undefined") {
@@ -1131,7 +1323,9 @@ export default function Simulator({
           }),
         }).catch(() => {});
       }
-      const clean = cleanToProduct(targetSwap.category, targetItem, store);
+      const clean = explicitSwap
+        ? swapResultToProduct(targetSwap, targetItem, store)
+        : cleanToProduct(targetSwap.category, targetItem, store);
       setPreviousDirtyItem(targetItem);
       setActive(clean);
       setViewMode("product");
@@ -1155,8 +1349,8 @@ export default function Simulator({
       commitItemToCart(active);
       return;
     }
-    swapCartItem(previousDirtyItem ?? active);
-  }, [active, commitItemToCart, swapCartItem, previousDirtyItem]);
+    swapCartItem(previousDirtyItem ?? active, swap);
+  }, [active, commitItemToCart, swapCartItem, previousDirtyItem, swap]);
 
   /** Finds the original dirty item that a clean swap replaced so the user can revert in 1 tap. */
   const getRevertTarget = useCallback(
@@ -1180,7 +1374,7 @@ export default function Simulator({
         const idx = c.findIndex((i) => i.key === cleanItem.key);
         if (idx === -1) return c;
         const next = [...c];
-        next[idx] = orig;
+        next[idx] = { ...orig, quantity: clampQty(c[idx].quantity) };
         return next;
       });
       setActive(orig);
@@ -1190,16 +1384,15 @@ export default function Simulator({
         body: `Restored original item in your ${STORE_META[store].label} cart.`,
       });
     },
-    [active, getRevertTarget, store],
+    [active, getRevertTarget, store, setCart],
   );
   const activeRevertTarget = getRevertTarget(active);
 
-  /* ---------------- Live search ---------------- */
-  const runLive = useCallback(
-    async (e?: React.FormEvent) => {
-      e?.preventDefault();
-      const q = query.trim();
-      if (!q) return;
+  /* ---------------- Live search & Multi-Barcode Scanner ---------------- */
+  const executeLiveLookup = useCallback(
+    async (opts: { productTitle: string; barcode?: string; openCard?: boolean }) => {
+      const q = opts.productTitle.trim();
+      if (!q && !opts.barcode) return;
       setLiveState("loading");
       setLiveError("");
       try {
@@ -1210,7 +1403,8 @@ export default function Simulator({
         const referredByCode =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
         const payload = {
-          productTitle: q,
+          productTitle: q || opts.barcode || "",
+          barcode: opts.barcode,
           store,
           watchlist: watch,
           familyWatchlist,
@@ -1227,6 +1421,14 @@ export default function Simulator({
         const data = (await res.json()) as ApiScan;
         setApiJson(data);
         if (!data.ok || !data.product) {
+          if (data.reason === "NON_FOOD_PRODUCT") {
+            setLiveState("idle");
+            setToast({
+              title: "Household / Non-Food Item Ignored",
+              body: "HeyBroc only scores edible groceries and excludes non-food items from your Cart Avg.",
+            });
+            return;
+          }
           setLiveState("error");
           setLiveError(data.error || "Lookup failed.");
           setIosText("");
@@ -1252,8 +1454,9 @@ export default function Simulator({
           category: cat,
           origin: "live",
           lookup: data.lookup,
+          quantity: 1,
         };
-        showProduct(p, true, adTestMode);
+        showProduct(p, true, Boolean(opts.openCard) || adTestMode);
         setLiveState("idle");
         fetch("/api/scan", {
           method: "POST",
@@ -1268,7 +1471,148 @@ export default function Simulator({
         setLiveError("Network error — is the server reachable?");
       }
     },
-    [query, store, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode],
+    [store, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode],
+  );
+
+  const runLive = useCallback(
+    async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      const q = query.trim();
+      if (!q) return;
+      const digitsOnly = /^\d{8,14}$/.test(q) ? q : undefined;
+      await executeLiveLookup({ productTitle: q, barcode: digitsOnly });
+    },
+    [query, executeLiveLookup],
+  );
+
+  const stopCameraScanner = useCallback(() => {
+    if (barcodeRafRef.current) {
+      cancelAnimationFrame(barcodeRafRef.current);
+      barcodeRafRef.current = 0;
+    }
+    if (barcodeStreamRef.current) {
+      for (const track of barcodeStreamRef.current.getTracks()) {
+        track.stop();
+      }
+      barcodeStreamRef.current = null;
+    }
+    if (barcodeVideoRef.current) {
+      barcodeVideoRef.current.srcObject = null;
+    }
+    setBarcodeCameraActive(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopCameraScanner();
+    };
+  }, [stopCameraScanner]);
+
+  const startCameraScanner = useCallback(async () => {
+    setBarcodeStatus("");
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setBarcodeStatus("Camera access is unavailable in this browser — upload a barcode photo or type the UPC.");
+      return;
+    }
+    const BarcodeDetectorCtor = (
+      window as unknown as {
+        BarcodeDetector?: new (opts?: { formats?: string[] }) => {
+          detect: (source: ImageBitmapSource) => Promise<DetectedBarcodeLike[]>;
+        };
+      }
+    ).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      setBarcodeStatus("Live BarcodeDetector unsupported on this browser — upload a photo or enter the 12-digit UPC above.");
+      return;
+    }
+    try {
+      stopCameraScanner();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      barcodeStreamRef.current = stream;
+      setBarcodeCameraActive(true);
+      setBarcodeStatus("Align the target item's barcode inside the center reticle…");
+      const detector = new BarcodeDetectorCtor({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"],
+      });
+      if (barcodeVideoRef.current) {
+        barcodeVideoRef.current.srcObject = stream;
+        await barcodeVideoRef.current.play().catch(() => {});
+      }
+      let cancelled = false;
+      const scanFrame = async () => {
+        if (cancelled || !barcodeStreamRef.current) return;
+        const video = barcodeVideoRef.current;
+        if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          try {
+            const barcodes = await detector.detect(video);
+            const centeredCode = pickClosestBarcodeToCenter(barcodes, video.videoWidth, video.videoHeight);
+            if (centeredCode) {
+              cancelled = true;
+              stopCameraScanner();
+              setBarcodeScannerOpen(false);
+              setQuery(centeredCode);
+              void executeLiveLookup({ productTitle: centeredCode, barcode: centeredCode, openCard: true });
+              return;
+            }
+          } catch {
+            // Continue scanning next frame
+          }
+        }
+        barcodeRafRef.current = requestAnimationFrame(() => {
+          void scanFrame();
+        });
+      };
+      barcodeRafRef.current = requestAnimationFrame(() => {
+        void scanFrame();
+      });
+    } catch {
+      stopCameraScanner();
+      setBarcodeStatus("Camera permission was declined — upload a barcode photo or enter the UPC digits.");
+    }
+  }, [executeLiveLookup, stopCameraScanner]);
+
+  const onBarcodePhotoUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      const BarcodeDetectorCtor = (
+        window as unknown as {
+          BarcodeDetector?: new (opts?: { formats?: string[] }) => {
+            detect: (source: ImageBitmapSource) => Promise<DetectedBarcodeLike[]>;
+          };
+        }
+      ).BarcodeDetector;
+      if (!BarcodeDetectorCtor || typeof createImageBitmap !== "function") {
+        setBarcodeStatus("Photo barcode decoding requires Chrome/Edge/Android BarcodeDetector — enter the UPC digits in search.");
+        return;
+      }
+      try {
+        setBarcodeStatus("Reading barcode closest to center…");
+        const bitmap = await createImageBitmap(file);
+        const detector = new BarcodeDetectorCtor({
+          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"],
+        });
+        const barcodes = await detector.detect(bitmap);
+        const centeredCode = pickClosestBarcodeToCenter(barcodes, bitmap.width, bitmap.height);
+        bitmap.close?.();
+        if (!centeredCode) {
+          setBarcodeStatus("No clear barcode found in photo — center the UPC label and try again.");
+          return;
+        }
+        stopCameraScanner();
+        setBarcodeScannerOpen(false);
+        setBarcodeStatus("");
+        setQuery(centeredCode);
+        await executeLiveLookup({ productTitle: centeredCode, barcode: centeredCode, openCard: true });
+      } catch {
+        setBarcodeStatus("Could not decode barcode from image — try entering the UPC digits.");
+      }
+    },
+    [executeLiveLookup, stopCameraScanner],
   );
 
   /* ---------------- Whole-Cart Audit ---------------- */
@@ -1285,7 +1629,11 @@ export default function Simulator({
           watchlist: watch,
           familyWatchlist,
           dietaryWatchlist,
-          items: cart.map((i) => ({ productTitle: `${i.brand} ${i.title}`, rawIngredients: i.ingredients })),
+          items: cart.map((i) => ({
+            productTitle: `${i.brand} ${i.title}`,
+            rawIngredients: i.ingredients,
+            quantity: clampQty(i.quantity),
+          })),
         }),
       });
       setApiJson(await res.json());
@@ -1339,16 +1687,20 @@ export default function Simulator({
       return hit?.sw ? cleanToProduct(hit.sw.category, item, store) : item;
     });
     setCart(nextCart);
-    const nextAvg = nextCart.length
-      ? Math.round(
-          nextCart.reduce(
-            (sum, item) =>
-              sum +
-              gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist).score,
-            0,
-          ) / nextCart.length,
-        )
-      : 0;
+    const foodNext = nextCart.filter((item) => !item.isNonFood);
+    const foodNextUnits = foodNext.reduce((sum, item) => sum + clampQty(item.quantity), 0);
+    const nextAvg =
+      foodNextUnits > 0
+        ? Math.round(
+            foodNext.reduce(
+              (sum, item) =>
+                sum +
+                (gradeProduct(`${item.brand} ${item.title}`, item.ingredients, watch, item.nutrition, familyWatchlist).score ?? 0) *
+                  clampQty(item.quantity),
+              0,
+            ) / foodNextUnits,
+          )
+        : 0;
     const replaced = dirty.find((d) => d.item.key === active.key);
     if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category, replaced.item, store));
     triggerClimbFlash();
@@ -1356,14 +1708,14 @@ export default function Simulator({
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
       body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, cart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit]);
+  }, [dirty, cart, setCart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit]);
 
   const resetCartPresets = useCallback(() => {
     setCart(PRESETS.map(presetToProduct));
     setSwapHistory([]);
     setPreviousDirtyItem(null);
     setActive(presetToProduct(PRESETS[0]));
-  }, []);
+  }, [setCart]);
 
   /* ---------------- 2D Pill drag + Drag-to-Hide drop zone ---------------- */
   const drag = useRef<{ startX: number; startY: number; startPill: number; moved: boolean } | null>(null);
@@ -1830,7 +2182,7 @@ export default function Simulator({
                 className={viewMode === "search" ? "is-on" : ""}
                 onClick={() => setViewMode("search")}
               >
-                🛒 Store Aisle ({animatedCartAvg}/100)
+                🛒 Store Aisle ({cartAvg === null ? "--" : `${animatedCartAvg}/100`})
               </button>
             </div>
             <div className="bubble-trip-bar">
@@ -1871,19 +2223,143 @@ export default function Simulator({
             className="card"
             style={adTestMode ? { display: "none" } : undefined}
           >
-            <div className="card-head"><h2>Search Any Grocery Item</h2></div>
+            <div className="card-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <h2>Search Any Grocery Item</h2>
+              <button
+                id="toggle-barcode-scanner"
+                type="button"
+                className="trip-pill"
+                onClick={() => {
+                  if (barcodeScannerOpen) {
+                    stopCameraScanner();
+                    setBarcodeScannerOpen(false);
+                    setBarcodeStatus("");
+                  } else {
+                    setBarcodeScannerOpen(true);
+                    void startCameraScanner();
+                  }
+                }}
+              >
+                {barcodeScannerOpen ? "✕ Close Scanner" : "📷 Barcode"}
+              </button>
+            </div>
             <form className="search" onSubmit={runLive}>
               <input
                 id="live-search-input"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. Monster, Red Bull, Coke, C4 Pre-Workout, Milk, Water, Juice…"
+                placeholder="e.g. Monster, Red Bull, Coke, UPC barcode, Milk, Water…"
                 aria-label="Search any grocery product"
               />
               <button id="live-search-submit" type="submit" disabled={liveState === "loading" || !query.trim()}>
                 {liveState === "loading" ? <span className="spinner" aria-label="Scanning" /> : "Scan"}
               </button>
             </form>
+            {barcodeScannerOpen && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 12,
+                  background: "#0f172a",
+                  color: "#f8fafc",
+                  border: "1px solid #1e293b",
+                }}
+              >
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    height: 168,
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    background: "#020617",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <video
+                    ref={barcodeVideoRef}
+                    playsInline
+                    muted
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      opacity: barcodeCameraActive ? 1 : 0.35,
+                    }}
+                  />
+                  {/* Centered Reticle Overlay — disambiguates multi-barcode shelf frames */}
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: "50%",
+                      width: "66%",
+                      height: "54%",
+                      transform: "translate(-50%, -50%)",
+                      border: "2px solid rgba(34, 197, 94, 0.92)",
+                      borderRadius: 10,
+                      boxShadow: "0 0 0 999px rgba(2, 6, 23, 0.48)",
+                      pointerEvents: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "88%",
+                        height: 2,
+                        background: "rgba(34, 197, 94, 0.85)",
+                        boxShadow: "0 0 8px rgba(34, 197, 94, 0.9)",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="trip-pill"
+                    style={{ background: "#1e293b", color: "#f8fafc", borderColor: "#334155" }}
+                    onClick={() => {
+                      if (barcodeCameraActive) stopCameraScanner();
+                      else void startCameraScanner();
+                    }}
+                  >
+                    {barcodeCameraActive ? "⏸ Pause Camera" : "▶ Start Camera"}
+                  </button>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      background: "#16a34a",
+                      color: "#ffffff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📤 Upload Barcode Photo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={onBarcodePhotoUpload}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
+                <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#cbd5e1", lineHeight: 1.4 }}>
+                  {barcodeStatus || "Center target UPC inside the green reticle — surrounding shelf barcodes are ignored."}
+                </p>
+              </div>
+            )}
             {liveState === "error" && <p className="error">{liveError}</p>}
             {active.origin === "live" && active.lookup && (
               <p className="meta">
@@ -1929,7 +2405,14 @@ export default function Simulator({
           >
             <button id="open-auditor" className="tool" onClick={openAudit}>
               <span className="tool-icon">🛒</span>
-              <span><b>Whole-Cart Health Check</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
+              <span>
+                <b>Whole-Cart Health Check</b>
+                <small>
+                  {cartAvg === null
+                    ? `${STORE_META[store].label} cart empty • Avg --`
+                    : `${dirty.length} dirty of ${cart.length} • Avg ${animatedCartAvg}/100`}
+                </small>
+              </span>
             </button>
             <button id="open-watchlist" className={`tool ${panel === "watchlist" ? "is-on" : ""}`} onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}>
               <span className="tool-icon">⚙︎</span>
@@ -2048,7 +2531,7 @@ export default function Simulator({
                   <span className="store-logo"><StoreBadge store={store} inHeader />{STORE_META[store].label}</span>
                   <button className="cart-btn" onClick={() => setCartOpen(true)} aria-label="Open cart">
                     <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 4h2l2.4 11.2a2 2 0 002 1.6h7.7a2 2 0 002-1.5L21 8H6.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="10" cy="20" r="1.4" fill="currentColor" /><circle cx="17" cy="20" r="1.4" fill="currentColor" /></svg>
-                    <span className="cart-count">{cart.length}</span>
+                    <span className="cart-count">{totalCartUnits}</span>
                   </button>
                 </div>
                 <div className="store-search" aria-hidden>
@@ -2166,6 +2649,7 @@ export default function Simulator({
                   onPointerDown={onPillDown}
                   onPointerMove={onPillMove}
                   onPointerUp={onPillUp}
+                  onPointerCancel={onPillUp}
                   onClick={(e) => {
                     e.stopPropagation();
                     triggerPillTap(isCartBubbleMode, overlay === "pill");
@@ -2173,7 +2657,9 @@ export default function Simulator({
                   role="button"
                   aria-label={
                     isCartBubbleMode
-                      ? `Cart Average ${animatedCartAvg} of 100. Tap to open Whole-Cart Health Check.`
+                      ? cartAvg === null
+                        ? `${STORE_META[store].label} cart is empty. Tap to open Whole-Cart Health Check.`
+                        : `Cart Average ${animatedCartAvg} of 100. Tap to open Whole-Cart Health Check.`
                       : activeDietaryAlerts.length > 0
                         ? `Dietary alert: ${activeDietaryAlerts.map((a) => a.label).join(", ")}. HeyBroc score ${score.score} of 100. Tap to inspect.`
                         : `HeyBroc score ${score.score} of 100. Tap to inspect.`
@@ -2188,11 +2674,20 @@ export default function Simulator({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/broc-mascot.jpg" alt="" className="pill-mascot" />
-                  <span className="pill-dot" />
+                  <span
+                    className="pill-dot"
+                    style={
+                      isCartBubbleMode && cartAvg === null
+                        ? { background: "#64748b", boxShadow: "none" }
+                        : undefined
+                    }
+                  />
                   {overlay === "min" || pillSize === "compact" ? (
                     <b>
                       {isCartBubbleMode
-                        ? `🛒 ${animatedCartAvg}/100`
+                        ? cartAvg === null
+                          ? "🛒 --"
+                          : `🛒 ${animatedCartAvg}/100`
                         : activeDietaryAlerts.length > 0
                           ? `⚠️ ${activeDietaryAlerts[0].shortBadge} · ${score.score}/100`
                           : `${score.score}/100`}
@@ -2200,7 +2695,7 @@ export default function Simulator({
                   ) : isCartBubbleMode ? (
                     <>
                       <span>🛒 Cart Avg:</span>
-                      <b>{animatedCartAvg}/100</b>
+                      <b>{cartAvg === null ? "--" : `${animatedCartAvg}/100`}</b>
                       {cartClimbFlash && <span className="climb-arrow">↑</span>}
                       <button
                         className="pill-collapse"
@@ -2270,7 +2765,7 @@ export default function Simulator({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
                         <div>
-                          <span className="eyebrow">HeyBroc · Cart Avg {animatedCartAvg}/100</span>
+                          <span className="eyebrow">HeyBroc · Cart Avg {cartAvg === null ? "--" : `${animatedCartAvg}/100`}</span>
                           <h3>
                             {yukaTab === "inspect"
                               ? "Product Analysis"
@@ -2438,11 +2933,13 @@ export default function Simulator({
                                   id="inspect-clean-swap"
                                   type="button"
                                   className="swap-info swap-info--btn"
-                                  onClick={() => inspectCleanSwap(swap.category, active)}
+                                  onClick={() => inspectCleanSwap(swap.category, active, swap)}
                                 >
-                                  <ProductArt product={cleanToProduct(swap.category, active, store)} className="swap-art" showAttribution />
+                                  <ProductArt product={swapResultToProduct(swap, active, store)} className="swap-art" showAttribution />
                                   <div className="swap-info-copy">
-                                    <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
+                                    <span className="eyebrow eyebrow--green">
+                                      ✓ Verified Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}
+                                    </span>
                                     <b>{swap.title}</b>
                                     <span className="swap-score">
                                       {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"} · <em>Tap to inspect →</em>
@@ -2452,6 +2949,15 @@ export default function Simulator({
                                 <button id="swap-item" className="swap-btn" onClick={doSwap}>
                                   Swap Item{swap.isPaidLink ? " · paid link" : ""}
                                 </button>
+                                {swapCandidates.length > 1 && (
+                                  <button
+                                    type="button"
+                                    className="link-btn center"
+                                    onClick={() => setSelectedSwapIdx((i) => (i + 1) % swapCandidates.length)}
+                                  >
+                                    ⇄ Option {(selectedSwapIdx % swapCandidates.length) + 1} of {swapCandidates.length} · Tap for next clean alternative (if out of stock)
+                                  </button>
+                                )}
                               </div>
                             )
                           ) : activeRevertTarget ? (
@@ -2995,69 +3501,189 @@ export default function Simulator({
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
                         <div>
-                          <span className="eyebrow">{auditOpen ? "HeyBroc · Whole-Cart Health Check" : STORE_META[store].label}</span>
-                          <h3>{auditOpen ? "Cart Health Check" : "Your cart"}</h3>
+                          <span className="eyebrow">
+                            {auditOpen ? `HeyBroc · ${STORE_META[store].label} Cart Health Check` : STORE_META[store].label}
+                          </span>
+                          <h3>{auditOpen ? "Cart Health Check" : `Your ${STORE_META[store].label} cart`}</h3>
                         </div>
                       </div>
-                      <button className="close" onClick={() => { setCartOpen(false); setAuditOpen(false); }} aria-label="Close">×</button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {cart.length > 0 && (
+                          <button
+                            type="button"
+                            className="trip-pill"
+                            onClick={clearStoreCart}
+                            title={`Clear ${STORE_META[store].label} cart`}
+                          >
+                            Clear
+                          </button>
+                        )}
+                        <button className="close" onClick={() => { setCartOpen(false); setAuditOpen(false); }} aria-label="Close">×</button>
+                      </div>
                     </div>
                     {auditOpen && (
                       <div className="audit-summary">
-                        <Gauge score={animatedCartAvg} rating="Cart avg" color={cartAvgTone} size={78} />
+                        <Gauge
+                          score={cartAvg === null ? null : animatedCartAvg}
+                          rating={cartAvg === null ? "Empty" : "Cart avg"}
+                          color={cartAvgTone}
+                          size={78}
+                        />
                         <p>
                           {auditBusy
                             ? "Checking your cart ingredients…"
-                            : dirty.length
-                              ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap any item to inspect, or tap <b>Swap</b> to watch your Cart Avg climb!</>
-                              : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
+                            : cartAvg === null
+                              ? `Your ${STORE_META[store].label} cart is empty (Cart Avg: --). Add items to see your live quantity-weighted Cart Avg.`
+                              : dirty.length
+                                ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap any item to inspect, or tap <b>Swap</b> to watch your Cart Avg climb!</>
+                                : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
                         </p>
                       </div>
                     )}
-                    <ul className="cart-list">
-                      {cartScored.map(({ item, s, sw }) => (
-                        <li key={item.key} className="cart-row">
-                          <button
-                            className="cart-item"
-                            onClick={() => {
-                              setCartOpen(false);
-                              setAuditOpen(false);
-                              showProduct(item, true, true);
-                            }}
-                          >
-                            <ProductArt product={item} className="cart-art" />
-                            <span className="cart-text">
-                              <b>{item.title}</b>
-                              <small>
-                                {item.brand}
-                                {sw
-                                  ? !isPro && swapsUsedThisWeek >= weeklySwapLimit
-                                    ? ` · 🔒 ${sw.score}/100 Clean Swap available`
-                                    : ` · Tap to inspect or swap → ${sw.brand}`
-                                  : " · Tap to inspect"}
-                              </small>
-                            </span>
-                            <ScoreChip score={s.score} color={s.color} />
+                    {cartScored.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "20px 16px",
+                          margin: "8px 0 12px",
+                          borderRadius: 12,
+                          background: "#f8fafc",
+                          border: "1px dashed #cbd5e1",
+                          textAlign: "center",
+                          color: "#475569",
+                          fontSize: 13,
+                        }}
+                      >
+                        <b style={{ display: "block", color: "#0f172a", marginBottom: 4 }}>
+                          {STORE_META[store].label} cart is empty · Cart Avg: --
+                        </b>
+                        <span>Each store keeps its own separate cart. Add items from the store page or load sample groceries.</span>
+                        <div style={{ marginTop: 10 }}>
+                          <button type="button" className="trip-pill" onClick={resetCartPresets}>
+                            + Load sample groceries
                           </button>
-                          {sw ? (
-                            <button
-                              type="button"
-                              className="cart-row-swap"
-                              onClick={() => swapCartItem(item)}
-                            >
-                              Swap
-                            </button>
-                          ) : item.origin === "swap" ? (
-                            <button
-                              type="button"
-                              className="trip-pill"
-                              onClick={() => revertSwap(item)}
-                            >
-                              ↺ Revert
-                            </button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
+                        </div>
+                      </div>
+                    ) : (
+                      <ul className="cart-list">
+                        {cartScored.map(({ item, s, sw }) => {
+                          const qty = clampQty(item.quantity);
+                          return (
+                            <li key={item.key} className="cart-row" style={{ gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                className="cart-item"
+                                onClick={() => {
+                                  setCartOpen(false);
+                                  setAuditOpen(false);
+                                  showProduct(item, true, true);
+                                }}
+                              >
+                                <ProductArt product={item} className="cart-art" />
+                                <span className="cart-text">
+                                  <b>{item.title}</b>
+                                  <small>
+                                    {item.brand}
+                                    {qty > 1 ? ` · Qty ${qty}` : ""}
+                                    {sw
+                                      ? !isPro && swapsUsedThisWeek >= weeklySwapLimit
+                                        ? ` · 🔒 ${sw.score}/100 Clean Swap available`
+                                        : ` · Tap to inspect or swap → ${sw.brand}`
+                                      : " · Tap to inspect"}
+                                  </small>
+                                </span>
+                                <ScoreChip score={s.score} color={s.color} />
+                              </button>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 999,
+                                    background: "#f8fafc",
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    aria-label={qty <= 1 ? `Remove ${item.title}` : `Decrease ${item.title} quantity`}
+                                    onClick={() => updateCartItemQty(item.key, -1)}
+                                    style={{
+                                      border: "none",
+                                      background: "transparent",
+                                      padding: "3px 7px",
+                                      fontSize: 13,
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      color: "#334155",
+                                    }}
+                                  >
+                                    −
+                                  </button>
+                                  <span style={{ fontSize: 11.5, fontWeight: 700, minWidth: 16, textAlign: "center", color: "#0f172a" }}>
+                                    {qty}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Increase ${item.title} quantity`}
+                                    onClick={() => updateCartItemQty(item.key, 1)}
+                                    style={{
+                                      border: "none",
+                                      background: "transparent",
+                                      padding: "3px 7px",
+                                      fontSize: 13,
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      color: "#334155",
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                {sw ? (
+                                  <button
+                                    type="button"
+                                    className="cart-row-swap"
+                                    onClick={() => swapCartItem(item)}
+                                  >
+                                    Swap
+                                  </button>
+                                ) : item.origin === "swap" ? (
+                                  <button
+                                    type="button"
+                                    className="trip-pill"
+                                    onClick={() => revertSwap(item)}
+                                  >
+                                    ↺ Revert
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${item.title} from cart`}
+                                  title="Remove item"
+                                  onClick={() => removeCartItem(item.key)}
+                                  style={{
+                                    border: "1px solid #e2e8f0",
+                                    background: "#ffffff",
+                                    color: "#64748b",
+                                    borderRadius: 999,
+                                    width: 24,
+                                    height: 24,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                     {auditOpen && dirty.length > 0 && (
                       <button id="swap-all" className="swap-btn swap-btn--wide" onClick={swapAll}>
                         Swap all {dirty.length} dirty items
@@ -3222,7 +3848,7 @@ export default function Simulator({
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
               <a href="/tools" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Free Tools</a>
               <a href="/swaps" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Clean Swaps</a>
-              <a href="/creators" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Creators (25%)</a>
+              <a href="/creators" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Creators (35%)</a>
               <a href="/terms" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Terms</a>
               <a href="/privacy" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Privacy</a>
               <button
@@ -3470,13 +4096,14 @@ export default function Simulator({
         initialPlan={otoInitialPlan}
         sessionId={otoSessionId}
         deviceId={deviceIdState}
+        creatorCode={appliedCreator?.code}
       />
 
       <Scorecard
         open={scorecardOpen}
         onClose={() => setScorecardOpen(false)}
         store={store}
-        cartAvg={animatedCartAvg}
+        cartAvg={cartAvg === null ? 0 : animatedCartAvg}
         swaps={swapHistory}
         fallbackDodged={fallbackDodged}
         fallbackSwaps={fallbackSwaps}

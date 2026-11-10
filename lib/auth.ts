@@ -5,7 +5,9 @@ import {
   getDevicePaidEntitlement,
   getEmailEntitlement,
   saveEntitlement,
+  type EntitlementStatus,
 } from "./entitlements";
+import { PRICING } from "./pricing";
 import {
   codeFromDeviceId,
   ensureReferralCodeRegistered,
@@ -53,6 +55,7 @@ export interface PublicUserProfile {
   proUntil: number;
   isProActive: boolean;
   proDaysRemaining: number;
+  entitlementStatus?: EntitlementStatus;
   watchlist?: Record<string, boolean>;
   createdAt: string;
 }
@@ -296,11 +299,24 @@ export async function toPublicProfile(
   }
 
   const isProActive = isStripePro || proUntil > now;
+  const stripeFallbackDays =
+    activeStripeEnt?.status === "trialing"
+      ? activeStripeEnt.creatorCode
+        ? PRICING.creatorTrialDays
+        : PRICING.trialDays
+      : activeStripeEnt?.plan === "monthly"
+        ? 31
+        : 365;
+  const stripeRemainingDays =
+    activeStripeEnt &&
+    typeof activeStripeEnt.expiresAtMs === "number" &&
+    activeStripeEnt.expiresAtMs > now
+      ? Math.max(1, Math.ceil((activeStripeEnt.expiresAtMs - now) / DAY_MS))
+      : stripeFallbackDays;
+  const referralRemainingDays = Math.max(0, Math.ceil((proUntil - now) / DAY_MS));
   const proDaysRemaining = isStripePro
-    ? activeStripeEnt?.plan === "monthly"
-      ? 31
-      : 365
-    : Math.max(0, Math.ceil((proUntil - now) / DAY_MS));
+    ? Math.max(stripeRemainingDays, referralRemainingDays)
+    : referralRemainingDays;
 
   return {
     userId: user.userId,
@@ -312,6 +328,11 @@ export async function toPublicProfile(
     proUntil,
     isProActive,
     proDaysRemaining,
+    entitlementStatus: isStripePro
+      ? activeStripeEnt?.status
+      : proUntil > now
+        ? "active"
+        : undefined,
     watchlist: user.watchlist,
     createdAt: user.createdAt,
   };

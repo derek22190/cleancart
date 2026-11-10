@@ -135,8 +135,15 @@ object ScanHistoryStore {
         return parseList(raw).onEach { ScanApi.applyLocalWatchlistToData(context, it) }
     }
 
-    fun getExploreCatalog(context: Context): List<JSONObject> =
-        EXPLORE_CATALOG.onEach { ScanApi.applyLocalWatchlistToData(context, it) }
+    fun getExploreCatalog(context: Context): List<JSONObject> {
+        val now = System.currentTimeMillis()
+        return EXPLORE_CATALOG.filter { item ->
+            val lookupObj = item.optJSONObject("lookup")
+            val verifiedIso = lookupObj?.optString("verifiedAt").orEmpty()
+                .ifBlank { lookupObj?.optString("sourceUpdatedAt").orEmpty() }
+            verifiedIso.isBlank() || isCatalogDateFresh(verifiedIso, now)
+        }.onEach { ScanApi.applyLocalWatchlistToData(context, it) }
+    }
 
     fun isFavorite(context: Context, title: String): Boolean {
         val key = normKey(title)
@@ -192,8 +199,11 @@ object ScanHistoryStore {
         }
         val swapBrand = swap.optString("brand").ifBlank { swapTitle.substringBefore(" ") }
         val swapIngredients = swap.optString("ingredients").trim()
-        val isOrg = swap.optJSONObject("nutrition")?.optBoolean("isOrganic")
-            ?: swap.optBoolean("isOrganic", swapTitle.contains("organic", ignoreCase = true))
+        val isOrg = if (swap.optJSONObject("nutrition")?.has("isOrganic") == true) {
+            swap.optJSONObject("nutrition")?.optBoolean("isOrganic", false) == true
+        } else {
+            swap.optBoolean("isOrganic", false)
+        }
         val orgScore = if (isOrg) 10 else 0
         val addScore = if (swapScore >= 70) 30 else 15
         val nutScore = (swapScore - addScore - orgScore).coerceIn(0, 60)
@@ -210,6 +220,10 @@ object ScanHistoryStore {
                 put("category", "Clean Swaps")
                 put("imageUrl", productImageUrl(swapTitle))
                 put("ingredients", swapIngredients)
+                put("isOrganic", isOrg)
+                put("nutrition", JSONObject().apply {
+                    put("isOrganic", isOrg)
+                })
                 if (replacedTitle.isNotBlank()) {
                     put("description", "Clean 1-for-1 replacement for $replacedTitle")
                 }
@@ -244,6 +258,20 @@ object ScanHistoryStore {
         if (ts <= 0L) return false
         val ageMs = now - ts
         return ageMs in 0L..MAX_ENTRY_AGE_MS
+    }
+
+    fun isCatalogDateFresh(isoDate: String, now: Long = System.currentTimeMillis()): Boolean {
+        val trimmed = isoDate.trim()
+        if (trimmed.length < 10) return false
+        return runCatching {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+                isLenient = false
+            }
+            val parsedMs = sdf.parse(trimmed.substring(0, 10))?.time ?: return false
+            val ageMs = now - parsedMs
+            ageMs in (-24L * 60L * 60L * 1000L)..MAX_ENTRY_AGE_MS
+        }.getOrDefault(false)
     }
 
     fun passesVariantGuard(query: String, candidateTitle: String): Boolean {
@@ -306,23 +334,53 @@ object ScanHistoryStore {
 
     private val VERIFIED_OFF_IMAGES: List<Pair<Regex, String>> = listOf(
         Regex("\\bhidden\\s+valley\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/110/000/3116/front_en.7.400.jpg",
-        Regex("\\bprimal\\s+kitchen\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/468/112/060/0422/front_en.7.400.jpg",
-        Regex("\\bmarketside\\b.*\\b(?:spinach|romaine)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/068/113/139/5502/front_en.3.400.jpg",
+        Regex("\\bprimal\\s+kitchen\\b.*\\branch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/369/900/0146/front_en.4.400.jpg",
+        Regex("\\bprimal\\s+kitchen\\b.*\\b(?:mayo|mayonnaise)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/066/369/002/4048/front_en.3.400.jpg",
+        Regex("\\bprimal\\s+kitchen\\b.*\\bketchup\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/827/574/200/7125/front_en.8.400.jpg",
+        Regex("\\bmarketside\\b(?!.*\\b(?:romaine|dip|artichoke)\\b).*\\bbaby\\s+spinach\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/068/113/132/8982/front_en.3.400.jpg",
         Regex("\\bcinnamon\\s+toast\\s+crunch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/10167730/front_en.3.400.jpg",
+        Regex("\\bkellogg'?s\\b.*\\bfrosted\\s+flakes\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/800/012/7502/front_en.3.400.jpg",
         Regex("\\bnature'?s\\s+path\\b.*\\bheritage\\s+flakes\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/991/360/277/0206/front_en.4.400.jpg",
-        Regex("\\bmarketside\\b.*\\bclam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/084/013/430/8029/front_en.3.400.jpg",
-        Regex("\\bcampbell'?s\\b.*\\bclam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/100/000/5540/front_en.11.400.jpg",
+        Regex("\\bcampbell'?s\\b.*\\bmanhattan\\b.*\\bclam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/100/000/5540/front_en.11.400.jpg",
+        Regex("\\bcampbell'?s\\b.*\\bchunky\\b.*\\bnew\\s+england\\s+clam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/75395322/front_en.3.400.jpg",
+        Regex("\\bcampbell'?s\\b.*\\bnew\\s+england\\s+clam\\s+chowder\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/100/001/3675/front_fr.3.400.jpg",
         Regex("\\bamy'?s\\b.*\\blentil\\b.*\\bsoup\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/223/400/5833/front_en.3.400.jpg",
         Regex("\\bdoritos\\b.*\\bnacho\\s+cheese\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/120/010/800/0721/front_en.3.400.jpg",
         Regex("\\bdoritos\\b.*\\bcool\\s+ranch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/000/284/000/9151/front_en.7.400.jpg",
+        Regex("\\blay'?s\\b.*\\bwavy\\b.*\\boriginal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/840/031/0468/front_en.13.400.jpg",
         Regex("\\bsiete\\b.*\\btortilla\\s+chips\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/176/900/7003/front_en.13.400.jpg",
         Regex("\\bsanta\\s+cruz\\b.*\\bpeanut\\s+butter\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/150/090/2882/front_en.28.400.jpg",
         Regex("\\bgood\\s*(?:&|and)?\\s*gather\\b.*\\bpeanut\\s+butter\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/934/0400/front_en.3.400.jpg",
-        Regex("\\bthree\\s+wishes\\b.*\\bcereal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/001/681/3046/front_en.11.400.jpg",
+        Regex("\\bthree\\s+wishes\\b.*\\bcocoa\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/000/215/2493/front_en.3.400.jpg",
+        Regex("\\bthree\\s+wishes\\b.*\\b(?:frosted|vanilla)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/001/681/3046/front_en.11.400.jpg",
+        Regex("\\borganic\\s+valley\\b.*\\bamerican\\b.*\\bcheese\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/396/600/4861/front_en.5.400.jpg",
+        Regex("\\borganic\\s+valley\\b.*\\bsharp\\s+cheddar\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/396/600/5431/front_en.5.400.jpg",
         Regex("\\borganic\\s+valley\\b.*\\bbutter\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/396/600/6469/front_en.3.400.jpg",
         Regex("\\blactaid\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/410/012/2392/front_en.3.400.jpg",
         Regex("\\bboulder\\s+canyon\\b.*\\b(?:avocado|chips)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/39369635/front_en.3.400.jpg",
         Regex("\\bdave'?s\\s+killer\\s+bread\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/376/400/5043/front_en.3.400.jpg",
+        Regex("\\bwonder\\b.*\\b(?:classic\\s+)?white\\s+bread\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/225/001/1372/front_en.17.400.jpg",
+        Regex("\\byoplait\\b.*\\boriginal\\b.*\\bstrawberry\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/047/000/4303/front_en.24.400.jpg",
+        Regex("\\bstonyfield\\b.*\\bwhole\\s+milk\\b.*\\bplain\\b.*\\byogurt\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/215/900/0011/front_en.11.400.jpg",
+        Regex("\\bcheez[- ]?it\\b.*\\boriginal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/410/012/2615/front_en.44.400.jpg",
+        Regex("\\bpepperidge\\s+farm\\b.*\\bgoldfish\\b.*\\bcheddar\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/410/008/4761/front_en.16.400.jpg",
+        Regex("\\bmary'?s\\s+gone\\s+crackers\\b.*\\boriginal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/065/439/124/6006/front_en.3.400.jpg",
+        Regex("\\boscar\\s+mayer\\b.*\\bdeli\\s+fresh\\b.*\\b(?:honey\\s+)?smoked\\s+turkey\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/470/003/1483/front_en.10.400.jpg",
+        Regex("\\bwelch'?s\\b.*\\bmixed\\s+fruit\\s+snacks?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/485/601/5987/front_en.13.400.jpg",
+        Regex("\\b(?:larabar|lärabar)\\b.*\\bcashew\\s+cookie\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/190/840/9528/front_en.11.400.jpg",
+        Regex("\\bthat'?s\\s+it\\b.*\\bapple\\b.*\\bstrawberr", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/638/859/700/4996/front_en.3.400.jpg",
+        Regex("\\bsimple\\s+mills\\b.*\\bchocolate\\s+chip\\b.*\\bcookies?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/84664945/front_en.10.400.jpg",
+        Regex("\\boreo\\b.*\\bchocolate\\s+sandwich\\s+cookies?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/400/004/7009/front_en.20.400.jpg",
+        Regex("\\beggo\\b.*\\bhomestyle\\b.*\\bwaffles?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/800/040/2609/front_en.21.400.jpg",
+        Regex("\\bkraft\\b.*\\bmacaroni\\s*(?:&|and)\\s*cheese\\b.*\\boriginal\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/100/003/3720/front_en.15.400.jpg",
+        Regex("\\brao'?s\\b.*\\bmarinara\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/074/747/900/0017/front_en.12.400.jpg",
+        Regex("\\bannie'?s\\b.*\\byellow\\s+mustard\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/009/232/522/2243/front_en.5.400.jpg",
+        Regex("\\bcoombs\\s+family\\s+farms\\b.*\\bmaple\\s+syrup\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/071/028/232/9644/front_en.3.400.jpg",
+        Regex("\\bbob'?s\\s+red\\s+mill\\b.*\\brolled\\s+oats\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/997/803/3758/front_en.43.400.jpg",
+        Regex("\\balden'?s\\s+organic\\b.*\\bvanilla\\s+bean\\b.*\\bice\\s+cream\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/269/274/1851/front_en.3.400.jpg",
+        Regex("\\bcoffee[- ]?mate\\b.*\\bfrench\\s+vanilla\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/000/032/2756/front_en.31.400.jpg",
+        Regex("\\bsmucker'?s\\b.*\\buncrustables?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/150/005/0163/front_en.14.400.jpg",
+        Regex("\\bcapri\\s*sun\\b.*\\bstrawberry\\s+kiwi\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/768/400/0991/front_en.14.400.jpg",
         Regex("\\bhu\\b.*\\b(?:simple|dark\\s+chocolate|chocolate)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/123/000/009/7000/front_en.18.400.jpg",
         Regex("\\bmonster\\b.*\\b(?:zero\\s+ultra|ultra\\s+white)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/084/789/2519/front_en.3.400.jpg",
         Regex("\\bmonster\\s+energy\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/084/703/7712/front_en.8.400.jpg",
@@ -342,10 +400,11 @@ object ScanHistoryStore {
         Regex("\\bcoca[- ]?cola\\b.*\\b(?:classic|original)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/500/011/254/6415/front_de.137.400.jpg",
         Regex("\\b(?:mountain|mtn)\\s+dew\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/200/003/2448/front_en.12.400.jpg",
         Regex("\\bolipop\\b.*\\b(?:vintage\\s+cola|cola)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/948/401/5005/front_en.3.400.jpg",
+        Regex("\\bpoppi\\b.*\\bstrawberry\\s+lemon\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/006/371/0668/front_en.3.400.jpg",
         Regex("\\bpoppi\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/006/371/0309/front_en.3.400.jpg",
         Regex("\\bfiji\\b.*\\bwater\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/941/757/400/1424/front_en.3.400.jpg",
         Regex("\\bspindrift\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/657/900/2910/front_en.19.400.jpg",
-        Regex("\\bgatorade\\b.*\\bfruit\\s+punch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/200/012/2022/front_en.3.400.jpg",
+        Regex("\\bgatorade\\b(?!.*\\bg2\\b).*\\bfruit\\s+punch\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/005/200/024/1211/front_en.12.400.jpg",
         Regex("\\bnooma\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/137/300/5044/front_en.5.400.jpg",
         Regex("\\bprime\\b.*\\b(?:hydration|ice\\s+pop)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/004/000/5226/front_en.3.400.jpg",
         Regex("\\bsimply\\s+orange\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/500/010/0000/front_en.30.400.jpg",
@@ -355,33 +414,35 @@ object ScanHistoryStore {
         Regex("\\bstarbucks\\b.*\\bfrappuccino\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/200/000/4520/front_en.4.400.jpg",
         Regex("\\bstok\\b.*\\bcold\\s+brew\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/663/207/2634/front_en.3.400.jpg",
         Regex("\\bfairlife\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/162/002/0169/front_en.83.400.jpg",
-        Regex("\\bmalk\\b.*\\b(?:almond|milk)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/003/046/4040/front_en.3.400.jpg",
+        Regex("\\bmalk\\b.*\\boat\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/076/574/644/4432/front_en.3.400.jpg",
+        Regex("\\bmalk\\b.*\\balmond\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/003/046/4040/front_en.3.400.jpg",
+        Regex("\\bcalifia\\b.*\\boat", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/081/363/602/1932/front_en.30.400.jpg",
+        Regex("\\bcalifia\\b.*\\balmond", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/085/290/900/3855/front_en.9.400.jpg",
         Regex("\\boatly\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/906/466/4110/front_en.3.400.jpg",
         Regex("\\bnesquik\\b.*\\bchocolate\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/800/077/1720/front_en.3.400.jpg",
         Regex("\\bhorizon\\s+organic\\b.*\\bchocolate\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/663/207/8513/front_en.3.400.jpg",
         Regex("\\bsimple\\s+truth\\b.*\\bgreek\\s+yogurt\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/010/8333/front_en.3.400.jpg",
-        Regex("\\bbig\\s+k\\b.*\\bcola\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/000/5526/front_en.13.400.jpg",
+        Regex("\\bbig\\s+k\\b(?!.*\\b(?:zero|diet)\\b).*\\bcola\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/049/1053/front_en.3.400.jpg",
         Regex("\\bprivate\\s+selection\\b.*\\bangus\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/022/0691/front_en.3.400.jpg",
-        Regex("\\bfavorite\\s+day\\b.*\\bcookies\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/927/0233/front_en.3.400.jpg",
-        Regex("\\bfavorite\\s+day\\b.*\\bvanilla\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg",
+        Regex("\\bfavorite\\s+day\\b.*\\bnon[- ]?dairy\\b.*\\bvanilla\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg",
         Regex("\\bbutterball\\b.*\\bturkey\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg",
         Regex("\\bapplegate\\b.*\\broast\\s+beef\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg",
         Regex("\\bapplegate\\b.*\\b(?:hot\\s*dog|frank)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg",
         Regex("\\bapplegate\\b.*\\bbacon\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg",
         Regex("\\bapplegate\\b.*\\bturkey\\s+breast\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/022/517/201/1436/front_en.3.400.jpg",
-        Regex("\\bapplegate\\b.*\\bblack\\s+forest\\s+ham\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/450/020/1956/front_en.6.400.jpg",
+        Regex("\\bapplegate\\b.*\\bblack\\s+forest\\s+ham\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/700/5906/front_en.5.400.jpg",
+        Regex("\\bapplegate\\b.*\\borganic.*\\bsalami\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/765/6009/front.7.400.jpg",
         Regex("\\bapplegate\\b.*\\bsalami\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg",
         Regex("\\bapplegate\\b.*\\bbreakfast\\s+sausage\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg",
-        Regex("\\bapplegate\\b.*\\bnuggets?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/905/3218/front_en.6.400.jpg",
+        Regex("\\bapplegate\\b.*\\borganic.*\\bnuggets?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/760/5519/front_en.6.400.jpg",
+        Regex("\\bapplegate\\b.*\\bnuggets?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/705/5192/front_en.22.400.jpg",
         Regex("\\bannie'?s\\b.*\\b(?:shells|cheddar|mac)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/26565859/front_en.3.400.jpg",
         Regex("\\blotus\\s+foods\\b.*\\bramen\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/070/895/362/8172/front_en.3.400.jpg",
         Regex("\\bmaruchan\\b.*\\bramen\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/004/178/900/2915/front_es.14.400.jpg",
-        Regex("\\b(?:marketside\\s+butcher|organic\\s+grass[- ]?fed.*ground\\s+beef)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg",
+        Regex("\\bmarketside\\s+butcher\\b.*\\bground\\s+beef\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg",
+        Regex("\\bverde(?:\\s+farms)?\\b.*\\bground\\s+beef\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg",
         Regex("\\b(?:ground\\s+beef|ground\\s+chuck|\\d{2}%\\s*lean.*beef)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/020/434/580/7045/front_en.3.400.jpg",
         Regex("\\bsmithfield\\b.*\\bham\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/020/634/010/5485/front_en.3.400.jpg",
-        Regex("\\b(?:freshness\\s+guaranteed\\b.*\\bglazed\\s+donuts?|glazed\\s+donuts?,?\\s*12\\s*oz)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/077/185/646/5793/front_en.33.400.jpg",
-        Regex("\\bbismarks?\\b|\\braspberry\\s+(?:filled\\s+)?bism[a-z']*", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/029/961/630/1971/front_en.5.400.jpg",
-        Regex("\\b(?:my\\s+cookie\\s+dealer|protein\\s+toaster\\s+pastr(?:y|ies))\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/800/031/6104/front.9.400.jpg",
         Regex("\\bvital\\s+farms\\b.*\\beggs?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/086/174/500/0010/front_en.27.400.jpg",
         Regex("\\borganic\\s+valley\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/64715087/front_en.3.400.jpg",
         Regex("\\bgreat\\s+value\\b.*\\bmilk\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.4.400.jpg",
@@ -395,6 +456,10 @@ object ScanHistoryStore {
         Regex("^(?!.*\\b(?:pudding|bread|muffin|chips?|boat|sunscreen)\\b).*\\b(?:fresh\\s+bananas?|bananas?)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/200/000/015/1418/front_en.3.400.jpg",
         Regex("^(?!.*\\b(?:juice|cider|sauce|applesauce|pie|chips?|strudel|fritter|danish)\\b).*\\b(?:honeycrisp\\s+apples?|gala\\s+apples?|fuji\\s+apples?|granny\\s+smith\\s+apples?|fresh\\s+apples?)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/290/630/0183/front_en.3.400.jpg",
         Regex("^(?!.*\\b(?:cake|juice|soup)\\b).*\\b(?:baby\\s+cut\\s+carrots?|whole\\s+carrots?|fresh\\s+carrots?)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg"
+    )
+
+    private val REVOKED_OFF_IMAGE_RE = Regex(
+        "/(?:10603499|468/112/060/0422|068/113/139/5502|084/013/430/8029|005/200/012/2022|001/111/000/5526|008/523/927/0233|004/450/020/1956|008/523/905/3218|077/185/646/5793|029/961/630/1971|003/800/031/6104|490/100/207/5484)/"
     )
 
     fun verifiedDirectImageUrl(title: String): String? {
@@ -416,7 +481,7 @@ object ScanHistoryStore {
             trimmed.startsWith("https://") &&
             !trimmed.contains("/swaps/") &&
             !trimmed.contains("/products/") &&
-            !trimmed.contains("/10603499/") &&
+            !REVOKED_OFF_IMAGE_RE.containsMatchIn(trimmed) &&
             (!trimmed.contains("/api/product-image") || trimmed.contains("v=4"))
         ) {
             return trimmed
@@ -433,6 +498,10 @@ object ScanHistoryStore {
             val item = arr.optJSONObject(i) ?: continue
             val ts = item.optLong("scannedAtMs", 0L).takeIf { it > 0L } ?: item.optLong("favoritedAtMs", 0L)
             if (!isEntryFresh(ts, now)) continue
+            val lookupObj = item.optJSONObject("lookup")
+            val verifiedIso = lookupObj?.optString("verifiedAt").orEmpty()
+                .ifBlank { lookupObj?.optString("sourceUpdatedAt").orEmpty() }
+            if (verifiedIso.isNotBlank() && !isCatalogDateFresh(verifiedIso, now)) continue
             val rawTitle = extractTitle(item)
             if (isPoisonedProduceEntry(rawTitle, item)) continue
             val key = canonicalKey(rawTitle)
@@ -445,13 +514,16 @@ object ScanHistoryStore {
                     prod.put("title", effectiveTitle)
                     prod.put("brand", "Marketside Butcher")
                     prod.put("ingredients", "100% Organic Grass-Fed Beef.")
+                    prod.put("isOrganic", true)
                 }
                 val curImg = prod.optString("imageUrl")
                 prod.put("imageUrl", resolveBestImageUrl(effectiveTitle, curImg))
                 val isPlainGroundMeat = Regex("""^(?!.*\b(?:patties|burger|jerky|seasoned|marinated|taco|sauce|soup|chili|helper|lasagna|burrito)\b).*\b(?:ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean\s*/?\s*\d{1,2}%\s*fat\s*ground\s*(?:beef|chuck))\b""", RegexOption.IGNORE_CASE).containsMatchIn(effectiveTitle)
                 val resObj = item.optJSONObject("result")
                 if (isPlainGroundMeat && resObj != null && resObj.optInt("score", 90) < 75) {
-                    val isOrg = effectiveTitle.contains("organic", ignoreCase = true)
+                    val isOrg = prod.optJSONObject("nutrition")?.optBoolean("isOrganic") == true ||
+                        prod.optBoolean("isOrganic", false) ||
+                        item.optBoolean("isOrganic", false)
                     val newScore = if (isOrg) 100 else 90
                     prod.put("ingredients", "100% Whole Food Protein (Single-Ingredient Unprocessed Meat).")
                     resObj.put("score", newScore)
@@ -538,7 +610,7 @@ object ScanHistoryStore {
                 brand = "Hidden Valley",
                 category = "Salads & Dressings",
                 score = 12,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Hidden Valley Original Ranch Salad Dressing"),
                 ingredients = "Vegetable Oil (Soybean and/or Canola), Water, Sugar, Salt, Buttermilk, Egg Yolk, Natural Flavors, Phosphoric Acid, Xanthan Gum, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid, Calcium Disodium EDTA.",
@@ -582,7 +654,7 @@ object ScanHistoryStore {
                 brand = "General Mills",
                 category = "Cereals & Granolas",
                 score = 9,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("General Mills Cinnamon Toast Crunch Cereal"),
                 ingredients = "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Rosemary Extract. BHT Added to Preserve Freshness.",
@@ -597,20 +669,21 @@ object ScanHistoryStore {
                 additiveScore = 0,
                 organicScore = 0,
                 swap = swapObj(
-                    "Nature's Path Organic Heritage Flakes Cereal",
-                    "Nature's Path",
-                    92,
-                    productImageUrl("Nature's Path Organic Heritage Flakes Cereal"),
-                    "Organic Whole Wheat Meal, Organic Oat Flour, Organic Khorasan Wheat, Organic Barley Flour, Organic Spelt Flour, Organic Millet, Organic Quinoa, Organic Cane Sugar, Sea Salt."
-                )
+                        "Nature's Path Organic Heritage Flakes Cereal",
+                        "Nature's Path",
+                        92,
+                        productImageUrl("Nature's Path Organic Heritage Flakes Cereal"),
+                        "Organic Whole Wheat Meal, Organic Oat Flour, Organic Khorasan Wheat, Organic Barley Flour, Organic Spelt Flour, Organic Millet, Organic Quinoa, Organic Cane Sugar, Sea Salt.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Marketside New England Clam Chowder, 16 oz",
                 brand = "Marketside",
                 category = "Soups & Chowders",
                 score = 42,
-                rating = "Mediocre",
-                color = "yellow",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Marketside New England Clam Chowder 16 oz"),
                 ingredients = "Light Cream, Potatoes, Fish Stock, Sea Clams, Chopped Cockle, Onions, Wheat Flour, Soybean Oil, Butter, Clam Broth, Sea Salt, Celery, Salt Pork, Black Pepper, Worcestershire Sauce, Garlic, Natural Flavors.",
                 flagged = listOf(
@@ -634,8 +707,8 @@ object ScanHistoryStore {
                 brand = "Campbell's",
                 category = "Soups & Chowders",
                 score = 27,
-                rating = "Mediocre",
-                color = "yellow",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Campbell's Chunky New England Clam Chowder Soup"),
                 ingredients = "Clam Stock, Potatoes, Clams, Vegetable Oil (Corn, Canola, And/Or Soybean), Celery, Modified Food Starch, Wheat Flour, Salt, Cream, Soy Protein Concentrate, Monosodium Glutamate, Sodium Phosphate, Disodium Inosinate, Disodium Guanylate, Natural Flavoring, Soy Lecithin.",
                 flagged = listOf(
@@ -663,7 +736,7 @@ object ScanHistoryStore {
                 brand = "Doritos",
                 category = "Chips & Snacks",
                 score = 18,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Doritos Nacho Cheese Tortilla Chips"),
                 ingredients = "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Artificial Color (Yellow 6, Yellow 5, Red 40), Disodium Inosinate, Disodium Guanylate.",
@@ -691,7 +764,7 @@ object ScanHistoryStore {
                 brand = "Doritos",
                 category = "Chips & Snacks",
                 score = 18,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Doritos Cool Ranch Tortilla Chips"),
                 ingredients = "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Tomato Powder, Lactose, Whey, Monosodium Glutamate, Artificial Color (Red 40, Blue 1, Yellow 5), Disodium Inosinate, Disodium Guanylate.",
@@ -848,7 +921,7 @@ object ScanHistoryStore {
                 brand = "Monster Energy",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 6,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Monster Energy Original Green 16 oz"),
                 description = "Carbonated energy drink with 160mg caffeine, 54g added sugar, sucralose, and synthetic preservatives (sorbic & benzoic acid).",
@@ -864,20 +937,21 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Monster Energy Zero Ultra White Energy Drink, 16 fl oz",
                 brand = "Monster Energy",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Monster Energy Zero Ultra White 16 oz"),
                 description = "Zero-sugar carbonated energy drink (150mg caffeine) sweetened with erythritol, sucralose, and acesulfame potassium.",
                 keywords = "monster zero ultra white monster sugar free energy drink monster white",
@@ -893,20 +967,21 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Red Bull Energy Drink Original, 8.4 fl oz",
                 brand = "Red Bull",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 30,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Red Bull Energy Drink Original 8.4 oz"),
                 description = "Classic Austrian energy drink with 80mg caffeine, 1000mg taurine, B-group vitamins, and 27g added sugars per 8.4 fl oz can.",
                 keywords = "red bull redbull energy drink original 8.4 oz 12 oz taurine caffeine",
@@ -917,20 +992,21 @@ object ScanHistoryStore {
                 additiveScore = 30,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Red Bull Sugarfree Energy Drink, 8.4 fl oz",
                 brand = "Red Bull",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Red Bull Sugarfree Energy Drink 8.4 oz"),
                 description = "Zero-sugar Red Bull with 80mg caffeine and taurine, sweetened with aspartame and acesulfame potassium (Ace-K).",
                 keywords = "red bull sugarfree sugar free redbull diet zero sugar energy drink",
@@ -944,12 +1020,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Celsius Live Fit Sparkling Orange Fitness Energy Drink, 12 fl oz",
@@ -970,20 +1047,21 @@ object ScanHistoryStore {
                 additiveScore = 15,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "C4 Performance Energy Drink Frozen Bombsicle, 16 fl oz",
                 brand = "C4 Energy",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("C4 Performance Energy Frozen Bombsicle 16 oz"),
                 description = "Pre-workout carbonated energy drink with 200mg caffeine, CarnoSyn beta-alanine, and citrulline, sweetened with sucralose & Ace-K.",
                 keywords = "c4 energy drink pre workout preworkout frozen bombsicle skittles starburst cellucor",
@@ -998,20 +1076,21 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Ora Organic Renewable Energy Clean Pre-Workout",
-                    "Ora Organic",
-                    90,
-                    productImageUrl("Ora Organic Renewable Energy Pre Workout"),
-                    "Organic Green Coffee Bean, Organic Yerba Mate, Organic Matcha, Organic Beet Root, Organic Maca Root, Organic Stevia."
-                )
+                        "Ora Organic Renewable Energy Clean Pre-Workout",
+                        "Ora Organic",
+                        90,
+                        productImageUrl("Ora Organic Renewable Energy Pre Workout"),
+                        "Organic Green Coffee Bean, Organic Yerba Mate, Organic Matcha, Organic Beet Root, Organic Maca Root, Organic Stevia.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "C4 Original Pre-Workout Powder Icy Blue Razz",
                 brand = "Cellucor C4",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("C4 Original Pre Workout Powder Icy Blue Razz"),
                 description = "Explosive pre-workout supplement powder with 150mg caffeine, 1.6g beta-alanine, and 1g creatine nitrate; contains Blue 1, sucralose, and Ace-K.",
                 keywords = "c4 pre workout preworkout powder cellucor icy blue razz fruit punch",
@@ -1026,20 +1105,21 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Ora Organic Renewable Energy Clean Pre-Workout",
-                    "Ora Organic",
-                    90,
-                    productImageUrl("Ora Organic Renewable Energy Pre Workout"),
-                    "Organic Green Coffee Bean, Organic Yerba Mate, Organic Matcha, Organic Beet Root, Organic Maca Root, Organic Stevia."
-                )
+                        "Ora Organic Renewable Energy Clean Pre-Workout",
+                        "Ora Organic",
+                        90,
+                        productImageUrl("Ora Organic Renewable Energy Pre Workout"),
+                        "Organic Green Coffee Bean, Organic Yerba Mate, Organic Matcha, Organic Beet Root, Organic Maca Root, Organic Stevia.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Alani Nu Energy Drink Cosmic Stardust, 12 fl oz",
                 brand = "Alani Nu",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Alani Nu Energy Drink Cosmic Stardust 12 oz"),
                 description = "Zero-sugar energy drink with 200mg caffeine, L-theanine, and biotin, sweetened with erythritol, sucralose, and Ace-K.",
                 keywords = "alani nu energy drink cosmic stardust cherry slush breezeberry",
@@ -1054,20 +1134,21 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Ghost Energy Drink Sour Patch Kids Redberry, 16 fl oz",
                 brand = "Ghost",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Ghost Energy Drink Sour Patch Kids Redberry 16 oz"),
                 description = "Nootropic zero-sugar energy drink with 200mg natural caffeine, Alpha-GPC, and L-carnitine; sweetened with sucralose & Ace-K.",
                 keywords = "ghost energy drink sour patch kids swedish fish warheads nootropic",
@@ -1082,12 +1163,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
-                    "Guayakí",
-                    90,
-                    productImageUrl("Guayaki Organic Yerba Mate Tea"),
-                    "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice."
-                )
+                        "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea",
+                        "Guayakí",
+                        90,
+                        productImageUrl("Guayaki Organic Yerba Mate Tea"),
+                        "Purified Water, Organic Brewed Yerba Mate, Organic Lemon Juice.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Guayakí Organic Yerba Mate Unsweetened Clean Energy Tea, 15.5 fl oz",
@@ -1130,8 +1212,8 @@ object ScanHistoryStore {
                 brand = "Core Power by Fairlife",
                 category = "Energy Drinks & Pre-Workouts",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Core Power Fairlife 26g Protein Milk Shake Chocolate"),
                 description = "Ready-to-drink post-workout protein recovery shake made from ultra-filtered milk (26g protein); contains carrageenan, sucralose, and Ace-K.",
                 keywords = "core power fairlife protein shake chocolate 26g 42g elite muscle milk",
@@ -1146,12 +1228,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Orgain Organic Grass-Fed Clean Protein Shake",
-                    "Orgain",
-                    88,
-                    productImageUrl("Orgain Organic Grass Fed Protein Shake"),
-                    "Filtered Water, Orgain Organic Milk Protein Concentrate (Grass-Fed), Organic Erythritol, Organic Alkalized Cocoa, Organic Acacia, Organic Stevia."
-                )
+                        "Orgain Organic Grass-Fed Clean Protein Shake",
+                        "Orgain",
+                        88,
+                        productImageUrl("Orgain Organic Grass Fed Protein Shake"),
+                        "Filtered Water, Orgain Organic Milk Protein Concentrate (Grass-Fed), Organic Erythritol, Organic Alkalized Cocoa, Organic Acacia, Organic Stevia.",
+                        isOrganic = true
+                    )
             ),
             // ==================== SODAS & PREBIOTIC DRINKS ====================
             sampleItem(
@@ -1159,7 +1242,7 @@ object ScanHistoryStore {
                 brand = "Coca-Cola",
                 category = "Sodas & Prebiotic Drinks",
                 score = 6,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Coca Cola Classic Soda 12 oz Can"),
                 description = "Classic cola soft drink sweetened with 39g high fructose corn syrup and colored with Class IV Caramel Color.",
@@ -1186,8 +1269,8 @@ object ScanHistoryStore {
                 brand = "Coca-Cola",
                 category = "Sodas & Prebiotic Drinks",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Diet Coke Soda 12 oz Can"),
                 description = "Zero-calorie diet cola sweetened with aspartame, colored with Caramel Color, and preserved with potassium benzoate.",
                 keywords = "diet coke coca cola zero sugar diet soda aspartame",
@@ -1214,7 +1297,7 @@ object ScanHistoryStore {
                 brand = "Mountain Dew",
                 category = "Sodas & Prebiotic Drinks",
                 score = 6,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Mountain Dew Citrus Soda 12 oz Can"),
                 description = "Caffeinated citrus soft drink with 46g high fructose corn syrup, Yellow 5 synthetic dye, sodium benzoate, and calcium disodium EDTA.",
@@ -1315,7 +1398,7 @@ object ScanHistoryStore {
                 brand = "Gatorade",
                 category = "Waters, Seltzers & Hydration",
                 score = 6,
-                rating = "Bad",
+                rating = "Poor",
                 color = "red",
                 imageUrl = productImageUrl("Gatorade Thirst Quencher Fruit Punch 20 oz"),
                 description = "Conventional sports electrolyte drink containing 34g added sugar (dextrose & sucrose) and Red 40 petroleum-based food dye.",
@@ -1329,20 +1412,21 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Harmless Harvest Organic Coconut Water",
-                    "Harmless Harvest",
-                    88,
-                    productImageUrl("Harmless Harvest Organic Coconut Water"),
-                    "100% Organic Coconut Water."
-                )
+                        "Harmless Harvest Organic Coconut Water",
+                        "Harmless Harvest",
+                        88,
+                        productImageUrl("Harmless Harvest Organic Coconut Water"),
+                        "100% Organic Coconut Water.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Prime Hydration Drink Ice Pop, 16.9 fl oz",
                 brand = "Prime",
                 category = "Waters, Seltzers & Hydration",
                 score = 42,
-                rating = "Mediocre",
-                color = "orange",
+                rating = "Poor",
+                color = "red",
                 imageUrl = productImageUrl("Prime Hydration Drink Ice Pop 16.9 oz"),
                 description = "Coconut-water sports hydration beverage with electrolytes and BCAAs, sweetened with sucralose and acesulfame potassium.",
                 keywords = "prime hydration drink ice pop blue raspberry tropical punch logan paul",
@@ -1356,12 +1440,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Harmless Harvest Organic Coconut Water",
-                    "Harmless Harvest",
-                    88,
-                    productImageUrl("Harmless Harvest Organic Coconut Water"),
-                    "100% Organic Coconut Water."
-                )
+                        "Harmless Harvest Organic Coconut Water",
+                        "Harmless Harvest",
+                        88,
+                        productImageUrl("Harmless Harvest Organic Coconut Water"),
+                        "100% Organic Coconut Water.",
+                        isOrganic = true
+                    )
             ),
             // ==================== JUICES, SMOOTHIES & TEA ====================
             sampleItem(
@@ -1436,7 +1521,7 @@ object ScanHistoryStore {
                 category = "Juices, Smoothies & Tea",
                 score = 30,
                 rating = "Poor",
-                color = "orange",
+                color = "red",
                 imageUrl = productImageUrl("Starbucks Frappuccino Mocha Coffee Drink Bottle"),
                 description = "Sweetened bottled iced coffee drink made with reduced-fat milk, coffee, 46g total sugars, and pectin.",
                 keywords = "starbucks frappuccino mocha vanilla caramel iced coffee drink bottle",
@@ -1510,12 +1595,13 @@ object ScanHistoryStore {
                 additiveScore = 15,
                 organicScore = 0,
                 swap = swapObj(
-                    "Califia Farms Organic Unsweetened Oatmilk",
-                    "Califia Farms",
-                    90,
-                    productImageUrl("Califia Farms Organic Unsweetened Oatmilk"),
-                    "Purified Water, Organic Oats, Sea Salt."
-                )
+                        "Califia Farms Organic Unsweetened Oatmilk",
+                        "Califia Farms",
+                        90,
+                        productImageUrl("Califia Farms Organic Unsweetened Oatmilk"),
+                        "Purified Water, Organic Oats, Sea Salt.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Nesquik Chocolate Lowfat Milk Ready-to-Drink, 14 fl oz",
@@ -1536,12 +1622,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Horizon Organic Lowfat Chocolate Milk",
-                    "Horizon Organic",
-                    76,
-                    productImageUrl("Horizon Organic Lowfat Chocolate Milk"),
-                    "Organic Grade A Lowfat Milk, Organic Cane Sugar, Organic Fair Trade Cocoa, Gellan Gum, Vitamin A Palmitate, Vitamin D3."
-                )
+                        "Horizon Organic Lowfat Chocolate Milk",
+                        "Horizon Organic",
+                        76,
+                        productImageUrl("Horizon Organic Lowfat Chocolate Milk"),
+                        "Organic Grade A Lowfat Milk, Organic Cane Sugar, Organic Fair Trade Cocoa, Gellan Gum, Vitamin A Palmitate, Vitamin D3.",
+                        isOrganic = true
+                    )
             ),
             sampleItem(
                 title = "Simple Truth Organic Whole Milk Plain Greek Yogurt",
@@ -1634,7 +1721,7 @@ object ScanHistoryStore {
                 category = "Milk & Dairy",
                 score = 33,
                 rating = "Poor",
-                color = "orange",
+                color = "red",
                 imageUrl = productImageUrl("Favorite Day Classic Vanilla Ice Cream"),
                 description = "Target Favorite Day vanilla ice cream containing corn syrup, mono and diglycerides, and carrageenan.",
                 keywords = "favorite day classic vanilla ice cream target vanilla bean ice cream",
@@ -1648,12 +1735,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Alden's Organic Old Fashioned Vanilla Ice Cream",
-                    "Alden's Organic",
-                    84,
-                    productImageUrl("Alden's Organic Old Fashioned Vanilla Ice Cream"),
-                    "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Tapioca Starch."
-                ),
+                        "Alden's Organic Old Fashioned Vanilla Ice Cream",
+                        "Alden's Organic",
+                        84,
+                        productImageUrl("Alden's Organic Old Fashioned Vanilla Ice Cream"),
+                        "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Tapioca Starch.",
+                        isOrganic = true
+                    ),
                 storeKey = "target"
             ),
             sampleItem(
@@ -1678,12 +1766,13 @@ object ScanHistoryStore {
                 additiveScore = 6,
                 organicScore = 0,
                 swap = swapObj(
-                    "Alden's Organic Cookies & Cream Ice Cream",
-                    "Alden's Organic",
-                    82,
-                    productImageUrl("Alden's Organic Cookies & Cream Ice Cream"),
-                    "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Cookies (Organic Wheat Flour, Organic Cane Sugar, Organic Coconut Oil, Organic Cocoa, Baking Soda, Salt), Organic Vanilla Extract."
-                ),
+                        "Alden's Organic Cookies & Cream Ice Cream",
+                        "Alden's Organic",
+                        82,
+                        productImageUrl("Alden's Organic Cookies & Cream Ice Cream"),
+                        "Organic Milk, Organic Cream, Organic Cane Sugar, Organic Cookies (Organic Wheat Flour, Organic Cane Sugar, Organic Coconut Oil, Organic Cocoa, Baking Soda, Salt), Organic Vanilla Extract.",
+                        isOrganic = true
+                    ),
                 storeKey = "target"
             ),
             sampleItem(
@@ -1728,7 +1817,7 @@ object ScanHistoryStore {
                 category = "Meat, Poultry & Deli",
                 score = 70,
                 rating = "Mediocre",
-                color = "green",
+                color = "yellow",
                 imageUrl = productImageUrl("Butterball Frozen Whole Turkey"),
                 description = "All-natural whole young turkey basted with water, salt, spices, and natural flavoring (no MSG, no artificial preservatives, no gluten).",
                 keywords = "butterball frozen whole turkey all natural 10-16 lbs thanksgiving turkey",
@@ -1817,7 +1906,9 @@ object ScanHistoryStore {
             swap.put("brand", "Organic Valley")
             swap.put("size", "6 oz pack")
             swap.put("score", 85)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Organic Valley Organic American Cheese Slices")
+            swap.put("imageUrl", productImageUrl("Organic Valley Organic American Cheese Slices"))
             swap.put("ingredients", "Organic cultured pasteurized milk, organic cream, water, sodium citrate, salt, organic annatto (color), vegetarian enzyme.")
             if (isWalmart) {
                 swap.put("webUrl", "https://www.walmart.com/ip/1814292019")
@@ -1831,7 +1922,9 @@ object ScanHistoryStore {
             swap.put("brand", "Pacific Foods")
             swap.put("size", "10.5 oz can")
             swap.put("score", 88)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Pacific Foods Organic Cream of Chicken Condensed Soup")
+            swap.put("imageUrl", productImageUrl("Pacific Foods Organic Cream of Chicken Condensed Soup"))
             swap.put("ingredients", "Water, organic chicken, organic rice flour, organic heavy cream, organic chicken broth, organic cornstarch, sea salt, organic onion powder, organic garlic powder, organic spices.")
             if (isWalmart) {
                 swap.put("webUrl", "https://www.walmart.com/ip/541659748")
@@ -1845,8 +1938,9 @@ object ScanHistoryStore {
             swap.put("brand", "Marketside Butcher")
             swap.put("size", "1 lb brick")
             swap.put("score", 100)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Organic Grass Fed Ground Beef")
-            swap.put("imageUrl", "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg")
+            swap.put("imageUrl", "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg")
             swap.put("ingredients", "100% Organic Grass-Fed Beef.")
             if (isWalmart) {
                 swap.put("webUrl", "https://www.walmart.com/ip/51259058")
@@ -1856,42 +1950,82 @@ object ScanHistoryStore {
             swap.put("title", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
             swap.put("name", "Organic 21 Whole Grains & Seeds Bread")
             swap.put("brand", "Dave's Killer Bread")
+            swap.put("size", "27 oz loaf")
+            swap.put("score", 85)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
+            swap.put("imageUrl", productImageUrl("Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread"))
+            swap.put("ingredients", "Organic whole wheat (organic whole wheat flour, organic cracked whole wheat), water, organic 21 Whole Grains and Seeds mix (organic whole flax seeds, organic sunflower seeds, organic ground whole flax seeds, organic unhulled brown sesame seeds, organic triticale, organic pumpkin seeds, organic rolled barley, organic rolled oats, organic rolled rye, organic unhulled black sesame seeds, organic blue cornmeal, organic millet, organic rolled spelt, organic brown rice flour, organic amaranth flour, organic yellow cornmeal, organic kamut khorasan wheat, organic quinoa, organic buckwheat flour, organic sorghum flour, organic poppy seeds), organic cane sugar, organic wheat gluten, organic oat fiber, organic molasses, sea salt, yeast, organic cultured wheat flour.")
         } else if (lowSwap.contains("malk organic unsweetened oat")) {
             swap.put("title", "Califia Farms Organic Unsweetened Oatmilk")
             swap.put("name", "Organic Unsweetened Oatmilk")
             swap.put("brand", "Califia Farms")
+            swap.put("size", "48 fl oz bottle")
+            swap.put("score", 95)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Califia Farms Organic Unsweetened Oatmilk")
+            swap.put("imageUrl", productImageUrl("Califia Farms Organic Unsweetened Oatmilk"))
+            swap.put("ingredients", "Water, organic oats, sea salt.")
         } else if (lowSwap.contains("malk organic unsweetened almond")) {
             swap.put("title", "Califia Farms Organic Unsweetened Almondmilk")
             swap.put("name", "Organic Unsweetened Almondmilk")
             swap.put("brand", "Califia Farms")
+            swap.put("size", "48 fl oz bottle")
+            swap.put("score", 95)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Califia Farms Organic Unsweetened Almondmilk")
+            swap.put("imageUrl", productImageUrl("Califia Farms Organic Unsweetened Almondmilk"))
+            swap.put("ingredients", "Water, organic almonds, sea salt.")
         } else if (lowSwap.contains("raw sharp cheddar")) {
             swap.put("title", "Organic Valley Organic Sharp Cheddar Cheese")
             swap.put("name", "Organic Sharp Cheddar Cheese")
             swap.put("brand", "Organic Valley")
+            swap.put("size", "8 oz block")
+            swap.put("score", 88)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Organic Valley Organic Sharp Cheddar Cheese")
+            swap.put("imageUrl", productImageUrl("Organic Valley Organic Sharp Cheddar Cheese"))
+            swap.put("ingredients", "Organic cultured pasteurized milk, salt, vegetarian enzyme.")
         } else if (lowSwap.contains("alec's ice cream")) {
-            swap.put("title", "Alden's Organic Organic Vanilla Bean Ice Cream")
-            swap.put("name", "Organic Vanilla Bean Ice Cream")
+            swap.put("title", "Alden's Organic Vanilla Bean Ice Cream")
+            swap.put("name", "Vanilla Bean Ice Cream")
             swap.put("brand", "Alden's Organic")
+            swap.put("size", "48 fl oz tub")
+            swap.put("score", 82)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Alden's Organic Vanilla Bean Ice Cream")
+            swap.put("imageUrl", productImageUrl("Alden's Organic Vanilla Bean Ice Cream"))
+            swap.put("ingredients", "Organic milk, organic cream, organic cane sugar, organic tapioca syrup, organic vanilla extract, organic guar gum, organic vanilla beans.")
         } else if (lowSwap.contains("crown maple")) {
             swap.put("title", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
             swap.put("name", "Organic 100% Pure Grade A Amber Maple Syrup")
             swap.put("brand", "Coombs Family Farms")
+            swap.put("size", "12 fl oz bottle")
+            swap.put("score", 88)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
+            swap.put("imageUrl", productImageUrl("Coombs Family Farms Organic Maple Syrup"))
+            swap.put("ingredients", "100% Pure Organic Grade A Amber Rich Taste Maple Syrup.")
         } else if (lowSwap.contains("jovial")) {
             swap.put("title", "Barilla Organic Spaghetti Pasta")
             swap.put("name", "Organic Spaghetti Pasta")
             swap.put("brand", "Barilla")
+            swap.put("size", "16 oz box")
+            swap.put("score", 95)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Barilla Organic Spaghetti Pasta")
+            swap.put("imageUrl", productImageUrl("Barilla Organic Spaghetti Pasta"))
+            swap.put("ingredients", "Organic durum wheat semolina.")
         } else if (lowSwap.contains("nooma")) {
             swap.put("title", "Harmless Harvest Organic Coconut Water")
             swap.put("name", "Organic Coconut Water")
             swap.put("brand", "Harmless Harvest")
+            swap.put("size", "16 fl oz bottle")
+            swap.put("score", 94)
+            swap.put("isOrganic", true)
             swap.put("searchQuery", "Harmless Harvest Organic Coconut Water")
+            swap.put("imageUrl", productImageUrl("Harmless Harvest Organic Coconut Water"))
+            swap.put("ingredients", "100% Organic Coconut Water.")
         }
         val latestTitle = swap.optString("title")
         val latestQuery = swap.optString("searchQuery").ifBlank { latestTitle }
@@ -1969,13 +2103,15 @@ object ScanHistoryStore {
         brand: String,
         score: Int,
         imageUrl: String,
-        ingredients: String
+        ingredients: String,
+        isOrganic: Boolean = false
     ): JSONObject = JSONObject().apply {
         put("title", title)
         put("brand", brand)
         put("score", score)
         put("imageUrl", imageUrl)
         put("ingredients", ingredients)
+        put("isOrganic", isOrganic)
         put("why", "No seed oils, synthetic dyes, or high-risk preservatives.")
         put("searchQuery", title)
     }
@@ -2005,14 +2141,20 @@ object ScanHistoryStore {
         put("lookup", JSONObject().apply {
             put("source", "catalog")
             put("origin", "catalog")
-            put("sourceUpdatedAt", "2026-11-08")
+            put("verifiedAt", "2026-11-10")
+            put("sourceUpdatedAt", "2026-11-10")
         })
+        val isOrg = organicScore > 0
         put("product", JSONObject().apply {
             put("title", title)
             put("brand", brand)
             put("category", category)
             put("imageUrl", imageUrl)
             put("ingredients", ingredients)
+            put("isOrganic", isOrg)
+            put("nutrition", JSONObject().apply {
+                put("isOrganic", isOrg)
+            })
             if (description.isNotBlank()) put("description", description)
             if (keywords.isNotBlank()) put("keywords", keywords)
         })
@@ -2021,10 +2163,15 @@ object ScanHistoryStore {
             score >= 50 -> "Mediocre"
             else -> "Poor"
         }
+        val canonicalColor = when {
+            score >= 75 -> "green"
+            score >= 50 -> "yellow"
+            else -> "red"
+        }
         put("result", JSONObject().apply {
             put("score", score)
             put("rating", canonicalRating)
-            put("color", color)
+            put("color", canonicalColor)
             put("flagged", JSONArray().apply {
                 flagged.forEach { f ->
                     put(JSONObject().apply {

@@ -10,7 +10,15 @@ import {
   type EntitlementSummary,
 } from "./referrals";
 import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
-import { resolveSwap, STORES, STORE_META, type ScanSurface, type Store, type SwapResult } from "./swaps";
+import {
+  resolveSwap,
+  resolveSwapCandidates,
+  STORES,
+  STORE_META,
+  type ScanSurface,
+  type Store,
+  type SwapResult,
+} from "./swaps";
 
 import { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId } from "./dietary";
 export { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId };
@@ -18,8 +26,10 @@ export { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId };
 export interface ScanRequest {
   productTitle?: string;
   rawIngredients?: string;
+  rawText?: string;
   barcode?: string;
   store?: string;
+  instacartRetailerSlug?: string;
   surface?: ScanSurface;
   watchlist?: Watchlist;
   familyWatchlist?: Category[];
@@ -53,6 +63,7 @@ export interface ScanResponse {
   result: ScoreResult;
   dietaryAlerts?: DietaryAlert[];
   swap: SwapResult | null;
+  swapCandidates?: SwapResult[];
   store: Store;
   pill: string;
   entitlement?: EntitlementSummary;
@@ -119,48 +130,113 @@ function extractTitleSlugFromUrl(urlStr: string): string {
   return "";
 }
 
+const MULTI_PRODUCT_SECTION_BOUNDARY =
+  /^(?:customers\s+also\s+(?:bought|viewed|shopped|considered)|similar\s+items?|compare\s+with\s+similar\s+items?|comparison\s+chart|frequently\s+bought\s+together|sponsored(?:\s+products?|\s+items?)?|products?\s+related\s+to\s+this\s+item|related\s+(?:products?|items?)|buy\s+(?:it\s+)?again|items?\s+to\s+add\s+next|recommended\s+for\s+you|you\s+may\s+also\s+like|more\s+to\s+consider|people\s+also\s+buy|shop\s+similar)\b/i;
+
+function isolateSingleIngredientsBlock(rawIng: string): string {
+  if (!rawIng) return "";
+  let cleaned = rawIng.replace(/^\s*ingredients\s*:\s*/i, "");
+  // If multiple "Ingredients:" blocks were concatenated across products on screen, keep only the first block!
+  const secondIngMatch = cleaned.match(/(?:^|\n|[.;])\s*ingredients\s*:/i);
+  if (secondIngMatch && secondIngMatch.index !== undefined && secondIngMatch.index >= 8) {
+    cleaned = cleaned.slice(0, secondIngMatch.index);
+  }
+  cleaned = cleaned.split(
+    /\n\s*(?:allergen|contains\b.*?(?:may contain|facility)|warnings?|directions|nutrition facts|distributed by|manufactured|customers\s+also|similar\s+items?|compare\s+with\s+similar|frequently\s+bought\s+together|sponsored\s+products?)/i
+  )[0];
+  return cleaned.replace(/\s+/g, " ").trim();
+}
+
 function normalizeIosShareOrOcrInput(
   rawTitle: string,
   rawIng: string,
+  rawText = "",
 ): { title: string; candidates: string[]; extractedIngredients: string; detectedStore?: Store } {
-  const detectedStore = detectStoreFromUrl(rawTitle);
-  let extractedIngredients = rawIng;
+  const combinedSource = rawTitle || rawText;
+  const detectedStore = detectStoreFromUrl(combinedSource);
+  let extractedIngredients = isolateSingleIngredientsBlock(rawIng);
   const ocrCandidates: string[] = [];
 
-  // Handle multi-line iOS Shortcut Screenshot OCR ("Take Screenshot -> Extract Text from Image")
-  if (rawTitle.includes("\n")) {
+  const multiLineBlock = rawTitle.includes("\n") ? rawTitle : rawText.includes("\n") ? rawText : "";
+
+  // Handle multi-line Screenshot OCR / multi-product rawText disambiguation
+  if (multiLineBlock) {
+    const allLines = multiLineBlock
+      .split(/\r?\n/)
+      .map((l) => l.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+
+    // Slice off secondary recommendation carousels / comparison charts so unrelated products never bleed in
+    const primaryLines: string[] = [];
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
+      if (i > 0 && MULTI_PRODUCT_SECTION_BOUNDARY.test(line)) {
+        break;
+      }
+      primaryLines.push(line);
+    }
+
+    // If multiple products with their own "Ingredients:" blocks appear, isolate up to the end of the first Ingredients block
+    let firstIngLineIdx = -1;
+    let secondIngLineIdx = -1;
+    for (let i = 0; i < primaryLines.length; i++) {
+      if (/^ingredients\s*:?/i.test(primaryLines[i]) || /\bingredients\s*:\s*[a-z]/i.test(primaryLines[i])) {
+        if (firstIngLineIdx === -1) firstIngLineIdx = i;
+        else {
+          secondIngLineIdx = i;
+          break;
+        }
+      }
+    }
+    const scopedLines = secondIngLineIdx > 0 ? primaryLines.slice(0, secondIngLineIdx) : primaryLines;
+    const scopedText = scopedLines.join("\n");
+
     if (!extractedIngredients) {
-      const ingMatch = rawTitle.match(/\bingredients\s*:?\s*([\s\S]{12,1500})/i);
+      const ingMatch = scopedText.match(/\bingredients\s*:?\s*([\s\S]{12,1500})/i);
       if (ingMatch?.[1]) {
-        const stopMatch = ingMatch[1].split(/\n(?:allergen|contains\b.*?(?:may contain|facility)|warnings?|directions|nutrition facts|distributed by|manufactured)/i)[0];
-        const candidateIng = stopMatch.replace(/\s+/g, " ").trim();
-        if (candidateIng.includes(",") && candidateIng.length >= 12) {
+        const candidateIng = isolateSingleIngredientsBlock(ingMatch[1]);
+        if ((candidateIng.includes(",") || candidateIng.length >= 16) && candidateIng.length >= 12) {
           extractedIngredients = candidateIng;
         }
       }
     }
-    const rawLines = rawTitle
-      .split(/\r?\n/)
-      .map((l) => l.replace(/\s+/g, " ").trim())
-      .filter(Boolean);
-    const IOS_OCR_NOISE_LINE =
-      /^(?:[\d:\s]*(?:am|pm)?\s*(?:5g|lte|wi-?fi|\d{1,3}%).*|\d{1,2}:\d{2}(?:\s*(?:am|pm))?|(?:5g|lte|wi-?fi)(?:\s+\d{1,3}%)?|\d{1,3}%|[<‹«←\s]*(?:back|close|cancel|done|share)\b.*|<+|search\b.*|home|cart|account|reorder|my items|lists?|scan\s*&\s*go.*|in-?club.*|curbside.*|delivery.*|pickup.*|shipping.*|free\s+(?:shipping|delivery|pickup).*|add to (?:cart|bag|basket|list|order)|buy now|clip coupon|sponsored|best seller|overall pick|popular pick|rollback|snap ebt.*|out of stock|in stock.*|many in stock|\$?\d+(?:\.\d{2})?(?:\s*\/?\s*(?:ea|oz|fl oz|lb|ct|pkg))?(?:\s*\(.*?\))?|\d+(?:\.\d+)?\s*¢\s*\/.*|\d\.\d\s*\(?[\d,]+\)?|\([\d,]+\)|product details|specifications|about this item|description|highlights|nutrition facts|reviews|ratings.*|similar items|often bought with|customers also.*)$/i;
-    const KNOWN_BRAND_LINE =
-      /^(?:365 by whole foods market|whole foods market|member'?s mark|kirkland signature|great value|good\s*&\s*gather|favorite day|market pantry|up\s*&\s*up|simple truth(?:\s+organic)?|private selection|kroger|friendly farms|specially selected|simply nature|millville|clancy'?s|l'?oven fresh|park street deli|livegfree|kirkwood|appleton farms|southern grove|happy farms|season'?s choice|mama cozzi'?s|burman'?s|savoritz|boulder|wellsley farms|berkley jensen)$/i;
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      if (IOS_OCR_NOISE_LINE.test(line)) continue;
-      if (KNOWN_BRAND_LINE.test(line) && i + 1 < rawLines.length && !IOS_OCR_NOISE_LINE.test(rawLines[i + 1])) {
-        ocrCandidates.push(`${line} ${rawLines[i + 1]}`.trim());
-        i++;
-        continue;
+
+    if (rawTitle.includes("\n") || (!rawTitle && rawText)) {
+      const IOS_OCR_NOISE_LINE =
+        /^(?:[\d:\s]*(?:am|pm)?\s*(?:5g|lte|wi-?fi|\d{1,3}%).*|\d{1,2}:\d{2}(?:\s*(?:am|pm))?|(?:5g|lte|wi-?fi)(?:\s+\d{1,3}%)?|\d{1,3}%|[<‹«←\s]*(?:back|close|cancel|done|share)\b.*|<+|search\b.*|home|cart|account|reorder|my items|lists?|scan\s*&\s*go.*|in-?club.*|curbside.*|delivery.*|pickup.*|shipping.*|free\s+(?:shipping|delivery|pickup).*|add to (?:cart|bag|basket|list|order)|buy now|clip coupon|sponsored|best seller|overall pick|popular pick|rollback|snap ebt.*|out of stock|in stock.*|many in stock|\$?\d+(?:\.\d{2})?(?:\s*\/?\s*(?:ea|oz|fl oz|lb|ct|pkg))?(?:\s*\(.*?\))?|\d+(?:\.\d+)?\s*¢\s*\/.*|\d\.\d\s*\(?[\d,]+\)?|\([\d,]+\)|product details|specifications|about this item|description|highlights|nutrition facts|reviews|ratings.*|similar items|often bought with|customers also.*|compare with similar.*|frequently bought together.*|ingredients\s*:?.*)$/i;
+      const KNOWN_BRAND_LINE =
+        /^(?:365 by whole foods market|whole foods market|member'?s mark|kirkland signature|great value|good\s*&\s*gather|favorite day|market pantry|up\s*&\s*up|simple truth(?:\s+organic)?|private selection|kroger|friendly farms|specially selected|simply nature|millville|clancy'?s|l'?oven fresh|park street deli|livegfree|kirkwood|appleton farms|southern grove|happy farms|season'?s choice|mama cozzi'?s|burman'?s|savoritz|boulder|wellsley farms|berkley jensen)$/i;
+      // Only consider lines at or above the first Ingredients block as candidate titles for the focal product
+      const titleSearchBound = firstIngLineIdx >= 0 ? firstIngLineIdx : scopedLines.length;
+      for (let i = 0; i < titleSearchBound; i++) {
+        const line = scopedLines[i];
+        if (IOS_OCR_NOISE_LINE.test(line) || MULTI_PRODUCT_SECTION_BOUNDARY.test(line)) continue;
+        if (KNOWN_BRAND_LINE.test(line) && i + 1 < titleSearchBound && !IOS_OCR_NOISE_LINE.test(scopedLines[i + 1])) {
+          ocrCandidates.push(`${line} ${scopedLines[i + 1]}`.trim());
+          i++;
+          continue;
+        }
+        if (line.length >= 5 && line.length <= 160 && /[a-zA-Z]{3,}/.test(line)) {
+          ocrCandidates.push(line);
+        }
       }
-      if (line.length >= 5 && line.length <= 160 && /[a-zA-Z]{3,}/.test(line)) {
-        ocrCandidates.push(line);
+      // If multiple candidate lines appeared before an explicit Ingredients block (e.g. top promo + focal item right above Ingredients),
+      // keep the first clean product title and also include the line closest to Ingredients as fallback candidate
+      if (ocrCandidates.length > 0) {
+        rawTitle = ocrCandidates[0];
       }
     }
-    if (ocrCandidates.length > 0) {
-      rawTitle = ocrCandidates[0];
+  } else if (!extractedIngredients && rawText) {
+    const ingMatch = rawText.match(/\bingredients\s*:?\s*([\s\S]{12,1500})/i);
+    if (ingMatch?.[1]) {
+      const candidateIng = isolateSingleIngredientsBlock(ingMatch[1]);
+      if (candidateIng.length >= 12) {
+        extractedIngredients = candidateIng;
+      }
+    }
+    if (!rawTitle) {
+      const beforeIng = rawText.split(/\bingredients\s*:/i)[0]?.trim() || "";
+      rawTitle = beforeIng.split(/\s*[|•·]\s*/)[0]?.trim() || beforeIng;
     }
   }
 
@@ -196,9 +272,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   if (
     (req.productTitle !== undefined && typeof req.productTitle !== "string") ||
     (req.rawIngredients !== undefined && typeof req.rawIngredients !== "string") ||
+    (req.rawText !== undefined && typeof req.rawText !== "string") ||
     (req.barcode !== undefined && typeof req.barcode !== "string" && typeof req.barcode !== "number")
   ) {
-    return { ok: false, status: 400, error: "productTitle, rawIngredients, and barcode must be strings." };
+    return { ok: false, status: 400, error: "productTitle, rawIngredients, rawText, and barcode must be strings." };
   }
 
   if (typeof req.rawIngredients === "string" && req.rawIngredients.length > 12_000) {
@@ -206,6 +283,13 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       ok: false,
       status: 413,
       error: "rawIngredients exceeds maximum length of 12,000 characters.",
+    };
+  }
+  if (typeof req.rawText === "string" && req.rawText.length > 16_000) {
+    return {
+      ok: false,
+      status: 413,
+      error: "rawText exceeds maximum length of 16,000 characters.",
     };
   }
   if (
@@ -221,7 +305,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
 
   const rawTitleOrig = typeof req.productTitle === "string" ? req.productTitle.trim() : "";
   const rawIngOrig = typeof req.rawIngredients === "string" ? req.rawIngredients.trim() : "";
-  const normalizedIos = normalizeIosShareOrOcrInput(rawTitleOrig, rawIngOrig);
+  const rawTextOrig = typeof req.rawText === "string" ? req.rawText.trim() : "";
+  const normalizedIos = normalizeIosShareOrOcrInput(rawTitleOrig, rawIngOrig, rawTextOrig);
   const rawTitleInput = normalizedIos.title;
   const rawIngredients = normalizedIos.extractedIngredients;
   const barcode =
@@ -398,6 +483,18 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     watchlist,
     familyWatchlist,
     surface: resolvedSurface,
+    instacartRetailerSlug: req.instacartRetailerSlug,
+  });
+  const rawSwapCandidates = resolveSwapCandidates({
+    score: result.score,
+    productTitle: `${productTitle} ${title}`,
+    ingredients: found.ingredients,
+    store,
+    watchlist,
+    familyWatchlist,
+    surface: resolvedSurface,
+    instacartRetailerSlug: req.instacartRetailerSlug,
+    limit: 4,
   });
   let entitlement: EntitlementSummary | undefined;
   try {
@@ -423,22 +520,29 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
       : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}&v=4`;
-  const resolvedSwap: SwapResult | null = swap
-    ? {
-        ...swap,
-        image:
-          swap.image && swap.image.startsWith("http")
-            ? swap.image
-            : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}&v=4`,
-        ...(canAccessSwapLinks
-          ? {}
-          : {
-              webUrl: undefined,
-              deepLink: undefined,
-              androidIntentUrl: undefined,
-            }),
-      }
-    : null;
+  const formatSwapWithAccess = (s: SwapResult): SwapResult => ({
+    ...s,
+    image:
+      s.image && s.image.startsWith("http")
+        ? s.image
+        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(s.title)}&v=4`,
+    ...(canAccessSwapLinks
+      ? {}
+      : {
+          webUrl: undefined,
+          deepLink: undefined,
+          androidIntentUrl: undefined,
+        }),
+  });
+  const resolvedSwap: SwapResult | null = swap ? formatSwapWithAccess(swap) : null;
+  const resolvedSwapCandidates: SwapResult[] = rawSwapCandidates.map(formatSwapWithAccess);
+  // Ensure primary swap is first in swapCandidates if present and not already included
+  if (
+    resolvedSwap &&
+    !resolvedSwapCandidates.some((c) => c.title.toLowerCase() === resolvedSwap.title.toLowerCase())
+  ) {
+    resolvedSwapCandidates.unshift(resolvedSwap);
+  }
   if (!req.skipAnalytics) {
     void import("./analytics")
       .then(({ trackServerEvent }) =>
@@ -485,6 +589,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     result,
     ...(dietaryAlerts.length > 0 ? { dietaryAlerts } : {}),
     swap: resolvedSwap,
+    ...(resolvedSwapCandidates.length > 0 ? { swapCandidates: resolvedSwapCandidates } : {}),
     store,
     pill: pillText,
     entitlement,

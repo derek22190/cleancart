@@ -20,6 +20,7 @@ interface SuggestEntry {
   ingredients: string;
   keywords?: string[];
   nutrition?: NutritionInput;
+  isOrganic?: boolean;
   sourceUrl?: string;
   verifiedAt?: string;
 }
@@ -69,14 +70,14 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     title: "Kirkwood 99% Fat Free Fresh Ground Turkey Breast",
     brand: "Kirkwood",
     ingredients: "Ground Turkey Breast (99% Fat Free, 1% Fat), Natural Rosemary Extract.",
-    sourceUrl: "https://www.aldi.us/products/fresh-meat-seafood/fresh-poultry/",
+    sourceUrl: "https://www.aldi.us/product/kirkwood-99-fat-free-ground-turkey-breast-0000000000001872",
     verifiedAt: "2026-11-08",
   },
   {
     title: "Parkview USDA Beef Smoked Sausage",
     brand: "Parkview",
     ingredients: "Beef, Water, Corn Syrup, Salt, Dextrose, Spices, Sodium Phosphate, Monosodium Glutamate, Garlic Powder, Sodium Erythorbate, Sodium Nitrite.",
-    sourceUrl: "https://www.aldi.us/products/deli/lunch-meat-sausages/",
+    sourceUrl: "https://www.aldi.us/product/parkview-beef-smoked-sausage-14-oz-0000000000001941",
     verifiedAt: "2026-11-08",
   },
   {
@@ -130,7 +131,7 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     title: "Marketside Premium Romaine Salad Blend",
     brand: "Marketside",
     ingredients: "Romaine Lettuce, Red Cabbage, Carrots.",
-    sourceUrl: "https://www.walmart.com/browse/food/fresh-packaged-salads/976759_976793_9756351",
+    sourceUrl: "https://www.walmart.com/ip/Marketside-Premium-Romaine-Salad-9-oz/13893895",
     verifiedAt: "2026-11-08",
   },
   {
@@ -138,7 +139,7 @@ const POPULAR_GROCERY_INDEX: SuggestEntry[] = [
     brand: "Marketside",
     ingredients:
       "Romaine Lettuce, Caesar Dressing (Soybean Oil, Water, Parmesan Cheese, Egg Yolk, Distilled Vinegar, Salt, Sugar, Garlic, Lemon Juice Concentrate, Natural Flavor, Xanthan Gum), Croutons (Enriched Wheat Flour, Sunflower Oil, Salt, Yeast, Garlic Powder), Parmesan Cheese.",
-    sourceUrl: "https://www.walmart.com/browse/food/fresh-packaged-salads/976759_976793_9756351",
+    sourceUrl: "https://www.walmart.com/ip/Marketside-Caesar-Salad-Kit-10-8-oz/13893901",
     verifiedAt: "2026-11-08",
   },
   {
@@ -381,6 +382,7 @@ const FULL_INDEX: SuggestEntry[] = (() => {
         ingredients: drink.ingredients,
         keywords: drink.keywords,
         nutrition: drink.nutrition,
+        isOrganic: drink.nutrition?.isOrganic === true,
         sourceUrl: drink.sourceUrl,
         verifiedAt: drink.verifiedAt,
       });
@@ -398,7 +400,13 @@ const FULL_INDEX: SuggestEntry[] = (() => {
   }
   for (const alt of Object.values(CLEAN_ALTERNATIVES)) {
     const title = `${alt.brand} ${alt.name}`.trim();
-    if (title.includes("/") || alt.brand.includes("/")) continue;
+    if (
+      !hasValidCatalogProvenance(alt.sourceUrl, alt.verifiedAt) ||
+      title.includes("/") ||
+      alt.brand.includes("/")
+    ) {
+      continue;
+    }
     const k = title.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
@@ -407,15 +415,23 @@ const FULL_INDEX: SuggestEntry[] = (() => {
         brand: alt.brand,
         category: alt.category,
         ingredients: alt.ingredients,
-        sourceUrl: "https://fdc.nal.usda.gov/food-search",
-        verifiedAt: "2026-11-08",
+        nutrition: alt.nutrition,
+        isOrganic: Boolean(alt.isOrganic || alt.nutrition?.isOrganic),
+        sourceUrl: alt.sourceUrl,
+        verifiedAt: alt.verifiedAt,
       });
     }
   }
   for (const entry of EXACT_PRODUCT_ALTERNATIVES) {
     const alt = entry.alt;
     const title = `${alt.brand} ${alt.name}`.trim();
-    if (title.includes("/") || alt.brand.includes("/")) continue;
+    if (
+      !hasValidCatalogProvenance(alt.sourceUrl, alt.verifiedAt) ||
+      title.includes("/") ||
+      alt.brand.includes("/")
+    ) {
+      continue;
+    }
     const k = title.toLowerCase();
     if (!seen.has(k)) {
       seen.add(k);
@@ -424,8 +440,10 @@ const FULL_INDEX: SuggestEntry[] = (() => {
         brand: alt.brand,
         category: alt.category,
         ingredients: alt.ingredients,
-        sourceUrl: "https://fdc.nal.usda.gov/food-search",
-        verifiedAt: "2026-11-08",
+        nutrition: alt.nutrition,
+        isOrganic: Boolean(alt.isOrganic || alt.nutrition?.isOrganic),
+        sourceUrl: alt.sourceUrl,
+        verifiedAt: alt.verifiedAt,
       });
     }
   }
@@ -483,9 +501,16 @@ export async function GET(request: Request) {
   scored.sort((a, b) => b.rank - a.rank);
 
   const suggestions = scored.slice(0, 10).map(({ entry }) => {
+    const isOrganic = Boolean(entry.isOrganic || entry.nutrition?.isOrganic);
+    const resolvedNutrition: NutritionInput | undefined = entry.nutrition
+      ? { ...entry.nutrition, isOrganic }
+      : isOrganic
+        ? { isOrganic: true }
+        : undefined;
     const res = scoreProductYuka(entry.ingredients, {}, [], {
-      ...entry.nutrition,
+      ...resolvedNutrition,
       productTitle: entry.title,
+      isOrganic,
     });
     return {
       title: entry.title,
@@ -493,6 +518,10 @@ export async function GET(request: Request) {
       category: entry.category || "Grocery",
       description: entry.description || "",
       ingredients: entry.ingredients,
+      nutrition: resolvedNutrition,
+      isOrganic,
+      sourceUrl: entry.sourceUrl,
+      verifiedAt: entry.verifiedAt,
       score: res.score,
       rating: res.rating,
       color: res.color,

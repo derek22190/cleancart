@@ -161,35 +161,11 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/zero-ultra/",
     verifiedAt: "2026-11-08",
     match: /\b(white\s+monster|monster\s+(?:energy\s+)?zero\s+ultra|monster\s+(?:energy\s+)?zero\s+sugar|monster\s+ultra\s+zero|monster\s+ultra\s+white|zero\s+ultra\s+monster|sugar[\s-]*free\s+monster)\b/i,
-  },
-  {
-    id: "monster-mango-loco",
-    title: "Monster Juice Mango Loco Energy + Juice, 16 fl oz",
-    brand: "Monster Energy",
-    category: "Energy Drinks",
-    description:
-      "Sweetened tropical fruit-juice energy drink (152mg caffeine, 48g sugar per can) formulated with glucose, sucrose, sucralose, potassium sorbate, sodium benzoate, and synthetic beta-carotene color.",
-    keywords: ["monster", "mango loco", "juice monster", "monster mango", "energy drink"],
-    ingredients:
-      "Carbonated Water, Fruit Juice From Concentrate (White Grape, Mango, Guava, Apple, Pineapple, Passionfruit, Apricot, Peach, Orange, Lemon), Sugar, Glucose, Citric Acid, Malic Acid, Taurine, Natural Flavors, Sodium Citrate, Potassium Citrate, Panax Ginseng Flavor, Potassium Sorbate (Preservative), Caffeine, Sodium Benzoate (Preservative), Sucralose, Niacinamide (Vitamin B3), Xanthan Gum, Sodium Alginate, Inositol, L-Carnitine L-Tartrate, Pyridoxine Hydrochloride (Vitamin B6), Riboflavin (Vitamin B2), Beta-Carotene (Color), Cyanocobalamin (Vitamin B12).",
-    nutrition: {
-      caloriesKcal100g: 49,
-      sugarsG100g: 10.4,
-      saturatedFatG100g: 0,
-      sodiumMg100g: 26,
-      fiberG100g: 0,
-      proteinG100g: 0,
-      fruitsVegNutsPct: 16,
-      nutriScoreGrade: "e",
-      isWholeFood: false,
-    },
-    sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/juice-monster/mango-loco/",
-    verifiedAt: "2026-11-08",
-    match: /\b(mango\s+loco|monster\s+juice|juice\s+monster|monster\s+mango)\b/i,
   },
   {
     id: "monster-pipeline-punch",
@@ -215,6 +191,31 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/punch-monster/pipeline-punch/",
     verifiedAt: "2026-11-08",
     match: /\b(pipeline\s+punch|monster\s+punch)\b/i,
+  },
+  {
+    id: "monster-mango-loco",
+    title: "Monster Juice Mango Loco Energy + Juice, 16 fl oz",
+    brand: "Monster Energy",
+    category: "Energy Drinks",
+    description:
+      "Sweetened tropical fruit-juice energy drink (152mg caffeine, 48g sugar per can) formulated with glucose, sucrose, sucralose, potassium sorbate, sodium benzoate, and synthetic beta-carotene color.",
+    keywords: ["monster", "mango loco", "juice monster", "monster mango", "energy drink"],
+    ingredients:
+      "Carbonated Water, Fruit Juice From Concentrate (White Grape, Mango, Guava, Apple, Pineapple, Passionfruit, Apricot, Peach, Orange, Lemon), Sugar, Glucose, Citric Acid, Malic Acid, Taurine, Natural Flavors, Sodium Citrate, Potassium Citrate, Panax Ginseng Flavor, Potassium Sorbate (Preservative), Caffeine, Sodium Benzoate (Preservative), Sucralose, Niacinamide (Vitamin B3), Xanthan Gum, Sodium Alginate, Inositol, L-Carnitine L-Tartrate, Pyridoxine Hydrochloride (Vitamin B6), Riboflavin (Vitamin B2), Beta-Carotene (Color), Cyanocobalamin (Vitamin B12).",
+    nutrition: {
+      caloriesKcal100g: 49,
+      sugarsG100g: 10.4,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 26,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 16,
+      nutriScoreGrade: "e",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/juice-monster/mango-loco/",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\bpipeline\s+punch\b).*\b(mango\s+loco|monster\s+juice|juice\s+monster|monster\s+mango)\b/i,
   },
   {
     id: "monster-ultra-flavors",
@@ -246,6 +247,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/monster-ultra/",
     verifiedAt: "2026-11-08",
@@ -270,6 +272,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 5,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/rehab-monster/rehab-monster-tea-lemonade/",
     verifiedAt: "2026-11-08",
@@ -334,6 +337,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.redbull.com/us-en/energydrink/red-bull-sugarfree",
     verifiedAt: "2026-11-08",
@@ -427,6 +431,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.celsius.com/products/celsius/sparkling-orange/",
     verifiedAt: "2026-11-08",
@@ -462,6 +467,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.celsius.com/products/celsius/sparkling-peach-vibe/",
     verifiedAt: "2026-11-08",
@@ -497,6 +503,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.alaninu.com/collections/energy-drinks/products/energy-drink-cosmic-stardust",
     verifiedAt: "2026-11-08",
@@ -530,6 +537,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.ghostlifestyle.com/products/ghost-energy-12-pack",
     verifiedAt: "2026-11-08",
@@ -563,6 +571,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://cellucor.com/products/c4-carbonated",
     verifiedAt: "2026-11-08",
@@ -587,6 +596,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://bangenergy.com/products/bang-energy-drink",
     verifiedAt: "2026-11-08",
@@ -611,6 +621,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://reignbodyfuel.com/en-us/products/orange-dreamsicle/",
     verifiedAt: "2026-11-08",
@@ -635,6 +646,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.rockstarenergy.com/products/pure-zero-silver-ice",
     verifiedAt: "2026-11-08",
@@ -684,8 +696,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 5,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
-    sourceUrl: "https://drinkprime.com/collections/energy",
+    sourceUrl: "https://drinkprime.com/products/tropical-punch-energy",
     verifiedAt: "2026-11-08",
     match: /\b(prime\s+energy)\b/i,
   },
@@ -708,6 +721,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://5hourenergy.com/products/berry-extra-strength-5-hour-energy",
     verifiedAt: "2026-11-08",
@@ -732,8 +746,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
-    sourceUrl: "https://zoaenergy.com/collections/zoa-zero-sugar",
+    sourceUrl: "https://zoaenergy.com/products/super-berry",
     verifiedAt: "2026-11-08",
     match: /\b(zoa\s+energy|\bzoa\b\s+zero)\b/i,
   },
@@ -810,7 +825,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.venomenergy.com/products/black-mamba",
     verifiedAt: "2026-11-08",
-    match: /\b(venom\s+energy|venom\s+black\s+mamba)\b/i,
+    match: /\b(venom\s+(?:original(?:\s+black\s+mamba)?|black\s+mamba|energy)|black\s+mamba\s+energy)\b/i,
   },
   {
     id: "clean-cause-yerba-mate",
@@ -834,7 +849,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://cleancause.com/collections/organic-yerba-mate",
+    sourceUrl: "https://cleancause.com/products/peach-yerba-mate",
     verifiedAt: "2026-11-08",
     match: /\b(clean\s+cause)\b/i,
   },
@@ -856,7 +871,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 40,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isOrganic: true,
       isWholeFood: false,
     },
@@ -1124,7 +1139,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://www.transparentlabs.com/products/preseries-bulk-preworkout",
@@ -1156,7 +1170,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 2.0,
       proteinG100g: 1.0,
       fruitsVegNutsPct: 90,
-      nutriScoreGrade: "a",
       isOrganic: true,
       isWholeFood: false,
     },
@@ -1319,7 +1332,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 24.0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://www.optimumnutrition.com/en-us/Products/Protein/Shakes-%26-Powders/Gold-Standard-100%25-Whey-Protein/p/gold-standard-100-whey-protein",
@@ -1344,7 +1356,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.5,
       proteinG100g: 25.0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://www.ghostlifestyle.com/products/ghost-whey",
@@ -1450,6 +1461,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/diet-coke/products/original",
     verifiedAt: "2026-11-08",
@@ -1474,6 +1486,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/coca-cola-zero-sugar",
     verifiedAt: "2026-11-08",
@@ -1579,30 +1592,6 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     match: /^(?!.*\b(cherry|vanilla|mexican|diet|zero|spiced|orange\s+cream)\b).*\b(coca[- ]?cola|coke\s+classic|\bcoke\b)\b/i,
   },
   {
-    id: "pepsi-zero-sugar",
-    title: "Pepsi Zero Sugar Cola Soda, 12 fl oz Cans",
-    brand: "Pepsi",
-    category: "Sodas & Prebiotic Sodas",
-    description:
-      "Zero-sugar cola sweetened with aspartame and acesulfame potassium, colored with caramel color, and preserved with potassium benzoate and calcium disodium EDTA, plus panax ginseng extract.",
-    keywords: ["pepsi zero", "pepsi zero sugar", "pepsi max", "zero sugar cola", "soda", "cola"],
-    ingredients:
-      "Carbonated Water, Caramel Color, Phosphoric Acid, Aspartame, Potassium Benzoate (Preserves Freshness), Caffeine, Natural Flavor, Acesulfame Potassium, Citric Acid, Calcium Disodium EDTA (To Protect Flavor), Panax Ginseng Root Extract.",
-    nutrition: {
-      caloriesKcal100g: 0,
-      sugarsG100g: 0,
-      saturatedFatG100g: 0,
-      sodiumMg100g: 10,
-      fiberG100g: 0,
-      proteinG100g: 0,
-      fruitsVegNutsPct: 0,
-      isWholeFood: false,
-    },
-    sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000007906",
-    verifiedAt: "2026-11-08",
-    match: /\b(pepsi\s+zero(?:\s+sugar)?|pepsi\s+max)\b/i,
-  },
-  {
     id: "diet-pepsi",
     title: "Diet Pepsi Zero Calorie Cola Soda, 12 fl oz Cans",
     brand: "Pepsi",
@@ -1620,11 +1609,37 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
+      nutriScoreGrade: "c",
       isWholeFood: false,
     },
     sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000007898",
     verifiedAt: "2026-11-08",
     match: /\b(diet\s+pepsi)\b/i,
+  },
+  {
+    id: "pepsi-zero-sugar",
+    title: "Pepsi Zero Sugar Cola Soda, 12 fl oz Cans",
+    brand: "Pepsi",
+    category: "Sodas & Prebiotic Sodas",
+    description:
+      "Zero-sugar cola sweetened with aspartame and acesulfame potassium, colored with caramel color, and preserved with potassium benzoate and calcium disodium EDTA, plus panax ginseng extract.",
+    keywords: ["pepsi zero", "pepsi zero sugar", "pepsi max", "zero sugar cola", "soda", "cola"],
+    ingredients:
+      "Carbonated Water, Caramel Color, Phosphoric Acid, Aspartame, Potassium Benzoate (Preserves Freshness), Caffeine, Natural Flavor, Acesulfame Potassium, Citric Acid, Calcium Disodium EDTA (To Protect Flavor), Panax Ginseng Root Extract.",
+    nutrition: {
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 10,
+      fiberG100g: 0,
+      proteinG100g: 0,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "c",
+      isWholeFood: false,
+    },
+    sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000007906",
+    verifiedAt: "2026-11-08",
+    match: /^(?!.*\bdiet\s+pepsi\b).*\b(pepsi\s+zero(?:\s+sugar)?|pepsi\s+max)\b/i,
   },
   {
     id: "pepsi-original",
@@ -1670,6 +1685,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.drpepper.com/s/products/dr-pepper-zero-sugar",
     verifiedAt: "2026-11-08",
@@ -1694,6 +1710,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.drpepper.com/s/products/diet-dr-pepper",
     verifiedAt: "2026-11-08",
@@ -2322,13 +2339,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 3.3,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
+      nutriScoreGrade: "b",
       isOrganic: true,
       isWholeFood: false,
     },
     sourceUrl: "https://horizon.com/organic-dairy-products/organic-milk/organic-whole-milk/",
     verifiedAt: "2026-11-08",
-    match: /^(?!.*\b(chocolate|2%|reduced\s+fat|lowfat|fat\s+free|skim)\b).*\b(horizon\s+organic.*milk)\b/i,
+    match: /^(?!.*(?:\b(?:chocolate|reduced\s+fat|lowfat|fat\s+free|skim)\b|\b[12]%(?!\d))).*\b(horizon\s+organic.*milk)\b/i,
   },
   {
     id: "organic-valley-grassmilk-whole",
@@ -2347,12 +2364,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 8 / 2.4,
       fruitsVegNutsPct: 0,
+      nutriScoreGrade: "b",
       isOrganic: true,
       isWholeFood: false,
     },
     sourceUrl: "https://www.organicvalley.coop/products/grassmilk-whole-milk",
     verifiedAt: "2026-11-09",
-    match: /^(?!.*\b(2%|reduced\s+fat|chocolate)\b).*\b(organic\s+valley.*(?:whole|grassmilk))\b/i,
+    match: /^(?!.*(?:\b(?:reduced\s+fat|lowfat|chocolate)\b|\b[12]%(?!\d))).*\b(organic\s+valley.*(?:whole|grassmilk))\b/i,
   },
   {
     id: "organic-valley-2pct-milk",
@@ -2371,13 +2389,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
+      nutriScoreGrade: "b",
       isOrganic: true,
       isWholeFood: false,
     },
     sourceUrl: "https://www.organicvalley.coop/products/milk/grassmilk/reduced-fat-2-grassmilk-half-gallon/",
     verifiedAt: "2026-11-08",
-    match: /\b(organic\s+valley.*2%|organic\s+grassmilk\s+2%)\b/i,
+    match: /\b(?:organic\s+valley.*2%(?!\d)|organic\s+grassmilk\s+2%(?!\d))/i,
   },
   {
     id: "organic-valley-chocolate-milk",
@@ -2397,7 +2415,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isOrganic: true,
       isWholeFood: false,
     },
@@ -2423,7 +2441,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 5.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isWholeFood: false,
     },
     sourceUrl: "https://fairlife.com/ultra-filtered-milk/chocolate-2-milk/",
@@ -2547,7 +2565,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.5,
       proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "d",
+      nutriScoreGrade: "c",
       isWholeFood: false,
     },
     sourceUrl: "https://www.goodnes.com/nesquik/products/chocolate-lowfat-milk-14-fl-oz-bottle/",
@@ -2571,12 +2589,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
+      nutriScoreGrade: "b",
       isWholeFood: false,
     },
     sourceUrl: "https://www.lactaid.com/products/lactaid-2-reduced-fat-milk",
     verifiedAt: "2026-11-08",
-    match: /\b(lactaid.*(?:2%|reduced\s+fat|fat\s+free|skim|1%|lowfat))\b/i,
+    match: /\blactaid.*(?:\b(?:reduced\s+fat|fat\s+free|skim|lowfat)\b|\b[12]%(?!\d))/i,
   },
   {
     id: "lactaid-milk",
@@ -2595,12 +2613,12 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
+      nutriScoreGrade: "b",
       isWholeFood: false,
     },
     sourceUrl: "https://www.lactaid.com/products/lactaid-whole-milk",
     verifiedAt: "2026-11-08",
-    match: /^(?!.*\b(chocolate|strawberry|vanilla|2%|reduced\s+fat|fat\s+free|skim|1%|lowfat|fairlife)\b).*\b(lactaid|lactose[- ]?free\s+milk)\b/i,
+    match: /^(?!.*(?:\b(?:chocolate|strawberry|vanilla|reduced\s+fat|fat\s+free|skim|lowfat|fairlife)\b|\b[12]%(?!\d))).*\b(lactaid|lactose[- ]?free\s+milk)\b/i,
   },
   {
     id: "a2-milk-whole",
@@ -2619,7 +2637,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 3.4,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
+      nutriScoreGrade: "b",
       isWholeFood: false,
     },
     sourceUrl: "https://www.a2milk.com/products/whole-a2-milk",
@@ -2668,7 +2686,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.8,
       proteinG100g: 0.8,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://planetoat.com/products/extra-creamy-oatmilk/",
@@ -2718,7 +2736,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.8,
       proteinG100g: 0.8,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://planetoat.com/products/original-oatmilk/",
@@ -2743,7 +2761,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.8,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isWholeFood: false,
     },
     sourceUrl: "https://www.chobani.com/products/oatmilk/carton/original",
@@ -2768,7 +2786,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.8,
       proteinG100g: 1.2,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://www.oatly.com/en-us/products/oatmilk/oatmilk-64-fl-oz",
@@ -2868,7 +2886,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.8,
       proteinG100g: 3.3,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "a",
+      nutriScoreGrade: "c",
       isOrganic: false,
       isWholeFood: false,
     },
@@ -2878,11 +2896,11 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
   },
   {
     id: "so-delicious-coconut-milk",
-    title: "So Delicious Dairy Free Organic Coconutmilk Beverage, 64 fl oz",
+    title: "So Delicious Dairy Free Organic Unsweetened Coconutmilk Beverage, 64 fl oz",
     brand: "So Delicious",
     category: "Milk & Dairy Drinks",
     description:
-      "Refrigerated coconut milk beverage made with organic coconut cream, water, calcium/vitamin fortification, guar gum, and xanthan gum.",
+      "Refrigerated organic unsweetened coconut milk beverage made with organic coconut cream, water, calcium/vitamin fortification, guar gum, and xanthan gum.",
     keywords: ["so delicious coconut milk", "coconut milk beverage", "coconutmilk", "milk"],
     ingredients:
       "Organic Coconutmilk (Filtered Water, Organic Coconut Cream), Vitamin and Mineral Blend (Calcium Phosphate, Magnesium Phosphate, L-Selenomethionine [Selenium], Vitamin A Acetate, Vitamin D2, Zinc Oxide, Vitamin B12), Sea Salt, Organic Guar Gum, Organic Xanthan Gum.",
@@ -2894,11 +2912,11 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 10,
-      nutriScoreGrade: "b",
-      isOrganic: false,
+      nutriScoreGrade: "a",
+      isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://sodeliciousdairyfree.com/dairy-free-foods/plant-based-beverages/coconutmilk/organic-original-coconutmilk-64oz",
+    sourceUrl: "https://sodeliciousdairyfree.com/dairy-free-foods/plant-based-beverages/coconutmilk/organic-unsweetened-coconutmilk-64oz",
     verifiedAt: "2026-11-08",
     match: /\b(so\s+delicious.*coconut\s*milk|coconut\s*milk\s+beverage)\b/i,
   },
@@ -2920,13 +2938,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.4,
       fruitsVegNutsPct: 5,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isOrganic: false,
       isWholeFood: false,
     },
     sourceUrl: "https://silk.com/plant-based-products/almondmilk/unsweet-almondmilk/",
     verifiedAt: "2026-11-08",
-    match: /\b(silk.*almond.*unsweetened|unsweetened.*silk.*almond)\b/i,
+    match: /^(?=.*\bsilk\b)(?=.*\bunsweet(?:ened)?\b)(?=.*\balmond(?:milk|\s+milk)?\b).*$/i,
   },
   {
     id: "califia-unsweetened-almondmilk",
@@ -2946,13 +2964,13 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.4,
       fruitsVegNutsPct: 5,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isOrganic: false,
       isWholeFood: false,
     },
     sourceUrl: "https://www.califiafarms.com/products/unsweetened-almondmilk/",
     verifiedAt: "2026-11-08",
-    match: /\b(califia.*almond.*unsweetened|unsweetened.*califia.*almond)\b/i,
+    match: /^(?=.*\bcalifia\b)(?=.*\bunsweet(?:ened)?\b)(?=.*\balmond(?:milk|\s+milk)?\b).*$/i,
   },
   {
     id: "almond-breeze-unsweetened",
@@ -2972,7 +2990,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.4,
       fruitsVegNutsPct: 5,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isOrganic: false,
       isWholeFood: false,
     },
@@ -2998,7 +3016,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.4,
       fruitsVegNutsPct: 5,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isWholeFood: false,
     },
     sourceUrl: "https://silk.com/plant-based-products/almondmilk/original-almondmilk/",
@@ -3028,7 +3046,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.4,
       fruitsVegNutsPct: 5,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isWholeFood: false,
     },
     sourceUrl: "https://www.bluediamond.com/brand/almond-breeze/",
@@ -3386,7 +3404,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://drinknixie.com/collections/sparkling-water",
+    sourceUrl: "https://drinknixie.com/products/lime-ginger-sparkling-water",
     verifiedAt: "2026-11-08",
     match: /\b(nixie(?:\s+organic)?(?:\s+sparkling)?)\b/i,
   },
@@ -3545,7 +3563,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/vitaminwater/products/vitaminwater-zero-sugar",
@@ -3570,7 +3588,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/vitaminwater",
@@ -3602,6 +3620,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.pepsicoproductfacts.com/Home/Product?formula=F0000008340",
     verifiedAt: "2026-11-08",
@@ -3632,6 +3651,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.sparklingice.com/flavors/classic/black-raspberry/",
     verifiedAt: "2026-11-08",
@@ -3998,7 +4018,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 5,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://sunnyd.com/product/tangy-original/",
@@ -4054,7 +4074,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.kraftheinz.com/kool-aid/products/00043000040973-jammers-tropical-punch-artificially-flavored-drink-pouches",
@@ -4079,7 +4099,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 42,
-      nutriScoreGrade: "c",
+      nutriScoreGrade: "b",
       isOrganic: true,
       isWholeFood: false,
     },
@@ -4105,7 +4125,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.6,
       fruitsVegNutsPct: 100,
-      nutriScoreGrade: "d",
+      nutriScoreGrade: "e",
       isWholeFood: false,
     },
     sourceUrl: "https://www.bolthouse.com/product/green-goodness/",
@@ -4138,7 +4158,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.4,
       proteinG100g: 0.6,
       fruitsVegNutsPct: 100,
-      nutriScoreGrade: "d",
+      nutriScoreGrade: "e",
       isWholeFood: false,
     },
     sourceUrl: "https://www.nakedjuice.com/our-products/green-machine/",
@@ -4213,7 +4233,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 99,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "c",
       isOrganic: false,
       isWholeFood: false,
     },
@@ -4244,6 +4264,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/powerade-zero-mixed-berry",
     verifiedAt: "2026-11-08",
@@ -4268,6 +4289,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.gatorade.com/drinks/gatorade-zero/glacier-freeze",
     verifiedAt: "2026-11-08",
@@ -4292,6 +4314,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "b",
     },
     sourceUrl: "https://www.gatorade.com/drinks/gatorlyte/strawberry-kiwi",
     verifiedAt: "2026-11-08",
@@ -4315,7 +4338,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/cool-blue",
@@ -4340,7 +4363,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/lemon-lime",
@@ -4365,7 +4388,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/glacier-freeze",
@@ -4390,7 +4413,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/fierce-grape",
@@ -4419,7 +4442,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.gatorade.com/drinks/thirst-quencher/fruit-punch",
@@ -4444,7 +4467,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/fruit-punch",
@@ -4469,7 +4492,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/orange",
@@ -4494,7 +4517,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "e",
+      nutriScoreGrade: "d",
       isWholeFood: false,
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/powerade/products/mountain-berry-blast",
@@ -4519,7 +4542,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 0,
       fruitsVegNutsPct: 10,
-      nutriScoreGrade: "b",
+      nutriScoreGrade: "a",
       isWholeFood: false,
     },
     sourceUrl: "https://www.drinkbodyarmor.com/products/bodyarmor-lyte-peach-mango/",
@@ -4578,8 +4601,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 10,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
-    sourceUrl: "https://drinkprime.com/collections/hydration",
+    sourceUrl: "https://drinkprime.com/products/ice-pop",
     verifiedAt: "2026-11-08",
     match: /\b(prime\s+hydration|prime\s+(?:ice\s+pop|meta\s+moon|blue\s+raspberry|tropical\s+punch|lemon\s+lime|cherry\s+freeze|strawberry\s+watermelon)|\bprime\b\s+drink)\b/i,
   },
@@ -4652,6 +4676,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "c",
     },
     sourceUrl: "https://www.abbottnutrition.com/our-products/pedialyte-classic",
     verifiedAt: "2026-11-08",
@@ -4676,8 +4701,9 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       proteinG100g: 0,
       fruitsVegNutsPct: 0,
       isWholeFood: false,
+      nutriScoreGrade: "d",
     },
-    sourceUrl: "https://electrolit.com/products/",
+    sourceUrl: "https://electrolit.com/products/fruit-punch/",
     verifiedAt: "2026-11-08",
     match: /\b(electrolit)\b/i,
   },
@@ -4758,7 +4784,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://drinknooma.com/collections/organic-electrolyte-drinks",
+    sourceUrl: "https://drinknooma.com/products/blueberry-peach-organic-electrolyte-drink",
     verifiedAt: "2026-11-08",
     match: /\b(nooma)\b/i,
   },
@@ -4784,7 +4810,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.8,
       proteinG100g: 2.6,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "c",
+      nutriScoreGrade: "b",
       isWholeFood: false,
     },
     sourceUrl: "https://www.lacolombe.com/products/original-draft-latte",
@@ -4814,7 +4840,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.dunkinanytime.com/products/iced-coffee/original",
     verifiedAt: "2026-11-08",
-    match: /\b(dunkin'?\s+iced\s+coffee)\b/i,
+    match: /\b(dunkin'?(?:\s+original)?(?:\s+bottled)?\s+iced\s+coffee)\b/i,
   },
   {
     id: "starbucks-doubleshot-energy",
@@ -4859,7 +4885,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0,
       proteinG100g: 2.6,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "d",
+      nutriScoreGrade: "e",
       isWholeFood: false,
     },
     sourceUrl: "https://www.harristeeter.com/p/starbucks-doubleshot-espresso-cream-premium-espresso-beverage/0001200000177",
@@ -5107,7 +5133,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       fiberG100g: 0.2,
       proteinG100g: 1.5,
       fruitsVegNutsPct: 0,
-      nutriScoreGrade: "d",
+      nutriScoreGrade: "e",
       isOrganic: false,
       isWholeFood: false,
     },
@@ -5194,7 +5220,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://gtslivingfoods.com/collections/synergy-raw-kombucha",
+    sourceUrl: "https://gtslivingfoods.com/products/gts-synergy-kombucha-gingerade",
     verifiedAt: "2026-11-08",
     match: /\b(gt'?s\s+(?:synergy|kombucha|living\s+foods)|synergy\s+kombucha)\b/i,
   },
@@ -5227,7 +5253,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
       isOrganic: true,
       isWholeFood: false,
     },
-    sourceUrl: "https://health-ade.com/collections/kombucha",
+    sourceUrl: "https://health-ade.com/collections/kombucha/products/kombucha-pink-lady-apple",
     verifiedAt: "2026-11-08",
     match: /^(?!.*\b(gt'?s|synergy|brew\s+dr|kevita|humm|remedy|better\s+booch|simple\s+truth|kirkland)\b).*\b(health[- ]?ade|kombucha)\b/i,
   },
@@ -5246,7 +5272,7 @@ export function isCatalogEntryFresh(verifiedAt?: string): boolean {
   const calendarCheck = new Date(Date.UTC(year, month - 1, day));
   if (
     calendarCheck.getUTCFullYear() !== year ||
-    calendarCheck.getUTCMonth() + 1 !== month ||
+    calendarCheck.getUTCMonth() !== month - 1 ||
     calendarCheck.getUTCDate() !== day
   ) {
     return false;
@@ -5262,7 +5288,18 @@ export function hasValidCatalogProvenance(sourceUrl?: string, verifiedAt?: strin
   try {
     const u = new URL(sourceUrl);
     if (u.protocol !== "https:") return false;
-    if ((u.pathname === "/" || !u.pathname) && !u.search) return false;
+    const cleanPath = u.pathname.replace(/\/+$/, "");
+    if (!cleanPath && !u.search) return false;
+    if (
+      /^\/(?:en[-_][a-z]{2}\/)?(?:products?|collections?|browse|food-search|brands?|categories|category|our-products|all-products)$/i.test(
+        cleanPath,
+      )
+    ) {
+      return false;
+    }
+    if (/\/products$/i.test(cleanPath) && !u.search) return false;
+    if (/\/collections\/[^/]+$/i.test(cleanPath) && !/\/products\//i.test(cleanPath)) return false;
+    if (/\/browse\//i.test(cleanPath)) return false;
     return true;
   } catch {
     return false;
@@ -5465,7 +5502,7 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bno\s+pulp\b|\bpulp[\s-]*free\b/, /\bno\s+pulp\b|\bpulp[\s-]*free\b/],
     [/\bunsweetened\b/, /\bunsweetened\b|\b0g\s+sugar\b/],
     [/\btrilogy\b/, /\btrilogy\b/],
-    [/\bzero\s+sugar\b|\bsugar[\s-]*free\b|\bdiet\b/, /\bzero\b|\bsugar[\s-]*free\b|\bdiet\b|\bunsweetened\b|\blyte\b|\bultra\b/],
+    [/\bzero\s+sugar\b|\bsugar[\s-]*free\b|\bdiet\b/, /\bzero\b|\bsugar[\s-]*free\b|\bdiet\b|\bunsweetened\b|\blyte\b|\bultra(?![\s-]*filtered)\b/],
     [/\bdoubleshot\b/, /\bdoubleshot\b/],
     [/\bdoubleshot\s+energy\b/, /\bdoubleshot\s+energy\b/],
     [/\bmatcha\b/, /\bmatcha\b/],
@@ -5518,7 +5555,7 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     }
     if (
       /\b(no\s+sugar\s+added|sugar[\s-]*free|zero\s+sugar|zero\s+ultra)\b/.test(t) &&
-      !/\b(no\s+sugar|sugar[\s-]*free|zero|ultra|unsweetened|diet|white\s+monster|lyte|light|lite)\b/.test(q) &&
+      !/\b(no\s+sugar|sugar[\s-]*free|zero|ultra(?![\s-]*filtered)|unsweetened|diet|white\s+monster|lyte|light|lite)\b/.test(q) &&
       !/\b(zevia|nixie|sparkling\s+ice|zoa|rockstar\s+pure\s+zero|powerade\s+zero|gatorade\s+zero|vitaminwater\s+zero)\b/.test(t)
     ) {
       return false;
@@ -5527,10 +5564,27 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   return true;
 }
 
-function isZeroOrDietDrink(item: DrinkCatalogEntry): boolean {
-  if ((item.nutrition.sugarsG100g ?? 0) > 0) return false;
+function isZeroOrDietDrink(item: DrinkCatalogEntry, query = ""): boolean {
+  const sugars = item.nutrition.sugarsG100g ?? 0;
+  const isStrictZeroQuery =
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra(?![\s-]*filtered)|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb)\b/i.test(
+      query,
+    );
+  const isDairyOrPlantMilk =
+    /\b(milk|oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk|cashew\s*milk|milked\s+\w+|malk|elmhurst|califia|planet\s+oat)\b/i.test(
+      `${item.brand} ${item.title}`,
+    );
+  const hasAddedSugarOrSyrup =
+    /(?<!no\s+)\b(cane\s+sugar|sugar(?!\s+free|\s+added|\s+alcohol)|corn\s+syrup|glucose\s+syrup|rice\s+syrup|oat\s+syrup|maple\s+syrup|honey|agave(?!\s+inulin)|coconut\s+sugar|molasses)\b/i.test(
+      item.ingredients,
+    );
+  if (!isStrictZeroQuery && /\bunsweetened\b/i.test(query) && isDairyOrPlantMilk && !hasAddedSugarOrSyrup) {
+    if (sugars > 5) return false;
+  } else if (sugars > 0.5) {
+    return false;
+  }
   const zeroModifier =
-    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer|mountain\s+water)\b/i;
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra(?![\s-]*filtered)|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened|sparkling\s+water|mineral\s+water|spring\s+water|seltzer|mountain\s+water)\b/i;
   if (zeroModifier.test(item.title)) return true;
   return item.keywords.some((k) => zeroModifier.test(k));
 }
@@ -5542,12 +5596,12 @@ export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
   const q = query.trim();
   if (!q) return null;
   const requiresZeroOrDiet =
-    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened)\b/i.test(q);
+    /\b(zero|sugar[\s-]*free|sugarfree|diet|ultra(?![\s-]*filtered)|lite|light|lyte|lo[\s-]*carb|low[\s-]*carb|unsweetened)\b/i.test(q);
   for (const item of DRINKS_CATALOG) {
     if (item.title.includes("/") || item.brand.includes("/")) continue;
     if (!hasValidCatalogProvenance(item.sourceUrl, item.verifiedAt)) continue;
     if (item.match.test(q)) {
-      if (requiresZeroOrDiet && !isZeroOrDietDrink(item)) {
+      if (requiresZeroOrDiet && !isZeroOrDietDrink(item, q)) {
         continue;
       }
       if (!passesVariantGuard(q, item.title)) {

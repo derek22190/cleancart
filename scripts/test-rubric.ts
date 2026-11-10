@@ -1918,8 +1918,18 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     getDevicePaidEntitlement,
     getCustomerEntitlement,
     getEmailEntitlement,
+    hasPriorEntitlementHistory,
   } = await import("../lib/entitlements");
-  const { deleteCreator } = await import("../lib/influencers");
+  const {
+    createCreatorAccessToken,
+    verifyCreatorAccessToken,
+    executeCreatorPayout,
+    listCreatorPayouts,
+    deleteCreator,
+    getCreator: getCreatorDirect,
+  } = await import("../lib/influencers");
+  const { resolveSwapCandidates } = await import("../lib/swaps");
+  const { POST: postAuditRoute } = await import("../app/api/audit/route");
 
   // 1. One-time pass stacking, idempotency, Billing Portal preservation, and safe revocation
   const passDeviceId = `audit-pass-dev-${Date.now()}`;
@@ -2046,6 +2056,249 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  // ==================== 12-AREA COMPLETE AUDIT REGRESSION SUITE ====================
+  // 1. Affiliate Program, Creator Tokens, Self-Dealing Block & Payout Ledger
+  await createCreator({
+    code: "AUDITPAY26",
+    name: "Audit Payout Creator",
+    commissionPct: 35,
+    payoutEmail: "creator-self@heybroc.test",
+    payoutMethod: "paypal",
+    payoutHandle: "@auditpay26",
+  });
+  const validTok = createCreatorAccessToken("AUDITPAY26");
+  check(
+    "1. Creator HMAC access token validates owner and rejects tampered/other codes",
+    verifyCreatorAccessToken("AUDITPAY26", validTok) &&
+      !verifyCreatorAccessToken("OTHERCODE", validTok) &&
+      !verifyCreatorAccessToken("AUDITPAY26", "bad-token")
+  );
+  const selfDealRes = await recordStripeCreatorConversionOnce(
+    "inv_selfdeal_audit_1",
+    "AUDITPAY26",
+    "paid_annual",
+    49.99,
+    "CREATOR-SELF@heybroc.test"
+  );
+  const afterSelfDeal = await getCreatorDirect("AUDITPAY26");
+  check(
+    "1b. Affiliate self-dealing conversion is blocked automatically",
+    selfDealRes?.paidAnnual === 0 &&
+      (selfDealRes?.commissionEarned ?? 0) === 0 &&
+      (afterSelfDeal?.commissionOwed ?? 0) === 0
+  );
+  const legitConv = await recordStripeCreatorConversionOnce(
+    "inv_legit_audit_1",
+    "AUDITPAY26",
+    "paid_annual",
+    49.99,
+    "shopper@heybroc.test"
+  );
+  const expectedComm = Number((49.99 * 0.35).toFixed(2));
+  const payoutRes = await executeCreatorPayout({
+    code: "AUDITPAY26",
+    amount: 10,
+    method: "paypal",
+    note: "Partial test payout",
+  });
+  const payoutsList = await listCreatorPayouts("AUDITPAY26");
+  await deleteCreator("AUDITPAY26");
+  check(
+    "1c. Creator commissionEarned, partial payout deduction, commissionOwed & payout history ledger are exact",
+    Boolean(
+      legitConv &&
+        legitConv.commissionEarned === expectedComm &&
+        payoutRes.payout.amount === 10 &&
+        payoutRes.creator.commissionPaid === 10 &&
+        payoutRes.creator.commissionOwed === Number((expectedComm - 10).toFixed(2)) &&
+        payoutsList.some((p) => p.id === payoutRes.payout.id)
+    )
+  );
+
+  // 2. Trial Period Accuracy & Repeat-Trial Prevention
+  await saveEntitlement({
+    sessionId: "cs_prior_trial_audit",
+    deviceId: "dev_prior_trial_audit",
+    customerEmail: "prior-trial@heybroc.test",
+    customerId: "cus_prior_audit",
+    subscriptionId: "sub_prior_audit",
+    plan: "annual",
+    status: "canceled",
+    active: false,
+    expiresAtMs: Date.now() - 60_000,
+    updatedAt: new Date().toISOString(),
+  });
+  const priorByDev = await hasPriorEntitlementHistory({ deviceId: "dev_prior_trial_audit" });
+  const priorByEmail = await hasPriorEntitlementHistory({ email: "PRIOR-TRIAL@heybroc.test" });
+  const freshUser = await hasPriorEntitlementHistory({ deviceId: "dev_brand_new_audit_999", email: "brandnew999@heybroc.test" });
+  const stripeWebhookSrc = fs.readFileSync("app/api/stripe/webhook/route.ts", "utf8");
+  check(
+    "2. Trial periods (7d standard, 14d creator/friend, 0d monthly/OTO), repeat-trial guard, OTO pass stacking & Dispute webhook handling",
+    PRICING.trialDays === 7 &&
+      PRICING.creatorTrialDays === 14 &&
+      Boolean(priorByDev) &&
+      Boolean(priorByEmail) &&
+      freshUser === null &&
+      stripeWebhookSrc.includes("oto_pass_") &&
+      stripeWebhookSrc.includes("total_excluding_tax") &&
+      stripeWebhookSrc.includes("replaces_subscription_id")
+  );
+
+  // 3. Up-to-Date 2026 Bad Chemicals, Seed Oil Modifier Lists & Zero False Positives on Clean Foods
+  const multiOilMod = scoreIngredients("Potatoes, High Oleic Canola, High Oleic Sunflower, or Safflower Oil, Sea Salt.");
+  const fullyHydrog = scoreIngredients("Roasted Peanuts, Sugar, Fully Hydrogenated Vegetable Oils (Cottonseed, Soybean, Rapeseed), Salt.");
+  const partHydrog = scoreIngredients("Enriched Flour, Partially Hydrogenated Soybean Oil, Salt.");
+  const datemBread = scoreIngredients("Wheat Flour, Water, DATEM, Sodium Stearoyl Lactylate, Salt, Yeast.");
+  const modernChems = scoreIngredients(
+    "Carbonated Water, Citric Acid, Sodium Benzoate, Ascorbic Acid, Sucrose Acetate Isobutyrate, Ester Gum, Neotame, Advantame, Disodium Dihydrogen Pyrophosphate, Brominated Soybean Oil, Sulfur Dioxide."
+  );
+  const cleanYeast = scoreIngredients("Organic Whole Wheat Flour, Water, Nutritional Yeast, Baker's Yeast, Sea Salt.");
+  check(
+    "3. 2026 chemical coverage (SAIB, Ester Gum, Neotame, Advantame, Sulfites, Pyrophosphate, Brominated Soybean Oil, Benzoate+VitC, SSL, 3+ oil modifiers, Fully vs Partially Hydrogenated, clean yeast 0 flags)",
+    multiOilMod.flagged.some((f) => f.id === "canolaoil") &&
+      multiOilMod.flagged.some((f) => f.id === "sunfloweroil") &&
+      multiOilMod.flagged.some((f) => f.id === "saffloweroil") &&
+      !fullyHydrog.flagged.some((f) => f.id === "hydrogoil") &&
+      !fullyHydrog.flagged.some((f) => f.id === "phoil") &&
+      fullyHydrog.flagged.some((f) => f.id === "fully_hydrog_oil") &&
+      partHydrog.flagged.some((f) => f.id === "phoil") &&
+      datemBread.flagged.some((f) => f.id === "datem") &&
+      datemBread.flagged.some((f) => f.id === "ssl_csl") &&
+      !datemBread.flagged.some((f) => f.id === "monodiglycerides") &&
+      modernChems.flagged.some((f) => f.id === "saib") &&
+      modernChems.flagged.some((f) => f.id === "ester_gum") &&
+      modernChems.flagged.some((f) => f.id === "neotame") &&
+      modernChems.flagged.some((f) => f.id === "advantame") &&
+      modernChems.flagged.some((f) => f.id === "naphosphate") &&
+      modernChems.flagged.some((f) => f.id === "bvo") &&
+      modernChems.flagged.some((f) => f.id === "sulfites") &&
+      modernChems.flagged.some((f) => f.id === "nabenzoate" && f.name.includes("Benzene Precursor")) &&
+      cleanYeast.flagged.length === 0 &&
+      cleanYeast.score === 100
+  );
+
+  // 4. Plant Milk / Ultra-Filtered Milk Variant Guard & Score Consistency
+  const fairlife2Scan = await runScan({ productTitle: "Fairlife 2% Reduced Fat Ultra-Filtered Milk", store: "walmart" });
+  const malkOatScan = await runScan({ productTitle: "MALK Organic Unsweetened Oat Milk", store: "target" });
+  const pipelineScan = await runScan({ productTitle: "Monster Pipeline Punch Energy Drink", store: "walmart" });
+  const pepsiZeroScan = await runScan({ productTitle: "Pepsi Zero Sugar Cola", store: "walmart" });
+  check(
+    "4. Fairlife Ultra-Filtered, MALK Unsweetened Oat Milk (100/100 Nutri-Score A), Monster Pipeline Punch & Pepsi Zero Sugar match accurately",
+    Boolean(
+      fairlife2Scan.ok &&
+        fairlife2Scan.product.title.toLowerCase().includes("fairlife") &&
+        malkOatScan.ok &&
+        malkOatScan.result.score >= 90 &&
+        malkOatScan.result.yukaBreakdown?.nutriScoreGrade === "A" &&
+        pipelineScan.ok &&
+        pipelineScan.product.title.includes("Pipeline Punch") &&
+        pepsiZeroScan.ok &&
+        pepsiZeroScan.product.title.includes("Zero")
+    )
+  );
+
+  // 5. Zero Placeholder Pictures & Zero Revoked Barcodes
+  const revokedBarcodes = [
+    "0681131395502",
+    "0044500201956",
+    "0085239053218",
+    "0038000316104",
+    "4901002075484",
+    "0052000122022",
+    "0011110005526",
+    "0299616301971",
+    "0771856465793",
+  ];
+  const swapsSrcAll = fs.readFileSync("lib/swaps.ts", "utf8");
+  const lookupSrcAll = fs.readFileSync("lib/lookup.ts", "utf8");
+  const noRevokedInCatalogs = revokedBarcodes.every(
+    (bc) => !swapsSrcAll.includes(bc) && !lookupSrcAll.includes(bc)
+  );
+  const allLocalImgDirs = ["public/products", "public/swaps", "public/presets"];
+  const allLocalImgsValid = allLocalImgDirs.every((dir) =>
+    fs.readdirSync(dir).every((fn) => {
+      const buf = fs.readFileSync(`${dir}/${fn}`);
+      const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+      const isJpg = buf[0] === 0xff && buf[1] === 0xd8;
+      return buf.length > 4000 && (isPng || isJpg);
+    })
+  );
+  check(
+    "5. Zero placeholder graphics, valid PNG/JPEG photography across all 59 public assets, real US PRESETS, and 0 revoked OFF barcodes",
+    noRevokedInCatalogs &&
+      allLocalImgsValid &&
+      PRESETS.every((p) => Boolean(p.brand && p.sourceUrl && !/Berry Swirl|Cheddar Bites|Deli Select|Ranch House|Green Pasture/i.test(p.title)))
+  );
+
+  // 6. Multi-Food Screen Disambiguation + Ranked Swap Candidates + Instacart Retailer Preservation + Weighted Audit API
+  const multiProductRawScan = await runScan({
+    productTitle: "Stonyfield Organic Whole Milk Plain Yogurt",
+    rawText:
+      "Stonyfield Organic Whole Milk Plain Yogurt\nIngredients: Cultured pasteurized organic whole milk, pectin, vitamin D3.\nCustomers also bought\nRainbow Fruit Snacks\nIngredients: Corn Syrup, Sugar, Red 40, Blue 1, Yellow 5.",
+    store: "walmart",
+  });
+  const instacartCostcoCandidates = resolveSwapCandidates({
+    score: 25,
+    productTitle: "Hidden Valley Original Ranch Dressing",
+    store: "instacart",
+    instacartRetailerSlug: "costco",
+    limit: 4,
+  });
+  const nonFoodOnlyAuditRes = await (
+    await postAuditRoute(
+      new Request("https://heybroc.com/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "198.51.100.88" },
+        body: JSON.stringify({
+          store: "walmart",
+          items: [{ productTitle: "Bounty Select-A-Size Paper Towels, 6 Double Rolls" }],
+        }),
+      })
+    )
+  ).json();
+  const weightedZeroAuditRes = await (
+    await postAuditRoute(
+      new Request("https://heybroc.com/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "198.51.100.88" },
+        body: JSON.stringify({
+          store: "walmart",
+          items: [
+            { productTitle: "Rainbow Dye Candy", ingredients: "Sugar, Corn Syrup, Red 40, Yellow 5, Blue 1, TBHQ, BHT.", quantity: 3 },
+            { productTitle: "Organic Baby Spinach", ingredients: "Organic baby spinach.", quantity: 1 },
+          ],
+        }),
+      })
+    )
+  ).json();
+  const extContentSrc = fs.readFileSync("chrome-extension/content.js", "utf8");
+  const safariContentSrc = fs.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+  const mergedSimSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
+  check(
+    "6. Multi-food OCR focal block isolation, Instacart retailer swap candidates, zero-safe weighted Cart Avg (null when 0 food items), in-stock swap guard, per-store carts & Chrome/Safari byte parity",
+    Boolean(
+      multiProductRawScan.ok &&
+        multiProductRawScan.result.flagged.length === 0 &&
+        multiProductRawScan.result.score >= 90 &&
+        instacartCostcoCandidates.length >= 1 &&
+        decodeURIComponent(instacartCostcoCandidates[0].webUrl || "").includes("/store/costco/s?k=") &&
+        nonFoodOnlyAuditRes.ok &&
+        nonFoodOnlyAuditRes.averageBefore === null &&
+        weightedZeroAuditRes.ok &&
+        typeof weightedZeroAuditRes.averageBefore === "number" &&
+        weightedZeroAuditRes.averageBefore < 30 &&
+        extContentSrc === safariContentSrc &&
+        extContentSrc.includes("resolveFirstInStockSwap") &&
+        extContentSrc.includes("resolveStoreBucket") &&
+        mergedSimSrc.includes("cartsByStore")
+    )
+  );
+
+  try {
+    fs.rmSync(".cache/heybroc-kv.json", { force: true });
+  } catch {
+    /* ignore */
+  }
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

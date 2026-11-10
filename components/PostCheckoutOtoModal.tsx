@@ -16,6 +16,7 @@ interface PostCheckoutOtoModalProps {
   initialPlan: PlanId;
   sessionId?: string;
   deviceId?: string;
+  creatorCode?: string;
 }
 
 export default function PostCheckoutOtoModal({
@@ -24,6 +25,7 @@ export default function PostCheckoutOtoModal({
   initialPlan,
   sessionId,
   deviceId,
+  creatorCode,
 }: PostCheckoutOtoModalProps) {
   const otoOffer: OtoOfferId =
     initialPlan === "monthly" ? "oto_annual" : "oto_gift_year";
@@ -93,6 +95,7 @@ export default function PostCheckoutOtoModal({
           window.localStorage.getItem("heybroc_session_id")) ||
         "";
       let userEmail = "";
+      let resolvedCreatorCode = creatorCode || "";
       if (typeof window !== "undefined") {
         try {
           const cachedUser = JSON.parse(
@@ -103,6 +106,26 @@ export default function PostCheckoutOtoModal({
           if (cachedUser?.email) userEmail = cachedUser.email;
         } catch {
           /* ignore */
+        }
+        if (!resolvedCreatorCode) {
+          try {
+            const storedCreator = JSON.parse(
+              window.localStorage.getItem("cleancart_creator_v1") || "null"
+            ) as { code?: string } | null;
+            if (storedCreator?.code) resolvedCreatorCode = storedCreator.code;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!resolvedCreatorCode) {
+          const storedRef = (
+            window.localStorage.getItem("heybroc_referred_by") || ""
+          )
+            .trim()
+            .toUpperCase();
+          if (/^BROC-[A-Z0-9]{4,10}$/.test(storedRef)) {
+            resolvedCreatorCode = storedRef;
+          }
         }
       }
 
@@ -118,6 +141,7 @@ export default function PostCheckoutOtoModal({
             step: "oto_accepted",
             otoOffer,
             initialPlan,
+            creatorCode: resolvedCreatorCode || null,
           },
         }),
       }).catch(() => {});
@@ -133,6 +157,7 @@ export default function PostCheckoutOtoModal({
           plan: "annual",
           otoOffer,
           previousSessionId: prevSessId || undefined,
+          creatorCode: resolvedCreatorCode || undefined,
           deviceId: devId || undefined,
           deviceSecret: devSecret || undefined,
           email: userEmail || undefined,

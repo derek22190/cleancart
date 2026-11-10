@@ -3,13 +3,19 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import {
   getDevicePaidEntitlement,
   getEmailEntitlement,
+  hasPriorEntitlementHistory,
   isValidStripeSessionIdFormat,
   recordSubscriptionConsent,
   verifyStripeCheckoutSession,
   type EntitlementRecord,
 } from "@/lib/entitlements";
 import { getCreator } from "@/lib/influencers";
-import { PRICING, TERMS_VERSION, type OtoOfferId, type PlanId } from "@/lib/pricing";
+import {
+  PRICING,
+  TERMS_VERSION,
+  type OtoOfferId,
+  type PlanId,
+} from "@/lib/pricing";
 import {
   getExistingDevice,
   getOrCreateDevice,
@@ -28,13 +34,17 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 function resolveAllowedOrigin(raw?: string | null): string {
-  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
+  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
   if (configured && /^https?:\/\//i.test(configured)) {
     ALLOWED_ORIGINS.add(configured);
   }
   const clean = (raw || "").trim().replace(/\/+$/, "");
   if (clean && ALLOWED_ORIGINS.has(clean)) return clean;
-  return configured && /^https?:\/\//i.test(configured) ? configured : "https://heybroc.com";
+  return configured && /^https?:\/\//i.test(configured)
+    ? configured
+    : "https://heybroc.com";
 }
 
 function getClientIp(req: NextRequest): string {
@@ -61,7 +71,10 @@ export async function POST(req: NextRequest) {
 
     const parsed = await req.json();
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Body must be a JSON object." },
+        { status: 400 }
+      );
     }
     const body = parsed as Record<string, unknown>;
     const hasExpressConsent =
@@ -89,7 +102,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rawOtoOffer = typeof body.otoOffer === "string" ? body.otoOffer.trim() : "";
+    const rawOtoOffer =
+      typeof body.otoOffer === "string" ? body.otoOffer.trim() : "";
     const otoOffer: OtoOfferId | null =
       rawOtoOffer === "oto_annual" || rawOtoOffer === "oto_gift_year"
         ? rawOtoOffer
@@ -104,8 +118,14 @@ export async function POST(req: NextRequest) {
         : body.plan === "monthly"
           ? "monthly"
           : "annual";
-    const rawCreatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
-    const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
+    const rawCreatorCode =
+      typeof body.creatorCode === "string"
+        ? body.creatorCode.trim().toUpperCase()
+        : "";
+    const deviceId =
+      typeof body.deviceId === "string"
+        ? body.deviceId.trim().slice(0, 128)
+        : "";
     const deviceSecret =
       typeof body.deviceSecret === "string"
         ? body.deviceSecret.trim()
@@ -183,6 +203,12 @@ export async function POST(req: NextRequest) {
         : "";
     const effectiveEmail =
       customerEmail || priorEntitlement?.customerEmail?.trim().toLowerCase() || "";
+    const priorHistory =
+      priorEntitlement ??
+      (await hasPriorEntitlementHistory({
+        deviceId,
+        email: effectiveEmail,
+      }).catch(() => null));
     const isOneTimeOtoPass = otoOffer === "oto_gift_year";
     const recurringPriceUsd =
       otoOffer === "oto_annual"
@@ -207,7 +233,8 @@ export async function POST(req: NextRequest) {
     }
 
     const candidateCreatorCode =
-      rawCreatorCode || (priorEntitlement?.creatorCode || "").trim().toUpperCase();
+      rawCreatorCode ||
+      (priorEntitlement?.creatorCode || priorHistory?.creatorCode || "").trim().toUpperCase();
     const isFriendCodeFormat = /^BROC-[A-Z0-9]{4,10}$/.test(candidateCreatorCode);
     let verifiedCode = "";
 
@@ -232,13 +259,31 @@ export async function POST(req: NextRequest) {
         }
       } else {
         const validCreator = await getCreator(candidateCreatorCode);
-        if (!validCreator && rawCreatorCode) {
-          return NextResponse.json(
-            { ok: false, error: "Invalid creator code." },
-            { status: 400 }
-          );
+        if (!validCreator || !validCreator.active) {
+          if (rawCreatorCode) {
+            return NextResponse.json(
+              { ok: false, error: "Invalid or inactive creator code." },
+              { status: 400 }
+            );
+          }
+        } else if (
+          effectiveEmail &&
+          validCreator.payoutEmail &&
+          effectiveEmail === validCreator.payoutEmail.trim().toLowerCase()
+        ) {
+          if (rawCreatorCode) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error:
+                  "You cannot apply your own creator affiliate code to your personal checkout.",
+              },
+              { status: 400 }
+            );
+          }
+        } else {
+          verifiedCode = validCreator.code;
         }
-        if (validCreator) verifiedCode = validCreator.code;
       }
     } else if (
       deviceReferredBy &&
@@ -250,11 +295,15 @@ export async function POST(req: NextRequest) {
     }
 
     const candidateOrigin =
-      (typeof body.origin === "string" ? body.origin : req.headers.get("origin")) || "";
+      (typeof body.origin === "string"
+        ? body.origin
+        : req.headers.get("origin")) || "";
     const origin = resolveAllowedOrigin(candidateOrigin);
 
+    // Enforce one free trial per device/account so returning subscribers cannot chain unlimited trials
+    const hasHadPriorTrialOrSub = Boolean(priorHistory);
     const trialDays =
-      otoOffer !== null
+      otoOffer !== null || hasHadPriorTrialOrSub
         ? 0
         : plan === "annual"
           ? verifiedCode
@@ -270,10 +319,15 @@ export async function POST(req: NextRequest) {
           plan,
           otoOffer,
           trialDays,
+          creatorCode: verifiedCode || null,
         });
       }
       return NextResponse.json(
-        { ok: false, mode: "unconfigured", error: "Stripe checkout is not configured on this server." },
+        {
+          ok: false,
+          mode: "unconfigured",
+          error: "Stripe checkout is not configured on this server.",
+        },
         { status: 503 }
       );
     }
@@ -331,7 +385,10 @@ export async function POST(req: NextRequest) {
     if (!isOneTimeOtoPass) {
       params.set("subscription_data[metadata][plan]", plan);
       params.set("subscription_data[metadata][terms_version]", termsVersion);
-      params.set("subscription_data[metadata][terms_accepted_at]", consentTimestamp);
+      params.set(
+        "subscription_data[metadata][terms_accepted_at]",
+        consentTimestamp
+      );
       if (otoOffer) {
         params.set("subscription_data[metadata][oto_offer]", otoOffer);
       }
@@ -345,6 +402,7 @@ export async function POST(req: NextRequest) {
     } else {
       params.set("payment_intent_data[metadata][oto_offer]", "oto_gift_year");
       params.set("payment_intent_data[metadata][plan]", "annual");
+      params.set("payment_intent_data[metadata][session_type]", "oto_gift_year");
       if (previousSessionId) {
         params.set("payment_intent_data[metadata][previous_session_id]", previousSessionId);
       }
@@ -403,7 +461,12 @@ export async function POST(req: NextRequest) {
     const session = await res.json();
     if (!res.ok || !session.url) {
       return NextResponse.json(
-        { ok: false, error: session?.error?.message || "Failed to create Stripe Checkout session." },
+        {
+          ok: false,
+          error:
+            session?.error?.message ||
+            "Failed to create Stripe Checkout session.",
+        },
         { status: 400 }
       );
     }
@@ -433,9 +496,10 @@ export async function POST(req: NextRequest) {
           properties: {
             plan,
             otoOffer: otoOffer || null,
+            trialDays,
             creatorCode: verifiedCode || null,
           },
-        }),
+        })
       )
       .catch(() => {});
 
@@ -443,10 +507,14 @@ export async function POST(req: NextRequest) {
       ok: true,
       mode: "stripe",
       url: session.url,
+      trialDays,
     });
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Checkout error" },
+      {
+        ok: false,
+        error: err instanceof Error ? err.message : "Checkout error",
+      },
       { status: 500 }
     );
   }

@@ -4,6 +4,7 @@ import {
   codeFromDeviceId,
   getExistingDevice,
   getOrCreateDevice,
+  isValidReferralCode,
   saveDevice,
   serializeEntitlementWithPaidLookup,
   verifyDeviceSecret,
@@ -57,6 +58,14 @@ export async function GET(request: Request) {
     );
   }
   const { searchParams } = new URL(request.url);
+  const validateCode = searchParams.get("validateCode")?.trim().toUpperCase();
+  if (validateCode) {
+    const valid = await isValidReferralCode(validateCode);
+    return NextResponse.json(
+      { ok: valid, valid, code: validateCode },
+      { status: valid ? 200 : 404, headers: CORS }
+    );
+  }
   const deviceId = (searchParams.get("deviceId") || "anon-web").trim();
   const deviceSecret = request.headers.get("x-device-secret") || undefined;
   const device =

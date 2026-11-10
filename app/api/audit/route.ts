@@ -15,18 +15,42 @@ export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
+function clampQuantity(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === "") return 1;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.min(99, Math.max(1, Math.round(parsed)));
+}
+
+function isScoredFoodScan(r: ScanResponse | ScanError): r is ScanResponse {
+  if (!r.ok) return false;
+  const score = r.result?.score;
+  if (score === null || score === undefined || !Number.isFinite(score)) return false;
+  if (r.product?.nutrition?.productKind === "non-food") return false;
+  if (r.result?.yukaBreakdown?.nutriScoreGrade === "N/A") return false;
+  return true;
+}
+
+type AuditedItemResult = (ScanResponse | ScanError) & { quantity: number };
+
 /**
- * Whole-Cart Auditor: POST { items: [{ productTitle?, rawIngredients?, barcode? }], store?, surface?, watchlist? }
- * Scores every cart item and returns the 1-tap swap list for anything under 75.
+ * Whole-Cart Auditor:
+ * POST { items: [{ productTitle?, rawIngredients?, barcode?, quantity? }], store?, instacartRetailerSlug?, surface?, watchlist? }
+ * Scores up to 100 cart items, excludes non-food / unscored items, and computes quantity-weighted
+ * `averageBefore` and `averageAfter` using nullish coalescing `??` (never `||`), returning `null` when 0 scored items exist.
  */
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   if (!checkRateLimit(`audit:${ip}`, 10)) {
-    return NextResponse.json({ ok: false, error: "Too many cart audit requests. Please wait a moment." }, { status: 429, headers: CORS });
+    return NextResponse.json(
+      { ok: false, error: "Too many cart audit requests. Please wait a moment." },
+      { status: 429, headers: CORS },
+    );
   }
   let body: {
     items?: unknown;
     store?: string;
+    instacartRetailerSlug?: string;
     surface?: "web" | "android" | "extension";
     deviceId?: string;
     deviceSecret?: string;
@@ -46,12 +70,6 @@ export async function POST(request: Request) {
   if (!Array.isArray(body.items) || body.items.length === 0) {
     return NextResponse.json({ ok: false, error: "Provide a non-empty items array." }, { status: 400, headers: CORS });
   }
-  if (body.items.length > 20) {
-    return NextResponse.json(
-      { ok: false, error: "Cart audit accepts at most 20 items per request." },
-      { status: 400, headers: CORS },
-    );
-  }
   const reqOrigin = (request.headers.get("origin") || "").toLowerCase();
   const effectiveSurface =
     reqOrigin.startsWith("chrome-extension://") ||
@@ -61,15 +79,15 @@ export async function POST(request: Request) {
       : body.surface;
   const effectiveSecret =
     request.headers.get("x-device-secret")?.trim() || body.deviceSecret;
-  const items = body.items;
+  const items = body.items.slice(0, 100);
   const memo = new Map<string, Promise<ScanResponse | ScanError>>();
 
-  // Process in bounded batches of 3 with per-request deduplication to avoid flooding Open Food Facts / USDA
-  const results: Array<ScanResponse | ScanError> = [];
-  for (let i = 0; i < items.length; i += 3) {
-    const chunk = items.slice(i, i + 3);
+  // Process in bounded batches of 4 with per-request deduplication to avoid flooding Open Food Facts / USDA
+  const results: AuditedItemResult[] = [];
+  for (let i = 0; i < items.length; i += 4) {
+    const chunk = items.slice(i, i + 4);
     const batch = await Promise.all(
-      chunk.map((item) => {
+      chunk.map(async (item): Promise<AuditedItemResult> => {
         if (typeof item === "string") {
           const dedupKey = `str:${item.trim().toLowerCase()}`;
           let pending = memo.get(dedupKey);
@@ -77,6 +95,7 @@ export async function POST(request: Request) {
             pending = runScan({
               productTitle: item,
               store: body.store,
+              instacartRetailerSlug: body.instacartRetailerSlug,
               surface: effectiveSurface,
               deviceId: body.deviceId,
               deviceSecret: effectiveSecret,
@@ -87,37 +106,51 @@ export async function POST(request: Request) {
             });
             memo.set(dedupKey, pending);
           }
-          return pending;
+          const res = await pending;
+          return { ...res, quantity: 1 };
         }
         if (!item || typeof item !== "object" || Array.isArray(item)) {
-          return Promise.resolve<ScanError>({ ok: false, status: 400, error: "Each item must be an object or string." });
+          return { ok: false, status: 400, error: "Each item must be an object or string.", quantity: 1 };
         }
         const rawObj = item as Record<string, unknown>;
+        const quantity = clampQuantity(rawObj.quantity);
+        const rawTitleField = rawObj.productTitle ?? rawObj.title;
+        const rawIngredientsField = rawObj.rawIngredients ?? rawObj.ingredients;
         if (
-          (rawObj.barcode !== undefined && typeof rawObj.barcode !== "string") ||
-          (rawObj.productTitle !== undefined && typeof rawObj.productTitle !== "string") ||
-          (rawObj.rawIngredients !== undefined && typeof rawObj.rawIngredients !== "string")
+          (rawObj.barcode !== undefined && typeof rawObj.barcode !== "string" && typeof rawObj.barcode !== "number") ||
+          (rawTitleField !== undefined && typeof rawTitleField !== "string") ||
+          (rawIngredientsField !== undefined && typeof rawIngredientsField !== "string")
         ) {
-          return Promise.resolve<ScanError>({
+          return {
             ok: false,
             status: 400,
             error: "Item barcode, productTitle, and rawIngredients must be strings when provided.",
-          });
+            quantity,
+          };
         }
-        const reqItem = item as ScanRequest;
-        const barcodeStr = typeof reqItem.barcode === "string" ? reqItem.barcode.trim() : "";
+        const reqItem: ScanRequest & { quantity?: unknown } = {
+          ...(item as ScanRequest & { quantity?: unknown }),
+          productTitle: typeof rawTitleField === "string" ? rawTitleField : undefined,
+          rawIngredients: typeof rawIngredientsField === "string" ? rawIngredientsField : undefined,
+        };
+        const barcodeStr =
+          typeof reqItem.barcode === "string" || typeof reqItem.barcode === "number"
+            ? String(reqItem.barcode).trim()
+            : "";
         const titleStr = typeof reqItem.productTitle === "string" ? reqItem.productTitle.trim().toLowerCase() : "";
         const ingStr = typeof reqItem.rawIngredients === "string" ? reqItem.rawIngredients.trim().toLowerCase() : "";
         const effFw = reqItem.familyWatchlist ?? body.familyWatchlist;
         const effDw = reqItem.dietaryWatchlist ?? body.dietaryWatchlist;
         const fwSig = Array.isArray(effFw) ? [...effFw].sort().join(",") : "";
         const dwSig = Array.isArray(effDw) ? [...effDw].sort().join(",") : "";
-        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}|${fwSig}|${dwSig}`;
+        const retailerSlug = reqItem.instacartRetailerSlug ?? body.instacartRetailerSlug ?? "";
+        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}|${retailerSlug}|${fwSig}|${dwSig}`;
         let pending = memo.get(dedupKey);
         if (!pending) {
           pending = runScan({
             ...reqItem,
             store: body.store,
+            instacartRetailerSlug: reqItem.instacartRetailerSlug ?? body.instacartRetailerSlug,
             surface: effectiveSurface ?? reqItem.surface,
             deviceId: reqItem.deviceId ?? body.deviceId,
             deviceSecret: reqItem.deviceSecret ?? effectiveSecret,
@@ -128,27 +161,50 @@ export async function POST(request: Request) {
           });
           memo.set(dedupKey, pending);
         }
-        return pending;
+        const res = await pending;
+        return { ...res, quantity };
       }),
     );
     results.push(...batch);
   }
-  const scored = results.filter((r): r is ScanResponse => r.ok);
-  const failedCount = results.length - scored.length;
-  const avg = scored.length ? Math.round(scored.reduce((s, r) => s + r.result.score, 0) / scored.length) : null;
-  const swaps = scored.filter((r) => r.swap).length;
+
+  let weightedBeforeSum = 0;
+  let weightedAfterSum = 0;
+  let totalScoredQuantity = 0;
+  let scoredCount = 0;
+  let swapsCount = 0;
+
+  for (const r of results) {
+    if (!isScoredFoodScan(r)) continue;
+    const qty = r.quantity;
+    const beforeScore = r.result.score;
+    const swapScore = r.swap?.score ?? null;
+    const afterScore = swapScore !== null && swapScore > beforeScore ? swapScore : beforeScore;
+    weightedBeforeSum += beforeScore * qty;
+    weightedAfterSum += afterScore * qty;
+    totalScoredQuantity += qty;
+    scoredCount += 1;
+    if (r.swap) swapsCount += 1;
+  }
+
+  const failedCount = results.filter((r) => !r.ok).length;
+  const averageBefore = totalScoredQuantity > 0 ? Math.round(weightedBeforeSum / totalScoredQuantity) : null;
+  const averageAfter = totalScoredQuantity > 0 ? Math.round(weightedAfterSum / totalScoredQuantity) : null;
 
   return NextResponse.json(
     {
       ok: true,
       complete: failedCount === 0,
-      cartScore: avg ?? 0,
-      scoredItemAverage: avg,
+      cartScore: averageBefore,
+      scoredItemAverage: averageBefore,
+      averageBefore,
+      averageAfter,
+      totalScoredQuantity,
       itemsRequested: items.length,
       itemsScanned: results.length,
-      itemsScored: scored.length,
+      itemsScored: scoredCount,
       itemsFailed: failedCount,
-      swapsAvailable: swaps,
+      swapsAvailable: swapsCount,
       results,
     },
     { headers: CORS },

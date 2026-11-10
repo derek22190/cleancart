@@ -64,6 +64,8 @@ export default function Paywall({
   const [remoteHeadline, setRemoteHeadline] = useState<string>(
     "Scores & Ingredient Breakdowns Are Always Free. Unlock Unlimited 1-Tap Clean Swaps & Swap All.",
   );
+  const [remoteSubheadline, setRemoteSubheadline] = useState<string>("");
+  const [remoteCtaLabel, setRemoteCtaLabel] = useState<string>("");
 
   useEffect(() => {
     if (appliedCreator?.code) setCodeInput(appliedCreator.code);
@@ -82,6 +84,12 @@ export default function Paywall({
       .then((d) => {
         if (d?.ok && typeof d.activeHeadline === "string" && d.activeHeadline.trim()) {
           setRemoteHeadline(d.activeHeadline.trim());
+        }
+        if (typeof d?.paywall?.subheadline === "string" && d.paywall.subheadline.trim()) {
+          setRemoteSubheadline(d.paywall.subheadline.trim());
+        }
+        if (typeof d?.paywall?.ctaLabel === "string" && d.paywall.ctaLabel.trim()) {
+          setRemoteCtaLabel(d.paywall.ctaLabel.trim());
         }
         if (d?.paywall?.defaultPlan === "monthly" || d?.paywall?.defaultPlan === "annual") {
           setSelectedPlan(d.paywall.defaultPlan);
@@ -186,11 +194,23 @@ export default function Paywall({
         setCodeError(data.error || "Invalid promo code.");
         return;
       }
-      void fetch("/api/influencers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "track", code: data.creator.code, event: "click" }),
-      }).catch(() => {});
+      const clickKey = `hb_creator_click_${data.creator.code}`;
+      const alreadyTracked =
+        typeof window !== "undefined" && window.sessionStorage.getItem(clickKey) === "1";
+      if (!alreadyTracked) {
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(clickKey, "1");
+          } catch {
+            /* ignore */
+          }
+        }
+        void fetch("/api/influencers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "track", code: data.creator.code, event: "click" }),
+        }).catch(() => {});
+      }
 
       const c: AppliedCreator = {
         code: data.creator.code,
@@ -373,6 +393,11 @@ export default function Paywall({
                   : "HeyBroc Family Pro · Unlimited Cart Swaps"}
               </span>
               <h2>{remoteHeadline}</h2>
+              {remoteSubheadline && (
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#3d5949" }}>
+                  {remoteSubheadline}
+                </p>
+              )}
             </div>
           </div>
           <button className="close" onClick={onClose} aria-label="Close paywall">×</button>
@@ -544,7 +569,9 @@ export default function Paywall({
         {/* CREATOR / INFLUENCER PROMO CODE BOX */}
         <div className="creator-box">
           <label htmlFor="creator-code-input" className="creator-label">
-            Have a Creator or Friend Code? (Unlocks 14-Day Free Trial)
+            {selectedPlan === "annual"
+              ? "Have a Creator or Friend Code? (Unlocks 14-Day Free Trial)"
+              : "Have a Creator or Friend Code? (Switch to Annual for 14-Day Free Trial)"}
           </label>
           <div className="creator-input-row">
             <input
@@ -569,9 +596,11 @@ export default function Paywall({
             <div id="creator-applied-badge" className="creator-confirm">
               <span>
                 ✓ Code <b>{appliedCreator.code}</b> Applied:{" "}
-                {appliedCreator.code.startsWith("BROC-")
-                  ? `Extended ${PRICING.creatorTrialDays}-Day Free Trial + 7 Free Pro Days for you & your friend!`
-                  : `Extended ${PRICING.creatorTrialDays}-Day Free Trial Unlocked!`}
+                {selectedPlan === "monthly"
+                  ? "Supports your creator! Switch to Annual above to unlock your 14-Day Free Trial."
+                  : appliedCreator.code.startsWith("BROC-")
+                    ? `Extended ${PRICING.creatorTrialDays}-Day Free Trial + 7 Free Pro Days for you & your friend!`
+                    : `Extended ${PRICING.creatorTrialDays}-Day Free Trial Unlocked!`}
               </span>
             </div>
           )}
@@ -641,7 +670,9 @@ export default function Paywall({
             : receipt
               ? "✓ Family Pro Active! Start Scanning →"
               : selectedPlan === "annual"
-                ? `Start ${trialDays}-Day Free Trial ($0 Today)`
+                ? appliedCreator
+                  ? `Start ${trialDays}-Day Free Trial ($0 Today)`
+                  : remoteCtaLabel || `Start ${trialDays}-Day Free Trial ($0 Today)`
                 : `Subscribe Monthly ($${PRICING.monthly.toFixed(2)} Today)`}
         </button>
         <p className="paywall-sub">

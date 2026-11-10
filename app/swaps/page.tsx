@@ -58,76 +58,117 @@ export default function SwapsDirectoryPage() {
       </section>
 
       <div style={{ display: "grid", gap: 16 }}>
-        {items.map(({ entry, result, swap }) => (
-          <Link
-            key={entry.slug}
-            href={`/swaps/${entry.slug}`}
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: 18,
-              padding: "18px 20px",
-              textDecoration: "none",
-              color: "#0f172a",
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              gap: 18,
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
-                {entry.category} · {entry.searchVolumeTag}
-              </span>
-              <h2 style={{ fontSize: 18, fontWeight: 900, margin: "4px 0 6px" }}>{entry.title}</h2>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span
+        {items.map(({ entry, result, swap }) => {
+          const ratingLabel = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
+          const pillBg = result.score >= 75 ? "#dcfce7" : result.score >= 50 ? "#fef3c7" : "#fee2e2";
+          const pillFg = result.score >= 75 ? "#166534" : result.score >= 50 ? "#92400e" : "#991b1b";
+          return (
+            <Link
+              key={entry.slug}
+              href={`/swaps/${entry.slug}`}
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+                borderRadius: 18,
+                padding: "18px 20px",
+                textDecoration: "none",
+                color: "#0f172a",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 18,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/product-image?title=${encodeURIComponent(entry.title)}`}
+                  alt={entry.title}
+                  loading="lazy"
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    background: result.score >= 70 ? "#dcfce7" : "#fee2e2",
-                    color: result.score >= 70 ? "#166534" : "#991b1b",
+                    width: 64,
+                    height: 64,
+                    objectFit: "contain",
+                    borderRadius: 12,
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    padding: 4,
+                    flexShrink: 0,
                   }}
-                >
-                  {result.score}/100 · {result.rating}
-                </span>
-                {result.yukaBreakdown?.glucoseImpact && (
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
-                    🩸 Sugar &amp; Carb Note: {result.yukaBreakdown.glucoseImpact}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+                    {entry.category} · {entry.searchVolumeTag}
                   </span>
-                )}
+                  <h2 style={{ fontSize: 18, fontWeight: 900, margin: "4px 0 6px" }}>{entry.title}</h2>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        background: pillBg,
+                        color: pillFg,
+                      }}
+                    >
+                      {result.score}/100 · {ratingLabel}
+                    </span>
+                    {result.yukaBreakdown?.glucoseImpact && (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                        🩸 Sugar &amp; Carb Note: {result.yukaBreakdown.glucoseImpact}
+                      </span>
+                    )}
+                  </div>
+                  {result.flagged.length > 0 && (
+                    <p style={{ fontSize: 12, color: "#b91c1c", margin: "8px 0 0", fontWeight: 700 }}>
+                      Flags: {result.flagged.map((f) => f.name).join(", ")}
+                    </p>
+                  )}
+                </div>
               </div>
-              {result.flagged.length > 0 && (
-                <p style={{ fontSize: 12, color: "#b91c1c", margin: "8px 0 0", fontWeight: 700 }}>
-                  Flags: {result.flagged.map((f) => f.name).join(", ")}
-                </p>
-              )}
-            </div>
 
-            {swap ? (
-              <div style={{ background: "#ecfdf5", border: "1.5px solid #6ee7b7", borderRadius: 14, padding: "14px 16px" }}>
-                <span style={{ fontSize: 11, fontWeight: 900, color: "#059669", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  ⇄ Recommended 1-for-1 Clean Swap ({swap.score}/100)
-                </span>
-                <b style={{ display: "block", fontSize: 15.5, color: "#064e3b", marginTop: 4 }}>{swap.title}</b>
-                <span style={{ fontSize: 12, color: "#047857", fontWeight: 700 }}>
-                  Zero Seed Oils · Zero Artificial Dyes · View Full Comparison →
-                </span>
-              </div>
-            ) : (
-              <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 14, padding: "14px 16px" }}>
-                <span style={{ fontSize: 11, fontWeight: 900, color: "#15803d", textTransform: "uppercase" }}>
-                  ✓ Clean Category Benchmark
-                </span>
-                <b style={{ display: "block", fontSize: 15, color: "#14532d", marginTop: 4 }}>
-                  Zero Watchlist Additives Flagged — View 3-Pillar Breakdown →
-                </b>
-              </div>
-            )}
-          </Link>
-        ))}
+              {swap ? (
+                <div style={{ background: "#ecfdf5", border: "1.5px solid #6ee7b7", borderRadius: 14, padding: "14px 16px", display: "flex", gap: 12, alignItems: "center" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/product-image?title=${encodeURIComponent(swap.title)}`}
+                    alt={swap.title}
+                    loading="lazy"
+                    style={{
+                      width: 56,
+                      height: 56,
+                      objectFit: "contain",
+                      borderRadius: 10,
+                      background: "#ffffff",
+                      border: "1px solid #a7f3d0",
+                      padding: 4,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: "#059669", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      ⇄ Recommended 1-for-1 Clean Swap ({swap.score}/100)
+                    </span>
+                    <b style={{ display: "block", fontSize: 15.5, color: "#064e3b", marginTop: 4 }}>{swap.title}</b>
+                    <span style={{ fontSize: 12, color: "#047857", fontWeight: 700 }}>
+                      Zero Seed Oils · Zero Artificial Dyes · View Full Comparison →
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 14, padding: "14px 16px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "#15803d", textTransform: "uppercase" }}>
+                    ✓ Clean Category Benchmark
+                  </span>
+                  <b style={{ display: "block", fontSize: 15, color: "#14532d", marginTop: 4 }}>
+                    Zero Watchlist Additives Flagged — View 3-Pillar Breakdown →
+                  </b>
+                </div>
+              )}
+            </Link>
+          );
+        })}
       </div>
 
       <footer

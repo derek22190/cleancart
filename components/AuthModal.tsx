@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
   proUntil: number;
   isProActive: boolean;
   proDaysRemaining: number;
+  entitlementStatus?: "active" | "trialing" | "free";
   watchlist?: Record<string, boolean>;
   createdAt?: string;
 }
@@ -332,7 +333,9 @@ export default function AuthModal({
                 <span>Membership Status</span>
                 <strong style={{ color: user.isProActive ? "#0f7a4a" : "#52525b" }}>
                   {user.isProActive
-                    ? `★ Family Pro Active (${user.proDaysRemaining}d)`
+                    ? user.entitlementStatus === "trialing"
+                      ? `★ Free Trial Active (${user.proDaysRemaining}d left)`
+                      : `★ Family Pro Active (${user.proDaysRemaining}d)`
                     : "Free Tier (Scores Always Free)"}
                 </strong>
               </div>

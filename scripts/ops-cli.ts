@@ -23,7 +23,13 @@ import {
   getPaywallConfig,
   savePaywallConfig,
 } from "../lib/analytics";
-import { createCreator, listCreators } from "../lib/influencers";
+import {
+  createCreator,
+  executeCreatorPayout,
+  listCreatorPayouts,
+  listCreators,
+  type CreatorPayoutMethod,
+} from "../lib/influencers";
 
 const args = process.argv.slice(2);
 const subcommand = args.find((a) => !a.startsWith("--")) || "status";
@@ -300,13 +306,43 @@ async function main() {
     }
     const name = getFlag("name");
     const pctVal = getFlag("pct");
+    const payoutEmail = getFlag("email");
+    const stripeConnectAccountId = getFlag("stripe-account");
     const creator = await createCreator({
       code,
       name,
       commissionPct: pctVal !== undefined ? Number(pctVal) : undefined,
+      payoutEmail,
+      stripeConnectAccountId,
     });
     console.log("✓ Saved Creator Affiliate Code:");
     console.log(JSON.stringify(creator, null, 2));
+    return;
+  }
+
+  if (subcommand === "payout") {
+    const code = getFlag("code");
+    if (!code) {
+      console.error(
+        "✖ Usage: npm run ops payout -- --code=SARAHHAULS [--amount=17.50] [--method=stripe_connect|paypal|venmo|zelle|manual] [--stripe-transfer] [--destination=...] [--note=...]"
+      );
+      process.exit(1);
+    }
+    const amtRaw = getFlag("amount");
+    const methodRaw = getFlag("method") as CreatorPayoutMethod | undefined;
+    const executeStripeTransfer = args.includes("--stripe-transfer");
+    const destination = getFlag("destination");
+    const note = getFlag("note");
+    const result = await executeCreatorPayout({
+      code,
+      amount: amtRaw !== undefined ? Number(amtRaw) : undefined,
+      method: methodRaw,
+      executeStripeTransfer,
+      destination,
+      note,
+    });
+    console.log("✓ Creator Payout Completed:");
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
@@ -389,10 +425,11 @@ async function main() {
   }
 
   // Default: `status`
-  const [snap, paywall, creators, stripe, meta] = await Promise.all([
+  const [snap, paywall, creators, payouts, stripe, meta] = await Promise.all([
     getAnalyticsSnapshot(),
     getPaywallConfig(),
     listCreators(),
+    listCreatorPayouts(),
     fetchStripeSummary(),
     fetchMetaCampaigns(),
   ]);
@@ -425,11 +462,19 @@ async function main() {
     `   - Variant B Conversion: ${snap.abTest.variantBSubscribed}/${snap.abTest.variantBViews} (${pct(snap.abTest.variantBSubscribed, snap.abTest.variantBViews)})\n`
   );
 
-  console.log("3. CREATOR / AFFILIATE LEDGER:");
+  console.log("3. CREATOR / AFFILIATE LEDGER & PAYOUTS:");
   for (const c of creators) {
     console.log(
-      `   - ${c.code.padEnd(12)} | Split: ${c.commissionPct}% | Clicks: ${c.clicks} | Trials: ${c.trials} | Paid: ${c.paidAnnual} yr + ${c.paidMonthly} mo | Owed: $${c.commissionOwed.toFixed(2)} | Net: $${c.netRevenue.toFixed(2)}`
+      `   - ${c.code.padEnd(12)} | Split: ${c.commissionPct}% | Clicks: ${c.clicks} | Trials: ${c.trials} | Paid: ${c.paidAnnual} yr + ${c.paidMonthly} mo | Earned: $${c.commissionEarned.toFixed(2)} | PaidOut: $${c.commissionPaid.toFixed(2)} | Owed: $${c.commissionOwed.toFixed(2)} | Net: $${c.netRevenue.toFixed(2)}`
     );
+  }
+  if (payouts.length > 0) {
+    console.log(`   - Recent Payouts (${payouts.length}):`);
+    for (const p of payouts.slice(0, 5)) {
+      console.log(
+        `     • ${p.createdAt.slice(0, 10)} | ${p.code} | $${p.amount.toFixed(2)} via ${p.method} (${p.stripeTransferId || p.destination || p.status})`
+      );
+    }
   }
   console.log("");
 

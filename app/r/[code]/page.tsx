@@ -19,16 +19,35 @@ export default function ReferralLandingPage({
 
   useEffect(() => {
     try {
-      if (isFriendInvite) {
-        localStorage.setItem("heybroc_referred_by", cleanCode);
-        return;
-      }
       let cancelled = false;
+      if (isFriendInvite) {
+        fetch(`/api/referral?validateCode=${encodeURIComponent(cleanCode)}`)
+          .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+          .then(({ ok, d }) => {
+            if (cancelled) return;
+            if (ok && d?.valid) {
+              setCreatorNotFound(false);
+              localStorage.setItem("heybroc_referred_by", cleanCode);
+            } else {
+              setCreatorNotFound(true);
+              localStorage.removeItem("heybroc_referred_by");
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              localStorage.setItem("heybroc_referred_by", cleanCode);
+            }
+          });
+        return () => {
+          cancelled = true;
+        };
+      }
+
       fetch(`/api/influencers?code=${encodeURIComponent(cleanCode)}`)
         .then((r) => r.json())
         .then((data) => {
           if (cancelled) return;
-          if (data?.ok && data?.creator?.code) {
+          if (data?.ok && data?.creator?.code && data?.creator?.active !== false) {
             setCreatorNotFound(false);
             setCreatorName(data.creator.name || data.creator.code);
             localStorage.setItem(
@@ -36,17 +55,25 @@ export default function ReferralLandingPage({
               JSON.stringify({
                 code: data.creator.code,
                 name: data.creator.name || data.creator.code,
-              }),
+              })
             );
-            void fetch("/api/influencers", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "track",
-                code: data.creator.code,
-                event: "click",
-              }),
-            }).catch(() => {});
+            const clickKey = `hb_creator_click_${data.creator.code}`;
+            if (sessionStorage.getItem(clickKey) !== "1") {
+              try {
+                sessionStorage.setItem(clickKey, "1");
+              } catch {
+                /* ignore */
+              }
+              void fetch("/api/influencers", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "track",
+                  code: data.creator.code,
+                  event: "click",
+                }),
+              }).catch(() => {});
+            }
           } else {
             setCreatorNotFound(true);
             localStorage.removeItem("cleancart_creator_v1");
@@ -121,10 +148,10 @@ export default function ReferralLandingPage({
             marginBottom: 12,
           }}
         >
-          {isFriendInvite
-            ? "🎁 FRIEND INVITE · +7 FREE PRO DAYS"
-            : creatorNotFound
-              ? "🥦 HEYBROC FAMILY PRO · 7-DAY FREE TRIAL"
+          {creatorNotFound
+            ? "🥦 HEYBROC FAMILY PRO · 7-DAY FREE TRIAL"
+            : isFriendInvite
+              ? "🎁 FRIEND INVITE · 14-DAY TRIAL + 7 BONUS DAYS"
               : "🎉 CREATOR PARTNER · 14-DAY FREE PRO TRIAL"}
         </span>
         <h1
@@ -135,10 +162,10 @@ export default function ReferralLandingPage({
             margin: "0 0 10px",
           }}
         >
-          {isFriendInvite
-            ? "Your friend gifted you 7 Free Days of HeyBroc Pro!"
-            : creatorNotFound
-              ? "Try HeyBroc Family Pro Free for 7 Days"
+          {creatorNotFound
+            ? "Try HeyBroc Family Pro Free for 7 Days"
+            : isFriendInvite
+              ? "Your friend gifted you an Extended 14-Day Trial + 7 Bonus Pro Days!"
               : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a 14-Day Free Trial of HeyBroc Pro!`}
         </h1>
         <p
@@ -149,13 +176,17 @@ export default function ReferralLandingPage({
             margin: "0 0 20px",
           }}
         >
-          HeyBroc floats over <b>Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh, Instacart, ALDI &amp; more</b> on
-          your phone to grade food &amp; beverage ingredients (0–100) and swap flagged
-          items for clean 1-for-1 alternatives in 1 tap.{" "}
-          {isFriendInvite
-            ? "Start a free trial with this code to unlock +7 Free Pro Days!"
-            : creatorNotFound
-              ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
+          HeyBroc floats over{" "}
+          <b>
+            Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh,
+            Instacart, ALDI &amp; more
+          </b>{" "}
+          on your phone to grade food &amp; beverage ingredients (0–100) and
+          swap flagged items for clean 1-for-1 alternatives in 1 tap.{" "}
+          {creatorNotFound
+            ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
+            : isFriendInvite
+              ? "Scan any grocery item in the app or start your trial below so both you and your friend unlock +7 Free Pro Days!"
               : "Use this creator code at checkout to double your free trial from 7 days to 14 days!"}
         </p>
 
@@ -227,10 +258,10 @@ export default function ReferralLandingPage({
 
         <Link
           href={
-            isFriendInvite
-              ? `/?ref=${encodeURIComponent(cleanCode)}`
-              : creatorNotFound
-                ? `/?upgrade=1`
+            creatorNotFound
+              ? "/?upgrade=1"
+              : isFriendInvite
+                ? `/?ref=${encodeURIComponent(cleanCode)}&upgrade=1`
                 : `/?code=${encodeURIComponent(cleanCode)}&upgrade=1`
           }
           onClick={copyAndDownload}
@@ -245,12 +276,14 @@ export default function ReferralLandingPage({
             borderRadius: 999,
           }}
         >
-          {isFriendInvite
-            ? "Open Web App & Claim 7 Free Days →"
-            : "Claim 14-Day Free Pro Trial on Web →"}
+          {creatorNotFound
+            ? "Claim 7-Day Free Pro Trial on Web →"
+            : isFriendInvite
+              ? "Open Web App & Claim 14-Day Free Trial →"
+              : "Claim 14-Day Free Pro Trial on Web →"}
         </Link>
 
-        {!isFriendInvite && (
+        {!isFriendInvite && !creatorNotFound && (
           <Link
             href={`/?code=${encodeURIComponent(cleanCode)}`}
             onClick={copyAndDownload}
@@ -275,17 +308,24 @@ export default function ReferralLandingPage({
             lineHeight: 1.45,
           }}
         >
-          {isFriendInvite ? (
+          {creatorNotFound ? (
             <>
-              <b>How it works:</b> Install HeyBroc, enable the store screen reader, and view
-              any item in Walmart or Target on your phone. Both you and your friend
-              automatically unlock <b>+7 Free Days of HeyBroc Pro</b>!
+              <b>How it works:</b> Start a standard <b>7-Day Free Pro Trial</b>{" "}
+              with unlimited 1-tap Clean Swaps across all 12 stores, or scan
+              ingredients for free anytime.
+            </>
+          ) : isFriendInvite ? (
+            <>
+              <b>How it works:</b> Scan any grocery item in Walmart or Target in
+              the app (or start your annual trial on web) — both you and your
+              friend unlock <b>+7 Free Days of HeyBroc Pro</b>!
             </>
           ) : (
             <>
-              <b>How it works:</b> Code <b>{cleanCode}</b> is automatically applied on web
-              checkout (or paste it inside the app) to unlock a <b>14-Day Free Pro Trial</b>{" "}
-              with unlimited 1-tap Clean Swaps across all 12 stores.
+              <b>How it works:</b> Code <b>{cleanCode}</b> is automatically
+              applied on web checkout (or paste it inside the app) to unlock a{" "}
+              <b>14-Day Free Pro Trial</b> with unlimited 1-tap Clean Swaps
+              across all 12 stores.
             </>
           )}
         </p>
@@ -297,7 +337,9 @@ export default function ReferralLandingPage({
             lineHeight: 1.4,
           }}
         >
-          Independent consumer tool. Not affiliated with, endorsed by, or sponsored by Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon, Instacart, ALDI, or any manufacturer.
+          Independent consumer tool. Not affiliated with, endorsed by, or
+          sponsored by Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s,
+          Amazon, Instacart, ALDI, or any manufacturer.
         </p>
       </div>
     </main>

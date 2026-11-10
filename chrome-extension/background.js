@@ -1,6 +1,6 @@
-// CleanCart background service worker.
-// Content scripts can't reliably call our API from store pages (page CORS + mixed content),
-// so they message this worker, which has host_permissions to reach the API.
+// HeyBroc background service worker.
+// Content scripts message this worker so API calls bypass store-page CORS / CSP restrictions
+// and attach authenticated device credentials + active Watchlist preferences.
 
 const DEFAULT_API = "https://www.heybroc.com";
 
@@ -26,7 +26,7 @@ chrome.runtime.onInstalled.addListener(() => {
 async function getSettings() {
   const [syncData, localData, { deviceId, deviceSecret }] = await Promise.all([
     chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist"]),
-    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist"]),
+    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist", "heybroc_creator_code"]),
     getOrCreateDeviceCredentials(),
   ]);
   const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
@@ -36,12 +36,25 @@ async function getSettings() {
     watchlist: syncData.watchlist || localData.watchlist || undefined,
     familyWatchlist: syncData.familyWatchlist || localData.familyWatchlist || undefined,
     dietaryWatchlist: syncData.dietaryWatchlist || localData.dietaryWatchlist || undefined,
+    creatorCode: localData.heybroc_creator_code || undefined,
     deviceId,
     deviceSecret,
   };
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "CLEANCART_GET_CLIENT_INFO") {
+    (async () => {
+      try {
+        const { apiBase, deviceId, creatorCode } = await getSettings();
+        sendResponse({ ok: true, apiBase, deviceId, creatorCode });
+      } catch (err) {
+        sendResponse({ ok: false, apiBase: DEFAULT_API, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "CLEANCART_SCAN") {
     (async () => {
       try {
@@ -66,7 +79,36 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const data = await res.json();
         sendResponse(data);
       } catch (err) {
-        sendResponse({ ok: false, error: `CleanCart API unreachable: ${err?.message || err}` });
+        sendResponse({ ok: false, error: `HeyBroc API unreachable: ${err?.message || err}` });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "CLEANCART_AUDIT") {
+    (async () => {
+      try {
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret } = await getSettings();
+        const res = await fetch(`${apiBase}/api/audit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Secret": deviceSecret,
+          },
+          body: JSON.stringify({
+            ...msg.payload,
+            watchlist,
+            familyWatchlist,
+            dietaryWatchlist,
+            deviceId,
+            deviceSecret,
+            surface: "extension",
+          }),
+        });
+        const data = await res.json();
+        sendResponse(data);
+      } catch (err) {
+        sendResponse({ ok: false, error: `HeyBroc Audit unreachable: ${err?.message || err}` });
       }
     })();
     return true;

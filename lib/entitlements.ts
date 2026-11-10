@@ -691,6 +691,31 @@ export async function revokeOneTimeAnnualPass(params: {
   }
 }
 
+export async function hasPriorEntitlementHistory(params: {
+  deviceId?: string;
+  email?: string;
+}): Promise<EntitlementRecord | null> {
+  const cleanDevice = (params.deviceId || "").trim();
+  const cleanEmail = (params.email || "").trim().toLowerCase();
+  if (cleanDevice && cleanDevice !== "anon-web") {
+    const rawDev = await kvGet<EntitlementRecord>(
+      `${DEVICE_KEY_PREFIX}${cleanDevice}`
+    );
+    if (rawDev && (rawDev.status === "active" || rawDev.status === "trialing" || rawDev.status === "canceled" || rawDev.status === "past_due")) {
+      return rawDev;
+    }
+  }
+  if (cleanEmail) {
+    const rawEmail = await kvGet<EntitlementRecord>(
+      `${EMAIL_KEY_PREFIX}${cleanEmail}`
+    );
+    if (rawEmail && (rawEmail.status === "active" || rawEmail.status === "trialing" || rawEmail.status === "canceled" || rawEmail.status === "past_due")) {
+      return rawEmail;
+    }
+  }
+  return null;
+}
+
 /**
  * Verifies a Stripe Checkout Session ID server-side against stored webhook entitlements
  * or directly against the Stripe Checkout Sessions API when STRIPE_SECRET_KEY is configured.
@@ -780,6 +805,8 @@ export async function verifyStripeCheckoutSession(
         | {
             id?: string;
             status?: string;
+            trial_end?: number | null;
+            current_period_end?: number | null;
             metadata?: Record<string, string>;
           };
     };
@@ -852,6 +879,12 @@ export async function verifyStripeCheckoutSession(
         creatorCode,
       });
     } else {
+      const computedExpiresAtMs =
+        subStatus === "trialing" && typeof subObj?.trial_end === "number"
+          ? subObj.trial_end * 1000
+          : typeof subObj?.current_period_end === "number"
+            ? subObj.current_period_end * 1000
+            : undefined;
       record = {
         sessionId,
         subscriptionId,
@@ -862,6 +895,7 @@ export async function verifyStripeCheckoutSession(
         creatorCode,
         status: subStatus,
         active: isEntitlementStatusActive(subStatus),
+        ...(computedExpiresAtMs ? { expiresAtMs: computedExpiresAtMs } : {}),
         updatedAt: new Date().toISOString(),
       };
       await saveEntitlement(record);

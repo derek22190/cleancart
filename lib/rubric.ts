@@ -77,6 +77,8 @@ export interface AdditiveRule {
   id: string;
   name: string;
   risk: RiskLevel;
+  /** Optional custom 1x base penalty override (defaults to PENALTIES[risk]). */
+  penalty?: number;
   category: Category;
   /** Regex sources matched against the normalized ingredient string. */
   patterns: string[];
@@ -220,7 +222,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "bvo", name: "Brominated Vegetable Oil (BVO)", risk: "high", category: "emulsifiers",
-    patterns: ["brominated vegetable oil", "bvo", "e ?443"],
+    patterns: ["brominated (?:vegetable|soybean|corn|citrus) oils?", "bvo", "e ?443"],
     explanation: "Brominated emulsifier whose food additive authorization was revoked by the FDA in 2024 due to bromine accumulation and thyroid toxicity in animal studies.",
   },
   {
@@ -251,7 +253,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "hydrogoil", name: "Hydrogenated Oil", risk: "high", category: "seedOils",
-    patterns: ["(?<!partially )hydrogenated (vegetable|soybean|canola|cottonseed|rapeseed|palm( kernel)?|coconut|corn|sunflower) oils?"],
+    patterns: ["(?<!partially |fully )hydrogenated (vegetable|soybean|canola|cottonseed|rapeseed|palm( kernel)?|coconut|corn|sunflower) oils?"],
     explanation: "Chemically hardened fat permitted by the FDA, studied in nutrition research for associations with altered LDL/HDL cholesterol ratios.",
   },
   {
@@ -290,7 +292,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "FDA-permitted blend of refined seed oils (typically soybean, canola, or corn oil) high in omega-6 polyunsaturated fats.",
   },
 
-  // ---------------- MODERATE RISK (-20) ----------------
+  // ---------------- MODERATE RISK (-12 to -20) ----------------
   {
     id: "hfcs", name: "High Fructose Corn Syrup", risk: "moderate", category: "hfcs",
     patterns: ["high fructose corn syrup", "hfcs", "glucose fructose syrup", "isoglucose"],
@@ -323,14 +325,52 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "FDA-permitted chelating agent used to preserve color and flavor in shelf-stable dressings and sauces.",
   },
   {
-    id: "datem", name: "DATEM / Dough Conditioners", risk: "moderate", category: "emulsifiers",
-    patterns: ["datem", "diacetyl tartaric acid esters?", "(sodium|calcium) stearoyl lactylate"],
-    explanation: "FDA-permitted synthetic dough conditioners and emulsifiers used in commercial bakery products.",
+    id: "sulfites", name: "Sulfites / Sulfur Dioxide", risk: "moderate", penalty: 14, category: "preservatives",
+    patterns: [
+      "sulfu?r dioxide",
+      "(?:sodium|potassium|calcium) (?:bi|meta ?bi)?sulfite",
+      "(?:sodium|potassium|calcium) (?:bi|meta ?bi)?sulphite",
+      "e ?22[012345678]",
+    ],
+    explanation: "Sulfite preservatives used to prevent browning in dried fruit, instant potatoes, and beverages; can trigger respiratory sensitivity in sulfite-sensitive individuals.",
   },
   {
-    id: "pgpr", name: "PGPR (Polyglycerol Polyricinoleate)", risk: "moderate", category: "emulsifiers",
-    patterns: ["polyglycerol polyricinoleate", "pgpr", "e ?476"],
-    explanation: "FDA-GRAS synthetic emulsifier derived from castor beans; used in commercial chocolate to reduce cocoa butter viscosity.",
+    id: "aluminum_additives", name: "Aluminum Food Additives", risk: "moderate", penalty: 14, category: "preservatives",
+    patterns: [
+      "sodium aluminum (?:sulfate|phosphate)",
+      "potassium aluminum sulfate",
+      "(?:sodium|calcium) aluminosilicate",
+      "aluminum (?:ammonium|potassium|sodium|calcium) sulfate",
+      "e ?52[0123]",
+      "e ?541",
+      "e ?554",
+    ],
+    explanation: "Synthetic aluminum leavening acids and anti-caking agents monitored by EFSA and clean-label standards due to cumulative dietary aluminum intake concerns.",
+  },
+  {
+    id: "datem", name: "DATEM", risk: "moderate", category: "emulsifiers",
+    patterns: ["datem", "diacetyl tartaric acid esters?(?: of mono ?(?:and|or)? ?di ?glycerides| of mono ?glycerides)?", "e ?472e"],
+    explanation: "FDA-permitted synthetic dough conditioner (diacetyl tartaric acid esters of mono- and diglycerides) used in commercial bakery products.",
+  },
+  {
+    id: "ssl_csl", name: "Sodium / Calcium Stearoyl Lactylate", risk: "moderate", category: "emulsifiers",
+    patterns: ["(?:sodium|calcium) stearoyl(?: 2)? lactylate", "stearoyl 2 lactylate", "e ?481", "e ?482"],
+    explanation: "FDA-permitted synthetic dough conditioner and emulsifier used to strengthen commercial bread and pastry dough.",
+  },
+  {
+    id: "ethoxylated_glycerides", name: "Ethoxylated Mono- and Diglycerides", risk: "moderate", category: "emulsifiers",
+    patterns: ["ethoxylated mono ?(?:and|or)? ?di ?glycerides", "ethoxylated mono ?glycerides", "e ?488"],
+    explanation: "Synthetic ethoxylated dough conditioner used in commercial baked goods and icing.",
+  },
+  {
+    id: "saib", name: "Sucrose Acetate Isobutyrate (SAIB)", risk: "moderate", penalty: 12, category: "emulsifiers",
+    patterns: ["sucrose acetate isobutyrate", "saib", "e ?444"],
+    explanation: "Synthetic beverage weighting agent used in citrus sodas and sports drinks to keep flavor oils suspended after BVO phase-outs.",
+  },
+  {
+    id: "ester_gum", name: "Ester Gum (Glycerol Ester of Wood Rosin)", risk: "moderate", penalty: 12, category: "emulsifiers",
+    patterns: ["ester gum", "glycerol ester of (?:wood |gum |tall oil )?rosin", "e ?445"],
+    explanation: "Rosin-derived beverage weighting stabilizer used to keep citrus flavor oils suspended in sodas, punches, and sports drinks.",
   },
   {
     id: "carrageenan", name: "Carrageenan", risk: "moderate", category: "emulsifiers",
@@ -339,13 +379,23 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "polysorbate80", name: "Polysorbate 80", risk: "moderate", category: "emulsifiers",
-    patterns: ["polysorbate 80", "e ?433"],
+    patterns: ["polysorbate 80", "polyoxyethylene (?:20 )?sorbitan monooleate", "e ?433"],
     explanation: "FDA-permitted synthetic emulsifier evaluated in experimental studies for potential effects on gut mucus and microbiota.",
   },
   {
     id: "polysorbate60", name: "Polysorbate 60", risk: "moderate", category: "emulsifiers",
-    patterns: ["polysorbate 60", "e ?435"],
+    patterns: ["polysorbate 60", "polyoxyethylene (?:20 )?sorbitan monostearate", "e ?435"],
     explanation: "FDA-permitted synthetic emulsifier flagged on clean-label watchlists due to experimental gut-barrier research.",
+  },
+  {
+    id: "polysorbate20", name: "Polysorbate 20", risk: "moderate", category: "emulsifiers",
+    patterns: ["polysorbate 20", "polyoxyethylene (?:20 )?sorbitan monolaurate", "e ?432"],
+    explanation: "Synthetic ethoxylated sorbitan emulsifier used to disperse flavor oils in processed foods and beverages.",
+  },
+  {
+    id: "polysorbate40", name: "Polysorbate 40", risk: "moderate", category: "emulsifiers",
+    patterns: ["polysorbate 40", "polyoxyethylene (?:20 )?sorbitan monopalmitate", "e ?434"],
+    explanation: "Synthetic ethoxylated sorbitan emulsifier used in commercial bakery icings, fillings, and dressings.",
   },
   {
     id: "cmc", name: "Carboxymethylcellulose", risk: "moderate", category: "emulsifiers",
@@ -354,7 +404,12 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "monodiglycerides", name: "Mono- and Diglycerides", risk: "moderate", category: "emulsifiers",
-    patterns: ["mono ?(and|or)? ?di ?glycerides", "mono ?glycerides", "di ?glycerides", "e ?471"],
+    patterns: [
+      "(?<!esters of |esters |ethoxylated )mono ?(and|or)? ?di ?glycerides",
+      "(?<!esters of |esters |ethoxylated )mono ?glycerides",
+      "(?<!and |or )di ?glycerides",
+      "e ?471",
+    ],
     explanation: "FDA-gras lipid emulsifiers used to blend fats and water in packaged foods.",
   },
   {
@@ -373,9 +428,24 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "FDA-approved high-intensity artificial sweetener flagged on clean-label watchlists due to animal microbiome and metabolic research.",
   },
   {
-    id: "saccharin", name: "Saccharin / Neotame", risk: "moderate", category: "sweeteners",
-    patterns: ["saccharin", "e ?954", "neotame", "e ?961", "advantame", "e ?969"],
-    explanation: "FDA-approved high-intensity synthetic sweeteners studied for potential effects on gut bacteria and glycemic response.",
+    id: "saccharin", name: "Saccharin", risk: "moderate", category: "sweeteners",
+    patterns: ["saccharin", "e ?954"],
+    explanation: "FDA-approved high-intensity synthetic sweetener studied for potential effects on gut bacteria and metabolic response.",
+  },
+  {
+    id: "neotame", name: "Neotame", risk: "moderate", penalty: 16, category: "sweeteners",
+    patterns: ["neotame", "e ?961"],
+    explanation: "Ultra-high-intensity synthetic aspartame analog (7,000–13,000x sweeter than sucrose) evaluated in experimental gut-barrier studies.",
+  },
+  {
+    id: "advantame", name: "Advantame", risk: "moderate", penalty: 16, category: "sweeteners",
+    patterns: ["advantame", "e ?969"],
+    explanation: "Ultra-potent synthetic non-nutritive sweetener (~20,000x sweeter than sucrose) used in ultra-processed diet products.",
+  },
+  {
+    id: "cyclamate", name: "Cyclamate (Sodium / Calcium Cyclamate)", risk: "moderate", penalty: 16, category: "sweeteners",
+    patterns: ["(?:sodium|calcium) cyclamate", "cyclamic acid", "cyclamate", "e ?952"],
+    explanation: "Synthetic non-nutritive sweetener prohibited in U.S. food products by the FDA since 1970.",
   },
   {
     id: "artificialflavor", name: "Artificial Flavor", risk: "moderate", category: "flavors",
@@ -383,7 +453,25 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "FDA-permitted synthetic flavor compounds whose proprietary sub-ingredients are grouped under a single label term.",
   },
 
-  // ---------------- LOW RISK (-10) ----------------
+  // ---------------- LOW RISK (-4 to -10) ----------------
+  {
+    id: "fully_hydrog_oil", name: "Fully Hydrogenated / Interesterified Oil", risk: "low", penalty: 8, category: "emulsifiers",
+    patterns: [
+      "fully hydrogenated (?:[a-z]+ ){0,5}oils?",
+      "interesterified (?:[a-z]+ ){0,5}oils?",
+    ],
+    explanation: "Industrially hardened or enzymatically rearranged fat (0g artificial trans fat) used as a stabilizer in processed spreads and baked goods.",
+  },
+  {
+    id: "pgpr", name: "PGPR (Polyglycerol Polyricinoleate)", risk: "low", penalty: 8, category: "emulsifiers",
+    patterns: ["polyglycerol polyricinoleate", "pgpr", "e ?476"],
+    explanation: "FDA-GRAS synthetic emulsifier derived from castor beans; used in commercial chocolate to reduce cocoa butter viscosity.",
+  },
+  {
+    id: "pga", name: "Propylene Glycol Alginate", risk: "low", penalty: 8, category: "emulsifiers",
+    patterns: ["propylene glycol alginate", "e ?405"],
+    explanation: "Chemically esterified alginate thickener and foam/emulsion stabilizer used in commercial dressings, sauces, and beverages.",
+  },
   {
     id: "ksorbate", name: "Potassium Sorbate / Sorbic Acid", risk: "low", category: "preservatives",
     patterns: ["potassium sorbate", "sorbic acid", "e ?200", "e ?202"],
@@ -395,19 +483,68 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     explanation: "FDA-permitted beverage preservative that can form trace benzene under heat/light exposure when combined with ascorbic acid (vitamin C).",
   },
   {
-    id: "capropionate", name: "Calcium Propionate", risk: "low", category: "preservatives",
+    id: "capropionate", name: "Calcium Propionate", risk: "low", penalty: 8, category: "preservatives",
     patterns: ["calcium propionate", "e ?282"],
     explanation: "FDA-gras bakery mold inhibitor evaluated in small clinical and metabolic studies.",
   },
   {
+    id: "propionates", name: "Sodium / Potassium Propionate", risk: "low", penalty: 8, category: "preservatives",
+    patterns: ["(?:sodium|potassium) propionate", "propionic acid", "e ?280", "e ?281", "e ?283"],
+    explanation: "Synthetic mold inhibitor used to extend shelf life in commercial baked goods and processed dairy.",
+  },
+  {
+    id: "sodium_diacetate", name: "Sodium Diacetate", risk: "low", penalty: 8, category: "preservatives",
+    patterns: ["sodium diacetate", "e ?262"],
+    explanation: "Antimicrobial preservative and tartness agent commonly used alongside nitrites and lactates in processed deli meats and hot dogs.",
+  },
+  {
     id: "naphosphate", name: "Sodium Phosphate", risk: "low", category: "preservatives",
-    patterns: ["(mono|di|tri)?(sodium|potassium) (acid )?(phosphates?|tripolyphosphate|pyrophosphate|hexametaphosphate)"],
+    patterns: [
+      "(?:mono|di|tri|penta)?(?:sodium|potassium)(?: (?:dihydrogen|acid|aluminum|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)",
+    ],
     explanation: "FDA-gras inorganic phosphate salt used for moisture retention and texture in processed foods.",
   },
   {
-    id: "msg", name: "MSG / Synthetic Flavor Enhancers", risk: "low", category: "flavors",
-    patterns: ["monosodium glutamate", "msg", "disodium inosinate", "disodium guanylate"],
-    explanation: "FDA-gras glutamate and nucleotide flavor enhancers used to intensify savory palatability in processed foods.",
+    id: "msg", name: "MSG (Monosodium Glutamate)", risk: "low", category: "flavors",
+    patterns: ["monosodium glutamate", "msg", "monopotassium glutamate", "e ?621"],
+    explanation: "FDA-gras isolated glutamate flavor enhancer used to intensify savory palatability in ultra-processed snacks, soups, and seasonings.",
+  },
+  {
+    id: "inosinate_guanylate", name: "Disodium Inosinate / Guanylate", risk: "low", penalty: 8, category: "flavors",
+    patterns: ["disodium inosinate", "disodium guanylate", "disodium 5 ?ribonucleotides?", "e ?627", "e ?631", "e ?635"],
+    explanation: "Nucleotide flavor enhancers typically paired with MSG or yeast extract to amplify umami taste in ultra-processed foods.",
+  },
+  {
+    id: "yeast_hydrolyzed_protein", name: "Autolyzed Yeast Extract / Hydrolyzed Protein", risk: "low", penalty: 8, category: "flavors",
+    patterns: [
+      "autolyzed yeast(?: extract)?",
+      "hydrolyzed (?:soy|corn|wheat|vegetable|plant)(?: (?:,|and|or|soy|corn|wheat|vegetable|plant))* protein",
+    ],
+    explanation: "Industrially hydrolyzed protein or autolyzed yeast source of free glutamates used as an umami flavor enhancer in ultra-processed savory foods.",
+  },
+  {
+    id: "phosphoric_acid", name: "Phosphoric Acid", risk: "low", penalty: 4, category: "flavors",
+    patterns: ["phosphoric acid", "orthophosphoric acid", "e ?338"],
+    explanation: "Inorganic acidulant used in colas and flavored beverages; high dietary phosphorus-to-calcium ratios are studied in bone and renal health research.",
+  },
+  {
+    id: "sugar_alcohols", name: "Sugar Alcohols (Sorbitol / Maltitol / Xylitol)", risk: "low", penalty: 8, category: "sweeteners",
+    patterns: [
+      "sorbitol",
+      "maltitol(?: syrup)?",
+      "xylitol",
+      "mannitol",
+      "isomalt",
+      "lactitol",
+      "hydrogenated starch hydrolysate",
+      "polyglycitol(?: syrup)?",
+    ],
+    explanation: "Polyol sugar alcohols that are incompletely absorbed in the small intestine and can cause osmotic gastrointestinal discomfort in larger amounts.",
+  },
+  {
+    id: "erythritol", name: "Erythritol", risk: "low", penalty: 5, category: "sweeteners",
+    patterns: ["erythritol", "e ?968"],
+    explanation: "Non-caloric sugar alcohol used in reduced-sugar beverages and snacks; ongoing clinical studies are evaluating high-dose circulating erythritol levels.",
   },
   {
     id: "xanthan", name: "Xanthan Gum", risk: "low", category: "gums",
@@ -534,19 +671,35 @@ export function normalizeIngredients(raw: string): string {
     return `${kind} (${expanded})`;
   });
 
-  // 2) "soybean, canola or/and sunflower oil" OR "canola and extra virgin olive oil" OR "canola or palm kernel oil"
-  //    -> expands any SEED_WORDS in the shared-suffix oil sequence so hidden seed oils paired with olive/avocado/palm/coconut oil are always flagged.
-  //    Only explicit "... or/and X oil(s)" lists are expanded, so "corn, sunflower oil" (tortilla chips) is NOT misread as corn oil.
+  // 2) "soybean, canola or/and sunflower oil", "high oleic canola, high oleic sunflower, or safflower oil",
+  //    "expeller pressed canola, soybean, and/or cottonseed oil", or "cottonseed/soybean/rapeseed oil"
+  //    -> expands every SEED_WORDS item in the shared-suffix oil sequence so earlier oils are never dropped.
+  //    Only explicit "... or/and X oil(s)" or slash-separated oil lists are expanded, and un-modified "corn"
+  //    cannot start a comma-separated list so "Corn, sunflower oil" / "Ground corn, safflower or sunflower oil" is never misread as corn oil.
   const NON_GRAIN = SEED_WORDS.replace("|corn", "");
-  const ALL_OIL_WORDS = `${SEED_WORDS}|(?:extra\\s+virgin\\s+|virgin\\s+|pure\\s+|refined\\s+|expeller\\s+pressed\\s+|high\\s+oleic\\s+|organic\\s+)*(?:olive|avocado|coconut|palm(?:\\s+kernel)?|peanut|sesame|walnut|almond|flaxseed|hemp)`;
-  const seq = new RegExp(
-    `\\b((?:(?:${NON_GRAIN}|palm(?:\\s+kernel)?|coconut|olive|avocado)\\s*,\\s*)*(?:${ALL_OIL_WORDS})\\s+(?:or|and)\\s+(?:${ALL_OIL_WORDS}))\\s+(oils?)\\b`,
-    "g",
+  const OIL_MOD =
+    "(?:(?:extra[\\s-]+virgin|virgin|unrefined|pure|refined|expeller[\\s-]+pressed|cold[\\s-]+pressed|mechanically[\\s-]+pressed|high[\\s-]+oleic|mid[\\s-]+oleic|organic|light|partially[\\s-]+hydrogenated|fully[\\s-]+hydrogenated|hydrogenated|interesterified)[\\s-]+){0,3}";
+  const OIL_HEADS = `${SEED_WORDS}|olive|avocado|coconut|palm(?:\\s+kernel)?|peanut|sesame|walnut|almond|flaxseed|hemp`;
+  const FIRST_COMMA_OIL = `(?:${OIL_MOD}(?:${NON_GRAIN}|palm(?:\\s+kernel)?|coconut|olive|avocado|peanut|sesame)|(?:refined|expeller[\\s-]+pressed|cold[\\s-]+pressed|high[\\s-]+oleic|(?:partially[\\s-]+|fully[\\s-]+)?hydrogenated|interesterified)[\\s-]+corn)(?:\\s+oils?)?`;
+  const ANY_OIL_ITEM = `${OIL_MOD}(?:${OIL_HEADS})(?:\\s+oils?)?`;
+  const FINAL_OIL_ITEM = `${OIL_MOD}(?:${OIL_HEADS})`;
+  const expandSeedWords = (whole: string) =>
+    whole.replace(new RegExp(`\\b(${SEED_WORDS})\\b(?!\\s+oils?\\b)`, "g"), "$1 oil");
+  s = s.replace(
+    new RegExp(
+      `\\b(${FIRST_COMMA_OIL}(?:\\s*,\\s*${ANY_OIL_ITEM}){0,6}\\s*(?:,\\s*(?:or|and)\\s+|\\s+(?:or|and)\\s+)${FINAL_OIL_ITEM})\\s+(oils?)\\b`,
+      "g",
+    ),
+    expandSeedWords,
   );
-  s = s.replace(seq, (_whole, list: string, oilWord: string) => {
-    const expanded = list.replace(new RegExp(`\\b(${SEED_WORDS})\\b(?!\\s+oil)`, "g"), "$1 oil");
-    return `${expanded} ${oilWord}`;
-  });
+  s = s.replace(
+    new RegExp(`\\b(${ANY_OIL_ITEM}\\s+(?:or|and)\\s+${FINAL_OIL_ITEM})\\s+(oils?)\\b`, "g"),
+    expandSeedWords,
+  );
+  s = s.replace(
+    new RegExp(`\\b(${FINAL_OIL_ITEM}(?:\\s*\\/\\s*${FINAL_OIL_ITEM})+)\\s+(oils?)\\b`, "g"),
+    expandSeedWords,
+  );
 
   // 3) Expand shared dye prefixes: "Yellow 5 & 6", "FD&C Red No. 40 and 3", "Blue 1, 2"
   s = s.replace(
@@ -589,6 +742,8 @@ export function scoreIngredients(
   const flagged: FlaggedAdditive[] = [];
   const ignored: FlaggedAdditive[] = [];
   const familySet = new Set(familyWatchlist);
+  const hasAscorbicAcid =
+    /\b(?:ascorbic acid|vitamin c|erythorbic acid|(?:sodium|calcium) ascorbate)\b/.test(normalized);
 
   for (const { rule, regex } of COMPILED) {
     // Celery juice/powder in produce is not evidence of a curing additive.
@@ -602,13 +757,20 @@ export function scoreIngredients(
         : typeof pref === "number" && pref > 0
           ? pref
           : 1;
+    const isBenzenePrecursor = rule.id === "nabenzoate" && hasAscorbicAcid;
+    const effectiveRisk: RiskLevel = isBenzenePrecursor ? "moderate" : rule.risk;
+    const basePenalty = isBenzenePrecursor ? 18 : (rule.penalty ?? PENALTIES[rule.risk]);
     const hit: FlaggedAdditive = {
       id: rule.id,
-      name: rule.name,
-      risk: rule.risk,
+      name: isBenzenePrecursor
+        ? "Benzoate + Vitamin C (Benzene Precursor)"
+        : rule.name,
+      risk: effectiveRisk,
       category: rule.category,
-      penalty: Math.round(PENALTIES[rule.risk] * mult),
-      explanation: rule.explanation,
+      penalty: Math.round(basePenalty * mult),
+      explanation: isBenzenePrecursor
+        ? "Sodium or potassium benzoate combined with ascorbic acid (vitamin C) in acidic beverages can form trace benzene (an FDA-monitored carcinogen) under heat or light exposure."
+        : rule.explanation,
       matched: m[0],
     };
     if (pref === false) ignored.push(hit);
@@ -844,12 +1006,25 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   // 14. Dairy Milk (Whole Milk has ~2.0g/100ml saturated fat; Reduced-Fat/Skim has lower saturated fat)
   if (
     /\b(milk|lactaid|fairlife)\b/.test(combined) &&
-    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|coconut milk|almond milk|oat milk|soy milk|chocolate|condensed|evaporated|buttermilk)\b/.test(combined)
+    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|coconut\s*milk|almond\s*milk|oat\s*milk|soy\s*milk|cashew\s*milk|chocolate|condensed|evaporated|buttermilk)\b/.test(combined)
   ) {
     const isLowFat = /\b(skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat)\b/.test(combined);
     return isLowFat
       ? { caloriesKcal100g: 46, sugarsG100g: 4.8, saturatedFatG100g: 0.9, sodiumMg100g: 44, fiberG100g: 0, proteinG100g: 3.4, fruitsVegNutsPct: 0 }
       : { caloriesKcal100g: 62, sugarsG100g: 4.8, saturatedFatG100g: 2.1, sodiumMg100g: 43, fiberG100g: 0, proteinG100g: 3.2, fruitsVegNutsPct: 0 };
+  }
+  // 14a. Plant-Based Milks (Unsweetened vs Sweetened/Flavored Oat, Almond, Soy, Coconut, Cashew, Malk, Elmhurst)
+  if (
+    /\b(oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk\s+beverage|unsweetened\s+coconut\s*milk|cashew\s*milk|milked\s+(?:almonds?|oats?|cashews?|walnuts?|hazelnuts?|pistachios?)|malk|elmhurst|planet\s+oat|oatly|almond\s+breeze|califia\s+farms.*(?:milk|almond|oat|coconut))\b/.test(combined) &&
+    !/\b(creamer|ice\s+cream|yogurt|yoghurt|cheese|butter|pudding|bar|bars|cookie|cereal|granola)\b/.test(combined)
+  ) {
+    const isSweetenedPlantMilk =
+      !/\bunsweet(?:ened)?\b/.test(combined) &&
+      (/\b(chocolate|vanilla|sweetened|barista)\b/.test(combined) ||
+        /\b(sugar|cane\s+sugar|coconut\s+sugar|maple\s+syrup|agave|rice\s+syrup)\b/.test(normalizedIng));
+    return isSweetenedPlantMilk
+      ? { caloriesKcal100g: 52, sugarsG100g: 5.5, saturatedFatG100g: 0.5, sodiumMg100g: 52, fiberG100g: 0.8, proteinG100g: 1.2, fruitsVegNutsPct: 0 }
+      : { caloriesKcal100g: 25, sugarsG100g: 0.4, saturatedFatG100g: 0.2, sodiumMg100g: 48, fiberG100g: 0.8, proteinG100g: 1.2, fruitsVegNutsPct: 0 };
   }
   // 14b. Canned Sweet Corn / Canned Vegetables with Added Salt/Sugar
   if (/\b(sweet\s+corn|whole\s+kernel\s+corn|golden\s+sweet\s+corn|canned\s+corn|cream\s+style\s+corn)\b/.test(combined)) {
@@ -938,7 +1113,7 @@ export function scoreProductYuka(
     !/\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|juice\s+drink|juice\s+pouch\w*|cocktail|blend\s+with\s+sugar|high\s+fructose|lemonade|limeade|olipop|poppi|culture\s+pop|prebiotic|soda|cola|root\s+beer|ginger\s+ale|kombucha|health[- ]?ade|gt'?s|kevita|spindrift|sparkling\s+water|seltzer|club\s+soda|tea|yerba\s+mate|pre[- ]?workout|preworkout|ora\s+organic|electrolyte|nooma|suja.*uber\s+greens|green\s+juice|vegetable\s+juice|apple\s*sauce|puree|fruit\s+cups?)\b/i.test(titleAndIng);
 
   const NON_WHOLE_FOOD =
-    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|strips|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
 
   const isWholeProduceIngredient = /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients);
 
@@ -966,7 +1141,7 @@ export function scoreProductYuka(
   const isNonFoodItem =
     nutrition.productKind === "non-food" ||
     (!rawIngredients.trim() && !hasAnyMeasuredNutrition && !isWholeFood) ||
-    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|dishwashing|dishwasher|rinse\s+aid|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|fabric\s+softener|fabric\s+conditioner|dryer\s+sheets?|scent\s+booster|stain\s+remover|air\s+freshener|febreze|glade|candle|wax\s+melt|incense|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|freezer\s+bags?|ziploc|paper\s+plates?|napkins?|facial\s+tissue|kleenex|cotton\s+swabs?|q-tips?|cotton\s+balls?|tampons?|sanitary\s+pads?|pantiliners?|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|serum|cleanser|toner|micellar|retinol|hyaluronic\s+acid|salicylic\s+acid|benzoyl\s+peroxide|witch\s+hazel|eye\s+cream|face\s+mask|lip\s+balm|mascara|foundation|concealer|eyeliner|nail\s+polish|acetone|perfume|cologne|shaving\s+cream|aftershave|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+treats?|cat\s+treats?|kibble|cat\s+litter|kitty\s+litter|purina|pedigree|blue\s+buffalo|fancy\s+feast|friskies|meow\s+mix|iams|greenies|milk-bone|acetaminophen|ibuprofen|naproxen|diphenhydramine|loratadine|cetirizine|fexofenadine|dextromethorphan|guaifenesin|phenylephrine|pseudoephedrine|omeprazole|famotidine|bismuth\s+subsalicylate|loperamide|polyethylene\s+glycol\s+3350|miralax|tylenol|advil|motrin|aleve|zyrtec|claritin|allegra|benadryl|nyquil|dayquil|mucinex|robitussin|pepto-bismol|neosporin|hydrocortisone|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
+    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|dishwashing|dishwasher|rinse\s+aid|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|fabric\s+softener|fabric\s+conditioner|dryer\s+sheets?|scent\s+booster|stain\s+remover|air\s+freshener|febreze|glade|candle|wax\s+melt|incense|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|freezer\s+bags?|ziploc|paper\s+plates?|napkins?|facial\s+tissue|kleenex|cotton\s+swabs?|q-tips?|cotton\s+balls?|tampons?|sanitary\s+pads?|pantiliners?|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|serum|cleanser|toner|micellar\s+(?:water|cleans\w*)|retinol|hyaluronic\s+acid|salicylic\s+acid|benzoyl\s+peroxide|witch\s+hazel|eye\s+cream|face\s+mask|lip\s+balm|mascara|foundation|concealer|eyeliner|nail\s+polish|acetone|perfume|cologne|shaving\s+cream|aftershave|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+treats?|cat\s+treats?|kibble|cat\s+litter|kitty\s+litter|purina|pedigree|blue\s+buffalo|fancy\s+feast|friskies|meow\s+mix|iams|greenies|milk-bone|acetaminophen|ibuprofen|naproxen|diphenhydramine|loratadine|cetirizine|fexofenadine|dextromethorphan|guaifenesin|phenylephrine|pseudoephedrine|omeprazole|famotidine|bismuth\s+subsalicylate|loperamide|polyethylene\s+glycol\s+3350|miralax|tylenol|advil|motrin|aleve|zyrtec|claritin|allegra|benadryl|nyquil|dayquil|mucinex|robitussin|pepto-bismol|neosporin|hydrocortisone|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
       titleAndIng,
     );
 
@@ -997,45 +1172,102 @@ export function scoreProductYuka(
   const positivePoints = negativePoints >= 11 && pFvn < 5 ? pFvn + pFib : pFvn + pFib + pPro;
 
   const nutriRaw = negativePoints - positivePoints;
-  let nutriGrade: "A" | "B" | "C" | "D" | "E" | "N/A" = isBeverage
-    ? nutriRaw <= 0 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 6 ? "C" : nutriRaw <= 9 ? "D" : "E"
-    : nutriRaw <= -1 ? "A" : nutriRaw <= 2 ? "B" : nutriRaw <= 10 ? "C" : nutriRaw <= 18 ? "D" : "E";
-  if (nutrition.nutriScoreGrade) {
-    nutriGrade = nutrition.nutriScoreGrade.toUpperCase() as "A" | "B" | "C" | "D" | "E";
-  }
 
   const isPureButterOrGhee =
     !isWholeFood &&
     /\b(butter|kerrygold|ghee|land o'? ?lakes)\b/i.test(titleAndIng) &&
     !/\b(peanut|almond|cashew|sunflower|pumpkin|sesame|tahini|hazelnut|macadamia|pistachio|walnut|pecan|nut\s+butter|seed\s+butter|cookie|cocoa|shea|apple|buttermilk|butterfinger|potato\w*|lettuce|squash|beans?|peas|clam|chowder|soup|bisque|pasta|macaroni|shells|cheese|cheddar|crackers?|bread|rolls?|buns?|bagels?|waffles?|pancakes?|croissants?|muffins?|cakes?|pies?|pastry|pastries|popcorn|pretzels?|chips|candy|candies|caramel|toffee|fudge|sauce|alfredo|ranch|dressing|ramen|noodles?|chicken|turkey|beef|pork|shrimp|fish|vegetables?|broccoli|corn)\b/i.test(titleAndIng);
 
+  const isPlantMilk =
+    !isNonFoodItem &&
+    /\b(oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk\s+beverage|unsweetened\s+coconut\s*milk|so\s+delicious.*coconut\s*milk|silk.*coconut\s*milk|cashew\s*milk|hemp\s*milk|pea\s*milk|macadamia\s*milk|flax\s*milk|rice\s*milk|milked\s+(?:almonds?|oats?|cashews?|walnuts?|hazelnuts?|pistachios?)|malk|elmhurst|planet\s+oat|oatly|almond\s+breeze|ripple\s+(?:milk|original|unsweetened|vanilla|chocolate|kids)|califia\s+farms.*(?:milk|almond|oat|coconut))\b/i.test(
+      titleAndIng,
+    ) &&
+    !/\b(canned\s+coconut\s+milk|coconut\s+cream|creamer|ice\s+cream|frozen\s+dessert|yogurt|yoghurt|kefir|cheese|butter|pudding|chocolate\s+bar|candy|cookie|cookies|cereal|granola|soup|curry|protein\s+powder)\b/i.test(
+      nutrition.productTitle || "",
+    );
+
+  const isFlavoredDairyMilk =
+    !isNonFoodItem &&
+    !isPlantMilk &&
+    /\b((?:chocolate|strawberry|vanilla|banana|cookies?\s*(?:&|and)\s*cream)\s+(?:whole\s+|low\s*fat\s+|lowfat\s+|reduced[- ]?fat\s+|fat[- ]?free\s+|skim\s+|1%\s+|2%\s+|ultra[- ]?filtered\s+|organic\s+|grass[- ]?fed\s+)*(?:milk|grassmilk)|(?:milk|grassmilk).*\b(?:chocolate|strawberry)|nesquik|trumoo|yoo[- ]?hoo|fairlife.*chocolate|lactaid.*chocolate|organic\s+valley.*chocolate|horizon.*chocolate|promised\s+land.*chocolate|darigold.*chocolate)\b/i.test(
+      titleAndIng,
+    ) &&
+    !/\b(protein\s+shake|core\s+power|orgain|muscle\s+milk|premier\s+protein|nurri|nutrition\s+shake|meal\s+replacement|protein\s+powder|whey\s+protein|ice\s+cream|yogurt|yoghurt|kefir|pudding|creamer|candy|bar|bars|cookie|cookies|cereal|chocolate\s+syrup|powder\s+mix)\b/i.test(
+      nutrition.productTitle || "",
+    );
+
   const isWholeMilk =
+    !isPlantMilk &&
+    !isFlavoredDairyMilk &&
     /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
-    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
+    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|creamer|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
+
+  const hasArtificialSweetener = base.flagged.some(
+    (f) => f.category === "sweeteners" && f.id !== "erythritol" && f.id !== "sugar_alcohols",
+  );
+  const explicitGradeOnly =
+    !hasMeasuredCalories &&
+    !hasMeasuredSugars &&
+    !hasMeasuredSatFat &&
+    !hasMeasuredSodium &&
+    !nutrition.productTitle &&
+    nutrition.nutriScoreGrade
+      ? nutrition.nutriScoreGrade.toLowerCase()
+      : "";
 
   let nutritionScore: number;
   if (isNonFoodItem) {
     nutritionScore = 0;
-    nutriGrade = "N/A";
   } else if (isWholeFood) {
     nutritionScore = 60;
-    nutriGrade = "A";
+  } else if (explicitGradeOnly) {
+    nutritionScore =
+      explicitGradeOnly === "a" ? 55 : explicitGradeOnly === "b" ? 45 : explicitGradeOnly === "c" ? 34 : explicitGradeOnly === "d" ? 18 : 6;
+  } else if (isPlantMilk) {
+    if (satFat >= 8 || sugars >= 9) {
+      nutritionScore = 22;
+    } else if (sugars >= 4.5 || (hasTop3AddedSugar && sugars >= 2.5)) {
+      nutritionScore = 34;
+    } else if (hasArtificialSweetener) {
+      nutritionScore = 36;
+    } else if (hasTop3AddedSugar) {
+      nutritionScore = 45;
+    } else if (satFat >= 3.0) {
+      nutritionScore = 50;
+    } else {
+      nutritionScore = 60;
+    }
+  } else if (isFlavoredDairyMilk) {
+    if (sugars >= 10.2) {
+      nutritionScore = 6;
+    } else if (sugars >= 8.5) {
+      nutritionScore = 18;
+    } else if (sugars >= 6.0) {
+      nutritionScore = 28;
+    } else if (hasArtificialSweetener || sugars >= 5.0) {
+      nutritionScore = 36;
+    } else {
+      nutritionScore = 50;
+    }
   } else if (is100PctFruitJuice) {
     // 100% Orange / Apple / Fruit Juice has ~9-10g liquid sugar per 100ml (~22g per cup) with 0g fiber -> Nutri-Score C (34/60)
     nutritionScore = 34;
-    nutriGrade = "C";
-  } else if (isBeverage && (sugars >= 5 || hasTop3AddedSugar)) {
-    // Sweetened beverages (Capri Sun, Soda, Hi-C, Kool-Aid, Lemonade, Sweet Tea, Sports Drinks, Sugary Energy Drinks) -> Nutri-Score E (6/60)
+  } else if (isBeverage && (sugars >= 5 || (!hasMeasuredSugars && hasTop3AddedSugar))) {
+    // Sweetened beverages (Capri Sun, Soda, Hi-C, Kool-Aid, Lemonade, Sweet Tea, Sports Drinks, Sugary Energy Drinks) -> Nutri-Score D/E
     nutritionScore = sugars >= 7 ? 6 : 14;
-    nutriGrade = sugars >= 7 ? "E" : "D";
   } else if (isBeverage && sugars <= 3.5 && kcal <= 25) {
     // Nutri-Score (2024 beverage algorithm): artificially sweetened zero-sugar drinks (Sucralose, Aspartame, Ace-K)
     // do not receive Nutri-Score A (60/60); they are capped at Nutri-Score C (36/60).
-    // Clean unsweetened waters, seltzers, teas & prebiotic sodas (Fiji, Spindrift, LaCroix, Olipop, Nooma, Guayakí) get 60/60 (A).
-    const hasArtificialSweetener = base.flagged.some((f) => f.category === "sweeteners");
+    // Clean unsweetened waters, seltzers, teas & prebiotic sodas (Fiji, Spindrift, LaCroix, Olipop, Poppi, Nooma, Guayakí) get 60/60 (A).
     if (hasArtificialSweetener) {
       nutritionScore = 36;
-      nutriGrade = "C";
+    } else if (
+      hasTop3AddedSugar &&
+      sugars >= 2.0 &&
+      !/\b(kombucha|olipop|poppi|culture\s+pop|yerba\s+mate)\b/i.test(titleAndIng)
+    ) {
+      nutritionScore = 45;
     } else if (
       !isOrganic &&
       sugars === 0 &&
@@ -1048,23 +1280,20 @@ export function scoreProductYuka(
       // Pure single-ingredient water cannot be certified USDA Organic by law (water is a mineral),
       // so it receives the full 70-point non-additive baseline to reach 100/100 without an organic claim.
       nutritionScore = 70;
-      nutriGrade = "A";
     } else {
       nutritionScore = 60;
-      nutriGrade = "A";
     }
+  } else if (isBeverage && sugars > 3.5 && sugars < 5) {
+    nutritionScore = sugars >= 4.5 && hasTop3AddedSugar ? 14 : hasTop3AddedSugar ? 34 : 45;
   } else if (/\byogurt\b/i.test(titleAndIng) && hasTop3AddedSugar) {
     nutritionScore = 28;
-    nutriGrade = "C";
   } else if (isPureButterOrGhee) {
     // Pure grass-fed/dairy butter has 0 chemical additives (30/30) and Tier 3 natural fat,
-    // but high saturated fat (51g/100g) and calories (717 kcal/100g) -> Mediocre (~52-68/100), never 100/100.
-    nutritionScore = sodium <= 50 ? 28 : 22;
-    nutriGrade = sodium <= 50 ? "D" : "E";
+    // but high saturated fat (51g/100g) and calories (717 kcal/100g) -> Mediocre (~52-66/100), never 100/100.
+    nutritionScore = sodium <= 50 ? 26 : 22;
   } else if (isWholeMilk) {
     // Whole milk has ~2.1g/100ml saturated fat (5g per cup) -> Nutri-Score B (50/60 nutrition points)
     nutritionScore = 50;
-    nutriGrade = "B";
   } else if (nutriRaw <= -2) {
     nutritionScore = 60;
   } else if (nutriRaw <= -1) {
@@ -1096,8 +1325,19 @@ export function scoreProductYuka(
     !/\b(ice\s+cream|cookie|candy|chocolate|cake|soda|juice)\b/i.test(titleAndIng);
   if (isHighProteinMeatOrSausage && nutritionScore < 10) {
     nutritionScore = 10;
-    nutriGrade = "D";
   }
+
+  const nutriGrade: "A" | "B" | "C" | "D" | "E" | "N/A" = isNonFoodItem
+    ? "N/A"
+    : nutritionScore >= 55
+      ? "A"
+      : nutritionScore >= 45
+        ? "B"
+        : nutritionScore >= 28
+          ? "C"
+          : nutritionScore >= 10
+            ? "D"
+            : "E";
 
   const hasHighRisk = base.flagged.some((f) => f.risk === "high");
   const seedOilHits = base.flagged.filter((f) => f.category === "seedOils");

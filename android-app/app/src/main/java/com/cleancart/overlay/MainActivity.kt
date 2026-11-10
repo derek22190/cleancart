@@ -1008,10 +1008,7 @@ class MainActivity : Activity() {
                 layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
             })
         } else {
-            rightTopBox.addView(ImageView(this).apply {
-                setImageResource(R.drawable.broc_mascot)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                setPadding(dp(14), dp(14), dp(14), dp(14))
+            rightTopBox.addView(buildNeutralPackagePlaceholder(dp(76), dp(96)).apply {
                 layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
             })
         }
@@ -4147,41 +4144,65 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun buildProductImageBox(imgUrl: String, title: String, wPx: Int, hPx: Int): FrameLayout {
-        val box = FrameLayout(this)
-        val fallback = label(
-            when {
-                title.contains("sweet potato", true) || title.contains("yam", true) -> "🍠"
-                title.contains("potato", true) -> "🥔"
-                title.contains("turkey", true) || title.contains("chicken", true) || title.contains("rotisserie", true) -> "🍗"
-                title.contains("beef", true) || title.contains("angus", true) || title.contains("patties", true) || title.contains("steak", true) -> "🥩"
-                title.contains("spinach", true) || title.contains("romaine", true) || title.contains("lettuce", true) || title.contains("kale", true) -> "🥬"
-                title.contains("monster", true) || title.contains("red bull", true) || title.contains("energy", true) || title.contains("celsius", true) || title.contains("c4", true) || title.contains("pre-workout", true) || title.contains("alani", true) || title.contains("ghost", true) -> "⚡"
-                title.contains("coca-cola", true) || title.contains("coke", true) || title.contains("pepsi", true) || title.contains("soda", true) || title.contains("mountain dew", true) || title.contains("olipop", true) || title.contains("poppi", true) || title.contains("cola", true) -> "🥤"
-                title.contains("water", true) || title.contains("seltzer", true) || title.contains("spindrift", true) || title.contains("lacroix", true) || title.contains("fiji", true) || title.contains("gatorade", true) || title.contains("prime", true) -> "💧"
-                title.contains("juice", true) || title.contains("orange", true) || title.contains("lemonade", true) || title.contains("sunnyd", true) || title.contains("smoothie", true) -> "🧃"
-                title.contains("coffee", true) || title.contains("frappuccino", true) || title.contains("tea", true) || title.contains("mate", true) || title.contains("kombucha", true) -> "☕"
-                title.contains("ranch", true) || title.contains("salad", true) -> "🥗"
-                title.contains("peanut", true) || title.contains("almond butter", true) -> "🥜"
-                title.contains("yogurt", true) || title.contains("cereal", true) || title.contains("granola", true) || title.contains("oats", true) -> "🥣"
-                title.contains("ice cream", true) -> "🍨"
-                title.contains("butter", true) || title.contains("cheese", true) -> "🧈"
-                title.contains("milk", true) || title.contains("oat", true) || title.contains("protein", true) -> "🥛"
-                title.contains("soup", true) || title.contains("chowder", true) -> "🍲"
-                title.contains("bread", true) -> "🍞"
-                title.contains("chocolate", true) -> "🍫"
-                title.contains("chips", true) || title.contains("doritos", true) || title.contains("tortilla", true) || title.contains("crackers", true) -> "🥨"
-                else -> "🛒"
-            },
-            22f, 0xFF111814.toInt()
-        ).apply {
-            gravity = Gravity.CENTER
+    private fun buildNeutralPackagePlaceholder(wPx: Int, hPx: Int): View {
+        return object : View(this) {
+            private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP,
+                    1.6f,
+                    resources.displayMetrics
+                ).coerceAtLeast(2f)
+                color = 0xFF94A3B8.toInt()
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+            }
+            private val fillAccent = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = 0xFFE2E8F0.toInt()
+            }
+            private val boxRect = RectF()
+            private val badgeRect = RectF()
+
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val cx = width / 2f
+                val cy = height / 2f
+                val iconW = (width * 0.42f).coerceIn(dp(18).toFloat(), dp(32).toFloat())
+                val iconH = (height * 0.48f).coerceIn(dp(22).toFloat(), dp(38).toFloat())
+                val left = cx - iconW / 2f
+                val top = cy - iconH / 2f
+                val right = cx + iconW / 2f
+                val bottom = cy + iconH / 2f
+                val r = dp(4).toFloat()
+
+                boxRect.set(left, top + iconH * 0.14f, right, bottom)
+                canvas.drawRoundRect(boxRect, r, r, strokePaint)
+
+                badgeRect.set(left + iconW * 0.14f, top, right - iconW * 0.14f, top + iconH * 0.16f)
+                canvas.drawRoundRect(badgeRect, r * 0.6f, r * 0.6f, fillAccent)
+                canvas.drawRoundRect(badgeRect, r * 0.6f, r * 0.6f, strokePaint)
+
+                val lineLeft = left + iconW * 0.22f
+                val lineRight = right - iconW * 0.22f
+                val lineMidY = top + iconH * 0.50f
+                val lineLowY = top + iconH * 0.70f
+                canvas.drawLine(lineLeft, lineMidY, lineRight, lineMidY, strokePaint)
+                canvas.drawLine(lineLeft, lineLowY, lineLeft + (lineRight - lineLeft) * 0.68f, lineLowY, strokePaint)
+            }
+        }.apply {
             background = GradientDrawable().apply {
-                setColor(0xFFF9FAFB.toInt())
+                setColor(0xFFF8FAFC.toInt())
                 cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), 0xFFE2E8F0.toInt())
             }
             layoutParams = FrameLayout.LayoutParams(wPx, hPx)
         }
+    }
+
+    private fun buildProductImageBox(imgUrl: String, title: String, wPx: Int, hPx: Int): FrameLayout {
+        val box = FrameLayout(this)
+        val fallback = buildNeutralPackagePlaceholder(wPx, hPx)
         box.addView(fallback)
 
         val iv = ImageView(this).apply {
@@ -4768,9 +4789,8 @@ class MainActivity : Activity() {
 
     private fun yukaDotColor(score: Int): Int = when {
         score >= 75 -> 0xFF2E9E5B.toInt() // Excellent Green
-        score >= 50 -> 0xFF66BB6A.toInt() // Good Light Green
-        score >= 25 -> 0xFFEA8600.toInt() // Poor Orange
-        else -> 0xFFD93025.toInt()        // Bad Red
+        score >= 50 -> 0xFFD97706.toInt() // Mediocre Amber
+        else -> 0xFFD93025.toInt()        // Poor Red
     }
 
     private fun ratingForScore(score: Int): String = when {

@@ -37,10 +37,11 @@ export async function generateMetadata({
   const entry = SEO_PRODUCTS.find((p) => p.slug === slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt));
   if (!entry) return {};
   const { result, swap } = evaluateSeoProduct(entry);
+  const canonicalRating = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
 
   return {
     title: `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`,
-    description: `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${result.rating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
+    description: `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${canonicalRating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
     alternates: {
       canonical: `https://www.heybroc.com/swaps/${entry.slug}`,
     },
@@ -57,12 +58,15 @@ export default async function SwapReportPage({
   if (!entry) notFound();
 
   const { result, swap } = evaluateSeoProduct(entry);
+  const canonicalRating = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
   const yb = result.yukaBreakdown;
+  const productImgSrc = `/api/product-image?title=${encodeURIComponent(entry.title)}`;
 
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: entry.title,
+    image: `https://www.heybroc.com${productImgSrc}`,
     brand: {
       "@type": "Brand",
       name: entry.brand,
@@ -101,65 +105,104 @@ export default async function SwapReportPage({
 
       {/* Main Product Hero Card */}
       <article style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 22, padding: "24px", boxShadow: "0 10px 28px rgba(15,23,42,0.05)" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          {entry.category} · {entry.brand} · Independent Editorial Report
-        </span>
-        <h1 style={{ fontSize: 28, fontWeight: 900, margin: "6px 0 12px", lineHeight: 1.2 }}>
-          {entry.title} — Ingredients, Score &amp; Clean Swap
-        </h1>
-
-        {/* Score Pill */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
-          <span
+        <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 14 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={productImgSrc}
+            alt={entry.title}
             style={{
-              padding: "8px 16px",
-              borderRadius: 999,
-              fontSize: 18,
-              fontWeight: 900,
-              background: result.score >= 75 ? "#dcfce7" : result.score >= 50 ? "#fef3c7" : "#fee2e2",
-              color: result.score >= 75 ? "#166534" : result.score >= 50 ? "#92400e" : "#991b1b",
+              width: 96,
+              height: 96,
+              objectFit: "contain",
+              borderRadius: 16,
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              padding: 6,
+              flexShrink: 0,
             }}
-          >
-            {result.score}/100 · {result.rating}
-          </span>
-          {yb?.glucoseImpact && (
-            <span
-              style={{
-                padding: "7px 14px",
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 800,
-                background:
-                  yb.glucoseImpact === "Low Sugar / Carb" || yb.glucoseImpact === "No Added Sugar in Ingredients"
-                    ? "#dcfce7"
-                    : yb.glucoseImpact === "Moderate Sugar / Carb"
-                      ? "#fef3c7"
-                      : "#fee2e2",
-                color:
-                  yb.glucoseImpact === "Low Sugar / Carb" || yb.glucoseImpact === "No Added Sugar in Ingredients"
-                    ? "#166534"
-                    : yb.glucoseImpact === "Moderate Sugar / Carb"
-                      ? "#92400e"
-                      : "#991b1b",
-              }}
-            >
-              🩸 Sugar &amp; refined-carb note: {yb.glucoseImpact} · 🔥 {yb.calorieNote}
+          />
+          <div style={{ flex: "1 1 280px", minWidth: 0 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {entry.category} · {entry.brand} · Independent Editorial Report
             </span>
-          )}
+            <h1 style={{ fontSize: 28, fontWeight: 900, margin: "6px 0 12px", lineHeight: 1.2 }}>
+              {entry.title} — Ingredients, Score &amp; Clean Swap
+            </h1>
+
+            {/* Score Pill */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  fontSize: 18,
+                  fontWeight: 900,
+                  background: result.score >= 75 ? "#dcfce7" : result.score >= 50 ? "#fef3c7" : "#fee2e2",
+                  color: result.score >= 75 ? "#166534" : result.score >= 50 ? "#92400e" : "#991b1b",
+                }}
+              >
+                {result.score}/100 · {canonicalRating}
+              </span>
+              {yb?.glucoseImpact && (
+                <span
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 999,
+                    fontSize: 13,
+                    fontWeight: 800,
+                    background:
+                      yb.glucoseImpact === "Low Sugar / Carb" || yb.glucoseImpact === "No Added Sugar in Ingredients"
+                        ? "#dcfce7"
+                        : yb.glucoseImpact === "Moderate Sugar / Carb"
+                          ? "#fef3c7"
+                          : "#fee2e2",
+                    color:
+                      yb.glucoseImpact === "Low Sugar / Carb" || yb.glucoseImpact === "No Added Sugar in Ingredients"
+                        ? "#166534"
+                        : yb.glucoseImpact === "Moderate Sugar / Carb"
+                          ? "#92400e"
+                          : "#991b1b",
+                  }}
+                >
+                  🩸 Sugar &amp; refined-carb note: {yb.glucoseImpact} · 🔥 {yb.calorieNote}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* 1-Tap Clean Swap Callout */}
         {swap && (
           <div style={{ background: "#ecfdf5", border: "2px solid #34d399", borderRadius: 16, padding: "16px 18px", marginBottom: 20 }}>
-            <span style={{ fontSize: 11, fontWeight: 900, color: "#059669", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              ⇄ Recommended 1-for-1 Clean Swap ({swap.category})
-            </span>
-            <h2 style={{ fontSize: 20, fontWeight: 900, color: "#064e3b", margin: "4px 0" }}>
-              {swap.title} — {swap.score}/100 ({swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Mediocre" : "Poor"})
-            </h2>
-            <p style={{ fontSize: 13.5, color: "#065f46", margin: "4px 0 10px" }}>
-              <b>Representative Ingredients:</b> {swap.ingredients}
-            </p>
+            <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/product-image?title=${encodeURIComponent(swap.title)}`}
+                alt={swap.title}
+                loading="lazy"
+                style={{
+                  width: 72,
+                  height: 72,
+                  objectFit: "contain",
+                  borderRadius: 12,
+                  background: "#ffffff",
+                  border: "1px solid #a7f3d0",
+                  padding: 4,
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 900, color: "#059669", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  ⇄ Recommended 1-for-1 Clean Swap ({swap.category})
+                </span>
+                <h2 style={{ fontSize: 20, fontWeight: 900, color: "#064e3b", margin: "4px 0" }}>
+                  {swap.title} — {swap.score}/100 ({swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Mediocre" : "Poor"})
+                </h2>
+                <p style={{ fontSize: 13.5, color: "#065f46", margin: "4px 0 0" }}>
+                  <b>Representative Ingredients:</b> {swap.ingredients}
+                </p>
+              </div>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {SEO_RETAILERS.map((r) => {
                 const storeSwap =
@@ -352,20 +395,74 @@ export default async function SwapReportPage({
                         fontWeight: 900,
                         padding: "2px 9px",
                         borderRadius: 999,
-                        background: evalRel.result.score >= 70 ? "#dcfce7" : "#fee2e2",
-                        color: evalRel.result.score >= 70 ? "#166534" : "#991b1b",
+                        background:
+                          evalRel.result.score >= 75
+                            ? "#dcfce7"
+                            : evalRel.result.score >= 50
+                              ? "#fef3c7"
+                              : "#fee2e2",
+                        color:
+                          evalRel.result.score >= 75
+                            ? "#166534"
+                            : evalRel.result.score >= 50
+                              ? "#92400e"
+                              : "#991b1b",
                       }}
                     >
                       {evalRel.result.score}/100
                     </span>
                   </div>
-                  <b style={{ display: "block", fontSize: 14.5, marginTop: 6, lineHeight: 1.3 }}>
-                    {rel.title}
-                  </b>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                    <img
+                      src={`/api/product-image?title=${encodeURIComponent(rel.title)}`}
+                      alt={rel.title}
+                      loading="lazy"
+                      style={{
+                        width: 44,
+                        height: 44,
+                        objectFit: "contain",
+                        borderRadius: 10,
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        padding: 3,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <b style={{ display: "block", fontSize: 14.5, lineHeight: 1.3 }}>
+                      {rel.title}
+                    </b>
+                  </div>
                   {evalRel.swap && (
-                    <span style={{ display: "block", fontSize: 12, color: "#059669", fontWeight: 700, marginTop: 4 }}>
-                      ⇄ Swap: {evalRel.swap.title} ({evalRel.swap.score}/100)
-                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 12,
+                        color: "#059669",
+                        fontWeight: 700,
+                        marginTop: 8,
+                      }}
+                    >
+                      <img
+                        src={`/api/product-image?title=${encodeURIComponent(evalRel.swap.title)}`}
+                        alt={evalRel.swap.title}
+                        loading="lazy"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          objectFit: "contain",
+                          borderRadius: 6,
+                          background: "#ecfdf5",
+                          border: "1px solid #a7f3d0",
+                          padding: 2,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>
+                        ⇄ Swap: {evalRel.swap.title} ({evalRel.swap.score}/100)
+                      </span>
+                    </div>
                   )}
                 </Link>
               );

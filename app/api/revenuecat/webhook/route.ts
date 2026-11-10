@@ -208,9 +208,16 @@ export async function POST(req: Request) {
           (!ev.currency || ev.currency.toUpperCase() === "USD")
         ? ev.price_in_purchased_currency
         : 0;
+  const taxPct =
+    typeof (ev as { tax_percentage?: number }).tax_percentage === "number" &&
+    Number.isFinite((ev as { tax_percentage?: number }).tax_percentage)
+      ? Math.max(0, Math.min(0.5, (ev as { tax_percentage: number }).tax_percentage))
+      : 0;
+  const preTaxUsdPrice =
+    rawUsdPrice > 0 ? Math.round(rawUsdPrice * (1 - taxPct) * 100) / 100 : rawUsdPrice;
   if (ev.type === "INITIAL_PURCHASE" || ev.type === "RENEWAL" || ev.type === "TRIAL_STARTED") {
     if (creatorCode) {
-      const amountPaidUsd = rawUsdPrice > 0 ? rawUsdPrice : 0;
+      const amountPaidUsd = preTaxUsdPrice > 0 ? preTaxUsdPrice : 0;
       const isTrialEvent = status === "trialing" || amountPaidUsd <= 0;
       if (!isTrialEvent || ev.type !== "RENEWAL") {
         const creatorEvent = isTrialEvent
@@ -222,7 +229,8 @@ export async function POST(req: Request) {
           `rc_${eventId}`,
           creatorCode,
           creatorEvent,
-          amountPaidUsd > 0 ? amountPaidUsd : undefined
+          amountPaidUsd > 0 ? amountPaidUsd : undefined,
+          customerEmail
         );
       }
     }

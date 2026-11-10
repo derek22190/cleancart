@@ -292,6 +292,17 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/milk.png",
       ingredients: "Purified water, organic oats, sea salt.",
+      nutrition: {
+        caloriesKcal100g: 33.3,
+        sugarsG100g: 1.3,
+        saturatedFatG100g: 0,
+        sodiumMg100g: 43.8,
+        fiberG100g: 0.4,
+        proteinG100g: 0.8,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
       itemIds: { walmart: "269553533" },
     },
   },
@@ -307,6 +318,17 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/milk.png",
       ingredients: "Purified water, organic almonds, sea salt.",
+      nutrition: {
+        caloriesKcal100g: 14.6,
+        sugarsG100g: 0,
+        saturatedFatG100g: 0,
+        sodiumMg100g: 58.3,
+        fiberG100g: 0.4,
+        proteinG100g: 0.4,
+        fruitsVegNutsPct: 5,
+        isOrganic: true,
+        isWholeFood: false,
+      },
       itemIds: { walmart: "520102935" },
     },
   },
@@ -515,13 +537,24 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     alt: {
       category: "Butter/Dairy",
       brand: "Alden's Organic",
-      name: "Organic Vanilla Bean Ice Cream",
+      name: "Vanilla Bean Ice Cream",
       sourceUrl: "https://www.aldensorganic.com/products/vanilla-bean-pint/",
       verifiedAt: "2026-11-09",
       size: "14 oz pint",
       isOrganic: true,
       image: "/swaps/icecream.png",
       ingredients: "Organic milk, organic cream, organic cane sugar, organic egg yolks, organic vanilla extract, organic ground vanilla beans.",
+      nutrition: {
+        caloriesKcal100g: 223.5,
+        sugarsG100g: 18.8,
+        saturatedFatG100g: 7.1,
+        sodiumMg100g: 58.8,
+        fiberG100g: 0,
+        proteinG100g: 3.5,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
       itemIds: { walmart: "46791616" },
     },
   },
@@ -577,7 +610,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     alt: {
       category: "Snacks",
       brand: "Santa Cruz Organic",
-      name: "Organic Creamy Dark Roasted Peanut Butter",
+      name: "Creamy Dark Roasted Peanut Butter",
       sourceUrl: "https://www.santacruzorganic.com/products/peanut-butter/creamy-dark-roasted-peanut-butter",
       verifiedAt: "2026-11-09",
       size: "16 oz jar",
@@ -592,7 +625,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     alt: {
       category: "Snacks",
       brand: "Crofter's Organic",
-      name: "Organic Strawberry Just Fruit Spread",
+      name: "Strawberry Just Fruit Spread",
       sourceUrl: "https://croftersorganic.com/product/strawberry-just-fruit-spread/",
       verifiedAt: "2026-11-09",
       size: "16.5 oz jar",
@@ -798,7 +831,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     alt: {
       category: "Dressings",
       brand: "Amy's Organic",
-      name: "Organic Low Fat Lentil Vegetable Soup",
+      name: "Low Fat Lentil Vegetable Soup",
       sourceUrl: "https://www.amys.com/our-foods/organic-lentil-vegetable-soup-low-fat",
       verifiedAt: "2026-11-09",
       size: "14.5 oz can",
@@ -984,7 +1017,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "10 oz pack",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg",
+      image: "https://images.openfoodfacts.org/images/products/002/531/753/2006/front_en.3.400.jpg",
       ingredients: "Organic grass-fed beef, water, sea salt, organic spices, organic garlic powder, organic onion powder, organic paprika, lactic acid starter culture.",
       itemIds: { walmart: "15610515" },
     },
@@ -999,7 +1032,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "7 oz pack",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg",
+      image: "/swaps/sausage.png",
       ingredients: "Organic chicken, water, organic maple syrup, sea salt, organic spices.",
       itemIds: { walmart: "967953484" },
     },
@@ -1014,7 +1047,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "8 oz box",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/008/523/905/3218/front_en.6.400.jpg",
+      image: "https://images.openfoodfacts.org/images/products/002/531/760/5519/front_en.6.400.jpg",
       ingredients: "Organic chicken breast, water, organic rice flour, organic yellow corn flour, sea salt, organic expeller-pressed coconut oil, organic onion powder, organic garlic powder.",
       itemIds: { walmart: "21296165" },
     },
@@ -1029,7 +1062,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "6 oz pack",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/004/450/020/1956/front_en.6.400.jpg",
+      image: "https://images.openfoodfacts.org/images/products/002/531/767/0012/front_en.23.400.jpg",
       ingredients: "Organic pork, water, organic honey, sea salt, organic rosemary extract.",
       itemIds: { walmart: "15610517" },
     },
@@ -1044,7 +1077,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "4 oz pack",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg",
+      image: "https://images.openfoodfacts.org/images/products/002/531/765/6009/front_en.25.400.jpg",
       ingredients: "Organic pork, sea salt, organic cane sugar, organic spices, organic garlic, lactic acid starter culture, organic rosemary extract.",
       itemIds: { walmart: "22210693" },
     },
@@ -1060,7 +1093,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "1 lb brick",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg",
+      image: "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg",
       ingredients: "100% Organic Grass-Fed Beef.",
       itemIds: { walmart: "51259058" },
     },
@@ -1091,7 +1124,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       name: "Organic Grass-Fed Shells & Real Aged Cheddar",
       size: "6 oz box",
       isOrganic: true,
-      image: "https://images.openfoodfacts.org/images/products/26565859/front_en.3.400.jpg",
+      image: "/swaps/mac.png",
       ingredients: "Organic wheat pasta (organic wheat flour), organic grass-fed cheddar cheese (cultured pasteurized organic milk, salt, non-animal enzymes), organic whey, organic nonfat milk, organic butter (organic cream, salt), salt, cultured whole milk, sodium phosphate, organic annatto extract (for color).",
       nutrition: { caloriesKcal100g: 386, sugarsG100g: 7.1, saturatedFatG100g: 3.6, sodiumMg100g: 757, fiberG100g: 2.9, proteinG100g: 14.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
       sourceUrl: "https://www.annies.com/product/organic-grass-fed-shells-real-aged-cheddar-mac-cheese",
@@ -2066,7 +2099,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
-        name: "Organic Salted Butter",
+        name: "Salted Butter",
         sourceUrl: "https://www.kroger.com/p/simple-truth-organic-salted-butter-sticks/0001111089515",
         verifiedAt: "2026-11-09",
         size: "16 oz (4 sticks)",
@@ -2080,7 +2113,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
-        name: "Organic 2% Reduced Fat Milk",
+        name: "2% Reduced Fat Milk",
         sourceUrl: "https://www.kroger.com/p/simple-truth-organic-2-reduced-fat-milk-half-gallon/0001111040651",
         verifiedAt: "2026-11-09",
         size: "64 fl oz carton",
@@ -2094,7 +2127,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
-        name: "Organic Whole Milk",
+        name: "Whole Milk",
         sourceUrl: "https://www.kroger.com/p/simple-truth-organic-whole-milk-half-gallon/0001111040650",
         verifiedAt: "2026-11-09",
         size: "64 fl oz carton",
@@ -2108,7 +2141,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       alt: {
         category: "Yogurt",
         brand: "Simple Truth Organic",
-        name: "Organic Plain Whole Milk Greek Yogurt",
+        name: "Plain Whole Milk Greek Yogurt",
         sourceUrl: "https://www.kroger.com/p/simple-truth-organic-plain-whole-milk-greek-yogurt/0001111042159",
         verifiedAt: "2026-11-09",
         size: "32 oz tub",
@@ -2122,7 +2155,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       alt: {
         category: "Snacks",
         brand: "Simple Truth Organic",
-        name: "Organic Creamy Peanut Butter",
+        name: "Creamy Peanut Butter",
         sourceUrl: "https://www.kroger.com/p/simple-truth-organic-creamy-peanut-butter/0001111085566",
         verifiedAt: "2026-11-09",
         size: "16 oz jar",
@@ -2136,7 +2169,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       alt: {
         category: "Cereal",
         brand: "Simple Truth Organic",
-        name: "Organic 100% Pure Grade A Amber Maple Syrup",
+        name: "100% Pure Grade A Amber Maple Syrup",
         sourceUrl: "https://www.kroger.com/p/simple-truth-organic-pure-maple-syrup/0001111087855",
         verifiedAt: "2026-11-09",
         size: "12 fl oz bottle",
@@ -2364,12 +2397,58 @@ function conciseClubQuery(q: string): string {
     .trim();
 }
 
-function searchPath(store: Store, q: string): string {
+const RESERVED_INSTACART_SEGMENTS = new Set([
+  "s",
+  "search",
+  "cart",
+  "checkout",
+  "account",
+  "hub",
+  "referrals",
+  "orders",
+  "lists",
+  "store",
+  "stores",
+  "items",
+  "products",
+  "help",
+  "login",
+  "signup",
+  "categories",
+  "collections",
+]);
+
+export function sanitizeInstacartRetailerSlug(slug?: string): string {
+  if (!slug || typeof slug !== "string") return "";
+  const cleaned = slug
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/^store\//, "")
+    .split("/")[0]
+    .replace(/[^a-z0-9_-]/g, "");
+  if (!cleaned || cleaned.length < 2 || RESERVED_INSTACART_SEGMENTS.has(cleaned)) {
+    return "";
+  }
+  return cleaned;
+}
+
+export function formatSwapFullTitle(alt: { brand: string; name: string }): string {
+  return `${alt.brand} ${alt.name}`
+    .replace(/\b(organic)\s+\1\b/gi, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchPath(store: Store, q: string, instacartRetailerSlug?: string): string {
   const concise = conciseClubQuery(q);
   const e = encodeURIComponent(concise);
   switch (store) {
     case "walmart": return `/search?q=${e}`;
-    case "instacart": return `/store/s?k=${e}`;
+    case "instacart": {
+      const slug = sanitizeInstacartRetailerSlug(instacartRetailerSlug);
+      return slug ? `/store/${slug}/s?k=${e}` : `/store/s?k=${e}`;
+    }
     case "target": return `/s?searchTerm=${e}`;
     case "kroger": return `/search?query=${e}`;
     case "aldi": return `/store/aldi/s?k=${e}`;
@@ -2385,10 +2464,13 @@ function searchPath(store: Store, q: string): string {
   }
 }
 
-function productPath(store: Store, id: string): string {
+function productPath(store: Store, id: string, instacartRetailerSlug?: string): string {
   switch (store) {
     case "walmart": return `/ip/${id}`;
-    case "instacart": return `/products/${id}`;
+    case "instacart": {
+      const slug = sanitizeInstacartRetailerSlug(instacartRetailerSlug);
+      return slug ? `/store/${slug}/products/${id}` : `/products/${id}`;
+    }
     case "target": return `/p/${id}`;
     case "kroger": return `/p/item/${id}`;
     case "aldi": return `/store/aldi/products/${id}`;
@@ -2407,13 +2489,16 @@ export function buildLinks(
   alt: CleanAlternative,
   store: Store,
   clickId = impactClickId(),
-  surface: ScanSurface = "web"
+  surface: ScanSurface = "web",
+  instacartRetailerSlug?: string
 ) {
   const meta = STORE_META[store];
-  const query = alt.searchQuery || `${alt.brand} ${alt.name}`;
+  const query = alt.searchQuery || formatSwapFullTitle(alt);
   const searchQuery = conciseClubQuery(query);
   const id = alt.itemIds?.[store];
-  const path = id ? productPath(store, id) : searchPath(store, query);
+  const path = id
+    ? productPath(store, id, instacartRetailerSlug)
+    : searchPath(store, query, instacartRetailerSlug);
   const { url: webUrl, isPaidLink } = withAffiliate(
     `https://${meta.host}${path}`,
     store,
@@ -2442,7 +2527,287 @@ const NON_FOOD_SWAP_GUARD =
 const ALREADY_PURE_MAPLE_SYRUP_GUARD =
   /\b(100%\s*(?:pure\s*)?(?:organic\s*)?(?:grade\s+a\s+)?maple\s+syrup|pure\s+maple\s+syrup|organic\s+(?:grade\s+a\s+)?maple\s+syrup|grade\s+a\s+(?:golden|amber|dark|very\s+dark)\b.*\bmaple\s+syrup|crown\s+maple|coombs\s+family|sapjack)\b/i;
 
+const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternative[] }> = [
+  {
+    match: /\b(oat\s*milk|planet\s+oat|oatly|chobani\s+oat)\b/i,
+    alts: [
+      {
+        category: "Butter/Dairy",
+        brand: "MALK",
+        name: "Organic Unsweetened Oat Milk",
+        sourceUrl: "https://malkorganics.com/products/unsweetened-oat-malk/",
+        verifiedAt: "2026-11-09",
+        size: "28 fl oz bottle",
+        isOrganic: true,
+        image: "/swaps/milk.png",
+        ingredients: "Filtered water, organic gluten-free oats, Himalayan pink salt.",
+        nutrition: {
+          caloriesKcal100g: 25,
+          sugarsG100g: 0.4,
+          saturatedFatG100g: 0.1,
+          sodiumMg100g: 45,
+          fiberG100g: 0.4,
+          proteinG100g: 1.2,
+          fruitsVegNutsPct: 0,
+          isOrganic: true,
+          isWholeFood: false,
+        },
+      },
+    ],
+  },
+  {
+    match: /\b(almond\s*milk|almond\s+breeze|silk\s+almond)\b/i,
+    alts: [
+      {
+        category: "Butter/Dairy",
+        brand: "MALK",
+        name: "Organic Unsweetened Almond Milk",
+        sourceUrl: "https://malkorganics.com/products/unsweetened-almond-malk/",
+        verifiedAt: "2026-11-09",
+        size: "28 fl oz bottle",
+        isOrganic: true,
+        image: "/swaps/milk.png",
+        ingredients: "Filtered water, organic sprouted almonds, Himalayan pink salt.",
+        nutrition: {
+          caloriesKcal100g: 25,
+          sugarsG100g: 0,
+          saturatedFatG100g: 0.1,
+          sodiumMg100g: 45,
+          fiberG100g: 0.4,
+          proteinG100g: 1.2,
+          fruitsVegNutsPct: 15,
+          isOrganic: true,
+          isWholeFood: false,
+        },
+      },
+    ],
+  },
+  {
+    match: /^(?!.*\b(oat|almond|coconut|soy|cashew|chocolate|strawberry|condensed|evaporated|milk\s+chocolate)\b).*\b(milk)\b/i,
+    alts: [
+      {
+        category: "Butter/Dairy",
+        brand: "Organic Valley",
+        name: "Organic Grassmilk Whole Milk",
+        sourceUrl: "https://www.organicvalley.coop/products/milk/grassmilk/grassmilk-whole-half-gallon/",
+        verifiedAt: "2026-11-09",
+        size: "64 fl oz carton",
+        isOrganic: true,
+        image: "/swaps/milk.png",
+        ingredients: "Organic Grade A whole milk, vitamin D3.",
+      },
+    ],
+  },
+  {
+    match: /\b(chips|crisps|doritos|cheetos|takis|pringles|lay'?s|ruffles|fritos|popcorn|puffs)\b/i,
+    alts: [
+      {
+        category: "Chips",
+        brand: "Siete",
+        name: "Grain Free Sea Salt Tortilla Chips",
+        sourceUrl: "https://sietefoods.com/products/sea-salt-grain-free-tortilla-chips",
+        verifiedAt: "2026-11-09",
+        size: "5 oz bag",
+        image: "/swaps/chips.jpg",
+        ingredients: "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt.",
+      },
+      {
+        category: "Chips",
+        brand: "LesserEvil",
+        name: "Organic Himalayan Pink Salt Popcorn",
+        sourceUrl: "https://shop.lesserevil.com/products/himalayan-pink-salt-organic-popcorn",
+        verifiedAt: "2026-11-09",
+        size: "4.6 oz bag",
+        isOrganic: true,
+        image: "/swaps/chips.jpg",
+        ingredients: "Organic non-GMO popcorn, organic extra virgin coconut oil, Himalayan salt.",
+      },
+    ],
+  },
+  {
+    match: /\b(cereal|flakes|loops|puffs|cheerios|cinnamon\s+toast|lucky\s+charms|frosted|froot\s+loops|granola)\b/i,
+    alts: [
+      {
+        category: "Cereal",
+        brand: "One Degree Organic Foods",
+        name: "Organic Sprouted Oat O's",
+        sourceUrl: "https://onedegreeorganics.com/products/sprouted-oat-os/",
+        verifiedAt: "2026-11-09",
+        size: "10 oz box",
+        isOrganic: true,
+        image: "/swaps/cereal.jpg",
+        ingredients: "Organic sprouted whole grain oats, organic coconut palm sugar, organic tapioca syrup, organic oat bran, unrefined salt, tocopherols (vitamin E).",
+      },
+    ],
+  },
+  {
+    match: /\b(bread|loaf|wonder\s+bread|sara\s+lee|nature'?s\s+own)\b/i,
+    alts: [
+      {
+        category: "Bread",
+        brand: "Food For Life",
+        name: "Ezekiel 4:9 Organic Sprouted Whole Grain Bread",
+        sourceUrl: "https://www.foodforlife.com/product/breads/ezekiel-49-sprouted-whole-grain-bread",
+        verifiedAt: "2026-11-09",
+        size: "24 oz loaf",
+        isOrganic: true,
+        image: "/swaps/bread.jpg",
+        ingredients: "Organic sprouted wheat, filtered water, organic sprouted barley, organic sprouted millet, organic malted barley, organic sprouted lentils, organic sprouted soybeans, organic sprouted spelt, fresh yeast, organic wheat gluten, sea salt.",
+      },
+    ],
+  },
+  {
+    match: /\b(yogh?urt|skyr|chobani|yoplait|dannon|oikos)\b/i,
+    alts: [
+      {
+        category: "Yogurt",
+        brand: "Siggi's",
+        name: "Simple Ingredient Whole Milk Plain Skyr",
+        sourceUrl: "https://siggis.com/product/plain-whole-milk-24oz",
+        verifiedAt: "2026-11-09",
+        size: "24 oz tub",
+        image: "/swaps/yogurt.jpg",
+        ingredients: "Pasteurized whole milk, live active cultures.",
+      },
+    ],
+  },
+  {
+    match: /\b(soda|cola|pepsi|coca[- ]?cola|coke|sprite|7\s*up|mountain\s+dew|dr\.?\s*pepper|fanta|root\s+beer|ginger\s+ale|sparkling)\b/i,
+    alts: [
+      {
+        category: "Snacks",
+        brand: "Spindrift",
+        name: "Sparkling Water Lemon",
+        sourceUrl: "https://drinkspindrift.com/products/lemon-sparkling-water",
+        verifiedAt: "2026-11-09",
+        size: "8 pack (12 fl oz cans)",
+        image: "/swaps/drink.png",
+        ingredients: "Carbonated water, lemon juice.",
+      },
+      {
+        category: "Snacks",
+        brand: "Nixie",
+        name: "Organic Lime Ginger Sparkling Water",
+        sourceUrl: "https://drinknixie.com/products/lime-ginger",
+        verifiedAt: "2026-11-09",
+        size: "8 pack (12 fl oz cans)",
+        isOrganic: true,
+        image: "/swaps/drink.png",
+        ingredients: "Purified carbonated water, organic lime flavor, organic ginger extract.",
+      },
+    ],
+  },
+  {
+    match: /\b(ranch|dressing|vinaigrette|caesar)\b/i,
+    alts: [
+      {
+        category: "Dressings",
+        brand: "Chosen Foods",
+        name: "Classic Ranch Avocado Oil Dressing",
+        sourceUrl: "https://chosenfoods.com/products/classic-ranch-dressing",
+        verifiedAt: "2026-11-09",
+        size: "8 fl oz bottle",
+        image: "/swaps/ranch.jpg",
+        ingredients: "Avocado oil, water, organic distilled white vinegar, cage-free egg yolk, organic gum acacia, sea salt, organic buttermilk powder, organic onion powder, organic garlic powder, organic dill, organic parsley, organic chives, organic black pepper, organic rosemary extract.",
+      },
+    ],
+  },
+  {
+    match: /\b(turkey|ham|deli|lunch\s*meat|oscar\s+mayer|hillshire)\b/i,
+    alts: [
+      {
+        category: "Deli Meat",
+        brand: "True Story Foods",
+        name: "Organic Oven Roasted Turkey Breast",
+        sourceUrl: "https://www.truestoryfoods.com/products/organic-oven-roasted-turkey-breast/",
+        verifiedAt: "2026-11-09",
+        size: "6 oz pack",
+        isOrganic: true,
+        image: "/swaps/turkey.jpg",
+        ingredients: "Organic turkey breast, water, sea salt, organic vinegar.",
+      },
+    ],
+  },
+];
+
 export type RetailerId = Store;
+
+function evaluateCandidateForSwap(
+  alt: CleanAlternative,
+  params: {
+    score: number;
+    productTitle?: string;
+    store: Store;
+    watchlist?: Watchlist;
+    familyWatchlist?: import("./rubric").Category[];
+    surface: ScanSurface;
+    instacartRetailerSlug?: string;
+    requireZeroFlags?: boolean;
+  }
+): { swap: SwapResult; baseCleanScore: number; flagCount: number } | null {
+  const baseClean = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist);
+  if (baseClean.score < 85) return null;
+  if (params.requireZeroFlags && baseClean.flagged.length > 0) return null;
+
+  const fullTitle = formatSwapFullTitle(alt);
+  if (params.productTitle) {
+    const requested = params.productTitle.replace(/\blactaid\b/gi, "lactose-free");
+    const variantTitle = (
+      (alt.isOrganic === true || alt.nutrition?.isOrganic === true ? "Organic " : "") + fullTitle
+    )
+      .replace(/\b(organic)\s+\1\b/gi, "$1")
+      .trim();
+    // A named alternative can have a different flavor or protein amount, but must
+    // preserve explicit dietary/formulation restrictions requested by the shopper.
+    const restrictions =
+      requested.match(
+        /\b(?:plain|unflavored|unsweetened|extra\s+creamy|zero\s+sugar|sugar[ -]*free|organic|gluten[ -]*free|grain[ -]*free|lactose[ -]*free|skim|nonfat|fat[ -]*free|whole\s+milk)\b|\b[012]\s*%/gi
+      ) || [];
+    const guardQuery = restrictions.join(" ") + (/\bmilk\b/i.test(requested) ? " milk" : "");
+    if (!passesVariantGuard(guardQuery, variantTitle, { allowCleanerSwap: true })) return null;
+    if (
+      /\b(vegan|dairy[ -]*free|non[ -]*dairy)\b/i.test(requested) &&
+      /\b(milk|cream|whey|casein|butter|cheese|yogurt|lactose|eggs?|beef|pork|chicken|turkey|fish|gelatin)\b/i.test(
+        alt.ingredients
+      )
+    ) {
+      return null;
+    }
+  }
+
+  const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
+  const yukaRes = scoreProductYuka(alt.ingredients, params.watchlist, params.familyWatchlist, {
+    ...alt.nutrition,
+    productTitle: fullTitle,
+    isOrganic,
+  });
+  const altScore = yukaRes.score;
+  if (altScore <= params.score) return null;
+
+  const swap: SwapResult = {
+    category: alt.category,
+    brand: alt.brand,
+    name: alt.name,
+    title: fullTitle,
+    size: alt.size,
+    ingredients: alt.ingredients,
+    nutrition: { ...alt.nutrition, isOrganic },
+    sourceUrl: alt.sourceUrl,
+    verifiedAt: alt.verifiedAt,
+    image: alt.image.startsWith("https://")
+      ? alt.image
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=4`,
+    score: altScore,
+    store: params.store,
+    ...buildLinks(alt, params.store, impactClickId(), params.surface, params.instacartRetailerSlug),
+  };
+
+  return {
+    swap,
+    baseCleanScore: baseClean.score,
+    flagCount: baseClean.flagged.length,
+  };
+}
 
 /**
  * Returns a reference clean swap when a product scores < 75, else null.
@@ -2458,6 +2823,7 @@ export function resolveSwap(params: {
   watchlist?: Watchlist;
   familyWatchlist?: import("./rubric").Category[];
   surface?: ScanSurface;
+  instacartRetailerSlug?: string;
 }): SwapResult | null {
   if (params.score >= 75) return null;
   if (
@@ -2472,45 +2838,119 @@ export function resolveSwap(params: {
       ? params.surface
       : "web";
   const alt = resolveCleanAlternative(params.productTitle, params.category, store);
-  const category = alt.category;
-  const baseClean = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist);
-  if (baseClean.score < 85) return null;
-  if (params.productTitle) {
-    const requested = params.productTitle.replace(/\blactaid\b/ig, "lactose-free");
-    const variantTitle = (alt.isOrganic === true || alt.nutrition?.isOrganic === true ? "Organic " : "") + alt.brand + " " + alt.name;
-    // A named alternative can have a different flavor or protein amount, but must
-    // preserve explicit dietary/formulation restrictions requested by the shopper.
-    const restrictions = requested.match(/\b(?:plain|unflavored|unsweetened|extra\s+creamy|zero\s+sugar|sugar[ -]*free|organic|gluten[ -]*free|grain[ -]*free|lactose[ -]*free|skim|nonfat|fat[ -]*free|whole\s+milk)\b|\b[012]\s*%/ig) || [];
-    const guardQuery = restrictions.join(" ") + (/\bmilk\b/i.test(requested) ? " milk" : "");
-    if (!passesVariantGuard(guardQuery, variantTitle, { allowCleanerSwap: true })) return null;
-    if (/\b(vegan|dairy[ -]*free|non[ -]*dairy)\b/i.test(requested) &&
-        /\b(milk|cream|whey|casein|butter|cheese|yogurt|lactose|eggs?|beef|pork|chicken|turkey|fish|gelatin)\b/i.test(alt.ingredients)) return null;
-  }
-  const fullTitle = `${alt.brand} ${alt.name}`;
-  const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
-  const yukaRes = scoreProductYuka(alt.ingredients, params.watchlist, params.familyWatchlist, {
-    ...alt.nutrition,
-    productTitle: fullTitle,
-    isOrganic,
-  });
-  const altScore = yukaRes.score;
-  if (altScore <= params.score) return null;
-  return {
-    category,
-    brand: alt.brand,
-    name: alt.name,
-    title: fullTitle,
-    size: alt.size,
-    ingredients: alt.ingredients,
-    nutrition: { ...alt.nutrition, isOrganic },
-    sourceUrl: alt.sourceUrl,
-    verifiedAt: alt.verifiedAt,
-    image: alt.image.startsWith("https://")
-      ? alt.image
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=4`,
-    score: altScore,
+  const evaluated = evaluateCandidateForSwap(alt, {
+    score: params.score,
+    productTitle: params.productTitle,
     store,
-    ...buildLinks(alt, store, impactClickId(), surface),
-  };
+    watchlist: params.watchlist,
+    familyWatchlist: params.familyWatchlist,
+    surface,
+    instacartRetailerSlug: params.instacartRetailerSlug,
+  });
+  return evaluated ? evaluated.swap : null;
 }
+
+const SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT =
+  /\b(soda|cola|pepsi|coke|sprite|mountain\s+dew|fanta|root\s+beer|ginger\s+ale|energy\s+drink|monster|red\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|peanut\s+butter|almond\s+butter|hazelnut|nutella|jam|jelly|preserves|ice\s+cream|gelato|milk|oat\s*milk|almond\s*milk|eggs?|soup|chowder|broth|stock|ketchup|mustard|mayo|mayonnaise|salsa|marinara|pasta\s+sauce|bbq|guacamole|hummus|ramen|pasta|spaghetti|mac\s*(?:&|and)\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?)\b/i;
+
+/**
+ * Returns ranked clean alternatives (up to `limit ?? 4`) for a product's exact food type,
+ * deduplicated by brand + name, passing `passesVariantGuard`, with 0 watchlist violations,
+ * and preserving `instacartRetailerSlug` when shopping inside Instacart.
+ */
+export function resolveSwapCandidates(params: {
+  score: number;
+  productTitle: string;
+  ingredients?: string;
+  category?: SwapCategory;
+  store: Store;
+  watchlist?: Watchlist;
+  familyWatchlist?: import("./rubric").Category[];
+  surface?: ScanSurface;
+  instacartRetailerSlug?: string;
+  limit?: number;
+}): SwapResult[] {
+  const title = (params.productTitle || "").trim();
+  if (params.score >= 75 || !title) return [];
+  if (NON_FOOD_SWAP_GUARD.test(title) || ALREADY_PURE_MAPLE_SYRUP_GUARD.test(title)) {
+    return [];
+  }
+
+  const store = params.store && STORES.includes(params.store) ? params.store : "walmart";
+  const surface: ScanSurface =
+    params.surface === "android" || params.surface === "extension"
+      ? params.surface
+      : "web";
+  const maxItems = Math.max(1, Math.min(10, params.limit ?? 4));
+
+  const rawPool: Array<{ alt: CleanAlternative; tier: number }> = [];
+
+  // Tier 3: Store-specific 1-for-1 overrides for this exact retailer
+  const storeRules = STORE_SPECIFIC_OVERRIDES[store];
+  if (storeRules) {
+    for (const rule of storeRules) {
+      if (rule.match.test(title)) {
+        rawPool.push({ alt: rule.alt, tier: 3 });
+      }
+    }
+  }
+
+  // Tier 2: Nationwide 1-for-1 exact product rules
+  for (const rule of EXACT_PRODUCT_ALTERNATIVES) {
+    if (rule.match.test(title)) {
+      rawPool.push({ alt: rule.alt, tier: 2 });
+    }
+  }
+
+  // Tier 2: Secondary curated 1-for-1 clean alternatives for the same food sub-type
+  for (const group of SECONDARY_CLEAN_ALTERNATIVES) {
+    if (group.match.test(title)) {
+      for (const alt of group.alts) {
+        rawPool.push({ alt, tier: 2 });
+      }
+    }
+  }
+
+  // Tier 1: Category clean default only if the food sub-type aligns (never suggest Fruit Bar for Soda or Ranch for Soup)
+  const detectedCat = params.category ?? detectCategory(title, params.ingredients);
+  if (!SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT.test(title) || rawPool.length === 0) {
+    rawPool.push({ alt: CLEAN_ALTERNATIVES[detectedCat], tier: 1 });
+  }
+
+  const seen = new Set<string>();
+  const evaluated: Array<{ swap: SwapResult; tier: number }> = [];
+
+  for (const entry of rawPool) {
+    const key = formatSwapFullTitle(entry.alt).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const res = evaluateCandidateForSwap(entry.alt, {
+      score: params.score,
+      productTitle: title,
+      store,
+      watchlist: params.watchlist,
+      familyWatchlist: params.familyWatchlist,
+      surface,
+      instacartRetailerSlug: params.instacartRetailerSlug,
+      requireZeroFlags: true,
+    });
+    if (res) {
+      evaluated.push({ swap: res.swap, tier: entry.tier });
+    }
+  }
+
+  // Prefer Yuka >= 85 candidates; fall back to clean-additive (>=85 ingredient rubric) 1-for-1 swaps
+  // for categories like aged cheddar mac & cheese or cream ice cream where Nutri-Score caps < 85.
+  const highYuka = evaluated.filter((e) => e.swap.score >= 85);
+  const pool = highYuka.length > 0 ? highYuka : evaluated;
+
+  pool.sort((a, b) => {
+    if (b.tier !== a.tier) return b.tier - a.tier;
+    return b.swap.score - a.swap.score;
+  });
+
+  return pool.slice(0, maxItems).map((e) => e.swap);
+}
+
 

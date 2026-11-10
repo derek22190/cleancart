@@ -1,4 +1,4 @@
-import { scoreProductYuka, type ScoreResult } from "./rubric";
+import { scoreProductYuka, type NutritionInput, type ScoreResult } from "./rubric";
 import { resolveSwap, type RetailerId, type SwapResult } from "./swaps";
 
 export interface SeoProductEntry {
@@ -8,6 +8,8 @@ export interface SeoProductEntry {
   category: string;
   searchVolumeTag: string;
   ingredients: string;
+  nutrition?: NutritionInput;
+  isOrganic?: boolean;
   sourceUrl: string;
   verifiedAt: string;
 }
@@ -21,6 +23,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "High-Intent Snack Search",
     ingredients:
       "Corn, Vegetable Oil (Corn, Canola, or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Whey Protein Concentrate, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Artificial Color (Yellow 6, Yellow 5, Red 40), Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Disodium Inosinate, Disodium Guanylate.",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 3.6, saturatedFatG100g: 3.6, sodiumMg100g: 750, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.doritos.com/products/doritos-nacho-cheese-flavored-tortilla-chips",
     verifiedAt: "2026-11-08",
   },
@@ -32,6 +35,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Searched Salad Dressing",
     ingredients:
       "Vegetable Oil (Soybean or Canola Oil), Water, Sugar, Salt, Less than 2% of: Buttermilk, Egg Yolk, Garlic, Onion, Monosodium Glutamate, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Natural and Artificial Flavor, Disodium Inosinate, Disodium Guanylate, Sorbic Acid, Calcium Disodium EDTA.",
+    nutrition: { caloriesKcal100g: 433, sugarsG100g: 3.3, saturatedFatG100g: 6.7, sodiumMg100g: 867, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.hiddenvalley.com/products/ranch-condiments/classic-ranch/original-ranch/",
     verifiedAt: "2026-11-08",
   },
@@ -43,6 +47,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Kids Lunchbox Cracker",
     ingredients:
       "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1, Vitamin B2, Folic Acid), Vegetable Oil (High Oleic Soybean, Soybean, Palm, or Canola Oil with TBHQ for Freshness), Cheese Made with Skim Milk (Skim Milk, Whey Protein, Salt, Cheese Cultures, Enzymes, Annatto Extract Color), Salt, Paprika, Yeast, Paprika Extract Color, Soy Lecithin.",
+    nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 5.0, sodiumMg100g: 767, fiberG100g: 3.3, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.cheezit.com/en_US/products/crackers/cheez-it-original-snack-crackers-product.html",
     verifiedAt: "2026-11-08",
   },
@@ -54,6 +59,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "High-Sugar Dairy Search",
     ingredients:
       "Cultured Pasteurized Grade A Lowfat Milk, Sugar, Strawberries, Modified Corn Starch, Nonfat Milk, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
+    nutrition: { caloriesKcal100g: 88, sugarsG100g: 11.2, saturatedFatG100g: 0.9, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 5, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.yoplait.com/products/original-single-serve-strawberry/",
     verifiedAt: "2026-11-08",
   },
@@ -65,6 +71,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Deli Meat Ingredient Check",
     ingredients:
       "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Vinegar, Salt, Cultured Dextrose, Sugar, Sodium Phosphates, Carrageenan, Caramel Color.",
+    nutrition: { caloriesKcal100g: 89, sugarsG100g: 1.8, saturatedFatG100g: 0, sodiumMg100g: 893, fiberG100g: 0, proteinG100g: 16.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.oscarmayer.com/product/00044700075036/deli-fresh-oven-roasted-turkey-breast-sliced-lunch-meat",
     verifiedAt: "2026-11-08",
   },
@@ -76,6 +83,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Condiment HFCS Check",
     ingredients:
       "Tomato Concentrate from Red Ripe Tomatoes, Distilled Vinegar, High Fructose Corn Syrup, Corn Syrup, Salt, Spice, Onion Powder, Natural Flavoring.",
+    nutrition: { caloriesKcal100g: 118, sugarsG100g: 23.5, saturatedFatG100g: 0, sodiumMg100g: 941, fiberG100g: 0.3, proteinG100g: 1.0, fruitsVegNutsPct: 60, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.heinz.com/products/00013000006408-tomato-ketchup",
     verifiedAt: "2026-11-08",
   },
@@ -87,6 +95,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Seed Oil Creamer Check",
     ingredients:
       "Water, Sugar, Vegetable Oil (High Oleic Soybean or High Oleic Canola), and Less than 2% of Micellar Casein (a Milk Derivative), Mono- and Diglycerides, Dipotassium Phosphate, Natural and Artificial Flavor, Cellulose Gel, Cellulose Gum, Carrageenan.",
+    nutrition: { caloriesKcal100g: 300, sugarsG100g: 33.3, saturatedFatG100g: 6.7, sodiumMg100g: 33, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.goodnes.com/coffeemate/products/french-vanilla-liquid-coffee-creamer-32-oz-bottle/",
     verifiedAt: "2026-11-08",
   },
@@ -98,6 +107,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Red 40 Sports Drink Check",
     ingredients:
       "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
+    nutrition: { caloriesKcal100g: 22.5, sugarsG100g: 6.0, saturatedFatG100g: 0, sodiumMg100g: 45, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.gatorade.com/powders-and-liquids/gatorade-thirst-quencher/liquid/fruit-punch",
     verifiedAt: "2026-11-08",
   },
@@ -109,6 +119,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Kids Cereal Dye Check",
     ingredients:
       "Corn Flour Blend (Whole Grain Yellow Corn Flour, Degerminated Yellow Corn Flour), Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6.",
+    nutrition: { caloriesKcal100g: 385, sugarsG100g: 30.8, saturatedFatG100g: 1.3, sodiumMg100g: 538, fiberG100g: 5.1, proteinG100g: 5.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.wkkellogg.com/en-us/brands/froot-loops/froot-loops-cereal.html",
     verifiedAt: "2026-11-08",
   },
@@ -120,6 +131,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Cinnamon Cereal BHT & Seed Oil Check",
     ingredients:
       "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Caramel Color. BHT Added to Preserve Freshness.",
+    nutrition: { caloriesKcal100g: 415, sugarsG100g: 29.3, saturatedFatG100g: 1.2, sodiumMg100g: 561, fiberG100g: 4.9, proteinG100g: 4.9, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.cinnamontoastcrunch.com/products/cinnamon-toast-crunch",
     verifiedAt: "2026-11-08",
   },
@@ -131,6 +143,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "High-Sugar Spread Check",
     ingredients:
       "Sugar, Palm Oil, Hazelnuts, Skim Milk, Cocoa, Soy Lecithin as Emulsifier, Vanillin: An Artificial Flavor.",
+    nutrition: { caloriesKcal100g: 541, sugarsG100g: 56.8, saturatedFatG100g: 10.8, sodiumMg100g: 41, fiberG100g: 2.7, proteinG100g: 5.4, fruitsVegNutsPct: 13, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.nutella.com/us/en/inside-nutella/quality-and-ingredients",
     verifiedAt: "2026-11-08",
   },
@@ -142,6 +155,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "Top Ultraprocessed Cookie Search",
     ingredients:
       "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm or Canola Oil, Cocoa (Processed with Alkali), High Fructose Corn Syrup, Leavening (Baking Soda or Calcium Phosphate), Salt, Soy Lecithin, Chocolate, Artificial Flavor.",
+    nutrition: { caloriesKcal100g: 471, sugarsG100g: 41.2, saturatedFatG100g: 5.9, sodiumMg100g: 397, fiberG100g: 2.9, proteinG100g: 2.9, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.oreo.com/products/oreo-original",
     verifiedAt: "2026-11-08",
   },
@@ -153,6 +167,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "Popular Clean Chip Benchmark",
     ingredients:
       "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
+    nutrition: { caloriesKcal100g: 464, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 265, fiberG100g: 6.5, proteinG100g: 3.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://sietefoods.com/products/sea-salt-grain-free-tortilla-chips",
     verifiedAt: "2026-11-08",
   },
@@ -164,6 +179,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Frozen Breakfast Search",
     ingredients:
       "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1, Vitamin B2, Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Eggs, Salt, Whey, Soy Lecithin, Beta-Carotene for Color.",
+    nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 514, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.leggomyeggo.com/en_US/products/waffles/kelloggs-eggo-homestyle-product.html",
     verifiedAt: "2026-11-08",
   },
@@ -175,6 +191,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Toddler Snack Search",
     ingredients:
       "Made with Smiles and Enriched Wheat Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Cheddar Cheese ([Cultured Milk, Salt, Enzymes], Annatto), Vegetable Oils (Canola, Sunflower or Soybean), Salt, Contains 2% or Less of: Yeast, Sugar, Autolyzed Yeast Extract, Paprika, Spices, Celery, Onion Powder, Monocalcium Phosphate, Baking Soda.",
+    nutrition: { caloriesKcal100g: 467, sugarsG100g: 0, saturatedFatG100g: 3.3, sodiumMg100g: 833, fiberG100g: 3.3, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.pepperidgefarm.com/product/goldfish-cheddar-crackers/",
     verifiedAt: "2026-11-08",
   },
@@ -186,6 +203,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 School Lunchbox Search",
     ingredients:
       "Peanut Butter (Peanuts, Sugar, Contains 2% or Less of: Molasses, Fully Hydrogenated Vegetable Oils [Rapeseed and Soybean], Mono- and Diglycerides, Salt), Bread (Unbleached Enriched Flour [Wheat Flour, Malted Barley Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid], Water, Sugar, Soybean Oil, Salt, Yeast, Cultured Wheat Flour, Distilled Vinegar, Enzymes, Ascorbic Acid), Grape Spread (Sugar, Concord Grape Juice, Pectin, Citric Acid, Potassium Sorbate as Preservative, Sodium Citrate).",
+    nutrition: { caloriesKcal100g: 362, sugarsG100g: 17.2, saturatedFatG100g: 4.3, sodiumMg100g: 397, fiberG100g: 3.4, proteinG100g: 10.3, fruitsVegNutsPct: 30, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.uncrustables.com/sandwiches/peanut-butter-and-grape-jelly",
     verifiedAt: "2026-11-08",
   },
@@ -197,6 +215,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Boxed Mac & Cheese Search",
     ingredients:
       "Enriched Macaroni (Wheat Flour, Durum Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Salt, Milk Protein Concentrate, Sodium Triphosphate, Contains Less than 2% of Tapioca Flour, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, with Paprika, Turmeric, and Annatto Added for Color, Enzymes, Cheese Culture).",
+    nutrition: { caloriesKcal100g: 357, sugarsG100g: 10.0, saturatedFatG100g: 2.9, sodiumMg100g: 800, fiberG100g: 2.9, proteinG100g: 12.9, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.kraftmacandcheese.com/product/00021000658831/kraft-original-macaroni-cheese-dinner-7-25-oz-box",
     verifiedAt: "2026-11-08",
   },
@@ -208,6 +227,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Kids Juice Pouch Search",
     ingredients:
       "Water, Sugar, Pear and Grape Juice Concentrate, Citric Acid, Strawberry and Kiwi Juice Concentrate, Natural Flavor.",
+    nutrition: { caloriesKcal100g: 28, sugarsG100g: 7.3, saturatedFatG100g: 0, sodiumMg100g: 8, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 10, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.myfoodandfamily.com/brands/capri-sun/product/00087684001059",
     verifiedAt: "2026-11-08",
   },
@@ -219,6 +239,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Zero Sugar Energy Drink Search",
     ingredients:
       "Carbonated Water, Citric Acid, Erythritol, Taurine, Sodium Citrate, Panax Ginseng Flavor, Natural and Artificial Flavors, L-Carnitine L-Tartrate, Potassium Sorbate, Caffeine, Sucralose, Sorbic Acid, Acesulfame Potassium, Niacinamide, D-Calcium Pantothenate, Inositol, Pyridoxine Hydrochloride, Cyanocobalamin.",
+    nutrition: { caloriesKcal100g: 2.1, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 78, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/zero-sugar/zero-ultra/",
     verifiedAt: "2026-11-08",
   },
@@ -230,6 +251,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 RTD Protein Shake Search",
     ingredients:
       "Filtered Lowfat Grade A Milk, Alkalized Cocoa, Natural Flavors, Cellulose Gel, Cellulose Gum, Salt, Carrageenan, Acesulfame Potassium, Sucralose, Lactase Enzyme, Vitamin A Palmitate, Vitamin D3.",
+    nutrition: { caloriesKcal100g: 41, sugarsG100g: 1.2, saturatedFatG100g: 0.7, sodiumMg100g: 63, fiberG100g: 0.2, proteinG100g: 6.3, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://fairlife.com/core-power/chocolate-protein-shake-26g/",
     verifiedAt: "2026-11-08",
   },
@@ -241,6 +263,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "Top Fitness Energy Drink Search",
     ingredients:
       "Carbonated Filtered Water, Citric Acid, Taurine, Guarana Seed Extract, Green Tea Extract, Caffeine, Ascorbic Acid, Sucralose, Glucuronolactone, Ginger Root Extract, Calcium Pantothenate, Niacinamide, Beta-Carotene for Color, Natural Flavor, Pyridoxine Hydrochloride, Riboflavin, Chromium Chelate, Biotin, Cyanocobalamin.",
+    nutrition: { caloriesKcal100g: 2.8, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 1.4, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.celsius.com/products/celsius/sparkling-orange/",
     verifiedAt: "2026-11-08",
   },
@@ -252,6 +275,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Red 40 Spicy Chip Search",
     ingredients:
       "Corn Masa Flour (Processed with Lime), Vegetable Oil (Palm or Soybean or Canola or Rice Bran Oil), Seasoning (Salt, Maltodextrin, Citric Acid, Sugar, Monosodium Glutamate, Hydrolyzed Soy Protein, Onion Powder, Yeast Extract, Red 40 Lake, Yellow 6 Lake, Natural and Artificial Flavors, Baking Soda, Soybean Oil, Chili Pepper, Disodium Inosinate, Disodium Guanylate, TBHQ).",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 3.6, saturatedFatG100g: 8.9, sodiumMg100g: 1464, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.barcel-usa.com/takis-fuego",
     verifiedAt: "2026-11-08",
   },
@@ -263,6 +287,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Frozen French Fry Seed Oil Check",
     ingredients:
       "Potatoes, Vegetable Oil (Soybean, Canola, or Cottonseed Oils), Disodium Dihydrogen Pyrophosphate (to Retain Natural Color), Dextrose.",
+    nutrition: { caloriesKcal100g: 155, sugarsG100g: 0.5, saturatedFatG100g: 0.8, sodiumMg100g: 345, fiberG100g: 2.4, proteinG100g: 2.4, fruitsVegNutsPct: 80, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.oreida.com/product/00013120000836/golden-crinkles-french-fried-potatoes",
     verifiedAt: "2026-11-08",
   },
@@ -274,6 +299,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Hydrogenated Oil Peanut Butter Check",
     ingredients:
       "Roasted Peanuts, Sugar, Hydrogenated Vegetable Oil (Cottonseed, Soybean and Rapeseed Oil) to Prevent Separation, Salt.",
+    nutrition: { caloriesKcal100g: 594, sugarsG100g: 9.4, saturatedFatG100g: 10.9, sodiumMg100g: 469, fiberG100g: 6.3, proteinG100g: 21.9, fruitsVegNutsPct: 85, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.peanutbutter.com/products/skippy-creamy-peanut-butter",
     verifiedAt: "2026-11-08",
   },
@@ -285,6 +311,7 @@ export const SEO_PRODUCTS: SeoProductEntry[] = [
     searchVolumeTag: "#1 Jarred Pasta Sauce Canola Check",
     ingredients:
       "Tomato Puree (Water, Tomato Paste), Diced Tomatoes in Tomato Juice, Sugar, Canola Oil, Contains Less than 1% of: Salt, Dehydrated Onions, Spices, Citric Acid, Dehydrated Garlic, Onion Extract, Natural Flavoring.",
+    nutrition: { caloriesKcal100g: 56, sugarsG100g: 8.0, saturatedFatG100g: 0.4, sodiumMg100g: 384, fiberG100g: 2.4, proteinG100g: 1.6, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.campbells.com/prego/products/traditional-italian-sauce/",
     verifiedAt: "2026-11-08",
   },
@@ -301,8 +328,14 @@ export function evaluateSeoProduct(
   entry: SeoProductEntry,
   store: RetailerId = "walmart",
 ): EvaluatedSeoProduct {
+  const fullTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
+    ? entry.title
+    : `${entry.brand} ${entry.title}`;
+  const isOrganic = Boolean(entry.isOrganic || entry.nutrition?.isOrganic);
   const result = scoreProductYuka(entry.ingredients, {}, [], {
-    productTitle: `${entry.brand} ${entry.title}`,
+    ...entry.nutrition,
+    productTitle: fullTitle,
+    isOrganic,
   });
   const swap = resolveSwap({
     productTitle: entry.title,
