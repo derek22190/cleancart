@@ -61,10 +61,20 @@ jobs:
         run: |
           chmod +x ./gradlew
           API_BASE="${{ vars.CLEANCART_API_BASE }}"
+          set +e
           if [ -n "$API_BASE" ]; then
-            ./gradlew assembleRelease bundleRelease --stacktrace -PcleancartApiBase="$API_BASE"
+            ./gradlew assembleRelease bundleRelease --stacktrace -PcleancartApiBase="$API_BASE" 2>&1 | tee gradle-build.log
+            STATUS=${PIPESTATUS[0]}
           else
-            ./gradlew assembleRelease bundleRelease --stacktrace
+            ./gradlew assembleRelease bundleRelease --stacktrace 2>&1 | tee gradle-build.log
+            STATUS=${PIPESTATUS[0]}
+          fi
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            grep -E "(^e: |FAILURE:|What went wrong:|^\* |> Task .* FAILED|Error:)" gradle-build.log | head -n 25 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit "$STATUS"
           fi
           cp app/build/outputs/apk/release/app-release.apk cleancart-release.apk
 
