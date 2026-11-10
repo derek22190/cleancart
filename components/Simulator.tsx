@@ -472,12 +472,13 @@ export default function Simulator() {
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
+        const onboardingDone = window.localStorage.getItem("heybroc_onboarding_done") === "1";
         if (params.get("login") === "1") {
           setAuthOpen(true);
-        } else if (params.get("onboarding") === "1") {
-          setWatchlistFunnelOpen(true);
         } else if (params.get("upgrade") === "1") {
           setPaywallOpen(true);
+        } else if (params.get("onboarding") === "1" || (!onboardingDone && !params.get("session_id"))) {
+          setWatchlistFunnelOpen(true);
         }
 
         // Restore authenticated user session if present
@@ -2897,6 +2898,25 @@ export default function Simulator() {
           }
           setWatchlistFunnelOpen(false);
           setAuthOpen(true);
+        }}
+        onApplyAndStartTrial={(selected) => {
+          setFamilyWatchlist(selected);
+          setWatch((prev) => {
+            const next = { ...prev };
+            for (const c of ALL_CATEGORIES) {
+              next[c] = selected.includes(c) ? true : prev[c];
+            }
+            return next;
+          });
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              "heybroc_family_watchlist",
+              JSON.stringify(selected)
+            );
+            window.localStorage.setItem("heybroc_onboarding_done", "1");
+          }
+          setWatchlistFunnelOpen(false);
+          setPaywallOpen(true);
         }}
       />
 

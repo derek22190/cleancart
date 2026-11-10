@@ -1807,6 +1807,23 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const watchlistFunnelSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+  check(
+    "4-Step Onboarding Funnel (Goals -> Problem -> Solution -> Personalized Plan / Free Trial + Free Plan) on Web & Android",
+    Boolean(
+      watchlistFunnelSrc.includes("What are your clean-eating goals?") &&
+        watchlistFunnelSrc.includes("See How HeyBroc Solves This") &&
+        watchlistFunnelSrc.includes("How HeyBroc Protects Your Cart in 1 Second") &&
+        watchlistFunnelSrc.includes("Choose How You Want to Start") &&
+        watchlistFunnelSrc.includes("onApplyAndStartTrial") &&
+        watchlistFunnelSrc.includes("Continue with Free Plan") &&
+        mainActivityKtSrc.includes("fun showOnboardingFunnelDialog()") &&
+        mainActivityKtSrc.includes("onboarding_funnel_done_v1") &&
+        mainActivityKtSrc.includes("Start 7-Day Free Pro Trial ($0 Today)") &&
+        mainActivityKtSrc.includes("Continue with Free Plan (Unlimited Scans)")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
