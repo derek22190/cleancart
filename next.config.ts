@@ -4,6 +4,15 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "images.openfoodfacts.org" }],
   },
+  async redirects() {
+    return [
+      {
+        source: "/login",
+        destination: "/?login=1",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

@@ -1470,7 +1470,7 @@ class MainActivity : Activity() {
             val portalUrl = ScanApi.billingPortalUrl(this@MainActivity)
             mainHandler.post {
                 if (isDestroyed || isFinishing) return@post
-                val targetUrl = portalUrl ?: "https://www.heybroc.com/login"
+                val targetUrl = portalUrl ?: "https://www.heybroc.com/?login=1"
                 runCatching {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
                 }

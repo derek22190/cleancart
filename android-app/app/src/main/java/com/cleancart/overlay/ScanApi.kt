@@ -189,7 +189,8 @@ object ScanApi {
     fun swapsRemaining(ctx: Context): Int {
         if (isProActive(ctx)) return Int.MAX_VALUE
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceIn(0, DEFAULT_FREE_WEEKLY_SWAPS)
+        val limit = weeklySwapsLimit(ctx)
+        return prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceIn(0, limit)
     }
 
     fun canUseSwap(ctx: Context): Boolean {
@@ -225,7 +226,8 @@ object ScanApi {
         normalizeSwapKey(swapTitle).takeIf { it.isNotBlank() }?.let { nextUnlocked.add(it) }
         val editor = prefs.edit().putStringSet(KEY_UNLOCKED_SWAP_PRODUCTS, nextUnlocked)
         if (!isProActive(appCtx) && !alreadyUnlocked) {
-            val current = prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceIn(0, DEFAULT_FREE_WEEKLY_SWAPS)
+            val limit = weeklySwapsLimit(appCtx)
+            val current = prefs.getInt(KEY_SWAPS_REMAINING, DEFAULT_FREE_WEEKLY_SWAPS).coerceIn(0, limit)
             editor.putInt(KEY_SWAPS_REMAINING, (current - 1).coerceAtLeast(0))
         }
         editor.apply()

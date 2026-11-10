@@ -518,7 +518,12 @@ export default function Paywall({
           {codeError && <p className="error">{codeError}</p>}
           {appliedCreator && (
             <div id="creator-applied-badge" className="creator-confirm">
-              <span>✓ Code <b>{appliedCreator.code}</b> Applied: Extended {PRICING.creatorTrialDays}-Day Free Trial Unlocked!</span>
+              <span>
+                ✓ Code <b>{appliedCreator.code}</b> Applied:{" "}
+                {appliedCreator.code.startsWith("BROC-")
+                  ? `Extended ${PRICING.creatorTrialDays}-Day Free Trial + 7 Free Pro Days for you & your friend!`
+                  : `Extended ${PRICING.creatorTrialDays}-Day Free Trial Unlocked!`}
+              </span>
             </div>
           )}
         </div>

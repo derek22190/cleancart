@@ -108,13 +108,13 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   origin: "preset",
 });
 
-const cleanToProduct = (cat: SwapCategory, replacedItem?: Product): Product => {
+const cleanToProduct = (cat: SwapCategory, replacedItem?: Product, store?: Store): Product => {
   const alt = replacedItem
-    ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat)
-    : CLEAN_ALTERNATIVES[cat];
+    ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat, store)
+    : resolveCleanAlternative("", cat, store);
   const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
   return {
-    key: replacedItem ? `clean-${cat}-${replacedItem.key}` : `clean-${cat}`,
+    key: replacedItem ? `clean-${cat}-${replacedItem.key}-${store || "default"}` : `clean-${cat}-${store || "default"}`,
     title: alt.name,
     brand: alt.brand,
     size: alt.size,
@@ -422,6 +422,7 @@ export default function Simulator() {
   // Paywall & Influencer Engine state
   const [scanCount, setScanCount] = useState(1);
   const [swapsUsedThisWeek, setSwapsUsedThisWeek] = useState(0);
+  const [weeklySwapLimit, setWeeklySwapLimit] = useState(FREE_SCAN_LIMIT);
   const [courtesyRefillAvailable, setCourtesyRefillAvailable] = useState(true);
   const [personalReferralCode, setPersonalReferralCode] = useState("BROC-7F4A2");
   const [isPro, setIsPro] = useState(false);
@@ -515,15 +516,6 @@ export default function Simulator() {
           : /^BROC-[A-Z0-9]{4,10}$/.test(rawCodeParam)
             ? rawCodeParam
             : "";
-        if (friendRefParam) {
-          window.localStorage.setItem("heybroc_referred_by", friendRefParam);
-          if (!cancelled) {
-            setAppliedCreator({
-              code: friendRefParam,
-              name: "Friend Referral (+7 Days Free Pro)",
-            });
-          }
-        }
 
         // Resolve creator promo code from ?code=, non-BROC ?ref=, or localStorage
         const urlCreatorCandidate =
@@ -576,20 +568,21 @@ export default function Simulator() {
                 body: `${verifiedCreator.name} unlocked your 14-Day Extended Free Pro Trial!`,
               });
             }
+          } else if (!cancelled && creatorRes && creatorRes.status === 404) {
+            if (!urlCreatorCandidate && storedCreatorCandidate) {
+              window.localStorage.removeItem("cleancart_creator_v1");
+            }
           }
         }
 
         const storedRef = (window.localStorage.getItem("heybroc_referred_by") || "").trim().toUpperCase();
         const validStoredFriendRef = /^BROC-[A-Z0-9]{4,10}$/.test(storedRef) ? storedRef : "";
-        if (!friendRefParam && validStoredFriendRef && !creatorCandidate && !cancelled) {
-          setAppliedCreator({
-            code: validStoredFriendRef,
-            name: "Friend Referral (+7 Days Free Pro)",
-          });
-        }
         const refRes = await fetch("/api/referral", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(deviceSecret ? { "X-Device-Secret": deviceSecret } : {}),
+          },
           body: JSON.stringify({
             action: friendRefParam ? "claim" : "status",
             deviceId,
@@ -602,13 +595,28 @@ export default function Simulator() {
           message?: string;
           entitlement?: {
             referralCode?: string;
+            referredByCode?: string | null;
             isProActive?: boolean;
             weeklySwapsUsedCount?: number;
+            freeWeeklySwaps?: number;
+            weeklySwapsLimit?: number;
+            courtesyRefillAvailable?: boolean;
           };
         } | null;
 
         if (!cancelled && typeof refData?.entitlement?.weeklySwapsUsedCount === "number") {
           setSwapsUsedThisWeek(refData.entitlement.weeklySwapsUsedCount);
+        }
+        if (
+          !cancelled &&
+          typeof (refData?.entitlement?.freeWeeklySwaps ?? refData?.entitlement?.weeklySwapsLimit) === "number"
+        ) {
+          setWeeklySwapLimit(
+            (refData?.entitlement?.freeWeeklySwaps ?? refData?.entitlement?.weeklySwapsLimit) || FREE_SCAN_LIMIT
+          );
+        }
+        if (!cancelled && typeof refData?.entitlement?.courtesyRefillAvailable === "boolean") {
+          setCourtesyRefillAvailable(refData.entitlement.courtesyRefillAvailable);
         }
 
         if (!cancelled && refData?.entitlement?.referralCode) {
@@ -621,11 +629,39 @@ export default function Simulator() {
           }
         }
 
-        if (!cancelled && friendRefParam && refData?.ok) {
-          setToast({
-            title: `🎁 Friend Invite Saved (${friendRefParam})`,
-            body: refData.message || "Invite saved! Start a trial to unlock +7 Free Pro Days for both of you.",
-          });
+        if (!cancelled && friendRefParam) {
+          if (refData?.ok) {
+            window.localStorage.setItem("heybroc_referred_by", friendRefParam);
+            setAppliedCreator({
+              code: friendRefParam,
+              name: "Friend Referral (+7 Days Free Pro)",
+            });
+            setToast({
+              title: `🎁 Friend Invite Saved (${friendRefParam})`,
+              body: refData.message || "Invite saved! Start a trial to unlock +7 Free Pro Days for both of you.",
+            });
+          } else {
+            window.localStorage.removeItem("heybroc_referred_by");
+            setToast({
+              title: "Referral Code Not Applied",
+              body: refData?.message || "Invalid or expired friend referral code.",
+            });
+          }
+        } else if (!cancelled && !friendRefParam && validStoredFriendRef && !creatorCandidate) {
+          const serverReferredBy = refData?.entitlement?.referredByCode;
+          if (serverReferredBy && serverReferredBy === validStoredFriendRef) {
+            setAppliedCreator({
+              code: validStoredFriendRef,
+              name: "Friend Referral (+7 Days Free Pro)",
+            });
+          } else if (refData?.entitlement && !serverReferredBy) {
+            window.localStorage.removeItem("heybroc_referred_by");
+          } else {
+            setAppliedCreator({
+              code: validStoredFriendRef,
+              name: "Friend Referral (+7 Days Free Pro)",
+            });
+          }
         }
 
         const urlSessionId = (params.get("session_id") || "").trim();
@@ -843,12 +879,12 @@ export default function Simulator() {
   /** Inspects the Clean Swap item when the user clicks its photo or title inside Health Insights. */
   const inspectCleanSwap = useCallback(
     (cat: SwapCategory, replaced?: Product) => {
-      if (!isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT) {
+      if (!isPro && swapsUsedThisWeek >= weeklySwapLimit) {
         setPaywallOpen(true);
         return;
       }
       const target = replaced ?? (active.origin !== "swap" ? active : previousDirtyItem ?? undefined);
-      const clean = cleanToProduct(cat, target);
+      const clean = cleanToProduct(cat, target, store);
       if (active.origin !== "swap") {
         setPreviousDirtyItem(active);
       }
@@ -863,7 +899,7 @@ export default function Simulator() {
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [active, previousDirtyItem, isPro, swapsUsedThisWeek],
+    [active, previousDirtyItem, isPro, swapsUsedThisWeek, weeklySwapLimit, store],
   );
 
   const triggerClimbFlash = useCallback(() => {
@@ -936,7 +972,7 @@ export default function Simulator() {
   /* ---------------- Swap (single item or from auditor) ---------------- */
   const swapCartItem = useCallback(
     (targetItem: Product) => {
-      const weeklyAllowance = FREE_SCAN_LIMIT;
+      const weeklyAllowance = weeklySwapLimit;
       if (!isPro && swapsUsedThisWeek >= weeklyAllowance) {
         setPaywallOpen(true);
         return;
@@ -976,7 +1012,7 @@ export default function Simulator() {
           }),
         }).catch(() => {});
       }
-      const clean = cleanToProduct(targetSwap.category, targetItem);
+      const clean = cleanToProduct(targetSwap.category, targetItem, store);
       setPreviousDirtyItem(targetItem);
       setActive(clean);
       setViewMode("product");
@@ -992,7 +1028,7 @@ export default function Simulator() {
         isPaidLink: targetSwap.isPaidLink,
       });
     },
-    [watch, familyWatchlist, store, isPro, swapsUsedThisWeek, courtesyRefillAvailable],
+    [watch, familyWatchlist, store, isPro, swapsUsedThisWeek, weeklySwapLimit],
   );
 
   const doSwap = useCallback(() => {
@@ -1136,7 +1172,7 @@ export default function Simulator() {
   const swapAll = useCallback(() => {
     const n = dirty.length;
     if (n === 0) return;
-    const weeklyAllowance = FREE_SCAN_LIMIT;
+    const weeklyAllowance = weeklySwapLimit;
     if (!isPro && swapsUsedThisWeek + n > weeklyAllowance) {
       setPaywallOpen(true);
       return;
@@ -1171,7 +1207,7 @@ export default function Simulator() {
     setSwapHistory((prev) => [...records, ...prev]);
     const nextCart = cart.map((item) => {
       const hit = dirty.find((d) => d.item.key === item.key);
-      return hit?.sw ? cleanToProduct(hit.sw.category, item) : item;
+      return hit?.sw ? cleanToProduct(hit.sw.category, item, store) : item;
     });
     setCart(nextCart);
     const nextAvg = nextCart.length
@@ -1185,13 +1221,13 @@ export default function Simulator() {
         )
       : 0;
     const replaced = dirty.find((d) => d.item.key === active.key);
-    if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category, replaced.item));
+    if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category, replaced.item, store));
     triggerClimbFlash();
     setToast({
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
       body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, cart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, courtesyRefillAvailable]);
+  }, [dirty, cart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit]);
 
   const resetCartPresets = useCallback(() => {
     setCart(PRESETS.map(presetToProduct));
@@ -1286,11 +1322,11 @@ export default function Simulator() {
   const aisleItems = useMemo<Product[]>(
     () => [
       ...PRESETS.map(presetToProduct),
-      cleanToProduct("Yogurt"),
-      cleanToProduct("Crackers"),
-      cleanToProduct("Dressings"),
+      cleanToProduct("Yogurt", undefined, store),
+      cleanToProduct("Crackers", undefined, store),
+      cleanToProduct("Dressings", undefined, store),
     ],
-    [],
+    [store],
   );
 
   /* ---------------- Render ---------------- */
@@ -1905,7 +1941,7 @@ export default function Simulator() {
 
                           {/* 1-Tap Clean Swap Banner right at top when dirty */}
                           {swap ? (
-                            !isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT ? (
+                            !isPro && swapsUsedThisWeek >= weeklySwapLimit ? (
                               <div className="swap">
                                 <button
                                   id="inspect-clean-swap"
@@ -1918,7 +1954,7 @@ export default function Simulator() {
                                       🔒 Clean Swap Locked · {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
                                     </span>
                                     <b>{swap.score}/100 Clean Replacement Available</b>
-                                    <span className="swap-score">All {FREE_SCAN_LIMIT} free weekly Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
+                                    <span className="swap-score">All {weeklySwapLimit} free weekly Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
                                   </div>
                                 </button>
                                 <button id="swap-item" className="swap-btn" onClick={() => setPaywallOpen(true)}>
@@ -1933,7 +1969,7 @@ export default function Simulator() {
                                   className="swap-info swap-info--btn"
                                   onClick={() => inspectCleanSwap(swap.category, active)}
                                 >
-                                  <ProductArt product={cleanToProduct(swap.category, active)} className="swap-art" showAttribution />
+                                  <ProductArt product={cleanToProduct(swap.category, active, store)} className="swap-art" showAttribution />
                                   <div className="swap-info-copy">
                                     <span className="eyebrow eyebrow--green">1-Tap Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}</span>
                                     <b>{swap.title}</b>
@@ -2246,7 +2282,7 @@ export default function Simulator() {
                             {PRESETS.map((p) => {
                               const dirtyProd = presetToProduct(p);
                               const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
-                              const cleanProd = cleanToProduct(p.category, dirtyProd);
+                              const cleanProd = cleanToProduct(p.category, dirtyProd, store);
                               const cleanScore = gradeProduct(
                                 `${cleanProd.brand} ${cleanProd.title}`,
                                 cleanProd.ingredients,
@@ -2520,7 +2556,7 @@ export default function Simulator() {
                               <small>
                                 {item.brand}
                                 {sw
-                                  ? !isPro && swapsUsedThisWeek >= FREE_SCAN_LIMIT
+                                  ? !isPro && swapsUsedThisWeek >= weeklySwapLimit
                                     ? ` · 🔒 ${sw.score}/100 Clean Swap available`
                                     : ` · Tap to inspect or swap → ${sw.brand}`
                                   : " · Tap to inspect"}
@@ -2903,7 +2939,7 @@ export default function Simulator() {
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         scanCount={swapsUsedThisWeek}
-        freeScanLimit={FREE_SCAN_LIMIT}
+        freeScanLimit={weeklySwapLimit}
         appliedCreator={appliedCreator}
         onCreatorApplied={(c) => {
           setAppliedCreator(c);
@@ -2925,7 +2961,10 @@ export default function Simulator() {
             const devSecret = window.localStorage.getItem("heybroc_device_secret") || undefined;
             void fetch("/api/referral", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+              },
               body: JSON.stringify({
                 action: "courtesy_refill",
                 deviceId: devId,
@@ -2934,6 +2973,7 @@ export default function Simulator() {
             }).catch(() => {});
           }
           setCourtesyRefillAvailable(false);
+          setWeeklySwapLimit((prev) => Math.max(prev, FREE_SCAN_LIMIT + 3));
           setPaywallOpen(false);
           setToast({
             title: "✓ +3 Free Courtesy Swaps Added!",

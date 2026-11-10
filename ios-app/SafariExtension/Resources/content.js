@@ -307,9 +307,10 @@
       .join("");
     const swapPaidSuffix = d.swap?.isPaidLink ? " · paid link" : "";
     const swapRatingLabel = d.swap ? (Number(d.swap.score) >= 75 ? "Excellent" : Number(d.swap.score) >= 50 ? "Good" : "Mediocre") : "";
+    const swapLocked = Boolean(d.swap && !d.swap.webUrl);
     const swap = d.swap
-      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}${swapPaidSuffix}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 ${swapRatingLabel}</span></div>
-           <button class="cc-swap-btn" data-act="swap">Swap Item${swapPaidSuffix}</button></div>`
+      ? `<div class="cc-swap"><div><span class="cc-eyebrow cc-green">${swapLocked ? "🔒 Clean Swap Locked" : `Clean Swap · ${state.cartItems.length ? `Cart Avg ${avg}/100` : "Ingredient Pick"}`}${swapLocked ? "" : swapPaidSuffix}</span><b>${esc(d.swap.title)}</b><span class="cc-swap-score">${esc(d.swap.score)}/100 ${swapRatingLabel}${swapLocked ? " · All free weekly swaps used" : ""}</span></div>
+           <button class="cc-swap-btn" data-act="swap">${swapLocked ? "⚡ Unlock Pro ↗" : `Swap Item${swapPaidSuffix}`}</button></div>`
       : `<div class="cc-swap cc-swap-ok">Great pick — no swap needed.</div>`;
     const srcKey = d.lookup?.origin || d.lookup?.source || d.product?.origin || d.product?.source || "catalog";
     const srcName = srcKey === "screen" ? "Store page ingredients"
@@ -422,8 +423,17 @@
       const idx = Number(swapIdxBtn.dataset.swapIdx);
       const item = state.cartItems[idx];
       if (item) {
+        if (!item.swapUrl) {
+          window.open("https://www.heybroc.com/?upgrade=1", "_blank", "noopener");
+          return;
+        }
         state.pendingSwap = { fromKey: item.key, toTitle: item.swapTitle };
-        if (item.swapUrl) window.open(item.swapUrl, "_blank", "noopener");
+        try {
+          chrome.runtime.sendMessage({ type: "CLEANCART_RECORD_SWAP", productKey: item.key });
+        } catch {
+          /* ignore */
+        }
+        window.open(item.swapUrl, "_blank", "noopener");
       }
       return;
     }
@@ -438,6 +448,10 @@
       render();
     }
     if (act === "swap" && state.data?.swap) {
+      if (!state.data.swap.webUrl) {
+        window.open("https://www.heybroc.com/?upgrade=1", "_blank", "noopener");
+        return;
+      }
       // Affiliate link is ONLY opened on this explicit user tap.
       // Do NOT mutate cartItems until the next screen scan or Add-to-Cart detects the swap item in cart.
       const currentKey = state.data.product?.title || readTitle();
@@ -447,7 +461,7 @@
       } catch {
         /* ignore */
       }
-      if (state.data.swap.webUrl) window.open(state.data.swap.webUrl, "_blank", "noopener");
+      window.open(state.data.swap.webUrl, "_blank", "noopener");
       state.expanded = false;
       render();
     }
@@ -455,6 +469,11 @@
       const firstDirty = state.cartItems.find((i) => i.score < 75 && i.swapUrl);
       if (firstDirty) {
         state.pendingSwap = { fromKey: firstDirty.key, toTitle: firstDirty.swapTitle };
+        try {
+          chrome.runtime.sendMessage({ type: "CLEANCART_RECORD_SWAP", productKey: firstDirty.key });
+        } catch {
+          /* ignore */
+        }
         window.open(firstDirty.swapUrl, "_blank", "noopener");
       }
     }

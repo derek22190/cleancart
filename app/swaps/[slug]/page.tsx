@@ -184,7 +184,9 @@ export default async function SwapReportPage({
                       textDecoration: "none",
                     }}
                   >
-                    Shop on {r.label} ↗{storeSwap.isPaidLink ? " · paid link" : ""}
+                    Shop on {r.label}
+                    {storeSwap.brand !== swap.brand ? ` (${storeSwap.brand})` : ""} ↗
+                    {storeSwap.isPaidLink ? " · paid link" : ""}
                   </a>
                 );
               })}

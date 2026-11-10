@@ -221,8 +221,8 @@ export default function InfluencerEngine({
             <strong>{totals.trials}</strong>
           </div>
           <div className="kpi-box">
-            <span>Paid Annual ($49.99)</span>
-            <strong>{totals.paidAnnual}</strong>
+            <span>Paid Subscriptions</span>
+            <strong>{totals.paidAnnual + totals.paidMonthly}</strong>
           </div>
           <div className="kpi-box kpi-box--warn">
             <span>Creator Commission Owed</span>
@@ -285,7 +285,7 @@ export default function InfluencerEngine({
                 <th>Split</th>
                 <th>Clicks</th>
                 <th>Trials</th>
-                <th>Paid ($49.99)</th>
+                <th>Paid Subs</th>
                 <th>Creator Owed</th>
                 <th>My Net Rev</th>
                 <th>Simulate / Test</th>
@@ -316,7 +316,10 @@ export default function InfluencerEngine({
                     </td>
                     <td>{c.clicks}</td>
                     <td>{c.trials}</td>
-                    <td>{c.paidAnnual}</td>
+                    <td>
+                      {c.paidAnnual}
+                      {c.paidMonthly ? <small className="creator-sub">+{c.paidMonthly} mo</small> : null}
+                    </td>
                     <td className="num-warn">{usd(c.commissionOwed)}</td>
                     <td className="num-brand">{usd(c.netRevenue)}</td>
                     <td>

@@ -1439,7 +1439,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     recordStripeCreatorRefundOnce,
   } = await import("../lib/influencers");
 
-  const reauditDev = await getOrCreateDevice("dev_reaudit_friend_1", "secret_reaudit_12345");
+  const runSuffix = Date.now().toString(36).toUpperCase();
+  const reauditDev = await getOrCreateDevice(`dev_reaudit_friend_${runSuffix}`, "secret_reaudit_12345");
   const invalidClaimRes = await applyOrActivateReferral({
     deviceId: reauditDev.deviceId,
     deviceSecret: "secret_reaudit_12345",
@@ -1452,12 +1453,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     referralCode: reauditDev.referralCode,
     activateNow: false,
   });
-  await ensureReferralCodeRegistered("BROC-AUTH7777", "user:usr_reaudit_777");
-  const validUserCode = await isValidReferralCode("BROC-AUTH7777");
+  const authRefCode = `BROC-AU${runSuffix.replace(/[^A-Z0-9]/g, "2").slice(-6).padStart(6, "2")}`;
+  await ensureReferralCodeRegistered(authRefCode, `user:usr_reaudit_${runSuffix}`);
+  const validUserCode = await isValidReferralCode(authRefCode);
   const validClaimRes = await applyOrActivateReferral({
     deviceId: reauditDev.deviceId,
     deviceSecret: "secret_reaudit_12345",
-    referralCode: "BROC-AUTH7777",
+    referralCode: authRefCode,
     activateNow: false,
   });
   const validActivateRes = await applyOrActivateReferral({
@@ -1465,10 +1467,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     activateNow: true,
   });
 
-  await createCreator({ code: "REAUDIT25", name: "Reaudit Creator", commissionPct: 25 });
-  await recordStripeCreatorConversionOnce("inv_reaudit_1", "REAUDIT25", "paid_annual", 49.99);
-  const afterRefund1 = await recordStripeCreatorRefundOnce("ref_reaudit_1", "REAUDIT25", "annual", 49.99);
-  const afterRefund2 = await recordStripeCreatorRefundOnce("ref_reaudit_2", "REAUDIT25", "annual", 49.99);
+  const reauditCreatorCode = `REAUDIT_${runSuffix}`;
+  await createCreator({ code: reauditCreatorCode, name: "Reaudit Creator", commissionPct: 25 });
+  await recordStripeCreatorConversionOnce(`inv_reaudit_${runSuffix}`, reauditCreatorCode, "paid_annual", 49.99);
+  const afterRefund1 = await recordStripeCreatorRefundOnce(`ref_reaudit_1_${runSuffix}`, reauditCreatorCode, "annual", 49.99);
+  const afterRefund2 = await recordStripeCreatorRefundOnce(`ref_reaudit_2_${runSuffix}`, reauditCreatorCode, "annual", 49.99);
 
   check(
     "Affiliate Links, Creator Promo Codes, Friend Referrals & Stripe/RevenueCat Audit Verification",
@@ -1556,7 +1559,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
-  const { STORE_SPECIFIC_OVERRIDES } = await import("../lib/swaps");
+  const { STORE_SPECIFIC_OVERRIDES, resolveCleanAlternative } = await import("../lib/swaps");
   const allStoreOverrides = Object.values(STORE_SPECIFIC_OVERRIDES)
     .flatMap((rules) => (rules ?? []).map((r) => r.alt));
   const samsButterSwap = resolveSwap({
@@ -1643,6 +1646,50 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         walmartBreadSwap.deepLink === "https://www.walmart.com/ip/45804393" &&
         walmartOatMilkSwap?.brand === "Califia Farms" &&
         walmartOatMilkSwap.deepLink === "https://www.walmart.com/ip/269553533"
+    )
+  );
+
+  let brocCreatorBlocked = false;
+  try {
+    await createCreator({ code: "BROCRESERVED", name: "Reserved Test" });
+  } catch {
+    brocCreatorBlocked = true;
+  }
+  const selfDev = await getOrCreateDevice("test-audit5-self-dev");
+  const selfApply = await applyOrActivateReferral({
+    deviceId: "test-audit5-self-dev",
+    referralCode: selfDev.referralCode,
+  });
+  const invalidApply = await applyOrActivateReferral({
+    deviceId: "test-audit5-self-dev",
+    referralCode: "BROC-ZZZZ9999",
+  });
+  const nextConfigSrc = fs.readFileSync("next.config.ts", "utf8");
+  const mainActivityKtSrc = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+    "utf8"
+  );
+  const chromePopupHtml = fs.readFileSync("chrome-extension/popup.html", "utf8");
+  const iosPopupHtml = fs.readFileSync(
+    "ios-app/SafariExtension/Resources/popup.html",
+    "utf8"
+  );
+
+  check(
+    "Audit Pass 3–5 hardening: createCreator reserves BROC prefix, applyOrActivateReferral rejects self/invalid codes with ok:false, store-aware resolveCleanAlternative, /login redirect, and ScanApi weeklySwapsLimit clamping",
+    Boolean(
+      brocCreatorBlocked &&
+        selfApply.ok === false &&
+        invalidApply.ok === false &&
+        resolveCleanAlternative("Country Crock Original Spread", "Butter/Dairy", "costco").brand ===
+          "Kirkland Signature" &&
+        nextConfigSrc.includes('source: "/login"') &&
+        nextConfigSrc.includes('destination: "/?login=1"') &&
+        !mainActivityKtSrc.includes("https://www.heybroc.com/login") &&
+        !chromePopupHtml.includes("https://www.heybroc.com/login") &&
+        !iosPopupHtml.includes("https://www.heybroc.com/login") &&
+        scanApiKt.includes("val limit = weeklySwapsLimit(ctx)") &&
+        scanApiKt.includes("val limit = weeklySwapsLimit(appCtx)")
     )
   );
 

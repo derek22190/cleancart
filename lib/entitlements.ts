@@ -528,6 +528,25 @@ export async function verifyStripeCheckoutSession(
     };
 
     await saveEntitlement(record);
+    const targetDevice = sessionDeviceId || cleanDeviceId;
+    if (
+      record.active &&
+      creatorCode &&
+      /^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) &&
+      targetDevice &&
+      targetDevice !== "anon-web"
+    ) {
+      try {
+        const { applyOrActivateReferral } = await import("./referrals");
+        await applyOrActivateReferral({
+          deviceId: targetDevice,
+          referralCode: creatorCode,
+          activateNow: true,
+        });
+      } catch {
+        /* ignore referral activation errors on fallback path */
+      }
+    }
     return record;
   } catch {
     return null;

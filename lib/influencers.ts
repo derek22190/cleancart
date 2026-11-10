@@ -198,6 +198,9 @@ export async function createCreator(input: {
   if (code.length < 2) {
     throw new Error("Creator code must be at least 2 letters/numbers.");
   }
+  if (code.startsWith("BROC")) {
+    throw new Error("Codes starting with BROC are reserved for friend invite codes.");
+  }
 
   const existing = await getCreator(code);
   if (existing) {

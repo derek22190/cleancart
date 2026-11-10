@@ -86,10 +86,14 @@ export async function POST(req: NextRequest) {
       : "";
 
     let deviceReferredBy = "";
+    let ownReferralCode = "";
     if (deviceId && deviceId !== "anon-web" && deviceSecret) {
       const devRes = await getOrCreateDevice(deviceId, deviceSecret).catch(() => null);
+      if (devRes?.referralCode) {
+        ownReferralCode = devRes.referralCode.trim().toUpperCase();
+      }
       if (devRes?.referredByCode) {
-        deviceReferredBy = devRes.referredByCode;
+        deviceReferredBy = devRes.referredByCode.trim().toUpperCase();
       }
     }
 
@@ -109,6 +113,12 @@ export async function POST(req: NextRequest) {
 
     if (rawCreatorCode) {
       if (isFriendCodeFormat) {
+        if (ownReferralCode && rawCreatorCode === ownReferralCode) {
+          return NextResponse.json(
+            { ok: false, error: "You cannot use your own referral code." },
+            { status: 400 }
+          );
+        }
         const exists = await isValidReferralCode(rawCreatorCode);
         if (!exists) {
           return NextResponse.json(
@@ -127,7 +137,12 @@ export async function POST(req: NextRequest) {
         }
         verifiedCode = validCreator.code;
       }
-    } else if (deviceReferredBy && /^BROC-[A-Z0-9]{4,10}$/.test(deviceReferredBy)) {
+    } else if (
+      deviceReferredBy &&
+      /^BROC-[A-Z0-9]{4,10}$/.test(deviceReferredBy) &&
+      deviceReferredBy !== ownReferralCode &&
+      (await isValidReferralCode(deviceReferredBy))
+    ) {
       verifiedCode = deviceReferredBy;
     }
 

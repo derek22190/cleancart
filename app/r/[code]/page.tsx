@@ -15,6 +15,7 @@ export default function ReferralLandingPage({
   const isFriendInvite = /^BROC-[A-Z0-9]{4,10}$/.test(cleanCode);
   const [copied, setCopied] = useState(false);
   const [creatorName, setCreatorName] = useState<string | null>(null);
+  const [creatorNotFound, setCreatorNotFound] = useState(false);
 
   useEffect(() => {
     try {
@@ -28,6 +29,7 @@ export default function ReferralLandingPage({
         .then((data) => {
           if (cancelled) return;
           if (data?.ok && data?.creator?.code) {
+            setCreatorNotFound(false);
             setCreatorName(data.creator.name || data.creator.code);
             localStorage.setItem(
               "cleancart_creator_v1",
@@ -45,6 +47,9 @@ export default function ReferralLandingPage({
                 event: "click",
               }),
             }).catch(() => {});
+          } else {
+            setCreatorNotFound(true);
+            localStorage.removeItem("cleancart_creator_v1");
           }
         })
         .catch(() => {});
@@ -57,6 +62,7 @@ export default function ReferralLandingPage({
   }, [cleanCode, isFriendInvite]);
 
   const copyAndDownload = async () => {
+    if (creatorNotFound) return;
     try {
       await navigator.clipboard.writeText(cleanCode);
       setCopied(true);
@@ -117,7 +123,9 @@ export default function ReferralLandingPage({
         >
           {isFriendInvite
             ? "🎁 FRIEND INVITE · +7 FREE PRO DAYS"
-            : "🎉 CREATOR PARTNER · 14-DAY FREE PRO TRIAL"}
+            : creatorNotFound
+              ? "🥦 HEYBROC FAMILY PRO · 7-DAY FREE TRIAL"
+              : "🎉 CREATOR PARTNER · 14-DAY FREE PRO TRIAL"}
         </span>
         <h1
           style={{
@@ -129,7 +137,9 @@ export default function ReferralLandingPage({
         >
           {isFriendInvite
             ? "Your friend gifted you 7 Free Days of HeyBroc Pro!"
-            : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a 14-Day Free Trial of HeyBroc Pro!`}
+            : creatorNotFound
+              ? "Try HeyBroc Family Pro Free for 7 Days"
+              : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a 14-Day Free Trial of HeyBroc Pro!`}
         </h1>
         <p
           style={{
@@ -144,52 +154,56 @@ export default function ReferralLandingPage({
           items for clean 1-for-1 alternatives in 1 tap.{" "}
           {isFriendInvite
             ? "Start a free trial with this code to unlock +7 Free Pro Days!"
-            : "Use this creator code at checkout to double your free trial from 7 days to 14 days!"}
+            : creatorNotFound
+              ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
+              : "Use this creator code at checkout to double your free trial from 7 days to 14 days!"}
         </p>
 
-        <div
-          style={{
-            background: "#f8faf9",
-            border: "1.5px dashed #0f7a4a",
-            borderRadius: 16,
-            padding: "14px 16px",
-            marginBottom: 20,
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#68746e", fontWeight: 700 }}>
-            {isFriendInvite
-              ? "YOUR INVITE CODE (AUTO-COPIED ON DOWNLOAD)"
-              : "CREATOR PROMO CODE (14-DAY EXTENDED TRIAL)"}
-          </div>
+        {!creatorNotFound && (
           <div
             style={{
-              fontSize: 24,
-              fontWeight: 900,
-              color: "#0f7a4a",
-              letterSpacing: "0.06em",
-              marginTop: 4,
+              background: "#f8faf9",
+              border: "1.5px dashed #0f7a4a",
+              borderRadius: 16,
+              padding: "14px 16px",
+              marginBottom: 20,
             }}
           >
-            {cleanCode}
+            <div style={{ fontSize: 12, color: "#68746e", fontWeight: 700 }}>
+              {isFriendInvite
+                ? "YOUR INVITE CODE (AUTO-COPIED ON DOWNLOAD)"
+                : "CREATOR PROMO CODE (14-DAY EXTENDED TRIAL)"}
+            </div>
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 900,
+                color: "#0f7a4a",
+                letterSpacing: "0.06em",
+                marginTop: 4,
+              }}
+            >
+              {cleanCode}
+            </div>
+            <button
+              type="button"
+              onClick={copyAndDownload}
+              style={{
+                marginTop: 8,
+                background: copied ? "#16a34a" : "#e6f5ec",
+                color: copied ? "#ffffff" : "#0f7a4a",
+                border: "none",
+                borderRadius: 999,
+                padding: "6px 16px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {copied ? "✓ Code Copied to Clipboard!" : "Copy Code"}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={copyAndDownload}
-            style={{
-              marginTop: 8,
-              background: copied ? "#16a34a" : "#e6f5ec",
-              color: copied ? "#ffffff" : "#0f7a4a",
-              border: "none",
-              borderRadius: 999,
-              padding: "6px 16px",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {copied ? "✓ Code Copied to Clipboard!" : "Copy Code"}
-          </button>
-        </div>
+        )}
 
         <a
           href="/heybroc.apk"
@@ -215,7 +229,9 @@ export default function ReferralLandingPage({
           href={
             isFriendInvite
               ? `/?ref=${encodeURIComponent(cleanCode)}`
-              : `/?code=${encodeURIComponent(cleanCode)}&upgrade=1`
+              : creatorNotFound
+                ? `/?upgrade=1`
+                : `/?code=${encodeURIComponent(cleanCode)}&upgrade=1`
           }
           onClick={copyAndDownload}
           style={{
