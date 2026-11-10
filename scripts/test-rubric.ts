@@ -1816,9 +1816,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         watchlistFunnelSrc.includes("How HeyBroc Protects Your Cart in 1 Second") &&
         watchlistFunnelSrc.includes("Choose How You Want to Start") &&
         watchlistFunnelSrc.includes("onApplyAndStartTrial") &&
+        watchlistFunnelSrc.includes("appliedCreator") &&
+        watchlistFunnelSrc.includes("aria-pressed={active}") &&
         watchlistFunnelSrc.includes("Continue with Free Plan") &&
         mainActivityKtSrc.includes("fun showOnboardingFunnelDialog()") &&
         mainActivityKtSrc.includes("onboarding_funnel_done_v1") &&
+        mainActivityKtSrc.includes("KEYCODE_BACK") &&
+        mainActivityKtSrc.includes('"nitrates" to "Nitrites & Curing Nitrates (2x)"') &&
         mainActivityKtSrc.includes("Start 7-Day Free Pro Trial ($0 Today)") &&
         mainActivityKtSrc.includes("Continue with Free Plan (Unlimited Scans)")
     )

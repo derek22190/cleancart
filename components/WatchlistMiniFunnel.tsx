@@ -7,6 +7,7 @@ import type { Category } from "@/lib/rubric";
 export interface WatchlistMiniFunnelProps {
   open: boolean;
   initialSelected: Category[];
+  appliedCreator?: { code: string; name: string } | null;
   onApplyAndGuest: (selected: Category[]) => void;
   onApplyAndSignIn: (selected: Category[]) => void;
   onApplyAndStartTrial?: (selected: Category[]) => void;
@@ -76,6 +77,7 @@ type FunnelStep = 1 | 2 | 3 | 4;
 export default function WatchlistMiniFunnel({
   open,
   initialSelected,
+  appliedCreator,
   onApplyAndGuest,
   onApplyAndSignIn,
   onApplyAndStartTrial,
@@ -86,12 +88,29 @@ export default function WatchlistMiniFunnel({
 
   useEffect(() => {
     if (open) {
-      setSelected(initialSelected.length > 0 ? initialSelected : ["seedOils", "dyes", "hfcs"]);
+      setSelected(initialSelected);
       setStep(1);
     }
   }, [open, initialSelected]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
+
+  const isFriendInvite = Boolean(
+    appliedCreator?.code && appliedCreator.code.toUpperCase().startsWith("BROC-")
+  );
+  const effectiveTrialDays =
+    appliedCreator && !isFriendInvite ? PRICING.creatorTrialDays : PRICING.trialDays;
 
   const toggle = (cat: Category) => {
     setSelected((prev) =>
@@ -274,6 +293,7 @@ export default function WatchlistMiniFunnel({
                   <button
                     key={item.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => toggle(item.id)}
                     style={{
                       display: "flex",
@@ -690,6 +710,32 @@ export default function WatchlistMiniFunnel({
               </div>
             </div>
 
+            {appliedCreator && (
+              <div
+                style={{
+                  background: "#fefce8",
+                  border: "1.5px solid #fde047",
+                  borderRadius: 14,
+                  padding: "9px 13px",
+                  marginBottom: 10,
+                  fontSize: 12.5,
+                  color: "#854d0e",
+                }}
+              >
+                {isFriendInvite ? (
+                  <>
+                    🎁 <b>Friend Invite ({appliedCreator.code}) Applied:</b> Start your trial to unlock{" "}
+                    <b>+{PRICING.referralBonusDays} Free Pro Days</b> for both of you!
+                  </>
+                ) : (
+                  <>
+                    🎉 <b>Creator Code {appliedCreator.code} Applied:</b> {appliedCreator.name} unlocked your{" "}
+                    <b>{PRICING.creatorTrialDays}-Day Extended Free Pro Trial!</b>
+                  </>
+                )}
+              </div>
+            )}
+
             <h2
               style={{
                 fontSize: 22,
@@ -709,7 +755,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              Barcode &amp; search grading is <b>always 100% free</b>. Unlock unlimited 1-tap Clean Swaps &amp; Whole-Cart Checks with a <b>{PRICING.trialDays}-Day Free Pro Trial ($0 today)</b>, or start on the Free Plan:
+              Barcode &amp; search grading is <b>always 100% free</b>. Unlock unlimited 1-tap Clean Swaps &amp; Whole-Cart Checks with a <b>{effectiveTrialDays}-Day Free Pro Trial ($0 today)</b>, or start on the Free Plan:
             </p>
 
             {/* Plan Comparison Card */}
@@ -743,7 +789,7 @@ export default function WatchlistMiniFunnel({
                     borderRadius: 999,
                   }}
                 >
-                  {PRICING.trialDays} DAYS FREE · $0 TODAY
+                  {effectiveTrialDays} DAYS FREE · $0 TODAY
                 </span>
               </div>
               <ul
@@ -787,7 +833,7 @@ export default function WatchlistMiniFunnel({
                   boxShadow: "0 6px 18px rgba(22, 163, 74, 0.28)",
                 }}
               >
-                Start {PRICING.trialDays}-Day Free Pro Trial ($0 Today) →
+                Start {effectiveTrialDays}-Day Free Pro Trial ($0 Today) →
               </button>
 
               <button

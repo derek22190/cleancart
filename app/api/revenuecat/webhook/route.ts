@@ -40,6 +40,8 @@ interface RevenueCatEvent {
   store?: "APP_STORE" | "PLAY_STORE" | "STRIPE" | "PROMOTIONAL" | string;
   transaction_id?: string;
   original_transaction_id?: string;
+  price?: number;
+  currency?: string;
   price_in_purchased_currency?: number;
   subscriber_attributes?: Record<string, RevenueCatSubscriberAttribute | undefined>;
 }
@@ -198,14 +200,17 @@ export async function POST(req: Request) {
 
   // Credit creator / referral on initial purchase or renewal
   const eventId = ev.id || `${subscriptionId}_${eventCreatedSec}`;
+  const rawUsdPrice =
+    typeof ev.price === "number" && Number.isFinite(ev.price)
+      ? ev.price
+      : typeof ev.price_in_purchased_currency === "number" &&
+          Number.isFinite(ev.price_in_purchased_currency) &&
+          (!ev.currency || ev.currency.toUpperCase() === "USD")
+        ? ev.price_in_purchased_currency
+        : 0;
   if (ev.type === "INITIAL_PURCHASE" || ev.type === "RENEWAL" || ev.type === "TRIAL_STARTED") {
     if (creatorCode) {
-      const amountPaidUsd =
-        typeof ev.price_in_purchased_currency === "number" &&
-        Number.isFinite(ev.price_in_purchased_currency) &&
-        ev.price_in_purchased_currency > 0
-          ? ev.price_in_purchased_currency
-          : 0;
+      const amountPaidUsd = rawUsdPrice > 0 ? rawUsdPrice : 0;
       const isTrialEvent = status === "trialing" || amountPaidUsd <= 0;
       if (!isTrialEvent || ev.type !== "RENEWAL") {
         const creatorEvent = isTrialEvent
@@ -230,12 +235,7 @@ export async function POST(req: Request) {
     }
     const platform =
       ev.store === "PLAY_STORE" ? "android" : ev.store === "APP_STORE" ? "ios" : "web";
-    const rcAmountUsd =
-      typeof ev.price_in_purchased_currency === "number" &&
-      Number.isFinite(ev.price_in_purchased_currency) &&
-      ev.price_in_purchased_currency > 0
-        ? ev.price_in_purchased_currency
-        : 0;
+    const rcAmountUsd = rawUsdPrice > 0 ? rawUsdPrice : 0;
     await trackServerEvent({
       event: "pro_subscribed",
       distinctId: deviceId || subscriptionId,
@@ -248,12 +248,12 @@ export async function POST(req: Request) {
         amountUsd: rcAmountUsd,
       },
     });
-  } else if (ev.type === "CANCELLATION" && (ev.price_in_purchased_currency ?? 0) < 0 && creatorCode) {
+  } else if (ev.type === "CANCELLATION" && rawUsdPrice < 0 && creatorCode) {
     await recordStripeCreatorRefundOnce(
       `rc_refund_${eventId}`,
       creatorCode,
       plan,
-      Math.abs(ev.price_in_purchased_currency || 0),
+      Math.abs(rawUsdPrice),
     );
   }
 

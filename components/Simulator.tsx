@@ -1317,19 +1317,17 @@ export default function Simulator() {
   };
 
   const toggleWatch = (c: Category) => {
-    setWatch((w) => {
-      const nextVal = !w[c];
-      if (!nextVal) {
-        setFamilyWatchlist((prev) => {
-          const nextFw = prev.filter((cat) => cat !== c);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem("heybroc_family_watchlist", JSON.stringify(nextFw));
-          }
-          return nextFw;
-        });
-      }
-      return { ...w, [c]: nextVal };
-    });
+    const nextVal = !watch[c];
+    setWatch((w) => ({ ...w, [c]: !w[c] }));
+    if (!nextVal) {
+      setFamilyWatchlist((prev) => {
+        const nextFw = prev.filter((cat) => cat !== c);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("heybroc_family_watchlist", JSON.stringify(nextFw));
+        }
+        return nextFw;
+      });
+    }
   };
   const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
 
@@ -1385,7 +1383,7 @@ export default function Simulator() {
 
         <nav className="topbar-subnav" aria-label="Quick tools and setup">
           <button
-            id="open-watchlist-funnel"
+            id="topbar-watchlist-funnel"
             type="button"
             className="topbar-pill"
             onClick={() => setWatchlistFunnelOpen(true)}
@@ -2852,8 +2850,15 @@ export default function Simulator() {
       <WatchlistMiniFunnel
         open={watchlistFunnelOpen}
         initialSelected={familyWatchlist}
+        appliedCreator={appliedCreator}
         onClose={() => {
           if (typeof window !== "undefined") {
+            if (!window.localStorage.getItem("heybroc_family_watchlist")) {
+              window.localStorage.setItem(
+                "heybroc_family_watchlist",
+                JSON.stringify(familyWatchlist)
+              );
+            }
             window.localStorage.setItem("heybroc_onboarding_done", "1");
           }
           setWatchlistFunnelOpen(false);

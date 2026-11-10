@@ -50,6 +50,11 @@ async function fetchStripeSummary() {
         id: string;
         status: string;
         plan?: { amount?: number; interval?: string };
+        items?: {
+          data?: Array<{
+            price?: { unit_amount?: number; recurring?: { interval?: string } };
+          }>;
+        };
       }>;
     };
     const subs = data.data || [];
@@ -60,8 +65,11 @@ async function fetchStripeSummary() {
     for (const s of subs) {
       if (s.status === "active") {
         activeCount++;
-        const amt = (s.plan?.amount || 0) / 100;
-        mrrUsd += s.plan?.interval === "year" ? amt / 12 : amt;
+        const firstPrice = s.items?.data?.[0]?.price;
+        const unitAmount = s.plan?.amount ?? firstPrice?.unit_amount ?? 0;
+        const interval = s.plan?.interval ?? firstPrice?.recurring?.interval ?? "month";
+        const amt = unitAmount / 100;
+        mrrUsd += interval === "year" ? amt / 12 : amt;
       } else if (s.status === "trialing") {
         trialingCount++;
       } else if (s.status === "canceled") {
@@ -241,7 +249,7 @@ function printMetaPlaybookReport(
 }
 
 async function updateMetaObject(id: string, fields: Record<string, string>) {
-  const token = (process.env.META_ADS_ACCESS_TOKEN || "").trim();
+  const token = (process.env.META_ADS_ACCESS_TOKEN || process.env.META_CAPI_TOKEN || "").trim();
   if (!token) {
     console.error("✖ Missing META_ADS_ACCESS_TOKEN in environment.");
     process.exit(1);
@@ -317,11 +325,12 @@ async function main() {
   if (subcommand === "meta-budget") {
     const id = getFlag("id");
     const dailyCents = getFlag("daily-cents");
-    if (!id || !dailyCents) {
+    const parsedCents = Number(dailyCents);
+    if (!id || !dailyCents || !Number.isFinite(parsedCents) || parsedCents <= 0) {
       console.error("✖ Usage: npm run ops meta-budget -- --id=<ADSET_ID> --daily-cents=5000");
       process.exit(1);
     }
-    await updateMetaObject(id, { daily_budget: String(Math.round(Number(dailyCents))) });
+    await updateMetaObject(id, { daily_budget: String(Math.round(parsedCents)) });
     return;
   }
 

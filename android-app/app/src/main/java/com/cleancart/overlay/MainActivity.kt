@@ -623,7 +623,7 @@ class MainActivity : Activity() {
                                 showAllergyAndDietModal()
                             } else {
                                 activeTab = 3
-                                expandedPrefSection = "watchlist"
+                                expandedPrefSection = "prefs"
                                 renderScreen()
                             }
                         }
@@ -1763,11 +1763,7 @@ class MainActivity : Activity() {
     private fun showOnboardingFunnelDialog() {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val initialSet = prefs.getStringSet("familyWatchlist", null)
-        val selectedGoals = if (initialSet != null && initialSet.isNotEmpty()) {
-            initialSet.toMutableSet()
-        } else {
-            mutableSetOf("seedOils", "dyes", "hfcs")
-        }
+        val selectedGoals = initialSet?.toMutableSet() ?: mutableSetOf("seedOils", "dyes", "hfcs")
 
         data class GoalOption(
             val id: String,
@@ -1842,7 +1838,9 @@ class MainActivity : Activity() {
                 .putStringSet("familyWatchlist", toSave)
                 .putBoolean("onboarding_funnel_done_v1", true)
                 .apply()
-            ScanApi.setSeedOilsEnabled(this@MainActivity, "seedOils" in toSave || toSave.isEmpty())
+            if ("seedOils" in toSave) {
+                ScanApi.setSeedOilsEnabled(this@MainActivity, true)
+            }
             runCatching {
                 startService(
                     Intent(this@MainActivity, OverlayWindowService::class.java).apply {
@@ -2228,6 +2226,22 @@ class MainActivity : Activity() {
 
         funnelDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
             dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            dlg.setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    if (currentStep > 1) {
+                        renderFunnelStep(currentStep - 1)
+                        true
+                    } else {
+                        saveWatchlistAndMarkDone()
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            dlg.setOnCancelListener {
+                saveWatchlistAndMarkDone()
+            }
             dlg.show()
         }
     }
@@ -3903,7 +3917,8 @@ class MainActivity : Activity() {
             "dyes" to "Artificial Dyes (2x)",
             "seedOils" to "Seed Oils (2x)",
             "hfcs" to "High-Fructose Corn Syrup (2x)",
-            "preservatives" to "Synthetic Preservatives & Nitrites (2x)",
+            "nitrates" to "Nitrites & Curing Nitrates (2x)",
+            "preservatives" to "Synthetic Preservatives (2x)",
             "sweeteners" to "Artificial Sweeteners (2x)",
             "emulsifiers" to "Synthetic Emulsifiers (2x)",
             "gums" to "Thickening Gums (2x)",
@@ -3921,16 +3936,10 @@ class MainActivity : Activity() {
                         val next = (prefs.getStringSet("familyWatchlist", emptySet()) ?: emptySet()).toMutableSet()
                         if (checked) {
                             next.add(key)
-                            if (key == "preservatives") {
-                                next.add("nitrates")
-                                next.remove("nitrites")
-                            }
+                            next.remove("nitrites")
                         } else {
                             next.remove(key)
-                            if (key == "preservatives") {
-                                next.remove("nitrates")
-                                next.remove("nitrites")
-                            }
+                            next.remove("nitrites")
                         }
                         prefs.edit().putStringSet("familyWatchlist", next).apply()
                         runCatching {
