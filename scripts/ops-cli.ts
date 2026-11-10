@@ -84,10 +84,36 @@ async function fetchMetaCampaigns() {
   const rawAccountId = (process.env.META_AD_ACCOUNT_ID || "").trim();
   if (!token || !rawAccountId) return null;
   const accountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`;
+
+  const sumActionList = (list: unknown): number => {
+    if (!Array.isArray(list)) return 0;
+    return list.reduce((acc: number, item: unknown) => {
+      const val = Number((item as { value?: string | number })?.value || 0);
+      return acc + (Number.isFinite(val) ? val : 0);
+    }, 0);
+  };
+
   try {
+    const insightFields = [
+      "spend",
+      "impressions",
+      "clicks",
+      "cpc",
+      "ctr",
+      "actions",
+      "purchase_roas",
+      "cost_per_thruplay",
+      "video_play_actions",
+      "video_thruplay_watched_actions",
+      "video_p25_watched_actions",
+      "video_p50_watched_actions",
+      "video_p75_watched_actions",
+      "video_p95_watched_actions",
+      "video_p100_watched_actions",
+    ].join(",");
     const url =
       `https://graph.facebook.com/v21.0/${encodeURIComponent(accountId)}/campaigns` +
-      `?fields=id,name,status,effective_status,daily_budget,insights.date_preset(last_7d){spend,impressions,clicks,cpc,ctr,actions}` +
+      `?fields=id,name,objective,status,effective_status,daily_budget,insights.date_preset(last_7d){${insightFields}}` +
       `&limit=25&access_token=${encodeURIComponent(token)}`;
     const res = await fetch(url);
     if (!res.ok) {
@@ -95,10 +121,123 @@ async function fetchMetaCampaigns() {
       return { error: `HTTP ${res.status}: ${txt.slice(0, 160)}` };
     }
     const data = (await res.json()) as { data?: Array<Record<string, unknown>> };
-    return { campaigns: data.data || [] };
+    const rawCampaigns = data.data || [];
+    const parsedCampaigns = rawCampaigns.map((c) => {
+      const insightsNode = (c.insights as { data?: Array<Record<string, unknown>> } | undefined)?.data?.[0] || {};
+      const spendUsd = Number(insightsNode.spend || 0);
+      const plays3s = sumActionList(insightsNode.video_play_actions);
+      const thruPlays = sumActionList(insightsNode.video_thruplay_watched_actions);
+      const p25 = sumActionList(insightsNode.video_p25_watched_actions);
+      const p50 = sumActionList(insightsNode.video_p50_watched_actions);
+      const p75 = sumActionList(insightsNode.video_p75_watched_actions);
+      const p95 = sumActionList(insightsNode.video_p95_watched_actions);
+      const p100 = sumActionList(insightsNode.video_p100_watched_actions);
+      const roasList = insightsNode.purchase_roas as Array<{ value?: string | number }> | undefined;
+      const roas = roasList?.[0]?.value ? Number(roasList[0].value) : null;
+      const costPerP75ViewerUsd = p75 > 0 ? Number((spendUsd / p75).toFixed(2)) : null;
+      const p75RetentionPct = plays3s > 0 ? Number(((p75 / plays3s) * 100).toFixed(1)) : null;
+
+      return {
+        id: c.id,
+        name: c.name,
+        objective: c.objective,
+        status: c.status,
+        effective_status: c.effective_status,
+        daily_budget: c.daily_budget,
+        spendUsd: Number(spendUsd.toFixed(2)),
+        impressions: Number(insightsNode.impressions || 0),
+        clicks: Number(insightsNode.clicks || 0),
+        ctr: insightsNode.ctr ? `${Number(insightsNode.ctr).toFixed(2)}%` : "0.00%",
+        videoRetention: {
+          plays3s,
+          thruPlays,
+          p25,
+          p50,
+          p75,
+          p95,
+          p100,
+          p75RetentionPct,
+          costPerP75ViewerUsd,
+          targetCostPerP75Usd: 1.5,
+        },
+        roas,
+        targetRoas: 2.0,
+      };
+    });
+    return { accountId, campaigns: parsedCampaigns };
   } catch (err) {
     return { error: String(err) };
   }
+}
+
+function printMetaPlaybookReport(
+  meta: Awaited<ReturnType<typeof fetchMetaCampaigns>>,
+  snap: Awaited<ReturnType<typeof getAnalyticsSnapshot>>
+) {
+  console.log("==============================================================");
+  console.log("🎯 HEYBROC FOOD TRACKER — META ADS & 75% RETENTION PLAYBOOK");
+  console.log("   (Ryan Mathews / MtnWispr Method: $1.50/p75 · 2x ROAS · 40% Test->Paid)");
+  console.log("==============================================================\n");
+
+  console.log("1. LIVE DUOLINGO-STYLE 'FREE FOOD SCORE TEST -> PAID' FUNNEL:");
+  console.log(`   - Free Food Score Tests Completed (product_scanned): ${snap.totals.product_scanned}`);
+  console.log(`   - Clean Swaps Clicked:                               ${snap.totals.clean_swap_clicked} (${pct(snap.totals.clean_swap_clicked, snap.totals.product_scanned)} of free testers)`);
+  console.log(`   - Paywalls Viewed:                                   ${snap.totals.paywall_viewed}`);
+  console.log(`   - Pro Subscriptions (StartTrial / Subscribe):        ${snap.totals.pro_subscribed}`);
+  console.log(
+    `   - Free-Test -> Paid Conversion Rate:                 ${pct(snap.totals.pro_subscribed, snap.totals.product_scanned)} (Playbook Target: ~40% of engaged test completers)\n`
+  );
+
+  console.log("2. LIVE META ADS CAMPAIGN RETRIEVAL (75% VIDEO WATCHERS & ROAS):");
+  if (!meta) {
+    console.log("   ⚠ META_ADS_ACCESS_TOKEN or META_AD_ACCOUNT_ID not set in current environment.");
+    console.log("   ↳ Add META_ADS_ACCESS_TOKEN and META_AD_ACCOUNT_ID to retrieve live campaigns from Graph API v21.0.\n");
+  } else if ("error" in meta) {
+    console.log(`   ✖ Meta Graph API Error: ${meta.error}\n`);
+  } else if (meta.campaigns.length === 0) {
+    console.log(`   ○ Connected to ${meta.accountId} — 0 campaigns found. Ready to launch the 3-Campaign Food Tracker Architecture below.\n`);
+  } else {
+    console.log(`   ✓ Connected to Ad Account ${meta.accountId} (${meta.campaigns.length} campaigns):\n`);
+    for (const c of meta.campaigns) {
+      const vr = c.videoRetention;
+      const p75Badge =
+        vr.costPerP75ViewerUsd !== null
+          ? vr.costPerP75ViewerUsd <= 1.5
+            ? `✓ $${vr.costPerP75ViewerUsd} (beats $1.50 target)`
+            : `$${vr.costPerP75ViewerUsd} (target ≤ $1.50)`
+          : "n/a";
+      const roasBadge =
+        c.roas !== null ? `${c.roas.toFixed(2)}x (target ≥ 2.0x)` : "n/a";
+      console.log(
+        `   • [${c.effective_status || c.status}] ${c.name} (ID: ${c.id} | Obj: ${c.objective || "N/A"})`
+      );
+      console.log(
+        `     Spend (7d): $${c.spendUsd.toFixed(2)} | Impr: ${c.impressions} | Clicks: ${c.clicks} (CTR ${c.ctr}) | ROAS: ${roasBadge}`
+      );
+      console.log(
+        `     Video Retention: 3s=${vr.plays3s} -> p25=${vr.p25} -> p50=${vr.p50} -> p75=${vr.p75} (${vr.p75RetentionPct ?? 0}%) -> p95=${vr.p95} -> p100=${vr.p100} | ThruPlay=${vr.thruPlays}`
+      );
+      console.log(`     Cost per 75% Deep Viewer: ${p75Badge}\n`);
+    }
+  }
+
+  console.log("3. HEYBROC FOOD TRACKER 3-CAMPAIGN BLUEPRINT (READY TO RUN):");
+  console.log("   [Campaign 1] TEACH / 75% VIDEO RETENTION (Top-of-Funnel + Custom Audience Builder)");
+  console.log("     • Objective:   Video Views / Engagement (optimize for ThruPlay & 75% Video Plays)");
+  console.log("     • Creative:    15–45 min 'Grocery Aisle & Label Decoding Masterclass' (seed oils, synthetic dyes, fake health halos)");
+  console.log("                    + post organically to YouTube for free top-of-funnel + run 2–5 min polarizing cut-downs");
+  console.log("     • Target KPI:  ~$1.50 Cost per 75% Video Viewer (p75) -> build 75% Watcher Custom Audience & 1%-3% Lookalikes\n");
+
+  console.log("   [Campaign 2] DIRECT / SALES — COLD ADVANTAGE+ (The 'Accidental Winner')");
+  console.log("     • Objective:   Sales / Conversions (StartTrial / Subscribe / CompleteRegistration)");
+  console.log("     • Targeting:   Broad / Advantage+ Cold Traffic straight to https://www.heybroc.com");
+  console.log("     • Funnel CTA:  Duolingo-style 'Test / Scan Your First Food Item Free -> Instant 0-100 Score -> Clean Swap Offer'");
+  console.log("     • Creative:    Polarizing 50/50 comment-split hooks ('No way this kids snack scores 14/100' vs 'Changed how we shop')");
+  console.log("     • Target KPI:  ~2.0x+ ROAS early on | ~40% Free-Test -> Paid conversion ($9.99/mo or $49.99/yr)\n");
+
+  console.log("   [Campaign 3] RETARGETING LAYER (Benchmark Strictly Against Cold Direct)");
+  console.log("     • Audience:    75%+ Video Watchers + Free Food Score Test Completers (CompleteRegistration) + 7/30/90d Visitors");
+  console.log("     • Rule:        Keep only if ROAS beats Campaign 2 (Cold Direct); never over-engineer if Cold Advantage+ wins.");
 }
 
 async function updateMetaObject(id: string, fields: Record<string, string>) {
@@ -186,6 +325,12 @@ async function main() {
     return;
   }
 
+  if (subcommand === "meta-campaigns" || subcommand === "meta-playbook") {
+    const [snap, meta] = await Promise.all([getAnalyticsSnapshot(), fetchMetaCampaigns()]);
+    printMetaPlaybookReport(meta, snap);
+    return;
+  }
+
   if (subcommand === "store-check") {
     const crypto = await import("node:crypto");
     const suggestedRcSecret = `rc_whsec_${crypto.randomBytes(20).toString("hex")}`;
@@ -248,17 +393,17 @@ async function main() {
   console.log("==============================================================\n");
 
   console.log("1. FIRST-PARTY FUNNEL & CONVERSION METRICS:");
-  console.log(`   - Products Scanned:     ${snap.totals.product_scanned}`);
-  console.log(`   - Clean Swaps Clicked:  ${snap.totals.clean_swap_clicked}`);
-  console.log(`   - Paywalls Viewed:      ${snap.totals.paywall_viewed}`);
+  console.log(`   - Free Score Tests (product_scanned): ${snap.totals.product_scanned}`);
+  console.log(`   - Clean Swaps Clicked:                ${snap.totals.clean_swap_clicked}`);
+  console.log(`   - Paywalls Viewed:                    ${snap.totals.paywall_viewed}`);
   console.log(
-    `   - Checkouts Started:    ${snap.totals.checkout_started} (${pct(snap.totals.checkout_started, snap.totals.paywall_viewed)} of paywall views)`
+    `   - Checkouts Started:                  ${snap.totals.checkout_started} (${pct(snap.totals.checkout_started, snap.totals.paywall_viewed)} of paywall views)`
   );
   console.log(
-    `   - Pro Subscriptions:    ${snap.totals.pro_subscribed} (${pct(snap.totals.pro_subscribed, snap.totals.paywall_viewed)} of paywall views)`
+    `   - Pro Subscriptions:                  ${snap.totals.pro_subscribed} (${pct(snap.totals.pro_subscribed, snap.totals.paywall_viewed)} of paywall views | ${pct(snap.totals.pro_subscribed, snap.totals.product_scanned)} of free tests, target ~40%)`
   );
-  console.log(`   - By Platform:          ${JSON.stringify(snap.byPlatform)}`);
-  console.log(`   - By Store:             ${JSON.stringify(snap.byStore)}\n`);
+  console.log(`   - By Platform:                        ${JSON.stringify(snap.byPlatform)}`);
+  console.log(`   - By Store:                           ${JSON.stringify(snap.byStore)}\n`);
 
   console.log("2. LIVE PAYWALL ('SUPERWALL') A/B EXPERIMENT:");
   console.log(`   - Active Headline (A):  "${paywall.headline}"`);
@@ -279,7 +424,7 @@ async function main() {
   }
   console.log("");
 
-  console.log("4. EXTERNAL INTEGRATIONS STATUS:");
+  console.log("4. EXTERNAL INTEGRATIONS & META ADS STATUS:");
   console.log(`   - PostHog Bridge:       ${snap.posthogConnected ? "✓ CONNECTED" : "○ Not set (add POSTHOG_API_KEY)"}`);
   console.log(`   - RevenueCat Webhook:   ${snap.revenueCatConfigured ? "✓ CONNECTED" : "○ Not set (add REVENUECAT_WEBHOOK_SECRET)"}`);
   console.log(`   - Meta CAPI Bridge:     ${snap.metaCapiConnected ? "✓ CONNECTED" : "○ Not set (add META_PIXEL_ID + META_CAPI_TOKEN)"}`);
@@ -289,9 +434,9 @@ async function main() {
     console.log("   - Stripe Live Data:     ○ Not set in local env (add STRIPE_SECRET_KEY)");
   }
   if (meta) {
-    console.log(`   - Meta Ads Campaigns:   ${JSON.stringify(meta)}`);
+    console.log(`   - Meta Ads (75% Watch): ${JSON.stringify(meta)}`);
   } else {
-    console.log("   - Meta Ads Campaigns:   ○ Not set in local env (add META_ADS_ACCESS_TOKEN + META_AD_ACCOUNT_ID)");
+    console.log("   - Meta Ads (75% Watch): ○ Not set in local env (run `npm run ops meta-campaigns` for Food Tracker Playbook)");
   }
 }
 

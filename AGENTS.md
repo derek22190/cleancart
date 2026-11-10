@@ -33,7 +33,20 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   - `npm run ops store-check` — Store-packaging pre-flight checklist for production API keys and webhook secrets.
   - `npm run ops paywall -- --headline="..." --variant-b="..." --cta="..." --swaps=3` — Live-tune the paywall without an app update.
   - `npm run ops creator -- --code=CODE --name="Name" --pct=35` — Create or update creator affiliate codes.
+  - `npm run ops meta-campaigns` — Retrieve live Meta Ads campaigns with 75% video retention (`p75`), Cost per 75% Viewer, ROAS, and the HeyBroc Food Tracker Playbook.
   - `npm run ops meta-pause -- --id=<ID>` / `npm run ops meta-enable -- --id=<ID>` / `npm run ops meta-budget -- --id=<ID> --daily-cents=5000` — Manage Meta Ads campaigns and budgets.
+
+### Meta Ads & Funnel Playbook for HeyBroc Food Tracker (Ryan Mathews / MtnWispr Method)
+- Full playbook reference: [`docs/meta-ads-playbook.md`](./docs/meta-ads-playbook.md) (and custom skill `meta-ads-playbook`).
+- **Campaign Architecture**:
+  1. **Campaign 1 — Teach / 75% Video Retention (Top-of-Funnel)**: Long-form educational video (15–45 min deep-dive decoding grocery labels, hidden seed oils, synthetic dyes, and deceptive health claims; also posted organically to YouTube). Optimize for Video Views / ThruPlay / **75% video completion (`video_p75_watched_actions`)** targeting **~$1.50 per 75% viewer** to build high-intent custom audiences and lookalikes.
+  2. **Campaign 2 — Direct / Sales (Cold Broad / Advantage+)**: Send cold traffic straight to the landing page's **Duolingo-style Free Scored Test** (*"Scan/test your first food item free → instant 0–100 score → 1-tap Clean Swap & Family Pro upgrade"*). Always pit Cold Direct against Warm Retargeting on pure ROAS.
+  3. **Campaign 3 — Retargeting Layer**: 75%+ video viewers + Free Food Score Test completers (`product_scanned` / `CompleteRegistration`) + 7/30/90-day site visitors.
+- **Core Benchmarks & Creative Signals**:
+  - **~$1.50** cost per 75% video viewer (`spend / p75`).
+  - **~2.0x+ ROAS** early return while scaling ($500/day → $2,200+/day).
+  - **~40% Free-Test → Paid conversion rate** from engaged free-test completers on simple pricing ($9.99/mo or $49.99/yr).
+  - **50/50 Polarizing Comment Split**: Best creatives drive ~50% skeptical comments (*"No way this kids' snack scores 14/100"*) and ~50% life-changed comments (*"Changed how our family shops"*).
 
 ### Mandatory Store-Packaging Pre-Flight Reminder (All Future Chats)
 - **CRITICAL USER REMINDER**: Whenever the user asks to package, bundle, sign, or prepare a release for any store (**Google Play Store** APK/AAB, **Apple App Store / iOS Safari Extension**, **Chrome Web Store**, or production launch), the agent **MUST ALWAYS** run `npm run ops store-check` and proactively remind the user to verify/connect any unconfigured production keys in Vercel before going live:
@@ -41,4 +54,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   2. **RevenueCat (Google Play / App Store IAP)**: `REVENUECAT_WEBHOOK_SECRET` (pointing to `https://www.heybroc.com/api/revenuecat/webhook`)
   3. **PostHog Analytics**: `POSTHOG_API_KEY` (and optional `POSTHOG_PERSONAL_API_KEY`)
   4. **Meta Conversions API (Pixel) & Meta Ads**: `META_PIXEL_ID`, `META_CAPI_TOKEN`, `META_ADS_ACCESS_TOKEN`, and `META_AD_ACCOUNT_ID`
+
 

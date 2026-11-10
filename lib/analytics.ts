@@ -292,12 +292,14 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
     }
 
     // Optional non-blocking server-side Meta Conversions API (CAPI) forwarding for ad attribution
+    // Includes `product_scanned` -> `CompleteRegistration` ("Free Product Score Test" Duolingo-style funnel signal)
     const metaPixelId = (process.env.META_PIXEL_ID || "").trim();
     const metaToken = (process.env.META_CAPI_TOKEN || "").trim();
     if (
       metaPixelId &&
       metaToken &&
-      (input.event === "checkout_started" ||
+      (input.event === "product_scanned" ||
+        input.event === "checkout_started" ||
         input.event === "pro_subscribed" ||
         input.event === "paywall_viewed")
     ) {
@@ -313,8 +315,14 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
             : "StartTrial"
           : input.event === "checkout_started"
             ? "InitiateCheckout"
-            : "ViewContent";
+            : input.event === "product_scanned"
+              ? "CompleteRegistration"
+              : "ViewContent";
       const valueUsd = Number(input.properties?.amountUsd || 0);
+      const defaultContentName =
+        input.event === "product_scanned"
+          ? "Free Product Score Test"
+          : String(input.properties?.plan || "HeyBroc Family Pro");
       void fetch(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(metaPixelId)}/events?access_token=${encodeURIComponent(metaToken)}`,
         {
@@ -333,7 +341,7 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
                 custom_data: {
                   currency: "USD",
                   value: valueUsd > 0 ? valueUsd : 0,
-                  content_name: String(input.properties?.plan || "HeyBroc Family Pro"),
+                  content_name: defaultContentName,
                   content_category: platform,
                 },
               },
