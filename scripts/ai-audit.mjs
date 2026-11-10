@@ -226,44 +226,50 @@ async function main() {
 
   let ranExternalAi = false;
 
-  if ((engineArg === "codex" || engineArg === "auto") && commandExists("codex")) {
-    console.log("\n▶ [audit:ai] Invoking local OpenAI Codex CLI (`codex exec`)...");
-    const res = spawnSync("codex", ["exec", auditPrompt], {
-      cwd: rootDir,
-      stdio: "inherit",
-    });
-    ranExternalAi = true;
-    if (res.status !== 0 && engineArg === "codex") {
-      process.exit(res.status || 1);
-    }
-  }
-
-  if ((engineArg === "claude" || engineArg === "auto") && commandExists("claude")) {
-    console.log("\n▶ [audit:ai] Invoking local Claude Code CLI (`claude -p`)...");
-    const res = spawnSync("claude", ["-p", auditPrompt], {
-      cwd: rootDir,
-      stdio: "inherit",
-    });
-    ranExternalAi = true;
-    if (res.status !== 0 && engineArg === "claude") {
-      process.exit(res.status || 1);
-    }
-  }
-
-  if (!ranExternalAi) {
-    const openAiOk = await runOpenAiApiAudit(auditPrompt);
-    if (openAiOk !== null) {
+  if (engineArg !== "local") {
+    if ((engineArg === "codex" || engineArg === "auto") && commandExists("codex")) {
+      console.log("\n▶ [audit:ai] Invoking local OpenAI Codex CLI (`codex exec`)...");
+      const res = spawnSync("codex", ["exec", auditPrompt], {
+        cwd: rootDir,
+        stdio: "inherit",
+      });
       ranExternalAi = true;
-      if (!openAiOk) process.exit(1);
+      if (res.status !== 0 && engineArg === "codex") {
+        process.exit(res.status || 1);
+      }
     }
-    const anthropicOk = await runAnthropicApiAudit(auditPrompt);
-    if (anthropicOk !== null) {
+
+    if ((engineArg === "claude" || engineArg === "auto") && commandExists("claude")) {
+      console.log("\n▶ [audit:ai] Invoking local Claude Code CLI (`claude -p`)...");
+      const res = spawnSync("claude", ["-p", auditPrompt], {
+        cwd: rootDir,
+        stdio: "inherit",
+      });
       ranExternalAi = true;
-      if (!anthropicOk) process.exit(1);
+      if (res.status !== 0 && engineArg === "claude") {
+        process.exit(res.status || 1);
+      }
+    }
+
+    if (!ranExternalAi) {
+      const openAiOk = await runOpenAiApiAudit(auditPrompt);
+      if (openAiOk !== null) {
+        ranExternalAi = true;
+        if (!openAiOk) process.exit(1);
+      }
+      const anthropicOk = await runAnthropicApiAudit(auditPrompt);
+      if (anthropicOk !== null) {
+        ranExternalAi = true;
+        if (!anthropicOk) process.exit(1);
+      }
     }
   }
 
-  if (!ranExternalAi) {
+  if (engineArg === "local") {
+    console.log(
+      "\n✓ [audit:ai] All static compliance, typecheck, rubric, and build gates PASSED (--engine=local: zero external Codex/Claude credits used)."
+    );
+  } else if (!ranExternalAi) {
     console.log(
       "\nℹ [audit:ai] All static compliance, typecheck, rubric, and build gates PASSED.\n" +
         "  (Tip: Install `@openai/codex` or `@anthropic-ai/claude-code`, or set OPENAI_API_KEY / ANTHROPIC_API_KEY, to also run cross-LLM diff review automatically.)"

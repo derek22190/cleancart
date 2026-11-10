@@ -230,6 +230,12 @@ export async function POST(req: Request) {
     }
     const platform =
       ev.store === "PLAY_STORE" ? "android" : ev.store === "APP_STORE" ? "ios" : "web";
+    const rcAmountUsd =
+      typeof ev.price_in_purchased_currency === "number" &&
+      Number.isFinite(ev.price_in_purchased_currency) &&
+      ev.price_in_purchased_currency > 0
+        ? ev.price_in_purchased_currency
+        : 0;
     await trackServerEvent({
       event: "pro_subscribed",
       distinctId: deviceId || subscriptionId,
@@ -239,6 +245,7 @@ export async function POST(req: Request) {
         status,
         store: ev.store || "revenuecat",
         creatorCode: creatorCode || null,
+        amountUsd: rcAmountUsd,
       },
     });
   } else if (ev.type === "CANCELLATION" && (ev.price_in_purchased_currency ?? 0) < 0 && creatorCode) {

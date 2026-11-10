@@ -69,6 +69,7 @@ export interface AnalyticsSnapshot {
   recentEvents: RecentEventEntry[];
   posthogConnected: boolean;
   revenueCatConfigured: boolean;
+  metaCapiConnected?: boolean;
   updatedAt: string;
 }
 
@@ -116,6 +117,7 @@ function emptySnapshot(): AnalyticsSnapshot {
     recentEvents: [],
     posthogConnected: Boolean(process.env.POSTHOG_API_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY),
     revenueCatConfigured: Boolean(process.env.REVENUECAT_WEBHOOK_SECRET),
+    metaCapiConnected: Boolean(process.env.META_PIXEL_ID && process.env.META_CAPI_TOKEN),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -187,6 +189,7 @@ export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
     recentEvents: Array.isArray(base.recentEvents) ? base.recentEvents.slice(0, 60) : [],
     posthogConnected: Boolean(process.env.POSTHOG_API_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY),
     revenueCatConfigured: Boolean(process.env.REVENUECAT_WEBHOOK_SECRET),
+    metaCapiConnected: Boolean(process.env.META_PIXEL_ID && process.env.META_CAPI_TOKEN),
   };
 }
 
@@ -219,7 +222,8 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
       ]);
       const st = input.store.toLowerCase().trim().slice(0, 24);
       if (ALLOWED_ANALYTICS_STORES.has(st)) {
-        snap.byStore[st] = (snap.byStore[st] || 0) + 1;
+        snap.byStore[st] = (snap.byStore[st] || 0) || 0;
+        snap.byStore[st] += 1;
       }
     }
 
@@ -256,16 +260,17 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
     memorySnapshot = snap;
     await kvSet(ANALYTICS_KV_KEY, snap);
 
+    const rawDistinct = (input.distinctId || `anon-${platform}`).trim();
+    let safeDistinctId = rawDistinct;
+    if (rawDistinct.includes("@")) {
+      const crypto = await import("node:crypto");
+      safeDistinctId = `anon_${crypto.createHash("sha256").update(rawDistinct.toLowerCase()).digest("hex").slice(0, 16)}`;
+    }
+
     // Optional non-blocking server-side PostHog forwarding (never forward raw email addresses)
     const phKey = (process.env.POSTHOG_API_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || "").trim();
     const phHost = (process.env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/+$/, "");
     if (phKey) {
-      const rawDistinct = (input.distinctId || `anon-${platform}`).trim();
-      let safeDistinctId = rawDistinct;
-      if (rawDistinct.includes("@")) {
-        const crypto = await import("node:crypto");
-        safeDistinctId = `anon_${crypto.createHash("sha256").update(rawDistinct.toLowerCase()).digest("hex").slice(0, 16)}`;
-      }
       void fetch(`${phHost}/capture/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -285,7 +290,61 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
         signal: AbortSignal.timeout(2500),
       }).catch(() => {});
     }
+
+    // Optional non-blocking server-side Meta Conversions API (CAPI) forwarding for ad attribution
+    const metaPixelId = (process.env.META_PIXEL_ID || "").trim();
+    const metaToken = (process.env.META_CAPI_TOKEN || "").trim();
+    if (
+      metaPixelId &&
+      metaToken &&
+      (input.event === "checkout_started" ||
+        input.event === "pro_subscribed" ||
+        input.event === "paywall_viewed")
+    ) {
+      const crypto = await import("node:crypto");
+      const hashedExternalId = crypto
+        .createHash("sha256")
+        .update(safeDistinctId)
+        .digest("hex");
+      const metaEventName =
+        input.event === "pro_subscribed"
+          ? Number(input.properties?.amountUsd || 0) > 0
+            ? "Subscribe"
+            : "StartTrial"
+          : input.event === "checkout_started"
+            ? "InitiateCheckout"
+            : "ViewContent";
+      const valueUsd = Number(input.properties?.amountUsd || 0);
+      void fetch(
+        `https://graph.facebook.com/v21.0/${encodeURIComponent(metaPixelId)}/events?access_token=${encodeURIComponent(metaToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: [
+              {
+                event_name: metaEventName,
+                event_time: Math.floor(Date.now() / 1000),
+                event_id: entry.id,
+                action_source: "website",
+                user_data: {
+                  external_id: [hashedExternalId],
+                },
+                custom_data: {
+                  currency: "USD",
+                  value: valueUsd > 0 ? valueUsd : 0,
+                  content_name: String(input.properties?.plan || "HeyBroc Family Pro"),
+                  content_category: platform,
+                },
+              },
+            ],
+          }),
+          signal: AbortSignal.timeout(2500),
+        }
+      ).catch(() => {});
+    }
   } catch {
     // Analytics must never block or fail user requests
   }
 }
+

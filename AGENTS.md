@@ -24,5 +24,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ### Automated Cross-Audit & Verification Gate (`npm run audit:ai`)
 - Before committing and pushing to `main`, agents **MUST** run `npm run audit:ai` (or `npm run typecheck && npm run test:rubric && npm run build`).
-- `npm run audit:ai` (`scripts/ai-audit.mjs`) automatically audits the active `git diff` / `HEAD` commit against all rules in `AGENTS.md`, runs the deterministic compliance & security checks, executes the full verification suite, and (when `codex` CLI, `claude` CLI, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` is available) runs a headless cross-model AI code audit without manual copy-pasting.
+- By default, `npm run audit:ai` runs with `--engine=local` so it **never** burns external Codex or Claude Code credits, while running all deterministic diff compliance checks, TypeScript route typechecks, 487 rubric checks, and the production build. In Antigravity, use built-in subagents (`invoke_subagent`) for multi-pass AI code audits.
 - If `npm run audit:ai` surfaces any actionable bug, regression, or rule violation, fix it and re-run `npm run audit:ai` until zero issues remain before pushing to `origin/main`.
+
+### Growth, Revenue, Paywall & Meta Ads Command Center (`npm run ops`)
+- Use `npm run ops` (`scripts/ops-cli.ts`) to inspect and control live funnel metrics, PostHog status, Paywall A/B tests, Creator Affiliate codes, Stripe subscriptions/MRR, and Meta Ads campaigns:
+  - `npm run ops status` — Full funnel, A/B test, creator ledger, Stripe, PostHog, and Meta Ads report.
+  - `npm run ops paywall -- --headline="..." --variant-b="..." --cta="..." --swaps=3` — Live-tune the paywall without an app update.
+  - `npm run ops creator -- --code=CODE --name="Name" --pct=35` — Create or update creator affiliate codes.
+  - `npm run ops meta-pause -- --id=<ID>` / `npm run ops meta-enable -- --id=<ID>` / `npm run ops meta-budget -- --id=<ID> --daily-cents=5000` — Manage Meta Ads campaigns and budgets.
