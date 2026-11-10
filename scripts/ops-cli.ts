@@ -88,7 +88,7 @@ async function fetchStripeSummary() {
 }
 
 async function fetchMetaCampaigns() {
-  const token = (process.env.META_ADS_ACCESS_TOKEN || process.env.META_CAPI_TOKEN || "").trim();
+  const token = (process.env.META_ADS_ACCESS_TOKEN || "").trim();
   const rawAccountId = (process.env.META_AD_ACCOUNT_ID || "").trim();
   if (!token || !rawAccountId) return null;
   const accountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`;
@@ -249,7 +249,7 @@ function printMetaPlaybookReport(
 }
 
 async function updateMetaObject(id: string, fields: Record<string, string>) {
-  const token = (process.env.META_ADS_ACCESS_TOKEN || process.env.META_CAPI_TOKEN || "").trim();
+  const token = (process.env.META_ADS_ACCESS_TOKEN || "").trim();
   if (!token) {
     console.error("✖ Missing META_ADS_ACCESS_TOKEN in environment.");
     process.exit(1);

@@ -9,7 +9,7 @@ import {
   type AnalyticsEventName,
   type PlatformType,
 } from "@/lib/analytics";
-import { checkRateLimit } from "@/lib/scan";
+import { checkRateLimitAsync } from "@/lib/scan";
 
 const ALLOWED_EVENTS = new Set<AnalyticsEventName>([
   "product_scanned",
@@ -28,13 +28,19 @@ function clientIp(req: Request): string {
   );
 }
 
+function parseCookieValue(cookieHeader: string | null, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match?.[1] ? decodeURIComponent(match[1]).slice(0, 160) : undefined;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get("mode");
   const deviceId = (searchParams.get("deviceId") || "").trim();
 
   if (mode === "paywall") {
-    if (!checkRateLimit(`analytics:get:${clientIp(req)}`, 60)) {
+    if (!(await checkRateLimitAsync(`analytics:get:${clientIp(req)}`, 60))) {
       return NextResponse.json({ ok: false, error: "Too many requests." }, { status: 429 });
     }
     const paywall = await getPaywallConfig();
@@ -65,12 +71,17 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (!checkRateLimit(`analytics:post:${clientIp(req)}`, 40)) {
+  const ip = clientIp(req);
+  if (!(await checkRateLimitAsync(`analytics:post:${ip}`, 40))) {
     return NextResponse.json({ ok: false, error: "Too many requests." }, { status: 429 });
   }
   let body: Record<string, unknown>;
   try {
-    body = (await req.json()) as Record<string, unknown>;
+    const parsed = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
@@ -108,13 +119,35 @@ export async function POST(req: Request) {
       ? (body.platform as PlatformType)
       : "web";
 
-  const distinctId = typeof body.deviceId === "string" ? body.deviceId.slice(0, 80) : undefined;
+  const rawDistinct =
+    typeof body.deviceId === "string" && body.deviceId.trim()
+      ? body.deviceId.trim()
+      : typeof body.distinctId === "string" && body.distinctId.trim()
+        ? body.distinctId.trim()
+        : undefined;
+  const distinctId = rawDistinct ? rawDistinct.slice(0, 80) : undefined;
   const store = typeof body.store === "string" ? body.store.slice(0, 24) : undefined;
   const variant = body.variant === "B" ? "B" : body.variant === "A" ? "A" : undefined;
-  const properties =
-    body.properties && typeof body.properties === "object" && !Array.isArray(body.properties)
-      ? (body.properties as Record<string, string | number | boolean | null | undefined>)
-      : undefined;
+
+  let properties: Record<string, string | number | boolean | null> | undefined;
+  if (body.properties && typeof body.properties === "object" && !Array.isArray(body.properties)) {
+    properties = {};
+    for (const [k, v] of Object.entries(body.properties as Record<string, unknown>).slice(0, 12)) {
+      const cleanKey = k.trim().slice(0, 40);
+      // Never allow unauthenticated client calls to spoof paid revenue (`amountUsd`)
+      if (!cleanKey || cleanKey === "amountUsd" || cleanKey.startsWith("$")) continue;
+      if (typeof v === "string") {
+        properties[cleanKey] = v.slice(0, 80);
+      } else if (typeof v === "number" && Number.isFinite(v)) {
+        properties[cleanKey] = v;
+      } else if (typeof v === "boolean" || v === null) {
+        properties[cleanKey] = v;
+      }
+    }
+  }
+
+  const cookieHeader = req.headers.get("cookie");
+  const referer = req.headers.get("referer");
 
   await trackServerEvent({
     event,
@@ -122,6 +155,11 @@ export async function POST(req: Request) {
     platform,
     store,
     variant,
+    clientIp: ip,
+    userAgent: req.headers.get("user-agent")?.slice(0, 240),
+    sourceUrl: referer && /^https?:\/\//i.test(referer) ? referer.slice(0, 240) : undefined,
+    fbc: parseCookieValue(cookieHeader, "_fbc"),
+    fbp: parseCookieValue(cookieHeader, "_fbp"),
     properties,
   });
 

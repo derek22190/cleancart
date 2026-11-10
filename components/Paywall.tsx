@@ -70,7 +70,12 @@ export default function Paywall({
   }, [appliedCreator]);
 
   useEffect(() => {
-    if (!open || typeof window === "undefined") return;
+    if (!open) {
+      setAgreedToTerms(false);
+      setCodeError("");
+      return;
+    }
+    if (typeof window === "undefined") return;
     const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
     fetch(`/api/analytics?mode=paywall&deviceId=${encodeURIComponent(devId)}`)
       .then((r) => r.json())
@@ -310,6 +315,9 @@ export default function Paywall({
       const effectiveCreatorCode =
         appliedCreator?.code ||
         (/^BROC-[A-Z0-9]{4,10}$/.test(storedFriendRef) ? storedFriendRef : undefined);
+      const isAdTest =
+        typeof window !== "undefined" &&
+        (window.location.pathname === "/test" || sp?.get("ad") === "test");
       const checkoutRes = await fetch("/api/checkout", {
         method: "POST",
         headers: {
@@ -318,6 +326,7 @@ export default function Paywall({
         },
         body: JSON.stringify({
           plan: selectedPlan,
+          adTestMode: isAdTest || undefined,
           creatorCode: effectiveCreatorCode,
           deviceId: devId || undefined,
           deviceSecret: devSecret || undefined,
@@ -678,7 +687,7 @@ export default function Paywall({
             <div>
               <strong style={{ color: "#0f172a" }}>3. Does one membership cover my phone, computer &amp; family?</strong>
               <div>
-                Yes. One Family Pro membership unlocks Web, Android Live Store Bubble, iOS Safari Extension, and Chrome Extension across up to 5 family devices.
+                Yes. One Family Pro membership unlocks Web, Android Live Store Bubble, iOS Safari Extension, and Chrome Extension across your phone, computer, and household devices when signed in to your HeyBroc account.
               </div>
             </div>
             <div>

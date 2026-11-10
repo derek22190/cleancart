@@ -385,6 +385,7 @@ h1, h2, h3, h4, p { margin: 0; }
 @media (max-width: 960px) {
   .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 12px 16px 40px; }
   .stage { position: static; order: -1; }
+  .layout--ad-test .stage { order: 0; }
   .topbar { padding: 14px 16px 6px; gap: 9px; }
 }
 @media (max-width: 520px) {

@@ -528,7 +528,10 @@ export default function Simulator({
           setPaywallOpen(true);
         } else if (
           params.get("onboarding") === "1" ||
-          (!onboardingDone && !params.get("session_id") && !isAdTestLanding)
+          (!onboardingDone &&
+            !params.get("session_id") &&
+            params.get("checkout") !== "cancelled" &&
+            !isAdTestLanding)
         ) {
           setWatchlistFunnelStep(1);
           setWatchlistFunnelOpen(true);
@@ -926,24 +929,27 @@ export default function Simulator({
   }, [toast]);
 
   // Product scores & ingredient explanations are 100% free forever — viewing items never opens the paywall.
-  const registerScan = useCallback(() => {
-    setScanCount((prev) => prev + 1);
-    setFreeTestCompleted(true);
-    if (typeof window !== "undefined") {
-      const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
-      void fetch("/api/analytics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "track",
-          event: "product_scanned",
-          deviceId: devId,
-          platform: "web",
-          store,
-        }),
-      }).catch(() => {});
-    }
-  }, [store]);
+  const registerScan = useCallback(
+    (skipRemoteAnalytics = false) => {
+      setScanCount((prev) => prev + 1);
+      setFreeTestCompleted(true);
+      if (!skipRemoteAnalytics && typeof window !== "undefined") {
+        const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+        void fetch("/api/analytics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "track",
+            event: "product_scanned",
+            deviceId: devId,
+            platform: "web",
+            store,
+          }),
+        }).catch(() => {});
+      }
+    },
+    [store]
+  );
 
   const [storeExpanded, setStoreExpanded] = useState(false);
   const storeRailRef = useRef<HTMLDivElement>(null);
@@ -983,7 +989,8 @@ export default function Simulator({
         ...prev.filter((h) => h.product.key !== p.key),
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      if (countAsScan) registerScan();
+      // Live scans are already recorded server-side by `/api/scan`; only fire client `/api/analytics` on local presets
+      if (countAsScan) registerScan(p.origin === "live");
     },
     [registerScan],
   );
@@ -1246,12 +1253,12 @@ export default function Simulator({
           origin: "live",
           lookup: data.lookup,
         };
-        showProduct(p, true);
+        showProduct(p, true, adTestMode);
         setLiveState("idle");
         fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, format: "ios_text" }),
+          body: JSON.stringify({ ...payload, format: "ios_text", skipAnalytics: true }),
         })
           .then((r) => r.text())
           .then(setIosText)
@@ -1261,7 +1268,7 @@ export default function Simulator({
         setLiveError("Network error — is the server reachable?");
       }
     },
-    [query, store, watch, familyWatchlist, dietaryWatchlist, showProduct],
+    [query, store, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode],
   );
 
   /* ---------------- Whole-Cart Audit ---------------- */
@@ -1536,7 +1543,7 @@ export default function Simulator({
         <nav
           className="topbar-subnav"
           aria-label="Quick tools and setup"
-          style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+          style={adTestMode ? { display: "none" } : undefined}
         >
           <button
             id="topbar-watchlist-funnel"
@@ -1572,7 +1579,7 @@ export default function Simulator({
         </nav>
       </header>
 
-      <main className="layout">
+      <main className={`layout ${adTestMode ? "layout--ad-test" : ""}`}>
         {/* ============ CONTROL PANEL ============ */}
         <section className="controls" aria-label="Store and product controls">
           {adTestMode && (
@@ -1613,6 +1620,7 @@ export default function Simulator({
                     undefined,
                     familyWatchlist
                   );
+                  const isSelected = freeTestCompleted && active.key === p.id;
                   return (
                     <button
                       key={`ad-test-${p.id}`}
@@ -1626,11 +1634,10 @@ export default function Simulator({
                         gap: 8,
                         padding: "10px 12px",
                         borderRadius: 12,
-                        border:
-                          active.key === p.id
-                            ? "2px solid #0f7a4a"
-                            : "1px solid #cbd5e1",
-                        background: active.key === p.id ? "#ecfdf5" : "#fff",
+                        border: isSelected
+                          ? "2px solid #0f7a4a"
+                          : "1px solid #cbd5e1",
+                        background: isSelected ? "#ecfdf5" : "#fff",
                         cursor: "pointer",
                         textAlign: "left",
                       }}
@@ -1644,13 +1651,7 @@ export default function Simulator({
                 })}
               </div>
 
-              <form
-                className="search"
-                onSubmit={(e) => {
-                  setFreeTestCompleted(true);
-                  void runLive(e);
-                }}
-              >
+              <form className="search" onSubmit={runLive}>
                 <input
                   id="ad-test-search-input"
                   value={query}
@@ -1670,6 +1671,7 @@ export default function Simulator({
                   )}
                 </button>
               </form>
+              {liveState === "error" && <p className="error">{liveError}</p>}
 
               {freeTestCompleted && (
                 <div
@@ -1741,7 +1743,7 @@ export default function Simulator({
 
           <div
             className="card"
-            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+            style={adTestMode ? { display: "none" } : undefined}
           >
             <div className="card-head">
               <h2>Choose Your Store</h2>
@@ -1808,7 +1810,7 @@ export default function Simulator({
 
           <div
             className="card"
-            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+            style={adTestMode ? { display: "none" } : undefined}
           >
             <div className="card-head">
               <h2>Shopping View</h2>
@@ -1867,7 +1869,7 @@ export default function Simulator({
 
           <div
             className="card"
-            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+            style={adTestMode ? { display: "none" } : undefined}
           >
             <div className="card-head"><h2>Search Any Grocery Item</h2></div>
             <form className="search" onSubmit={runLive}>
@@ -1900,7 +1902,7 @@ export default function Simulator({
 
           <div
             className="card"
-            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+            style={adTestMode ? { display: "none" } : undefined}
           >
             <div className="card-head"><h2>Popular Grocery Items</h2></div>
             <ul className="preset-list">
@@ -1923,7 +1925,7 @@ export default function Simulator({
 
           <div
             className="tool-row"
-            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+            style={adTestMode ? { display: "none" } : undefined}
           >
             <button id="open-auditor" className="tool" onClick={openAudit}>
               <span className="tool-icon">🛒</span>
@@ -1943,7 +1945,7 @@ export default function Simulator({
               setWatchlistFunnelStep(1);
               setWatchlistFunnelOpen(true);
             }}
-            style={{ width: "100%", textAlign: "left" }}
+            style={adTestMode ? { display: "none" } : { width: "100%", textAlign: "left" }}
           >
             <span className="tool-icon">🛡️</span>
             <span>

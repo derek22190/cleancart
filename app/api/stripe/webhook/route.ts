@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  applyOneTimeAnnualPass,
   getSubscriptionEntitlement,
   recordSubscriptionConsent,
   refreshSubscriptionConsentOnRenewal,
+  revokeOneTimeAnnualPass,
   saveEntitlement,
   updateSubscriptionEntitlement,
   type EntitlementStatus,
@@ -11,7 +13,7 @@ import {
   recordStripeCreatorConversionOnce,
   recordStripeCreatorRefundOnce,
 } from "@/lib/influencers";
-import { TERMS_VERSION, type PlanId } from "@/lib/pricing";
+import { PRICING, TERMS_VERSION, type PlanId } from "@/lib/pricing";
 import { applyOrActivateReferral } from "@/lib/referrals";
 import { kvGet, kvSet } from "@/lib/storage";
 import { verifyStripeWebhookSignature } from "@/lib/stripe-webhook";
@@ -65,19 +67,24 @@ function extractSubIdFromInvoiceObject(inv: Record<string, unknown>): string {
 function chargeObjHasSubscriptionLink(
   chargeObj: Record<string, unknown>
 ): boolean {
+  if (chargeObj._confirmedNonInvoice === true) return false;
   const metadata = (chargeObj.metadata ?? {}) as Record<string, string>;
+  if (metadata.oto_offer === "oto_gift_year") return false;
   if (metadata.subscription_id) return true;
   if (chargeObj.invoice) return true;
-  if (chargeObj.payment_intent) return true;
-  // If chargeObj explicitly sets `invoice: null` with no payment_intent or subscription_id, it is a one-off charge
+  // Explicit `invoice: null` means Stripe created a one-off non-invoice charge (e.g. Checkout mode=payment)
   if ("invoice" in chargeObj && chargeObj.invoice === null) return false;
-  return true;
+  if (chargeObj.payment_intent) return true;
+  return false;
 }
 
 async function resolveSubscriptionFromCharge(
   chargeObj: Record<string, unknown>
 ): Promise<string> {
   const metadata = (chargeObj.metadata ?? {}) as Record<string, string>;
+  if (metadata.oto_offer === "oto_gift_year") {
+    return "";
+  }
   if (metadata.subscription_id) {
     return metadata.subscription_id;
   }
@@ -124,7 +131,7 @@ async function resolveSubscriptionFromCharge(
         ? (rawPi as { id: string }).id
         : "";
 
-  if (secretKey && paymentIntentId) {
+  if (secretKey && paymentIntentId && !("invoice" in chargeObj && chargeObj.invoice === null)) {
     const ipUrl = new URL("https://api.stripe.com/v1/invoice_payments");
     ipUrl.searchParams.set("payment[type]", "payment_intent");
     ipUrl.searchParams.set("payment[payment_intent]", paymentIntentId);
@@ -142,6 +149,10 @@ async function resolveSubscriptionFromCharge(
         invoice?: string | Record<string, unknown>;
       }>;
     };
+    if (!ipData.data || ipData.data.length === 0) {
+      chargeObj._confirmedNonInvoice = true;
+      return "";
+    }
     const firstInv = ipData.data?.[0]?.invoice;
     if (firstInv && typeof firstInv === "object") {
       const subId = extractSubIdFromInvoiceObject(firstInv);
@@ -216,6 +227,7 @@ export async function POST(req: Request) {
         const sessionId = typeof obj.id === "string" ? obj.id : "";
         if (!sessionId) break;
 
+        const mode = typeof obj.mode === "string" ? obj.mode : "";
         const subscriptionId =
           typeof obj.subscription === "string"
             ? obj.subscription
@@ -232,6 +244,7 @@ export async function POST(req: Request) {
           | { email?: string | null }
           | undefined;
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
+        const otoOffer = metadata.oto_offer || "";
         const plan: PlanId = metadata.plan === "monthly" ? "monthly" : "annual";
         const creatorCode = metadata.creator_code || undefined;
         const deviceId =
@@ -241,62 +254,139 @@ export async function POST(req: Request) {
             : undefined);
         const resolvedEmail =
           customerDetails?.email || metadata.customer_email || "";
+        const amountTotalCents =
+          typeof obj.amount_total === "number" ? obj.amount_total : 0;
 
         // Require explicit payment_status ("paid" or "no_payment_required" for trial)
         const paymentStatus =
           typeof obj.payment_status === "string" ? obj.payment_status : "";
         const isPaid = paymentStatus === "paid";
         const isTrial = paymentStatus === "no_payment_required";
-        const status: EntitlementStatus = isPaid
-          ? "active"
-          : isTrial
-            ? "trialing"
-            : "incomplete";
+        const isOneTimeOtoPass =
+          (mode === "payment" || !subscriptionId) && otoOffer === "oto_gift_year";
 
-        await saveEntitlement({
-          sessionId,
-          subscriptionId,
-          customerId,
-          customerEmail: resolvedEmail || undefined,
-          deviceId,
-          plan,
-          creatorCode,
-          status,
-          active: isPaid || isTrial,
-          lastStripeEventCreated: eventCreated,
-          updatedAt: new Date().toISOString(),
-        });
-
-        await recordSubscriptionConsent({
-          deviceId: deviceId || "anon-web",
-          email: resolvedEmail,
-          plan,
-          termsVersion: metadata.terms_version || TERMS_VERSION,
-          timestamp: metadata.terms_accepted_at || new Date().toISOString(),
-          ip: "stripe-webhook",
-          sessionId,
-          customerId,
-          subscriptionId,
-        });
-
-        if (creatorCode && (isTrial || isPaid)) {
-          if (/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode)) {
-            await applyOrActivateReferral({
-              deviceId: deviceId || `checkout:${sessionId}`,
-              referralCode: creatorCode,
-              activateNow: true,
-            });
-          } else if (isTrial) {
-            // Non-monetary trial start tracking only; paid commissions are credited strictly on invoice.paid (amount_paid > 0)
-            const refKey = subscriptionId || sessionId;
-            await recordStripeCreatorConversionOnce(
-              `trial:${refKey}`,
+        if (isOneTimeOtoPass) {
+          if (isPaid) {
+            await applyOneTimeAnnualPass({
+              sessionId,
+              customerId,
+              customerEmail: resolvedEmail || undefined,
+              deviceId,
               creatorCode,
-              "trial"
-            );
+              lastStripeEventCreated: eventCreated,
+            });
+            if (creatorCode) {
+              if (/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode)) {
+                await applyOrActivateReferral({
+                  deviceId: deviceId || `checkout:${sessionId}`,
+                  referralCode: creatorCode,
+                  activateNow: true,
+                });
+              } else if (amountTotalCents > 0) {
+                // One-time payment (`mode=payment`) does not emit `invoice.paid`; credit creator here idempotently
+                await recordStripeCreatorConversionOnce(
+                  `session:${sessionId}`,
+                  creatorCode,
+                  "paid_annual",
+                  amountTotalCents / 100
+                );
+              }
+            }
+          }
+        } else {
+          const status: EntitlementStatus = isPaid
+            ? "active"
+            : isTrial
+              ? "trialing"
+              : "incomplete";
+
+          await saveEntitlement({
+            sessionId,
+            subscriptionId,
+            customerId,
+            customerEmail: resolvedEmail || undefined,
+            deviceId,
+            plan,
+            creatorCode,
+            status,
+            active: isPaid || isTrial,
+            lastStripeEventCreated: eventCreated,
+            updatedAt: new Date().toISOString(),
+          });
+
+          await recordSubscriptionConsent({
+            deviceId: deviceId || "anon-web",
+            email: resolvedEmail,
+            plan,
+            termsVersion: metadata.terms_version || TERMS_VERSION,
+            timestamp: metadata.terms_accepted_at || new Date().toISOString(),
+            ip: "stripe-webhook",
+            sessionId,
+            customerId,
+            subscriptionId,
+            otoOffer: otoOffer || undefined,
+            recurringPriceUsd:
+              otoOffer === "oto_annual"
+                ? PRICING.otoAnnualLockIn
+                : plan === "annual"
+                  ? PRICING.annual
+                  : PRICING.monthly,
+          });
+
+          // If this is a Monthly -> VIP Annual OTO upgrade (`oto_annual`), cancel the superseded monthly subscription
+          const prevSubId = (metadata.previous_subscription_id || "").trim();
+          if (
+            (isPaid || isTrial) &&
+            otoOffer === "oto_annual" &&
+            prevSubId &&
+            prevSubId.startsWith("sub_") &&
+            prevSubId !== subscriptionId
+          ) {
+            await updateSubscriptionEntitlement(prevSubId, {
+              status: "canceled",
+              lastStripeEventCreated: eventCreated,
+            });
+            const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+            if (secretKey) {
+              const cancelOldRes = await fetch(
+                `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(prevSubId)}`,
+                {
+                  method: "DELETE",
+                  headers: { Authorization: `Bearer ${secretKey}` },
+                }
+              );
+              if (!cancelOldRes.ok && cancelOldRes.status !== 404) {
+                throw new Error(
+                  `Failed to cancel superseded monthly subscription ${prevSubId} (${cancelOldRes.status})`
+                );
+              }
+            }
+          }
+
+          if (creatorCode && (isTrial || isPaid)) {
+            if (/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode)) {
+              await applyOrActivateReferral({
+                deviceId: deviceId || `checkout:${sessionId}`,
+                referralCode: creatorCode,
+                activateNow: true,
+              });
+            } else if (isTrial) {
+              // Non-monetary trial start tracking only; paid subscription commissions are credited strictly on invoice.paid (amount_paid > 0)
+              const refKey = subscriptionId || sessionId;
+              await recordStripeCreatorConversionOnce(
+                `trial:${refKey}`,
+                creatorCode,
+                "trial"
+              );
+            }
           }
         }
+
         if (isTrial || isPaid) {
+          const paidUsd =
+            isPaid && amountTotalCents > 0
+              ? Number((amountTotalCents / 100).toFixed(2))
+              : 0;
           void import("@/lib/analytics")
             .then(({ assignPaywallVariant, trackServerEvent }) =>
               trackServerEvent({
@@ -304,10 +394,13 @@ export async function POST(req: Request) {
                 distinctId: deviceId || sessionId,
                 platform: "web",
                 variant: assignPaywallVariant(deviceId, true),
+                userEmail: resolvedEmail || undefined,
                 properties: {
                   plan,
                   status: isTrial ? "trialing" : "active",
                   source: "stripe",
+                  otoOffer: otoOffer || null,
+                  amountUsd: paidUsd,
                   creatorCode: creatorCode || null,
                 },
               }),
@@ -390,22 +483,36 @@ export async function POST(req: Request) {
         const creatorCode =
           metadata.creator_code || existing?.creatorCode || undefined;
 
+        // If a trialing annual subscriber who bought a +366d pass converts to paid Year 1, stack the paid year
+        const convertedPassMs =
+          existing?.status === "trialing" &&
+          amountPaidCents > 0 &&
+          plan === "annual" &&
+          existing?.paidPassExpiresAtMs &&
+          existing.paidPassExpiresAtMs > Date.now()
+            ? existing.paidPassExpiresAtMs + 365 * 86_400_000
+            : undefined;
+
         const updated = await updateSubscriptionEntitlement(subscriptionId, {
           status: "active",
           plan,
           customerId,
           creatorCode,
+          ...(convertedPassMs ? { paidPassExpiresAtMs: convertedPassMs } : {}),
           lastStripeEventCreated: eventCreated,
         });
+
+        const resolvedInvoiceEmail =
+          (typeof obj.customer_email === "string" ? obj.customer_email : "") ||
+          metadata.customer_email ||
+          updated?.customerEmail ||
+          existing?.customerEmail ||
+          "";
 
         await refreshSubscriptionConsentOnRenewal({
           sessionId: updated?.sessionId || existing?.sessionId,
           customerId: customerId || updated?.customerId || existing?.customerId,
-          email:
-            (typeof obj.customer_email === "string" ? obj.customer_email : "") ||
-            metadata.customer_email ||
-            updated?.customerEmail ||
-            existing?.customerEmail,
+          email: resolvedInvoiceEmail,
           deviceId: metadata.device_id || updated?.deviceId || existing?.deviceId,
           subscriptionId,
           plan,
@@ -424,6 +531,21 @@ export async function POST(req: Request) {
             referralCode: invoiceRefCode,
             activateNow: true,
           });
+        }
+
+        // Report trial-to-paid conversions & renewals to Meta CAPI for accurate ROAS without double-counting pro_subscribed
+        if (amountPaidCents > 0 && obj.billing_reason !== "subscription_create") {
+          void import("@/lib/analytics")
+            .then(({ sendMetaCapiPurchaseEvent }) =>
+              sendMetaCapiPurchaseEvent({
+                distinctId: invoiceDeviceId || subscriptionId,
+                amountUsd: amountPaidCents / 100,
+                plan,
+                userEmail: resolvedInvoiceEmail || undefined,
+                eventId: invoiceId ? `inv_${invoiceId}` : undefined,
+              })
+            )
+            .catch(() => {});
         }
 
         // Credit creators ONLY from invoice.paid / invoice.payment_succeeded with amount_paid > 0, key invoice:${id}, using actual paid USD
@@ -480,6 +602,7 @@ export async function POST(req: Request) {
         const isFullRefund =
           isDispute ||
           (amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0);
+        const isOneTimeOtoPassCharge = metadata.oto_offer === "oto_gift_year";
 
         const hasInvoiceReference = Boolean(
           chargeObjHasSubscriptionLink(obj)
@@ -488,6 +611,16 @@ export async function POST(req: Request) {
           throw new Error(
             `Unable to resolve subscription for refunded/disputed charge ${chargeId}`
           );
+        }
+
+        if (isFullRefund && isOneTimeOtoPassCharge) {
+          await revokeOneTimeAnnualPass({
+            sessionId: metadata.session_id || undefined,
+            customerId:
+              typeof obj.customer === "string" ? obj.customer : undefined,
+            deviceId: metadata.device_id || undefined,
+            customerEmail: metadata.customer_email || undefined,
+          });
         }
 
         if (subscriptionId && isFullRefund) {
@@ -523,11 +656,14 @@ export async function POST(req: Request) {
             : [];
           if (refundList.length > 0) {
             for (const r of refundList) {
+              const itemIsFullRefund =
+                amountCapturedCents > 0 && r.amount! >= amountCapturedCents;
               await recordStripeCreatorRefundOnce(
                 `refund:${r.id!}`,
                 creatorCode,
                 plan,
-                r.amount! / 100
+                r.amount! / 100,
+                itemIsFullRefund ? true : undefined
               );
             }
           } else {
@@ -538,11 +674,15 @@ export async function POST(req: Request) {
               ? amountRefundedCents
               : Math.max(0, amountRefundedCents - prevRefundedCents);
             if (deltaCents > 0) {
+              const deltaIsFullRefund =
+                isDispute ||
+                (amountCapturedCents > 0 && deltaCents >= amountCapturedCents);
               const recorded = await recordStripeCreatorRefundOnce(
                 `refund:${chargeId}:${event.id || amountRefundedCents}`,
                 creatorCode,
                 plan,
-                deltaCents / 100
+                deltaCents / 100,
+                deltaIsFullRefund ? true : undefined
               );
               if (recorded && !isDispute) {
                 await kvSet(

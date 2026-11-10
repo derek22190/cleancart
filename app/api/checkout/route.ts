@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { recordSubscriptionConsent } from "@/lib/entitlements";
+import { getAuthenticatedUser } from "@/lib/auth";
+import {
+  getDevicePaidEntitlement,
+  getEmailEntitlement,
+  isValidStripeSessionIdFormat,
+  recordSubscriptionConsent,
+  verifyStripeCheckoutSession,
+  type EntitlementRecord,
+} from "@/lib/entitlements";
 import { getCreator } from "@/lib/influencers";
 import { PRICING, TERMS_VERSION, type OtoOfferId, type PlanId } from "@/lib/pricing";
-import { getOrCreateDevice, isValidReferralCode } from "@/lib/referrals";
+import {
+  getExistingDevice,
+  getOrCreateDevice,
+  isValidReferralCode,
+  verifyDeviceSecret,
+} from "@/lib/referrals";
+import { checkRateLimitAsync } from "@/lib/scan";
 
 const ALLOWED_ORIGINS = new Set([
   "https://heybroc.com",
@@ -33,10 +47,18 @@ function getClientIp(req: NextRequest): string {
 
 /**
  * POST /api/checkout
- * Body: { plan: "annual" | "monthly", creatorCode?: string, deviceId?: string, deviceSecret?: string, email?: string, termsAccepted: boolean, termsVersion?: string, origin?: string }
+ * Body: { plan: "annual" | "monthly", otoOffer?: "oto_annual" | "oto_gift_year", previousSessionId?: string, adTestMode?: boolean, creatorCode?: string, deviceId?: string, deviceSecret?: string, email?: string, termsAccepted: boolean, termsVersion?: string, origin?: string }
  */
 export async function POST(req: NextRequest) {
   try {
+    const clientIp = getClientIp(req);
+    if (!(await checkRateLimitAsync(`checkout:${clientIp}`, 20))) {
+      return NextResponse.json(
+        { ok: false, error: "Too many checkout requests. Please wait a moment and try again." },
+        { status: 429 }
+      );
+    }
+
     const parsed = await req.json();
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400 });
@@ -72,6 +94,9 @@ export async function POST(req: NextRequest) {
       rawOtoOffer === "oto_annual" || rawOtoOffer === "oto_gift_year"
         ? rawOtoOffer
         : null;
+    const previousSessionId =
+      typeof body.previousSessionId === "string" ? body.previousSessionId.trim() : "";
+    const adTestMode = body.adTestMode === true;
 
     const plan: PlanId =
       otoOffer === "oto_annual" || otoOffer === "oto_gift_year"
@@ -85,6 +110,11 @@ export async function POST(req: NextRequest) {
       typeof body.deviceSecret === "string"
         ? body.deviceSecret.trim()
         : req.headers.get("x-device-secret")?.trim() || "";
+    const authToken =
+      req.headers
+        .get("authorization")
+        ?.replace(/^Bearer\s+/i, "")
+        .trim() || "";
     const termsVersion = TERMS_VERSION;
     const rawEmail =
       typeof body.email === "string"
@@ -98,7 +128,12 @@ export async function POST(req: NextRequest) {
 
     let deviceReferredBy = "";
     let ownReferralCode = "";
+    let hasVerifiedDeviceSecret = false;
     if (deviceId && deviceId !== "anon-web" && deviceSecret) {
+      const existingDev = await getExistingDevice(deviceId).catch(() => null);
+      if (existingDev?.deviceSecretHash && verifyDeviceSecret(existingDev, deviceSecret)) {
+        hasVerifiedDeviceSecret = true;
+      }
       const devRes = await getOrCreateDevice(deviceId, deviceSecret).catch(() => null);
       if (devRes?.referralCode) {
         ownReferralCode = devRes.referralCode.trim().toUpperCase();
@@ -106,50 +141,104 @@ export async function POST(req: NextRequest) {
       if (devRes?.referredByCode) {
         deviceReferredBy = devRes.referredByCode.trim().toUpperCase();
       }
-      if (devRes?.referralCode) {
-        ownReferralCode = devRes.referralCode;
+    }
+
+    const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const isPreviewAllowed = !stripeKey && process.env.ALLOW_PREVIEW_CHECKOUT === "true";
+
+    // Gate discounted post-checkout OTO offers behind a verified prior checkout session or active Pro entitlement
+    let priorEntitlement: EntitlementRecord | null = null;
+    if (otoOffer !== null) {
+      if (previousSessionId && isValidStripeSessionIdFormat(previousSessionId)) {
+        priorEntitlement = await verifyStripeCheckoutSession(
+          previousSessionId,
+          deviceId || undefined
+        );
+      }
+      if (!priorEntitlement && deviceId && deviceId !== "anon-web" && hasVerifiedDeviceSecret) {
+        priorEntitlement = await getDevicePaidEntitlement(deviceId);
+      }
+      if (!priorEntitlement && authToken) {
+        const authUser = await getAuthenticatedUser(authToken).catch(() => null);
+        if (authUser?.emailVerified && authUser.email) {
+          priorEntitlement = await getEmailEntitlement(authUser.email);
+        }
+      }
+      if (!priorEntitlement?.active && !isPreviewAllowed) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "One-time post-checkout offers are only available immediately after activating a HeyBroc Family Pro membership.",
+          },
+          { status: 403 }
+        );
       }
     }
 
-    const consentTimestamp = new Date().toISOString();
-    const clientIp = getClientIp(req);
-    await recordSubscriptionConsent({
-      deviceId: deviceId || "anon-web",
-      email: customerEmail,
-      plan,
-      termsVersion,
-      timestamp: consentTimestamp,
-      ip: clientIp,
-    });
+    const existingCustomerId = priorEntitlement?.customerId || "";
+    const previousSubscriptionId =
+      priorEntitlement?.subscriptionId && priorEntitlement.subscriptionId.startsWith("sub_")
+        ? priorEntitlement.subscriptionId
+        : "";
+    const effectiveEmail =
+      customerEmail || priorEntitlement?.customerEmail?.trim().toLowerCase() || "";
+    const isOneTimeOtoPass = otoOffer === "oto_gift_year";
+    const recurringPriceUsd =
+      otoOffer === "oto_annual"
+        ? PRICING.otoAnnualLockIn
+        : plan === "annual"
+          ? PRICING.annual
+          : PRICING.monthly;
 
-    const isFriendCodeFormat = /^BROC-[A-Z0-9]{4,10}$/.test(rawCreatorCode);
+    const consentTimestamp = new Date().toISOString();
+    // Only record auto-renewal consent on recurring subscriptions (never overwrite Step 1's ARL consent on a one-time pass)
+    if (!isOneTimeOtoPass) {
+      await recordSubscriptionConsent({
+        deviceId: deviceId || "anon-web",
+        email: effectiveEmail,
+        plan,
+        termsVersion,
+        timestamp: consentTimestamp,
+        ip: clientIp,
+        otoOffer: otoOffer || undefined,
+        recurringPriceUsd,
+      });
+    }
+
+    const candidateCreatorCode =
+      rawCreatorCode || (priorEntitlement?.creatorCode || "").trim().toUpperCase();
+    const isFriendCodeFormat = /^BROC-[A-Z0-9]{4,10}$/.test(candidateCreatorCode);
     let verifiedCode = "";
 
-    if (rawCreatorCode) {
+    if (candidateCreatorCode) {
       if (isFriendCodeFormat) {
-        if (ownReferralCode && rawCreatorCode === ownReferralCode) {
-          return NextResponse.json(
-            { ok: false, error: "You cannot use your own referral code." },
-            { status: 400 }
-          );
+        if (ownReferralCode && candidateCreatorCode === ownReferralCode) {
+          if (rawCreatorCode) {
+            return NextResponse.json(
+              { ok: false, error: "You cannot use your own referral code." },
+              { status: 400 }
+            );
+          }
+        } else {
+          const exists = await isValidReferralCode(candidateCreatorCode);
+          if (!exists && rawCreatorCode) {
+            return NextResponse.json(
+              { ok: false, error: "Invalid or expired friend referral code." },
+              { status: 400 }
+            );
+          }
+          if (exists) verifiedCode = candidateCreatorCode;
         }
-        const exists = await isValidReferralCode(rawCreatorCode);
-        if (!exists) {
-          return NextResponse.json(
-            { ok: false, error: "Invalid or expired friend referral code." },
-            { status: 400 }
-          );
-        }
-        verifiedCode = rawCreatorCode;
       } else {
-        const validCreator = await getCreator(rawCreatorCode);
-        if (!validCreator) {
+        const validCreator = await getCreator(candidateCreatorCode);
+        if (!validCreator && rawCreatorCode) {
           return NextResponse.json(
             { ok: false, error: "Invalid creator code." },
             { status: 400 }
           );
         }
-        verifiedCode = validCreator.code;
+        if (validCreator) verifiedCode = validCreator.code;
       }
     } else if (
       deviceReferredBy &&
@@ -173,7 +262,6 @@ export async function POST(req: NextRequest) {
             : PRICING.trialDays
           : 0;
 
-    const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
     if (!stripeKey) {
       if (process.env.ALLOW_PREVIEW_CHECKOUT === "true") {
         return NextResponse.json({
@@ -190,7 +278,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const isOneTimeOtoPass = otoOffer === "oto_gift_year";
     const unitAmountCents =
       otoOffer === "oto_annual"
         ? Math.round(PRICING.otoAnnualLockIn * 100)
@@ -200,6 +287,7 @@ export async function POST(req: NextRequest) {
             ? Math.round(PRICING.annual * 100)
             : Math.round(PRICING.monthly * 100);
     const interval = plan === "annual" ? "year" : "month";
+    const cancelPath = adTestMode ? "/test" : "/";
 
     const params = new URLSearchParams();
     params.set("mode", isOneTimeOtoPass ? "payment" : "subscription");
@@ -207,7 +295,10 @@ export async function POST(req: NextRequest) {
       "success_url",
       `${origin}/?pro=1&session_id={CHECKOUT_SESSION_ID}&plan=${plan}${otoOffer ? `&oto=${encodeURIComponent(otoOffer)}` : ""}${verifiedCode ? `&code=${encodeURIComponent(verifiedCode)}` : ""}${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`
     );
-    params.set("cancel_url", `${origin}/?checkout=cancelled${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`);
+    params.set(
+      "cancel_url",
+      `${origin}${cancelPath}?checkout=cancelled${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`
+    );
     params.set("line_items[0][price_data][currency]", "usd");
     params.set("line_items[0][price_data][unit_amount]", String(unitAmountCents));
     if (!isOneTimeOtoPass) {
@@ -218,14 +309,14 @@ export async function POST(req: NextRequest) {
       otoOffer === "oto_annual"
         ? "HeyBroc Family Pro — One-Time VIP Annual Lock-In ($39.99/yr)"
         : otoOffer === "oto_gift_year"
-          ? "HeyBroc Founding Family Pass (+1 Extra Year / Spouse or Parent Gift Pass)"
+          ? "HeyBroc Family Pro — +1 Extra Full Year Pass (One-Time, Never Auto-Renews)"
           : plan === "annual"
             ? "HeyBroc Family Pro (Annual)"
             : "HeyBroc Family Pro (Monthly)"
     );
     params.set(
       "line_items[0][price_data][product_data][description]",
-      "Unlimited live store overlays across 15 grocery apps, 1-tap clean swaps & whole-cart health checks."
+      "Unlimited live store overlays across 12 grocery stores & delivery apps, 1-tap clean swaps & whole-cart health checks."
     );
     params.set("line_items[0][quantity]", "1");
     params.set("metadata[plan]", plan);
@@ -234,12 +325,28 @@ export async function POST(req: NextRequest) {
     if (otoOffer) {
       params.set("metadata[oto_offer]", otoOffer);
     }
+    if (previousSessionId) {
+      params.set("metadata[previous_session_id]", previousSessionId);
+    }
     if (!isOneTimeOtoPass) {
       params.set("subscription_data[metadata][plan]", plan);
       params.set("subscription_data[metadata][terms_version]", termsVersion);
       params.set("subscription_data[metadata][terms_accepted_at]", consentTimestamp);
       if (otoOffer) {
         params.set("subscription_data[metadata][oto_offer]", otoOffer);
+      }
+      if (otoOffer === "oto_annual" && previousSubscriptionId) {
+        params.set("metadata[previous_subscription_id]", previousSubscriptionId);
+        params.set(
+          "subscription_data[metadata][previous_subscription_id]",
+          previousSubscriptionId
+        );
+      }
+    } else {
+      params.set("payment_intent_data[metadata][oto_offer]", "oto_gift_year");
+      params.set("payment_intent_data[metadata][plan]", "annual");
+      if (previousSessionId) {
+        params.set("payment_intent_data[metadata][previous_session_id]", previousSessionId);
       }
     }
 
@@ -248,13 +355,28 @@ export async function POST(req: NextRequest) {
       params.set("metadata[device_id]", deviceId);
       if (!isOneTimeOtoPass) {
         params.set("subscription_data[metadata][device_id]", deviceId);
+      } else {
+        params.set("payment_intent_data[metadata][device_id]", deviceId);
       }
     }
-    if (customerEmail) {
-      params.set("customer_email", customerEmail);
-      params.set("metadata[customer_email]", customerEmail);
+
+    // Reuse existing Stripe Customer on post-checkout OTO so billing history & Billing Portal stay unified
+    if (existingCustomerId) {
+      params.set("customer", existingCustomerId);
+    } else {
+      if (effectiveEmail) {
+        params.set("customer_email", effectiveEmail);
+      }
+      if (isOneTimeOtoPass) {
+        params.set("customer_creation", "always");
+      }
+    }
+    if (effectiveEmail) {
+      params.set("metadata[customer_email]", effectiveEmail);
       if (!isOneTimeOtoPass) {
-        params.set("subscription_data[metadata][customer_email]", customerEmail);
+        params.set("subscription_data[metadata][customer_email]", effectiveEmail);
+      } else {
+        params.set("payment_intent_data[metadata][customer_email]", effectiveEmail);
       }
     }
     if (!isOneTimeOtoPass && trialDays > 0) {
@@ -264,6 +386,8 @@ export async function POST(req: NextRequest) {
       params.set("metadata[creator_code]", verifiedCode);
       if (!isOneTimeOtoPass) {
         params.set("subscription_data[metadata][creator_code]", verifiedCode);
+      } else {
+        params.set("payment_intent_data[metadata][creator_code]", verifiedCode);
       }
     }
 
@@ -284,15 +408,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (typeof session.id === "string" && session.id.trim()) {
+    if (!isOneTimeOtoPass && typeof session.id === "string" && session.id.trim()) {
       await recordSubscriptionConsent({
         deviceId: deviceId || "anon-web",
-        email: customerEmail,
+        email: effectiveEmail,
         plan,
         termsVersion,
         timestamp: consentTimestamp,
         ip: clientIp,
         sessionId: session.id.trim(),
+        customerId: existingCustomerId || undefined,
+        otoOffer: otoOffer || undefined,
+        recurringPriceUsd,
       });
     }
 

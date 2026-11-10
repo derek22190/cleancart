@@ -83,6 +83,7 @@ export async function POST(request: Request) {
               watchlist: body.watchlist,
               familyWatchlist: body.familyWatchlist,
               dietaryWatchlist: body.dietaryWatchlist,
+              skipAnalytics: true,
             });
             memo.set(dedupKey, pending);
           }
@@ -123,6 +124,7 @@ export async function POST(request: Request) {
             watchlist: body.watchlist,
             familyWatchlist: effFw,
             dietaryWatchlist: effDw,
+            skipAnalytics: true,
           });
           memo.set(dedupKey, pending);
         }

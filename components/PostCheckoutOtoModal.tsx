@@ -56,7 +56,7 @@ export default function PostCheckoutOtoModal({
           step: "oto_viewed",
           otoOffer,
           initialPlan,
-          sessionId: sessionId || null,
+          hasSession: Boolean(sessionId),
         },
       }),
     }).catch(() => {});
@@ -82,6 +82,15 @@ export default function PostCheckoutOtoModal({
       const devSecret =
         (typeof window !== "undefined" &&
           window.localStorage.getItem("heybroc_device_secret")) ||
+        "";
+      const authToken =
+        (typeof window !== "undefined" &&
+          window.localStorage.getItem("heybroc_auth_token")) ||
+        "";
+      const prevSessId =
+        sessionId ||
+        (typeof window !== "undefined" &&
+          window.localStorage.getItem("heybroc_session_id")) ||
         "";
       let userEmail = "";
       if (typeof window !== "undefined") {
@@ -117,11 +126,13 @@ export default function PostCheckoutOtoModal({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
         },
         body: JSON.stringify({
           plan: "annual",
           otoOffer,
+          previousSessionId: prevSessId || undefined,
           deviceId: devId || undefined,
           deviceSecret: devSecret || undefined,
           email: userEmail || undefined,
@@ -137,6 +148,12 @@ export default function PostCheckoutOtoModal({
       const data = await res.json().catch(() => ({}));
       if (data?.ok && data?.mode === "stripe" && data?.url) {
         window.location.href = data.url;
+        return;
+      }
+      if (data?.ok && data?.mode === "preview") {
+        setError(
+          "Live Stripe checkout is not configured in this environment. Your current Pro membership remains active."
+        );
         return;
       }
       setError(
@@ -208,22 +225,22 @@ export default function PostCheckoutOtoModal({
             </h2>
             <p className="meta" style={{ fontSize: 13.5, marginBottom: 14 }}>
               Because you just joined on Monthly (${PRICING.monthly.toFixed(2)}
-              /mo = ${monthlyPerYear.toFixed(2)}/yr), you can upgrade right now
+              /mo = ${monthlyPerYear.toFixed(2)}/yr), you can switch right now
               to our <b>Founder VIP Annual Rate of ${PRICING.otoAnnualLockIn.toFixed(2)}/yr</b>{" "}
               (${(PRICING.otoAnnualLockIn / 12).toFixed(2)}/mo equivalent — $10
-              off our normal ${PRICING.annual.toFixed(2)}/yr plan).
+              off our normal ${PRICING.annual.toFixed(2)}/yr plan, replacing your
+              monthly billing).
             </p>
           </>
         ) : (
           <>
             <h2 style={{ fontSize: 22, margin: "8px 0 6px", lineHeight: 1.25 }}>
-              Add 1 Extra Full Year (+ Spouse or Parent Gift Pass) for Just $
+              Add +1 Extra Full Year of Family Pro for Just $
               {PRICING.otoExtraYearPass.toFixed(0)} Flat
             </h2>
             <p className="meta" style={{ fontSize: 13.5, marginBottom: 14 }}>
-              One-time new-member bonus: Add an extra 12 months of HeyBroc
-              Family Pro (or share it with a parent, spouse, or family member on
-              up to 5 devices) for a{" "}
+              One-time new-member bonus: Stack an extra 12 months (+366 days) of
+              HeyBroc Family Pro onto your account for a{" "}
               <b>
                 single one-time payment of ${PRICING.otoExtraYearPass.toFixed(2)}
               </b>{" "}
@@ -251,19 +268,21 @@ export default function PostCheckoutOtoModal({
               {isRecurringUpgrade ? (
                 <>
                   <b>Save ${(monthlyPerYear - PRICING.otoAnnualLockIn).toFixed(2)}/year</b>{" "}
-                  compared to 12 months of Monthly billing
+                  compared to 12 months of Monthly billing (your monthly plan is
+                  canceled automatically)
                 </>
               ) : (
                 <>
                   <b>One-Time ${PRICING.otoExtraYearPass.toFixed(2)} Payment:</b>{" "}
-                  Adds +366 days of unrestricted Family Pro (zero recurring charge)
+                  Stacks +366 days of unrestricted Family Pro (zero recurring charge)
                 </>
               )}
             </li>
             <li>
               <span>✓</span>{" "}
-              <b>Up to 5 Family Devices Included:</b> Share Clean Swaps &amp;
-              Custom 2x Additive Watchlists across Android, iPhone &amp; Chrome
+              <b>Cross-Device Household Sync:</b> Syncs Clean Swaps &amp; Custom
+              2x Additive Watchlists across Android, iPhone &amp; Chrome when
+              signed in to your HeyBroc account
             </li>
             <li>
               <span>✓</span>{" "}
@@ -273,7 +292,7 @@ export default function PostCheckoutOtoModal({
           </ul>
         </div>
 
-        {isRecurringUpgrade && (
+        {isRecurringUpgrade ? (
           <label
             htmlFor="oto-arl-consent"
             style={{
@@ -323,10 +342,35 @@ export default function PostCheckoutOtoModal({
               >
                 Terms
               </a>{" "}
-              and that this VIP Annual plan renews at $
-              {PRICING.otoAnnualLockIn.toFixed(2)}/yr until I cancel.
+              and that this VIP Annual plan replaces my monthly plan and renews
+              at ${PRICING.otoAnnualLockIn.toFixed(2)}/yr until I cancel.
             </span>
           </label>
+        ) : (
+          <p
+            style={{
+              fontSize: 12,
+              color: "#475569",
+              margin: "6px 0 10px",
+              textAlign: "center",
+            }}
+          >
+            One-time payment of ${PRICING.otoExtraYearPass.toFixed(2)} (never
+            auto-renews) · Subject to{" "}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#0f7a4a",
+                fontWeight: 700,
+                textDecoration: "underline",
+              }}
+            >
+              Terms of Service
+            </a>
+            .
+          </p>
         )}
 
         {error && <p className="error">{error}</p>}
@@ -342,7 +386,7 @@ export default function PostCheckoutOtoModal({
             ? "Applying One-Time Upgrade…"
             : isRecurringUpgrade
               ? `Yes! Lock In VIP Annual for $${PRICING.otoAnnualLockIn.toFixed(2)}/yr (Save ${otoAnnualSavingsPct}%) →`
-              : `Yes! Add +1 Extra Year / Family Pass for $${PRICING.otoExtraYearPass.toFixed(0)} Flat →`}
+              : `Yes! Add +1 Extra Full Year for $${PRICING.otoExtraYearPass.toFixed(0)} Flat →`}
         </button>
 
         <button

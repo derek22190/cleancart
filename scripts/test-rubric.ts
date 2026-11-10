@@ -1910,6 +1910,142 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const {
+    saveEntitlement,
+    updateSubscriptionEntitlement,
+    applyOneTimeAnnualPass,
+    revokeOneTimeAnnualPass,
+    getDevicePaidEntitlement,
+    getCustomerEntitlement,
+    getEmailEntitlement,
+  } = await import("../lib/entitlements");
+  const { deleteCreator } = await import("../lib/influencers");
+
+  // 1. One-time pass stacking, idempotency, Billing Portal preservation, and safe revocation
+  const passDeviceId = `audit-pass-dev-${Date.now()}`;
+  const passCustomerId = `cus_audit_pass_${Date.now()}`;
+  const passEmail = `audit-pass-${Date.now()}@heybroc.test`;
+  const passBaseExpiry = Date.now() + 365 * 86_400_000;
+  await saveEntitlement({
+    sessionId: `cs_base_${Date.now()}`,
+    subscriptionId: `sub_base_${Date.now()}`,
+    customerId: passCustomerId,
+    customerEmail: passEmail,
+    deviceId: passDeviceId,
+    plan: "annual",
+    status: "active",
+    active: true,
+    expiresAtMs: passBaseExpiry,
+    updatedAt: new Date().toISOString(),
+  });
+  const stackedOnce = await applyOneTimeAnnualPass({
+    sessionId: `cs_oto_pass_${Date.now()}`,
+    customerId: passCustomerId,
+    customerEmail: passEmail,
+    deviceId: passDeviceId,
+  });
+  const stackedDuplicate = await applyOneTimeAnnualPass({
+    sessionId: stackedOnce.sessionId,
+    customerId: passCustomerId,
+    customerEmail: passEmail,
+    deviceId: passDeviceId,
+  });
+  await revokeOneTimeAnnualPass({
+    sessionId: stackedOnce.sessionId,
+    customerId: passCustomerId,
+    deviceId: passDeviceId,
+    customerEmail: passEmail,
+  });
+  const afterPassRevoke = await getDevicePaidEntitlement(passDeviceId);
+
+  // 2. Multi-subscription isolation: canceling old monthly sub must not overwrite active new OTO annual sub
+  const upgradeDeviceId = `audit-upg-dev-${Date.now()}`;
+  const upgradeCustomerId = `cus_audit_upg_${Date.now()}`;
+  const upgradeEmail = `audit-upg-${Date.now()}@heybroc.test`;
+  const oldMonthlySubId = `sub_monthly_old_${Date.now()}`;
+  const newAnnualSubId = `sub_annual_new_${Date.now()}`;
+  await saveEntitlement({
+    sessionId: `cs_monthly_${Date.now()}`,
+    subscriptionId: oldMonthlySubId,
+    customerId: upgradeCustomerId,
+    customerEmail: upgradeEmail,
+    deviceId: upgradeDeviceId,
+    plan: "monthly",
+    status: "trialing",
+    active: true,
+    expiresAtMs: Date.now() + 7 * 86_400_000,
+    updatedAt: new Date().toISOString(),
+  });
+  await saveEntitlement({
+    sessionId: `cs_oto_annual_${Date.now()}`,
+    subscriptionId: newAnnualSubId,
+    customerId: upgradeCustomerId,
+    customerEmail: upgradeEmail,
+    deviceId: upgradeDeviceId,
+    plan: "annual",
+    status: "active",
+    active: true,
+    expiresAtMs: Date.now() + 365 * 86_400_000,
+    updatedAt: new Date().toISOString(),
+  });
+  await updateSubscriptionEntitlement(oldMonthlySubId, {
+    status: "canceled",
+    lastStripeEventCreated: Math.floor(Date.now() / 1000) + 10,
+  });
+  const devAfterOldCancel = await getDevicePaidEntitlement(upgradeDeviceId);
+  const cusAfterOldCancel = await getCustomerEntitlement(upgradeCustomerId);
+  const emailAfterOldCancel = await getEmailEntitlement(upgradeEmail);
+
+  // 3. Discounted OTO creator full-refund clawback ($39.99 annual lock-in)
+  const otoCreatorCode = `AUDITOTO${Date.now().toString().slice(-4)}`;
+  await createCreator({ code: otoCreatorCode, name: "Audit OTO Creator", commissionPct: 30 });
+  await recordStripeCreatorConversionOnce(
+    `conv_${otoCreatorCode}`,
+    otoCreatorCode,
+    "paid_annual",
+    39.99
+  );
+  const creatorAfterOtoRefund = await recordStripeCreatorRefundOnce(
+    `ref_${otoCreatorCode}`,
+    otoCreatorCode,
+    "annual",
+    39.99,
+    true
+  );
+  await deleteCreator(otoCreatorCode);
+
+  const globalsCssSrc = fs.readFileSync("app/globals.css", "utf8");
+  const opsCliSrc = fs.readFileSync("scripts/ops-cli.ts", "utf8");
+  const latestWebhookSrc = fs.readFileSync("app/api/stripe/webhook/route.ts", "utf8");
+
+  check(
+    "OTO & Meta Funnel Security/Billing Audit: Pass Stacking + Idempotency, Old-Sub Cancel Isolation, Discounted OTO Creator Clawback, OTO Eligibility Gate, CAPI Purchase ROAS, and Mobile /test Layout",
+    Boolean(
+      stackedOnce.subscriptionId?.startsWith("sub_base_") &&
+        stackedOnce.paidPassExpiresAtMs &&
+        stackedOnce.paidPassExpiresAtMs > Date.now() + 720 * 86_400_000 &&
+        stackedDuplicate.paidPassExpiresAtMs === stackedOnce.paidPassExpiresAtMs &&
+        afterPassRevoke?.active === true &&
+        afterPassRevoke?.subscriptionId?.startsWith("sub_base_") &&
+        !afterPassRevoke?.paidPassExpiresAtMs &&
+        devAfterOldCancel?.active === true &&
+        devAfterOldCancel?.subscriptionId === newAnnualSubId &&
+        cusAfterOldCancel?.active === true &&
+        cusAfterOldCancel?.subscriptionId === newAnnualSubId &&
+        emailAfterOldCancel?.active === true &&
+        emailAfterOldCancel?.subscriptionId === newAnnualSubId &&
+        creatorAfterOtoRefund?.paidAnnual === 0 &&
+        creatorAfterOtoRefund?.grossRevenue === 0 &&
+        creatorAfterOtoRefund?.commissionOwed === 0 &&
+        latestCheckoutRouteTs.includes("if (!priorEntitlement?.active && !isPreviewAllowed)") &&
+        latestWebhookSrc.includes("previous_subscription_id") &&
+        latestWebhookSrc.includes("sendMetaCapiPurchaseEvent") &&
+        latestAnalyticsTs.includes('? "Purchase"') &&
+        globalsCssSrc.includes(".layout--ad-test .stage") &&
+        !opsCliSrc.includes("process.env.META_ADS_ACCESS_TOKEN || process.env.META_CAPI_TOKEN")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

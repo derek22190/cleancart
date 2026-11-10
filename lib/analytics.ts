@@ -30,6 +30,13 @@ export interface AnalyticsEventInput {
   platform?: PlatformType;
   store?: string;
   variant?: "A" | "B";
+  /** Optional server-only email (hashed with SHA-256 for Meta CAPI `em`; never persisted or sent to PostHog). */
+  userEmail?: string;
+  clientIp?: string;
+  userAgent?: string;
+  sourceUrl?: string;
+  fbc?: string;
+  fbp?: string;
   properties?: Record<string, string | number | boolean | null | undefined>;
 }
 
@@ -75,6 +82,21 @@ export interface AnalyticsSnapshot {
 
 const ANALYTICS_KV_KEY = "heybroc:analytics:snapshot_v1";
 const PAYWALL_CONFIG_KV_KEY = "heybroc:config:paywall_v1";
+const ALLOWED_ANALYTICS_STORES = new Set([
+  "walmart",
+  "target",
+  "kroger",
+  "costco",
+  "sams",
+  "bjs",
+  "aldi",
+  "amazon",
+  "instacart",
+  "shipt",
+  "doordash",
+  "ubereats",
+  "search",
+]);
 
 export const DEFAULT_PAYWALL_CONFIG: PaywallExperimentConfig = {
   headline: "Shop clean on every aisle — without doing the homework",
@@ -193,6 +215,72 @@ export async function getAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
   };
 }
 
+/**
+ * Emits a server-side Meta Conversions API `Purchase` event (e.g. on Stripe `invoice.paid`
+ * trial-to-paid conversion or renewal) so Meta Ads Manager `purchase_roas` reflects actual USD revenue
+ * without double-counting `pro_subscribed` in first-party funnel totals.
+ */
+export async function sendMetaCapiPurchaseEvent(params: {
+  distinctId: string;
+  amountUsd: number;
+  plan?: string;
+  userEmail?: string;
+  eventId?: string;
+}): Promise<void> {
+  try {
+    const metaPixelId = (process.env.META_PIXEL_ID || "").trim();
+    const metaToken = (process.env.META_CAPI_TOKEN || "").trim();
+    if (!metaPixelId || !metaToken || !(params.amountUsd > 0)) return;
+
+    const crypto = await import("node:crypto");
+    const rawDistinct = (params.distinctId || "anon-web").trim();
+    const safeDistinctId = rawDistinct.includes("@")
+      ? `anon_${crypto.createHash("sha256").update(rawDistinct.toLowerCase()).digest("hex").slice(0, 16)}`
+      : rawDistinct;
+    const hashedExternalId = crypto
+      .createHash("sha256")
+      .update(safeDistinctId)
+      .digest("hex");
+    const cleanEmail = (params.userEmail || "").trim().toLowerCase();
+    const hashedEmail =
+      cleanEmail && cleanEmail.includes("@")
+        ? crypto.createHash("sha256").update(cleanEmail).digest("hex")
+        : "";
+
+    await fetch(
+      `https://graph.facebook.com/v21.0/${encodeURIComponent(metaPixelId)}/events?access_token=${encodeURIComponent(metaToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: [
+            {
+              event_name: "Purchase",
+              event_time: Math.floor(Date.now() / 1000),
+              event_id: params.eventId || `purchase_${Date.now().toString(36)}`,
+              action_source: "website",
+              event_source_url: "https://www.heybroc.com",
+              user_data: {
+                external_id: [hashedExternalId],
+                ...(hashedEmail ? { em: [hashedEmail] } : {}),
+              },
+              custom_data: {
+                currency: "USD",
+                value: Number(params.amountUsd.toFixed(2)),
+                content_name: params.plan || "HeyBroc Family Pro",
+                content_category: "web",
+              },
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(2500),
+      }
+    ).catch(() => {});
+  } catch {
+    // Non-blocking
+  }
+}
+
 export async function trackServerEvent(input: AnalyticsEventInput): Promise<void> {
   try {
     const snap = await getAnalyticsSnapshot();
@@ -204,30 +292,30 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
     snap.totals[input.event] = (snap.totals[input.event] || 0) + 1;
     snap.byPlatform[platform] = (snap.byPlatform[platform] || 0) + 1;
 
+    let validatedStore: string | undefined;
     if (input.store) {
-      const ALLOWED_ANALYTICS_STORES = new Set([
-        "walmart",
-        "target",
-        "kroger",
-        "costco",
-        "sams",
-        "bjs",
-        "aldi",
-        "amazon",
-        "instacart",
-        "shipt",
-        "doordash",
-        "ubereats",
-        "search",
-      ]);
       const st = input.store.toLowerCase().trim().slice(0, 24);
       if (ALLOWED_ANALYTICS_STORES.has(st)) {
-        snap.byStore[st] = (snap.byStore[st] || 0) || 0;
-        snap.byStore[st] += 1;
+        validatedStore = st;
+        snap.byStore[st] = (snap.byStore[st] || 0) + 1;
       }
     }
 
-    const variant = input.variant || (input.properties?.variant === "B" ? "B" : "A");
+    const sanitizedProps: Record<string, string | number | boolean | null> = {};
+    for (const [rawKey, rawVal] of Object.entries(input.properties || {}).slice(0, 12)) {
+      const k = rawKey.trim().slice(0, 40);
+      if (!k || k.startsWith("$")) continue;
+      if (typeof rawVal === "string") {
+        // Redact accidental email strings from properties
+        sanitizedProps[k] = rawVal.includes("@") ? "[redacted]" : rawVal.slice(0, 80);
+      } else if (typeof rawVal === "number" && Number.isFinite(rawVal)) {
+        sanitizedProps[k] = rawVal;
+      } else if (typeof rawVal === "boolean" || rawVal === null) {
+        sanitizedProps[k] = rawVal;
+      }
+    }
+
+    const variant = input.variant || (sanitizedProps.variant === "B" ? "B" : "A");
     if (input.event === "paywall_viewed") {
       if (variant === "B") snap.abTest.variantBViews += 1;
       else snap.abTest.variantAViews += 1;
@@ -239,7 +327,7 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
       else snap.abTest.variantASubscribed += 1;
     }
 
-    const propSummary = Object.entries(input.properties || {})
+    const propSummary = Object.entries(sanitizedProps)
       .filter(([, v]) => v !== undefined && v !== null && v !== "")
       .slice(0, 4)
       .map(([k, v]) => `${k}: ${String(v).slice(0, 40)}`)
@@ -249,7 +337,7 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       event: input.event,
       platform,
-      store: input.store,
+      store: validatedStore,
       variant,
       summary: propSummary || input.event,
       timestamp: new Date().toISOString(),
@@ -267,7 +355,7 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
       safeDistinctId = `anon_${crypto.createHash("sha256").update(rawDistinct.toLowerCase()).digest("hex").slice(0, 16)}`;
     }
 
-    // Optional non-blocking server-side PostHog forwarding (never forward raw email addresses)
+    // Optional non-blocking server-side PostHog forwarding (canonical fields take precedence over caller props)
     const phKey = (process.env.POSTHOG_API_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || "").trim();
     const phHost = (process.env.POSTHOG_HOST || "https://us.i.posthog.com").replace(/\/+$/, "");
     if (phKey) {
@@ -279,11 +367,11 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
           event: input.event,
           distinct_id: safeDistinctId,
           properties: {
+            ...sanitizedProps,
             $lib: "heybroc-server",
             platform,
-            store: input.store,
+            store: validatedStore,
             variant,
-            ...(input.properties || {}),
           },
           timestamp: entry.timestamp,
         }),
@@ -308,21 +396,40 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
         .createHash("sha256")
         .update(safeDistinctId)
         .digest("hex");
+
+      // Deduplicate "Free Product Score Test" (`CompleteRegistration`) once per user/device per 30 days
+      let eventId = entry.id;
+      if (input.event === "product_scanned") {
+        const freeTestDedupKey = `heybroc:capi:free_test:${hashedExternalId.slice(0, 24)}`;
+        const alreadySent = await kvGet<string>(freeTestDedupKey);
+        if (alreadySent) {
+          return;
+        }
+        await kvSet(freeTestDedupKey, "1", 30 * 86_400);
+        eventId = `free_test_${hashedExternalId.slice(0, 24)}`;
+      }
+
+      const valueUsd = Number(sanitizedProps.amountUsd || 0);
       const metaEventName =
         input.event === "pro_subscribed"
-          ? Number(input.properties?.amountUsd || 0) > 0
-            ? "Subscribe"
+          ? valueUsd > 0
+            ? "Purchase"
             : "StartTrial"
           : input.event === "checkout_started"
             ? "InitiateCheckout"
             : input.event === "product_scanned"
               ? "CompleteRegistration"
               : "ViewContent";
-      const valueUsd = Number(input.properties?.amountUsd || 0);
       const defaultContentName =
         input.event === "product_scanned"
           ? "Free Product Score Test"
-          : String(input.properties?.plan || "HeyBroc Family Pro");
+          : String(sanitizedProps.plan || "HeyBroc Family Pro");
+      const cleanEmail = (input.userEmail || "").trim().toLowerCase();
+      const hashedEmail =
+        cleanEmail && cleanEmail.includes("@")
+          ? crypto.createHash("sha256").update(cleanEmail).digest("hex")
+          : "";
+
       void fetch(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(metaPixelId)}/events?access_token=${encodeURIComponent(metaToken)}`,
         {
@@ -333,14 +440,22 @@ export async function trackServerEvent(input: AnalyticsEventInput): Promise<void
               {
                 event_name: metaEventName,
                 event_time: Math.floor(Date.now() / 1000),
-                event_id: entry.id,
+                event_id: eventId,
                 action_source: "website",
+                event_source_url: input.sourceUrl || "https://www.heybroc.com",
                 user_data: {
                   external_id: [hashedExternalId],
+                  ...(hashedEmail ? { em: [hashedEmail] } : {}),
+                  ...(input.clientIp && input.clientIp !== "anon"
+                    ? { client_ip_address: input.clientIp }
+                    : {}),
+                  ...(input.userAgent ? { client_user_agent: input.userAgent } : {}),
+                  ...(input.fbc ? { fbc: input.fbc } : {}),
+                  ...(input.fbp ? { fbp: input.fbp } : {}),
                 },
                 custom_data: {
                   currency: "USD",
-                  value: valueUsd > 0 ? valueUsd : 0,
+                  value: valueUsd > 0 ? Number(valueUsd.toFixed(2)) : 0,
                   content_name: defaultContentName,
                   content_category: platform,
                 },

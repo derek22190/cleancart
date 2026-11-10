@@ -385,7 +385,8 @@ export async function recordStripeCreatorRefundOnce(
   idempotencyKey: string,
   code: string,
   plan: PlanId,
-  refundAmountUsd?: number
+  refundAmountUsd?: number,
+  isFullRefundOverride?: boolean
 ): Promise<Creator | null> {
   const norm = normalizeCode(code);
   if (!norm) return null;
@@ -400,7 +401,7 @@ export async function recordStripeCreatorRefundOnce(
       : fullPrice;
   const commDelta = round2(grossDelta * (creator.commissionPct / 100));
 
-  const isFullRefund = grossDelta >= fullPrice * 0.99;
+  const isFullRefund = isFullRefundOverride ?? grossDelta >= fullPrice * 0.99;
   const planField = plan === "annual" ? "paidAnnual" : "paidMonthly";
   const key = creatorKey(norm);
   await kvAtomicHashUpdateOnce(

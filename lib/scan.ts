@@ -28,6 +28,7 @@ export interface ScanRequest {
   deviceSecret?: string;
   referredByCode?: string;
   format?: "json" | "ios_text";
+  skipAnalytics?: boolean;
 }
 
 export interface ScanResponse {
@@ -438,22 +439,24 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
             }),
       }
     : null;
-  void import("./analytics")
-    .then(({ trackServerEvent }) =>
-      trackServerEvent({
-        event: "product_scanned",
-        distinctId: req.deviceId || "anon",
-        platform: req.format === "ios_text" ? "ios" : req.deviceId ? "android" : "web",
-        store,
-        properties: {
-          title: title.slice(0, 60),
-          score: result.score,
-          rating: result.rating,
-          hasSwap: Boolean(resolvedSwap),
-        },
-      }),
-    )
-    .catch(() => {});
+  if (!req.skipAnalytics) {
+    void import("./analytics")
+      .then(({ trackServerEvent }) =>
+        trackServerEvent({
+          event: "product_scanned",
+          distinctId: effectiveDeviceId,
+          platform: req.format === "ios_text" ? "ios" : resolvedSurface,
+          store,
+          properties: {
+            title: title.slice(0, 60),
+            score: result.score,
+            rating: result.rating,
+            hasSwap: Boolean(resolvedSwap),
+          },
+        }),
+      )
+      .catch(() => {});
+  }
 
   const pillText =
     dietaryAlerts.length > 0

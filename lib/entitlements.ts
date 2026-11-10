@@ -23,6 +23,8 @@ export interface EntitlementRecord {
   status: EntitlementStatus;
   active: boolean;
   expiresAtMs?: number;
+  paidPassExpiresAtMs?: number;
+  otoPassSessionIds?: string[];
   lastStripeEventCreated?: number;
   updatedAt: string;
 }
@@ -34,8 +36,8 @@ const EMAIL_KEY_PREFIX = "heybroc:entitlement:email:";
 const CUSTOMER_KEY_PREFIX = "heybroc:entitlement:customer:";
 const CONSENT_KEY_PREFIX = "heybroc:consent:";
 
-/** Retain entitlement & billing records for 400 days (covers annual billing cycle + grace period). */
-export const ENTITLEMENT_TTL_SECONDS = 400 * 24 * 60 * 60;
+/** Retain entitlement & billing records for 800 days (covers multi-year stacked passes + annual renewal grace period). */
+export const ENTITLEMENT_TTL_SECONDS = 800 * 24 * 60 * 60;
 
 /** Retain express auto-renewal consent logs for 5 years (Cal. Bus. & Prof. Code § 17602: >=3 years from consent or >=1 year after termination). */
 export const CONSENT_TTL_SECONDS = 5 * 365 * 86400;
@@ -50,6 +52,8 @@ export interface SubscriptionConsentRecord {
   sessionId?: string;
   customerId?: string;
   subscriptionId?: string;
+  otoOffer?: string;
+  recurringPriceUsd?: number;
 }
 
 export async function recordSubscriptionConsent(
@@ -138,23 +142,85 @@ export function isEntitlementStatusActive(status: string): boolean {
   return status === "active" || status === "trialing";
 }
 
+function mergePassMetadata(
+  primary: EntitlementRecord,
+  secondary?: EntitlementRecord | null
+): EntitlementRecord {
+  if (!secondary) return primary;
+  const maxPassMs = Math.max(
+    typeof primary.paidPassExpiresAtMs === "number" ? primary.paidPassExpiresAtMs : 0,
+    typeof secondary.paidPassExpiresAtMs === "number" ? secondary.paidPassExpiresAtMs : 0
+  );
+  const mergedSessions = Array.from(
+    new Set([...(secondary.otoPassSessionIds || []), ...(primary.otoPassSessionIds || [])])
+  );
+  return {
+    ...primary,
+    ...(maxPassMs > 0 ? { paidPassExpiresAtMs: maxPassMs } : {}),
+    ...(mergedSessions.length > 0 ? { otoPassSessionIds: mergedSessions } : {}),
+  };
+}
+
 function withCurrentExpiry(rec: EntitlementRecord | null): EntitlementRecord | null {
   if (!rec) return null;
-  if (
+  const now = Date.now();
+  const hasActivePaidPass =
+    typeof rec.paidPassExpiresAtMs === "number" &&
+    Number.isFinite(rec.paidPassExpiresAtMs) &&
+    rec.paidPassExpiresAtMs > now;
+  const isSubExpired =
     typeof rec.expiresAtMs === "number" &&
     Number.isFinite(rec.expiresAtMs) &&
-    rec.expiresAtMs <= Date.now()
-  ) {
+    rec.expiresAtMs <= now;
+  const hasStandalonePassSubId = Boolean(
+    rec.subscriptionId && rec.subscriptionId.startsWith("oto_pass_")
+  );
+  const subActive =
+    !hasStandalonePassSubId &&
+    !isSubExpired &&
+    isEntitlementStatusActive(rec.status);
+
+  if (subActive || hasActivePaidPass) {
     return {
       ...rec,
-      status: "canceled",
-      active: false,
+      status: subActive ? rec.status : "active",
+      active: true,
     };
   }
   return {
     ...rec,
-    active: isEntitlementStatusActive(rec.status),
+    status: isSubExpired || hasStandalonePassSubId ? "canceled" : rec.status,
+    active: false,
   };
+}
+
+async function writeSecondaryLookupKey(
+  key: string,
+  candidate: EntitlementRecord
+): Promise<void> {
+  const existingLookup = await kvGet<EntitlementRecord>(key);
+  if (existingLookup) {
+    if (!candidate.active) {
+      // Never allow a canceled older subscription to overwrite a different active subscription on the same customer/device/email
+      if (
+        existingLookup.subscriptionId &&
+        existingLookup.subscriptionId !== candidate.subscriptionId
+      ) {
+        const otherSub = existingLookup.subscriptionId.startsWith("sub_")
+          ? await getSubscriptionEntitlement(existingLookup.subscriptionId)
+          : withCurrentExpiry(existingLookup);
+        if (otherSub?.active) {
+          return;
+        }
+      }
+    }
+    const merged = withCurrentExpiry(mergePassMetadata(candidate, existingLookup));
+    if (merged) {
+      await kvSet(key, merged, ENTITLEMENT_TTL_SECONDS);
+    }
+    return;
+  }
+  await kvSet(key, candidate, ENTITLEMENT_TTL_SECONDS);
 }
 
 export async function saveEntitlement(record: EntitlementRecord): Promise<void> {
@@ -177,25 +243,32 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
   }
 
   const expiresAtMs = record.expiresAtMs ?? existing?.expiresAtMs;
+  const paidPassExpiresAtMs =
+    record.paidPassExpiresAtMs ?? existing?.paidPassExpiresAtMs;
+  const otoPassSessionIds =
+    record.otoPassSessionIds ?? existing?.otoPassSessionIds;
   const isExpired =
     typeof expiresAtMs === "number" &&
     Number.isFinite(expiresAtMs) &&
     expiresAtMs <= Date.now();
   const effectiveStatus: EntitlementStatus = isExpired ? "canceled" : record.status;
 
-  const normalized: EntitlementRecord = {
+  const baseNormalized: EntitlementRecord = {
     ...existing,
     ...record,
     customerId: record.customerId || existing?.customerId,
     customerEmail: record.customerEmail || existing?.customerEmail,
     deviceId: record.deviceId || existing?.deviceId,
     expiresAtMs,
+    paidPassExpiresAtMs,
+    otoPassSessionIds,
     lastStripeEventCreated:
       record.lastStripeEventCreated ?? existing?.lastStripeEventCreated,
     status: effectiveStatus,
     active: !isExpired && isEntitlementStatusActive(effectiveStatus),
     updatedAt: new Date().toISOString(),
   };
+  const normalized = withCurrentExpiry(baseNormalized)!;
 
   await kvSet(
     `${SESSION_KEY_PREFIX}${normalized.sessionId}`,
@@ -210,26 +283,23 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
     );
   }
   if (normalized.customerId) {
-    await kvSet(
+    await writeSecondaryLookupKey(
       `${CUSTOMER_KEY_PREFIX}${normalized.customerId}`,
-      normalized,
-      ENTITLEMENT_TTL_SECONDS
+      normalized
     );
   }
   if (normalized.deviceId) {
-    await kvSet(
+    await writeSecondaryLookupKey(
       `${DEVICE_KEY_PREFIX}${normalized.deviceId}`,
-      normalized,
-      ENTITLEMENT_TTL_SECONDS
+      normalized
     );
   }
   if (normalized.customerEmail) {
     const cleanEmail = normalized.customerEmail.trim().toLowerCase();
     if (cleanEmail) {
-      await kvSet(
+      await writeSecondaryLookupKey(
         `${EMAIL_KEY_PREFIX}${cleanEmail}`,
-        normalized,
-        ENTITLEMENT_TTL_SECONDS
+        normalized
       );
     }
   }
@@ -242,9 +312,9 @@ export async function getCustomerEntitlement(
   if (!cleanId) return null;
   const rec = await kvGet<EntitlementRecord>(`${CUSTOMER_KEY_PREFIX}${cleanId}`);
   if (!rec) return null;
-  if (rec.subscriptionId) {
+  if (rec.subscriptionId && rec.subscriptionId.startsWith("sub_")) {
     const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
-    if (latestSub) return latestSub;
+    if (latestSub) return withCurrentExpiry(mergePassMetadata(latestSub, rec));
   }
   return withCurrentExpiry(rec);
 }
@@ -256,9 +326,9 @@ export async function getEmailEntitlement(
   if (!cleanEmail) return null;
   const rec = await kvGet<EntitlementRecord>(`${EMAIL_KEY_PREFIX}${cleanEmail}`);
   if (!rec) return null;
-  if (rec.subscriptionId) {
+  if (rec.subscriptionId && rec.subscriptionId.startsWith("sub_")) {
     const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
-    if (latestSub) return latestSub;
+    if (latestSub) return withCurrentExpiry(mergePassMetadata(latestSub, rec));
   }
   return withCurrentExpiry(rec);
 }
@@ -277,9 +347,9 @@ export async function getDevicePaidEntitlement(
   if (!deviceId) return null;
   const rec = await kvGet<EntitlementRecord>(`${DEVICE_KEY_PREFIX}${deviceId}`);
   if (!rec) return null;
-  if (rec.subscriptionId) {
+  if (rec.subscriptionId && rec.subscriptionId.startsWith("sub_")) {
     const latestSub = await getSubscriptionEntitlement(rec.subscriptionId);
-    if (latestSub) return latestSub;
+    if (latestSub) return withCurrentExpiry(mergePassMetadata(latestSub, rec));
   }
   return withCurrentExpiry(rec);
 }
@@ -294,6 +364,7 @@ export async function updateSubscriptionEntitlement(
     creatorCode?: string;
     deviceId?: string;
     expiresAtMs?: number;
+    paidPassExpiresAtMs?: number;
     lastStripeEventCreated?: number;
   }
 ): Promise<EntitlementRecord | null> {
@@ -312,13 +383,15 @@ export async function updateSubscriptionEntitlement(
   }
 
   const expiresAtMs = patch.expiresAtMs ?? existing?.expiresAtMs;
+  const paidPassExpiresAtMs =
+    patch.paidPassExpiresAtMs ?? existing?.paidPassExpiresAtMs;
   const isExpired =
     typeof expiresAtMs === "number" &&
     Number.isFinite(expiresAtMs) &&
     expiresAtMs <= Date.now();
   const effectiveStatus: EntitlementStatus = isExpired ? "canceled" : patch.status;
 
-  const updated: EntitlementRecord = {
+  const baseUpdated: EntitlementRecord = {
     sessionId: existing?.sessionId || `sub_${subscriptionId}`,
     subscriptionId,
     customerId: patch.customerId ?? existing?.customerId,
@@ -329,10 +402,13 @@ export async function updateSubscriptionEntitlement(
     status: effectiveStatus,
     active: !isExpired && isEntitlementStatusActive(effectiveStatus),
     expiresAtMs,
+    paidPassExpiresAtMs,
+    otoPassSessionIds: existing?.otoPassSessionIds,
     lastStripeEventCreated:
       patch.lastStripeEventCreated ?? existing?.lastStripeEventCreated,
     updatedAt: new Date().toISOString(),
   };
+  const updated = withCurrentExpiry(baseUpdated)!;
 
   await kvSet(
     `${SUB_KEY_PREFIX}${subscriptionId}`,
@@ -342,6 +418,249 @@ export async function updateSubscriptionEntitlement(
   if (existing?.sessionId) {
     await kvSet(
       `${SESSION_KEY_PREFIX}${existing.sessionId}`,
+      updated,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (updated.customerId) {
+    await writeSecondaryLookupKey(
+      `${CUSTOMER_KEY_PREFIX}${updated.customerId}`,
+      updated
+    );
+  }
+  if (updated.deviceId) {
+    await writeSecondaryLookupKey(
+      `${DEVICE_KEY_PREFIX}${updated.deviceId}`,
+      updated
+    );
+  }
+  if (updated.customerEmail) {
+    const cleanEmail = updated.customerEmail.trim().toLowerCase();
+    if (cleanEmail) {
+      await writeSecondaryLookupKey(
+        `${EMAIL_KEY_PREFIX}${cleanEmail}`,
+        updated
+      );
+    }
+  }
+  return updated;
+}
+
+/**
+ * Idempotently applies a one-time +366-day Family Pro pass (`oto_gift_year`) without
+ * overwriting any active Stripe `sub_...` subscription or customer portal link.
+ */
+export async function applyOneTimeAnnualPass(params: {
+  sessionId: string;
+  customerId?: string;
+  customerEmail?: string;
+  deviceId?: string;
+  creatorCode?: string;
+  lastStripeEventCreated?: number;
+}): Promise<EntitlementRecord> {
+  const cleanSessionId = params.sessionId.trim();
+  const cleanCustomerId = (params.customerId || "").trim();
+  const cleanEmail = (params.customerEmail || "").trim().toLowerCase();
+  const cleanDeviceId = (params.deviceId || "").trim();
+
+  const existingBySession = await kvGet<EntitlementRecord>(
+    `${SESSION_KEY_PREFIX}${cleanSessionId}`
+  );
+  if (existingBySession?.otoPassSessionIds?.includes(cleanSessionId)) {
+    return withCurrentExpiry(existingBySession)!;
+  }
+
+  const existing =
+    (cleanCustomerId ? await getCustomerEntitlement(cleanCustomerId) : null) ??
+    (cleanDeviceId ? await getDevicePaidEntitlement(cleanDeviceId) : null) ??
+    (cleanEmail ? await getEmailEntitlement(cleanEmail) : null);
+
+  if (existing?.otoPassSessionIds?.includes(cleanSessionId)) {
+    await kvSet(
+      `${SESSION_KEY_PREFIX}${cleanSessionId}`,
+      existing,
+      ENTITLEMENT_TTL_SECONDS
+    );
+    return withCurrentExpiry(existing)!;
+  }
+
+  const now = Date.now();
+  const hasRealSub = Boolean(
+    existing?.subscriptionId && existing.subscriptionId.startsWith("sub_")
+  );
+  let baseMs = now;
+  if (existing?.paidPassExpiresAtMs && existing.paidPassExpiresAtMs > now) {
+    baseMs = existing.paidPassExpiresAtMs;
+  } else if (existing?.expiresAtMs && existing.expiresAtMs > now) {
+    baseMs = existing.expiresAtMs;
+  } else if (hasRealSub && existing?.status === "active") {
+    baseMs = now + 365 * 86_400_000;
+  } else if (hasRealSub && existing?.status === "trialing") {
+    baseMs = now + 7 * 86_400_000;
+  }
+  const paidPassExpiresAtMs = baseMs + 366 * 86_400_000;
+  const otoPassSessionIds = Array.from(
+    new Set([...(existing?.otoPassSessionIds || []), cleanSessionId])
+  );
+
+  const preservedSubId = hasRealSub
+    ? existing!.subscriptionId
+    : `oto_pass_${cleanSessionId}`;
+  const preservedStatus: EntitlementStatus =
+    hasRealSub && isEntitlementStatusActive(existing!.status)
+      ? existing!.status
+      : "active";
+
+  const merged: EntitlementRecord = withCurrentExpiry({
+    sessionId: existing?.sessionId || cleanSessionId,
+    subscriptionId: preservedSubId,
+    customerId: cleanCustomerId || existing?.customerId || undefined,
+    customerEmail: cleanEmail || existing?.customerEmail || undefined,
+    deviceId: cleanDeviceId || existing?.deviceId || undefined,
+    plan: "annual",
+    creatorCode: params.creatorCode || existing?.creatorCode,
+    status: preservedStatus,
+    active: true,
+    expiresAtMs: existing?.expiresAtMs,
+    paidPassExpiresAtMs,
+    otoPassSessionIds,
+    lastStripeEventCreated:
+      params.lastStripeEventCreated ?? existing?.lastStripeEventCreated,
+    updatedAt: new Date().toISOString(),
+  })!;
+
+  // Store under BOTH the OTO checkout sessionId and the preserved subscription/device/customer/email keys
+  const sessionRecord: EntitlementRecord = {
+    ...merged,
+    sessionId: cleanSessionId,
+  };
+  await kvSet(
+    `${SESSION_KEY_PREFIX}${cleanSessionId}`,
+    sessionRecord,
+    ENTITLEMENT_TTL_SECONDS
+  );
+  if (existing?.sessionId && existing.sessionId !== cleanSessionId) {
+    await kvSet(
+      `${SESSION_KEY_PREFIX}${existing.sessionId}`,
+      merged,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (merged.subscriptionId) {
+    await kvSet(
+      `${SUB_KEY_PREFIX}${merged.subscriptionId}`,
+      merged,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (merged.customerId) {
+    await kvSet(
+      `${CUSTOMER_KEY_PREFIX}${merged.customerId}`,
+      merged,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (merged.deviceId) {
+    await kvSet(
+      `${DEVICE_KEY_PREFIX}${merged.deviceId}`,
+      merged,
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (merged.customerEmail) {
+    const normEmail = merged.customerEmail.trim().toLowerCase();
+    if (normEmail) {
+      await kvSet(
+        `${EMAIL_KEY_PREFIX}${normEmail}`,
+        merged,
+        ENTITLEMENT_TTL_SECONDS
+      );
+    }
+  }
+  return sessionRecord;
+}
+
+/**
+ * Revokes a refunded/disputed one-time +366-day pass (`oto_gift_year`) while keeping
+ * any active recurring `sub_...` subscription intact.
+ */
+export async function revokeOneTimeAnnualPass(params: {
+  sessionId?: string;
+  customerId?: string;
+  deviceId?: string;
+  customerEmail?: string;
+}): Promise<void> {
+  const cleanSessionId = (params.sessionId || "").trim();
+  const cleanCustomerId = (params.customerId || "").trim();
+  const cleanDeviceId = (params.deviceId || "").trim();
+  const cleanEmail = (params.customerEmail || "").trim().toLowerCase();
+
+  const existing =
+    (cleanSessionId
+      ? await kvGet<EntitlementRecord>(`${SESSION_KEY_PREFIX}${cleanSessionId}`)
+      : null) ??
+    (cleanCustomerId
+      ? await kvGet<EntitlementRecord>(`${CUSTOMER_KEY_PREFIX}${cleanCustomerId}`)
+      : null) ??
+    (cleanDeviceId
+      ? await kvGet<EntitlementRecord>(`${DEVICE_KEY_PREFIX}${cleanDeviceId}`)
+      : null) ??
+    (cleanEmail
+      ? await kvGet<EntitlementRecord>(`${EMAIL_KEY_PREFIX}${cleanEmail}`)
+      : null);
+
+  if (!existing) return;
+
+  const now = Date.now();
+  const nextSessions = (existing.otoPassSessionIds || []).filter(
+    (s) => s !== cleanSessionId
+  );
+  const currentPassMs = existing.paidPassExpiresAtMs ?? 0;
+  const reducedPassMs =
+    currentPassMs > 0 ? currentPassMs - 366 * 86_400_000 : 0;
+  const subExpiryFloor =
+    typeof existing.expiresAtMs === "number" && existing.expiresAtMs > now
+      ? existing.expiresAtMs
+      : now;
+  const nextPassMs =
+    nextSessions.length > 0 && reducedPassMs > subExpiryFloor
+      ? reducedPassMs
+      : !existing.otoPassSessionIds && reducedPassMs > subExpiryFloor
+        ? reducedPassMs
+        : undefined;
+
+  const hasRealSub = Boolean(
+    existing.subscriptionId && existing.subscriptionId.startsWith("sub_")
+  );
+  const subRecord = hasRealSub
+    ? await kvGet<EntitlementRecord>(`${SUB_KEY_PREFIX}${existing.subscriptionId!}`)
+    : null;
+  const baseStatus: EntitlementStatus = hasRealSub
+    ? subRecord?.status ?? existing.status
+    : nextPassMs
+      ? "active"
+      : "canceled";
+
+  const updated = withCurrentExpiry({
+    ...existing,
+    ...(subRecord ? { status: baseStatus } : { status: baseStatus }),
+    paidPassExpiresAtMs: nextPassMs,
+    otoPassSessionIds: nextSessions.length > 0 ? nextSessions : undefined,
+    updatedAt: new Date().toISOString(),
+  })!;
+
+  if (cleanSessionId) {
+    await kvSet(
+      `${SESSION_KEY_PREFIX}${cleanSessionId}`,
+      hasRealSub
+        ? updated
+        : { ...updated, status: nextPassMs ? "active" : "canceled", active: Boolean(nextPassMs) },
+      ENTITLEMENT_TTL_SECONDS
+    );
+  }
+  if (existing.subscriptionId) {
+    await kvSet(
+      `${SUB_KEY_PREFIX}${existing.subscriptionId}`,
       updated,
       ENTITLEMENT_TTL_SECONDS
     );
@@ -361,16 +680,15 @@ export async function updateSubscriptionEntitlement(
     );
   }
   if (updated.customerEmail) {
-    const cleanEmail = updated.customerEmail.trim().toLowerCase();
-    if (cleanEmail) {
+    const normEmail = updated.customerEmail.trim().toLowerCase();
+    if (normEmail) {
       await kvSet(
-        `${EMAIL_KEY_PREFIX}${cleanEmail}`,
+        `${EMAIL_KEY_PREFIX}${normEmail}`,
         updated,
         ENTITLEMENT_TTL_SECONDS
       );
     }
   }
-  return updated;
 }
 
 /**
@@ -393,11 +711,16 @@ export async function verifyStripeCheckoutSession(
     `${SESSION_KEY_PREFIX}${sessionId}`
   );
   if (stored) {
-    const effective = stored.subscriptionId
-      ? (await getSubscriptionEntitlement(stored.subscriptionId)) ?? stored
-      : stored;
+    const rawEffective =
+      stored.subscriptionId && stored.subscriptionId.startsWith("sub_")
+        ? mergePassMetadata(
+            (await getSubscriptionEntitlement(stored.subscriptionId)) ?? stored,
+            stored
+          )
+        : stored;
+    const effective = withCurrentExpiry(rawEffective);
 
-    if (!effective.subscriptionId) {
+    if (!effective || (!effective.subscriptionId && !effective.paidPassExpiresAtMs)) {
       return null;
     }
 
@@ -519,21 +842,31 @@ export async function verifyStripeCheckoutSession(
         ? session.customer
         : session.customer?.id;
 
-    const record: EntitlementRecord = {
-      sessionId,
-      subscriptionId,
-      customerId,
-      customerEmail: session.customer_details?.email || undefined,
-      deviceId: sessionDeviceId || cleanDeviceId || undefined,
-      plan,
-      creatorCode,
-      status: subStatus,
-      active: isEntitlementStatusActive(subStatus),
-      ...(isOneTimeOtoPass ? { expiresAtMs: Date.now() + 366 * 86_400_000 } : {}),
-      updatedAt: new Date().toISOString(),
-    };
+    let record: EntitlementRecord;
+    if (isOneTimeOtoPass) {
+      record = await applyOneTimeAnnualPass({
+        sessionId,
+        customerId,
+        customerEmail: session.customer_details?.email || undefined,
+        deviceId: sessionDeviceId || cleanDeviceId || undefined,
+        creatorCode,
+      });
+    } else {
+      record = {
+        sessionId,
+        subscriptionId,
+        customerId,
+        customerEmail: session.customer_details?.email || undefined,
+        deviceId: sessionDeviceId || cleanDeviceId || undefined,
+        plan,
+        creatorCode,
+        status: subStatus,
+        active: isEntitlementStatusActive(subStatus),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveEntitlement(record);
+    }
 
-    await saveEntitlement(record);
     const targetDevice = sessionDeviceId || cleanDeviceId;
     if (
       record.active &&
@@ -655,8 +988,8 @@ export async function resolveBillingPortalCustomer(params: {
     return null;
   }
 
-  // If we have a subscriptionId on the record but customerId was not stored yet, fetch the subscription
-  if (record?.subscriptionId) {
+  // If we have a real Stripe subscriptionId (`sub_...`) on the record but customerId was not stored yet, fetch the subscription
+  if (record?.subscriptionId && record.subscriptionId.startsWith("sub_")) {
     try {
       const subRes = await fetch(
         `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(record.subscriptionId)}`,

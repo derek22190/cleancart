@@ -106,6 +106,15 @@ export default function TermsPage() {
             the renewal date. By checking the express auto-renewal consent box at checkout, you authorize recurring
             charges to your payment method via Stripe (or Apple App Store / Google Play for in-app purchases).
           </li>
+          <li>
+            <strong>Optional Post-Checkout Offers:</strong> Eligible new Monthly subscribers may be offered a one-time
+            upgrade to a <strong>Founder VIP Annual Plan</strong> at{" "}
+            <strong>${PRICING.otoAnnualLockIn.toFixed(2)}/year</strong> (which replaces the monthly subscription and
+            renews annually at ${PRICING.otoAnnualLockIn.toFixed(2)}/year until canceled). Eligible Annual subscribers
+            may be offered an optional one-time <strong>+1 Extra Full Year Pass</strong> for a single{" "}
+            <strong>${PRICING.otoExtraYearPass.toFixed(2)}</strong> payment, which adds 366 days of Family Pro access
+            and never auto-renews.
+          </li>
         </ul>
       </section>
 
