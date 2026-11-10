@@ -1453,6 +1453,48 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const sargentoAmericanSwap = resolveSwap({
+    score: 26,
+    productTitle: "Sargento Natural American Sliced Cheese, 12 Slices",
+    store: "walmart",
+    surface: "android",
+  });
+  const creamOfChickenSwap = resolveSwap({
+    score: 12,
+    productTitle: "Campbell's Condensed Cream of Chicken Soup, 10.5 oz Can",
+    store: "walmart",
+    surface: "android",
+  });
+  const ramenWalmartSwap = resolveSwap({
+    score: 6,
+    productTitle: "Maruchan Ramen Noodle Soup, Chicken Flavor",
+    store: "walmart",
+    surface: "android",
+  });
+  const sausageWalmartSwap = resolveSwap({
+    score: 6,
+    productTitle: "Great Value Original Pork Sausage Patties",
+    store: "walmart",
+    surface: "android",
+  });
+  const a11yXml = fs.readFileSync("android-app/app/src/main/res/xml/accessibility_service_config.xml", "utf8");
+  check(
+    "1-for-1 American Cheese & Cream of Chicken swaps, verified Walmart /ip/ deep links, Cart Check inline swap preview, and PiP-safe multi-window search",
+    Boolean(
+      sargentoAmericanSwap?.title === "Organic Valley Organic American Cheese Slices" &&
+        sargentoAmericanSwap.deepLink === "https://www.walmart.com/ip/1814292019" &&
+        creamOfChickenSwap?.title === "Pacific Foods Organic Cream of Chicken Condensed Soup" &&
+        creamOfChickenSwap.deepLink === "https://www.walmart.com/ip/541659748" &&
+        ramenWalmartSwap?.deepLink === "https://www.walmart.com/ip/42708184" &&
+        sausageWalmartSwap?.deepLink === "https://www.walmart.com/ip/967953484" &&
+        a11yXml.includes("flagRetrieveInteractiveWindows") &&
+        readerKt.includes("fun findStoreWindowRoot") &&
+        overlayKt.includes("↳ Clean Swap: $swapTitle$swapScoreSuffix") &&
+        overlayKt.includes("Preview Swap") &&
+        overlayKt.includes("Review All $count Clean Swaps")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

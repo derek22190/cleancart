@@ -1152,8 +1152,11 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (s.startsWith("•") || s.startsWith("·")) {
             return ""
         }
-        // Never strip "Removed: <Product>" snackbar messages into valid titles — they are handled by extractRemovedCartTitles
-        if (s.matches(Regex("""(?i)^(removed|moved to saved for later|saved for later)\s*:.*"""))) {
+        // Never strip "Removed: <Product>" snackbar messages or "Notify me when back in stock" / "For <Product>" cart button labels into valid titles
+        if (s.matches(Regex("""(?i)^(removed|moved to saved for later|saved for later)\s*:.*""")) ||
+            s.matches(Regex("""(?i)^(notify\s+me\b|back\s+in\s+stock\b|out\s+of\s+stock\b|for\s+[a-z0-9]).*""")) ||
+            Regex("""(?i)\bnotify\s+me\s+when\s+back\s+in\s+stock\b""").containsMatchIn(s)
+        ) {
             return ""
         }
         // Strip leading checkmarks (e.g. "✓ Bought 5+ times, stay stocked and subscribe")
@@ -1181,7 +1184,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\beach\s*\(est\.?\)\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\breg\.?\s*\$\s*\d+(?:\.\d{2})?\b\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\b\d+\s+sizes?\b\s*[,•|\-.]?"""), " ")
-        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:average|avg)\s+price\b.*$"""), "")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:was\s+)?(?:(?:average|avg)\s+price|price\s+(?:average|avg|averag[a-z]*))\b.*$"""), "")
         s = s.replace(Regex("""(?i)\bprice\s+may\s+vary(?:\s+in\s+club\s+and\s+online)?(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\bmax\s+\d+\s+per\s+order\s*[,•|\-.]?"""), " ")
         s = s.replace(Regex("""(?i)\bends\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}(?:\s*,\s*\d{4})?(?:\s*[ⓘℹ])?\s*[,•|\-.]?"""), " ")
@@ -1201,6 +1204,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:current\s+price\s*|price\s*|now\s*|was\s*)?\b\d+\s*dollars?(?:\s*(?:and\s*)?\d+\s*cents?)?(?:\s*(?:/|per)\s*(?:ea|each|oz|fl\s*oz|lb|ct|count|pt|qt|gal))?\b"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\bprice\s+when\s+purchased\s+online(?:\s*[ⓘℹ])?"""), " ")
         s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*\d+(?:\.\d+)?\s*(?:¢|cents?)\s*(?:/|per)\s*(?:oz|fl\s*oz|lb|ea|each|ct|count|pt|qt|gal|\d+\s*ct)\b"""), " ")
+        s = s.replace(Regex("""(?i)\s*[,•|\-]?\s*(?:,\s*)?was\s+(?:price\s*)?(?:averag[a-z]*|avg)?.*$"""), "")
         s = s.replace(Regex("""(?i)\s*[,•|\-]\s*(now|was|current\s+price|price|add)\s*$"""), "")
         s = s.replace(Regex("""(?i)^\+?\s*add\s*[,•|\-]?\s*"""), "")
         // Strip truncated trailing weight/count/protein fragments from narrow Instacart/Walmart cards (e.g. ", Serves 7-11, 21g of P...", "(6.35 ...", "(6 C...", ", 12 As...", ", 9...")
@@ -1703,120 +1707,325 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     /**
      * Drives the active grocery store app's native search bar automatically when the shopper taps
-     * "Find in [Store] ↗" or "Swap in [Store] ↗" across ALL 13 supported grocery apps:
-     * 1) Finds and clicks the store's search bar (e.g. "What are you looking for?" in Shipt/BJ's,
-     *    "What can we help you find?" in Target/Kroger, "Ask Rufus or search Amazon", "Search Walmart",
-     *    "Search Costco", "Search Sam's", "Search Instacart", "Search ALDI", or the bottom "Search" tab).
-     * 2) Once the search EditText is visible, fills in [query] via ACTION_SET_TEXT and triggers
-     *    ACTION_IME_ENTER (plus clicks the top search submit / autocomplete suggestion if needed).
-     * 3) If no search bar or EditText is reachable after all attempts, invokes [onFallbackNeeded].
+     * "Find in [Store] ↗" across ALL 13 supported grocery apps:
+     * 1) Sanitizes the query (stripping parenthetical dietary notes like "(Nut-Free)" and duplicate words).
+     * 2) Handles multi-step search navigation (e.g. Walmart PDP/Cart -> Search Hub landing screen ->
+     *    tapping the "Search Walmart" pill to mount the live EditText -> setting the query ->
+     *    triggering ACTION_IME_ENTER and tapping the top autocomplete/search suggestion row).
+     * 3) If triggered from a screen with no visible search bar (such as the full Cart screen), invokes
+     *    [onFallbackNeeded] to navigate the app to its search screen and then continues driving the
+     *    search input automatically so the shopper never lands on a blank search hub.
      */
+    private fun sanitizeInAppSearchQuery(raw: String): String {
+        val stripped = raw
+            .replace(Regex("""\([^)]*\)"""), " ")
+            .replace(Regex("""\b(nut-free|peanut-free|tree-nut-free|sesame-free|allergen-friendly|school-safe)\b""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\borganics\s+organic\b""", RegexOption.IGNORE_CASE), "Organic")
+            .replace(Regex("""\braw\s+(?=sharp\s+cheddar\b)""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""\b(made\s+with|cooked\s+in)\s+(100%\s+)?(avocado|extra\s+virgin\s+olive|olive|coconut)\s+oil\b""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""[^\w\s'&.-]"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+        val deduped = mutableListOf<String>()
+        for (word in stripped.split(" ")) {
+            if (word.isBlank()) continue
+            if (deduped.any { it.equals(word, ignoreCase = true) && (word.equals("organic", ignoreCase = true) || deduped.last().equals(word, ignoreCase = true)) }) {
+                continue
+            }
+            deduped.add(word)
+        }
+        return deduped.take(8).joinToString(" ").ifBlank { raw.trim() }
+    }
+
+    private fun findStoreWindowRoot(preferredPkg: String): AccessibilityNodeInfo? {
+        val active = rootInActiveWindow
+        val activePkg = active?.packageName?.toString().orEmpty()
+        if (active != null && activePkg.isNotEmpty() && activePkg != packageName) {
+            if (preferredPkg.isBlank() || activePkg == preferredPkg || activePkg in SUPPORTED_PACKAGES) {
+                return active
+            }
+        }
+        runCatching {
+            val allWindows = windows
+            var fallbackSupportedRoot: AccessibilityNodeInfo? = null
+            for (win in allWindows) {
+                val r = win.root ?: continue
+                val pkg = r.packageName?.toString().orEmpty()
+                if (pkg.isEmpty() || pkg == packageName) continue
+                if (preferredPkg.isNotBlank() && pkg == preferredPkg) {
+                    return r
+                }
+                if (fallbackSupportedRoot == null && pkg in SUPPORTED_PACKAGES) {
+                    fallbackSupportedRoot = r
+                }
+            }
+            if (fallbackSupportedRoot != null) {
+                return fallbackSupportedRoot
+            }
+        }
+        return active?.takeIf { it.packageName?.toString() != packageName }
+    }
+
     private fun startInAppSearch(
         targetPkg: String,
         query: String,
         onFallbackNeeded: (() -> Unit)? = null
     ): Boolean {
-        val cleanQuery = query.trim()
+        val cleanQuery = sanitizeInAppSearchQuery(query)
         if (cleanQuery.isEmpty()) return false
-        val activePkg = rootInActiveWindow?.packageName?.toString().orEmpty().ifBlank { currentPackage }
-        if (targetPkg.isNotBlank() && activePkg.isNotBlank() && activePkg != targetPkg && activePkg != packageName) {
-            return false
-        }
 
-        // Wait 140ms for OverlayWindowService.removeCard() to detach focus so rootInActiveWindow is the grocery app
+        // Wait 180ms for OverlayWindowService.removeCard() to detach focus so the grocery store window is active
         handler.postDelayed({
-            performInAppSearchStep(cleanQuery, attempt = 0, clickedTrigger = false, typedQuery = false, onFallbackNeeded = onFallbackNeeded)
-        }, 140L)
+            performInAppSearchStep(
+                targetPkg = targetPkg,
+                query = cleanQuery,
+                attempt = 0,
+                triggerClicks = 0,
+                focusedEditCount = 0,
+                submittedCount = 0,
+                launchedFallback = false,
+                onFallbackNeeded = onFallbackNeeded
+            )
+        }, 180L)
         return true
     }
 
+    private fun editNodeHasQuery(editNode: AccessibilityNodeInfo, query: String): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && editNode.isShowingHintText) {
+            return false
+        }
+        val currentText = editNode.text?.toString()?.trim().orEmpty()
+        if (currentText.isEmpty()) return false
+        val hintText = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            editNode.hintText?.toString()?.trim().orEmpty()
+        } else {
+            ""
+        }
+        if (hintText.isNotEmpty() && currentText.equals(hintText, ignoreCase = true)) {
+            return false
+        }
+        if (Regex("""^(?i)(search(\s+\w+){0,3}|what are you looking for.*|what can we help you find.*|ask rufus.*|find products.*)$""").matches(currentText)) {
+            return false
+        }
+        val firstWord = query.lowercase().replace(Regex("[^a-z0-9\\s]"), "").trim().substringBefore(" ")
+        return currentText.equals(query, ignoreCase = true) ||
+            (firstWord.length >= 3 && currentText.lowercase().contains(firstWord))
+    }
+
+    private fun fireImeEnter(node: AccessibilityNodeInfo) {
+        val imeActionId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
+        } else {
+            0x01020054 // android.R.id.accessibilityActionImeEnter
+        }
+        node.performAction(imeActionId)
+    }
+
     private fun performInAppSearchStep(
+        targetPkg: String,
         query: String,
         attempt: Int,
-        clickedTrigger: Boolean,
-        typedQuery: Boolean,
+        triggerClicks: Int,
+        focusedEditCount: Int,
+        submittedCount: Int,
+        launchedFallback: Boolean,
         onFallbackNeeded: (() -> Unit)? = null
     ) {
-        if (attempt > 4) {
-            if (!typedQuery) onFallbackNeeded?.invoke()
+        if (attempt > 10) {
+            if (submittedCount == 0 && !launchedFallback) {
+                onFallbackNeeded?.invoke()
+            }
             return
         }
-        val root = rootInActiveWindow ?: run {
+        val root = findStoreWindowRoot(targetPkg) ?: run {
+            if (attempt >= 3 && !launchedFallback && onFallbackNeeded != null) {
+                onFallbackNeeded.invoke()
+                handler.postDelayed({
+                    performInAppSearchStep(
+                        targetPkg = targetPkg,
+                        query = query,
+                        attempt = attempt + 1,
+                        triggerClicks = 0,
+                        focusedEditCount = 0,
+                        submittedCount = 0,
+                        launchedFallback = true,
+                        onFallbackNeeded = null
+                    )
+                }, 550L)
+                return
+            }
             handler.postDelayed({
-                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery, onFallbackNeeded)
-            }, 280L)
+                performInAppSearchStep(
+                    targetPkg = targetPkg,
+                    query = query,
+                    attempt = attempt + 1,
+                    triggerClicks = triggerClicks,
+                    focusedEditCount = focusedEditCount,
+                    submittedCount = submittedCount,
+                    launchedFallback = launchedFallback,
+                    onFallbackNeeded = onFallbackNeeded
+                )
+            }, 260L)
             return
         }
 
-        // 1. Look for an editable search EditText on screen
+        // 1. Check for an editable search EditText on screen
         val editNode = findEditableSearchNode(root)
-        if (editNode != null && !typedQuery) {
-            editNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-            val args = android.os.Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
-            }
-            val setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-            if (setOk) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    editNode.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
-                } else {
-                    editNode.performAction(0x01020054) // android.R.id.accessibilityActionImeEnter
+        if (editNode != null) {
+            val hasQueryText = editNodeHasQuery(editNode, query)
+            if (!hasQueryText) {
+                // On Walmart PDP & Search Hub, clicking an unfocused EditText/search bar transitions to a new search input fragment ~250ms later.
+                // Focus/click it first and wait 320ms so ACTION_SET_TEXT hits the live, focused EditText instead of the outgoing bar.
+                if (!editNode.isFocused && focusedEditCount < 2) {
+                    clickNodeOrParent(editNode)
+                    editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    handler.postDelayed({
+                        performInAppSearchStep(
+                            targetPkg = targetPkg,
+                            query = query,
+                            attempt = attempt + 1,
+                            triggerClicks = triggerClicks,
+                            focusedEditCount = focusedEditCount + 1,
+                            submittedCount = submittedCount,
+                            launchedFallback = launchedFallback,
+                            onFallbackNeeded = onFallbackNeeded
+                        )
+                    }, 320L)
+                    return
                 }
-                // Follow up 480ms later to tap "Search for ..." or the top autocomplete suggestion if the app didn't auto-submit on IME_ENTER
-                handler.postDelayed({
-                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = true, onFallbackNeeded = null)
-                }, 480L)
+                val args = android.os.Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
+                }
+                var setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                if (!setOk) {
+                    editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                }
+                if (setOk) {
+                    fireImeEnter(editNode)
+                    handler.postDelayed({
+                        runCatching {
+                            val latestRoot = findStoreWindowRoot(targetPkg)
+                            val latestEdit = latestRoot?.let { findEditableSearchNode(it) }
+                            if (latestEdit != null) {
+                                fireImeEnter(latestEdit)
+                            }
+                        }
+                    }, 180L)
+                    // Schedule a follow-up step to verify the text stuck and tap the top autocomplete/submit row if needed.
+                    handler.postDelayed({
+                        performInAppSearchStep(
+                            targetPkg = targetPkg,
+                            query = query,
+                            attempt = attempt + 1,
+                            triggerClicks = triggerClicks,
+                            focusedEditCount = focusedEditCount,
+                            submittedCount = submittedCount + 1,
+                            launchedFallback = launchedFallback,
+                            onFallbackNeeded = onFallbackNeeded
+                        )
+                    }, 420L)
+                    return
+                }
+            } else {
+                // Query is already in the EditText! Fire IME_ENTER again and tap the top autocomplete suggestion / submit row.
+                fireImeEnter(editNode)
+                val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query)
+                if (submitOrSuggestion != null) {
+                    clickNodeOrParent(submitOrSuggestion)
+                }
                 return
             }
         }
 
-        // 2. If we already typed the query into EditText and the app is still showing a search suggestion / submit row, click it
-        if (typedQuery) {
+        // 2. If we already typed & submitted the query and suggestions are visible, tap the top suggestion row if present
+        if (submittedCount > 0) {
             val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query)
             if (submitOrSuggestion != null) {
                 clickNodeOrParent(submitOrSuggestion)
+                return
             }
-            return
         }
 
-        // 3. No EditText open yet: find and click the store's search bar pill or bottom/top "Search" icon/tab
-        if (!clickedTrigger) {
+        // 3. No live EditText yet: find and click the store's search bar pill or bottom/top "Search" icon/tab.
+        if (triggerClicks < 4) {
             val triggerNode = findSearchTriggerNode(root)
             if (triggerNode != null && clickNodeOrParent(triggerNode)) {
                 handler.postDelayed({
-                    performInAppSearchStep(query, attempt + 1, clickedTrigger = true, typedQuery = false, onFallbackNeeded = onFallbackNeeded)
+                    performInAppSearchStep(
+                        targetPkg = targetPkg,
+                        query = query,
+                        attempt = attempt + 1,
+                        triggerClicks = triggerClicks + 1,
+                        focusedEditCount = 0,
+                        submittedCount = submittedCount,
+                        launchedFallback = launchedFallback,
+                        onFallbackNeeded = onFallbackNeeded
+                    )
                 }, 380L)
                 return
             }
         }
 
-        // Retry if the search input screen is still animating open
-        if (attempt < 3) {
+        // 4. If we are on a screen with NO search bar at all (such as Walmart's Cart screen), invoke onFallbackNeeded
+        //    to jump into the app's search screen, and KEEP running performInAppSearchStep so we type the query once it loads!
+        if (!launchedFallback && triggerClicks == 0 && submittedCount == 0 && onFallbackNeeded != null) {
+            onFallbackNeeded.invoke()
             handler.postDelayed({
-                performInAppSearchStep(query, attempt + 1, clickedTrigger, typedQuery, onFallbackNeeded)
-            }, 360L)
-        } else if (!typedQuery) {
-            onFallbackNeeded?.invoke()
+                performInAppSearchStep(
+                    targetPkg = targetPkg,
+                    query = query,
+                    attempt = attempt + 1,
+                    triggerClicks = 0,
+                    focusedEditCount = 0,
+                    submittedCount = 0,
+                    launchedFallback = true,
+                    onFallbackNeeded = null
+                )
+            }, 550L)
+            return
+        }
+
+        // 5. Retry while the search screen or fragment is still animating open
+        if (attempt < 9) {
+            handler.postDelayed({
+                performInAppSearchStep(
+                    targetPkg = targetPkg,
+                    query = query,
+                    attempt = attempt + 1,
+                    triggerClicks = triggerClicks,
+                    focusedEditCount = focusedEditCount,
+                    submittedCount = submittedCount,
+                    launchedFallback = launchedFallback,
+                    onFallbackNeeded = onFallbackNeeded
+                )
+            }, 340L)
         }
     }
 
     private fun findEditableSearchNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
+        var bestFocused: AccessibilityNodeInfo? = null
+        var bestUnfocused: AccessibilityNodeInfo? = null
         while (queue.isNotEmpty()) {
             val n = queue.removeFirst()
             if (n.isVisibleToUser && !n.isPassword) {
                 val cls = n.className?.toString().orEmpty()
                 if (n.isEditable || cls.contains("EditText", ignoreCase = true) || cls.contains("AutoComplete", ignoreCase = true)) {
-                    return n
+                    if (n.isFocused) {
+                        bestFocused = n
+                        break
+                    } else if (bestUnfocused == null) {
+                        bestUnfocused = n
+                    }
                 }
             }
             for (i in 0 until n.childCount) {
                 n.getChild(i)?.let(queue::addLast)
             }
         }
-        return null
+        return bestFocused ?: bestUnfocused
     }
 
     private fun findSearchTriggerNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -1824,11 +2033,16 @@ class GroceryScreenReaderService : AccessibilityService() {
             """(?i)\b(what are you looking for|what can we help you find|ask rufus or search|search\s+everything|search\s+shipt|search\s+instacart|search\s+walmart|search\s+target|search\s+kroger|search\s+aldi|search\s+amazon|search\s+whole\s+foods|search\s+costco|search\s+sam'?s|search\s+bj'?s|search\s+doordash|search\s+uber\s+eats|search\s+products|search\s+items|search\s+stores|search\s+store|search\s+in\b|find\s+products|find\s+items|find\s+something)\b|^search\b"""
         )
         val searchViewIdPattern = Regex(
-            """(?i)(rs_search_src_text|chrome_search_hint_view|search_bar|search_box|search_plate|search_src_text|search_button|search_view|toolbar_search|action_search|menu_search|search_entry|search_field|search_input|search_icon|btn_search)"""
+            """(?i)(rs_search_src_text|chrome_search_hint_view|search_bar|search_box|search_plate|search_src_text|search_button|search_view|toolbar_search|action_search|menu_search|search_entry|search_field|search_input|search_icon|btn_search|search_text)"""
+        )
+        val nonTextSearchControlPattern = Regex(
+            """(?i)(barcode|scanner|scan\b|voice|mic|microphone|camera|lens|clear|close|back|navigate\s+up|filter|cancel)"""
         )
         val dm = resources.displayMetrics
         val screenH = dm.heightPixels.coerceAtLeast(1280)
+        val screenW = dm.widthPixels.coerceAtLeast(720)
         var bestTopSearchBar: AccessibilityNodeInfo? = null
+        var bestTopScore = -1
         var bestFallbackSearchTab: AccessibilityNodeInfo? = null
 
         val queue = ArrayDeque<AccessibilityNodeInfo>()
@@ -1839,16 +2053,46 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (n.isVisibleToUser) {
                 val txt = n.text?.toString()?.trim().orEmpty()
                 val desc = n.contentDescription?.toString()?.trim().orEmpty()
+                val hint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    n.hintText?.toString()?.trim().orEmpty()
+                } else {
+                    ""
+                }
                 val vid = n.viewIdResourceName?.substringAfterLast('/')?.lowercase().orEmpty()
                 n.getBoundsInScreen(rect)
 
-                val matchesBar = searchBarPattern.containsMatchIn(txt) ||
-                    searchBarPattern.containsMatchIn(desc) ||
-                    (vid.isNotEmpty() && searchViewIdPattern.containsMatchIn(vid))
+                val combinedLabel = "$txt $desc $hint $vid"
+                if (nonTextSearchControlPattern.containsMatchIn(combinedLabel) &&
+                    !txt.startsWith("Search ", ignoreCase = true) &&
+                    !hint.startsWith("Search ", ignoreCase = true)
+                ) {
+                    for (i in 0 until n.childCount) {
+                        n.getChild(i)?.let(queue::addLast)
+                    }
+                    continue
+                }
 
-                if (matchesBar && rect.top in 0..(screenH * 0.42f).toInt()) {
-                    bestTopSearchBar = n
-                    break
+                val matchesTextPhrase = searchBarPattern.containsMatchIn(txt) ||
+                    searchBarPattern.containsMatchIn(desc) ||
+                    searchBarPattern.containsMatchIn(hint)
+                val matchesViewId = vid.isNotEmpty() && searchViewIdPattern.containsMatchIn(vid)
+                val matchesBar = matchesTextPhrase || matchesViewId
+
+                if (matchesBar && rect.top in 0..(screenH * 0.45f).toInt()) {
+                    var score = 0
+                    if (matchesTextPhrase) score += 50
+                    if (txt.startsWith("Search ", ignoreCase = true) || hint.startsWith("Search ", ignoreCase = true) || desc.startsWith("Search ", ignoreCase = true)) {
+                        score += 40
+                    }
+                    if (rect.width() >= (screenW * 0.35f).toInt()) {
+                        score += 30
+                    }
+                    if (matchesViewId) score += 20
+                    if (n.isClickable) score += 10
+                    if (score > bestTopScore) {
+                        bestTopScore = score
+                        bestTopSearchBar = n
+                    }
                 } else if (bestFallbackSearchTab == null && (matchesBar || txt.equals("Search", ignoreCase = true) || desc.equals("Search", ignoreCase = true))) {
                     bestFallbackSearchTab = n
                 }
@@ -1861,13 +2105,16 @@ class GroceryScreenReaderService : AccessibilityService() {
     }
 
     private fun findSearchSubmitOrSuggestionNode(root: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
-        val firstWord = query.lowercase().replace(Regex("[^a-z0-9\\s]"), "").trim().substringBefore(" ")
+        val cleanWords = query.lowercase().replace(Regex("[^a-z0-9\\s]"), "").trim().split(Regex("\\s+")).filter { it.length >= 3 }
+        val firstWord = cleanWords.firstOrNull().orEmpty()
+        val secondWord = cleanWords.getOrNull(1).orEmpty()
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         val rect = Rect()
         val dm = resources.displayMetrics
-        val topMinY = (dm.heightPixels * 0.10f).toInt()
-        val topMaxY = (dm.heightPixels * 0.55f).toInt()
+        val topMinY = (dm.heightPixels * 0.11f).toInt()
+        val topMaxY = (dm.heightPixels * 0.58f).toInt()
+        var bestMatch: AccessibilityNodeInfo? = null
 
         while (queue.isNotEmpty()) {
             val n = queue.removeFirst()
@@ -1877,11 +2124,20 @@ class GroceryScreenReaderService : AccessibilityService() {
                 n.getBoundsInScreen(rect)
                 if (rect.top in topMinY..topMaxY) {
                     val lowTxt = txt.lowercase().replace("í", "i")
-                    if (lowTxt.startsWith("search for") ||
-                        (firstWord.length >= 3 && lowTxt.contains(firstWord) && txt.length <= 90) ||
-                        desc.equals("Search", ignoreCase = true)
-                    ) {
-                        return n
+                    // Avoid re-clicking the top search input bar itself
+                    if (!lowTxt.equals(query.lowercase()) || rect.top > (dm.heightPixels * 0.15f).toInt()) {
+                        if (lowTxt.startsWith("search for") ||
+                            (firstWord.isNotEmpty() && secondWord.isNotEmpty() && lowTxt.contains(firstWord) && lowTxt.contains(secondWord) && txt.length <= 95) ||
+                            (firstWord.isNotEmpty() && lowTxt.contains(firstWord) && txt.length <= 90 && rect.top > (dm.heightPixels * 0.15f).toInt()) ||
+                            desc.equals("Search", ignoreCase = true)
+                        ) {
+                            if (lowTxt.startsWith("search for") || (secondWord.isNotEmpty() && lowTxt.contains(secondWord))) {
+                                return n
+                            }
+                            if (bestMatch == null) {
+                                bestMatch = n
+                            }
+                        }
                     }
                 }
             }
@@ -1889,7 +2145,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 n.getChild(i)?.let(queue::addLast)
             }
         }
-        return null
+        return bestMatch
     }
 
     private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {

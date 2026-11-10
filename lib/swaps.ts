@@ -428,6 +428,21 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
+    match: /^(?!.*\b(mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(american\s+(?:sliced\s+|cheese|pasteurized|singles)|kraft\s+singles|velveeta\s+slices|sargento.*\bamerican\b|borden.*\bamerican\b|great\s+value.*\bamerican\b)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Organic Valley",
+      name: "Organic American Cheese Slices",
+      sourceUrl: "https://www.organicvalley.coop/products/cheese/american/american-cheese-slices-6-oz/",
+      verifiedAt: "2026-11-09",
+      size: "6 oz pack",
+      isOrganic: true,
+      image: "/swaps/cheese.png",
+      ingredients: "Organic cultured pasteurized milk, organic cream, water, sodium citrate, salt, organic annatto (color), vegetarian enzyme.",
+      itemIds: { walmart: "1814292019" },
+    },
+  },
+  {
     match: /^(?!.*\b(mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(cheese|cheddar|velveeta|kraft\s+singles|american\s+singles|queso|colby|monterey\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\b/i,
     alt: {
       category: "Butter/Dairy",
@@ -718,6 +733,22 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/soup.png",
       ingredients: "Organic brown rice flour, organic millet flour, water.",
+      itemIds: { walmart: "42708184" },
+    },
+  },
+  {
+    match: /\b(cream\s+of\s+(?:chicken|mushroom|celery)|condensed\s+.*soup)\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Pacific Foods",
+      name: "Organic Cream of Chicken Condensed Soup",
+      sourceUrl: "https://www.pacificfoods.com/products/organic-cream-of-chicken-condensed-soup/",
+      verifiedAt: "2026-11-09",
+      size: "10.5 oz can",
+      isOrganic: true,
+      image: "/swaps/soup.png",
+      ingredients: "Water, organic chicken, organic rice flour, organic heavy cream, organic chicken broth, organic cornstarch, sea salt, organic onion powder, organic garlic powder, organic spices.",
+      itemIds: { walmart: "541659748" },
     },
   },
   {
@@ -732,6 +763,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/soup.png",
       ingredients: "Filtered water, organic onions, organic carrots, organic lentils, organic celery, organic potatoes, organic tomatoes, organic spinach, organic extra virgin olive oil, sea salt, organic garlic, organic bay leaf.",
+      itemIds: { walmart: "29873666" },
     },
   },
 
@@ -915,6 +947,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       isOrganic: true,
       image: "/swaps/sausage.png",
       ingredients: "Organic chicken, water, organic maple syrup, sea salt, organic spices.",
+      itemIds: { walmart: "967953484" },
     },
   },
   {
@@ -1362,7 +1395,15 @@ function withAffiliate(
 
 /** Keep the scored product's brand and variant in every retailer search. */
 function conciseClubQuery(q: string): string {
-  return q.replace(/[\"/\\]+/g, " ").replace(/\s+/g, " ").trim();
+  return q
+    .replace(/\((?:nut[- ]?free|peanut[- ]?free|dairy[- ]?free|gluten[- ]?free|sesame[- ]?free|100%\s*pure|apple\s*\+\s*strawberry)\)/gi, " ")
+    .replace(/[\"/\\]+/g, " ")
+    .replace(/\borganics\s+organic\b/gi, "Organic")
+    .replace(/\b(organic\s+[a-z0-9'&]+)\s+organic\b/gi, "$1")
+    .replace(/\b(organic)\s+\1\b/gi, "$1")
+    .replace(/\braw\s+(?=sharp\s+cheddar\b)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function searchPath(store: Store, q: string): string {

@@ -98,7 +98,7 @@ class OverlayWindowService : Service() {
             "grass-fed salted butter"
         )
         private val VARIANT_NOISE_TITLE = Regex(
-            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|no\s+longer\s+available|not\s+available\s+in\s+your\s+area|based\s+on\s+items\s+in\s+your\s+cart|complete\s+your\s+cart)\b.*|.*&\s*more\.?$|.*,\s*was|.*[!?])$"""
+            """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|for\s+[a-z0-9].*|.*notify\s+me\s+when\s+back\s+in\s+stock.*|.*back\s+in\s+stock.*|.*out\s+of\s+stock.*|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|no\s+longer\s+available|not\s+available\s+in\s+your\s+area|based\s+on\s+items\s+in\s+your\s+cart|complete\s+your\s+cart)\b.*|.*&\s*more\.?$|.*,\s*was|.*[!?])$"""
         )
     }
 
@@ -379,7 +379,8 @@ class OverlayWindowService : Service() {
         raw.replace(Regex("^(?i)conventional grocery\\s+"), "")
             .replace(Regex("^(?i)\\d+\\s*(?:ct|count|pk|pack|ea)\\s+(?=[a-zA-Z]{2,})"), "")
             .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
-            .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(average|avg)\\s+price\\b.*$"), "")
+            .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(?:was\\s+)?(?:(?:average|avg)\\s+price|price\\s+averag[a-z]*)\\b.*$"), "")
+            .replace(Regex("(?i)\\s*,\\s*was\\b.*$"), "")
             .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
             .replace(Regex("\\s*\\(\\d+(?:\\.\\d+)?\\s*(?:[a-zA-Z]{0,6}\\s*)?(?:\\.\\.\\.+|…)?\\s*$"), "")
             .replace(Regex("\\s*,\\s*\\d+\\s*(?:[a-zA-Z]{1,4}\\s*)?(?:\\.\\.\\.+|…)\\s*$"), "")
@@ -865,7 +866,16 @@ class OverlayWindowService : Service() {
     private fun showAuditorDrawer() {
         removeCard()
         removePill()
+        tripCart.forEach { it.title = cleanCartTitle(it.title) }
+        tripCart.removeAll {
+            it.isSeed ||
+                it.title.isBlank() ||
+                it.title.lowercase() in DEMO_SEED_TITLES ||
+                VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
+                ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson)
+        }
         val avg = calcCartAvg()
+        displayedCartAvg = avg
         val tone = toneColor(colorNameForScore(avg))
         val storeName = storeDisplayName(currentStoreKey)
 
@@ -950,6 +960,11 @@ class OverlayWindowService : Service() {
         }
 
         for (item in tripCart.toList()) {
+            val swapObj = item.swapObj
+            val hasCleanSwap = item.score < 75 && swapObj != null
+            val swapTitle = swapObj?.optString("title", "Clean Alternative").orEmpty()
+            val swapScore = swapObj?.optInt("score", 0) ?: 0
+            val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -958,20 +973,36 @@ class OverlayWindowService : Service() {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
                 isClickable = true
                 setOnClickListener { openCartItemAnalysis(item) }
-                addView(text(item.title, 13f, INK, bold = true).apply {
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(text(item.title, 13f, INK, bold = true).apply {
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                    })
+                    if (hasCleanSwap && swapTitle.isNotBlank()) {
+                        addView(text("↳ Clean Swap: $swapTitle$swapScoreSuffix", 11.5f, 0xFF0B5E39.toInt(), bold = true).apply {
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            setPadding(0, dp(2), 0, 0)
+                        })
+                    }
                 })
                 addView(text("${item.score}/100", 12.5f, toneColor(colorNameForScore(item.score)), bold = true).apply {
                     setPadding(dp(8), dp(4), dp(8), dp(4))
                 })
-                if (item.score < 75 && item.swapObj != null) {
-                    val itemPaid = item.swapObj?.optBoolean("isPaidLink", false) == true
-                    addView(text(if (itemPaid) "Swap · paid link" else "Swap", 12f, Color.WHITE, bold = true).apply {
-                        setPadding(dp(10), dp(5), dp(10), dp(5))
+                if (hasCleanSwap && swapObj != null) {
+                    val itemPaid = swapObj.optBoolean("isPaidLink", false)
+                    addView(text(if (itemPaid) "Preview · paid" else "Preview Swap", 11.5f, Color.WHITE, bold = true).apply {
+                        setPadding(dp(10), dp(6), dp(10), dp(6))
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
-                        setOnClickListener { openSwap(item.swapObj!!, item) }
+                        setOnClickListener {
+                            showSwapPreviewModal(
+                                swap = swapObj,
+                                fromCartItem = item,
+                                returnToAuditor = true
+                            )
+                        }
                     })
                 }
                 addView(text("✕", 13f, INK_3, bold = true).apply {
@@ -1013,15 +1044,15 @@ class OverlayWindowService : Service() {
                     val scoreTag = if (swapScore > 0) " ($swapScore/100)" else ""
                     val unlocked = ScanApi.isSwapUnlocked(this, onlyItem.title, swapTitle)
                     when {
-                        unlocked -> "🔁 Swap Flagged Item → $swapTitle$scoreTag$paidSuffix"
-                        rem > 0 -> "🔓 Reveal Clean Swap$scoreTag · $rem/$lim Free Left$paidSuffix"
+                        unlocked -> "✨ Review Clean Swap → $swapTitle$scoreTag$paidSuffix"
+                        rem > 0 -> "🔓 Preview Clean Swap$scoreTag · $rem/$lim Free Left$paidSuffix"
                         else -> "🔒 Unlock Clean Swap$scoreTag — Go Pro"
                     }
                 }
                 ScanApi.isProActive(this) || rem > 0 ->
-                    "🔁 Swap All $count Flagged Items (Cart Avg $avg → $projectedAvg/100)$paidSuffix"
+                    "✨ Review All $count Clean Swaps (Cart Avg $avg → $projectedAvg/100)$paidSuffix"
                 else ->
-                    "🔒 Swap All $count Flagged Items (Avg $avg → $projectedAvg/100) — Go Pro"
+                    "🔒 Review All $count Clean Swaps (Avg $avg → $projectedAvg/100) — Go Pro"
             }
             sheet.addView(text(ctaText, 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
@@ -1042,7 +1073,11 @@ class OverlayWindowService : Service() {
                             showPill()
                             runCatching { startActivity(i) }
                         } else {
-                            openSwap(firstSwap, onlyItem)
+                            showSwapPreviewModal(
+                                swap = firstSwap,
+                                fromCartItem = onlyItem,
+                                returnToAuditor = true
+                            )
                         }
                     } else {
                         showSwapAllModal(dirtyWithSwaps, avg, projectedAvg)
@@ -1089,8 +1124,9 @@ class OverlayWindowService : Service() {
     }
 
     /**
-     * Whole-Cart "Swap All Flagged Items" modal: shows every <75 cart item paired with its 1-for-1 Clean Swap
-     * so the shopper sees exactly which items are being replaced and can swap them all or start with the lowest score.
+     * Whole-Cart "Clean Swaps Checklist" modal: shows every <75 cart item paired with its 1-for-1 Clean Swap
+     * so the shopper sees exactly which items are being replaced, can preview their clean ingredients,
+     * and can open/find each clean replacement in the store app one by one.
      */
     private fun showSwapAllModal(dirtyWithSwaps: List<TripCartItem>, currentAvg: Int, projectedAvg: Int) {
         removeCard()
@@ -1125,9 +1161,9 @@ class OverlayWindowService : Service() {
             gravity = Gravity.CENTER_VERTICAL
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text("HEYBROC · WHOLE-CART CLEAN UP", 11f, BRAND, bold = true).apply { letterSpacing = 0.06f })
-                addView(text("Swap All ${sortedDirty.size} Flagged Items", 19f, INK, bold = true))
-                addView(text("Boost your $storeName Cart Avg from $currentAvg/100 → $projectedAvg/100", 12.5f, 0xFF16A34A.toInt(), bold = true).apply {
+                addView(text("HEYBROC · CLEAN SWAPS CHECKLIST", 11f, BRAND, bold = true).apply { letterSpacing = 0.06f })
+                addView(text("Review All ${sortedDirty.size} Clean Swaps", 19f, INK, bold = true))
+                addView(text("Find each healthier choice in $storeName to boost Cart Avg $currentAvg → $projectedAvg/100", 12.5f, 0xFF16A34A.toInt(), bold = true).apply {
                     setPadding(0, dp(2), 0, 0)
                 })
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -1155,22 +1191,38 @@ class OverlayWindowService : Service() {
                     setStroke(dp(1), 0x2215201B)
                 }
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+                isClickable = true
+                setOnClickListener {
+                    showSwapPreviewModal(
+                        swap = swapObj,
+                        fromCartItem = item,
+                        returnToAuditor = false,
+                        returnToSwapAll = Triple(dirtyWithSwaps, currentAvg, projectedAvg)
+                    )
+                }
 
-                addView(text("Replace: ${item.title} (${item.score}/100)", 12f, 0xFFB91C1C.toInt(), bold = true).apply {
+                addView(text("Instead of: ${item.title} (${item.score}/100)", 12f, 0xFFB91C1C.toInt(), bold = true).apply {
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
                 })
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(5), 0, 0)
-                    addView(text("➔ $swapTitle$swapScoreSuffix", 13f, 0xFF0B5E39.toInt(), bold = true).apply {
-                        maxLines = 2
-                        ellipsize = TextUtils.TruncateAt.END
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    setPadding(0, dp(6), 0, 0)
+                    addView(buildSwapThumbnailView(swapObj, dp(40)).apply {
+                        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(10) }
                     })
-                    addView(text(if (swapPaid) "Swap ↗ · paid link" else "Swap ↗", 12f, Color.WHITE, bold = true).apply {
-                        setPadding(dp(12), dp(7), dp(12), dp(7))
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(text("➔ $swapTitle$swapScoreSuffix", 13f, 0xFF0B5E39.toInt(), bold = true).apply {
+                            maxLines = 2
+                            ellipsize = TextUtils.TruncateAt.END
+                        })
+                        addView(text("Tap card to preview clean ingredients", 11f, INK_2))
+                    })
+                    addView(text(if (swapPaid) "Find in $storeName ↗ · paid" else "Find in $storeName ↗", 11.5f, Color.WHITE, bold = true).apply {
+                        setPadding(dp(11), dp(7), dp(11), dp(7))
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
                         setOnClickListener { openSwap(swapObj, item) }
@@ -1183,7 +1235,7 @@ class OverlayWindowService : Service() {
         if (worstItem?.swapObj != null) {
             val worstPaid = worstItem.swapObj?.optBoolean("isPaidLink", false) == true
             val worstSuffix = if (worstPaid) " · paid link" else ""
-            sheet.addView(text("⚡ Start with Lowest Score (${worstItem.score}/100) in $storeName ↗$worstSuffix", 13.5f, Color.WHITE, bold = true).apply {
+            sheet.addView(text("⚡ Find Lowest-Score Swap (${worstItem.score}/100) in $storeName ↗$worstSuffix", 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(13), dp(16), dp(13))
                 background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
@@ -1524,6 +1576,7 @@ class OverlayWindowService : Service() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
         }
         if (swap != null) {
+            upgradeCachedSwapObj(swap, prodTitle)
             val swapTitle = swap.optString("title", "Clean Alternative")
             val swapScore = swap.optInt("score", 0)
             val swapRating = when {
@@ -1539,8 +1592,7 @@ class OverlayWindowService : Service() {
             val lim = ScanApi.weeklySwapsLimit(this)
             val isPaidLink = swap.optBoolean("isPaidLink", false)
             val storeName = storeDisplayName(currentStoreKey)
-            val isInCart = tripCart.any { isSameCartItem(it.key, prodTitle) || isSameCartItem(it.title, prodTitle) }
-            val baseSwapCta = if (isInCart) "Swap in $storeName ↗" else "Find in $storeName ↗"
+            val baseSwapCta = "Find in $storeName ↗"
             val swapBtnLabel = if (isPaidLink) "$baseSwapCta · paid link" else baseSwapCta
 
             if (swapUnlocked) {
@@ -1752,7 +1804,12 @@ class OverlayWindowService : Service() {
      * Full Clean Swap Preview modal: lets the user inspect the swap product's photo, score,
      * and complete ingredient list BEFORE jumping into the store app.
      */
-    private fun showSwapPreviewModal(swap: JSONObject) {
+    private fun showSwapPreviewModal(
+        swap: JSONObject,
+        fromCartItem: TripCartItem? = null,
+        returnToAuditor: Boolean = false,
+        returnToSwapAll: Triple<List<TripCartItem>, Int, Int>? = null
+    ) {
         removeCard()
         removePill()
         val swapTitle = swap.optString("title", "Clean Alternative")
@@ -1766,16 +1823,21 @@ class OverlayWindowService : Service() {
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").trim()
         val storeName = storeDisplayName(currentStoreKey)
-        val prodTitleForModal = data?.optJSONObject("product")?.optString("title").orEmpty()
-        val isInCart = tripCart.any { isSameCartItem(it.key, prodTitleForModal) || isSameCartItem(it.title, prodTitleForModal) }
         val isPaidLink = swap.optBoolean("isPaidLink", false)
-        val baseModalCta = if (isInCart) "🔍 Swap in $storeName ↗" else "🔍 Find in $storeName ↗"
+        val baseModalCta = "🔍 Find in $storeName ↗"
         val modalSwapCta = if (isPaidLink) "$baseModalCta · paid link" else baseModalCta
+        val goBack: () -> Unit = {
+            when {
+                returnToSwapAll != null -> showSwapAllModal(returnToSwapAll.first, returnToSwapAll.second, returnToSwapAll.third)
+                returnToAuditor -> showAuditorDrawer()
+                else -> showCard()
+            }
+        }
 
         val backdrop = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
                 if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    showCard(); return true
+                    goBack(); return true
                 }
                 return super.dispatchKeyEvent(event)
             }
@@ -1783,7 +1845,7 @@ class OverlayWindowService : Service() {
             setBackgroundColor(0x660C100E)
             isFocusableInTouchMode = true
             requestFocus()
-            setOnClickListener { showCard() }
+            setOnClickListener { goBack() }
         }
 
         val sheet = LinearLayout(this).apply {
@@ -1808,13 +1870,20 @@ class OverlayWindowService : Service() {
                 if (swapSize.isNotBlank()) {
                     addView(text(swapSize, 12.5f, INK_2).apply { setPadding(0, dp(2), 0, 0) })
                 }
+                if (fromCartItem != null) {
+                    addView(text("Instead of: ${fromCartItem.title} (${fromCartItem.score}/100)", 11.5f, 0xFFB91C1C.toInt(), bold = true).apply {
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, dp(3), 0, 0)
+                    })
+                }
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(text("×", 22f, INK_2).apply {
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFF4F3EE.toInt()) }
                 layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
-                setOnClickListener { showCard() }
+                setOnClickListener { goBack() }
             })
         })
 
@@ -1852,16 +1921,21 @@ class OverlayWindowService : Service() {
             setPadding(dp(18), dp(14), dp(18), dp(14))
             background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
-            setOnClickListener { openSwap(swap) }
+            setOnClickListener { openSwap(swap, fromCartItem) }
         })
 
-        // Secondary CTA: Back to Current Product Analysis
-        sheet.addView(text("← Back to Product Analysis", 13.5f, INK_2, bold = true).apply {
+        // Secondary CTA: Back to Cart Check / Checklist / Current Product Analysis
+        val backLabel = when {
+            returnToSwapAll != null -> "← Back to Clean Swaps Checklist"
+            returnToAuditor -> "← Back to Cart Check"
+            else -> "← Back to Product Analysis"
+        }
+        sheet.addView(text(backLabel, 13.5f, INK_2, bold = true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(14), dp(11), dp(14), dp(11))
             background = GradientDrawable().apply { setColor(0xFFF4F3EE.toInt()); cornerRadius = dp(999).toFloat() }
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
-            setOnClickListener { showCard() }
+            setOnClickListener { goBack() }
         })
 
         val scroll = ScrollView(this).apply { addView(sheet); isFillViewport = false }
@@ -1970,14 +2044,73 @@ class OverlayWindowService : Service() {
         return raw
     }
 
+    private fun upgradeCachedSwapObj(swap: JSONObject, prodTitle: String) {
+        val lowProd = prodTitle.lowercase()
+        val lowSwap = swap.optString("title").lowercase()
+        val pkg = swap.optString("androidPackage").ifBlank {
+            if (currentStoreKey == "walmart") "com.walmart.android" else ""
+        }
+        val isWalmart = currentStoreKey == "walmart" || pkg == "com.walmart.android"
+        if (Regex("""\b(american\s+(?:sliced\s+|cheese|pasteurized|singles)|kraft\s+singles|velveeta\s+slices|sargento.*\bamerican\b|borden.*\bamerican\b)\b""").containsMatchIn(lowProd) &&
+            lowSwap.contains("raw sharp cheddar")
+        ) {
+            swap.put("title", "Organic Valley Organic American Cheese Slices")
+            swap.put("name", "Organic American Cheese Slices")
+            swap.put("brand", "Organic Valley")
+            swap.put("size", "6 oz pack")
+            swap.put("score", 85)
+            swap.put("searchQuery", "Organic Valley Organic American Cheese Slices")
+            swap.put("ingredients", "Organic cultured pasteurized milk, organic cream, water, sodium citrate, salt, organic annatto (color), vegetarian enzyme.")
+            if (isWalmart) {
+                swap.put("webUrl", "https://www.walmart.com/ip/1814292019")
+                swap.put("deepLink", "https://www.walmart.com/ip/1814292019")
+            }
+        } else if (Regex("""\b(cream\s+of\s+(?:chicken|mushroom|celery)|condensed\s+.*soup)\b""").containsMatchIn(lowProd) &&
+            lowSwap.contains("lentil vegetable soup")
+        ) {
+            swap.put("title", "Pacific Foods Organic Cream of Chicken Condensed Soup")
+            swap.put("name", "Organic Cream of Chicken Condensed Soup")
+            swap.put("brand", "Pacific Foods")
+            swap.put("size", "10.5 oz can")
+            swap.put("score", 88)
+            swap.put("searchQuery", "Pacific Foods Organic Cream of Chicken Condensed Soup")
+            swap.put("ingredients", "Water, organic chicken, organic rice flour, organic heavy cream, organic chicken broth, organic cornstarch, sea salt, organic onion powder, organic garlic powder, organic spices.")
+            if (isWalmart) {
+                swap.put("webUrl", "https://www.walmart.com/ip/541659748")
+                swap.put("deepLink", "https://www.walmart.com/ip/541659748")
+            }
+        }
+        if (isWalmart) {
+            val latestSwapLow = swap.optString("title").lowercase()
+            val curLink = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
+            if (!curLink.contains("/ip/")) {
+                val walmartItemId = when {
+                    latestSwapLow.contains("american cheese slices") -> "1814292019"
+                    latestSwapLow.contains("sharp cheddar") && latestSwapLow.contains("organic valley") -> "19757363"
+                    latestSwapLow.contains("millet") && latestSwapLow.contains("ramen") -> "42708184"
+                    latestSwapLow.contains("cream of chicken") && latestSwapLow.contains("pacific") -> "541659748"
+                    latestSwapLow.contains("lentil vegetable soup") -> "29873666"
+                    latestSwapLow.contains("chicken & maple breakfast sausage") -> "967953484"
+                    else -> null
+                }
+                if (walmartItemId != null) {
+                    swap.put("webUrl", "https://www.walmart.com/ip/$walmartItemId")
+                    swap.put("deepLink", "https://www.walmart.com/ip/$walmartItemId")
+                }
+            }
+        }
+    }
+
     /**
-     * Fires the Clean Swap search inside the store's native app (via in-app accessibility search bar automation
-     * or verified native deep link) and saves the Clean Swap to Favorites & Scan History.
+     * Fires the Clean Swap search inside the store's native app (via direct product deep link when a verified
+     * retailer itemId is present, or via in-app accessibility search bar automation) and saves the Clean Swap
+     * to Favorites & Scan History.
      * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
      */
     private fun openSwap(swap: JSONObject, explicitItem: TripCartItem? = null) {
         val prodTitle = explicitItem?.title?.takeIf { it.isNotBlank() }
             ?: data?.optJSONObject("product")?.optString("title").orEmpty()
+        upgradeCachedSwapObj(swap, prodTitle)
         val swapTitle = swap.optString("title").ifBlank { prodTitle }
 
         if (!ScanApi.isSwapUnlocked(this, prodTitle, swapTitle) && !ScanApi.canUseSwap(this)) {
@@ -2012,11 +2145,29 @@ class OverlayWindowService : Service() {
         removeCard()
         showPill()
 
+        val isDirectProductLink = Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(link) ||
+            Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(rawWebUrl)
+
         Toast.makeText(
             this,
-            "🔍 Searching $storeName for $swapTitle… (Saved to ♥ Favorites)",
+            if (isDirectProductLink) "🔍 Opening $swapTitle in $storeName… (Saved to ♥ Favorites)"
+            else "🔍 Searching $storeName for $swapTitle… (Saved to ♥ Favorites)",
             Toast.LENGTH_LONG
         ).show()
+
+        // 1. If the Clean Swap has a verified direct product deep link (/ip/<id>, /p/<id>, /dp/<id>),
+        //    open the exact product page directly inside the native grocery app!
+        if (isDirectProductLink && pkg.isNotBlank()) {
+            val directCandidates = listOf(
+                Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                Intent(Intent.ACTION_VIEW, Uri.parse(rawWebUrl)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            for (candidate in directCandidates) {
+                if (runCatching { startActivity(candidate) }.isSuccess) {
+                    return
+                }
+            }
+        }
 
         val launchFallbackIntent: () -> Unit = {
             val supportsDirectUrlDeepLink = pkg in setOf(
@@ -2048,8 +2199,9 @@ class OverlayWindowService : Service() {
             }
         }
 
-        // Drive the active grocery store app's native search bar across all 13 stores;
-        // if no search bar/tab is reachable on the current screen, fall back to launchFallbackIntent.
+        // 2. Drive the active grocery store app's native search bar across all 13 stores;
+        //    if no search bar/tab is reachable on the current screen (e.g. Cart screen), launchFallbackIntent
+        //    navigates to the search screen and GroceryScreenReaderService continues typing & submitting the query.
         val inAppSearchStarted = GroceryScreenReaderService.requestInAppSearch(
             targetPkg = pkg,
             query = searchQuery,
@@ -2285,6 +2437,11 @@ class OverlayWindowService : Service() {
                 c.layout(x, y, x + c.measuredWidth, y + c.measuredHeight)
                 x += c.measuredWidth + gap
                 rowH = maxOf(rowH, c.measuredHeight)
+            }
+        }
+    }
+}
+H, c.measuredHeight)
             }
         }
     }
