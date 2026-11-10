@@ -388,7 +388,8 @@ class OverlayWindowService : Service() {
         raw.replace(Regex("^(?i)conventional grocery\\s+"), "")
             .replace(Regex("^(?i)\\d+\\s*(?:ct|count|pk|pack|ea)\\s+(?=[a-zA-Z]{2,})"), "")
             .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
-            .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(?:was\\s+)?(?:(?:average|avg)\\s+price|price\\s+averag[a-z]*)\\b.*$"), "")
+            .replace(Regex("(?i)\\b(?:average|avg)\\s+price\\b\\s*[,•|\\-.]?"), " ")
+            .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(?:,\\s*)?was\\s+(?:price\\s*)?(?:averag[a-z]*|avg)?\\b.*$"), "")
             .replace(Regex("(?i)\\s*,\\s*was\\b.*$"), "")
             .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
             .replace(Regex("\\s*\\(\\d+(?:\\.\\d+)?\\s*(?:[a-zA-Z]{0,6}\\s*)?(?:\\.\\.\\.+|…)?\\s*$"), "")
@@ -396,6 +397,8 @@ class OverlayWindowService : Service() {
             .replace(Regex("(?i)\\btruffl(?:\\.\\.\\.+|…)?$"), "Truffles")
             .replace(Regex("(?i)\\bchocolat(?:\\.\\.\\.+|…)?$"), "Chocolate")
             .replace(Regex("(?i)\\bappl(?:\\.\\.\\.+|…)?$"), "Apples")
+            .replace(Regex("(?i)\\bbisma(?:rk['’]?|r|)?(?:\\.\\.\\.+|…)?$"), "Bismark")
+            .replace(Regex("(?i)^smithfield,\\s*boneless\\s+cooked\\s+hickory\\s+smoked(?:\\.\\.\\.+|…)?$"), "Smithfield, Boneless Cooked Hickory Smoked Ham Steak")
             .replace(Regex("(?i)\\bwing\\s+sa(?:\\.\\.\\.+|…)?$"), "Wing Sauce")
             .replace(Regex("(?i)\\band\\s+re(?:\\.\\.\\.+|…)?$"), "and Reese's")
             .replace(Regex("(?i)\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93% Lean/7% Fat")
@@ -423,7 +426,7 @@ class OverlayWindowService : Service() {
         if (na == nb) return true
         val shorter = if (na.length <= nb.length) na else nb
         val longer = if (na.length <= nb.length) nb else na
-        if (shorter.length >= 15 && longer.startsWith(shorter)) return true
+        if (shorter.length >= 26 && longer.startsWith(shorter)) return true
         return false
     }
 
@@ -435,19 +438,23 @@ class OverlayWindowService : Service() {
         return words.size >= 2 && words.take(2).all { lower.contains(it) }
     }
 
-    private fun syncCartFromScreen(arrRaw: String, remRaw: String, @Suppress("UNUSED_PARAMETER") replaceCart: Boolean, keepMode: Boolean = false) {
+    private fun syncCartFromScreen(arrRaw: String, remRaw: String, replaceCart: Boolean, keepMode: Boolean = false) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
         val prevAvg = calcCartAvg()
         val now = System.currentTimeMillis()
         var swapDetectedInCart = false
-        // When syncing from the real Cart screen (`!keepMode`), drop non-cart-screen items (e.g. PDP browsing leftovers)
-        // and items from previous shopping sessions (>30 min old), while retaining items scrolled during the active Cart session.
-        tripCart.removeAll {
-            it.isSeed ||
-                it.title.lowercase() in DEMO_SEED_TITLES ||
-                VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
-                (!keepMode && arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
+        if (replaceCart) {
+            tripCart.clear()
+        } else {
+            // When syncing from the real Cart screen (`!keepMode`), drop non-cart-screen items (e.g. PDP browsing leftovers)
+            // and items from previous shopping sessions (>30 min old), while retaining items scrolled during the active Cart session.
+            tripCart.removeAll {
+                it.isSeed ||
+                    it.title.lowercase() in DEMO_SEED_TITLES ||
+                    VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
+                    (!keepMode && arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
+            }
         }
         if (remArr != null) {
             for (i in 0 until remArr.length()) {
@@ -743,7 +750,7 @@ class OverlayWindowService : Service() {
             loadingText != null -> loadingText
             isPdpScrollHint -> "Scroll down to grade item"
             isCartAvgMode && tripCart.isEmpty() -> "🛒 Cart: Open Cart to Grade"
-            isCartAvgMode -> "🛒 Cart Avg: $avg/100"
+            isCartAvgMode -> "🛒 Cart Avg: $avg/100 (${tripCart.size})"
             ok && dietaryAlerts.isNotEmpty() -> {
                 val badgeSummary = dietaryAlerts.take(2).joinToString(" + ") { it.shortBadge }
                 val extraCount = if (dietaryAlerts.size > 2) " +${dietaryAlerts.size - 2}" else ""
@@ -959,25 +966,58 @@ class OverlayWindowService : Service() {
         })
 
         if (tripCart.isEmpty()) {
-            sheet.addView(text(
-                "Open your $storeName Cart screen (or tap 'Add to cart' on any product) so HeyBroc can read and grade the actual items in your $storeName cart.",
-                13.5f,
-                INK_2
-            ).apply { setPadding(0, dp(12), 0, dp(8)) })
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF0FDF4.toInt())
+                    setStroke(dp(1), 0xFFBBF7D0.toInt())
+                    cornerRadius = dp(12).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(10); bottomMargin = dp(6) }
+                addView(text("💡 ALREADY HAVE ITEMS IN YOUR ${storeName.uppercase()} CART?", 11f, 0xFF166534.toInt(), bold = true))
+                addView(text(
+                    "Open your $storeName Cart and scroll from top to bottom once — HeyBroc automatically scans every visible item as you scroll (no need to remove and re-add items!).",
+                    12.5f,
+                    0xFF14532D.toInt()
+                ).apply { setPadding(0, dp(3), 0, 0) })
+            })
         } else {
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(12), 0, dp(8))
+                setPadding(0, dp(12), 0, dp(6))
                 addView(GaugeView(context, avg, "Cart Avg", tone), LinearLayout.LayoutParams(dp(84), dp(84)).apply { marginEnd = dp(14) })
                 addView(
                     text(
-                        "Showing ${tripCart.size} graded items across Delivery, Pickup & Shipping in your $storeName cart. Scroll your cart to load off-screen items.",
+                        "Showing ${tripCart.size} graded ${if (tripCart.size == 1) "item" else "items"} in your $storeName cart.",
                         12.5f,
                         INK_2
                     ),
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 )
+            })
+            sheet.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(11), dp(8), dp(11), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF0FDF4.toInt())
+                    setStroke(dp(1), 0xFFBBF7D0.toInt())
+                    cornerRadius = dp(10).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(4) }
+                addView(text(
+                    "💡 Missing pre-existing cart items? Open your $storeName Cart and scroll top-to-bottom once so HeyBroc can see every item (no need to remove & re-add).",
+                    11.5f,
+                    0xFF14532D.toInt(),
+                    bold = true
+                ))
             })
         }
 
@@ -2218,7 +2258,6 @@ class OverlayWindowService : Service() {
 
         val launchFallbackIntent: () -> Unit = {
             val supportsDirectUrlDeepLink = pkg in setOf(
-                "com.walmart.android",
                 "com.target.ui",
                 "com.amazon.mShop.android.shopping"
             )

@@ -395,7 +395,6 @@ class MainActivity : Activity() {
         })
 
         // Account / Log in pill button
-        val ready = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
         val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
         val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
         val isLoggedIn = !savedEmail.isNullOrBlank()
@@ -410,24 +409,9 @@ class MainActivity : Activity() {
             textColor = if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
             bgColor = if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt(),
             strokeColor = if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt(),
-            marginEndDp = if (ready) 6 else 0,
+            marginEndDp = 0,
             onClick = { showGoCoCoLoginDialog() }
         ))
-
-        // Only show the green "● Live" status pill once the Live Store Bubble is enabled
-        if (ready) {
-            pillsRow.addView(buildHeaderPill(
-                text = "● Live",
-                textColor = 0xFF16A34A.toInt(),
-                bgColor = 0xFFE8F7EE.toInt(),
-                strokeColor = 0xFF86EFAC.toInt(),
-                onClick = {
-                    activeTab = 1
-                    topSubTab = "Bubble"
-                    renderScreen()
-                }
-            ))
-        }
 
         topBarContainer.addView(pillsRow)
     }
@@ -1556,7 +1540,7 @@ class MainActivity : Activity() {
         return container
     }
 
-    private fun appendBubbleSetupAndWatchlistCards(target: LinearLayout, includeWatchlist: Boolean = true) {
+    private fun appendBubbleSetupAndWatchlistCards(target: LinearLayout, includeWatchlist: Boolean = false) {
         val a11yServiceEnabled = isAccessibilityEnabled()
         val consentOk = AccessibilityConsent.granted(this)
         val a11yOk = a11yServiceEnabled && consentOk
@@ -3253,7 +3237,6 @@ class MainActivity : Activity() {
         }
         val isDirectProductLink = Regex("""/(ip|p|dp|products?)/[^/?#]+""", RegexOption.IGNORE_CASE).containsMatchIn(explicitDeepLink)
         val supportsDirectUrlDeepLink = isDirectProductLink || explicitPkg in setOf(
-            "com.walmart.android",
             "com.target.ui",
             "com.amazon.mShop.android.shopping"
         )

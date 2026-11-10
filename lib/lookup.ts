@@ -2213,6 +2213,56 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     sourceUrl: "https://wickedcutz.com/products/maple-bacon-jerky",
     verifiedAt: "2026-11-08",
   },
+  {
+    match: /\bfreshness\s+guaranteed\b.*\bglazed\s+donuts?\b|\bglazed\s+donuts?,?\s*12\s*oz\b/i,
+    brand: "Freshness Guaranteed",
+    title: "Freshness Guaranteed Glazed Donuts",
+    ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Sugar, Palm Oil, Soybean Oil, Dextrose, Yeast, Soy Flour, Salt, Mono- and Diglycerides, Sodium Stearoyl Lactylate, Calcium Propionate (to Preserve Freshness), Artificial Flavor, Yellow 5, Yellow 6.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/077/185/646/5793/front_en.33.400.jpg",
+    nutrition: { caloriesKcal100g: 410, sugarsG100g: 24.5, saturatedFatG100g: 9.8, sodiumMg100g: 340, fiberG100g: 1.5, proteinG100g: 4.8, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Freshness-Guaranteed-Glazed-Donuts-12-oz-6-Count/425027592",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\bfreshness\s+guaranteed\b.*\bregular\s+raspberry\s+bism[a-z']*/i,
+    brand: "Freshness Guaranteed",
+    title: "Freshness Guaranteed Regular Raspberry Bismark",
+    ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Raspberry Filling (High Fructose Corn Syrup, Water, Raspberries, Sugar, Modified Food Starch, Citric Acid, Sodium Benzoate, Potassium Sorbate, Red 40, Blue 1, Artificial Flavor), Palm Oil, Soybean Oil, Sugar, Dextrose, Yeast, Mono- and Diglycerides, Salt.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/029/961/630/1971/front_en.5.400.jpg",
+    nutrition: { caloriesKcal100g: 350, sugarsG100g: 26.0, saturatedFatG100g: 7.5, sodiumMg100g: 310, fiberG100g: 1.5, proteinG100g: 4.5, fruitsVegNutsPct: 5, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Freshness-Guaranteed-Regular-Raspberry-Bismark-Donuts-4-Count-11-oz/133163700",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\bfreshness\s+guaranteed\b.*\braspberry\s+filled\s+bism[a-z']*/i,
+    brand: "Freshness Guaranteed",
+    title: "Freshness Guaranteed Raspberry Filled Bismark",
+    ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Raspberry Filling (High Fructose Corn Syrup, Water, Raspberries, Sugar, Modified Food Starch, Citric Acid, Sodium Benzoate, Potassium Sorbate, Red 40, Blue 1, Artificial Flavor), Palm Oil, Soybean Oil, Sugar, Dextrose, Yeast, Mono- and Diglycerides, Salt.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/029/961/630/1971/front_en.5.400.jpg",
+    nutrition: { caloriesKcal100g: 350, sugarsG100g: 26.0, saturatedFatG100g: 7.5, sodiumMg100g: 310, fiberG100g: 1.5, proteinG100g: 4.5, fruitsVegNutsPct: 5, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Freshness-Guaranteed-Raspberry-Filled-Bismark-Donuts-12-Count-33-oz/884122662",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\bsmithfield\b.*\b(?:boneless\s+cooked\s+hickory\s+smoked|hickory\s+smoked\s+ham)\b/i,
+    brand: "Smithfield",
+    title: "Smithfield Boneless Cooked Hickory Smoked Ham Steak",
+    ingredients: "Cured with Water, Dextrose, Salt, Contains 2% or Less of Potassium Lactate, Sodium Phosphates, Sodium Diacetate, Sodium Erythorbate, Sodium Nitrite.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/020/634/010/5485/front_en.3.400.jpg",
+    nutrition: { caloriesKcal100g: 120, sugarsG100g: 3.5, saturatedFatG100g: 1.2, sodiumMg100g: 1050, fiberG100g: 0, proteinG100g: 18.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Smithfield-Boneless-Cooked-Hickory-Smoked-Ham-Steak/10535115",
+    verifiedAt: "2026-11-09",
+  },
+  {
+    match: /\bmy\s+cookie\s+dealer\b|\bprotein\s+toaster\s+pastr(?:y|ies)\b/i,
+    brand: "My Cookie Dealer",
+    title: "My Cookie Dealer Protein Toaster Pastry Powdered",
+    ingredients: "Enriched Wheat Flour, Whey Protein Isolate, Milk Protein Isolate, Palm Oil, Sugar, Strawberry Filling (Sugar, Strawberries, Water, Pectin, Citric Acid, Potassium Sorbate, Red 40), Soluble Corn Fiber, Allulose, Glycerin, Egg Whites, Natural and Artificial Flavors, Soy Lecithin, Sucralose, Sodium Benzoate.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/003/800/031/6104/front.9.400.jpg",
+    nutrition: { caloriesKcal100g: 325, sugarsG100g: 11.0, saturatedFatG100g: 7.0, sodiumMg100g: 360, fiberG100g: 5.5, proteinG100g: 18.0, fruitsVegNutsPct: 5, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/My-Cookie-Dealer-Protein-Toaster-Pastry-Powdered-Strawberry-3-88-oz/5470560138",
+    verifiedAt: "2026-11-09",
+  },
 ];
 
 const UI_NOISE_QUERY =
@@ -2222,7 +2272,7 @@ const NON_FOOD_GUARD =
   /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|wax\s+paper|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i;
 
 const PROCESSED_FOOD_GUARD =
-  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donut|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
+  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donuts?|doughnuts?|bismarks?|bismark|pastries|pastry|danish|fritters?|eclairs?|strudels?|turnovers?|toaster|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|strips?|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?)\b/i;
 
 const NAMED_BRAND_GUARD =
   /\b(silk|pedialyte|oscar\s+mayer|tyson|applegate|boar'?s\s+head|hormel|perdue|foster\s+farms|barilla|rao'?s|wonder|pepperidge|arnold|orowheat|chobani|fage|tillamook|sargento|philadelphia|haagen[- ]?dazs|häagen[- ]?dazs|ben\s*&\s*jerry|ore[- ]?ida|mccain|alexia|hunt'?s|muir\s+glen|bush'?s|goya|tostitos|pace|herdez|sabra|land\s+o'?\s*lakes|kerrygold|country\s+crock|blue\s+bonnet|hellmann'?s|best\s+foods|duke'?s|french'?s|grey\s+poupon|kikkoman|tabasco|cholula|frank'?s|pillsbury|betty\s+crocker|duncan\s+hines|kodiak|krusteaz|bisquick|aunt\s+jemima|pearl\s+milling|log\s+cabin|mrs\.?\s*butterworth|skippy|jif|peter\s+pan|welch'?s|bonne\s+maman|nissin|nongshim|buldak|samyang|progresso|totino'?s|red\s+baron|tombstone|banquet|healthy\s+choice|lean\s+cuisine|marie\s+callender|breyers|talenti|jennie[- ]?o|hillshire|jimmy\s+dean|smithfield|wright|farmland|nathan'?s|hebrew\s+national|ball\s+park|stouffer'?s|amy'?s|halo\s+top|yasso|clif\s+bar|quest|nature\s+valley|quaker|belvita|thomas'?|canyon\s+bakehouse|udi'?s|sara\s+lee|nature'?s\s+own|king'?s\s+hawaiian|mission|eggo|smucker'?s|heinz|sweet\s+baby\s+ray'?s|stubb'?s|miracle\s+whip|wish[- ]?bone|ken'?s|briannas|marzetti|prego|ragu|classico|bertolli|newman'?s\s+own|mateo'?s|tapatio|valentina|oikos|siggi'?s|dannon|activia|stonyfield|kraft|babybel|laughing\s+cow|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|mott'?s|outshine|digiorno|vlasic|mt\.?\s*olive|lay'?s|ruffles|pringles|fritos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop)\b/i;
@@ -2574,7 +2624,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         productTitle: cleanTitle,
         brand: "Just Bare",
         ingredients: jbIng,
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
         nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false, isOrganic: false },
         source: "catalog",
         sourceUpdatedAt: "2026-11-08",
@@ -2595,7 +2645,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       category: drinkHit.category,
       description: drinkHit.description,
       ingredients: drinkHit.ingredients,
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}&v=2`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}&v=4`,
       nutrition: { ...drinkHit.nutrition, isOrganic: drinkHit.nutrition?.isOrganic === true },
       source: "catalog",
       sourceUpdatedAt: drinkHit.verifiedAt,
@@ -2618,7 +2668,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       const resolvedTitle = wordCount <= 2 ? fullEntryTitle : cleanTitle;
       const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
         ? entry.imageUrl
-        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}&v=2`;
+        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}&v=4`;
       return {
         productTitle: resolvedTitle,
         brand: entry.brand,
@@ -2648,7 +2698,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
         description:
           "Representative category formulation shown because an exact product/UPC label was not returned by Open Food Facts or USDA. Formulations vary by brand and batch; always verify the physical package label.",
         ingredients: `${cat.ingredients} [Representative Category Formulation — Verify Physical Package Label]`,
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
+        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
         nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic === true },
         source: "catalog",
         sourceUpdatedAt: cat.verifiedAt,
@@ -2668,7 +2718,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       productTitle: cleanTitle,
       brand: "Fresh Produce",
       ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
       nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -2677,13 +2727,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 
   // 2. Plain Fresh / Frozen Meat, Poultry (Whole Turkey, Chicken Breast Fillets, etc.), Seafood & Shell Eggs (unbreaded, uncured)
   if (
-    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|turkey|chicken|pork|bison|lamb)|beef\s+(stew|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+.*eggs?|\beggs\b)\b/.test(s)
+    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|beef\s+(stew|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+.*eggs?|\beggs\b)\b/.test(s)
   ) {
     return {
       productTitle: cleanTitle,
       brand: "Fresh Meat & Eggs",
       ingredients: "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Eggs).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
+      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
       nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -2769,7 +2819,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&

@@ -58,6 +58,7 @@ export interface CleanAlternative {
   category: SwapCategory;
   brand: string;
   name: string;
+  searchQuery?: string;
   size?: string;
   isOrganic?: boolean;
   image: string;
@@ -968,7 +969,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "8 oz pack",
       isOrganic: true,
-      image: "/swaps/bacon.png",
+      image: "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg",
       ingredients: "Organic pork, water, sea salt, organic rosemary extract.",
       itemIds: { walmart: "22210691" },
     },
@@ -983,7 +984,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "10 oz pack",
       isOrganic: true,
-      image: "/swaps/hotdog.png",
+      image: "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg",
       ingredients: "Organic grass-fed beef, water, sea salt, organic spices, organic garlic powder, organic onion powder, organic paprika, lactic acid starter culture.",
       itemIds: { walmart: "15610515" },
     },
@@ -998,7 +999,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "7 oz pack",
       isOrganic: true,
-      image: "/swaps/sausage.png",
+      image: "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg",
       ingredients: "Organic chicken, water, organic maple syrup, sea salt, organic spices.",
       itemIds: { walmart: "967953484" },
     },
@@ -1013,7 +1014,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "8 oz box",
       isOrganic: true,
-      image: "/swaps/nuggets.png",
+      image: "https://images.openfoodfacts.org/images/products/008/523/905/3218/front_en.6.400.jpg",
       ingredients: "Organic chicken breast, water, organic rice flour, organic yellow corn flour, sea salt, organic expeller-pressed coconut oil, organic onion powder, organic garlic powder.",
       itemIds: { walmart: "21296165" },
     },
@@ -1028,7 +1029,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "6 oz pack",
       isOrganic: true,
-      image: "/swaps/turkey.jpg",
+      image: "https://images.openfoodfacts.org/images/products/004/450/020/1956/front_en.6.400.jpg",
       ingredients: "Organic pork, water, organic honey, sea salt, organic rosemary extract.",
       itemIds: { walmart: "15610517" },
     },
@@ -1043,22 +1044,39 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-09",
       size: "4 oz pack",
       isOrganic: true,
-      image: "/swaps/turkey.jpg",
+      image: "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg",
       ingredients: "Organic pork, sea salt, organic cane sugar, organic spices, organic garlic, lactic acid starter culture, organic rosemary extract.",
       itemIds: { walmart: "22210693" },
     },
   },
   {
-    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning)\b).*\b(roast\s+beef|ground\s+beef|beef\s+patties|burger\s+patties|steak|sirloin|ribeye)\b/i,
+    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning|jerky|stick|broth|stock)\b).*\b(ground\s+beef|ground\s+chuck|beef\s+patties|burger\s+patties|\d{2}%\s*lean\s*\/?\s*\d{1,2}%\s*fat\s*(?:ground\s+)?beef)\b/i,
+    alt: {
+      category: "Deli Meat",
+      brand: "Marketside Butcher",
+      name: "Organic Grass-Fed 93% Lean 7% Fat Ground Beef",
+      searchQuery: "Organic Grass Fed Ground Beef",
+      sourceUrl: "https://www.walmart.com/ip/Marketside-Butcher-Organic-Grass-Fed-93-Lean-7-Fat-Ground-Beef-1-lb/51259058",
+      verifiedAt: "2026-11-09",
+      size: "1 lb brick",
+      isOrganic: true,
+      image: "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg",
+      ingredients: "100% Organic Grass-Fed Beef.",
+      itemIds: { walmart: "51259058" },
+    },
+  },
+  {
+    match: /^(?!.*\b(sauce|fries|soup|gravy|seasoning)\b).*\b(roast\s+beef|steak|sirloin|ribeye)\b/i,
     alt: {
       category: "Deli Meat",
       brand: "Applegate Organics",
       name: "Organic Uncured Roast Beef",
+      searchQuery: "Organic Roast Beef",
       sourceUrl: "https://applegate.com/products/organic-uncured-roast-beef",
       verifiedAt: "2026-11-09",
       size: "6 oz pack",
       isOrganic: true,
-      image: "/swaps/turkey.jpg",
+      image: "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg",
       ingredients: "Organic grass-fed beef, water, sea salt, organic black pepper, organic garlic powder.",
       itemIds: { walmart: "15610518" },
     },
@@ -1073,7 +1091,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       name: "Organic Grass-Fed Shells & Real Aged Cheddar",
       size: "6 oz box",
       isOrganic: true,
-      image: "/swaps/mac.png",
+      image: "https://images.openfoodfacts.org/images/products/26565859/front_en.3.400.jpg",
       ingredients: "Organic wheat pasta (organic wheat flour), organic grass-fed cheddar cheese (cultured pasteurized organic milk, salt, non-animal enzymes), organic whey, organic nonfat milk, organic butter (organic cream, salt), salt, cultured whole milk, sodium phosphate, organic annatto extract (for color).",
       nutrition: { caloriesKcal100g: 386, sugarsG100g: 7.1, saturatedFatG100g: 3.6, sodiumMg100g: 757, fiberG100g: 2.9, proteinG100g: 14.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
       sourceUrl: "https://www.annies.com/product/organic-grass-fed-shells-real-aged-cheddar-mac-cheese",
@@ -2392,7 +2410,7 @@ export function buildLinks(
   surface: ScanSurface = "web"
 ) {
   const meta = STORE_META[store];
-  const query = `${alt.brand} ${alt.name}`;
+  const query = alt.searchQuery || `${alt.brand} ${alt.name}`;
   const searchQuery = conciseClubQuery(query);
   const id = alt.itemIds?.[store];
   const path = id ? productPath(store, id) : searchPath(store, query);
@@ -2487,9 +2505,9 @@ export function resolveSwap(params: {
     nutrition: { ...alt.nutrition, isOrganic },
     sourceUrl: alt.sourceUrl,
     verifiedAt: alt.verifiedAt,
-    image: alt.image.endsWith(".png")
+    image: alt.image.startsWith("https://")
       ? alt.image
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=2`,
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=4`,
     score: altScore,
     store,
     ...buildLinks(alt, store, impactClickId(), surface),

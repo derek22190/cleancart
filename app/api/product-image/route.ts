@@ -156,6 +156,36 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/\bfavorite\s+day\b.*\bcookies\b/i, "https://images.openfoodfacts.org/images/products/008/523/927/0233/front_en.3.400.jpg"],
   [/\bfavorite\s+day\b.*\bvanilla\b/i, "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg"],
   [/\bbutterball\b.*\bturkey\b/i, "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg"],
+  [/\bapplegate\b.*\broast\s+beef\b/i, "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg"],
+  [/\bapplegate\b.*\b(?:hot\s*dog|frank)\b/i, "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg"],
+  [/\bapplegate\b.*\bbacon\b/i, "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg"],
+  [/\bapplegate\b.*\bturkey\s+breast\b/i, "https://images.openfoodfacts.org/images/products/022/517/201/1436/front_en.3.400.jpg"],
+  [/\bapplegate\b.*\bblack\s+forest\s+ham\b/i, "https://images.openfoodfacts.org/images/products/004/450/020/1956/front_en.6.400.jpg"],
+  [/\bapplegate\b.*\bsalami\b/i, "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg"],
+  [/\bapplegate\b.*\bbreakfast\s+sausage\b/i, "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg"],
+  [/\bapplegate\b.*\bnuggets?\b/i, "https://images.openfoodfacts.org/images/products/008/523/905/3218/front_en.6.400.jpg"],
+  [/\bannie'?s\b.*\b(?:shells|cheddar|mac)\b/i, "https://images.openfoodfacts.org/images/products/26565859/front_en.3.400.jpg"],
+  [/\blotus\s+foods\b.*\bramen\b/i, "https://images.openfoodfacts.org/images/products/070/895/362/8172/front_en.3.400.jpg"],
+  [/\bmaruchan\b.*\bramen\b/i, "https://images.openfoodfacts.org/images/products/004/178/900/2915/front_es.14.400.jpg"],
+  [/\b(?:marketside\s+butcher|organic\s+grass[- ]?fed.*ground\s+beef)\b/i, "https://images.openfoodfacts.org/images/products/082/581/911/0319/front_en.14.400.jpg"],
+  [/\b(?:ground\s+beef|ground\s+chuck|\d{2}%\s*lean.*beef)\b/i, "https://images.openfoodfacts.org/images/products/020/434/580/7045/front_en.3.400.jpg"],
+  [/\bsmithfield\b.*\bham\b/i, "https://images.openfoodfacts.org/images/products/020/634/010/5485/front_en.3.400.jpg"],
+  [/\b(?:freshness\s+guaranteed\b.*\bglazed\s+donuts?|glazed\s+donuts?,?\s*12\s*oz)\b/i, "https://images.openfoodfacts.org/images/products/077/185/646/5793/front_en.33.400.jpg"],
+  [/\bbismarks?\b|\braspberry\s+(?:filled\s+)?bism[a-z']*/i, "https://images.openfoodfacts.org/images/products/029/961/630/1971/front_en.5.400.jpg"],
+  [/\b(?:my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies))\b/i, "https://images.openfoodfacts.org/images/products/003/800/031/6104/front.9.400.jpg"],
+  [/\bvital\s+farms\b.*\beggs?\b/i, "https://images.openfoodfacts.org/images/products/086/174/500/0010/front_en.27.400.jpg"],
+  [/\borganic\s+valley\b.*\bmilk\b/i, "https://images.openfoodfacts.org/images/products/64715087/front_en.3.400.jpg"],
+  [/\bgreat\s+value\b.*\bmilk\b/i, "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.4.400.jpg"],
+  [/\bgreat\s+value\b.*\bbutter\b/i, "https://images.openfoodfacts.org/images/products/007/874/202/5933/front_en.16.400.jpg"],
+  [/\bgreat\s+value\b.*\beggs?\b/i, "https://images.openfoodfacts.org/images/products/007/874/233/0624/front_en.3.400.jpg"],
+  [/\bgreat\s+value\b.*\b(?:macaroni|mac\s*(?:&|and)\s*cheese)\b/i, "https://images.openfoodfacts.org/images/products/007/874/235/8857/front_en.4.400.jpg"],
+  [/\bgreat\s+value\b.*\bdiced\s+tomatoes\b/i, "https://images.openfoodfacts.org/images/products/007/874/202/0976/front_en.4.400.jpg"],
+  [/\bgreat\s+value\b.*\bwater\b/i, "https://images.openfoodfacts.org/images/products/84464033/front_en.3.400.jpg"],
+  [/^(?!.*\b(?:chips?|crisps?|fries|tots|mashed|salad)\b).*\b(?:sweet\s+potato(?:es)?|yams?)\b/i, "https://images.openfoodfacts.org/images/products/017/620/200/0336/front_en.7.400.jpg"],
+  [/^(?!.*\b(?:chips?|crisps?|fries|tots|mashed|salad)\b).*\b(?:russet\s+potato(?:es)?|idaho\s+potato(?:es)?|yukon\s+gold\s+potato(?:es)?|red\s+potato(?:es)?|yellow\s+potato(?:es)?|butter\s+potato(?:es)?|potatoes,?\s+butter|fresh\s+whole\s+potato(?:es)?)\b/i, "https://images.openfoodfacts.org/images/products/007/078/401/2964/front_en.3.400.jpg"],
+  [/^(?!.*\b(?:pudding|bread|muffin|chips?|boat|sunscreen)\b).*\b(?:fresh\s+bananas?|bananas?)\b/i, "https://images.openfoodfacts.org/images/products/200/000/015/1418/front_en.3.400.jpg"],
+  [/^(?!.*\b(?:juice|cider|sauce|applesauce|pie|chips?|strudel|fritter|danish)\b).*\b(?:honeycrisp\s+apples?|gala\s+apples?|fuji\s+apples?|granny\s+smith\s+apples?|fresh\s+apples?)\b/i, "https://images.openfoodfacts.org/images/products/002/290/630/0183/front_en.3.400.jpg"],
+  [/^(?!.*\b(?:cake|juice|soup)\b).*\b(?:baby\s+cut\s+carrots?|whole\s+carrots?|fresh\s+carrots?)\b/i, "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg"],
 ];
 
 const STOP_TOKENS = new Set([
@@ -192,21 +222,9 @@ function distinctiveTokens(s: string): string[] {
     );
 }
 
-const PROCESSED_FOOD_IMAGE_QUERY =
-  /\b(chips?|crisps?|crispy|fries|fried|tots|hash\s*browns?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|pie|cake|muffin|waffles?|pancakes?|cookies?|crackers?|bars?|cereal|puffs?|candy|candied|gummies|juice|drink|soda|sauce|salsa|ketchup|jam|jelly|syrup|canned|soup|chowder|salad\s+kit|dressing|dip)\b/i;
-
 const BLOCKED_ROTATED_OFF_IMAGE_RE = /\/10603499\//;
 
 async function resolveRealProductImageUrl(rawQuery: string): Promise<string | null> {
-  if (
-    !PROCESSED_FOOD_IMAGE_QUERY.test(rawQuery) &&
-    /\b(fresh\s+whole\b|fresh\s+produce\b|sweet\s+potato(?:es)?|russet\s+potato(?:es)?|yukon\s+gold|idaho\s+potato(?:es)?|red\s+potato(?:es)?|yellow\s+potato(?:es)?|yams?\s*\(sweet\s+potatoes?\)|fresh\s+banana|honeycrisp\s+apples?|baby\s+cut\s+carrots?)\b/i.test(
-      rawQuery,
-    )
-  ) {
-    return null;
-  }
-
   for (const [re, verifiedUrl] of VERIFIED_PRODUCT_IMAGES) {
     if (re.test(rawQuery)) {
       return verifiedUrl;
@@ -265,7 +283,8 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
             image_front_url?: string;
           }>;
         };
-        const hit = (data.hits || []).find((p) => {
+        const hits = data.hits || [];
+        let hit = hits.find((p) => {
           const imgCandidate = p.image_front_small_url || p.image_front_url;
           if (!imgCandidate || BLOCKED_ROTATED_OFF_IMAGE_RE.test(imgCandidate)) return false;
           const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
@@ -275,6 +294,17 @@ async function resolveRealProductImageUrl(rawQuery: string): Promise<string | nu
             hasProductIdentityMatch(rawQuery, candidateTitle)
           );
         });
+        if (!hit) {
+          const minOverlap = tokens.length >= 2 ? 2 : 1;
+          hit = hits.find((p) => {
+            const imgCandidate = p.image_front_small_url || p.image_front_url;
+            if (!imgCandidate || BLOCKED_ROTATED_OFF_IMAGE_RE.test(imgCandidate)) return false;
+            const brandsStr = Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || "";
+            const candidateTokens = new Set(distinctiveTokens(`${brandsStr} ${p.product_name_en || p.product_name || ""}`));
+            const matchedCount = tokens.filter((t) => candidateTokens.has(t)).length;
+            return matchedCount >= minOverlap;
+          });
+        }
         const url = hit?.image_front_small_url || hit?.image_front_url;
         if (url && isAllowedImageUrl(url)) {
           if (imageUrlCache.size >= 1000) {

@@ -98,7 +98,7 @@ check("swap deepLink uses https universal link", Boolean(resolveSwap({ score: 40
 check("Capri Sun remains Poor without falsely penalizing citric acid and swaps to Spindrift", (() => {
   const s = scoreProductYuka("Water, sugar, pear and grape juice concentrate, citric acid, strawberry and kiwi juice concentrate, natural flavor.", {}, [], { productTitle: "Capri Sun Strawberry Kiwi Juice Pouches" });
   const sw = resolveSwap({ score: s.score, productTitle: "Capri Sun Strawberry Kiwi Juice Pouches", store: "aldi" });
-  return s.score < 50 && s.rating === "Poor" && Boolean(sw?.title.includes("Spindrift")) && sw?.image === "/swaps/drink.png";
+  return s.score < 50 && s.rating === "Poor" && Boolean(sw?.title.includes("Spindrift")) && Boolean(sw?.image.startsWith("https://"));
 })());
 check("100% Orange Juice never scores 100 (scores <= 75)", (() => {
   const conv = scoreProductYuka("100% pure squeezed pasteurized orange juice.", {}, [], { productTitle: "100% Pure Squeezed Orange Juice" });
@@ -113,7 +113,7 @@ check("Ben & Jerry's Half-Baked scores <= 35 (matches 3-pillar sum, never 100)",
 check("French's Original Crispy Fried Onions scores <= 35 (never 100)", (() => {
   const s = scoreProductYuka("Onions, palm oil, enriched flour, soy flour, salt, dextrose.", {}, [], { productTitle: "French's Original Crispy Fried Onions" });
   const sw = resolveSwap({ score: s.score, productTitle: "French's Original Crispy Fried Onions", store: "aldi" });
-  return s.score <= 35 && Boolean(sw?.title.includes("Yellow Onions")) && sw?.image === "/swaps/produce.png";
+  return s.score <= 35 && Boolean(sw?.title.includes("Yellow Onions")) && Boolean(sw?.image.startsWith("https://"));
 })());
 check("Butterball Whole Turkey scores 72 Mediocre (42 + 30 + 0)", (() => {
   const s = scoreProductYuka("Whole young turkey, water, salt.", {}, [], { productTitle: "Butterball Frozen Whole Turkey" });
@@ -1365,7 +1365,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         sweetPotatoScore?.score === 90 &&
         sweetPotatoScore?.rating === "Excellent" &&
         sweetPotatoScore?.flagged.length === 0 &&
-        sweetPotatoLookup.imageUrl?.includes("&v=2")
+        sweetPotatoLookup.imageUrl?.includes("&v=4")
     )
   );
 
@@ -1732,6 +1732,78 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         seoSwapsPageTsx.includes('{ id: "sams", label: "Sam\'s Club" }') &&
         seoSwapsPageTsx.includes('{ id: "aldi", label: "ALDI" }') &&
         seoSwapsPageTsx.includes('{ id: "bjs", label: "BJ\'s" }')
+    )
+  );
+
+  // Regression suite for Ground Beef 90/100 + Grass-Fed Ground Beef swap, Walmart Cart 5-item coverage, real OFF images, and UI polish
+  const groundBeefScan = await runScan({
+    productTitle: "80% Lean / 20% Fat Ground Beef, 1 lb",
+    store: "walmart",
+  });
+  const groundBeefAlt = resolveCleanAlternative(
+    "80% Lean / 20% Fat Ground Beef, 1 lb",
+    "Deli Meat",
+    "walmart",
+  );
+  const glazedDonutsScan = await runScan({
+    productTitle: "Freshness Guaranteed Glazed Donuts, 12 oz, 6 C...",
+    store: "walmart",
+  });
+  const regBismarkScan = await runScan({
+    productTitle: "Freshness Guaranteed Regular Raspberry Bisma...",
+    store: "walmart",
+  });
+  const filledBismarkScan = await runScan({
+    productTitle: "Freshness Guaranteed Raspberry Filled Bismark'...",
+    store: "walmart",
+  });
+  const smithfieldHamScan = await runScan({
+    productTitle: "Smithfield, Boneless Cooked Hickory Smoked ...",
+    store: "walmart",
+  });
+  const toasterPastryScan = await runScan({
+    productTitle: "My Cookie Dealer Protein Toaster Pastry, Powdered...",
+    store: "walmart",
+  });
+  const readerKtSrc = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt",
+    "utf8",
+  );
+  const overlayKtSrc = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+    "utf8",
+  );
+  const historyStoreKtSrc = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt",
+    "utf8",
+  );
+  check(
+    "Walmart 2-col grid, Cart sync/removal, Ground Beef 90/100 + Grass-Fed Ground Beef swap, real OFF product/produce photos, and Home/Top Picks UI cleanup",
+    Boolean(
+      groundBeefScan.ok &&
+        groundBeefScan.result.score === 90 &&
+        groundBeefScan.result.rating === "Excellent" &&
+        groundBeefAlt.brand === "Marketside Butcher" &&
+        groundBeefAlt.name.includes("Organic Grass-Fed 93% Lean 7% Fat Ground Beef") &&
+        glazedDonutsScan.ok &&
+        glazedDonutsScan.result.score < 50 &&
+        regBismarkScan.ok &&
+        regBismarkScan.result.score < 50 &&
+        filledBismarkScan.ok &&
+        filledBismarkScan.result.score < 50 &&
+        smithfieldHamScan.ok &&
+        smithfieldHamScan.result.score < 50 &&
+        toasterPastryScan.ok &&
+        toasterPastryScan.result.score < 50 &&
+        !prodImgRouteTs.includes("PROCESSED_FOOD_IMAGE_QUERY") &&
+        prodImgRouteTs.includes("front_en.14.400.jpg") &&
+        historyStoreKtSrc.includes("&v=4") &&
+        !mainActivityKtSrc.includes('"● Live"') &&
+        mainActivityKtSrc.includes("includeWatchlist: Boolean = false") &&
+        readerKtSrc.includes("val shouldReplace = isFirstCartFrame && cartTitles.isNotEmpty()") &&
+        readerKtSrc.includes("rowBand") &&
+        !readerKtSrc.includes("SUPPORTED_PACKAGES") &&
+        overlayKtSrc.includes("if (replaceCart) {")
     )
   );
 

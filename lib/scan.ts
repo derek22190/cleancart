@@ -428,7 +428,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       .replace(/\s*[.,•|\-]?\s*(?:rating|rated)?\s*\d+(?:\.\d+)?\s*out\s+of\s*5(?:\s*stars?)?(?:\s*[,•|\-.]?\s*\d[\d,]*\s*(?:reviews?|ratings?))?/gi, "")
       .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/gi, "")
       .replace(/\s*[,•|\-]\s*ratings?\s*$/gi, "")
-      .replace(/\s*[,•|\-]?\s*(?:average|avg)\s+price\b.*$/gi, "")
+      .replace(/\s*[,•|\-]?\s*(?:average|avg)\s+price\b(?:\s*[:$]\s*\d+(?:\.\d{2})?)?/gi, "")
       .replace(/\b93?%\s*lean\s*\/?\s*7?%\s*fat\b/gi, "93% Lean/7% Fat")
       .replace(/\b80?%\s*lean\s*\/?\s*20?%\s*fat\b/gi, "80% Lean/20% Fat")
       .replace(/\b85?%\s*lean\s*\/?\s*15?%\s*fat\b/gi, "85% Lean/15% Fat")
@@ -436,6 +436,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       .replace(/\btruffl(?:\.\.\.+|…|\b)/gi, "Truffles")
       .replace(/\bchocolat(?:\.\.\.+|…|\b)/gi, "Chocolate")
       .replace(/\bappl(?:\.\.\.+|…|\b)/gi, "Apples")
+      .replace(/\bbism(?:ark['’]|a(?:\.\.\.+|…)?)\b/gi, "Bismark")
+      .replace(/^smithfield,\s*boneless\s+cooked\s+hickory\s+smoked(?:\.\.\.+|…)?$/i, "Smithfield, Boneless Cooked Hickory Smoked Ham Steak")
       .replace(/\bwing\s+sa(?:\.\.\.+|…|\b)/gi, "Wing Sauce")
       .replace(/\band\s+re(?:\.\.\.+|…|\b)/gi, "and Reese's")
       .replace(/\s*,\s*serves\s+\d+(?:\s*[-–—]\s*\d+)?(?:\s*,\s*\d+\s*g\s+of\s+p[a-z]*(?:\.\.\.+|…)?)?\s*$/i, "")
@@ -577,14 +579,14 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}&v=2`;
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}&v=4`;
   const resolvedSwap: SwapResult | null = swap
     ? {
         ...swap,
         image:
           swap.image && swap.image.startsWith("http")
             ? swap.image
-            : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}&v=2`,
+            : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(swap.title)}&v=4`,
         ...(canAccessSwapLinks
           ? {}
           : {
