@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "test:rubric": "tsx scripts/test-rubric.ts"
+    "test:rubric": "tsx scripts/test-rubric.ts",
+    "audit:ai": "node scripts/ai-audit.mjs",
+    "audit:codex": "node scripts/ai-audit.mjs --engine=codex --skip-build",
+    "audit:claude": "node scripts/ai-audit.mjs --engine=claude --skip-build"
   },
   "dependencies": {
     "next": "16.4.5",

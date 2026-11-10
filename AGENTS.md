@@ -22,3 +22,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **No Unverified Organic Bonus**: Never infer whole-product USDA Organic certification from `"organic"` appearing in `rawIngredients`; `organicScore` requires explicit product-level `nutrition.isOrganic === true`.
 - **No Hardcoded Retail Prices or Medical Predictions**: Never hardcode retail dollar prices on product or swap cards, and never emit blood-glucose or physiological predictions (`"Low Spike"`, `"Moderate Spike"`, `"High Spike"`, `"Steady glycemic profile"`).
 
+### Automated Cross-Audit & Verification Gate (`npm run audit:ai`)
+- Before committing and pushing to `main`, agents **MUST** run `npm run audit:ai` (or `npm run typecheck && npm run test:rubric && npm run build`).
+- `npm run audit:ai` (`scripts/ai-audit.mjs`) automatically audits the active `git diff` / `HEAD` commit against all rules in `AGENTS.md`, runs the deterministic compliance & security checks, executes the full verification suite, and (when `codex` CLI, `claude` CLI, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` is available) runs a headless cross-model AI code audit without manual copy-pasting.
+- If `npm run audit:ai` surfaces any actionable bug, regression, or rule violation, fix it and re-run `npm run audit:ai` until zero issues remain before pushing to `origin/main`.
