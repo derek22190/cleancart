@@ -2052,7 +2052,7 @@ class OverlayWindowService : Service() {
         }
         val isWalmart = currentStoreKey == "walmart" || pkg == "com.walmart.android"
         if (Regex("""\b(american\s+(?:sliced\s+|cheese|pasteurized|singles)|kraft\s+singles|velveeta\s+slices|sargento.*\bamerican\b|borden.*\bamerican\b)\b""").containsMatchIn(lowProd) &&
-            lowSwap.contains("raw sharp cheddar")
+            lowSwap.contains("sharp cheddar")
         ) {
             swap.put("title", "Organic Valley Organic American Cheese Slices")
             swap.put("name", "Organic American Cheese Slices")
@@ -2079,6 +2079,46 @@ class OverlayWindowService : Service() {
                 swap.put("webUrl", "https://www.walmart.com/ip/541659748")
                 swap.put("deepLink", "https://www.walmart.com/ip/541659748")
             }
+        } else if (lowSwap.contains("food for life ezekiel")) {
+            swap.put("title", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
+            swap.put("name", "Organic 21 Whole Grains & Seeds Bread")
+            swap.put("brand", "Dave's Killer Bread")
+            swap.put("searchQuery", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
+        } else if (lowSwap.contains("malk organic unsweetened oat")) {
+            swap.put("title", "Califia Farms Organic Unsweetened Oatmilk")
+            swap.put("name", "Organic Unsweetened Oatmilk")
+            swap.put("brand", "Califia Farms")
+            swap.put("searchQuery", "Califia Farms Organic Unsweetened Oatmilk")
+        } else if (lowSwap.contains("malk organic unsweetened almond")) {
+            swap.put("title", "Califia Farms Organic Unsweetened Almondmilk")
+            swap.put("name", "Organic Unsweetened Almondmilk")
+            swap.put("brand", "Califia Farms")
+            swap.put("searchQuery", "Califia Farms Organic Unsweetened Almondmilk")
+        } else if (lowSwap.contains("raw sharp cheddar")) {
+            swap.put("title", "Organic Valley Organic Sharp Cheddar Cheese")
+            swap.put("name", "Organic Sharp Cheddar Cheese")
+            swap.put("brand", "Organic Valley")
+            swap.put("searchQuery", "Organic Valley Organic Sharp Cheddar Cheese")
+        } else if (lowSwap.contains("alec's ice cream")) {
+            swap.put("title", "Alden's Organic Organic Vanilla Bean Ice Cream")
+            swap.put("name", "Organic Vanilla Bean Ice Cream")
+            swap.put("brand", "Alden's Organic")
+            swap.put("searchQuery", "Alden's Organic Vanilla Bean Ice Cream")
+        } else if (lowSwap.contains("crown maple")) {
+            swap.put("title", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
+            swap.put("name", "Organic 100% Pure Grade A Amber Maple Syrup")
+            swap.put("brand", "Coombs Family Farms")
+            swap.put("searchQuery", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
+        } else if (lowSwap.contains("jovial")) {
+            swap.put("title", "Barilla Organic Spaghetti Pasta")
+            swap.put("name", "Organic Spaghetti Pasta")
+            swap.put("brand", "Barilla")
+            swap.put("searchQuery", "Barilla Organic Spaghetti Pasta")
+        } else if (lowSwap.contains("nooma")) {
+            swap.put("title", "Harmless Harvest Organic Coconut Water")
+            swap.put("name", "Organic Coconut Water")
+            swap.put("brand", "Harmless Harvest")
+            swap.put("searchQuery", "Harmless Harvest Organic Coconut Water")
         }
         if (isWalmart) {
             val latestSwapLow = swap.optString("title").lowercase()
@@ -2091,6 +2131,45 @@ class OverlayWindowService : Service() {
                     latestSwapLow.contains("cream of chicken") && latestSwapLow.contains("pacific") -> "541659748"
                     latestSwapLow.contains("lentil vegetable soup") -> "29873666"
                     latestSwapLow.contains("chicken & maple breakfast sausage") -> "967953484"
+                    latestSwapLow.contains("21 whole grains") && latestSwapLow.contains("buns") -> "975361545"
+                    latestSwapLow.contains("21 whole grains") && latestSwapLow.contains("bread") -> "45804393"
+                    latestSwapLow.contains("plain awesome bagels") -> "109128726"
+                    latestSwapLow.contains("stonyfield") && latestSwapLow.contains("yogurt") -> "10535275"
+                    latestSwapLow.contains("heritage flakes") -> "10898744"
+                    latestSwapLow.contains("oven roasted turkey breast") && latestSwapLow.contains("applegate") -> "15610519"
+                    latestSwapLow.contains("boulder canyon") && latestSwapLow.contains("kettle chips") -> "44391408"
+                    latestSwapLow.contains("unsalted butter") && latestSwapLow.contains("organic valley") -> "10804557"
+                    latestSwapLow.contains("salted butter") && latestSwapLow.contains("organic valley") -> "10804556"
+                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("ranch") -> "262135036"
+                    latestSwapLow.contains("larabar") && latestSwapLow.contains("cashew cookie") -> "10311442"
+                    latestSwapLow.contains("simple mills") && latestSwapLow.contains("chocolate chip cookies") -> "189635069"
+                    latestSwapLow.contains("2% reduced fat milk") && latestSwapLow.contains("organic valley") -> "142608569"
+                    latestSwapLow.contains("whole milk") && latestSwapLow.contains("organic valley") -> "142608568"
+                    latestSwapLow.contains("sweet cream coffee creamer") && latestSwapLow.contains("organic valley") -> "46330062"
+                    latestSwapLow.contains("califia") && latestSwapLow.contains("oatmilk") -> "269553533"
+                    latestSwapLow.contains("califia") && latestSwapLow.contains("almondmilk") -> "520102935"
+                    latestSwapLow.contains("sour cream") && latestSwapLow.contains("organic valley") -> "24524912"
+                    latestSwapLow.contains("cream cheese") && latestSwapLow.contains("organic valley") -> "24524911"
+                    latestSwapLow.contains("vital farms") && latestSwapLow.contains("eggs") -> "47908222"
+                    latestSwapLow.contains("santa cruz") && latestSwapLow.contains("peanut butter") -> "10308907"
+                    latestSwapLow.contains("siete") && latestSwapLow.contains("tortilla chips") -> "526863587"
+                    latestSwapLow.contains("siete") && latestSwapLow.contains("tortillas") -> "506938184"
+                    latestSwapLow.contains("bob's red mill") && latestSwapLow.contains("rolled oats") -> "10449439"
+                    latestSwapLow.contains("coombs family farms") && latestSwapLow.contains("maple syrup") -> "10315075"
+                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("mayonnaise") -> "673755804"
+                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("ketchup") -> "904602875"
+                    latestSwapLow.contains("annie's") && latestSwapLow.contains("yellow mustard") -> "15556013"
+                    latestSwapLow.contains("primal kitchen") && latestSwapLow.contains("bbq sauce") -> "478556215"
+                    latestSwapLow.contains("rao's") && latestSwapLow.contains("marinara") -> "47228945"
+                    latestSwapLow.contains("mateo's") && latestSwapLow.contains("salsa") -> "37552509"
+                    latestSwapLow.contains("sunday bacon") && latestSwapLow.contains("applegate") -> "22210691"
+                    latestSwapLow.contains("beef hot dog") && latestSwapLow.contains("applegate") -> "15610515"
+                    latestSwapLow.contains("chicken nuggets") && latestSwapLow.contains("applegate") -> "21296165"
+                    latestSwapLow.contains("barilla") && latestSwapLow.contains("spaghetti") -> "51259268"
+                    latestSwapLow.contains("spindrift") && latestSwapLow.contains("raspberry lime") -> "895065260"
+                    latestSwapLow.contains("olipop") && latestSwapLow.contains("vintage cola") -> "848292458"
+                    latestSwapLow.contains("harmless harvest") && latestSwapLow.contains("coconut water") -> "46330157"
+                    latestSwapLow.contains("stok") && latestSwapLow.contains("cold brew") -> "172959656"
                     else -> null
                 }
                 if (walmartItemId != null) {
@@ -2437,11 +2516,6 @@ class OverlayWindowService : Service() {
                 c.layout(x, y, x + c.measuredWidth, y + c.measuredHeight)
                 x += c.measuredWidth + gap
                 rowH = maxOf(rowH, c.measuredHeight)
-            }
-        }
-    }
-}
-H, c.measuredHeight)
             }
         }
     }

@@ -1556,6 +1556,96 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const { STORE_SPECIFIC_OVERRIDES } = await import("../lib/swaps");
+  const allStoreOverrides = Object.values(STORE_SPECIFIC_OVERRIDES)
+    .flatMap((rules) => (rules ?? []).map((r) => r.alt));
+  const samsButterSwap = resolveSwap({
+    score: 20,
+    productTitle: "Country Crock Original Vegetable Oil Spread",
+    store: "sams",
+    surface: "android",
+  });
+  const costcoMilkSwap = resolveSwap({
+    score: 54,
+    productTitle: "Great Value Whole Vitamin D Milk",
+    store: "costco",
+    surface: "android",
+  });
+  const aldiPbSwap = resolveSwap({
+    score: 35,
+    productTitle: "Jif Creamy Peanut Butter",
+    store: "aldi",
+    surface: "android",
+  });
+  const bjsEggsSwap = resolveSwap({
+    score: 50,
+    productTitle: "Grade A Large White Eggs",
+    store: "bjs",
+    surface: "android",
+  });
+  const targetSyrupSwap = resolveSwap({
+    score: 12,
+    productTitle: "Pearl Milling Company Original Syrup",
+    store: "target",
+    surface: "android",
+  });
+  const krogerMilkSwap = resolveSwap({
+    score: 54,
+    productTitle: "Kroger 2% Reduced Fat Milk",
+    store: "kroger",
+    surface: "android",
+  });
+  const amazonButterSwap = resolveSwap({
+    score: 20,
+    productTitle: "Imperial Vegetable Oil Spread",
+    store: "amazon",
+    surface: "android",
+  });
+  const walmartBreadSwap = resolveSwap({
+    score: 25,
+    productTitle: "Wonder Classic White Sandwich Bread",
+    store: "walmart",
+    surface: "android",
+  });
+  const walmartOatMilkSwap = resolveSwap({
+    score: 35,
+    productTitle: "Planet Oat Original Oatmilk",
+    store: "walmart",
+    surface: "android",
+  });
+
+  check(
+    "Store-Specific Clean Swaps: Sam's Club (Member's Mark), Costco (Kirkland Signature), ALDI (Simply Nature), BJ's (Wellsley Farms), Target (Good & Gather), Kroger (Simple Truth Organic), Amazon (365 by Whole Foods Market), and Walmart nationwide brands with /ip/ IDs",
+    Boolean(
+      allStoreOverrides.length >= 40 &&
+        allStoreOverrides.every(
+          (alt) =>
+            !alt.brand.includes("/") &&
+            !alt.name.includes("/") &&
+            hasValidCatalogProvenance(alt.sourceUrl, alt.verifiedAt) &&
+            scoreIngredients(alt.ingredients).score >= 90
+        ) &&
+        samsButterSwap?.brand === "Member's Mark" &&
+        samsButterSwap.title.includes("Salted Butter") &&
+        costcoMilkSwap?.brand === "Kirkland Signature" &&
+        costcoMilkSwap.title.includes("Organic Whole Milk") &&
+        aldiPbSwap?.brand === "Simply Nature" &&
+        aldiPbSwap.title.includes("Organic Creamy Peanut Butter") &&
+        bjsEggsSwap?.brand === "Wellsley Farms" &&
+        bjsEggsSwap.title.includes("Eggs") &&
+        targetSyrupSwap?.brand === "Good & Gather" &&
+        targetSyrupSwap.title.includes("Maple Syrup") &&
+        krogerMilkSwap?.brand === "Simple Truth Organic" &&
+        krogerMilkSwap.title.includes("2% Reduced Fat Milk") &&
+        amazonButterSwap?.brand === "365 by Whole Foods Market" &&
+        amazonButterSwap.title.includes("Salted Butter") &&
+        walmartBreadSwap?.brand === "Dave's Killer Bread" &&
+        walmartBreadSwap.deepLink === "https://www.walmart.com/ip/45804393" &&
+        walmartOatMilkSwap?.brand === "Califia Farms" &&
+        walmartOatMilkSwap.deepLink === "https://www.walmart.com/ip/269553533"
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
