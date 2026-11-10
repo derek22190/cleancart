@@ -12,26 +12,49 @@ export default function ReferralLandingPage({
   const cleanCode = decodeURIComponent(code || "BROC-FRIEND")
     .trim()
     .toUpperCase();
+  const isFriendInvite = /^BROC-[A-Z0-9]{4,10}$/.test(cleanCode);
   const [copied, setCopied] = useState(false);
+  const [creatorName, setCreatorName] = useState<string | null>(null);
 
   useEffect(() => {
     try {
-      localStorage.setItem("heybroc_referred_by", cleanCode);
-      if (!cleanCode.startsWith("BROC-")) {
-        localStorage.setItem(
-          "cleancart_creator_v1",
-          JSON.stringify({ code: cleanCode, name: cleanCode }),
-        );
-        void fetch("/api/influencers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "track", code: cleanCode, event: "click" }),
-        }).catch(() => {});
+      if (isFriendInvite) {
+        localStorage.setItem("heybroc_referred_by", cleanCode);
+        return;
       }
+      let cancelled = false;
+      fetch(`/api/influencers?code=${encodeURIComponent(cleanCode)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (cancelled) return;
+          if (data?.ok && data?.creator?.code) {
+            setCreatorName(data.creator.name || data.creator.code);
+            localStorage.setItem(
+              "cleancart_creator_v1",
+              JSON.stringify({
+                code: data.creator.code,
+                name: data.creator.name || data.creator.code,
+              }),
+            );
+            void fetch("/api/influencers", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "track",
+                code: data.creator.code,
+                event: "click",
+              }),
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
     } catch {
       /* ignore storage errors */
     }
-  }, [cleanCode]);
+  }, [cleanCode, isFriendInvite]);
 
   const copyAndDownload = async () => {
     try {
@@ -92,7 +115,9 @@ export default function ReferralLandingPage({
             marginBottom: 12,
           }}
         >
-          🎁 FRIEND INVITE · +7 FREE PRO DAYS
+          {isFriendInvite
+            ? "🎁 FRIEND INVITE · +7 FREE PRO DAYS"
+            : "🎉 CREATOR PARTNER · 14-DAY FREE PRO TRIAL"}
         </span>
         <h1
           style={{
@@ -102,7 +127,9 @@ export default function ReferralLandingPage({
             margin: "0 0 10px",
           }}
         >
-          Your friend gifted you 7 Free Days of HeyBroc Pro!
+          {isFriendInvite
+            ? "Your friend gifted you 7 Free Days of HeyBroc Pro!"
+            : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a 14-Day Free Trial of HeyBroc Pro!`}
         </h1>
         <p
           style={{
@@ -114,7 +141,10 @@ export default function ReferralLandingPage({
         >
           HeyBroc floats over <b>Walmart, Target, Costco, Sam&apos;s Club, BJ&apos;s, Amazon Fresh, Instacart, ALDI &amp; more</b> on
           your phone to grade food &amp; beverage ingredients (0–100) and swap flagged
-          items for clean 1-for-1 alternatives in 1 tap. Start a free trial with this code to unlock +7 Free Pro Days!
+          items for clean 1-for-1 alternatives in 1 tap.{" "}
+          {isFriendInvite
+            ? "Start a free trial with this code to unlock +7 Free Pro Days!"
+            : "Use this creator code at checkout to double your free trial from 7 days to 14 days!"}
         </p>
 
         <div
@@ -127,7 +157,9 @@ export default function ReferralLandingPage({
           }}
         >
           <div style={{ fontSize: 12, color: "#68746e", fontWeight: 700 }}>
-            YOUR INVITE CODE (AUTO-COPIED ON DOWNLOAD)
+            {isFriendInvite
+              ? "YOUR INVITE CODE (AUTO-COPIED ON DOWNLOAD)"
+              : "CREATOR PROMO CODE (14-DAY EXTENDED TRIAL)"}
           </div>
           <div
             style={{
@@ -155,7 +187,7 @@ export default function ReferralLandingPage({
               cursor: "pointer",
             }}
           >
-            {copied ? "✓ Code Copied to Clipboard!" : "Copy Invite Code"}
+            {copied ? "✓ Code Copied to Clipboard!" : "Copy Code"}
           </button>
         </div>
 
@@ -180,7 +212,11 @@ export default function ReferralLandingPage({
         </a>
 
         <Link
-          href={`/?ref=${encodeURIComponent(cleanCode)}`}
+          href={
+            isFriendInvite
+              ? `/?ref=${encodeURIComponent(cleanCode)}`
+              : `/?code=${encodeURIComponent(cleanCode)}&upgrade=1`
+          }
           onClick={copyAndDownload}
           style={{
             display: "block",
@@ -193,8 +229,27 @@ export default function ReferralLandingPage({
             borderRadius: 999,
           }}
         >
-          Open Web App &amp; Claim 7 Free Days →
+          {isFriendInvite
+            ? "Open Web App & Claim 7 Free Days →"
+            : "Claim 14-Day Free Pro Trial on Web →"}
         </Link>
+
+        {!isFriendInvite && (
+          <Link
+            href={`/?code=${encodeURIComponent(cleanCode)}`}
+            onClick={copyAndDownload}
+            style={{
+              display: "inline-block",
+              marginTop: 10,
+              color: "#0f7a4a",
+              fontWeight: 700,
+              fontSize: 13,
+              textDecoration: "underline",
+            }}
+          >
+            Or try the free web ingredient scanner first →
+          </Link>
+        )}
 
         <p
           style={{
@@ -204,9 +259,19 @@ export default function ReferralLandingPage({
             lineHeight: 1.45,
           }}
         >
-          <b>How it works:</b> Install HeyBroc, enable the store screen reader, and view
-          any item in Walmart or Target on your phone. Both you and your friend
-          automatically unlock <b>+7 Free Days of HeyBroc Pro</b>!
+          {isFriendInvite ? (
+            <>
+              <b>How it works:</b> Install HeyBroc, enable the store screen reader, and view
+              any item in Walmart or Target on your phone. Both you and your friend
+              automatically unlock <b>+7 Free Days of HeyBroc Pro</b>!
+            </>
+          ) : (
+            <>
+              <b>How it works:</b> Code <b>{cleanCode}</b> is automatically applied on web
+              checkout (or paste it inside the app) to unlock a <b>14-Day Free Pro Trial</b>{" "}
+              with unlimited 1-tap Clean Swaps across all 12 stores.
+            </>
+          )}
         </p>
         <p
           style={{

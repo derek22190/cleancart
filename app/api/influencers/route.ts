@@ -120,6 +120,15 @@ export async function POST(request: Request) {
           { status: 400, headers: CORS },
         );
       }
+      if (rawCode.startsWith("BROC")) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Codes starting with BROC are reserved for friend invite codes. Choose your own creator handle (e.g. SARAHHAULS).",
+          },
+          { status: 400, headers: CORS },
+        );
+      }
       const existing = await getCreator(rawCode);
       if (existing) {
         return NextResponse.json(

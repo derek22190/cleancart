@@ -7,9 +7,21 @@ import { getOrCreateDevice, isValidReferralCode } from "@/lib/referrals";
 const ALLOWED_ORIGINS = new Set([
   "https://heybroc.com",
   "https://www.heybroc.com",
+  "https://cleancart.vercel.app",
   "https://cleancart-teal.vercel.app",
   "http://localhost:3000",
+  "http://127.0.0.1:3000",
 ]);
+
+function resolveAllowedOrigin(raw?: string | null): string {
+  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
+  if (configured && /^https?:\/\//i.test(configured)) {
+    ALLOWED_ORIGINS.add(configured);
+  }
+  const clean = (raw || "").trim().replace(/\/+$/, "");
+  if (clean && ALLOWED_ORIGINS.has(clean)) return clean;
+  return configured && /^https?:\/\//i.test(configured) ? configured : "https://heybroc.com";
+}
 
 function getClientIp(req: NextRequest): string {
   return (
@@ -73,8 +85,12 @@ export async function POST(req: NextRequest) {
       ? rawEmail.trim().toLowerCase()
       : "";
 
+    let deviceReferredBy = "";
     if (deviceId && deviceId !== "anon-web" && deviceSecret) {
-      await getOrCreateDevice(deviceId, deviceSecret).catch(() => {});
+      const devRes = await getOrCreateDevice(deviceId, deviceSecret).catch(() => null);
+      if (devRes?.referredByCode) {
+        deviceReferredBy = devRes.referredByCode;
+      }
     }
 
     const consentTimestamp = new Date().toISOString();
@@ -111,11 +127,13 @@ export async function POST(req: NextRequest) {
         }
         verifiedCode = validCreator.code;
       }
+    } else if (deviceReferredBy && /^BROC-[A-Z0-9]{4,10}$/.test(deviceReferredBy)) {
+      verifiedCode = deviceReferredBy;
     }
 
     const candidateOrigin =
-      (typeof body.origin === "string" ? body.origin : req.headers.get("origin"))?.replace(/\/+$/, "") || "";
-    const origin = ALLOWED_ORIGINS.has(candidateOrigin) ? candidateOrigin : "https://heybroc.com";
+      (typeof body.origin === "string" ? body.origin : req.headers.get("origin")) || "";
+    const origin = resolveAllowedOrigin(candidateOrigin);
 
     const trialDays = plan === "annual" ? (verifiedCode ? PRICING.creatorTrialDays : PRICING.trialDays) : 0;
 

@@ -1402,6 +1402,57 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       simulatorTsx.includes("/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}")
   );
 
+  const { buildLinks } = await import("../lib/swaps");
+  const { PRICING, commissionFor, annualSavingsPct } = await import("../lib/pricing");
+  const { verifyStripeWebhookSignature } = await import("../lib/stripe-webhook");
+  const crypto = await import("node:crypto");
+
+  const webAmz = buildLinks(CLEAN_ALTERNATIVES.Snacks, "amazon", "", "web");
+  const extAmz = buildLinks(CLEAN_ALTERNATIVES.Snacks, "amazon", "", "extension");
+  const androidAmz = buildLinks(CLEAN_ALTERNATIVES.Snacks, "amazon", "", "android");
+  const rCodePageTsx = fs.readFileSync("app/r/[code]/page.tsx", "utf8");
+  const creatorsPageTsx = fs.readFileSync("app/creators/page.tsx", "utf8");
+  const infRouteTs = fs.readFileSync("app/api/influencers/route.ts", "utf8");
+  const rcWebhookTs = fs.readFileSync("app/api/revenuecat/webhook/route.ts", "utf8");
+  const checkoutRouteTs = fs.readFileSync("app/api/checkout/route.ts", "utf8");
+
+  const testSecret = "whsec_test_audit_secret";
+  const testPayload = JSON.stringify({ id: "evt_test_123", type: "checkout.session.completed" });
+  const nowSec = Math.floor(Date.now() / 1000);
+  const validSig = crypto
+    .createHmac("sha256", testSecret)
+    .update(`${nowSec}.${testPayload}`, "utf8")
+    .digest("hex");
+
+  check(
+    "Affiliate Links, Creator Promo Codes, Friend Referrals & Stripe/RevenueCat Audit Verification",
+    Boolean(
+      webAmz.isPaidLink === true &&
+        webAmz.webUrl.includes("tag=heybroc-20") &&
+        extAmz.isPaidLink === false &&
+        !extAmz.webUrl.includes("tag=") &&
+        androidAmz.isPaidLink === false &&
+        !androidAmz.webUrl.includes("tag=") &&
+        PRICING.trialDays === 7 &&
+        PRICING.creatorTrialDays === 14 &&
+        PRICING.referralBonusDays === 7 &&
+        PRICING.freeWeeklySwaps === 3 &&
+        commissionFor("annual", 25) === 12.5 &&
+        commissionFor("monthly", 25) === 2.5 &&
+        annualSavingsPct === 58 &&
+        PRICING_TERMS_VERSION === "2026-11-08" &&
+        verifyStripeWebhookSignature(testPayload, `t=${nowSec},v1=${validSig}`, testSecret, nowSec) === true &&
+        verifyStripeWebhookSignature(testPayload, `t=${nowSec - 999},v1=${validSig}`, testSecret, nowSec) === false &&
+        rCodePageTsx.includes("isFriendInvite") &&
+        rCodePageTsx.includes("14-DAY FREE PRO TRIAL") &&
+        creatorsPageTsx.includes('cleanCode.startsWith("BROC")') &&
+        infRouteTs.includes('rawCode.startsWith("BROC")') &&
+        rcWebhookTs.includes("amountPaidUsd") &&
+        checkoutRouteTs.includes("resolveAllowedOrigin") &&
+        simulatorTsx.includes('params.get("upgrade") === "1"')
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

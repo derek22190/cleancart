@@ -178,6 +178,9 @@ export default function Paywall({
         code: data.creator.code,
         name: data.creator.name,
       };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("cleancart_creator_v1", JSON.stringify(c));
+      }
       setCodeInput(c.code);
       onCreatorApplied(c);
     } catch {
@@ -287,6 +290,13 @@ export default function Paywall({
           /* ignore */
         }
       }
+      const storedFriendRef =
+        typeof window !== "undefined"
+          ? (window.localStorage.getItem("heybroc_referred_by") || "").trim().toUpperCase()
+          : "";
+      const effectiveCreatorCode =
+        appliedCreator?.code ||
+        (/^BROC-[A-Z0-9]{4,10}$/.test(storedFriendRef) ? storedFriendRef : undefined);
       const checkoutRes = await fetch("/api/checkout", {
         method: "POST",
         headers: {
@@ -295,7 +305,7 @@ export default function Paywall({
         },
         body: JSON.stringify({
           plan: selectedPlan,
-          creatorCode: appliedCreator?.code,
+          creatorCode: effectiveCreatorCode,
           deviceId: devId || undefined,
           deviceSecret: devSecret || undefined,
           email: userEmail || undefined,

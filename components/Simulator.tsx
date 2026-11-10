@@ -475,6 +475,8 @@ export default function Simulator() {
           setAuthOpen(true);
         } else if (params.get("onboarding") === "1") {
           setWatchlistFunnelOpen(true);
+        } else if (params.get("upgrade") === "1") {
+          setPaywallOpen(true);
         }
 
         // Restore authenticated user session if present
@@ -506,20 +508,93 @@ export default function Simulator() {
           }
         }
 
-        const refParam = (params.get("ref") || "").trim().toUpperCase();
-        if (refParam && /^BROC-[A-Z0-9]{4,10}$/.test(refParam)) {
-          window.localStorage.setItem("heybroc_referred_by", refParam);
+        const rawRefParam = (params.get("ref") || "").trim().toUpperCase();
+        const rawCodeParam = (params.get("code") || "").trim().toUpperCase();
+        const friendRefParam = /^BROC-[A-Z0-9]{4,10}$/.test(rawRefParam)
+          ? rawRefParam
+          : /^BROC-[A-Z0-9]{4,10}$/.test(rawCodeParam)
+            ? rawCodeParam
+            : "";
+        if (friendRefParam) {
+          window.localStorage.setItem("heybroc_referred_by", friendRefParam);
+          if (!cancelled) {
+            setAppliedCreator({
+              code: friendRefParam,
+              name: "Friend Referral (+7 Days Free Pro)",
+            });
+          }
+        }
+
+        // Resolve creator promo code from ?code=, non-BROC ?ref=, or localStorage
+        const urlCreatorCandidate =
+          rawCodeParam && !rawCodeParam.startsWith("BROC-")
+            ? rawCodeParam
+            : rawRefParam && !rawRefParam.startsWith("BROC-")
+              ? rawRefParam
+              : "";
+        let storedCreatorCandidate = "";
+        try {
+          const parsedCreator = JSON.parse(
+            window.localStorage.getItem("cleancart_creator_v1") || "null"
+          ) as { code?: string; name?: string } | null;
+          if (parsedCreator?.code && !parsedCreator.code.toUpperCase().startsWith("BROC-")) {
+            storedCreatorCandidate = parsedCreator.code.trim().toUpperCase();
+          }
+        } catch {
+          /* ignore */
+        }
+        const creatorCandidate = urlCreatorCandidate || storedCreatorCandidate;
+        if (creatorCandidate) {
+          const creatorRes = await fetch(
+            `/api/influencers?code=${encodeURIComponent(creatorCandidate)}`
+          ).catch(() => null);
+          const creatorData = (
+            creatorRes ? await creatorRes.json().catch(() => null) : null
+          ) as { ok?: boolean; creator?: { code: string; name: string } } | null;
+          if (!cancelled && creatorData?.ok && creatorData.creator?.code) {
+            const verifiedCreator = {
+              code: creatorData.creator.code,
+              name: creatorData.creator.name || creatorData.creator.code,
+            };
+            setAppliedCreator(verifiedCreator);
+            window.localStorage.setItem(
+              "cleancart_creator_v1",
+              JSON.stringify(verifiedCreator)
+            );
+            if (urlCreatorCandidate) {
+              void fetch("/api/influencers", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "track",
+                  code: verifiedCreator.code,
+                  event: "click",
+                }),
+              }).catch(() => {});
+              setToast({
+                title: `🎉 Creator Code ${verifiedCreator.code} Applied`,
+                body: `${verifiedCreator.name} unlocked your 14-Day Extended Free Pro Trial!`,
+              });
+            }
+          }
         }
 
         const storedRef = (window.localStorage.getItem("heybroc_referred_by") || "").trim().toUpperCase();
+        const validStoredFriendRef = /^BROC-[A-Z0-9]{4,10}$/.test(storedRef) ? storedRef : "";
+        if (!friendRefParam && validStoredFriendRef && !creatorCandidate && !cancelled) {
+          setAppliedCreator({
+            code: validStoredFriendRef,
+            name: "Friend Referral (+7 Days Free Pro)",
+          });
+        }
         const refRes = await fetch("/api/referral", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: refParam ? "claim" : "status",
+            action: friendRefParam ? "claim" : "status",
             deviceId,
             deviceSecret,
-            referralCode: refParam || storedRef || undefined,
+            referralCode: friendRefParam || validStoredFriendRef || undefined,
           }),
         }).catch(() => null);
         const refData = (refRes ? await refRes.json().catch(() => null) : null) as {
@@ -546,9 +621,9 @@ export default function Simulator() {
           }
         }
 
-        if (!cancelled && refParam && refData?.ok) {
+        if (!cancelled && friendRefParam && refData?.ok) {
           setToast({
-            title: `🎁 Friend Invite Saved (${refParam})`,
+            title: `🎁 Friend Invite Saved (${friendRefParam})`,
             body: refData.message || "Invite saved! Start a trial to unlock +7 Free Pro Days for both of you.",
           });
         }
@@ -2651,6 +2726,7 @@ export default function Simulator() {
             <div style={{ marginTop: 16, display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
               <a href="/tools" style={{ color: "#15803d", fontWeight: 700 }}>🧪 Free Ingredient &amp; Seed Oil Tools</a>
               <a href="/swaps" style={{ color: "#15803d", fontWeight: 700 }}>⇄ Clean Grocery Swaps Directory</a>
+              <a href="/creators" style={{ color: "#15803d", fontWeight: 700 }}>🤝 Creator Partner Program (25%)</a>
               <a href="/terms" style={{ color: "#15803d", fontWeight: 600 }}>Terms of Service</a>
               <a href="/privacy" style={{ color: "#15803d", fontWeight: 600 }}>Privacy Policy &amp; Disclaimers</a>
               <button

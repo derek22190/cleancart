@@ -36,6 +36,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     ...productUrls,
     {
+      url: `${baseUrl}/creators`,
+      lastModified,
+      changeFrequency: "weekly",
+      priority: 0.85,
+    },
+    {
+      url: `${baseUrl}/terms`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
       url: `${baseUrl}/privacy`,
       lastModified,
       changeFrequency: "monthly",

@@ -53,6 +53,10 @@ export default function SelfServeCreatorsPage() {
       setError("Enter a code with at least 3 letters or numbers (e.g. SARAHHAULS).");
       return;
     }
+    if (cleanCode.startsWith("BROC")) {
+      setError("Codes starting with BROC are reserved for friend invite codes. Choose your own creator handle (e.g. SARAHHAULS).");
+      return;
+    }
     setBusy(true);
     setError("");
     try {

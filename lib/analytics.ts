@@ -129,7 +129,7 @@ export async function getPaywallConfig(): Promise<PaywallExperimentConfig> {
     memoryPaywallConfig = {
       ...DEFAULT_PAYWALL_CONFIG,
       ...stored,
-      freeWeeklySwapsLimit: Math.max(1, Math.min(50, Number(stored.freeWeeklySwapsLimit) || 5)),
+      freeWeeklySwapsLimit: Math.max(1, Math.min(50, Number(stored.freeWeeklySwapsLimit) || 3)),
     };
     return memoryPaywallConfig;
   }

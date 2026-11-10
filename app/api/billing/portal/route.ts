@@ -17,6 +17,7 @@ const ALLOWED_RETURN_ORIGINS = new Set([
   "https://heybroc.com",
   "https://www.heybroc.com",
   "https://cleancart.vercel.app",
+  "https://cleancart-teal.vercel.app",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ]);

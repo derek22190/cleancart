@@ -184,7 +184,13 @@ export default function Scorecard({
 
     ctx.fillStyle = "#86efac";
     ctx.font = `700 28px ${font}`;
-    ctx.fillText(`7-Day Free Trial Code: ${activeCode}`, textX, H - 105);
+    ctx.fillText(
+      activeCode.startsWith("BROC-")
+        ? `+7 Free Pro Days Code: ${activeCode}`
+        : `14-Day Free Trial Code: ${activeCode}`,
+      textX,
+      H - 105,
+    );
 
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.font = `500 18px ${font}`;

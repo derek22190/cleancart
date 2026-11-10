@@ -186,13 +186,26 @@ export async function POST(req: Request) {
   const eventId = ev.id || `${subscriptionId}_${eventCreatedSec}`;
   if (ev.type === "INITIAL_PURCHASE" || ev.type === "RENEWAL" || ev.type === "TRIAL_STARTED") {
     if (creatorCode) {
-      const creatorEvent =
-        status === "trialing"
+      const amountPaidUsd =
+        typeof ev.price_in_purchased_currency === "number" &&
+        Number.isFinite(ev.price_in_purchased_currency) &&
+        ev.price_in_purchased_currency > 0
+          ? ev.price_in_purchased_currency
+          : 0;
+      const isTrialEvent = status === "trialing" || amountPaidUsd <= 0;
+      if (!isTrialEvent || ev.type !== "RENEWAL") {
+        const creatorEvent = isTrialEvent
           ? "trial"
           : plan === "annual"
             ? "paid_annual"
             : "paid_monthly";
-      await recordStripeCreatorConversionOnce(`rc_${eventId}`, creatorCode, creatorEvent);
+        await recordStripeCreatorConversionOnce(
+          `rc_${eventId}`,
+          creatorCode,
+          creatorEvent,
+          amountPaidUsd > 0 ? amountPaidUsd : undefined
+        );
+      }
     }
     if (deviceId) {
       await applyOrActivateReferral({
