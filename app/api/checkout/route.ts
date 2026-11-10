@@ -306,9 +306,7 @@ export async function POST(req: NextRequest) {
       otoOffer !== null || hasHadPriorTrialOrSub
         ? 0
         : plan === "annual"
-          ? verifiedCode
-            ? PRICING.creatorTrialDays
-            : PRICING.trialDays
+          ? PRICING.trialDays
           : 0;
 
     if (!stripeKey) {

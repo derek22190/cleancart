@@ -151,8 +151,8 @@ export default function ReferralLandingPage({
           {creatorNotFound
             ? "🥦 HEYBROC FAMILY PRO · 7-DAY FREE TRIAL"
             : isFriendInvite
-              ? "🎁 FRIEND INVITE · 14-DAY TRIAL + 7 BONUS DAYS"
-              : "🎉 CREATOR PARTNER · 14-DAY FREE PRO TRIAL"}
+              ? "🎁 FRIEND INVITE · 7-DAY TRIAL + 7 BONUS DAYS"
+              : "🎉 CREATOR PARTNER · 7-DAY FREE PRO TRIAL"}
         </span>
         <h1
           style={{
@@ -165,8 +165,8 @@ export default function ReferralLandingPage({
           {creatorNotFound
             ? "Try HeyBroc Family Pro Free for 7 Days"
             : isFriendInvite
-              ? "Your friend gifted you an Extended 14-Day Trial + 7 Bonus Pro Days!"
-              : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a 14-Day Free Trial of HeyBroc Pro!`}
+              ? "Your friend gifted you a 7-Day Free Trial + 7 Bonus Pro Days!"
+              : `${creatorName ? `${creatorName} unlocked` : "You unlocked"} a VIP 7-Day Free Trial of HeyBroc Pro!`}
         </h1>
         <p
           style={{
@@ -187,7 +187,7 @@ export default function ReferralLandingPage({
             ? `Code "${cleanCode}" was not recognized, so you can continue with our standard 7-day free trial below.`
             : isFriendInvite
               ? "Scan any grocery item in the app or start your trial below so both you and your friend unlock +7 Free Pro Days!"
-              : "Use this creator code at checkout to double your free trial from 7 days to 14 days!"}
+              : "Use this creator code at checkout to start your VIP 7-Day Free Family Pro Trial ($0 Today)!"}
         </p>
 
         {!creatorNotFound && (
@@ -203,7 +203,7 @@ export default function ReferralLandingPage({
             <div style={{ fontSize: 12, color: "#68746e", fontWeight: 700 }}>
               {isFriendInvite
                 ? "YOUR INVITE CODE (AUTO-COPIED ON DOWNLOAD)"
-                : "CREATOR PROMO CODE (14-DAY EXTENDED TRIAL)"}
+                : "CREATOR PARTNER CODE (7-DAY FREE TRIAL · $0 TODAY)"}
             </div>
             <div
               style={{
@@ -279,8 +279,8 @@ export default function ReferralLandingPage({
           {creatorNotFound
             ? "Claim 7-Day Free Pro Trial on Web →"
             : isFriendInvite
-              ? "Open Web App & Claim 14-Day Free Trial →"
-              : "Claim 14-Day Free Pro Trial on Web →"}
+              ? "Open Web App & Claim 7-Day Free Trial →"
+              : "Claim 7-Day Free Pro Trial on Web →"}
         </Link>
 
         {!isFriendInvite && !creatorNotFound && (
@@ -324,7 +324,7 @@ export default function ReferralLandingPage({
             <>
               <b>How it works:</b> Code <b>{cleanCode}</b> is automatically
               applied on web checkout (or paste it inside the app) to unlock a{" "}
-              <b>14-Day Free Pro Trial</b> with unlimited 1-tap Clean Swaps
+              <b>7-Day Free Pro Trial</b> with unlimited 1-tap Clean Swaps
               across all 12 stores.
             </>
           )}

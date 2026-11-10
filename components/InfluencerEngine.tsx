@@ -339,7 +339,7 @@ export default function InfluencerEngine({
           <strong>{totals.clicks}</strong>
         </div>
         <div className="kpi-box">
-          <span>14-Day Trials</span>
+          <span>7-Day Trials</span>
           <strong>{totals.trials}</strong>
         </div>
         <div className="kpi-box">
@@ -612,7 +612,7 @@ export default function InfluencerEngine({
             />
           </label>
           <label>
-            <span>Click → 14-Day Trial %</span>
+            <span>Click → 7-Day Trial %</span>
             <input
               type="number"
               min={1}
@@ -663,7 +663,7 @@ export default function InfluencerEngine({
             <b>{proj.clicks.toLocaleString()}</b>
           </div>
           <div>
-            <span>14-Day Trials</span>
+            <span>7-Day Trials</span>
             <b>{proj.trials.toLocaleString()}</b>
           </div>
           <div>

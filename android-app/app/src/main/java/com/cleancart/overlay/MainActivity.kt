@@ -2626,11 +2626,11 @@ class MainActivity : Activity() {
             // Step 8: Personalized Plan (Start Free Pro Trial / Continue with Free Plan / Sign In)
             val refCode = ScanApi.referredByCode(this@MainActivity)
             val isFriendRef = refCode?.startsWith("BROC-", ignoreCase = true) == true
-            val effectiveTrialDays = if (!refCode.isNullOrBlank() && !isFriendRef) 14 else 7
+            val effectiveTrialDays = 7
             val weeklyFreeSwaps = ScanApi.weeklySwapsLimit(this@MainActivity)
 
             val goalSuffix = if (selectedGoals.size == 1) "" else "s"
-            val dietSuffix = if (selectedDietary.isNotEmpty()) {
+            val dietSuffix = if (selectedDietary.size > 0) {
                 val ds = if (selectedDietary.size == 1) "" else "s"
                 " · ${selectedDietary.size} Allergy/Diet alert$ds"
             } else {
@@ -2670,9 +2670,9 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { bottomMargin = dp(10) }
                     val refMsg = if (isFriendRef) {
-                        "🎁 Friend Invite ($refCode) Applied: Start your trial to unlock +7 Free Pro Days for both of you!"
+                        "🎁 Friend Invite ($refCode) Applied: Start your 7-day trial to unlock +7 Free Pro Days for both of you!"
                     } else {
-                        "🎉 Creator Code $refCode Applied: Unlocked your 14-Day Extended Free Pro Trial!"
+                        "🎉 Creator Code $refCode Applied: VIP 7-Day Free Pro Trial ($0 Today) Ready!"
                     }
                     addView(label(refMsg, 12f, 0xFF854D0E.toInt(), bold = true))
                 })

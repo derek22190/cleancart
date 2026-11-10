@@ -56,11 +56,11 @@ PRICE_ID=$(stripe prices create \
   --product-data.name="HeyBroc Family Pro (Annual)" \
   --format=json | jq -r '.id')
 
-# Start a 14-day trial subscription with creator_code=CLEANMOM and device_id=android-test-01
+# Start a 7-day trial subscription with creator_code=CLEANMOM and device_id=android-test-01
 SUB_ID=$(stripe subscriptions create \
   --customer="$CUSTOMER_ID" \
   --items[0].price="$PRICE_ID" \
-  --trial-period-days=14 \
+  --trial-period-days=7 \
   --metadata[plan]=annual \
   --metadata[creator_code]=CLEANMOM \
   --metadata[device_id]=android-test-01 \
@@ -70,8 +70,8 @@ SUB_ID=$(stripe subscriptions create \
 echo "Subscription ID: $SUB_ID"
 # Verify: During the $0 trial invoice, CLEANMOM receives 0 paid commission.
 
-# Advance the test clock by 15 days to trigger trial -> paid conversion and invoice.paid
-ADVANCE_TO=$((FROZEN_TIME + 15 * 86400))
+# Advance the test clock by 8 days to trigger trial -> paid conversion and invoice.paid
+ADVANCE_TO=$((FROZEN_TIME + 8 * 86400))
 stripe test_helpers test_clocks advance "$CLOCK_ID" --frozen-time="$ADVANCE_TO"
 
 # Verify:

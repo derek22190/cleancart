@@ -745,7 +745,7 @@ export default function Simulator({
               }
               setToast({
                 title: `🎉 Creator Code ${verifiedCreator.code} Applied`,
-                body: `${verifiedCreator.name} unlocked your 14-Day Extended Free Pro Trial!`,
+                body: `${verifiedCreator.name} unlocked your VIP 7-Day Free Pro Trial ($0 Today)!`,
               });
             }
           } else if (!cancelled && creatorRes && creatorRes.status === 404) {

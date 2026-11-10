@@ -111,7 +111,7 @@ export default function Paywall({
 
   if (!open) return null;
 
-  const trialDays = appliedCreator ? PRICING.creatorTrialDays : PRICING.trialDays;
+  const trialDays = PRICING.trialDays;
   const referralUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/r/${encodeURIComponent(personalReferralCode)}`
@@ -570,8 +570,8 @@ export default function Paywall({
         <div className="creator-box">
           <label htmlFor="creator-code-input" className="creator-label">
             {selectedPlan === "annual"
-              ? "Have a Creator or Friend Code? (Unlocks 14-Day Free Trial)"
-              : "Have a Creator or Friend Code? (Switch to Annual for 14-Day Free Trial)"}
+              ? "Have a Creator or Friend Invite Code?"
+              : "Have a Creator or Friend Code? (Switch to Annual for 7-Day Free Trial)"}
           </label>
           <div className="creator-input-row">
             <input
@@ -597,10 +597,10 @@ export default function Paywall({
               <span>
                 ✓ Code <b>{appliedCreator.code}</b> Applied:{" "}
                 {selectedPlan === "monthly"
-                  ? "Supports your creator! Switch to Annual above to unlock your 14-Day Free Trial."
+                  ? "Supports your creator! Switch to Annual above to unlock your 7-Day Free Trial ($0 Today)."
                   : appliedCreator.code.startsWith("BROC-")
-                    ? `Extended ${PRICING.creatorTrialDays}-Day Free Trial + 7 Free Pro Days for you & your friend!`
-                    : `Extended ${PRICING.creatorTrialDays}-Day Free Trial Unlocked!`}
+                    ? "7-Day Free Trial + 7 Free Pro Days unlocked for you & your friend!"
+                    : "VIP Creator Access · 7-Day Free Pro Trial ($0 Today) Ready!"}
               </span>
             </div>
           )}

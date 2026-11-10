@@ -417,9 +417,7 @@ export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
     const now = Date.now();
     const defaultHorizonDays =
       paid.status === "trialing"
-        ? paid.creatorCode
-          ? PRICING.creatorTrialDays
-          : PRICING.trialDays
+        ? PRICING.trialDays
         : paid.plan === "annual"
           ? 365
           : 30;

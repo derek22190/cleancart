@@ -92,12 +92,12 @@ export default function TermsPage() {
             monthly), plus applicable taxes.
           </li>
           <li>
-            <strong>Free Trial Conversion:</strong> Eligible Annual Plan subscriptions include a{" "}
-            <strong>{PRICING.trialDays}-day free trial</strong> (or a{" "}
-            <strong>{PRICING.creatorTrialDays}-day free trial</strong> when a valid creator or friend referral code is
-            applied at checkout). Unless you cancel before the end of your free trial period, your payment method on
-            file will automatically be charged <strong>${PRICING.annual.toFixed(2)}</strong> on the final day of your
-            trial for your first annual billing cycle.
+            <strong>Free Trial Conversion:</strong> Eligible new Annual Plan subscriptions include a{" "}
+            <strong>{PRICING.trialDays}-day free trial</strong> ($0.00 due at signup; Monthly Plans do not include a
+            free trial and are billed immediately upon signup). Unless you cancel before the end of your free trial
+            period, your payment method on file will automatically be charged{" "}
+            <strong>${PRICING.annual.toFixed(2)}</strong> on the final day of your trial for your first annual billing
+            cycle.
           </li>
           <li>
             <strong>Continuous Automatic Renewal:</strong> Your subscription will <strong>automatically renew</strong>{" "}

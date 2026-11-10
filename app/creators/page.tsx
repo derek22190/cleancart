@@ -337,8 +337,7 @@ export default function SelfServeCreatorsPage() {
             </b>{" "}
             on every annual Pro signup across{" "}
             <b>iPhone (App Store), Android (Google Play), and Web</b> — plus give
-            your followers a <b>14-Day Free Pro Trial</b> (double the normal
-            7-day trial).
+            your followers a <b>7-Day Free Family Pro Trial ($0 Today)</b>.
           </p>
         </div>
 
@@ -672,7 +671,7 @@ export default function SelfServeCreatorsPage() {
                         fontWeight: 700,
                       }}
                     >
-                      14-DAY TRIALS
+                      7-DAY TRIALS
                     </div>
                     <div style={{ fontSize: 21, fontWeight: 900, marginTop: 2 }}>
                       {creator.trials ?? 0}
@@ -1051,8 +1050,8 @@ export default function SelfServeCreatorsPage() {
               <b>Call to Action:</b>{" "}
               <i>
                 &ldquo;Use my link in bio or code{" "}
-                <b>{creator?.code || "YOURCODE"}</b> inside HeyBroc to get 14
-                days of Pro free!&rdquo;
+                <b>{creator?.code || "YOURCODE"}</b> inside HeyBroc to get 7
+                days of Family Pro free!&rdquo;
               </i>{" "}
               (Earns {usd(annualPayout)} on annual or {usd(monthlyPayout)}/mo on
               monthly across Apple, Google Play &amp; Web.)

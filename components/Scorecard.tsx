@@ -187,7 +187,7 @@ export default function Scorecard({
     ctx.fillText(
       activeCode.startsWith("BROC-")
         ? `+7 Free Pro Days Code: ${activeCode}`
-        : `14-Day Free Trial Code: ${activeCode}`,
+        : `7-Day Free Trial Code: ${activeCode}`,
       textX,
       H - 105,
     );
@@ -312,7 +312,7 @@ export default function Scorecard({
                 placeholder="e.g. PARENTMAXX, SARAHHAULS"
               />
               <p className="meta">
-                Share your Clean Haul Scorecard on TikTok or Instagram Stories with your personal code <b>{activeCode}</b> to give friends +7 Free Pro Days (or a 14-day extended creator trial).
+                Share your Clean Haul Scorecard on TikTok or Instagram Stories with your personal code <b>{activeCode}</b> to give friends +7 Free Pro Days (or a 7-day free Pro trial).
               </p>
               <button id="download-scorecard-png" type="button" className="swap-btn swap-btn--wide" onClick={downloadPng}>
                 ⬇ Download 1080×1920 Story PNG

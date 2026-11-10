@@ -439,9 +439,7 @@ export default function WatchlistMiniFunnel({
   const isFriendInvite = Boolean(
     appliedCreator?.code && appliedCreator.code.toUpperCase().startsWith("BROC-")
   );
-  const effectiveTrialDays = appliedCreator
-    ? PRICING.creatorTrialDays
-    : PRICING.trialDays;
+  const effectiveTrialDays = PRICING.trialDays;
 
   const toggle = (cat: Category) => {
     setSelected((prev) =>
@@ -1738,14 +1736,14 @@ export default function WatchlistMiniFunnel({
               >
                 {isFriendInvite ? (
                   <>
-                    🎁 <b>Friend Invite ({appliedCreator.code}) Applied:</b> Unlocked{" "}
-                    <b>{PRICING.creatorTrialDays}-Day Extended Free Trial</b> +{" "}
+                    🎁 <b>Friend Invite ({appliedCreator.code}) Applied:</b>{" "}
+                    <b>{PRICING.trialDays}-Day Free Trial</b> +{" "}
                     <b>+{PRICING.referralBonusDays} Free Pro Days</b> for both of you!
                   </>
                 ) : (
                   <>
                     🎉 <b>Creator Code {appliedCreator.code} Applied:</b> {appliedCreator.name} unlocked your{" "}
-                    <b>{PRICING.creatorTrialDays}-Day Extended Free Pro Trial!</b>
+                    <b>VIP {PRICING.trialDays}-Day Free Pro Trial ($0 Today)!</b>
                   </>
                 )}
               </div>

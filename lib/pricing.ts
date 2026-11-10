@@ -13,7 +13,7 @@ export const PRICING = {
   otoAnnualLockIn: 39.99,
   otoExtraYearPass: 29.0,
   trialDays: 7,
-  creatorTrialDays: 14,
+  creatorTrialDays: 7,
   freeWeeklySwaps: 3,
   courtesyRefillSwaps: 0,
   firstTripPassDays: 7,

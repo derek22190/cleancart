@@ -1488,7 +1488,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidAmz.isPaidLink === false &&
         !androidAmz.webUrl.includes("tag=") &&
         PRICING.trialDays === 7 &&
-        PRICING.creatorTrialDays === 14 &&
+        PRICING.creatorTrialDays === 7 &&
         PRICING.referralBonusDays === 7 &&
         PRICING.freeWeeklySwaps === 3 &&
         commissionFor("annual", 25) === 12.5 &&
@@ -1498,7 +1498,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         verifyStripeWebhookSignature(testPayload, `t=${nowSec},v1=${validSig}`, testSecret, nowSec) === true &&
         verifyStripeWebhookSignature(testPayload, `t=${nowSec - 999},v1=${validSig}`, testSecret, nowSec) === false &&
         rCodePageTsx.includes("isFriendInvite") &&
-        rCodePageTsx.includes("14-DAY FREE PRO TRIAL") &&
+        rCodePageTsx.includes("7-DAY FREE PRO TRIAL") &&
+        !rCodePageTsx.includes("14-DAY") &&
         creatorsPageTsx.includes('cleanCode.startsWith("BROC")') &&
         infRouteTs.includes('rawCode.startsWith("BROC")') &&
         rcWebhookTs.includes("amountPaidUsd") &&
@@ -2133,9 +2134,9 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const freshUser = await hasPriorEntitlementHistory({ deviceId: "dev_brand_new_audit_999", email: "brandnew999@heybroc.test" });
   const stripeWebhookSrc = fs.readFileSync("app/api/stripe/webhook/route.ts", "utf8");
   check(
-    "2. Trial periods (7d standard, 14d creator/friend, 0d monthly/OTO), repeat-trial guard, OTO pass stacking & Dispute webhook handling",
+    "2. Trial periods (universal 7d annual, 0d monthly/OTO), repeat-trial guard, OTO pass stacking & Dispute webhook handling",
     PRICING.trialDays === 7 &&
-      PRICING.creatorTrialDays === 14 &&
+      PRICING.creatorTrialDays === 7 &&
       Boolean(priorByDev) &&
       Boolean(priorByEmail) &&
       freshUser === null &&

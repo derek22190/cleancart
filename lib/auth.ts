@@ -301,9 +301,7 @@ export async function toPublicProfile(
   const isProActive = isStripePro || proUntil > now;
   const stripeFallbackDays =
     activeStripeEnt?.status === "trialing"
-      ? activeStripeEnt.creatorCode
-        ? PRICING.creatorTrialDays
-        : PRICING.trialDays
+      ? PRICING.trialDays
       : activeStripeEnt?.plan === "monthly"
         ? 31
         : 365;

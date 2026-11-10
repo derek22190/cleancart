@@ -382,7 +382,7 @@ export async function POST(req: Request) {
               : "incomplete";
           const nowMs = Date.now();
           const initialExpiresAtMs = isTrial
-            ? nowMs + (creatorCode ? PRICING.creatorTrialDays : PRICING.trialDays) * DAY_MS
+            ? nowMs + PRICING.trialDays * DAY_MS
             : isPaid
               ? nowMs + (plan === "monthly" ? 32 : 366) * DAY_MS
               : undefined;
