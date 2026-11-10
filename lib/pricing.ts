@@ -10,6 +10,8 @@ export { TERMS_VERSION };
 export const PRICING = {
   annual: 49.99,
   monthly: 9.99,
+  otoAnnualLockIn: 39.99,
+  otoExtraYearPass: 29.0,
   trialDays: 7,
   creatorTrialDays: 14,
   freeWeeklySwaps: 3,
@@ -20,6 +22,7 @@ export const PRICING = {
 } as const;
 
 export type PlanId = "annual" | "monthly";
+export type OtoOfferId = "oto_annual" | "oto_gift_year";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -29,6 +32,8 @@ export const annualPerMonth = Math.floor((PRICING.annual / 12) * 100) / 100;
 export const monthlyPerYear = round2(PRICING.monthly * 12);
 /** 1 − 49.99 / 119.88 ≈ 58% */
 export const annualSavingsPct = Math.round((1 - PRICING.annual / monthlyPerYear) * 100);
+/** 1 − 39.99 / 119.88 ≈ 67% */
+export const otoAnnualSavingsPct = Math.round((1 - PRICING.otoAnnualLockIn / monthlyPerYear) * 100);
 
 export function planPrice(plan: PlanId): number {
   return plan === "annual" ? PRICING.annual : PRICING.monthly;

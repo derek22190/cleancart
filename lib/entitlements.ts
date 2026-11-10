@@ -475,18 +475,23 @@ export async function verifyStripeCheckoutSession(
       typeof session.subscription === "object" && session.subscription !== null
         ? session.subscription
         : null;
+    const isOneTimeOtoPass =
+      session.mode === "payment" &&
+      session.metadata?.oto_offer === "oto_gift_year";
     const subscriptionId =
       typeof session.subscription === "string"
         ? session.subscription
-        : subObj?.id;
+        : subObj?.id || (isOneTimeOtoPass ? `oto_pass_${sessionId}` : undefined);
     if (!subscriptionId) {
       return null;
     }
 
     const subStatus = (subObj?.status ||
-      (session.payment_status === "no_payment_required"
-        ? "trialing"
-        : "active")) as EntitlementStatus;
+      (isOneTimeOtoPass
+        ? "active"
+        : session.payment_status === "no_payment_required"
+          ? "trialing"
+          : "active")) as EntitlementStatus;
 
     const rawPlan =
       session.metadata?.plan || subObj?.metadata?.plan || "annual";
@@ -524,6 +529,7 @@ export async function verifyStripeCheckoutSession(
       creatorCode,
       status: subStatus,
       active: isEntitlementStatusActive(subStatus),
+      ...(isOneTimeOtoPass ? { expiresAtMs: Date.now() + 366 * 86_400_000 } : {}),
       updatedAt: new Date().toISOString(),
     };
 

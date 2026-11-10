@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordSubscriptionConsent } from "@/lib/entitlements";
 import { getCreator } from "@/lib/influencers";
-import { PRICING, TERMS_VERSION, type PlanId } from "@/lib/pricing";
+import { PRICING, TERMS_VERSION, type OtoOfferId, type PlanId } from "@/lib/pricing";
 import { getOrCreateDevice, isValidReferralCode } from "@/lib/referrals";
 
 const ALLOWED_ORIGINS = new Set([
@@ -67,7 +67,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const plan: PlanId = body.plan === "monthly" ? "monthly" : "annual";
+    const rawOtoOffer = typeof body.otoOffer === "string" ? body.otoOffer.trim() : "";
+    const otoOffer: OtoOfferId | null =
+      rawOtoOffer === "oto_annual" || rawOtoOffer === "oto_gift_year"
+        ? rawOtoOffer
+        : null;
+
+    const plan: PlanId =
+      otoOffer === "oto_annual" || otoOffer === "oto_gift_year"
+        ? "annual"
+        : body.plan === "monthly"
+          ? "monthly"
+          : "annual";
     const rawCreatorCode = typeof body.creatorCode === "string" ? body.creatorCode.trim().toUpperCase() : "";
     const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().slice(0, 128) : "";
     const deviceSecret =
@@ -153,7 +164,14 @@ export async function POST(req: NextRequest) {
       (typeof body.origin === "string" ? body.origin : req.headers.get("origin")) || "";
     const origin = resolveAllowedOrigin(candidateOrigin);
 
-    const trialDays = plan === "annual" ? (verifiedCode ? PRICING.creatorTrialDays : PRICING.trialDays) : 0;
+    const trialDays =
+      otoOffer !== null
+        ? 0
+        : plan === "annual"
+          ? verifiedCode
+            ? PRICING.creatorTrialDays
+            : PRICING.trialDays
+          : 0;
 
     const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
     if (!stripeKey) {
@@ -162,6 +180,7 @@ export async function POST(req: NextRequest) {
           ok: true,
           mode: "preview",
           plan,
+          otoOffer,
           trialDays,
         });
       }
@@ -171,23 +190,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const isOneTimeOtoPass = otoOffer === "oto_gift_year";
     const unitAmountCents =
-      plan === "annual" ? Math.round(PRICING.annual * 100) : Math.round(PRICING.monthly * 100);
+      otoOffer === "oto_annual"
+        ? Math.round(PRICING.otoAnnualLockIn * 100)
+        : otoOffer === "oto_gift_year"
+          ? Math.round(PRICING.otoExtraYearPass * 100)
+          : plan === "annual"
+            ? Math.round(PRICING.annual * 100)
+            : Math.round(PRICING.monthly * 100);
     const interval = plan === "annual" ? "year" : "month";
 
     const params = new URLSearchParams();
-    params.set("mode", "subscription");
+    params.set("mode", isOneTimeOtoPass ? "payment" : "subscription");
     params.set(
       "success_url",
-      `${origin}/?pro=1&session_id={CHECKOUT_SESSION_ID}&plan=${plan}${verifiedCode ? `&code=${encodeURIComponent(verifiedCode)}` : ""}${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`
+      `${origin}/?pro=1&session_id={CHECKOUT_SESSION_ID}&plan=${plan}${otoOffer ? `&oto=${encodeURIComponent(otoOffer)}` : ""}${verifiedCode ? `&code=${encodeURIComponent(verifiedCode)}` : ""}${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`
     );
     params.set("cancel_url", `${origin}/?checkout=cancelled${deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : ""}`);
     params.set("line_items[0][price_data][currency]", "usd");
     params.set("line_items[0][price_data][unit_amount]", String(unitAmountCents));
-    params.set("line_items[0][price_data][recurring][interval]", interval);
+    if (!isOneTimeOtoPass) {
+      params.set("line_items[0][price_data][recurring][interval]", interval);
+    }
     params.set(
       "line_items[0][price_data][product_data][name]",
-      plan === "annual" ? "HeyBroc Family Pro (Annual)" : "HeyBroc Family Pro (Monthly)"
+      otoOffer === "oto_annual"
+        ? "HeyBroc Family Pro — One-Time VIP Annual Lock-In ($39.99/yr)"
+        : otoOffer === "oto_gift_year"
+          ? "HeyBroc Founding Family Pass (+1 Extra Year / Spouse or Parent Gift Pass)"
+          : plan === "annual"
+            ? "HeyBroc Family Pro (Annual)"
+            : "HeyBroc Family Pro (Monthly)"
     );
     params.set(
       "line_items[0][price_data][product_data][description]",
@@ -197,26 +231,40 @@ export async function POST(req: NextRequest) {
     params.set("metadata[plan]", plan);
     params.set("metadata[terms_version]", termsVersion);
     params.set("metadata[terms_accepted_at]", consentTimestamp);
-    params.set("subscription_data[metadata][plan]", plan);
-    params.set("subscription_data[metadata][terms_version]", termsVersion);
-    params.set("subscription_data[metadata][terms_accepted_at]", consentTimestamp);
+    if (otoOffer) {
+      params.set("metadata[oto_offer]", otoOffer);
+    }
+    if (!isOneTimeOtoPass) {
+      params.set("subscription_data[metadata][plan]", plan);
+      params.set("subscription_data[metadata][terms_version]", termsVersion);
+      params.set("subscription_data[metadata][terms_accepted_at]", consentTimestamp);
+      if (otoOffer) {
+        params.set("subscription_data[metadata][oto_offer]", otoOffer);
+      }
+    }
 
     if (deviceId) {
       params.set("client_reference_id", deviceId);
       params.set("metadata[device_id]", deviceId);
-      params.set("subscription_data[metadata][device_id]", deviceId);
+      if (!isOneTimeOtoPass) {
+        params.set("subscription_data[metadata][device_id]", deviceId);
+      }
     }
     if (customerEmail) {
       params.set("customer_email", customerEmail);
       params.set("metadata[customer_email]", customerEmail);
-      params.set("subscription_data[metadata][customer_email]", customerEmail);
+      if (!isOneTimeOtoPass) {
+        params.set("subscription_data[metadata][customer_email]", customerEmail);
+      }
     }
-    if (trialDays > 0) {
+    if (!isOneTimeOtoPass && trialDays > 0) {
       params.set("subscription_data[trial_period_days]", String(trialDays));
     }
     if (verifiedCode) {
       params.set("metadata[creator_code]", verifiedCode);
-      params.set("subscription_data[metadata][creator_code]", verifiedCode);
+      if (!isOneTimeOtoPass) {
+        params.set("subscription_data[metadata][creator_code]", verifiedCode);
+      }
     }
 
     const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -257,6 +305,7 @@ export async function POST(req: NextRequest) {
           variant: assignPaywallVariant(deviceId, true),
           properties: {
             plan,
+            otoOffer: otoOffer || null,
             creatorCode: verifiedCode || null,
           },
         }),

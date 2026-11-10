@@ -33,8 +33,10 @@ import {
   type SwapCategory,
   type SwapResult,
 } from "@/lib/swaps";
+import type { PlanId } from "@/lib/pricing";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
+import PostCheckoutOtoModal from "./PostCheckoutOtoModal";
 import Scorecard, { type SwapRecord } from "./Scorecard";
 import WatchlistMiniFunnel from "./WatchlistMiniFunnel";
 
@@ -401,7 +403,11 @@ function YukaLineIcon({ kind }: { kind: Category | "additives" }) {
 /* Main simulator                                                      */
 /* ------------------------------------------------------------------ */
 
-export default function Simulator() {
+export default function Simulator({
+  initialAdTestMode = false,
+}: {
+  initialAdTestMode?: boolean;
+} = {}) {
   const [store, setStore] = useState<Store>("walmart");
   const [watch, setWatch] = useState<Watch>(DEFAULT_WATCHLIST);
   const [active, setActive] = useState<Product>(presetToProduct(PRESETS[0]));
@@ -419,7 +425,12 @@ export default function Simulator() {
   const [cartClimbFlash, setCartClimbFlash] = useState(false);
   const [swapHistory, setSwapHistory] = useState<SwapRecord[]>([]);
 
-  // Paywall & Influencer Engine state
+  // Paywall, Low-Friction Ad Landing Mode & Post-Checkout OTO state
+  const [adTestMode, setAdTestMode] = useState<boolean>(initialAdTestMode);
+  const [freeTestCompleted, setFreeTestCompleted] = useState<boolean>(false);
+  const [otoModalOpen, setOtoModalOpen] = useState<boolean>(false);
+  const [otoInitialPlan, setOtoInitialPlan] = useState<PlanId>("annual");
+  const [otoSessionId, setOtoSessionId] = useState<string>("");
   const [scanCount, setScanCount] = useState(1);
   const [swapsUsedThisWeek, setSwapsUsedThisWeek] = useState(0);
   const [weeklySwapLimit, setWeeklySwapLimit] = useState(FREE_SCAN_LIMIT);
@@ -473,11 +484,19 @@ export default function Simulator() {
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
         const onboardingDone = window.localStorage.getItem("heybroc_onboarding_done") === "1";
+        const isAdTestLanding =
+          initialAdTestMode || params.get("ad") === "test" || params.get("test") === "1";
+        if (isAdTestLanding) {
+          setAdTestMode(true);
+        }
         if (params.get("login") === "1") {
           setAuthOpen(true);
         } else if (params.get("upgrade") === "1") {
           setPaywallOpen(true);
-        } else if (params.get("onboarding") === "1" || (!onboardingDone && !params.get("session_id"))) {
+        } else if (
+          params.get("onboarding") === "1" ||
+          (!onboardingDone && !params.get("session_id") && !isAdTestLanding)
+        ) {
           setWatchlistFunnelOpen(true);
         }
 
@@ -693,12 +712,30 @@ export default function Simulator() {
           window.localStorage.setItem("heybroc_session_id", candidateSessionId);
           if (urlSessionId) {
             const isPhoneCheckout = Boolean(urlDeviceId && urlDeviceId !== deviceId);
+            const urlOto = (params.get("oto") || "").trim();
+            const urlPlan: PlanId =
+              params.get("plan") === "monthly" ? "monthly" : "annual";
             setToast({
-              title: isPhoneCheckout ? "✓ Pro is active on your phone" : "✓ HeyBroc Family Pro Unlocked",
-              body: isPhoneCheckout
-                ? "Pro is active on your phone! Return to the HeyBroc app to enjoy unlimited store overlays and 1-tap swaps."
-                : "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
+              title: urlOto
+                ? "🎉 One-Time VIP Upgrade Activated!"
+                : isPhoneCheckout
+                  ? "✓ Pro is active on your phone"
+                  : "✓ HeyBroc Family Pro Unlocked",
+              body: urlOto
+                ? "Your Founding Family / VIP Annual upgrade is now active across all your devices."
+                : isPhoneCheckout
+                  ? "Pro is active on your phone! Return to the HeyBroc app to enjoy unlimited store overlays and 1-tap swaps."
+                  : "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
             });
+            if (!isPhoneCheckout && !urlOto) {
+              const otoSeenKey = `heybroc_oto_seen_${urlSessionId}`;
+              if (!window.localStorage.getItem(otoSeenKey)) {
+                window.localStorage.setItem(otoSeenKey, "1");
+                setOtoInitialPlan(urlPlan);
+                setOtoSessionId(urlSessionId);
+                setOtoModalOpen(true);
+              }
+            }
           }
         } else {
           setIsPro(authenticatedPro || Boolean(refData?.entitlement?.isProActive));
@@ -847,7 +884,22 @@ export default function Simulator() {
   // Product scores & ingredient explanations are 100% free forever — viewing items never opens the paywall.
   const registerScan = useCallback(() => {
     setScanCount((prev) => prev + 1);
-  }, []);
+    setFreeTestCompleted(true);
+    if (typeof window !== "undefined") {
+      const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+      void fetch("/api/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "track",
+          event: "product_scanned",
+          deviceId: devId,
+          platform: "web",
+          store,
+        }),
+      }).catch(() => {});
+    }
+  }, [store]);
 
   const [storeExpanded, setStoreExpanded] = useState(false);
   const storeRailRef = useRef<HTMLDivElement>(null);
@@ -1381,7 +1433,11 @@ export default function Simulator() {
           </div>
         </div>
 
-        <nav className="topbar-subnav" aria-label="Quick tools and setup">
+        <nav
+          className="topbar-subnav"
+          aria-label="Quick tools and setup"
+          style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+        >
           <button
             id="topbar-watchlist-funnel"
             type="button"
@@ -1415,7 +1471,174 @@ export default function Simulator() {
       <main className="layout">
         {/* ============ CONTROL PANEL ============ */}
         <section className="controls" aria-label="Store and product controls">
-          <div className="card">
+          {adTestMode && (
+            <div
+              id="ad-free-test-hero"
+              className="card"
+              style={{
+                border: "2px solid #0f7a4a",
+                background: "linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)",
+                padding: 18,
+              }}
+            >
+              <span className="eyebrow eyebrow--green">
+                ⚡ FREE 3-SECOND GROCERY SCORE TEST (NO SIGN-UP)
+              </span>
+              <h2 style={{ fontSize: 21, lineHeight: 1.25, margin: "6px 0 6px", color: "#0b2418" }}>
+                What&apos;s Really Hiding in Your Family&apos;s Groceries? Test Your First Item Free.
+              </h2>
+              <p className="meta" style={{ fontSize: 13.5, marginBottom: 12, color: "#334155" }}>
+                Tap a popular item below or search any food to reveal its{" "}
+                <b>instant 0–100 score</b>, flagged seed oils &amp; synthetic dyes, and{" "}
+                <b>1-tap Clean Swap</b>.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))",
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                {PRESETS.filter((p) => p.id !== "butter").map((p) => {
+                  const s = gradeProduct(
+                    `${p.brand} ${p.title}`,
+                    p.ingredients,
+                    watch,
+                    undefined,
+                    familyWatchlist
+                  );
+                  return (
+                    <button
+                      key={`ad-test-${p.id}`}
+                      id={`ad-test-${p.id}`}
+                      type="button"
+                      onClick={() => showProduct(presetToProduct(p), true, true)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border:
+                          active.key === p.id
+                            ? "2px solid #0f7a4a"
+                            : "1px solid #cbd5e1",
+                        background: active.key === p.id ? "#ecfdf5" : "#fff",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                        Test {p.title} →
+                      </span>
+                      <ScoreChip score={s.score} color={s.color} />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <form
+                className="search"
+                onSubmit={(e) => {
+                  setFreeTestCompleted(true);
+                  void runLive(e);
+                }}
+              >
+                <input
+                  id="ad-test-search-input"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Or type any food or drink (e.g. Doritos, Chobani, Coke)…"
+                  aria-label="Test any grocery product free"
+                />
+                <button
+                  id="ad-test-search-submit"
+                  type="submit"
+                  disabled={liveState === "loading" || !query.trim()}
+                >
+                  {liveState === "loading" ? (
+                    <span className="spinner" aria-label="Scanning" />
+                  ) : (
+                    "Score Free →"
+                  )}
+                </button>
+              </form>
+
+              {freeTestCompleted && (
+                <div
+                  id="ad-test-step2-cta"
+                  style={{
+                    marginTop: 14,
+                    padding: "14px 16px",
+                    borderRadius: 14,
+                    background: "#0b2418",
+                    color: "#ffffff",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#6ee7b7", marginBottom: 4 }}>
+                    ✓ STEP 1 COMPLETE — {active.brand} {active.title} Scored {score.score}/100 ({score.rating})
+                  </div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.4, marginBottom: 10, color: "#e2e8f0" }}>
+                    {score.flagged.length > 0 ? (
+                      <>
+                        Flagged <b>{score.flagged.map((f) => f.name).join(", ")}</b>.{" "}
+                        {swap ? (
+                          <>
+                            Clean Swap ready: <b>{swap.title} ({swap.score}/100)</b>.
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>Zero high-risk additives flagged — verified clean pick!</>
+                    )}
+                  </div>
+                  <button
+                    id="ad-test-unlock-pro-btn"
+                    type="button"
+                    className="swap-btn"
+                    onClick={() => setPaywallOpen(true)}
+                    style={{ width: "100%", fontWeight: 800 }}
+                  >
+                    Step 2: Unlock Unlimited 1-Tap Clean Swaps Across All 12 Stores ($0 Today) →
+                  </button>
+                </div>
+              )}
+
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontSize: 11.5, color: "#475569" }}>
+                  Works inside Walmart, Target, Costco, Instacart, Kroger, ALDI &amp; 6 more
+                </span>
+                <button
+                  id="ad-test-expand-full-btn"
+                  type="button"
+                  className="link-btn"
+                  onClick={() => {
+                    setAdTestMode(false);
+                    setFreeTestCompleted(true);
+                  }}
+                >
+                  Switch to Full 12-Store Simulator View →
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div
+            className="card"
+            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+          >
             <div className="card-head">
               <h2>Choose Your Store</h2>
               <button
@@ -1479,7 +1702,10 @@ export default function Simulator() {
             )}
           </div>
 
-          <div className="card">
+          <div
+            className="card"
+            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+          >
             <div className="card-head">
               <h2>Shopping View</h2>
             </div>
@@ -1535,7 +1761,10 @@ export default function Simulator() {
             </div>
           </div>
 
-          <div className="card">
+          <div
+            className="card"
+            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+          >
             <div className="card-head"><h2>Search Any Grocery Item</h2></div>
             <form className="search" onSubmit={runLive}>
               <input
@@ -1565,7 +1794,10 @@ export default function Simulator() {
             )}
           </div>
 
-          <div className="card">
+          <div
+            className="card"
+            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+          >
             <div className="card-head"><h2>Popular Grocery Items</h2></div>
             <ul className="preset-list">
               {PRESETS.map((p) => {
@@ -1585,7 +1817,10 @@ export default function Simulator() {
             </ul>
           </div>
 
-          <div className="tool-row">
+          <div
+            className="tool-row"
+            style={adTestMode && !freeTestCompleted ? { display: "none" } : undefined}
+          >
             <button id="open-auditor" className="tool" onClick={openAudit}>
               <span className="tool-icon">🛒</span>
               <span><b>Whole-Cart Health Check</b><small>{dirty.length} dirty of {cart.length} • Avg {animatedCartAvg}/100</small></span>
@@ -3024,6 +3259,14 @@ export default function Simulator() {
           setPaywallOpen(false);
           setAuthOpen(true);
         }}
+      />
+
+      <PostCheckoutOtoModal
+        open={otoModalOpen}
+        onClose={() => setOtoModalOpen(false)}
+        initialPlan={otoInitialPlan}
+        sessionId={otoSessionId}
+        deviceId={deviceIdState}
       />
 
       <Scorecard

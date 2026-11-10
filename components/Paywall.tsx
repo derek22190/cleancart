@@ -375,6 +375,46 @@ export default function Paywall({
           <li><span>✓</span> <b>Pro Unlocked:</b> Custom Family Watchlists (2x penalties for seed oils, dyes, HFCS &amp; nitrites)</li>
         </ul>
 
+        {/* 3-STEP CRYSTAL-CLEAR VALUE PROP STRIP (RYAN MATHEWS TEST #3) */}
+        <div
+          id="paywall-how-it-works-strip"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
+            gap: 8,
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 12,
+            background: "#f8faf9",
+            border: "1px solid #d4dbd6",
+          }}
+        >
+          <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+            <strong style={{ display: "block", color: "#0b4f30", fontSize: 12.5 }}>
+              1. Shop Normally
+            </strong>
+            <span style={{ color: "#3d5949" }}>
+              Open Walmart, Target, Costco, Instacart &amp; 8 more apps
+            </span>
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+            <strong style={{ display: "block", color: "#0b4f30", fontSize: 12.5 }}>
+              2. Instant 0–100 Score
+            </strong>
+            <span style={{ color: "#3d5949" }}>
+              Floating badge flags seed oils, Red 40, HFCS &amp; nitrites
+            </span>
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+            <strong style={{ display: "block", color: "#0b4f30", fontSize: 12.5 }}>
+              3. 1-Tap Clean Swap
+            </strong>
+            <span style={{ color: "#3d5949" }}>
+              Replace flagged items or your whole cart in 1 tap
+            </span>
+          </div>
+        </div>
+
         {/* PRIMARY PRE-SELECTED ANNUAL ANCHOR CARD */}
         <div
           id="plan-annual"
@@ -600,6 +640,55 @@ export default function Paywall({
             ? `$0 due today, then $${PRICING.annual.toFixed(2)}/year ($${annualPerMonth.toFixed(2)}/mo) after your ${trialDays}-day trial. Cancel anytime via Billing Settings.`
             : `Billed monthly at $${PRICING.monthly.toFixed(2)}/mo ($${monthlyPerYear.toFixed(2)}/yr). Switch to Annual to save ${annualSavingsPct}%. Cancel anytime via Billing Settings.`}
         </p>
+
+        {/* SKEPTIC FAQ ACCORDION (RYAN MATHEWS TEST #3: ANSWER EVERY BUYER OBJECTION) */}
+        <details
+          id="paywall-skeptic-faq"
+          style={{
+            marginTop: 10,
+            background: "#f8faf9",
+            border: "1px solid #d4dbd6",
+            borderRadius: 12,
+            padding: "10px 14px",
+            fontSize: 12.5,
+          }}
+        >
+          <summary
+            style={{
+              fontWeight: 800,
+              color: "#15201B",
+              cursor: "pointer",
+            }}
+          >
+            Questions before starting your free trial? (4 quick answers)
+          </summary>
+          <div style={{ display: "grid", gap: 9, marginTop: 10, color: "#334155", lineHeight: 1.45 }}>
+            <div>
+              <strong style={{ color: "#0f172a" }}>1. How is HeyBroc different from barcode apps like Yuka?</strong>
+              <div>
+                Barcode scanners only work standing in a physical aisle scanning one box at a time. HeyBroc floats directly inside your online grocery apps (Walmart, Target, Costco, Instacart, Kroger, ALDI &amp; 6 more) and swaps flagged items in 1 tap.
+              </div>
+            </div>
+            <div>
+              <strong style={{ color: "#0f172a" }}>2. Do food brands pay to boost their scores or swaps?</strong>
+              <div>
+                Never. HeyBroc is 100% independent and reader-supported. Every 0–100 score and Clean Swap is computed deterministically from the ingredient list and nutrition facts.
+              </div>
+            </div>
+            <div>
+              <strong style={{ color: "#0f172a" }}>3. Does one membership cover my phone, computer &amp; family?</strong>
+              <div>
+                Yes. One Family Pro membership unlocks Web, Android Live Store Bubble, iOS Safari Extension, and Chrome Extension across up to 5 family devices.
+              </div>
+            </div>
+            <div>
+              <strong style={{ color: "#0f172a" }}>4. How easy is it to cancel before my trial ends?</strong>
+              <div>
+                1-click self-serve cancellation anytime via &ldquo;Manage / Cancel subscription&rdquo; below—no phone calls or emails required.
+              </div>
+            </div>
+          </div>
+        </details>
 
         <div
           style={{

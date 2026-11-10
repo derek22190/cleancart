@@ -1828,6 +1828,34 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const { otoAnnualSavingsPct } = await import("../lib/pricing");
+  const testLandingPageTsx = fs.readFileSync("app/test/page.tsx", "utf8");
+  const otoModalTsx = fs.readFileSync("components/PostCheckoutOtoModal.tsx", "utf8");
+  const latestSimulatorTsx = fs.readFileSync("components/Simulator.tsx", "utf8");
+  const latestPaywallTsx = fs.readFileSync("components/Paywall.tsx", "utf8");
+  const latestCheckoutRouteTs = fs.readFileSync("app/api/checkout/route.ts", "utf8");
+  const latestAnalyticsTs = fs.readFileSync("lib/analytics.ts", "utf8");
+
+  check(
+    "Ryan Mathews Meta Ads Funnel & 3 CRO Tests: Low-Friction /test Landing Mode, Post-Checkout OTO Modal ($39.99/yr & $29 Pass), Paywall Value Prop + Skeptic FAQ, and CAPI Free Score Test Signal",
+    Boolean(
+      PRICING.otoAnnualLockIn === 39.99 &&
+        PRICING.otoExtraYearPass === 29.0 &&
+        otoAnnualSavingsPct === 67 &&
+        testLandingPageTsx.includes("initialAdTestMode={true}") &&
+        latestSimulatorTsx.includes('id="ad-free-test-hero"') &&
+        latestSimulatorTsx.includes('id="ad-test-step2-cta"') &&
+        latestSimulatorTsx.includes("<PostCheckoutOtoModal") &&
+        otoModalTsx.includes('id="oto-claim-btn"') &&
+        otoModalTsx.includes('id="oto-decline-btn"') &&
+        latestCheckoutRouteTs.includes("oto_annual") &&
+        latestCheckoutRouteTs.includes("oto_gift_year") &&
+        latestPaywallTsx.includes('id="paywall-how-it-works-strip"') &&
+        latestPaywallTsx.includes('id="paywall-skeptic-faq"') &&
+        latestAnalyticsTs.includes("Free Product Score Test")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
