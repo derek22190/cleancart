@@ -95,6 +95,8 @@ export interface SwapResult {
   androidIntentUrl?: string;
   /** True when webUrl/deepLink contains an affiliate tag or Impact redirect requiring " · paid link" disclosure. */
   isPaidLink: boolean;
+  /** True when the clean swap is a budget-friendly private-label brand owned by the active store (e.g. Great Value, Good & Gather, Simply Nature, Kirkland Signature, Simple Truth Organic). */
+  isStoreBrand?: boolean;
 }
 
 export const STORE_META: Record<Store, { label: string; host: string; androidPackage: string; scheme: string }> = {
@@ -2370,18 +2372,200 @@ export function detectCategory(productTitle = "", _ingredients = ""): SwapCatego
 }
 
 /**
+ * Private-label store brands owned by each grocery retailer (used for "Store-Brand Value Pick" badges
+ * and budget-first clean swap sorting — never hardcoding retail dollar prices).
+ */
+export const STORE_PRIVATE_LABEL_BRANDS: Partial<Record<Store, readonly string[]>> = {
+  walmart: ["great value", "bettergoods", "marketside", "sam's choice"],
+  target: ["good & gather", "favorite day", "market pantry"],
+  aldi: ["simply nature", "friendly farms", "livegfree", "specially selected", "l'oven fresh", "park street deli", "millville"],
+  costco: ["kirkland signature"],
+  sams: ["member's mark"],
+  bjs: ["wellsley farms", "berkley jensen"],
+  kroger: ["simple truth", "simple truth organic", "private selection", "kroger"],
+  amazon: ["365 by whole foods market", "whole foods market", "amazon fresh", "happy belly"],
+};
+
+export function isStoreBrandForStore(brand = "", store?: Store): boolean {
+  const norm = brand.trim().toLowerCase();
+  if (!norm) return false;
+  if (store && STORE_PRIVATE_LABEL_BRANDS[store]) {
+    return STORE_PRIVATE_LABEL_BRANDS[store]!.some((b) => norm === b || norm.startsWith(`${b} `));
+  }
+  return Object.values(STORE_PRIVATE_LABEL_BRANDS).some((list) =>
+    (list || []).some((b) => norm === b || norm.startsWith(`${b} `))
+  );
+}
+
+/**
+ * Budget-friendly Walmart private-label (Great Value Organic & bettergoods) clean alternatives.
+ * Included automatically in `swapCandidates` at Walmart and promoted to #1 when `preferStoreBrand: true`.
+ */
+export const WALMART_STORE_BRAND_ALTERNATIVES: { match: RegExp; alt: CleanAlternative }[] = [
+  {
+    match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Great Value",
+      name: "Organic Salted Butter",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Salted%20Butter%2016%20oz",
+      verifiedAt: "2026-11-10",
+      size: "16 oz (4 sticks)",
+      isOrganic: true,
+      image: "/swaps/butter.jpg",
+      ingredients: "Organic pasteurized sweet cream, salt.",
+    },
+  },
+  {
+    match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Great Value",
+      name: "Organic Reduced Fat 2% Milk",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Reduced%20Fat%202%25%20Milk",
+      verifiedAt: "2026-11-10",
+      size: "64 fl oz carton",
+      isOrganic: true,
+      image: "/swaps/milk.png",
+      ingredients: "Organic Grade A reduced fat milk, vitamin A palmitate, vitamin D3.",
+    },
+  },
+  {
+    match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Great Value",
+      name: "Organic Whole Vitamin D Milk",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Whole%20Vitamin%20D%20Milk",
+      verifiedAt: "2026-11-10",
+      size: "64 fl oz carton",
+      isOrganic: true,
+      image: "/swaps/milk.png",
+      ingredients: "Organic Grade A whole milk, vitamin D3.",
+    },
+  },
+  {
+    match: /^(?!.*\b(noodles?|rolls?|soup|salad|fried\s+rice|pasta|waffles?|mcmuffin|sandwich|custard|nog|mayo|mayonnaise|cookies?|cake|pastry|pastries)\b).*\b(eggs?|egg\s+whites?|egg\s+beaters)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Great Value",
+      name: "Organic Cage-Free Large Brown Eggs",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Cage-Free%20Large%20Brown%20Eggs%2012%20Count",
+      verifiedAt: "2026-11-10",
+      size: "12 count carton",
+      isOrganic: true,
+      image: "/swaps/eggs.png",
+      ingredients: "Organic cage-free shell eggs.",
+    },
+  },
+  {
+    match: /\b(yogh?urt|skyr|chobani|yoplait|dannon)\b/i,
+    alt: {
+      category: "Yogurt",
+      brand: "Great Value",
+      name: "Organic Plain Nonfat Greek Yogurt",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Plain%20Nonfat%20Greek%20Yogurt%2032%20oz",
+      verifiedAt: "2026-11-10",
+      size: "32 oz tub",
+      isOrganic: true,
+      image: "/swaps/yogurt.jpg",
+      ingredients: "Cultured pasteurized organic nonfat milk, live and active cultures.",
+    },
+  },
+  {
+    match: /\b(peanut\s+butter|jif|skippy|peter\s+pan)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Great Value",
+      name: "Organic Creamy Stir Peanut Butter",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Creamy%20Stir%20Peanut%20Butter%2016%20oz",
+      verifiedAt: "2026-11-10",
+      size: "16 oz jar",
+      isOrganic: true,
+      image: "/swaps/peanutbutter.png",
+      ingredients: "Organic roasted peanuts, sea salt.",
+    },
+  },
+  {
+    match: /^(?!.*\b(peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+    alt: {
+      category: "Cereal",
+      brand: "Great Value",
+      name: "Organic 100% Pure Maple Syrup",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20100%25%20Pure%20Maple%20Syrup",
+      verifiedAt: "2026-11-10",
+      size: "12 fl oz bottle",
+      isOrganic: true,
+      image: "/swaps/syrup.png",
+      ingredients: "Organic pure maple syrup.",
+    },
+  },
+  {
+    match: /\b(potato\s+chips|kettle\s+chips|lay'?s|ruffles|pringles|wavy\s+chips)\b/i,
+    alt: {
+      category: "Chips",
+      brand: "bettergoods",
+      name: "Avocado Oil Sea Salt Potato Chips",
+      sourceUrl: "https://www.walmart.com/search?q=bettergoods%20Avocado%20Oil%20Sea%20Salt%20Potato%20Chips",
+      verifiedAt: "2026-11-10",
+      size: "7 oz bag",
+      image: "/swaps/chips.jpg",
+      ingredients: "Potatoes, avocado oil, sea salt.",
+      nutrition: { caloriesKcal100g: 535, sugarsG100g: 0, saturatedFatG100g: 5.3, sodiumMg100g: 390, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 80 },
+    },
+  },
+  {
+    match: /\b(salsa|picante|pace|herdez|tostitos\s+salsa)\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Great Value",
+      name: "Organic Medium Salsa",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Medium%20Salsa%2016%20oz",
+      verifiedAt: "2026-11-10",
+      size: "16 oz jar",
+      isOrganic: true,
+      image: "/swaps/salsa.png",
+      ingredients: "Organic diced tomatoes in juice, organic tomato puree, organic onions, organic jalapeno peppers, organic distilled vinegar, sea salt, organic garlic, organic cilantro.",
+    },
+  },
+  {
+    match: /\b(gravy|broth|stock|bouillon)\b/i,
+    alt: {
+      category: "Dressings",
+      brand: "Great Value",
+      name: "Organic Low Sodium Chicken Broth",
+      sourceUrl: "https://www.walmart.com/search?q=Great%20Value%20Organic%20Low%20Sodium%20Chicken%20Broth%2032%20oz",
+      verifiedAt: "2026-11-10",
+      size: "32 oz carton",
+      isOrganic: true,
+      image: "/swaps/broth.png",
+      ingredients: "Organic chicken stock, sea salt, organic carrot juice concentrate, organic celery juice concentrate, organic onion juice concentrate.",
+    },
+  },
+];
+
+/**
  * Resolves the exact 1-for-1 CleanAlternative for a given product title and active store
  * (e.g. Member's Mark at Sam's Club, Kirkland Signature at Costco, Simply Nature at ALDI,
- * Wellsley Farms at BJ's, Good & Gather at Target, Simple Truth at Kroger, 365 at Amazon),
+ * Wellsley Farms at BJ's, Good & Gather at Target, Simple Truth at Kroger, 365 at Amazon,
+ * and Great Value / bettergoods at Walmart when `preferStoreBrand === true`),
  * falling back to the nationwide 1-for-1 match or category default.
  */
 export function resolveCleanAlternative(
   productTitle = "",
   category?: SwapCategory,
-  store?: Store
+  store?: Store,
+  preferStoreBrand = false
 ): CleanAlternative {
   const title = productTitle.trim();
   if (title && store) {
+    if (preferStoreBrand && store === "walmart") {
+      for (const rule of WALMART_STORE_BRAND_ALTERNATIVES) {
+        if (rule.match.test(title)) {
+          return rule.alt;
+        }
+      }
+    }
     const storeRules = STORE_SPECIFIC_OVERRIDES[store];
     if (storeRules) {
       for (const rule of storeRules) {
@@ -2686,7 +2870,7 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
     ],
   },
   {
-    match: /\b(chips|crisps|doritos|cheetos|takis|pringles|lay'?s|ruffles|fritos|popcorn|puffs)\b/i,
+    match: /\b(tortilla\s+chips|doritos|tostitos|takis|fritos|corn\s+chips)\b/i,
     alts: [
       {
         category: "Chips",
@@ -2698,6 +2882,11 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
         image: "/swaps/chips.jpg",
         ingredients: "Cassava flour, avocado oil, coconut flour, ground chia seed, sea salt.",
       },
+    ],
+  },
+  {
+    match: /\b(popcorn|puffs|cheetos)\b/i,
+    alts: [
       {
         category: "Chips",
         brand: "LesserEvil",
@@ -2919,6 +3108,7 @@ function evaluateCandidateForSwap(
       : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=4`,
     score: altScore,
     store: params.store,
+    isStoreBrand: isStoreBrandForStore(alt.brand, params.store),
     ...buildLinks(alt, params.store, impactClickId(), params.surface, params.instacartRetailerSlug),
   };
 
@@ -2944,6 +3134,7 @@ export function resolveSwap(params: {
   familyWatchlist?: import("./rubric").Category[];
   surface?: ScanSurface;
   instacartRetailerSlug?: string;
+  preferStoreBrand?: boolean;
 }): SwapResult | null {
   if (params.score >= 75) return null;
   if (
@@ -2957,7 +3148,7 @@ export function resolveSwap(params: {
     params.surface === "android" || params.surface === "extension"
       ? params.surface
       : "web";
-  const alt = resolveCleanAlternative(params.productTitle, params.category, store);
+  const alt = resolveCleanAlternative(params.productTitle, params.category, store, Boolean(params.preferStoreBrand));
   const evaluated = evaluateCandidateForSwap(alt, {
     score: params.score,
     productTitle: params.productTitle,
@@ -2967,7 +3158,21 @@ export function resolveSwap(params: {
     surface,
     instacartRetailerSlug: params.instacartRetailerSlug,
   });
-  return evaluated ? evaluated.swap : null;
+  if (evaluated) return evaluated.swap;
+  if (params.preferStoreBrand) {
+    const fallbackAlt = resolveCleanAlternative(params.productTitle, params.category, store, false);
+    const fallbackEval = evaluateCandidateForSwap(fallbackAlt, {
+      score: params.score,
+      productTitle: params.productTitle,
+      store,
+      watchlist: params.watchlist,
+      familyWatchlist: params.familyWatchlist,
+      surface,
+      instacartRetailerSlug: params.instacartRetailerSlug,
+    });
+    return fallbackEval ? fallbackEval.swap : null;
+  }
+  return null;
 }
 
 const SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT =
@@ -2989,6 +3194,7 @@ export function resolveSwapCandidates(params: {
   surface?: ScanSurface;
   instacartRetailerSlug?: string;
   limit?: number;
+  preferStoreBrand?: boolean;
 }): SwapResult[] {
   const title = (params.productTitle || "").trim();
   if (params.score >= 75 || !title) return [];
@@ -3003,22 +3209,35 @@ export function resolveSwapCandidates(params: {
       : "web";
   const maxItems = Math.max(1, Math.min(10, params.limit ?? 4));
 
+  const primaryAltKey = formatSwapFullTitle(
+    resolveCleanAlternative(title, params.category, store, Boolean(params.preferStoreBrand))
+  ).toLowerCase();
+
   const rawPool: Array<{ alt: CleanAlternative; tier: number }> = [];
 
-  // Tier 3: Store-specific 1-for-1 overrides for this exact retailer
+  // Store-specific 1-for-1 overrides & Walmart private-label budget picks:
+  // When `preferStoreBrand` is false, Walmart private-label sits at tier 0.9 (behind national primary/category
+  // picks at tier >= 1 so `#switch-to-store-brand-swap` is offered); when `preferStoreBrand` is true, tier 4 promotes to #1.
+  if (store === "walmart") {
+    for (const rule of WALMART_STORE_BRAND_ALTERNATIVES) {
+      if (rule.match.test(title)) {
+        rawPool.push({ alt: rule.alt, tier: params.preferStoreBrand ? 4 : 0.9 });
+      }
+    }
+  }
   const storeRules = STORE_SPECIFIC_OVERRIDES[store];
   if (storeRules) {
     for (const rule of storeRules) {
       if (rule.match.test(title)) {
-        rawPool.push({ alt: rule.alt, tier: 3 });
+        rawPool.push({ alt: rule.alt, tier: params.preferStoreBrand ? 4 : 3 });
       }
     }
   }
 
-  // Tier 2: Nationwide 1-for-1 exact product rules
+  // Tier 2.2: Nationwide 1-for-1 exact product rules
   for (const rule of EXACT_PRODUCT_ALTERNATIVES) {
     if (rule.match.test(title)) {
-      rawPool.push({ alt: rule.alt, tier: 2 });
+      rawPool.push({ alt: rule.alt, tier: 2.2 });
     }
   }
 
@@ -3038,7 +3257,7 @@ export function resolveSwapCandidates(params: {
   }
 
   const seen = new Set<string>();
-  const evaluated: Array<{ swap: SwapResult; tier: number }> = [];
+  const evaluated: Array<{ swap: SwapResult; tier: number; isPrimary: boolean }> = [];
 
   for (const entry of rawPool) {
     const key = formatSwapFullTitle(entry.alt).toLowerCase();
@@ -3056,16 +3275,19 @@ export function resolveSwapCandidates(params: {
       requireZeroFlags: true,
     });
     if (res) {
-      evaluated.push({ swap: res.swap, tier: entry.tier });
+      evaluated.push({ swap: res.swap, tier: entry.tier, isPrimary: key === primaryAltKey });
     }
   }
 
-  // Prefer Yuka >= 85 candidates; fall back to clean-additive (>=85 ingredient rubric) 1-for-1 swaps
-  // for categories like aged cheddar mac & cheese or cream ice cream where Nutri-Score caps < 85.
-  const highYuka = evaluated.filter((e) => e.swap.score >= 85);
+  // Prefer Yuka >= 85 candidates (plus the primary 1-for-1 clean match & verified 0-flag store-brand picks);
+  // fall back to clean-additive (>=85 ingredient rubric) 1-for-1 swaps where Nutri-Score caps energy-dense foods < 85.
+  const highYuka = evaluated.filter((e) => e.swap.score >= 85 || e.isPrimary || e.swap.isStoreBrand);
   const pool = highYuka.length > 0 ? highYuka : evaluated;
 
   pool.sort((a, b) => {
+    if (params.preferStoreBrand && Boolean(b.swap.isStoreBrand) !== Boolean(a.swap.isStoreBrand)) {
+      return b.swap.isStoreBrand ? 1 : -1;
+    }
     if (b.tier !== a.tier) return b.tier - a.tier;
     return b.swap.score - a.swap.score;
   });

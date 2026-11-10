@@ -37,6 +37,7 @@ export interface ScanRequest {
   deviceId?: string;
   deviceSecret?: string;
   referredByCode?: string;
+  preferStoreBrand?: boolean;
   format?: "json" | "ios_text";
   skipAnalytics?: boolean;
 }
@@ -63,6 +64,7 @@ export interface ScanResponse {
   result: ScoreResult;
   dietaryAlerts?: DietaryAlert[];
   swap: SwapResult | null;
+  storeBrandSwap?: SwapResult | null;
   swapCandidates?: SwapResult[];
   store: Store;
   pill: string;
@@ -475,6 +477,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
         : effectiveDeviceId !== "anon-web" && !effectiveDeviceId.startsWith("web-")
           ? "android"
           : "web";
+  const preferStoreBrand = req.preferStoreBrand === true;
   const swap = resolveSwap({
     score: result.score,
     productTitle: `${productTitle} ${title}`,
@@ -484,6 +487,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     familyWatchlist,
     surface: resolvedSurface,
     instacartRetailerSlug: req.instacartRetailerSlug,
+    preferStoreBrand,
   });
   const rawSwapCandidates = resolveSwapCandidates({
     score: result.score,
@@ -494,6 +498,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     familyWatchlist,
     surface: resolvedSurface,
     instacartRetailerSlug: req.instacartRetailerSlug,
+    preferStoreBrand,
     limit: 4,
   });
   let entitlement: EntitlementSummary | undefined;
@@ -543,6 +548,25 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   ) {
     resolvedSwapCandidates.unshift(resolvedSwap);
   }
+  let storeBrandSwap: SwapResult | null =
+    resolvedSwapCandidates.find((c) => c.isStoreBrand) ??
+    (resolvedSwap?.isStoreBrand ? resolvedSwap : null);
+  if (!storeBrandSwap && !preferStoreBrand) {
+    const sbCandidate = resolveSwap({
+      score: result.score,
+      productTitle: `${productTitle} ${title}`,
+      ingredients: found.ingredients,
+      store,
+      watchlist,
+      familyWatchlist,
+      surface: resolvedSurface,
+      instacartRetailerSlug: req.instacartRetailerSlug,
+      preferStoreBrand: true,
+    });
+    if (sbCandidate?.isStoreBrand) {
+      storeBrandSwap = formatSwapWithAccess(sbCandidate);
+    }
+  }
   if (!req.skipAnalytics) {
     void import("./analytics")
       .then(({ trackServerEvent }) =>
@@ -589,6 +613,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     result,
     ...(dietaryAlerts.length > 0 ? { dietaryAlerts } : {}),
     swap: resolvedSwap,
+    ...(storeBrandSwap ? { storeBrandSwap } : {}),
     ...(resolvedSwapCandidates.length > 0 ? { swapCandidates: resolvedSwapCandidates } : {}),
     store,
     pill: pillText,
@@ -610,7 +635,8 @@ export function toIosText(scan: ScanResponse): string {
   }
   if (scan.swap) {
     const paidLabel = scan.swap.isPaidLink ? " (paid link)" : "";
-    lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}${paidLabel}: ${scan.swap.title} (${scan.swap.score}/100)`);
+    const storeBrandTag = scan.swap.isStoreBrand ? " [💚 Store-Brand Value Pick]" : "";
+    lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}${paidLabel}: ${scan.swap.title} (${scan.swap.score}/100)${storeBrandTag}`);
     if (scan.swap.webUrl) lines.push(`${scan.swap.webUrl}${paidLabel}`);
   }
   return lines.join("\n");

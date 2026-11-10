@@ -1889,6 +1889,26 @@ object ScanHistoryStore {
         }
     }
 
+    fun isStoreBrandForStore(text: String, storeKey: String): Boolean {
+        val t = text.trim()
+        if (t.isEmpty()) return false
+        return when (storeKey.lowercase().trim()) {
+            "walmart" -> Regex("\\b(great\\s+value|bettergoods|marketside|sam'?s\\s+choice)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "target" -> Regex("\\b(good\\s*&\\s*gather|favorite\\s+day|market\\s+pantry|simply\\s+balanced)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "aldi" -> Regex("\\b(simply\\s+nature|millville|clancy'?s|specially\\s+selected|park\\s+street\\s+deli)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "costco" -> Regex("\\bkirkland\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "sams" -> Regex("\\bmember'?s\\s+mark\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "kroger" -> Regex("\\b(simple\\s+truth|private\\s+selection)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "amazon" -> Regex("\\b(365\\b|whole\\s+foods|amazon\\s+fresh|happy\\s+belly|wickedly\\s+prime)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "bjs" -> Regex("\\b(wellsley\\s+farms|berkley\\s+jensen)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "instacart", "shipt", "doordash", "ubereats" -> Regex(
+                "\\b(great\\s+value|bettergoods|marketside|good\\s*&\\s*gather|simply\\s+nature|kirkland|member'?s\\s+mark|simple\\s+truth|private\\s+selection|365\\s+by\\s+whole\\s+foods|wellsley\\s+farms)\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(t)
+            else -> false
+        }
+    }
+
     fun upgradeSwapForStore(swap: JSONObject, prodTitle: String = "", storeKey: String = "walmart") {
         val normStore = storeKey.lowercase().ifBlank { "walmart" }
         val lowProd = prodTitle.lowercase()
@@ -2028,6 +2048,8 @@ object ScanHistoryStore {
             swap.put("ingredients", "100% Organic Coconut Water.")
         }
         val latestTitle = swap.optString("title")
+        val latestBrand = swap.optString("brand")
+        swap.put("isStoreBrand", isStoreBrandForStore("$latestBrand $latestTitle", normStore))
         val latestQuery = swap.optString("searchQuery").ifBlank { latestTitle }
         val curLink = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
         if (isWalmart) {

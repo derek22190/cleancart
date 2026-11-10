@@ -32,10 +32,13 @@ export async function GET(request: Request) {
     }
     const format = (searchParams.get("format") || "ios_text").trim();
     const store = (searchParams.get("store") || "walmart").trim() as ScanRequest["store"];
+    const preferStoreBrand =
+      searchParams.get("preferStoreBrand") === "1" || searchParams.get("preferStoreBrand") === "true";
     const scan = await runScan({
       productTitle: q || undefined,
       barcode: barcode || undefined,
       store,
+      preferStoreBrand,
       format: format === "json" ? "json" : "ios_text",
     });
     if (format !== "json") {

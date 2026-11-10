@@ -30,6 +30,12 @@ object ScanApi {
         "https://heybroc.com/api/suggest",
         "https://cleancart-teal.vercel.app/api/suggest",
     ).distinct()
+    private val AUDIT_ENDPOINTS = listOfNotNull(
+        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/audit" },
+        "https://www.heybroc.com/api/audit",
+        "https://heybroc.com/api/audit",
+        "https://cleancart-teal.vercel.app/api/audit",
+    ).distinct()
     private val TRUSTED_HOSTS = setOfNotNull(
         runCatching { URL(customBase).host.lowercase() }.getOrNull()?.takeIf { it.isNotBlank() },
         "www.heybroc.com",
@@ -679,6 +685,7 @@ object ScanApi {
     }
 
     private const val KEY_SEED_OILS_ENABLED = "seed_oils_enabled_v1"
+    private const val KEY_PREFER_STORE_BRAND = "prefer_store_brand_v1"
 
     fun isSeedOilsEnabled(ctx: Context): Boolean {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -688,6 +695,16 @@ object ScanApi {
     fun setSeedOilsEnabled(ctx: Context, enabled: Boolean) {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_SEED_OILS_ENABLED, enabled).apply()
+    }
+
+    fun isPreferStoreBrand(ctx: Context): Boolean {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_PREFER_STORE_BRAND, false)
+    }
+
+    fun setPreferStoreBrand(ctx: Context, enabled: Boolean) {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_PREFER_STORE_BRAND, enabled).apply()
     }
 
     fun currentWatchlistSignature(ctx: Context): String {
@@ -700,7 +717,8 @@ object ScanApi {
             .sorted()
             .joinToString(",")
         val so = if (isSeedOilsEnabled(ctx)) "1" else "0"
-        return "$fw|$dw|so=$so"
+        val psb = if (isPreferStoreBrand(ctx)) "1" else "0"
+        return "$fw|$dw|so=$so|psb=$psb"
     }
 
     private fun resolveAdditiveCategory(item: JSONObject): String {
@@ -989,6 +1007,9 @@ object ScanApi {
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
             put("store", store)
             put("surface", "android")
+            if (isPreferStoreBrand(ctx)) {
+                put("preferStoreBrand", true)
+            }
             if (!seedOilsOn) {
                 put("watchlist", JSONObject().put("seedOils", false))
             }
@@ -1034,11 +1055,67 @@ object ScanApi {
         return lastErr
     }
 
+    /** Blocking call — posts raw order / receipt / grocery-list text to POST /api/audit. */
+    fun auditOrder(
+        ctx: Context,
+        rawOrderText: String,
+        storeOverride: String? = null,
+        preferStoreBrandOverride: Boolean? = null
+    ): JSONObject {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val seedOilsOn = isSeedOilsEnabled(ctx)
+        val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
+            .map { if (it == "nitrites") "nitrates" else it }
+            .filter { seedOilsOn || it != "seedOils" }
+            .toSet()
+        val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
+        val preferSb = preferStoreBrandOverride ?: isPreferStoreBrand(ctx)
+        val secret = deviceSecret(ctx)
+        val body = JSONObject().apply {
+            put("rawOrderText", rawOrderText)
+            if (!storeOverride.isNullOrBlank()) put("store", storeOverride)
+            put("preferStoreBrand", preferSb)
+            put("surface", "android")
+            if (!seedOilsOn) {
+                put("watchlist", JSONObject().put("seedOils", false))
+            }
+            if (familyWatchlist.isNotEmpty()) {
+                put("familyWatchlist", JSONArray(familyWatchlist.toList().sorted()))
+            }
+            if (dietaryWatchlist.isNotEmpty()) {
+                put("dietaryWatchlist", JSONArray(dietaryWatchlist.toList().sorted()))
+            }
+            put("deviceId", deviceId(ctx))
+            put("deviceSecret", secret)
+        }.toString()
+
+        var lastErr = JSONObject().put("ok", false).put("error", "Unable to reach HeyBroc audit server")
+        for (endpoint in AUDIT_ENDPOINTS) {
+            try {
+                val res = postFollowingRedirects(
+                    endpoint,
+                    body,
+                    maxRedirects = 4,
+                    extraHeaders = mapOf("X-Device-Secret" to secret),
+                    readTimeoutMs = 18000
+                )
+                if (res.startsWith("{")) {
+                    val json = JSONObject(res)
+                    if (json.has("ok")) return json
+                }
+            } catch (e: Exception) {
+                lastErr = JSONObject().put("ok", false).put("error", e.message ?: "Network error")
+            }
+        }
+        return lastErr
+    }
+
     private fun postFollowingRedirects(
         urlStr: String,
         jsonBody: String,
         maxRedirects: Int,
-        extraHeaders: Map<String, String> = emptyMap()
+        extraHeaders: Map<String, String> = emptyMap(),
+        readTimeoutMs: Int = 8000
     ): String {
         var currentUrl = urlStr
         var remaining = maxRedirects
@@ -1051,7 +1128,7 @@ object ScanApi {
                 instanceFollowRedirects = false
                 requestMethod = "POST"
                 connectTimeout = 5000
-                readTimeout = 8000
+                readTimeout = readTimeoutMs
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")

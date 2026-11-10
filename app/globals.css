@@ -473,6 +473,17 @@ h1, h2, h3, h4, p { margin: 0; }
     width: 100%; font-size: 10.5px; padding: 7px 5px; gap: 4px;
   }
 }
+@media (max-width: 420px) {
+  .topbar-subnav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .topbar-subnav > .topbar-pill:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .topbar-pill {
+    font-size: 11px; padding: 7px 8px;
+  }
+}
 
 .segmented--two { grid-template-columns: 1fr 1fr; }
 

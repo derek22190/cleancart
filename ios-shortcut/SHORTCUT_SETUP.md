@@ -1,8 +1,9 @@
-# CleanCart on iPhone — Safari Floating Pill, Share Sheet, Back Tap & Action Button
+# CleanCart / HeyBroc on iPhone — Bundled Share Extension, Safari Floating Pill & Action Button
 
-CleanCart on iPhone supports **two instant ways** to scan groceries:
-1. **Safari Floating Pill (`ios-app/SafariExtension`)**: Enable **HeyBroc** in *Settings → Apps → Safari → Extensions* (`Allow on All Websites` or grocery domains) to get the live floating `0–100` score pill automatically on `walmart.com`, `instacart.com`, `target.com`, `kroger.com`, `aldi.us`, `amazon.com`, and `costco.com`.
-2. **1-Line Apple Shortcut (for Native Store Apps via Share Sheet, Back Tap, or Action Button)**: Calls `GET /api/scan?format=ios_text&q=...` (or `POST /api/scan`) with zero manual JSON dictionary setup required.
+HeyBroc on iPhone supports **three instant ways** to scan groceries:
+1. **Zero-Setup Native Share Sheet Extension (`ios-app/ShareExtension`)**: Bundled automatically inside the HeyBroc iOS app (`com.heybroc.app.ShareExtension`). In the native Walmart, Target, Instacart, Amazon, Kroger, ALDI, Sam's Club, BJ's, or Costco app, tap **Share → HeyBroc Score** for an instant `0–100` grade, flagged additives, `💚 Store-Brand Value Pick` badge, and 1-tap Clean Swap — zero manual setup required.
+2. **Safari Floating Pill (`ios-app/SafariExtension`)**: Enable **HeyBroc** in *Settings → Apps → Safari → Extensions* (`Allow on All Websites` or grocery domains) to get the live floating `0–100` score pill automatically on `walmart.com`, `instacart.com`, `target.com`, `kroger.com`, `aldi.us`, `amazon.com`, and `costco.com`.
+3. **1-Line Apple Shortcut (for Back Tap, Action Button, or web-only users)**: Calls `GET /api/scan?format=ios_text&q=...` (or `POST /api/scan`) with zero manual JSON dictionary setup required.
 
 > **Live Production API URL:** `https://heybroc.com` (fallback: `https://cleancart-teal.vercel.app`)
 

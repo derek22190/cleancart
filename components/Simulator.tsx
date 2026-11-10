@@ -37,14 +37,17 @@ import {
 import type { PlanId } from "@/lib/pricing";
 import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
+import LabelScannerModal from "./LabelScannerModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import PostCheckoutOtoModal from "./PostCheckoutOtoModal";
+import ProductExposeModal from "./ProductExposeModal";
 import Scorecard, { type SwapRecord } from "./Scorecard";
 import WatchlistMiniFunnel, {
   type DietaryOptionId,
   type FunnelStep,
   type OnboardingSelections,
 } from "./WatchlistMiniFunnel";
+import WeeklyOrderAuditModal, { type AuditedOrderItem } from "./WeeklyOrderAuditModal";
 
 /* ------------------------------------------------------------------ */
 /* Types & helpers                                                     */
@@ -74,6 +77,7 @@ interface ApiScan {
   ignored?: boolean;
   reason?: string;
   error?: string;
+  store?: Store;
   product?: {
     title: string;
     brand?: string;
@@ -87,6 +91,7 @@ interface ApiScan {
   lookup?: { source: string; origin?: string; sourceUpdatedAt?: string | null; ms: number };
   result?: ScoreResult;
   swap?: SwapResult | null;
+  storeBrandSwap?: SwapResult | null;
   swapCandidates?: SwapResult[];
 }
 
@@ -164,13 +169,20 @@ const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
   quantity: 1,
 });
 
-const cleanToProduct = (cat: SwapCategory, replacedItem?: Product, store: Store = "walmart"): Product => {
+const cleanToProduct = (
+  cat: SwapCategory,
+  replacedItem?: Product,
+  store: Store = "walmart",
+  preferStoreBrand = false,
+): Product => {
   const alt = replacedItem
-    ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat, store)
-    : resolveCleanAlternative(cat, cat, store);
+    ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat, store, preferStoreBrand)
+    : resolveCleanAlternative(cat, cat, store, preferStoreBrand);
   const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
   return {
-    key: replacedItem ? `clean-${cat}-${replacedItem.key}-${store || "default"}` : `clean-${cat}-${store || "default"}`,
+    key: replacedItem
+      ? `clean-${cat}-${replacedItem.key}-${store || "default"}${preferStoreBrand ? "-sb" : ""}`
+      : `clean-${cat}-${store || "default"}${preferStoreBrand ? "-sb" : ""}`,
     title: alt.name,
     brand: alt.brand,
     size: alt.size,
@@ -568,10 +580,26 @@ export default function Simulator({
   const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>(["seedOils", "dyes", "hfcs"]);
   const [dietaryWatchlist, setDietaryWatchlist] = useState<DietaryOptionId[]>([]);
   const [preferredStores, setPreferredStores] = useState<Store[] | undefined>(undefined);
+  const [preferStoreBrand, setPreferStoreBrand] = useState(false);
+  const [labelScannerOpen, setLabelScannerOpen] = useState(false);
+  const [weeklyAuditOpen, setWeeklyAuditOpen] = useState(false);
+  const [exposeCardOpen, setExposeCardOpen] = useState(false);
+  const [pendingSharedQuery, setPendingSharedQuery] = useState<{ q: string; storeOverride?: Store } | null>(null);
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
   const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
+
+  const togglePreferStoreBrand = useCallback((explicitNext?: boolean) => {
+    setPreferStoreBrand((prev) => {
+      const next = typeof explicitNext === "boolean" ? explicitNext : !prev;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("heybroc_prefer_store_brand", next ? "1" : "0");
+      }
+      return next;
+    });
+    setSelectedSwapIdx(0);
+  }, []);
 
   const [toast, setToast] = useState<{ title: string; body: string; href?: string; isPaidLink?: boolean } | null>(null);
 
@@ -596,7 +624,12 @@ export default function Simulator({
         }
         if (!cancelled) setDeviceIdState(deviceId);
 
+        let savedPreferSb = false;
         try {
+          savedPreferSb = window.localStorage.getItem("heybroc_prefer_store_brand") === "1";
+          if (savedPreferSb && !cancelled) {
+            setPreferStoreBrand(true);
+          }
           const savedWatch1x = JSON.parse(
             window.localStorage.getItem("heybroc_watchlist_1x") || "null"
           ) as Partial<Watch> | null;
@@ -632,7 +665,7 @@ export default function Simulator({
             setCart((prevCart) =>
               prevCart.map((item) =>
                 item.origin === "swap" && item.category
-                  ? cleanToProduct(item.category, item.replacedItem, nextStore)
+                  ? cleanToProduct(item.category, item.replacedItem, nextStore, savedPreferSb)
                   : item
               )
             );
@@ -644,6 +677,27 @@ export default function Simulator({
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
+        const urlStoreParam = (params.get("store") || "").trim();
+        const validUrlStore =
+          urlStoreParam && (STORES as string[]).includes(urlStoreParam) ? (urlStoreParam as Store) : undefined;
+        if (validUrlStore && !cancelled) {
+          setStore(validUrlStore);
+        }
+        const sharedParts = [
+          params.get("share"),
+          params.get("q"),
+          params.get("productTitle"),
+          params.get("url"),
+          params.get("text"),
+          params.get("title"),
+        ]
+          .map((v) => (v || "").trim())
+          .filter(Boolean);
+        const sharedIncoming = Array.from(new Set(sharedParts)).join(" ").trim();
+        if (sharedIncoming && !cancelled) {
+          setPendingSharedQuery({ q: sharedIncoming, storeOverride: validUrlStore });
+        }
+
         const onboardingDone = window.localStorage.getItem("heybroc_onboarding_done") === "1";
         if (!cancelled) setOnboardingDoneState(onboardingDone);
         const isAdTestLanding =
@@ -658,6 +712,7 @@ export default function Simulator({
         } else if (
           params.get("onboarding") === "1" ||
           (!onboardingDone &&
+            !sharedIncoming &&
             !params.get("session_id") &&
             params.get("checkout") !== "cancelled" &&
             !isAdTestLanding)
@@ -1000,8 +1055,9 @@ export default function Simulator({
         store,
         watchlist: watch,
         familyWatchlist,
+        preferStoreBrand,
       }),
-    [score.score, active, store, watch, familyWatchlist],
+    [score.score, active, store, watch, familyWatchlist, preferStoreBrand],
   );
   const swap = useMemo(() => {
     if (swapCandidates.length > 0) {
@@ -1015,8 +1071,13 @@ export default function Simulator({
       store,
       watchlist: watch,
       familyWatchlist,
+      preferStoreBrand,
     });
-  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist]);
+  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist, preferStoreBrand]);
+  const storeBrandCandidateIdx = useMemo(
+    () => swapCandidates.findIndex((c) => c.isStoreBrand),
+    [swapCandidates],
+  );
   const theme = STORE_THEME[store];
 
   /* ---------------- Cart scoring & animated Cart Avg ---------------- */
@@ -1032,10 +1093,11 @@ export default function Simulator({
           store,
           watchlist: watch,
           familyWatchlist,
+          preferStoreBrand,
         });
         return { item, s, sw };
       }),
-    [cart, watch, store, familyWatchlist],
+    [cart, watch, store, familyWatchlist, preferStoreBrand],
   );
   const totalCartUnits = useMemo(
     () => cart.reduce((sum, item) => sum + clampQty(item.quantity), 0),
@@ -1081,6 +1143,7 @@ export default function Simulator({
           store,
           watchlist: watch,
           familyWatchlist,
+          preferStoreBrand,
         });
         if (!sw) return null;
         return {
@@ -1091,7 +1154,7 @@ export default function Simulator({
           dodged: s.flagged.map((f) => f.name),
         };
       }).filter((x): x is SwapRecord => Boolean(x)),
-    [watch, store, familyWatchlist],
+    [watch, store, familyWatchlist, preferStoreBrand],
   );
 
   useEffect(() => {
@@ -1130,16 +1193,19 @@ export default function Simulator({
     storeRailRef.current?.scrollBy({ left: dir * 210, behavior: "smooth" });
   }, []);
 
-  const switchStore = useCallback((s: Store) => {
-    setStore(s);
-    setHiddenForTrip(false);
-    setSelectedSwapIdx(0);
-    setActive((prev) =>
-      prev.origin === "swap" && prev.category
-        ? cleanToProduct(prev.category, prev.replacedItem, s)
-        : prev
-    );
-  }, []);
+  const switchStore = useCallback(
+    (s: Store) => {
+      setStore(s);
+      setHiddenForTrip(false);
+      setSelectedSwapIdx(0);
+      setActive((prev) =>
+        prev.origin === "swap" && prev.category
+          ? cleanToProduct(prev.category, prev.replacedItem, s, preferStoreBrand)
+          : prev,
+      );
+    },
+    [preferStoreBrand],
+  );
 
   const showProduct = useCallback(
     (p: Product, countAsScan = true, openCardImmediately = false) => {
@@ -1172,7 +1238,7 @@ export default function Simulator({
       const target = replaced ?? (active.origin !== "swap" ? active : previousDirtyItem ?? undefined);
       const clean = chosenSwap
         ? swapResultToProduct(chosenSwap, target, store)
-        : cleanToProduct(cat, target, store);
+        : cleanToProduct(cat, target, store, preferStoreBrand);
       if (active.origin !== "swap") {
         setPreviousDirtyItem(active);
       }
@@ -1187,7 +1253,7 @@ export default function Simulator({
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [active, previousDirtyItem, isPro, swapsUsedThisWeek, weeklySwapLimit, store],
+    [active, previousDirtyItem, isPro, swapsUsedThisWeek, weeklySwapLimit, store, preferStoreBrand],
   );
 
   const triggerClimbFlash = useCallback(() => {
@@ -1319,6 +1385,7 @@ export default function Simulator({
           store,
           watchlist: watch,
           familyWatchlist,
+          preferStoreBrand,
         });
       if (!targetSwap) return;
       setSwapsUsedThisWeek((n) => n + 1);
@@ -1341,7 +1408,7 @@ export default function Simulator({
       }
       const clean = explicitSwap
         ? swapResultToProduct(targetSwap, targetItem, store)
-        : cleanToProduct(targetSwap.category, targetItem, store);
+        : cleanToProduct(targetSwap.category, targetItem, store, preferStoreBrand);
       setPreviousDirtyItem(targetItem);
       setActive(clean);
       setViewMode("product");
@@ -1357,7 +1424,7 @@ export default function Simulator({
         isPaidLink: targetSwap.isPaidLink,
       });
     },
-    [watch, familyWatchlist, store, isPro, swapsUsedThisWeek, weeklySwapLimit],
+    [watch, familyWatchlist, store, preferStoreBrand, isPro, swapsUsedThisWeek, weeklySwapLimit],
   );
 
   const doSwap = useCallback(() => {
@@ -1404,11 +1471,21 @@ export default function Simulator({
   );
   const activeRevertTarget = getRevertTarget(active);
 
-  /* ---------------- Live search & Multi-Barcode Scanner ---------------- */
+  /* ---------------- Live search, Share Receiver & Label OCR Scanner ---------------- */
   const executeLiveLookup = useCallback(
-    async (opts: { productTitle: string; barcode?: string; openCard?: boolean }) => {
+    async (opts: {
+      productTitle: string;
+      rawIngredients?: string;
+      barcode?: string;
+      storeOverride?: Store;
+      openCard?: boolean;
+    }) => {
       const q = opts.productTitle.trim();
-      if (!q && !opts.barcode) return;
+      const rawIng = (opts.rawIngredients || "").trim();
+      if (!q && !rawIng && !opts.barcode) return;
+      if (opts.storeOverride) {
+        setStore(opts.storeOverride);
+      }
       setLiveState("loading");
       setLiveError("");
       try {
@@ -1418,10 +1495,13 @@ export default function Simulator({
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) || undefined;
         const referredByCode =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
+        const targetStore = opts.storeOverride ?? store;
         const payload = {
           productTitle: q || opts.barcode || "",
+          ...(rawIng ? { rawIngredients: rawIng } : {}),
           barcode: opts.barcode,
-          store,
+          store: targetStore,
+          preferStoreBrand,
           watchlist: watch,
           familyWatchlist,
           dietaryWatchlist,
@@ -1450,19 +1530,22 @@ export default function Simulator({
           setIosText("");
           return;
         }
+        if (q.includes("http") && data.store && (STORES as readonly string[]).includes(data.store)) {
+          setStore(data.store);
+        }
         const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
         const liveScore =
           data.result?.score ??
           gradeProduct(data.product.title, data.product.ingredients, watch, data.product.nutrition, familyWatchlist).score;
         const fallbackImg = liveScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
         const p: Product = {
-          key: `live-${data.product.barcode || q}`,
+          key: `live-${data.product.barcode || q || data.product.title}-${rawIng ? "ocr" : "db"}`,
           title:
             data.product.title.replace(
               new RegExp(`^${(data.product.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
               "",
             ) || data.product.title,
-          brand: data.product.brand || "Open data",
+          brand: data.product.brand || (rawIng ? "Scanned Label" : "Open data"),
           description: data.product.description,
           image: data.product.imageUrl || fallbackImg,
           ingredients: data.product.ingredients,
@@ -1488,8 +1571,22 @@ export default function Simulator({
         setLiveError("Network error — is the server reachable?");
       }
     },
-    [store, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode],
+    [store, preferStoreBrand, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode],
   );
+
+  useEffect(() => {
+    if (!pendingSharedQuery) return;
+    const { q, storeOverride } = pendingSharedQuery;
+    setPendingSharedQuery(null);
+    setQuery(q);
+    const digitsOnly = /^\d{8,14}$/.test(q.trim()) ? q.trim() : undefined;
+    void executeLiveLookup({
+      productTitle: q,
+      barcode: digitsOnly,
+      storeOverride,
+      openCard: true,
+    });
+  }, [pendingSharedQuery, executeLiveLookup]);
 
   const runLive = useCallback(
     async (e?: React.FormEvent) => {
@@ -1643,6 +1740,7 @@ export default function Simulator({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           store,
+          preferStoreBrand,
           watchlist: watch,
           familyWatchlist,
           dietaryWatchlist,
@@ -1661,7 +1759,62 @@ export default function Simulator({
     } finally {
       setAuditBusy(false);
     }
-  }, [cart, store, watch, familyWatchlist, dietaryWatchlist]);
+  }, [cart, store, preferStoreBrand, watch, familyWatchlist, dietaryWatchlist]);
+
+  const convertAuditedItemToProduct = useCallback(
+    (auditedItem: AuditedOrderItem, idx: number): Product | null => {
+      if (!auditedItem.product) return null;
+      const prod = auditedItem.product;
+      const cat = detectCategory(prod.title, prod.ingredients);
+      const itemScore = auditedItem.result?.score ?? 50;
+      const fallbackImg = itemScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
+      return {
+        key: `order-${idx}-${prod.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36)}`,
+        title:
+          prod.title.replace(
+            new RegExp(`^${(prod.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
+            "",
+          ) || prod.title,
+        brand: prod.brand || "Order Item",
+        image: prod.imageUrl || fallbackImg,
+        ingredients: prod.ingredients,
+        nutrition: prod.nutrition,
+        category: cat,
+        origin: "live",
+        quantity: clampQty(auditedItem.quantity),
+      };
+    },
+    [],
+  );
+
+  const handleLoadAuditedOrderIntoCart = useCallback(
+    (auditedItems: AuditedOrderItem[], targetStore: Store) => {
+      const nextProducts = auditedItems
+        .map((it, idx) => convertAuditedItemToProduct(it, idx))
+        .filter((p): p is Product => Boolean(p));
+      if (nextProducts.length === 0) return;
+      setStore(targetStore);
+      setCartsByStore((prev) => ({ ...prev, [targetStore]: nextProducts }));
+      setActive(nextProducts[0]);
+      setViewMode("search");
+      setAuditOpen(true);
+      setToast({
+        title: `✓ Loaded ${nextProducts.length} Staples Into ${STORE_META[targetStore].label} Cart`,
+        body: "Tap Swap on any flagged item or Swap All to upgrade your weekly haul!",
+      });
+    },
+    [convertAuditedItemToProduct],
+  );
+
+  const handleInspectAuditedItem = useCallback(
+    (auditedItem: AuditedOrderItem, targetStore: Store) => {
+      const prod = convertAuditedItemToProduct(auditedItem, 0);
+      if (!prod) return;
+      setStore(targetStore);
+      showProduct(prod, false, true);
+    },
+    [convertAuditedItemToProduct, showProduct],
+  );
 
   const swapAll = useCallback(() => {
     const n = dirty.length;
@@ -1701,7 +1854,7 @@ export default function Simulator({
     setSwapHistory((prev) => [...records, ...prev]);
     const nextCart = cart.map((item) => {
       const hit = dirty.find((d) => d.item.key === item.key);
-      return hit?.sw ? cleanToProduct(hit.sw.category, item, store) : item;
+      return hit?.sw ? swapResultToProduct(hit.sw, item, store) : item;
     });
     setCart(nextCart);
     const foodNext = nextCart.filter((item) => !item.isNonFood);
@@ -1719,7 +1872,7 @@ export default function Simulator({
           )
         : 0;
     const replaced = dirty.find((d) => d.item.key === active.key);
-    if (replaced?.sw) setActive(cleanToProduct(replaced.sw.category, replaced.item, store));
+    if (replaced?.sw) setActive(swapResultToProduct(replaced.sw, replaced.item, store));
     triggerClimbFlash();
     setToast({
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
@@ -1946,6 +2099,26 @@ export default function Simulator({
             {dietaryWatchlist.length > 0 ? ` + ${dietaryWatchlist.length} Guard` : ""})
           </button>
 
+          <button
+            id="topbar-weekly-audit"
+            type="button"
+            className="topbar-pill"
+            onClick={() => setWeeklyAuditOpen(true)}
+            title="Paste or upload your weekly grocery order or receipt to rank worst culprits"
+          >
+            🧾 Audit Order
+          </button>
+
+          <button
+            id="topbar-label-scanner"
+            type="button"
+            className="topbar-pill"
+            onClick={() => setLabelScannerOpen(true)}
+            title="Upload a screenshot or snap an Ingredients label"
+          >
+            📸 Label / Screenshot
+          </button>
+
           <a
             id="download-android-apk"
             href="/heybroc.apk"
@@ -2045,7 +2218,7 @@ export default function Simulator({
                   id="ad-test-search-input"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Or type any food or drink (e.g. Doritos, Chobani, Coke)…"
+                  placeholder="Or type any food, drink, or store URL (e.g. Doritos, Chobani, Coke)…"
                   aria-label="Test any grocery product free"
                 />
                 <button
@@ -2060,7 +2233,36 @@ export default function Simulator({
                   )}
                 </button>
               </form>
-              {liveState === "error" && <p className="error">{liveError}</p>}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="trip-pill"
+                  onClick={() => setLabelScannerOpen(true)}
+                  style={{ fontSize: 12, fontWeight: 700 }}
+                >
+                  📸 Scan Screenshot / Ingredient Label
+                </button>
+                <button
+                  type="button"
+                  className="trip-pill"
+                  onClick={() => setWeeklyAuditOpen(true)}
+                  style={{ fontSize: 12, fontWeight: 700 }}
+                >
+                  🧾 Audit Weekly Pickup Order
+                </button>
+              </div>
+              {liveState === "error" && (
+                <div style={{ marginTop: 6 }}>
+                  <p className="error" style={{ marginBottom: 4 }}>{liveError}</p>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setLabelScannerOpen(true)}
+                  >
+                    📸 Brand not listed yet? Snap or paste its Ingredients label →
+                  </button>
+                </div>
+              )}
 
               {freeTestCompleted && (
                 <div
@@ -2081,9 +2283,16 @@ export default function Simulator({
                       <>
                         Flagged <b>{score.flagged.map((f) => f.name).join(", ")}</b>.{" "}
                         {swap ? (
-                          <>
-                            Clean Swap ready: <b>{swap.title} ({swap.score}/100)</b>.
-                          </>
+                          isPro || swapsUsedThisWeek < weeklySwapLimit ? (
+                            <>
+                              Clean Swap ready: <b>{swap.title} ({swap.score}/100)</b>
+                              {swap.isStoreBrand ? " 💚 Store-Brand Value Pick." : "."}
+                            </>
+                          ) : (
+                            <>
+                              Clean Swap ready: <b>{swap.score}/100 Clean Replacement Available</b>.
+                            </>
+                          )
                         ) : null}
                       </>
                     ) : (
@@ -2195,6 +2404,28 @@ export default function Simulator({
                 </button>
               </div>
             )}
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <button
+                id="toggle-prefer-store-brand"
+                type="button"
+                onClick={() => togglePreferStoreBrand()}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  border: preferStoreBrand ? "1.5px solid #0f7a4a" : "1px solid #cbd5e1",
+                  background: preferStoreBrand ? "#dcfce7" : "#f8fafc",
+                  color: preferStoreBrand ? "#14532d" : "#334155",
+                }}
+              >
+                {preferStoreBrand ? "💚 Store-Brand Budget Swaps First: ON" : "💚 Store-Brand Budget Swaps First"}
+              </button>
+              <small style={{ fontSize: 11.5, color: "#64748b" }}>
+                Prioritizes Great Value Organic, Good &amp; Gather, Kirkland, 365 &amp; Simply Nature
+              </small>
+            </div>
           </div>
 
           <div
@@ -2260,32 +2491,42 @@ export default function Simulator({
             className="card"
             style={adTestMode ? { display: "none" } : undefined}
           >
-            <div className="card-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div className="card-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <h2>Search Any Grocery Item</h2>
-              <button
-                id="toggle-barcode-scanner"
-                type="button"
-                className="trip-pill"
-                onClick={() => {
-                  if (barcodeScannerOpen) {
-                    stopCameraScanner();
-                    setBarcodeScannerOpen(false);
-                    setBarcodeStatus("");
-                  } else {
-                    setBarcodeScannerOpen(true);
-                    void startCameraScanner();
-                  }
-                }}
-              >
-                {barcodeScannerOpen ? "✕ Close Scanner" : "📷 Barcode"}
-              </button>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  id="open-label-scanner"
+                  type="button"
+                  className="trip-pill"
+                  onClick={() => setLabelScannerOpen(true)}
+                >
+                  📸 Label / Screenshot
+                </button>
+                <button
+                  id="toggle-barcode-scanner"
+                  type="button"
+                  className="trip-pill"
+                  onClick={() => {
+                    if (barcodeScannerOpen) {
+                      stopCameraScanner();
+                      setBarcodeScannerOpen(false);
+                      setBarcodeStatus("");
+                    } else {
+                      setBarcodeScannerOpen(true);
+                      void startCameraScanner();
+                    }
+                  }}
+                >
+                  {barcodeScannerOpen ? "✕ Close Scanner" : "📷 Barcode"}
+                </button>
+              </div>
             </div>
             <form className="search" onSubmit={runLive}>
               <input
                 id="live-search-input"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g. Monster, Red Bull, Coke, UPC barcode, Milk, Water…"
+                placeholder="Search item, UPC barcode, or paste a Walmart / Target / Amazon link…"
                 aria-label="Search any grocery product"
               />
               <button id="live-search-submit" type="submit" disabled={liveState === "loading" || !query.trim()}>
@@ -2397,7 +2638,19 @@ export default function Simulator({
                 </p>
               </div>
             )}
-            {liveState === "error" && <p className="error">{liveError}</p>}
+            {liveState === "error" && (
+              <div style={{ marginTop: 6 }}>
+                <p className="error" style={{ marginBottom: 4 }}>{liveError}</p>
+                <button
+                  id="error-fallback-label-scanner"
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setLabelScannerOpen(true)}
+                >
+                  📸 Brand or flavor not listed yet? Snap or paste its Ingredients label →
+                </button>
+              </div>
+            )}
             {active.origin === "live" && active.lookup && (
               <p className="meta">
                 {lookupSourceLabel(active.lookup)}
@@ -2451,11 +2704,28 @@ export default function Simulator({
                 </small>
               </span>
             </button>
-            <button id="open-watchlist" className={`tool ${panel === "watchlist" ? "is-on" : ""}`} onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}>
-              <span className="tool-icon">⚙︎</span>
-              <span><b>Settings &amp; Watchlist</b><small>{disabledCount ? `${disabledCount} categor${disabledCount === 1 ? "y" : "ies"} ignored` : "Bubble style & 9 categories"}</small></span>
+            <button id="open-weekly-audit" type="button" className="tool" onClick={() => setWeeklyAuditOpen(true)}>
+              <span className="tool-icon">🧾</span>
+              <span>
+                <b>Audit Weekly Order / Receipt</b>
+                <small>Paste Walmart, Instacart, Target or Amazon order text or screenshot</small>
+              </span>
             </button>
           </div>
+
+          <button
+            id="open-watchlist"
+            type="button"
+            className={`tool ${panel === "watchlist" ? "is-on" : ""}`}
+            onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}
+            style={{ width: "100%", textAlign: "left", ...(adTestMode ? { display: "none" } : {}) }}
+          >
+            <span className="tool-icon">⚙︎</span>
+            <span>
+              <b>Bubble Style &amp; 9-Category Settings</b>
+              <small>{disabledCount ? `${disabledCount} categor${disabledCount === 1 ? "y" : "ies"} ignored` : "Customize floating pill theme & strictness"}</small>
+            </span>
+          </button>
 
           <button
             id="open-watchlist-funnel"
@@ -2821,15 +3091,27 @@ export default function Simulator({
                       </div>
                       <div className="yuka-topbar-actions">
                         {yukaTab === "inspect" && (
-                          <button
-                            type="button"
-                            className={`yuka-fav-btn ${favorites.includes(active.key) ? "is-fav" : ""}`}
-                            onClick={() => toggleFavorite(active.key)}
-                            aria-label="Toggle favorite"
-                            title="Save to Favorites"
-                          >
-                            {favorites.includes(active.key) ? "★" : "☆"}
-                          </button>
+                          <>
+                            <button
+                              id="drawer-topbar-share-btn"
+                              type="button"
+                              className="yuka-fav-btn"
+                              onClick={() => setExposeCardOpen(true)}
+                              aria-label="Share Before and After Score Card"
+                              title="Share Before/After Score Card"
+                            >
+                              📤
+                            </button>
+                            <button
+                              type="button"
+                              className={`yuka-fav-btn ${favorites.includes(active.key) ? "is-fav" : ""}`}
+                              onClick={() => toggleFavorite(active.key)}
+                              aria-label="Toggle favorite"
+                              title="Save to Favorites"
+                            >
+                              {favorites.includes(active.key) ? "★" : "☆"}
+                            </button>
+                          </>
                         )}
                         {yukaTab === "history" && (
                           <button
@@ -2979,6 +3261,24 @@ export default function Simulator({
                                     <span className="eyebrow eyebrow--green">
                                       ✓ Verified Clean Swap · {STORE_META[store].label}{swap.isPaidLink ? " · paid link" : ""}
                                     </span>
+                                    {swap.isStoreBrand && (
+                                      <span
+                                        id="swap-store-brand-badge"
+                                        style={{
+                                          display: "inline-block",
+                                          alignSelf: "flex-start",
+                                          background: "#15803d",
+                                          color: "#ffffff",
+                                          fontSize: 10.5,
+                                          fontWeight: 800,
+                                          padding: "2px 8px",
+                                          borderRadius: 999,
+                                          marginBottom: 2,
+                                        }}
+                                      >
+                                        💚 Store-Brand Value Pick
+                                      </span>
+                                    )}
                                     <b>{swap.title}</b>
                                     <span className="swap-score">
                                       {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"} · <em>Tap to inspect →</em>
@@ -2988,6 +3288,25 @@ export default function Simulator({
                                 <button id="swap-item" className="swap-btn" onClick={doSwap}>
                                   Swap Item{swap.isPaidLink ? " · paid link" : ""}
                                 </button>
+                                {!swap.isStoreBrand && storeBrandCandidateIdx >= 0 && (
+                                  <button
+                                    id="switch-to-store-brand-swap"
+                                    type="button"
+                                    className="trip-pill"
+                                    onClick={() => setSelectedSwapIdx(storeBrandCandidateIdx)}
+                                    style={{
+                                      width: "100%",
+                                      justifyContent: "center",
+                                      background: "#ecfdf5",
+                                      borderColor: "#86efac",
+                                      color: "#14532d",
+                                      fontWeight: 800,
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    💚 Prefer store brand? Switch to {swapCandidates[storeBrandCandidateIdx].title} ({swapCandidates[storeBrandCandidateIdx].score}/100)
+                                  </button>
+                                )}
                                 {swapCandidates.length > 1 && (
                                   <button
                                     type="button"
@@ -3019,6 +3338,26 @@ export default function Simulator({
                               </button>
                             </div>
                           ) : null}
+
+                          <button
+                            id="open-expose-card"
+                            type="button"
+                            className="trip-pill"
+                            onClick={() => setExposeCardOpen(true)}
+                            style={{
+                              width: "100%",
+                              justifyContent: "center",
+                              padding: "9px 14px",
+                              marginBottom: 12,
+                              fontWeight: 800,
+                              fontSize: 12.5,
+                              background: "#f0fdf4",
+                              borderColor: "#86efac",
+                              color: "#14532d",
+                            }}
+                          >
+                            📤 Share Before/After Score Card (iMessage / IG / TikTok)
+                          </button>
 
                           {/* 3-Pillar Score & Sugar / Refined Carb / Calorie Insight Card */}
                           {score.yukaBreakdown && (
@@ -4159,6 +4498,76 @@ export default function Simulator({
         defaultReferralCode={appliedCreator?.code || personalReferralCode}
         dirtyCount={dirty.length}
         onSwapAllAndMax={swapAll}
+      />
+
+      <LabelScannerModal
+        open={labelScannerOpen}
+        onClose={() => setLabelScannerOpen(false)}
+        initialQuery={query}
+        onScanLabel={async ({ productTitle, rawIngredients, barcode, detectedStore }) => {
+          setQuery(productTitle);
+          await executeLiveLookup({
+            productTitle,
+            rawIngredients,
+            barcode,
+            storeOverride: detectedStore,
+            openCard: true,
+          });
+        }}
+      />
+
+      <WeeklyOrderAuditModal
+        open={weeklyAuditOpen}
+        onClose={() => setWeeklyAuditOpen(false)}
+        store={store}
+        onSelectStore={switchStore}
+        preferStoreBrand={preferStoreBrand}
+        onTogglePreferStoreBrand={togglePreferStoreBrand}
+        watchlist={watch}
+        familyWatchlist={familyWatchlist}
+        dietaryWatchlist={dietaryWatchlist}
+        isPro={isPro}
+        freeSwapsRemaining={Math.max(0, weeklySwapLimit - swapsUsedThisWeek)}
+        onConsumeSwap={(_swapTitle, replacedTitle) => {
+          setSwapsUsedThisWeek((n) => n + 1);
+          if (typeof window !== "undefined") {
+            const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+            const devSecret = window.localStorage.getItem("heybroc_device_secret") || "";
+            void fetch("/api/referral", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+              },
+              body: JSON.stringify({
+                action: "record_swap",
+                deviceId: devId,
+                deviceSecret: devSecret || undefined,
+                productKey: replacedTitle,
+              }),
+            }).catch(() => {});
+          }
+        }}
+        swapUnlocked={isPro || swapsUsedThisWeek < weeklySwapLimit}
+        onUnlockPro={() => {
+          setWeeklyAuditOpen(false);
+          setPaywallOpen(true);
+        }}
+        onLoadIntoCart={handleLoadAuditedOrderIntoCart}
+        onInspectAuditedItem={handleInspectAuditedItem}
+      />
+
+      <ProductExposeModal
+        open={exposeCardOpen}
+        onClose={() => setExposeCardOpen(false)}
+        productTitle={active.title}
+        productBrand={active.brand}
+        score={score}
+        dietaryAlerts={activeDietaryAlerts}
+        swap={swap}
+        swapUnlocked={isPro || swapsUsedThisWeek < weeklySwapLimit}
+        store={store}
+        referralCode={appliedCreator?.code || personalReferralCode}
       />
     </div>
   );

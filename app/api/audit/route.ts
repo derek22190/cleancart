@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit, runScan, type ScanRequest, type ScanResponse, type ScanError } from "@/lib/scan";
 import type { Category, Watchlist } from "@/lib/rubric";
+import { parseGroceryOrderText } from "@/lib/order-parser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,9 +35,9 @@ function isScoredFoodScan(r: ScanResponse | ScanError): r is ScanResponse {
 type AuditedItemResult = (ScanResponse | ScanError) & { quantity: number };
 
 /**
- * Whole-Cart Auditor:
- * POST { items: [{ productTitle?, rawIngredients?, barcode?, quantity? }], store?, instacartRetailerSlug?, surface?, watchlist? }
- * Scores up to 100 cart items, excludes non-food / unscored items, and computes quantity-weighted
+ * Whole-Cart & Weekly-Order Auditor:
+ * POST { items?: [...], rawOrderText?: string, preferStoreBrand?: boolean, store?, instacartRetailerSlug?, surface?, watchlist? }
+ * Scores up to 100 cart/order items, excludes non-food / unscored items, and computes quantity-weighted
  * `averageBefore` and `averageAfter` using nullish coalescing `??` (never `||`), returning `null` when 0 scored items exist.
  */
 export async function POST(request: Request) {
@@ -49,6 +50,9 @@ export async function POST(request: Request) {
   }
   let body: {
     items?: unknown;
+    rawOrderText?: unknown;
+    preferStoreBrand?: boolean;
+    preferDetectedStore?: boolean;
     store?: string;
     instacartRetailerSlug?: string;
     surface?: "web" | "android" | "extension";
@@ -67,8 +71,34 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
   }
-  if (!Array.isArray(body.items) || body.items.length === 0) {
-    return NextResponse.json({ ok: false, error: "Provide a non-empty items array." }, { status: 400, headers: CORS });
+  if (typeof body.rawOrderText === "string" && body.rawOrderText.length > 48_000) {
+    return NextResponse.json({ ok: false, error: "Order text exceeds maximum length of 48,000 characters." }, { status: 413, headers: CORS });
+  }
+
+  let detectedStore: string | undefined;
+  let resolvedItems: unknown[] | undefined = Array.isArray(body.items) ? body.items : undefined;
+  if ((!resolvedItems || resolvedItems.length === 0) && typeof body.rawOrderText === "string" && body.rawOrderText.trim().length > 0) {
+    const parsedOrder = parseGroceryOrderText(body.rawOrderText);
+    detectedStore = parsedOrder.detectedStore;
+    resolvedItems = parsedOrder.items;
+    if (detectedStore && body.preferDetectedStore !== false) {
+      body.store = detectedStore;
+    }
+    if (resolvedItems.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Could not find any recognizable grocery items in that order or receipt text. Try listing one product per line.",
+        },
+        { status: 422, headers: CORS },
+      );
+    }
+  }
+  const effectiveStore = body.store || detectedStore || "walmart";
+  body.store = effectiveStore;
+
+  if (!Array.isArray(resolvedItems) || resolvedItems.length === 0) {
+    return NextResponse.json({ ok: false, error: "Provide a non-empty items array or rawOrderText." }, { status: 400, headers: CORS });
   }
   const reqOrigin = (request.headers.get("origin") || "").toLowerCase();
   const effectiveSurface =
@@ -79,7 +109,8 @@ export async function POST(request: Request) {
       : body.surface;
   const effectiveSecret =
     request.headers.get("x-device-secret")?.trim() || body.deviceSecret;
-  const items = body.items.slice(0, 100);
+  const preferStoreBrand = body.preferStoreBrand === true;
+  const items = resolvedItems.slice(0, 100);
   const memo = new Map<string, Promise<ScanResponse | ScanError>>();
 
   // Process in bounded batches of 4 with per-request deduplication to avoid flooding Open Food Facts / USDA
@@ -89,7 +120,7 @@ export async function POST(request: Request) {
     const batch = await Promise.all(
       chunk.map(async (item): Promise<AuditedItemResult> => {
         if (typeof item === "string") {
-          const dedupKey = `str:${item.trim().toLowerCase()}`;
+          const dedupKey = `str:${item.trim().toLowerCase()}|sb:${preferStoreBrand ? 1 : 0}`;
           let pending = memo.get(dedupKey);
           if (!pending) {
             pending = runScan({
@@ -102,6 +133,7 @@ export async function POST(request: Request) {
               watchlist: body.watchlist,
               familyWatchlist: body.familyWatchlist,
               dietaryWatchlist: body.dietaryWatchlist,
+              preferStoreBrand,
               skipAnalytics: true,
             });
             memo.set(dedupKey, pending);
@@ -139,12 +171,15 @@ export async function POST(request: Request) {
             : "";
         const titleStr = typeof reqItem.productTitle === "string" ? reqItem.productTitle.trim().toLowerCase() : "";
         const ingStr = typeof reqItem.rawIngredients === "string" ? reqItem.rawIngredients.trim().toLowerCase() : "";
+        const effWatchlist = reqItem.watchlist ?? body.watchlist;
         const effFw = reqItem.familyWatchlist ?? body.familyWatchlist;
         const effDw = reqItem.dietaryWatchlist ?? body.dietaryWatchlist;
+        const effPreferSb = reqItem.preferStoreBrand ?? preferStoreBrand;
+        const wlSig = effWatchlist && typeof effWatchlist === "object" ? JSON.stringify(effWatchlist) : "";
         const fwSig = Array.isArray(effFw) ? [...effFw].sort().join(",") : "";
         const dwSig = Array.isArray(effDw) ? [...effDw].sort().join(",") : "";
         const retailerSlug = reqItem.instacartRetailerSlug ?? body.instacartRetailerSlug ?? "";
-        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}|${retailerSlug}|${fwSig}|${dwSig}`;
+        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}|${retailerSlug}|${wlSig}|${fwSig}|${dwSig}|sb:${effPreferSb ? 1 : 0}`;
         let pending = memo.get(dedupKey);
         if (!pending) {
           pending = runScan({
@@ -154,9 +189,10 @@ export async function POST(request: Request) {
             surface: effectiveSurface ?? reqItem.surface,
             deviceId: reqItem.deviceId ?? body.deviceId,
             deviceSecret: reqItem.deviceSecret ?? effectiveSecret,
-            watchlist: body.watchlist,
+            watchlist: effWatchlist,
             familyWatchlist: effFw,
             dietaryWatchlist: effDw,
+            preferStoreBrand: effPreferSb,
             skipAnalytics: true,
           });
           memo.set(dedupKey, pending);
@@ -195,6 +231,8 @@ export async function POST(request: Request) {
     {
       ok: true,
       complete: failedCount === 0,
+      effectiveStore,
+      ...(detectedStore ? { detectedStore } : {}),
       cartScore: averageBefore,
       scoredItemAverage: averageBefore,
       averageBefore,

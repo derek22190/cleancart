@@ -241,8 +241,10 @@ class MainActivity : Activity() {
 
         renderScreen()
 
-        // Launch the 4-Step Goals -> Problem -> Solution -> Personalized Plan Onboarding Funnel on first open
-        if (savedInstanceState == null) {
+        val handledShare = handleIncomingShareIntent(intent)
+
+        // Launch the 8-Step Onboarding Funnel on first open unless the user shared a product directly
+        if (savedInstanceState == null && !handledShare) {
             val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             val onboardingDone = prefs.getBoolean("onboarding_funnel_done_v1", false)
             val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
@@ -260,6 +262,143 @@ class MainActivity : Activity() {
                 }, 180L)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingShareIntent(intent)
+    }
+
+    private fun detectStoreFromSharedText(raw: String): String? {
+        val low = raw.lowercase()
+        return when {
+            low.contains("walmart.com") -> "walmart"
+            low.contains("target.com") -> "target"
+            low.contains("instacart.com") -> "instacart"
+            low.contains("wholefoodsmarket.com") -> "amazon"
+            low.contains("amazon.com") || low.contains("a.co/") -> "amazon"
+            low.contains("kroger.com") -> "kroger"
+            low.contains("aldi.us") -> "aldi"
+            low.contains("costco.com") -> "costco"
+            low.contains("samsclub.com") -> "sams"
+            low.contains("bjs.com") -> "bjs"
+            low.contains("shipt.com") -> "shipt"
+            low.contains("doordash.com") -> "doordash"
+            low.contains("ubereats.com") -> "ubereats"
+            else -> null
+        }
+    }
+
+    private fun extractCleanQueryFromSharedText(raw: String, subject: String): Pair<String, String> {
+        val combined = listOf(subject.trim(), raw.trim()).filter { it.isNotBlank() }.joinToString("\n").trim()
+        if (combined.isBlank()) return "" to ""
+
+        // Check if shared text contains an explicit Ingredients: block (e.g. Live Text / OCR copy)
+        val ingMatch = Regex("""(?is)\b(?:ingredients?|contains\s+2%\s+or\s+less)\s*[:\-]\s*(.+)$""").find(combined)
+        if (ingMatch != null) {
+            val ingBody = ingMatch.groupValues[1]
+                .substringBefore("\nDistributed by")
+                .substringBefore("\nManufactured")
+                .substringBefore("\nNutrition Facts")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(2200)
+            val beforeIng = combined.substring(0, ingMatch.range.first)
+                .lines()
+                .map { it.trim() }
+                .firstOrNull { it.length in 3..140 && !it.startsWith("http", ignoreCase = true) }
+                .orEmpty()
+                .ifBlank { "Scanned Package Label" }
+            if (ingBody.length >= 8) {
+                return beforeIng to ingBody
+            }
+        }
+
+        // Strip URLs from text first to see if the store app shared a clean product title alongside the link
+        val withoutUrls = combined
+            .replace(Regex("""https?://\S+""", RegexOption.IGNORE_CASE), " ")
+            .replace(
+                Regex(
+                    """(?i)^\s*(?:check\s+out(?:\s+this\s+item)?|i\s+found\s+this|look\s+at\s+this|buy|shop)\s+|(?:\s+[-|·]\s*|\s+(?:at|on|from)\s+)(?:walmart|target|instacart|amazon(?:\.com)?|kroger|aldi|costco|sam'?s\s+club|whole\s+foods|shipt|doordash).*$"""
+                ),
+                " "
+            )
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        if (withoutUrls.length >= 3) {
+            return withoutUrls.take(180) to ""
+        }
+
+        // Otherwise extract product slug or ?share= / ?q= parameter from the shared URL
+        val urlMatch = Regex("""https?://\S+""", RegexOption.IGNORE_CASE).find(combined)?.value.orEmpty()
+        if (urlMatch.isNotBlank()) {
+            val uri = runCatching { Uri.parse(urlMatch) }.getOrNull()
+            val queryParam = listOf("share", "q", "productTitle", "title", "k", "query")
+                .firstNotNullOfOrNull { key -> uri?.getQueryParameter(key)?.trim()?.takeIf { it.length >= 2 } }
+            if (queryParam != null) {
+                return queryParam.take(180) to ""
+            }
+            val segments = uri?.pathSegments.orEmpty()
+                .filter { seg ->
+                    seg.length >= 4 &&
+                        seg.lowercase() !in setOf("ip", "p", "dp", "gp", "product", "products", "store", "shop", "items") &&
+                        !Regex("""^[A-Z0-9]{8,12}$""").matches(seg) &&
+                        !Regex("""^(?:A-\d+|\d+)$""").matches(seg)
+                }
+            val bestSlug = segments.maxByOrNull { it.length }.orEmpty()
+                .replace('-', ' ')
+                .replace('_', ' ')
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            if (bestSlug.length >= 3) {
+                return bestSlug.take(180) to ""
+            }
+        }
+        return combined.take(180) to ""
+    }
+
+    private fun handleIncomingShareIntent(incoming: Intent?): Boolean {
+        if (incoming == null) return false
+        if (incoming.getBooleanExtra("_heybroc_share_handled", false)) return false
+        val action = incoming.action ?: return false
+        val rawShared: String
+        val rawSubject: String
+        when (action) {
+            Intent.ACTION_SEND -> {
+                rawShared = incoming.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+                rawSubject = incoming.getStringExtra(Intent.EXTRA_SUBJECT)?.trim().orEmpty()
+            }
+            Intent.ACTION_PROCESS_TEXT -> {
+                rawShared = incoming.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()?.trim().orEmpty()
+                rawSubject = ""
+            }
+            else -> return false
+        }
+        if (rawShared.isBlank() && rawSubject.isBlank()) return false
+        incoming.putExtra("_heybroc_share_handled", true)
+
+        val nonEmptyLines = rawShared.lines().map { it.trim() }.filter { it.length >= 3 }
+        if (nonEmptyLines.size >= 4 && !rawShared.contains("ingredients:", ignoreCase = true) && !rawShared.startsWith("http", ignoreCase = true)) {
+            mainHandler.postDelayed({
+                if (!isDestroyed && !isFinishing) {
+                    showWeeklyOrderAuditDialog(initialOrderText = rawShared)
+                }
+            }, 120L)
+            return true
+        }
+
+        val detectedStore = detectStoreFromSharedText("$rawSubject $rawShared")
+        val (cleanTitle, cleanIng) = extractCleanQueryFromSharedText(rawShared, rawSubject)
+        if (cleanTitle.isBlank()) return false
+
+        Toast.makeText(this, "🥦 Grading \"$cleanTitle\"…", Toast.LENGTH_SHORT).show()
+        mainHandler.postDelayed({
+            if (!isDestroyed && !isFinishing) {
+                performLiveProductSearch(cleanTitle, rawIngredients = cleanIng, storeOverride = detectedStore)
+            }
+        }, 100L)
+        return true
     }
 
     @Deprecated("Deprecated in Java")
@@ -1384,6 +1523,51 @@ class MainActivity : Activity() {
 
         wrap.addView(searchCard)
 
+        // Quick Tools Row: Label / Screenshot Paste Scanner + Weekly Order / Receipt Auditor
+        val quickToolsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(16) }
+        }
+        fun buildQuickToolCard(
+            emoji: String,
+            cardTitle: String,
+            cardSub: String,
+            marginEndDp: Int,
+            onClick: () -> Unit
+        ): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(0xFFF0FDF4.toInt())
+                setStroke(dp(1), 0xFFBBF7D0.toInt())
+                cornerRadius = dp(18).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                if (marginEndDp > 0) marginEnd = dp(marginEndDp)
+            }
+            addView(label("$emoji  $cardTitle", 13.5f, 0xFF14532D.toInt(), bold = true))
+            addView(label(cardSub, 11.5f, 0xFF166534.toInt()).apply { setPadding(0, dp(3), 0, 0) })
+            setOnClickListener { onClick() }
+        }
+        quickToolsRow.addView(buildQuickToolCard(
+            emoji = "📸",
+            cardTitle = "Paste Label",
+            cardSub = "Grade any package or screenshot ingredient list",
+            marginEndDp = 8,
+            onClick = { showLabelScannerDialog() }
+        ))
+        quickToolsRow.addView(buildQuickToolCard(
+            emoji = "🧾",
+            cardTitle = "Audit Order",
+            cardSub = "Paste weekly receipt or pickup order for swaps",
+            marginEndDp = 0,
+            onClick = { showWeeklyOrderAuditDialog() }
+        ))
+        wrap.addView(quickToolsRow)
+
         // Feature & Preferences Accordion Card (Live Store Bubble + Food preferences)
         val accordionCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1727,6 +1911,46 @@ class MainActivity : Activity() {
             }
         }
 
+        val quickRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        }
+        quickRow.addView(label("📸 Paste Label", 12.5f, 0xFF065F46.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xFFECFDF5.toInt())
+                setStroke(dp(1), 0xFFA7F3D0.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(6)
+            }
+            setOnClickListener {
+                val draft = input.text.toString().trim()
+                modalDialog?.dismiss()
+                showLabelScannerDialog(initialTitle = draft)
+            }
+        })
+        quickRow.addView(label("🧾 Audit Order", 12.5f, 0xFF065F46.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xFFECFDF5.toInt())
+                setStroke(dp(1), 0xFFA7F3D0.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                modalDialog?.dismiss()
+                showWeeklyOrderAuditDialog()
+            }
+        })
+        box.addView(quickRow)
+
         modalDialog = AlertDialog.Builder(this)
             .setView(box)
             .setPositiveButton("Scan Product") { _, _ ->
@@ -1751,6 +1975,8 @@ class MainActivity : Activity() {
         val options = arrayOf(
             authOption,
             "🎯 Clean-Eating Goals & Onboarding",
+            "📸 Scan / Paste Ingredient Label",
+            "🧾 Audit Weekly Order / Receipt",
             "💳 Manage / Cancel Subscription",
             "🛡️ Allergies & Diabetes Alerts",
             "Manage Live Store Bubble",
@@ -1766,14 +1992,16 @@ class MainActivity : Activity() {
                 when (which) {
                     0 -> showGoCoCoLoginDialog()
                     1 -> showOnboardingFunnelDialog()
-                    2 -> openManageSubscription()
-                    3 -> showAllergyAndDietModal()
-                    4 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
-                    5 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
-                    6 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
-                    7 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
-                    8 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
-                    9 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+                    2 -> showLabelScannerDialog()
+                    3 -> showWeeklyOrderAuditDialog()
+                    4 -> openManageSubscription()
+                    5 -> showAllergyAndDietModal()
+                    6 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
+                    7 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
+                    8 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
+                    9 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
+                    10 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+                    11 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
                 }
             }
             .show()
@@ -3613,7 +3841,11 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun performLiveProductSearch(query: String) {
+    private fun performLiveProductSearch(
+        query: String,
+        rawIngredients: String = "",
+        storeOverride: String? = null
+    ) {
         if (isSearching) return
         lastSearchQuery = query
         isSearching = true
@@ -3621,9 +3853,9 @@ class MainActivity : Activity() {
         renderScreen()
 
         val appCtx = applicationContext
-        val storeKey = preferredStoreKey()
+        val storeKey = storeOverride?.takeIf { it.isNotBlank() } ?: preferredStoreKey()
         io.execute {
-            val raw = runCatching { ScanApi.scan(appCtx, query, "", storeKey) }.getOrNull()
+            val raw = runCatching { ScanApi.scan(appCtx, query, rawIngredients, storeKey) }.getOrNull()
             val parsed = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
             runOnUiThread {
                 if (isDestroyed || isFinishing) return@runOnUiThread
@@ -3634,13 +3866,498 @@ class MainActivity : Activity() {
                     showProductDetailDialog(parsed)
                 } else {
                     renderScreen()
-                    Toast.makeText(
-                        this,
-                        "Couldn't reach live scanner for \"$query\" — try another item or check connection.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    if (rawIngredients.isBlank()) {
+                        AlertDialog.Builder(this)
+                            .setTitle("Package Label Needed")
+                            .setMessage("We couldn't find verified US ingredients for \"$query\" yet. Paste or type the Ingredients list from the package or a screenshot to grade it instantly!")
+                            .setPositiveButton("📸 Paste Label") { _, _ ->
+                                showLabelScannerDialog(initialTitle = query)
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "Couldn't reach live scanner for \"$query\" — please check your connection.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
+        }
+    }
+
+    private fun readPrimaryClipboardText(): String {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return ""
+        val clip = cm.primaryClip ?: return ""
+        if (clip.itemCount <= 0) return ""
+        return clip.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
+    }
+
+    private fun showLabelScannerDialog(initialTitle: String = "") {
+        var dialogRef: AlertDialog? = null
+        val scroll = ScrollView(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(14))
+            setBackgroundColor(Color.WHITE)
+        }
+
+        box.addView(label("📸 Scan / Paste Ingredient Label", 19f, 0xFF111814.toInt(), bold = true))
+        box.addView(label(
+            "Zero-miss fallback: copy text from any package photo or screenshot (Google Lens / Live Text) or type ingredients below for an instant 0–100 grade & Clean Swap.",
+            13f,
+            0xFF4B5563.toInt()
+        ).apply { setPadding(0, dp(4), 0, dp(12)) })
+
+        box.addView(label("PRODUCT NAME", 11f, 0xFF374151.toInt(), bold = true).apply {
+            letterSpacing = 0.05f
+            setPadding(0, 0, 0, dp(4))
+        })
+        val titleInput = EditText(this).apply {
+            hint = "e.g. Baked Cheddar Snack Crackers"
+            setText(initialTitle)
+            textSize = 14.5f
+            setSingleLine(true)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(0xFFF9FAFB.toInt())
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
+            }
+        }
+        box.addView(titleInput)
+
+        box.addView(label("INGREDIENTS LIST (FROM PACKAGE OR SCREENSHOT)", 11f, 0xFF374151.toInt(), bold = true).apply {
+            letterSpacing = 0.05f
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        val ingInput = EditText(this).apply {
+            hint = "Paste or type ingredients… e.g. Enriched Flour, Soybean Oil, Sugar, High Fructose Corn Syrup, Red 40, TBHQ."
+            textSize = 13.5f
+            minLines = 4
+            maxLines = 8
+            gravity = Gravity.TOP or Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(0xFFF9FAFB.toInt())
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), 0xFF2E9E5B.toInt())
+            }
+        }
+        box.addView(ingInput)
+
+        val helperRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        }
+        helperRow.addView(label("📋 Paste Clipboard", 12f, 0xFF065F46.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xFFECFDF5.toInt())
+                setStroke(dp(1), 0xFFA7F3D0.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(6)
+            }
+            setOnClickListener {
+                val clip = readPrimaryClipboardText()
+                if (clip.isBlank()) {
+                    Toast.makeText(this@MainActivity, "Clipboard is empty.", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                val (parsedTitle, parsedIng) = extractCleanQueryFromSharedText(clip, "")
+                if (parsedIng.isNotBlank()) {
+                    if (titleInput.text.toString().isBlank() && parsedTitle.isNotBlank()) {
+                        titleInput.setText(parsedTitle)
+                    }
+                    ingInput.setText(parsedIng)
+                } else {
+                    ingInput.setText(clip)
+                }
+                Toast.makeText(this@MainActivity, "✓ Pasted from clipboard", Toast.LENGTH_SHORT).show()
+            }
+        })
+        helperRow.addView(label("🧪 Sample Label", 12f, 0xFF1F2937.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xFFF3F4F6.toInt())
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                titleInput.setText("Cheddar Snack Crackers")
+                ingInput.setText(
+                    "Enriched Flour (Wheat Flour, Niacin, Reduced Iron), Vegetable Oil (Soybean and Palm Oil with TBHQ for Freshness), Cheese Made with Skim Milk, Salt, Paprika, Yeast, Soy Lecithin, Yellow 6, Red 40."
+                )
+            }
+        })
+        box.addView(helperRow)
+
+        scroll.addView(box)
+        dialogRef = AlertDialog.Builder(this)
+            .setView(scroll)
+            .setPositiveButton("🔬 Grade Label Now") { _, _ ->
+                val pTitle = titleInput.text.toString().trim().ifBlank { "Scanned Package Label" }
+                val pIng = ingInput.text.toString().trim()
+                if (pIng.length < 4 && pTitle == "Scanned Package Label") {
+                    Toast.makeText(this, "Please enter a product name or paste its ingredients.", Toast.LENGTH_SHORT).show()
+                } else {
+                    dialogRef?.dismiss()
+                    performLiveProductSearch(pTitle, rawIngredients = pIng)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showWeeklyOrderAuditDialog(initialOrderText: String = "") {
+        var dialogRef: AlertDialog? = null
+        var preferStoreBrand = ScanApi.isPreferStoreBrand(this)
+        val scroll = ScrollView(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(16))
+            setBackgroundColor(Color.WHITE)
+        }
+
+        box.addView(label("🧾 Audit Weekly Order / Receipt", 19f, 0xFF111814.toInt(), bold = true))
+        box.addView(label(
+            "Paste your Walmart Pickup, Target Drive Up, Instacart, Amazon Fresh, or Kroger receipt / order history. HeyBroc strips receipt boilerplate, grades every item, and ranks your biggest Clean Swaps.",
+            13f,
+            0xFF4B5563.toInt()
+        ).apply { setPadding(0, dp(4), 0, dp(10)) })
+
+        val orderInput = EditText(this).apply {
+            hint = "Paste order email, receipt text, or 1 grocery item per line…\ne.g.\n2x Cheez-It Original Baked Snack Crackers\nHidden Valley Original Ranch Salad Dressing\nKellogg's Frosted Flakes Cereal"
+            setText(initialOrderText)
+            textSize = 13f
+            minLines = 5
+            maxLines = 9
+            gravity = Gravity.TOP or Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(0xFFF9FAFB.toInt())
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), 0xFF2E9E5B.toInt())
+            }
+        }
+        box.addView(orderInput)
+
+        val helperRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        helperRow.addView(label("📋 Paste Order", 12f, 0xFF065F46.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xFFECFDF5.toInt())
+                setStroke(dp(1), 0xFFA7F3D0.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(6)
+            }
+            setOnClickListener {
+                val clip = readPrimaryClipboardText()
+                if (clip.isBlank()) {
+                    Toast.makeText(this@MainActivity, "Clipboard is empty.", Toast.LENGTH_SHORT).show()
+                } else {
+                    orderInput.setText(clip)
+                    Toast.makeText(this@MainActivity, "✓ Pasted order text", Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+        helperRow.addView(label("🧪 Sample 7-Item Order", 12f, 0xFF1F2937.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xFFF3F4F6.toInt())
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                orderInput.setText(
+                    "Walmart Pickup Order\n" +
+                        "Qty 2 Cheez-It Original Baked Snack Crackers, 12.4 oz\n" +
+                        "Hidden Valley Original Ranch Salad Dressing, 16 fl oz\n" +
+                        "Kellogg's Frosted Flakes Breakfast Cereal, 13.5 oz\n" +
+                        "Qty 3 Welch's Mixed Fruit Flavored Snacks, 10 ct\n" +
+                        "Oscar Mayer Uncured Wieners Hot Dogs, 16 oz\n" +
+                        "Coffee mate French Vanilla Liquid Coffee Creamer, 32 fl oz\n" +
+                        "Organic Bananas, Bunch"
+                )
+            }
+        })
+        box.addView(helperRow)
+
+        val sbCheck = CheckBox(this).apply {
+            text = "💚 Prefer Store-Brand Budget Swaps (Great Value, Good & Gather, Kirkland, 365)"
+            textSize = 12.5f
+            setTextColor(0xFF14532D.toInt())
+            isChecked = preferStoreBrand
+            setOnCheckedChangeListener { _, checked ->
+                preferStoreBrand = checked
+                ScanApi.setPreferStoreBrand(this@MainActivity, checked)
+            }
+        }
+        box.addView(sbCheck.apply { setPadding(0, dp(8), 0, dp(4)) })
+
+        val resultsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+
+        val runBtn = label("🧾 Audit My Weekly Staples →", 14.5f, Color.WHITE, bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(13), dp(14), dp(13))
+            background = GradientDrawable().apply {
+                setColor(0xFF16A34A.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        }
+        box.addView(runBtn)
+        box.addView(resultsContainer)
+
+        runBtn.setOnClickListener {
+            val rawText = orderInput.text.toString().trim()
+            if (rawText.length < 4) {
+                Toast.makeText(this, "Paste your order or tap Sample 7-Item Order first.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            hideKeyboard()
+            runBtn.text = "⏳ Auditing Order Items…"
+            runBtn.isEnabled = false
+            resultsContainer.removeAllViews()
+
+            val appCtx = applicationContext
+            val detected = detectStoreFromSharedText(rawText)
+            val fallbackStore = detected ?: preferredStoreKey()
+            val useSb = preferStoreBrand
+            io.execute {
+                val auditJson = ScanApi.auditOrder(
+                    appCtx,
+                    rawOrderText = rawText,
+                    storeOverride = fallbackStore,
+                    preferStoreBrandOverride = useSb
+                )
+                runOnUiThread {
+                    if (isDestroyed || isFinishing) return@runOnUiThread
+                    runBtn.text = "🧾 Re-Audit Order →"
+                    runBtn.isEnabled = true
+                    resultsContainer.removeAllViews()
+
+                    if (!auditJson.optBoolean("ok", false)) {
+                        val err = auditJson.optString("error", "Could not audit order right now.")
+                        resultsContainer.addView(label("⚠️ $err", 13f, 0xFFB91C1C.toInt(), bold = true).apply {
+                            setPadding(dp(8), dp(8), dp(8), dp(8))
+                        })
+                        return@runOnUiThread
+                    }
+
+                    val avgBefore = if (auditJson.isNull("averageBefore")) null else auditJson.optInt("averageBefore")
+                    val avgAfter = if (auditJson.isNull("averageAfter")) null else auditJson.optInt("averageAfter")
+                    val scoredCount = auditJson.optInt("itemsScored", 0)
+                    val swapsCount = auditJson.optInt("swapsAvailable", 0)
+                    val effStore = auditJson.optString("effectiveStore").ifBlank {
+                        auditJson.optString("detectedStore").ifBlank { fallbackStore }
+                    }
+                    val effStoreLabel = storeNameForKey(effStore)
+
+                    if (avgBefore != null && avgAfter != null) {
+                        val delta = (avgAfter - avgBefore).coerceAtLeast(0)
+                        resultsContainer.addView(LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(14), dp(12), dp(14), dp(12))
+                            background = GradientDrawable().apply {
+                                setColor(0xFFECFDF5.toInt())
+                                setStroke(dp(1), 0xFF6EE7B7.toInt())
+                                cornerRadius = dp(16).toFloat()
+                            }
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply { bottomMargin = dp(10) }
+                            addView(label("WEEKLY CART HEALTH JUMP · ${effStoreLabel.uppercase()}", 10.5f, 0xFF065F46.toInt(), bold = true).apply {
+                                letterSpacing = 0.05f
+                            })
+                            addView(label(
+                                "Before: $avgBefore/100  →  After Swaps: $avgAfter/100 (+$delta pts)",
+                                15.5f,
+                                0xFF14532D.toInt(),
+                                bold = true
+                            ).apply { setPadding(0, dp(4), 0, dp(2)) })
+                            addView(label(
+                                "$scoredCount items graded · $swapsCount Clean Swaps ready",
+                                12f,
+                                0xFF166534.toInt()
+                            ))
+                        })
+                    }
+
+                    val resArr = auditJson.optJSONArray("results") ?: JSONArray()
+                    val rows = ArrayList<JSONObject>()
+                    for (i in 0 until resArr.length()) {
+                        val r = resArr.optJSONObject(i) ?: continue
+                        val resObj = r.optJSONObject("result")
+                        val hasScore = resObj != null && resObj.has("score") && !resObj.isNull("score")
+                        val isNonFood = r.optJSONObject("product")
+                            ?.optJSONObject("nutrition")
+                            ?.optString("productKind") == "non-food"
+                        if (r.optBoolean("ok", false) && hasScore && !isNonFood) {
+                            rows.add(r)
+                        }
+                    }
+                    rows.sortBy { it.optJSONObject("result")?.optInt("score", 99) ?: 99 }
+
+                    if (rows.isEmpty()) {
+                        resultsContainer.addView(label(
+                            "No food or beverage staples matched those lines. Try listing one grocery item per line (e.g. Doritos Nacho Cheese).",
+                            13f,
+                            0xFF4B5563.toInt()
+                        ).apply { setPadding(dp(8), dp(8), dp(8), dp(8)) })
+                    }
+
+                    rows.forEach { r ->
+                        ScanHistoryStore.recordScan(this, r, effStore)
+                        val pTitle = ScanHistoryStore.extractTitle(r)
+                        val sc = r.optJSONObject("result")?.optInt("score", 50) ?: 50
+                        val qty = r.optInt("quantity", 1)
+                        val sw = r.optJSONObject("swap")
+
+                        val itemBox = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(12), dp(10), dp(12), dp(10))
+                            background = GradientDrawable().apply {
+                                setColor(0xFFF9FAFB.toInt())
+                                setStroke(dp(1), 0xFFE5E7EB.toInt())
+                                cornerRadius = dp(14).toFloat()
+                            }
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply { bottomMargin = dp(8) }
+                            setOnClickListener {
+                                dialogRef?.dismiss()
+                                showProductDetailDialog(r)
+                            }
+                        }
+                        val qtyPrefix = if (qty > 1) "${qty}x " else ""
+                        itemBox.addView(label(
+                            "● $qtyPrefix$pTitle · $sc/100 (${ratingForScore(sc)})",
+                            13.5f,
+                            yukaDotColor(sc),
+                            bold = true
+                        ))
+                        if (sw != null) {
+                            val swTitle = sw.optString("title", "Clean Swap")
+                            val swScore = sw.optInt("score", 90)
+                            val swUnlocked = ScanApi.isSwapUnlocked(this, pTitle, swTitle)
+                            val isSb = sw.optBoolean("isStoreBrand", false)
+                            val sbTag = if (isSb) " · 💚 Store-Brand Pick" else ""
+                            val swDisplay = if (swUnlocked) {
+                                "⇄ Swap: $swTitle ($swScore/100)$sbTag"
+                            } else {
+                                "🔒 $swScore/100 Clean Swap Ready (Tap to inspect)"
+                            }
+                            itemBox.addView(label(swDisplay, 12f, 0xFF166534.toInt(), bold = true).apply {
+                                setPadding(0, dp(4), 0, 0)
+                            })
+                        }
+                        resultsContainer.addView(itemBox)
+                    }
+                    renderScreen()
+                }
+            }
+        }
+
+        scroll.addView(box)
+        dialogRef = AlertDialog.Builder(this)
+            .setView(scroll)
+            .setNegativeButton("Done", null)
+            .show()
+    }
+
+    private fun shareProductScoreCard(item: JSONObject, storeDisplayName: String) {
+        val res = item.optJSONObject("result")
+        val title = ScanHistoryStore.extractTitle(item).ifBlank { "Grocery Product" }
+        val score = res?.optInt("score") ?: item.optInt("score", 50)
+        val rating = ratingForScore(score)
+        val flagged = res?.optJSONArray("flagged") ?: JSONArray()
+        val topFlags = ArrayList<String>()
+        for (i in 0 until minOf(3, flagged.length())) {
+            val nm = flagged.optJSONObject(i)?.optString("name").orEmpty().trim()
+            if (nm.isNotBlank()) topFlags.add(nm)
+        }
+
+        val swap = item.optJSONObject("swap")
+        val swapTitle = swap?.optString("title").orEmpty()
+        val swapScore = swap?.optInt("score", 0) ?: 0
+        val swapUnlocked = swap != null && ScanApi.isSwapUnlocked(this, title, swapTitle)
+        val isStoreBrand = swap?.optBoolean("isStoreBrand", false) == true
+
+        val refCode = ScanApi.myReferralCode(this)
+        val encodedShare = java.net.URLEncoder.encode(title, "UTF-8")
+        val encodedRef = java.net.URLEncoder.encode(refCode, "UTF-8")
+        val shareUrl = "https://www.heybroc.com/?share=$encodedShare&ref=$encodedRef"
+
+        val statusIcon = when {
+            score >= 75 -> "🟢"
+            score >= 50 -> "🟡"
+            else -> "🔴"
+        }
+        val textSummary = buildString {
+            append("🥦 HeyBroc Food Exposé:\n")
+            append("$statusIcon $title — $score/100 ($rating)\n")
+            if (topFlags.isNotEmpty()) {
+                append("⚠️ Flagged: ${topFlags.joinToString(", ")}\n")
+            } else {
+                append("✓ 0 Watchlist Additives Flagged\n")
+            }
+            if (swap != null && swapScore > 0) {
+                if (swapUnlocked && swapTitle.isNotBlank()) {
+                    val sbNote = if (isStoreBrand) " [💚 Store-Brand Value Pick]" else ""
+                    append("🟢 1-Tap Clean Swap ($storeDisplayName): $swapTitle — $swapScore/100$sbNote\n")
+                } else {
+                    append("🟢 1-Tap Clean Swap Available in $storeDisplayName: $swapScore/100\n")
+                }
+            }
+            append("\nScan this item or check your groceries free: $shareUrl")
+        }
+
+        ScanApi.trackEvent(
+            this,
+            "expose_card_shared",
+            JSONObject().put("productTitle", title).put("score", score)
+        )
+        runCatching {
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "HeyBroc Score: $title ($score/100)")
+                putExtra(Intent.EXTRA_TEXT, textSummary)
+            }
+            startActivity(Intent.createChooser(sendIntent, "Share HeyBroc Score Card"))
         }
     }
 
@@ -3660,6 +4377,7 @@ class MainActivity : Activity() {
         val rating = ratingForScore(score)
         val tone = yukaDotColor(score)
         val swap = item.optJSONObject("swap")
+        val storeBrandSwap = item.optJSONObject("storeBrandSwap")
         val storeSwapLink = item.optJSONObject("storeSwapLink")
 
         val sheetScroll = ScrollView(this)
@@ -3929,6 +4647,7 @@ class MainActivity : Activity() {
             val swapImg = swap.optString("image").ifBlank { swap.optString("imageUrl") }
             val swapIng = swap.optString("ingredients").ifBlank { swap.optString("cleanIngredients") }
             val swapUnlocked = ScanApi.isSwapUnlocked(this, title, swapTitle)
+            val isStoreBrand = swap.optBoolean("isStoreBrand", false)
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
             val isPaidLink = swap.optBoolean("isPaidLink", false)
@@ -3951,6 +4670,20 @@ class MainActivity : Activity() {
                 swapCard.addView(label("✓ CLEAN SWAP · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF166534.toInt(), bold = true).apply {
                     letterSpacing = 0.06f
                 })
+                if (isStoreBrand) {
+                    swapCard.addView(label("💚 Store-Brand Value Pick", 11.5f, 0xFF065F46.toInt(), bold = true).apply {
+                        setPadding(dp(9), dp(3), dp(9), dp(3))
+                        background = GradientDrawable().apply {
+                            setColor(0xFFD1FAE5.toInt())
+                            setStroke(dp(1), 0xFF6EE7B7.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { topMargin = dp(5) }
+                    })
+                }
                 val swapHeaderRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -3984,6 +4717,51 @@ class MainActivity : Activity() {
                     }
                     setOnClickListener { openStoreSwap(swapTitle, itemStoreKey, swap, title) }
                 })
+
+                val sbAltTitle = storeBrandSwap?.optString("title").orEmpty()
+                val sbAltBrand = storeBrandSwap?.optString("brand").orEmpty()
+                val sbAltScore = storeBrandSwap?.optInt("score", 0) ?: 0
+                val sbMatchesStore = ScanHistoryStore.isStoreBrandForStore("$sbAltBrand $sbAltTitle", itemStoreKey)
+                if (!isStoreBrand && storeBrandSwap != null && sbAltTitle.isNotBlank() && sbMatchesStore && !sbAltTitle.equals(swapTitle, ignoreCase = true)) {
+                    val canRevealSb = ScanApi.isProActive(this) || rem > 0 || ScanApi.isSwapUnlocked(this, title, sbAltTitle)
+                    val sbBtnLabel = if (canRevealSb) {
+                        "💚 Switch to Store-Brand Pick: $sbAltTitle ($sbAltScore/100)"
+                    } else {
+                        "🔒 Unlock Store-Brand Value Pick ($sbAltScore/100)"
+                    }
+                    swapCard.addView(label(
+                        sbBtnLabel,
+                        12f,
+                        0xFF065F46.toInt(),
+                        bold = true
+                    ).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(10), dp(8), dp(10), dp(8))
+                        background = GradientDrawable().apply {
+                            setColor(Color.WHITE)
+                            setStroke(dp(1), 0xFF6EE7B7.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { topMargin = dp(8) }
+                        setOnClickListener {
+                            if (!ScanApi.unlockSwapForProduct(this@MainActivity, title, sbAltTitle)) {
+                                dialogRef?.dismiss()
+                                showPaywallDialog()
+                                return@setOnClickListener
+                            }
+                            val promoted = JSONObject(storeBrandSwap.toString()).put("isStoreBrand", true)
+                            ScanHistoryStore.upgradeSwapForStore(promoted, title, itemStoreKey)
+                            item.put("swap", promoted)
+                            ScanHistoryStore.recordScan(this@MainActivity, item, itemStoreKey)
+                            dialogRef?.dismiss()
+                            renderScreen()
+                            showProductDetailDialog(item)
+                        }
+                    })
+                }
             } else if (rem > 0) {
                 swapCard.addView(label("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF166534.toInt(), bold = true).apply {
                     letterSpacing = 0.06f
@@ -4057,6 +4835,22 @@ class MainActivity : Activity() {
                 setOnClickListener { openStoreSwap(title, itemStoreKey, storeSwapLink, title) }
             })
         }
+
+        // 1-Tap Share Before/After Product Exposé Score Card
+        sheet.addView(label("📤 Share Before/After Score Card", 13f, 0xFF065F46.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            background = GradientDrawable().apply {
+                setColor(0xFFF0FDF4.toInt())
+                setStroke(dp(1), 0xFF86EFAC.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+            setOnClickListener { shareProductScoreCard(item, storeDisplayName) }
+        })
 
         val lookupObj = item.optJSONObject("lookup")
         val rawSource = lookupObj?.optString("origin")?.ifBlank { lookupObj.optString("source") }.orEmpty()
@@ -4666,6 +5460,37 @@ class MainActivity : Activity() {
         )
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(0xFFECFDF5.toInt())
+                    setStroke(dp(1), 0xFFA7F3D0.toInt())
+                    cornerRadius = dp(12).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
+                addView(CheckBox(this@MainActivity).apply {
+                    text = "💚 Store-Brand Budget Swaps First"
+                    textSize = 13.5f
+                    setTextColor(0xFF065F46.toInt())
+                    typeface = Typeface.DEFAULT_BOLD
+                    isChecked = ScanApi.isPreferStoreBrand(this@MainActivity)
+                    setOnCheckedChangeListener { _, checked ->
+                        ScanApi.setPreferStoreBrand(this@MainActivity, checked)
+                        renderScreen()
+                    }
+                })
+                addView(label(
+                    "Prioritize clean store brands (Great Value Organic, bettergoods, Good & Gather, Kirkland Signature, Simple Truth, Simply Nature & 365) over specialty brands when available.",
+                    11.5f,
+                    0xFF166534.toInt()
+                ).apply {
+                    setPadding(dp(32), 0, dp(4), dp(2))
+                })
+            })
             categories.forEach { (key, title) ->
                 addView(CheckBox(this@MainActivity).apply {
                     text = title
@@ -4863,6 +5688,7 @@ class MainActivity : Activity() {
                     .putStringSet("familyWatchlist", emptySet())
                     .apply()
                 ScanApi.setSeedOilsEnabled(this, true)
+                ScanApi.setPreferStoreBrand(this, false)
                 runCatching {
                     startService(
                         Intent(this, OverlayWindowService::class.java).apply {

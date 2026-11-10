@@ -2387,6 +2387,188 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         readerKtSrc.includes("activeCartSectionNodes")
     )
   );
+
+  // 5-Feature Upgrade Suite Regressions: Share Sheet, Label OCR, Weekly Order Auditor, Product Exposé Card & Store-Brand Swaps
+  const swapsMod = await import("../lib/swaps");
+  const labelOcrMod = await import("../lib/label-ocr");
+  const orderParserMod = await import("../lib/order-parser");
+  const auditRouteMod = await import("../app/api/audit/route");
+
+  const nowMs = Date.now();
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  const walmartSbValid = swapsMod.WALMART_STORE_BRAND_ALTERNATIVES.every((entry) => {
+    const a = entry.alt;
+    const ingScore = scoreIngredients(a.ingredients).score;
+    const verifiedMs = a.verifiedAt ? Date.parse(a.verifiedAt) : NaN;
+    return (
+      !a.brand.includes("/") &&
+      !a.name.includes("/") &&
+      swapsMod.isStoreBrandForStore(a.brand, "walmart") &&
+      ingScore >= 90 &&
+      typeof a.sourceUrl === "string" &&
+      a.sourceUrl.startsWith("https://") &&
+      Number.isFinite(verifiedMs) &&
+      nowMs - verifiedMs <= ninetyDaysMs
+    );
+  });
+  check(
+    "Option 5: WALMART_STORE_BRAND_ALTERNATIVES all have single-brand titles, score >= 90, sourceUrl, and 90-day verifiedAt",
+    swapsMod.WALMART_STORE_BRAND_ALTERNATIVES.length >= 8 && walmartSbValid
+  );
+
+  const defaultChipsSwap = resolveSwap({
+    score: 22,
+    productTitle: "Lay's Classic Potato Chips, 8 oz",
+    store: "walmart",
+    preferStoreBrand: false,
+  });
+  const sbChipsSwap = resolveSwap({
+    score: 22,
+    productTitle: "Lay's Classic Potato Chips, 8 oz",
+    store: "walmart",
+    preferStoreBrand: true,
+  });
+  const sbPeanutButterSwap = resolveSwap({
+    score: 28,
+    productTitle: "Jif Creamy Peanut Butter, 16 oz",
+    store: "walmart",
+    preferStoreBrand: true,
+  });
+  const chipsScanDefault = await runScan({
+    productTitle: "Lay's Classic Potato Chips, 8 oz",
+    rawIngredients: "Potatoes, Vegetable Oil (Sunflower, Corn, and/or Canola Oil), and Salt.",
+    store: "walmart",
+    preferStoreBrand: false,
+  });
+  const chipsScanStoreBrand = await runScan({
+    productTitle: "Lay's Classic Potato Chips, 8 oz",
+    rawIngredients: "Potatoes, Vegetable Oil (Sunflower, Corn, and/or Canola Oil), and Salt.",
+    store: "walmart",
+    preferStoreBrand: true,
+  });
+  const jifScanDefault = await runScan({
+    productTitle: "Jif Creamy Peanut Butter, 16 oz",
+    store: "walmart",
+    preferStoreBrand: false,
+  });
+  check(
+    "Option 5: preferStoreBrand=false keeps national brand default while populating storeBrandSwap, and preferStoreBrand=true promotes bettergoods & Great Value Store-Brand swaps",
+    Boolean(
+      defaultChipsSwap &&
+        !defaultChipsSwap.isStoreBrand &&
+        sbChipsSwap &&
+        sbChipsSwap.isStoreBrand === true &&
+        sbChipsSwap.title.includes("bettergoods") &&
+        sbPeanutButterSwap &&
+        sbPeanutButterSwap.isStoreBrand === true &&
+        sbPeanutButterSwap.title.includes("Great Value") &&
+        chipsScanDefault.ok &&
+        chipsScanDefault.swapCandidates?.[0]?.isStoreBrand === false &&
+        chipsScanDefault.storeBrandSwap?.isStoreBrand === true &&
+        chipsScanStoreBrand.ok &&
+        chipsScanStoreBrand.swap?.isStoreBrand === true &&
+        jifScanDefault.ok &&
+        jifScanDefault.storeBrandSwap?.title.includes("Great Value")
+    )
+  );
+
+  const parsedLabelSample = labelOcrMod.parseLabelOcrText(
+    "9:41 AM 5G\nWalmart.com\nGreat Value Fruit Spins Cereal, 12 oz\nAdd to cart\nIngredients: Milled Corn, Sugar, Corn Syrup, Canola Oil, Red 4O, Yellow S, Blue 1, BHT Added to Preserve Freshness.\nUPC: 078742123455\nDistributed by Walmart Inc."
+  );
+  check(
+    "Option 2: parseLabelOcrText strips status-bar/button noise, normalizes Red 40 & Yellow 5 OCR typos, and extracts title, ingredients, barcode & store",
+    Boolean(
+      parsedLabelSample.productTitle.includes("Fruit Spins") &&
+        parsedLabelSample.rawIngredients.includes("Red 40") &&
+        parsedLabelSample.rawIngredients.includes("Yellow 5") &&
+        !parsedLabelSample.rawIngredients.includes("Distributed by") &&
+        !parsedLabelSample.rawIngredients.includes("078742123455") &&
+        parsedLabelSample.barcode === "078742123455" &&
+        parsedLabelSample.detectedStore === "walmart"
+    )
+  );
+
+  const parsedSampleOrder = orderParserMod.parseGroceryOrderText(orderParserMod.SAMPLE_WEEKLY_FAMILY_ORDER);
+  const doritosOrderRow = parsedSampleOrder.items.find((i) => i.productTitle.includes("Doritos"));
+  const capriSunOrderRow = parsedSampleOrder.items.find((i) => i.productTitle.includes("Capri Sun"));
+  const spaceQtyOrder = orderParserMod.parseGroceryOrderText(
+    "Qty 3 Cheez-It Original Baked Snack Crackers $8.94\n2x Doritos Nacho Cheese $7.96\nSubtotal $16.90"
+  );
+  check(
+    "Option 3: parseGroceryOrderText extracts 8 grocery items with quantities, strips prices/receipt headers, supports 'Qty 3 ...', and detects walmart",
+    Boolean(
+      parsedSampleOrder.detectedStore === "walmart" &&
+        parsedSampleOrder.items.length === 8 &&
+        doritosOrderRow?.quantity === 2 &&
+        capriSunOrderRow?.quantity === 2 &&
+        spaceQtyOrder.items.length === 2 &&
+        spaceQtyOrder.items[0]?.quantity === 3 &&
+        spaceQtyOrder.items.every((i) => !/\$/.test(i.productTitle)) &&
+        parsedSampleOrder.items.every((i) => !/\$/.test(i.productTitle))
+    )
+  );
+
+  const auditReq = new Request("http://localhost:3000/api/audit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.77" },
+    body: JSON.stringify({
+      rawOrderText: orderParserMod.SAMPLE_WEEKLY_FAMILY_ORDER,
+      preferStoreBrand: true,
+    }),
+  });
+  const auditRes = await auditRouteMod.POST(auditReq);
+  const auditData = (await auditRes.json()) as {
+    ok: boolean;
+    detectedStore?: string;
+    itemsScored: number;
+    averageBefore: number | null;
+    averageAfter: number | null;
+    results: Array<{ ok: boolean; swap?: { isStoreBrand?: boolean } | null }>;
+  };
+  check(
+    "Option 3 + Option 5: POST /api/audit grades rawOrderText, improves averageBefore -> averageAfter, and attaches store-brand swaps",
+    Boolean(
+      auditData.ok === true &&
+        auditData.detectedStore === "walmart" &&
+        auditData.itemsScored >= 6 &&
+        typeof auditData.averageBefore === "number" &&
+        typeof auditData.averageAfter === "number" &&
+        auditData.averageAfter > auditData.averageBefore &&
+        auditData.results.some((r) => r.ok && r.swap?.isStoreBrand === true)
+    )
+  );
+
+  const manifestJson = JSON.parse(fs.readFileSync("public/manifest.json", "utf8"));
+  const iosShareSwift = fs.readFileSync("ios-app/ShareExtension/ShareViewController.swift", "utf8");
+  const androidManifestXml = fs.readFileSync("android-app/app/src/main/AndroidManifest.xml", "utf8");
+  const updatedMainActivityKt = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+    "utf8"
+  );
+  const labelModalSrc = fs.readFileSync("components/LabelScannerModal.tsx", "utf8");
+  const auditModalSrc = fs.readFileSync("components/WeeklyOrderAuditModal.tsx", "utf8");
+  const exposeModalSrc = fs.readFileSync("components/ProductExposeModal.tsx", "utf8");
+  check(
+    "Options 1–5 Cross-Platform Parity: PWA share_target, iOS ShareExtension, Android ACTION_SEND/PROCESS_TEXT, LabelScannerModal, WeeklyOrderAuditModal & ProductExposeModal",
+    Boolean(
+      manifestJson.share_target?.action === "/" &&
+        manifestJson.share_target?.params?.text === "text" &&
+        iosShareSwift.includes('URLComponents(string: "https://www.heybroc.com/")') &&
+        iosShareSwift.includes('URLQueryItem(name: "share"') &&
+        androidManifestXml.includes("android.intent.action.SEND") &&
+        androidManifestXml.includes("android.intent.action.PROCESS_TEXT") &&
+        updatedMainActivityKt.includes("handleIncomingShareIntent") &&
+        updatedMainActivityKt.includes("showLabelScannerDialog") &&
+        updatedMainActivityKt.includes("showWeeklyOrderAuditDialog") &&
+        updatedMainActivityKt.includes("shareProductScoreCard") &&
+        updatedMainActivityKt.includes("isPreferStoreBrand") &&
+        labelModalSrc.includes("tesseract.js") &&
+        auditModalSrc.includes("/api/audit") &&
+        exposeModalSrc.includes("1080") &&
+        exposeModalSrc.includes("1350")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
