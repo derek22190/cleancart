@@ -186,6 +186,54 @@ async function main() {
     return;
   }
 
+  if (subcommand === "store-check") {
+    const crypto = await import("node:crypto");
+    const suggestedRcSecret = `rc_whsec_${crypto.randomBytes(20).toString("hex")}`;
+    const checks = [
+      {
+        name: "STRIPE_SECRET_KEY",
+        ok: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
+        where: "https://dashboard.stripe.com/apikeys",
+      },
+      {
+        name: "STRIPE_WEBHOOK_SECRET",
+        ok: Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim()),
+        where: "https://dashboard.stripe.com/webhooks -> endpoint: https://www.heybroc.com/api/stripe/webhook",
+      },
+      {
+        name: "REVENUECAT_WEBHOOK_SECRET",
+        ok: Boolean(process.env.REVENUECAT_WEBHOOK_SECRET?.trim()),
+        where: `https://app.revenuecat.com -> Integrations -> Webhooks -> https://www.heybroc.com/api/revenuecat/webhook (Use Bearer secret: ${suggestedRcSecret})`,
+      },
+      {
+        name: "POSTHOG_API_KEY",
+        ok: Boolean(process.env.POSTHOG_API_KEY?.trim()),
+        where: "https://us.posthog.com/settings/project#variables (Project API Key starting with phc_)",
+      },
+      {
+        name: "META_PIXEL_ID & META_CAPI_TOKEN",
+        ok: Boolean(process.env.META_PIXEL_ID?.trim() && process.env.META_CAPI_TOKEN?.trim()),
+        where: "https://business.facebook.com/events_manager2 -> Data Sources -> Settings -> Conversions API -> Generate access token",
+      },
+      {
+        name: "META_ADS_ACCESS_TOKEN & META_AD_ACCOUNT_ID",
+        ok: Boolean(process.env.META_ADS_ACCESS_TOKEN?.trim() && process.env.META_AD_ACCOUNT_ID?.trim()),
+        where: "https://business.facebook.com/settings/system-users -> Generate Token with ads_read, ads_management",
+      },
+    ];
+    console.log("==============================================================");
+    console.log("🚀 HEYBROC STORE-PACKAGING PRODUCTION KEYS PRE-FLIGHT CHECK");
+    console.log("==============================================================\n");
+    for (const c of checks) {
+      console.log(`${c.ok ? "✓ [READY]  " : "⚠ [MISSING]"} ${c.name}`);
+      if (!c.ok) {
+        console.log(`            ↳ Grab from: ${c.where}`);
+      }
+    }
+    console.log("\nAdd any missing keys to Vercel -> Project Settings -> Environment Variables before store submission.");
+    return;
+  }
+
   // Default: `status`
   const [snap, paywall, creators, stripe, meta] = await Promise.all([
     getAnalyticsSnapshot(),
