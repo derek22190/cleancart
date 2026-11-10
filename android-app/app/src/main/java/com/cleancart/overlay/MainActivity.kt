@@ -3246,7 +3246,7 @@ class MainActivity : Activity() {
                 if (runCatching { startActivity(Intent(intent).setPackage(explicitPkg)) }.isSuccess) return
             }
             if (explicitPkg.isNotBlank() && effectiveQuery.isNotBlank()) {
-                val searchIntent = Intent(android.app.SearchManager.ACTION_SEARCH)
+                val searchIntent = Intent(Intent.ACTION_SEARCH)
                     .setPackage(explicitPkg)
                     .putExtra(android.app.SearchManager.QUERY, effectiveQuery)
                 if (runCatching { startActivity(searchIntent) }.isSuccess) return
