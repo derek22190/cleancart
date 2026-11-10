@@ -709,16 +709,24 @@ object ScanApi {
         val id = item.optString("id").lowercase()
         val name = item.optString("name").lowercase()
         return when {
-            id in setOf("red40", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "caramelcolor", "tio2") -> "dyes"
-            id in setOf("hfcs", "corn_syrup", "cornsyrup") -> "hfcs"
+            id in setOf("red40", "red3", "yellow5", "yellow6", "blue1", "blue2", "green3", "caramel_color", "caramelcolor", "tio2") ||
+                Regex("\\b(red\\s*(40|3)|yellow\\s*(5|6)|blue\\s*(1|2)|green\\s*3|caramel\\s*color|titanium\\s*dioxide|artificial\\s*color)\\b").containsMatchIn(name) -> "dyes"
+            id in setOf("hfcs", "corn_syrup", "cornsyrup") ||
+                Regex("\\b(high[\\s-]*fructose\\s+corn\\s+syrup|hfcs|corn\\s+syrup)\\b").containsMatchIn(name) -> "hfcs"
             id in setOf("soybean_oil", "soybeanoil", "canola_oil", "canolaoil", "corn_oil", "cornoil", "cottonseed_oil", "cottonseedoil", "sunflower_oil", "sunfloweroil", "safflower_oil", "saffloweroil", "grapeseed_oil", "grapeseedoil", "rice_bran_oil", "ricebranoil", "vegetable_oil", "vegoil", "phoil", "hydrogoil") ||
                 Regex("\\b(soybean|canola|rapeseed|corn|cottonseed|sunflower|safflower|grapeseed|rice\\s*bran|vegetable|hydrogenated)\\s+oil\\b").containsMatchIn(name) -> "seedOils"
-            id in setOf("bha", "bht", "tbhq", "sodium_benzoate", "nabenzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "capropionate", "potassium_bromate", "propylparaben", "edta") -> "preservatives"
-            id in setOf("sodium_nitrite", "sodium_nitrate", "celerynitrate") -> "nitrates"
-            id in setOf("sucralose", "aspartame", "ace_k", "acek", "saccharin", "neotame", "advantame") -> "sweeteners"
-            id in setOf("polysorbate_80", "polysorbate80", "polysorbate_60", "polysorbate60", "carboxymethylcellulose", "cmc", "mono_diglycerides", "monodiglycerides", "datem", "sodium_stearoyl_lactylate", "pgpr", "carrageenan") -> "emulsifiers"
-            id in setOf("xanthan_gum", "xanthan", "guar_gum", "locust_bean_gum", "cellulose_gum", "gellan_gum", "soylecithin") -> "gums"
-            id in setOf("msg", "artificial_flavor", "artificialflavor", "natural_flavor", "naturalflavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate") -> "flavors"
+            id in setOf("sodium_nitrite", "nanitrite", "sodium_nitrate", "nanitrate", "celerynitrate", "potassium_nitrite", "potassium_nitrate") ||
+                Regex("\\b(sodium\\s+nitrite|sodium\\s+nitrate|potassium\\s+nitrite|potassium\\s+nitrate|celery\\s+(powder|juice)|nitrates?|nitrites?)\\b").containsMatchIn(name) -> "nitrates"
+            id in setOf("bha", "bht", "tbhq", "sodium_benzoate", "nabenzoate", "potassium_sorbate", "ksorbate", "calcium_propionate", "capropionate", "potassium_bromate", "propylparaben", "edta") ||
+                Regex("\\b(bha|bht|tbhq|sodium\\s+benzoate|potassium\\s+sorbate|calcium\\s+propionate|potassium\\s+bromate|propylparaben|edta|butylated)\\b").containsMatchIn(name) -> "preservatives"
+            id in setOf("sucralose", "aspartame", "ace_k", "acek", "saccharin", "neotame", "advantame") ||
+                Regex("\\b(sucralose|aspartame|acesulfame|ace[\\s-]*k|saccharin|neotame|advantame)\\b").containsMatchIn(name) -> "sweeteners"
+            id in setOf("polysorbate_80", "polysorbate80", "polysorbate_60", "polysorbate60", "carboxymethylcellulose", "cmc", "mono_diglycerides", "monodiglycerides", "datem", "sodium_stearoyl_lactylate", "pgpr", "carrageenan") ||
+                Regex("\\b(polysorbate|carboxymethylcellulose|mono[\\s-]*and[\\s-]*diglycerides|datem|sodium\\s+stearoyl\\s+lactylate|pgpr|carrageenan)\\b").containsMatchIn(name) -> "emulsifiers"
+            id in setOf("xanthan_gum", "xanthan", "guar_gum", "locust_bean_gum", "cellulose_gum", "gellan_gum", "soylecithin") ||
+                Regex("\\b(xanthan\\s+gum|guar\\s+gum|locust\\s+bean\\s+gum|cellulose\\s+gum|gellan\\s+gum|soy\\s+lecithin)\\b").containsMatchIn(name) -> "gums"
+            id in setOf("msg", "artificial_flavor", "artificialflavor", "natural_flavor", "naturalflavor", "autolyzed_yeast", "disodium_inosinate", "disodium_guanylate") ||
+                Regex("\\b(monosodium\\s+glutamate|msg|artificial\\s+flavors?|natural\\s+flavors?|autolyzed\\s+yeast|disodium\\s+inosinate|disodium\\s+guanylate)\\b").containsMatchIn(name) -> "flavors"
             else -> ""
         }
     }
@@ -790,7 +798,7 @@ object ScanApi {
                 hadSeedOilRemoved = true
                 continue
             }
-            val is2x = cat.isNotEmpty() && (cat in familySet || (cat == "nitrates" && "preservatives" in familySet))
+            val is2x = cat.isNotEmpty() && cat in familySet
             val basePen = when (risk) {
                 "high" -> 35
                 "moderate" -> 20

@@ -1768,9 +1768,13 @@ class MainActivity : Activity() {
 
     private fun showOnboardingFunnelDialog() {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val alreadyDone = prefs.getBoolean("onboarding_funnel_done_v1", false)
+        val seedOilsCurrentlyOn = ScanApi.isSeedOilsEnabled(this)
         val initialSet = prefs.getStringSet("familyWatchlist", null)
-        val selectedGoals = initialSet?.map { if (it == "nitrites") "nitrates" else it }?.toMutableSet()
-            ?: mutableSetOf("seedOils", "dyes", "hfcs")
+        val selectedGoals = (initialSet?.map { if (it == "nitrites") "nitrates" else it }?.toMutableSet()
+            ?: mutableSetOf("seedOils", "dyes", "hfcs")).apply {
+            if (!seedOilsCurrentlyOn) remove("seedOils")
+        }
         val selectedDietary = prefs.getStringSet("dietaryWatchlist", null)?.toMutableSet() ?: mutableSetOf()
         var selectedHousehold = prefs.getString("householdProfile", "kids_family") ?: "kids_family"
         var selectedPrimaryGoal = prefs.getString("primaryGoal", "seed_oil_free") ?: "seed_oil_free"
@@ -1877,7 +1881,9 @@ class MainActivity : Activity() {
             Triple("wheat_gluten", "🌾 Wheat & Gluten Guard", "Flags wheat, enriched flour, barley, malt, rye, spelt & semolina"),
             Triple("peanuts_nuts", "🥜 Peanut & Tree Nut Guard", "Flags peanuts, almonds, cashews, walnuts, pecans & pistachios"),
             Triple("soy", "🫘 Soy Guard", "Flags soy protein, soy lecithin, soybean oil, tofu & edamame"),
-            Triple("egg", "🥚 Egg Guard", "Flags whole egg, egg whites/yolks, albumin & mayonnaise")
+            Triple("egg", "🥚 Egg Guard", "Flags whole egg, egg whites/yolks, albumin & mayonnaise"),
+            Triple("shellfish_fish", "🐟 Shellfish & Fish Guard", "Flags shrimp, crab, lobster, clams, anchovies, salmon, tuna & cod"),
+            Triple("high_sodium", "🧂 High Sodium Watch", "Flags >=400mg sodium/100g, MSG, sodium phosphate & added brine")
         )
 
         data class MiniTestSample(
@@ -1922,6 +1928,7 @@ class MainActivity : Activity() {
 
         var funnelDialog: AlertDialog? = null
         var currentStep = 1
+        var lastTrackedStep = 0
 
         val scroll = ScrollView(this)
         val card = LinearLayout(this).apply {
@@ -1933,6 +1940,17 @@ class MainActivity : Activity() {
             }
         }
         scroll.addView(card)
+
+        fun buildAnalyticsProps(extraAction: String? = null): JSONObject = JSONObject().apply {
+            put("step", currentStep)
+            put("isReturningUser", alreadyDone)
+            put("householdProfile", selectedHousehold)
+            put("primaryGoal", selectedPrimaryGoal)
+            put("store", selectedStore)
+            put("watchlistCount", selectedGoals.size)
+            put("dietaryCount", selectedDietary.size)
+            if (extraAction != null) put("exitAction", extraAction)
+        }
 
         fun saveWatchlistAndMarkDone() {
             val toSave = selectedGoals.toMutableSet()
@@ -1961,27 +1979,37 @@ class MainActivity : Activity() {
             "target" -> "Target"
             "costco" -> "Costco"
             "sams" -> "Sam's Club"
+            "bjs" -> "BJ's Wholesale"
             "aldi" -> "ALDI"
             "kroger" -> "Kroger"
             "instacart" -> "Instacart"
             "amazon" -> "Amazon / Whole Foods"
+            "wholefoods" -> "Whole Foods Market"
+            "doordash" -> "DoorDash"
+            "ubereats" -> "Uber Eats"
+            "shipt" -> "Shipt"
             else -> "Walmart"
         }
 
         fun renderFunnelStep(step: Int) {
             currentStep = step
+            if (lastTrackedStep != step) {
+                lastTrackedStep = step
+                ScanApi.trackEvent(this@MainActivity, "onboarding_step_viewed", buildAnalyticsProps())
+            }
             card.removeAllViews()
             scroll.post { scroll.scrollTo(0, 0) }
 
-            // Top Row: Back button + Step badge + Skip button
+            // Top Row: Back button + weighted Step badge + Close / Skip button (320dp–360dp safe)
             val headerRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, 0, 0, dp(10))
             }
             if (step > 1) {
-                headerRow.addView(label("← Back", 12.5f, 0xFF374151.toInt(), bold = true).apply {
-                    setPadding(dp(10), dp(5), dp(10), dp(5))
+                headerRow.addView(label("← Back", 12f, 0xFF374151.toInt(), bold = true).apply {
+                    setSingleLine(true)
+                    setPadding(dp(9), dp(5), dp(9), dp(5))
                     background = GradientDrawable().apply {
                         setColor(0xFFF3F4F6.toInt())
                         cornerRadius = dp(999).toFloat()
@@ -1989,7 +2017,8 @@ class MainActivity : Activity() {
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { marginEnd = dp(8) }
+                    ).apply { marginEnd = dp(6) }
+                    contentDescription = "Back to step ${step - 1}"
                     setOnClickListener { renderFunnelStep(step - 1) }
                 })
             }
@@ -2004,32 +2033,53 @@ class MainActivity : Activity() {
                 7 -> "🥦 STEP 7 OF 8 · HOW BROC WORKS"
                 else -> "🥦 STEP 8 OF 8 · YOUR PLAN"
             }
-            headerRow.addView(label(stepLabelText, 10.5f, 0xFF0B5E39.toInt(), bold = true).apply {
+            val badgeWrap = FrameLayout(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = dp(6)
+                }
+            }
+            badgeWrap.addView(label(stepLabelText, 10.5f, 0xFF0B5E39.toInt(), bold = true).apply {
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
                 setPadding(dp(10), dp(5), dp(10), dp(5))
                 background = GradientDrawable().apply {
                     setColor(0xFFE6F5EC.toInt())
                     cornerRadius = dp(999).toFloat()
                 }
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.START or Gravity.CENTER_VERTICAL
+                )
             })
-            headerRow.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
-            })
-            headerRow.addView(label("Skip →", 12.5f, 0xFF4B5563.toInt(), bold = true).apply {
+            headerRow.addView(badgeWrap)
+
+            val dismissLabel = if (alreadyDone) "✕ Close" else "Skip →"
+            headerRow.addView(label(dismissLabel, 12f, 0xFF4B5563.toInt(), bold = true).apply {
+                setSingleLine(true)
                 setPadding(dp(10), dp(5), dp(10), dp(5))
                 background = GradientDrawable().apply {
                     setColor(0xFFF3F4F6.toInt())
                     cornerRadius = dp(999).toFloat()
                 }
+                contentDescription = if (alreadyDone) "Close watchlist calibration without saving" else "Skip onboarding and continue with Free Plan"
                 setOnClickListener {
-                    saveWatchlistAndMarkDone()
-                    funnelDialog?.dismiss()
+                    if (alreadyDone) {
+                        ScanApi.trackEvent(this@MainActivity, "onboarding_dismissed", buildAnalyticsProps("close"))
+                        funnelDialog?.dismiss()
+                    } else {
+                        ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("skip"))
+                        saveWatchlistAndMarkDone()
+                        funnelDialog?.dismiss()
+                    }
                 }
             })
             card.addView(headerRow)
 
-            // 8-Segment Progress Bar
+            // 8-Segment Progress Bar (tappable for returning users)
             val progressRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
+                contentDescription = "Onboarding progress: step $step of 8"
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -2041,8 +2091,12 @@ class MainActivity : Activity() {
                         setColor(if (i <= step) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                         cornerRadius = dp(99).toFloat()
                     }
-                    layoutParams = LinearLayout.LayoutParams(0, dp(5), 1f).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, dp(if (alreadyDone) 6 else 5), 1f).apply {
                         if (i < 8) marginEnd = dp(4)
+                    }
+                    if (alreadyDone) {
+                        contentDescription = "Jump to step $i"
+                        setOnClickListener { renderFunnelStep(i) }
                     }
                 })
             }
@@ -2061,14 +2115,16 @@ class MainActivity : Activity() {
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
                 householdOptions.forEach { h ->
-                    val isSelected = selectedHousehold == h.id
+                    val optActive = selectedHousehold == h.id
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(12), dp(10), dp(12), dp(10))
+                        isSelected = optActive
+                        contentDescription = "${h.title}. ${h.subtitle}. ${if (optActive) "Selected" else "Not selected"}"
                         background = GradientDrawable().apply {
-                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
-                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            setColor(if (optActive) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (optActive) 2 else 1), if (optActive) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                             cornerRadius = dp(14).toFloat()
                         }
                         layoutParams = LinearLayout.LayoutParams(
@@ -2089,13 +2145,13 @@ class MainActivity : Activity() {
                         addView(label(h.title, 14.5f, 0xFF111814.toInt(), bold = true))
                         addView(label(h.subtitle, 12f, 0xFF6B7280.toInt()))
                     })
-                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                    row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
                         layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
-                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                            setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
                     })
                     card.addView(row)
@@ -2113,7 +2169,7 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = dp(8) }
                     setOnClickListener {
-                        if (selectedGoals.isEmpty()) {
+                        if (!alreadyDone && selectedGoals.isEmpty()) {
                             val h = householdOptions.find { it.id == selectedHousehold } ?: householdOptions.first()
                             selectedGoals.addAll(h.recCats)
                         }
@@ -2133,14 +2189,16 @@ class MainActivity : Activity() {
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
                 primaryGoalOptions.forEach { pg ->
-                    val isSelected = selectedPrimaryGoal == pg.id
+                    val optActive = selectedPrimaryGoal == pg.id
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(12), dp(10), dp(12), dp(10))
+                        isSelected = optActive
+                        contentDescription = "${pg.title}. ${pg.subtitle}. ${if (optActive) "Selected" else "Not selected"}"
                         background = GradientDrawable().apply {
-                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
-                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            setColor(if (optActive) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (optActive) 2 else 1), if (optActive) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                             cornerRadius = dp(14).toFloat()
                         }
                         layoutParams = LinearLayout.LayoutParams(
@@ -2160,13 +2218,13 @@ class MainActivity : Activity() {
                         addView(label(pg.title, 14.5f, 0xFF111814.toInt(), bold = true))
                         addView(label(pg.subtitle, 12f, 0xFF6B7280.toInt()))
                     })
-                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                    row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
                         layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
-                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                            setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
                     })
                     card.addView(row)
@@ -2184,8 +2242,10 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = dp(8) }
                     setOnClickListener {
-                        val pg = primaryGoalOptions.find { it.id == selectedPrimaryGoal } ?: primaryGoalOptions.first()
-                        selectedGoals.addAll(pg.boostCats)
+                        if (!alreadyDone && selectedGoals.isEmpty()) {
+                            val pg = primaryGoalOptions.find { it.id == selectedPrimaryGoal } ?: primaryGoalOptions.first()
+                            selectedGoals.addAll(pg.boostCats)
+                        }
                         renderFunnelStep(3)
                     }
                 })
@@ -2196,20 +2256,22 @@ class MainActivity : Activity() {
             if (step == 3) {
                 card.addView(label("Where do you usually grocery shop?", 21f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "HeyBroc supports all 13 major grocery stores. Pick your main store so 1-tap Clean Swaps open directly in your store:",
+                    "HeyBroc supports all 12+ grocery & delivery stores. Pick your main store so 1-tap Clean Swaps open directly in your store:",
                     13.5f,
                     0xFF4B5563.toInt()
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
                 storeOptions.forEach { (storeId, storeTitle, storeSub) ->
-                    val isSelected = selectedStore == storeId
+                    val optActive = selectedStore == storeId
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(12), dp(9), dp(12), dp(9))
+                        isSelected = optActive
+                        contentDescription = "$storeTitle. $storeSub. ${if (optActive) "Selected" else "Not selected"}"
                         background = GradientDrawable().apply {
-                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
-                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            setColor(if (optActive) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (optActive) 2 else 1), if (optActive) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                             cornerRadius = dp(14).toFloat()
                         }
                         layoutParams = LinearLayout.LayoutParams(
@@ -2227,13 +2289,13 @@ class MainActivity : Activity() {
                         addView(label(storeTitle, 14f, 0xFF111814.toInt(), bold = true))
                         addView(label(storeSub, 11.5f, 0xFF6B7280.toInt()))
                     })
-                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                    row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
                         layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
-                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                            setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
                     })
                     card.addView(row)
@@ -2265,14 +2327,16 @@ class MainActivity : Activity() {
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
                 goalOptions.forEach { g ->
-                    val isSelected = g.id in selectedGoals
+                    val optActive = g.id in selectedGoals
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(12), dp(10), dp(12), dp(10))
+                        isSelected = optActive
+                        contentDescription = "${g.title}. ${g.subtitle}. ${if (optActive) "2x penalty enabled" else "Off"}"
                         background = GradientDrawable().apply {
-                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
-                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            setColor(if (optActive) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (optActive) 2 else 1), if (optActive) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                             cornerRadius = dp(14).toFloat()
                         }
                         layoutParams = LinearLayout.LayoutParams(
@@ -2293,13 +2357,13 @@ class MainActivity : Activity() {
                         addView(label(g.title, 14.5f, 0xFF111814.toInt(), bold = true))
                         addView(label(g.subtitle, 12f, 0xFF6B7280.toInt()))
                     })
-                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                    row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
                         layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
-                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                            setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
                     })
                     card.addView(row)
@@ -2336,14 +2400,16 @@ class MainActivity : Activity() {
                 ).apply { setPadding(0, dp(4), 0, dp(12)) })
 
                 dietaryOptions.forEach { (dietId, dietTitle, dietSub) ->
-                    val isSelected = dietId in selectedDietary
+                    val optActive = dietId in selectedDietary
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(12), dp(9), dp(12), dp(9))
+                        isSelected = optActive
+                        contentDescription = "$dietTitle. $dietSub. ${if (optActive) "Alert enabled" else "Off"}"
                         background = GradientDrawable().apply {
-                            setColor(if (isSelected) 0xFFF0FDF4.toInt() else Color.WHITE)
-                            setStroke(dp(if (isSelected) 2 else 1), if (isSelected) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
+                            setColor(if (optActive) 0xFFF0FDF4.toInt() else Color.WHITE)
+                            setStroke(dp(if (optActive) 2 else 1), if (optActive) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
                             cornerRadius = dp(14).toFloat()
                         }
                         layoutParams = LinearLayout.LayoutParams(
@@ -2361,13 +2427,13 @@ class MainActivity : Activity() {
                         addView(label(dietTitle, 14f, 0xFF111814.toInt(), bold = true))
                         addView(label(dietSub, 11.5f, 0xFF6B7280.toInt()))
                     })
-                    row.addView(label(if (isSelected) "✓" else "", 13f, Color.WHITE, bold = true).apply {
+                    row.addView(label(if (optActive) "✓" else "", 13f, Color.WHITE, bold = true).apply {
                         gravity = Gravity.CENTER
                         layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(if (isSelected) 0xFF16A34A.toInt() else Color.WHITE)
-                            setStroke(dp(2), if (isSelected) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
+                            setColor(if (optActive) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (optActive) 0xFF16A34A.toInt() else 0xFFD1D5DB.toInt())
                         }
                     })
                     card.addView(row)
@@ -2479,9 +2545,13 @@ class MainActivity : Activity() {
                 }
                 miniTestSamples.forEachIndexed { idx, sample ->
                     val active = activeSampleIdx == idx
-                    tabsRow.addView(label(sample.label, 12f, if (active) 0xFF14532D.toInt() else 0xFF374151.toInt(), bold = true).apply {
+                    tabsRow.addView(label(sample.label, 11.5f, if (active) 0xFF14532D.toInt() else 0xFF374151.toInt(), bold = true).apply {
                         gravity = Gravity.CENTER
-                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        setSingleLine(true)
+                        ellipsize = TextUtils.TruncateAt.END
+                        isSelected = active
+                        contentDescription = "Test sample ${sample.label}"
+                        setPadding(dp(6), dp(8), dp(6), dp(8))
                         background = GradientDrawable().apply {
                             setColor(if (active) 0xFFF0FDF4.toInt() else Color.WHITE)
                             setStroke(dp(if (active) 2 else 1), if (active) 0xFF16A34A.toInt() else 0xFFE5E7EB.toInt())
@@ -2556,7 +2626,12 @@ class MainActivity : Activity() {
                 return
             }
 
-            // Step 8: Personalized Plan (Start 7-Day Free Pro Trial / Continue with Free Plan / Sign In)
+            // Step 8: Personalized Plan (Start Free Pro Trial / Continue with Free Plan / Sign In)
+            val refCode = ScanApi.referredByCode(this@MainActivity)
+            val isFriendRef = refCode?.startsWith("BROC-", ignoreCase = true) == true
+            val effectiveTrialDays = if (!refCode.isNullOrBlank() && !isFriendRef) 14 else 7
+            val weeklyFreeSwaps = ScanApi.weeklySwapsLimit(this@MainActivity)
+
             val goalSuffix = if (selectedGoals.size == 1) "" else "s"
             val dietSuffix = if (selectedDietary.isNotEmpty()) {
                 val ds = if (selectedDietary.size == 1) "" else "s"
@@ -2584,9 +2659,31 @@ class MainActivity : Activity() {
                 ))
             })
 
+            if (!refCode.isNullOrBlank()) {
+                card.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(9), dp(12), dp(9))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFFEFCE8.toInt())
+                        setStroke(dp(1), 0xFFFDE047.toInt())
+                        cornerRadius = dp(14).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(10) }
+                    val refMsg = if (isFriendRef) {
+                        "🎁 Friend Invite ($refCode) Applied: Start your trial to unlock +7 Free Pro Days for both of you!"
+                    } else {
+                        "🎉 Creator Code $refCode Applied: Unlocked your 14-Day Extended Free Pro Trial!"
+                    }
+                    addView(label(refMsg, 12f, 0xFF854D0E.toInt(), bold = true))
+                })
+            }
+
             card.addView(label("Choose How You Want to Start", 21f, 0xFF111814.toInt(), bold = true))
             card.addView(label(
-                "Barcode & search grading is always 100% free. Unlock unlimited 1-tap $storeDisplayName Clean Swaps & Whole-Cart Checks with a 7-Day Free Pro Trial ($0 today), or start on the Free Plan:",
+                "Barcode & search grading is always 100% free. Unlock unlimited 1-tap $storeDisplayName Clean Swaps & Whole-Cart Checks with a $effectiveTrialDays-Day Free Pro Trial ($0 today), or start on the Free Plan:",
                 13f,
                 0xFF4B5563.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(12)) })
@@ -2604,21 +2701,21 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(12) }
             }
-            proCard.addView(label("⭐ HeyBroc Family Pro · 7 DAYS FREE ($0 TODAY)", 13.5f, 0xFF14532D.toInt(), bold = true))
+            proCard.addView(label("⭐ HeyBroc Family Pro · $effectiveTrialDays DAYS FREE ($0 TODAY)", 13.5f, 0xFF14532D.toInt(), bold = true))
             proCard.addView(label(
-                "• Unlimited 1-Tap Clean Swaps at $storeDisplayName & all 13 stores\n• Whole-Cart Health Check & Swap-All Cart Cleaner\n• Unlimited Live Store Bubble & Family Cloud Sync",
+                "• Unlimited 1-Tap Clean Swaps at $storeDisplayName & all 12+ stores\n• Whole-Cart Health Check & Swap-All Cart Cleaner\n• Unlimited Live Store Bubble & Family Cloud Sync",
                 12.5f,
                 0xFF166534.toInt()
             ).apply { setPadding(0, dp(6), 0, dp(6)) })
             proCard.addView(label(
-                "$0 due today · Cancel anytime in 1 tap before day 7.",
+                "$0 due today · Then $4.17/mo billed annually ($49.99/yr) or $9.99/mo. Cancel anytime in 1 tap before day $effectiveTrialDays.",
                 11.5f,
                 0xFF15803D.toInt()
             ))
             card.addView(proCard)
 
-            // Primary CTA: Start 7-Day Free Pro Trial
-            card.addView(label("Start 7-Day Free Pro Trial ($0 Today) →", 15f, Color.WHITE, bold = true).apply {
+            // Primary CTA: Start Free Pro Trial
+            card.addView(label("Start $effectiveTrialDays-Day Free Pro Trial ($0 Today) →", 15f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(14), dp(16), dp(14))
                 background = GradientDrawable().apply {
@@ -2630,6 +2727,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(8) }
                 setOnClickListener {
+                    ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("trial"))
                     saveWatchlistAndMarkDone()
                     funnelDialog?.dismiss()
                     ScanApi.trackEvent(this@MainActivity, "paywall_viewed")
@@ -2641,9 +2739,9 @@ class MainActivity : Activity() {
             })
 
             // Secondary CTA: Continue with Free Plan (Continue as guest)
-            card.addView(label("Continue with Free Plan (Unlimited Scans) →", 14f, 0xFF1F2937.toInt(), bold = true).apply {
+            card.addView(label("Continue with Free Plan (Unlimited Scans + $weeklyFreeSwaps Swaps/Wk) →", 13.5f, 0xFF1F2937.toInt(), bold = true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(16), dp(13), dp(16), dp(13))
+                setPadding(dp(14), dp(13), dp(14), dp(13))
                 background = GradientDrawable().apply {
                     setColor(Color.WHITE)
                     setStroke(dp(2), 0xFFD1D5DB.toInt())
@@ -2654,6 +2752,7 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(8) }
                 setOnClickListener {
+                    ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("guest"))
                     saveWatchlistAndMarkDone()
                     funnelDialog?.dismiss()
                     Toast.makeText(
@@ -2665,10 +2764,11 @@ class MainActivity : Activity() {
             })
 
             // Tertiary Link: Sign In & Sync Free Across Devices
-            card.addView(label("Save Watchlist & Sign In / Sync Free Across Devices →", 12.5f, 0xFF0F7A4A.toInt(), bold = true).apply {
+            card.addView(label("Save Watchlist (${selectedGoals.size}) & Sign In / Sync Free Across Devices →", 12.5f, 0xFF0F7A4A.toInt(), bold = true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(8), dp(8), dp(8), dp(4))
                 setOnClickListener {
+                    ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("signin"))
                     saveWatchlistAndMarkDone()
                     funnelDialog?.dismiss()
                     showGoCoCoLoginDialog()
@@ -2693,7 +2793,10 @@ class MainActivity : Activity() {
                 }
             }
             dlg.setOnCancelListener {
-                saveWatchlistAndMarkDone()
+                ScanApi.trackEvent(this@MainActivity, "onboarding_dismissed", buildAnalyticsProps("cancel"))
+                if (!alreadyDone) {
+                    saveWatchlistAndMarkDone()
+                }
             }
             dlg.show()
         }
@@ -4450,6 +4553,12 @@ class MainActivity : Activity() {
                     isChecked = ScanApi.isSeedOilsEnabled(this@MainActivity)
                     setOnCheckedChangeListener { _, checked ->
                         ScanApi.setSeedOilsEnabled(this@MainActivity, checked)
+                        if (!checked) {
+                            val currentFw = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty().toMutableSet()
+                            if (currentFw.remove("seedOils")) {
+                                prefs.edit().putStringSet("familyWatchlist", currentFw).apply()
+                            }
+                        }
                         runCatching {
                             startService(
                                 Intent(this@MainActivity, OverlayWindowService::class.java).apply {

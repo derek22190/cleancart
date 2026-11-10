@@ -34,11 +34,16 @@ import {
   type SwapResult,
 } from "@/lib/swaps";
 import type { PlanId } from "@/lib/pricing";
+import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import PostCheckoutOtoModal from "./PostCheckoutOtoModal";
 import Scorecard, { type SwapRecord } from "./Scorecard";
-import WatchlistMiniFunnel, { type DietaryOptionId, type OnboardingSelections } from "./WatchlistMiniFunnel";
+import WatchlistMiniFunnel, {
+  type DietaryOptionId,
+  type FunnelStep,
+  type OnboardingSelections,
+} from "./WatchlistMiniFunnel";
 
 /* ------------------------------------------------------------------ */
 /* Types & helpers                                                     */
@@ -440,6 +445,8 @@ export default function Simulator({
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [watchlistFunnelOpen, setWatchlistFunnelOpen] = useState(false);
+  const [watchlistFunnelStep, setWatchlistFunnelStep] = useState<FunnelStep>(1);
+  const [onboardingDoneState, setOnboardingDoneState] = useState(false);
   const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>(["seedOils", "dyes", "hfcs"]);
   const [dietaryWatchlist, setDietaryWatchlist] = useState<DietaryOptionId[]>([]);
   const [authUser, setAuthUser] = useState<AuthenticatedUser | null>(null);
@@ -471,6 +478,12 @@ export default function Simulator({
         if (!cancelled) setDeviceIdState(deviceId);
 
         try {
+          const savedWatch1x = JSON.parse(
+            window.localStorage.getItem("heybroc_watchlist_1x") || "null"
+          ) as Partial<Watch> | null;
+          if (savedWatch1x && typeof savedWatch1x === "object" && !cancelled) {
+            setWatch((prev) => ({ ...prev, ...savedWatch1x }));
+          }
           const savedWl = JSON.parse(
             window.localStorage.getItem("heybroc_family_watchlist") || "null"
           ) as Category[] | null;
@@ -485,7 +498,15 @@ export default function Simulator({
           }
           const savedStore = (window.localStorage.getItem("heybroc_preferred_store") || "").trim();
           if (savedStore && (STORES as string[]).includes(savedStore) && !cancelled) {
-            setStore(savedStore as Store);
+            const nextStore = savedStore as Store;
+            setStore(nextStore);
+            setCart((prevCart) =>
+              prevCart.map((item) =>
+                item.origin === "swap" && item.category
+                  ? cleanToProduct(item.category, item.replacedItem, nextStore)
+                  : item
+              )
+            );
           }
         } catch {
           /* ignore */
@@ -495,6 +516,7 @@ export default function Simulator({
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
         const onboardingDone = window.localStorage.getItem("heybroc_onboarding_done") === "1";
+        if (!cancelled) setOnboardingDoneState(onboardingDone);
         const isAdTestLanding =
           initialAdTestMode || params.get("ad") === "test" || params.get("test") === "1";
         if (isAdTestLanding) {
@@ -508,6 +530,7 @@ export default function Simulator({
           params.get("onboarding") === "1" ||
           (!onboardingDone && !params.get("session_id") && !isAdTestLanding)
         ) {
+          setWatchlistFunnelStep(1);
           setWatchlistFunnelOpen(true);
         }
 
@@ -819,6 +842,16 @@ export default function Simulator({
   const score = useMemo(
     () => gradeProduct(`${active.brand} ${active.title}`, active.ingredients, watch, active.nutrition, familyWatchlist),
     [active, watch, familyWatchlist],
+  );
+  const activeDietaryAlerts = useMemo(
+    () =>
+      evaluateDietaryAlerts(
+        dietaryWatchlist,
+        `${active.brand} ${active.title}`,
+        active.ingredients,
+        active.nutrition,
+      ),
+    [dietaryWatchlist, active],
   );
   const swap = useMemo(
     () => resolveSwap({ score: score.score, productTitle: `${active.brand} ${active.title}`, ingredients: active.ingredients, category: active.category, store, watchlist: watch, familyWatchlist }),
@@ -1391,7 +1424,13 @@ export default function Simulator({
 
   const toggleWatch = (c: Category) => {
     const nextVal = !watch[c];
-    setWatch((w) => ({ ...w, [c]: !w[c] }));
+    setWatch((w) => {
+      const next = { ...w, [c]: nextVal };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("heybroc_watchlist_1x", JSON.stringify(next));
+      }
+      return next;
+    });
     if (!nextVal) {
       setFamilyWatchlist((prev) => {
         const nextFw = prev.filter((cat) => cat !== c);
@@ -1402,6 +1441,46 @@ export default function Simulator({
       });
     }
   };
+
+  const persistOnboardingSelections = useCallback(
+    (selected: Category[], extras?: OnboardingSelections) => {
+      setFamilyWatchlist(selected);
+      if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
+      if (extras?.store) switchStore(extras.store);
+      setWatch((prev) => {
+        const next = { ...prev };
+        for (const c of ALL_CATEGORIES) {
+          next[c] = selected.includes(c) ? true : prev[c];
+        }
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("heybroc_watchlist_1x", JSON.stringify(next));
+        }
+        return next;
+      });
+      setOnboardingDoneState(true);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("heybroc_family_watchlist", JSON.stringify(selected));
+        if (extras?.dietaryWatchlist) {
+          window.localStorage.setItem(
+            "heybroc_dietary_watchlist",
+            JSON.stringify(extras.dietaryWatchlist)
+          );
+        }
+        if (extras?.store) {
+          window.localStorage.setItem("heybroc_preferred_store", extras.store);
+        }
+        if (extras?.householdProfile) {
+          window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
+        }
+        if (extras?.primaryGoal) {
+          window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
+        }
+        window.localStorage.setItem("heybroc_onboarding_done", "1");
+      }
+    },
+    [switchStore]
+  );
+
   const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
 
   const isCartBubbleMode = viewMode === "search" || cartClimbFlash;
@@ -1463,11 +1542,15 @@ export default function Simulator({
             id="topbar-watchlist-funnel"
             type="button"
             className="topbar-pill"
-            onClick={() => setWatchlistFunnelOpen(true)}
-            title="Personalize your family's 2x additive watchlist"
+            onClick={() => {
+              setWatchlistFunnelStep(1);
+              setWatchlistFunnelOpen(true);
+            }}
+            title="Personalize your family's 2x additive & allergy watchlist"
           >
             <span className="topbar-pill-dot" aria-hidden />
-            🛡️ Avoid ({familyWatchlist.length})
+            🛡️ Avoid ({familyWatchlist.length}
+            {dietaryWatchlist.length > 0 ? ` + ${dietaryWatchlist.length} Guard` : ""})
           </button>
 
           <a
@@ -1856,14 +1939,20 @@ export default function Simulator({
             id="open-watchlist-funnel"
             type="button"
             className="tool"
-            onClick={() => setWatchlistFunnelOpen(true)}
+            onClick={() => {
+              setWatchlistFunnelStep(1);
+              setWatchlistFunnelOpen(true);
+            }}
             style={{ width: "100%", textAlign: "left" }}
           >
             <span className="tool-icon">🛡️</span>
             <span>
-              <b>Family Ingredient Watchlist ({familyWatchlist.length} Active · 2x Penalty)</b>
+              <b>
+                Family Ingredient &amp; Allergy Watchlist ({familyWatchlist.length} Active · 2x Penalty
+                {dietaryWatchlist.length > 0 ? ` · ${dietaryWatchlist.length} Allergy/Diet` : ""})
+              </b>
               <small>
-                Choose ingredients your family avoids (Seed Oils, Red 40 &amp; Dyes, High Fructose Corn Syrup, Nitrites &amp; Artificial Sweeteners) — HeyBroc doubles their score penalty and finds clean swaps. Tap to customize →
+                Choose ingredients &amp; family allergens to avoid (Seed Oils, Red 40, HFCS, Nitrites, Sugar, Dairy, Gluten, Peanuts &amp; more) — HeyBroc doubles penalties, surfaces instant Allergy/Sugar badges, and finds clean swaps. Tap to customize →
               </small>
             </span>
           </button>
@@ -1911,7 +2000,23 @@ export default function Simulator({
                   Compact Badge (35/100)
                 </button>
               </div>
-              <div className="card-head"><h2>Chemical Watchlist</h2><button className="link-btn" onClick={() => setWatch(DEFAULT_WATCHLIST)}>Reset</button></div>
+              <div className="card-head">
+                <h2>Chemical Watchlist</h2>
+                <button
+                  className="link-btn"
+                  onClick={() => {
+                    setWatch(DEFAULT_WATCHLIST);
+                    if (typeof window !== "undefined") {
+                      window.localStorage.setItem(
+                        "heybroc_watchlist_1x",
+                        JSON.stringify(DEFAULT_WATCHLIST)
+                      );
+                    }
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
               <ul>
                 {ALL_CATEGORIES.map((c) => (
                   <li key={c}>
@@ -2043,7 +2148,13 @@ export default function Simulator({
               {!hiddenForTrip && overlay !== "card" && (
                 <div
                   id="floating-overlay-pill"
-                  className={`pill pill--${pillTheme} tone-${isCartBubbleMode ? cartAvgTone : score.color} ${overlay === "min" || pillSize === "compact" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
+                  className={`pill pill--${pillTheme} tone-${
+                    isCartBubbleMode
+                      ? cartAvgTone
+                      : activeDietaryAlerts.length > 0
+                        ? "red"
+                        : score.color
+                  } ${overlay === "min" || pillSize === "compact" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
                   style={{
                     top: `${pillY}%`,
                     transform: pillDragOffset
@@ -2061,7 +2172,9 @@ export default function Simulator({
                   aria-label={
                     isCartBubbleMode
                       ? `Cart Average ${animatedCartAvg} of 100. Tap to open Whole-Cart Health Check.`
-                      : `HeyBroc score ${score.score} of 100. Tap to inspect.`
+                      : activeDietaryAlerts.length > 0
+                        ? `Dietary alert: ${activeDietaryAlerts.map((a) => a.label).join(", ")}. HeyBroc score ${score.score} of 100. Tap to inspect.`
+                        : `HeyBroc score ${score.score} of 100. Tap to inspect.`
                   }
                   tabIndex={0}
                   onKeyDown={(e) => {
@@ -2075,7 +2188,13 @@ export default function Simulator({
                   <img src="/broc-mascot.jpg" alt="" className="pill-mascot" />
                   <span className="pill-dot" />
                   {overlay === "min" || pillSize === "compact" ? (
-                    <b>{isCartBubbleMode ? `🛒 ${animatedCartAvg}/100` : `${score.score}/100`}</b>
+                    <b>
+                      {isCartBubbleMode
+                        ? `🛒 ${animatedCartAvg}/100`
+                        : activeDietaryAlerts.length > 0
+                          ? `⚠️ ${activeDietaryAlerts[0].shortBadge} · ${score.score}/100`
+                          : `${score.score}/100`}
+                    </b>
                   ) : isCartBubbleMode ? (
                     <>
                       <span>🛒 Cart Avg:</span>
@@ -2091,9 +2210,26 @@ export default function Simulator({
                     </>
                   ) : (
                     <>
+                      {activeDietaryAlerts.length > 0 && (
+                        <span
+                          id="pill-dietary-alert"
+                          style={{
+                            background: "#dc2626",
+                            color: "#ffffff",
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            padding: "2px 7px",
+                            borderRadius: 999,
+                            letterSpacing: "0.02em",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          ⚠️ {activeDietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")}
+                        </span>
+                      )}
                       <b>{score.score}/100</b>
                       <span className="pill-sep">•</span>
-                      <span>Tap to Inspect</span>
+                      <span>{activeDietaryAlerts.length > 0 ? "Inspect" : "Tap to Inspect"}</span>
                       <button
                         className="pill-collapse"
                         aria-label="Minimize"
@@ -2206,6 +2342,71 @@ export default function Simulator({
                               </div>
                             </div>
                           </div>
+
+                          {/* Personal Allergy & Dietary Watch Alert Box */}
+                          {activeDietaryAlerts.length > 0 && (
+                            <div
+                              id="inspect-dietary-alert-card"
+                              style={{
+                                background: "#fef2f2",
+                                border: "1.5px solid #fca5a5",
+                                borderRadius: 14,
+                                padding: "11px 14px",
+                                marginBottom: 12,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 8,
+                                  marginBottom: 4,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: 10.5,
+                                    fontWeight: 800,
+                                    letterSpacing: "0.06em",
+                                    color: "#991b1b",
+                                    textTransform: "uppercase",
+                                  }}
+                                >
+                                  ⚠️ Personal Allergy &amp; Diet Alert ({activeDietaryAlerts.length})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWatchlistFunnelStep(5);
+                                    setWatchlistFunnelOpen(true);
+                                  }}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    padding: 0,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: "#b91c1c",
+                                    textDecoration: "underline",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Edit Guard
+                                </button>
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {activeDietaryAlerts.map((alert) => (
+                                  <div
+                                    key={alert.id}
+                                    style={{ fontSize: 12.5, color: "#7f1d1d", lineHeight: 1.4 }}
+                                  >
+                                    <b>{alert.label}:</b> {alert.reason}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           {/* 1-Tap Clean Swap Banner right at top when dirty */}
                           {swap ? (
@@ -2481,7 +2682,10 @@ export default function Simulator({
                                   <button
                                     key={badge}
                                     type="button"
-                                    onClick={() => setWatchlistFunnelOpen(true)}
+                                    onClick={() => {
+                                      setWatchlistFunnelStep(badge === "Allergy Guard" ? 5 : 4);
+                                      setWatchlistFunnelOpen(true);
+                                    }}
                                     style={{
                                       padding: "4px 10px",
                                       borderRadius: 999,
@@ -3120,131 +3324,38 @@ export default function Simulator({
       {/* ============ PHASE 6 MODALS ============ */}
       <WatchlistMiniFunnel
         open={watchlistFunnelOpen}
+        initialStep={watchlistFunnelStep}
+        isReturningUser={onboardingDoneState}
         initialSelected={familyWatchlist}
         initialStore={store}
         initialDietary={dietaryWatchlist}
         appliedCreator={appliedCreator}
-        onSelectStore={switchStore}
         onClose={() => {
-          if (typeof window !== "undefined") {
-            if (!window.localStorage.getItem("heybroc_family_watchlist")) {
-              window.localStorage.setItem(
-                "heybroc_family_watchlist",
-                JSON.stringify(familyWatchlist)
-              );
-            }
-            window.localStorage.setItem("heybroc_onboarding_done", "1");
-          }
+          setWatchlistFunnelOpen(false);
+        }}
+        onDismissFirstTime={(selected, extras) => {
+          persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
         }}
         onApplyAndGuest={(selected, extras?: OnboardingSelections) => {
-          setFamilyWatchlist(selected);
-          if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
-          if (extras?.store) switchStore(extras.store);
-          setWatch((prev) => {
-            const next = { ...prev };
-            for (const c of ALL_CATEGORIES) {
-              next[c] = selected.includes(c) ? true : prev[c];
-            }
-            return next;
-          });
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(
-              "heybroc_family_watchlist",
-              JSON.stringify(selected)
-            );
-            if (extras?.dietaryWatchlist) {
-              window.localStorage.setItem(
-                "heybroc_dietary_watchlist",
-                JSON.stringify(extras.dietaryWatchlist)
-              );
-            }
-            if (extras?.store) {
-              window.localStorage.setItem("heybroc_preferred_store", extras.store);
-            }
-            if (extras?.householdProfile) {
-              window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
-            }
-            if (extras?.primaryGoal) {
-              window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
-            }
-            window.localStorage.setItem("heybroc_onboarding_done", "1");
-          }
+          persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
           setToast({
-            title: `✓ Family Watchlist Applied (${selected.length} active)`,
+            title: `✓ Family Watchlist Applied (${selected.length} active${
+              extras?.dietaryWatchlist?.length
+                ? ` · ${extras.dietaryWatchlist.length} Allergy/Diet`
+                : ""
+            })`,
             body: "2x strictness enabled — scan any product or tap Swap ↗ as a Guest anytime.",
           });
         }}
         onApplyAndSignIn={(selected, extras?: OnboardingSelections) => {
-          setFamilyWatchlist(selected);
-          if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
-          if (extras?.store) switchStore(extras.store);
-          setWatch((prev) => {
-            const next = { ...prev };
-            for (const c of ALL_CATEGORIES) {
-              next[c] = selected.includes(c) ? true : prev[c];
-            }
-            return next;
-          });
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(
-              "heybroc_family_watchlist",
-              JSON.stringify(selected)
-            );
-            if (extras?.dietaryWatchlist) {
-              window.localStorage.setItem(
-                "heybroc_dietary_watchlist",
-                JSON.stringify(extras.dietaryWatchlist)
-              );
-            }
-            if (extras?.store) {
-              window.localStorage.setItem("heybroc_preferred_store", extras.store);
-            }
-            if (extras?.householdProfile) {
-              window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
-            }
-            if (extras?.primaryGoal) {
-              window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
-            }
-            window.localStorage.setItem("heybroc_onboarding_done", "1");
-          }
+          persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
           setAuthOpen(true);
         }}
         onApplyAndStartTrial={(selected, extras?: OnboardingSelections) => {
-          setFamilyWatchlist(selected);
-          if (extras?.dietaryWatchlist) setDietaryWatchlist(extras.dietaryWatchlist);
-          if (extras?.store) switchStore(extras.store);
-          setWatch((prev) => {
-            const next = { ...prev };
-            for (const c of ALL_CATEGORIES) {
-              next[c] = selected.includes(c) ? true : prev[c];
-            }
-            return next;
-          });
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(
-              "heybroc_family_watchlist",
-              JSON.stringify(selected)
-            );
-            if (extras?.dietaryWatchlist) {
-              window.localStorage.setItem(
-                "heybroc_dietary_watchlist",
-                JSON.stringify(extras.dietaryWatchlist)
-              );
-            }
-            if (extras?.store) {
-              window.localStorage.setItem("heybroc_preferred_store", extras.store);
-            }
-            if (extras?.householdProfile) {
-              window.localStorage.setItem("heybroc_household_profile", extras.householdProfile);
-            }
-            if (extras?.primaryGoal) {
-              window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
-            }
-            window.localStorage.setItem("heybroc_onboarding_done", "1");
-          }
+          persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
           setPaywallOpen(true);
         }}

@@ -1808,6 +1808,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   );
 
   const watchlistFunnelSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+  const scanApiKtSrc = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt", "utf8");
   check(
     "8-Step Micro-Commitment Onboarding Funnel (Household -> Priority -> Store -> 2x Watchlist -> Allergy Guard -> Problem -> Mini-Test & Solution -> Personalized Plan) on Web & Android",
     Boolean(
@@ -1823,6 +1824,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         watchlistFunnelSrc.includes("onApplyAndStartTrial") &&
         watchlistFunnelSrc.includes("appliedCreator") &&
         watchlistFunnelSrc.includes("aria-pressed={active}") &&
+        watchlistFunnelSrc.includes('role="progressbar"') &&
+        watchlistFunnelSrc.includes("isReturningUser") &&
         watchlistFunnelSrc.includes("Continue with Free Plan") &&
         mainActivityKtSrc.includes("fun showOnboardingFunnelDialog()") &&
         mainActivityKtSrc.includes("STEP 1 OF 8 · HOUSEHOLD") &&
@@ -1830,8 +1833,50 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         mainActivityKtSrc.includes("onboarding_funnel_done_v1") &&
         mainActivityKtSrc.includes("KEYCODE_BACK") &&
         mainActivityKtSrc.includes('"nitrates" to "Nitrites & Curing Nitrates (2x)"') &&
-        mainActivityKtSrc.includes("Start 7-Day Free Pro Trial ($0 Today)") &&
-        mainActivityKtSrc.includes("Continue with Free Plan (Unlimited Scans)")
+        mainActivityKtSrc.includes('Start $effectiveTrialDays-Day Free Pro Trial ($0 Today)') &&
+        mainActivityKtSrc.includes('Continue with Free Plan (Unlimited Scans + $weeklyFreeSwaps Swaps/Wk)') &&
+        mainActivityKtSrc.includes('if (!alreadyDone) {') &&
+        scanApiKtSrc.includes("val is2x = cat.isNotEmpty() && cat in familySet")
+    )
+  );
+
+  const { evaluateDietaryAlerts: evalDietaryShared } = await import("../lib/dietary");
+  const allEightDietary = [
+    "sugar_diabetes",
+    "dairy",
+    "wheat_gluten",
+    "peanuts_nuts",
+    "soy",
+    "egg",
+    "shellfish_fish",
+    "high_sodium",
+  ];
+  const multiAlerts = evalDietaryShared(
+    allEightDietary,
+    "Creamy Shrimp Ramen & Peanut Sauce Bowl",
+    "Enriched Wheat Flour, Cultured Milk, Cane Sugar, High Fructose Corn Syrup, Peanuts, Soybean Oil, Whole Egg, Shrimp, Monosodium Glutamate.",
+    { sugarsG100g: 14, sodiumMg100g: 620 }
+  );
+  const falsePositiveChecks = evalDietaryShared(
+    allEightDietary,
+    "Zero Sugar Dairy-Free Gluten-Free Vegan Mayo & Peanut Butter Pack",
+    "Organic Peanuts, Avocado Oil, Chickpea Aquafaba, Sea Salt, Egg-Free Vegan Mayonnaise, Soy-Free Seasoning.",
+    { sugarsG100g: 1, sodiumMg100g: 120 }
+  );
+  check(
+    "Shared lib/dietary.ts Allergy & Sugar Guard (all 8 guards + false-positive immunity + Web Floating Pill & Inspect Drawer parity)",
+    Boolean(
+      multiAlerts.length === 8 &&
+        multiAlerts.some((a) => a.id === "sugar_diabetes" && a.shortBadge === "SUGAR") &&
+        multiAlerts.some((a) => a.id === "dairy" && a.shortBadge === "DAIRY") &&
+        multiAlerts.some((a) => a.id === "wheat_gluten" && a.shortBadge === "WHEAT") &&
+        multiAlerts.some((a) => a.id === "peanuts_nuts" && a.shortBadge === "NUTS") &&
+        multiAlerts.some((a) => a.id === "soy" && a.shortBadge === "SOY") &&
+        multiAlerts.some((a) => a.id === "egg" && a.shortBadge === "EGG") &&
+        multiAlerts.some((a) => a.id === "shellfish_fish" && a.shortBadge === "FISH") &&
+        multiAlerts.some((a) => a.id === "high_sodium" && a.shortBadge === "SODIUM") &&
+        falsePositiveChecks.length === 1 &&
+        falsePositiveChecks[0]?.id === "peanuts_nuts"
     )
   );
 
@@ -1853,6 +1898,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         latestSimulatorTsx.includes('id="ad-free-test-hero"') &&
         latestSimulatorTsx.includes('id="ad-test-step2-cta"') &&
         latestSimulatorTsx.includes("<PostCheckoutOtoModal") &&
+        latestSimulatorTsx.includes('id="pill-dietary-alert"') &&
+        latestSimulatorTsx.includes('id="inspect-dietary-alert-card"') &&
         otoModalTsx.includes('id="oto-claim-btn"') &&
         otoModalTsx.includes('id="oto-decline-btn"') &&
         latestCheckoutRouteTs.includes("oto_annual") &&

@@ -1,19 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { DietaryOptionId } from "@/lib/dietary";
 import { PRICING, annualPerMonth } from "@/lib/pricing";
 import type { Category } from "@/lib/rubric";
 import { STORE_META, type Store } from "@/lib/swaps";
 
+export type { DietaryOptionId };
 export type HouseholdProfileId = "kids_family" | "partner" | "myself" | "sensitivity";
 export type PrimaryGoalId = "seed_oil_free" | "kids_dye_free" | "whole_foods" | "clean_swaps";
-export type DietaryOptionId =
-  | "sugar_diabetes"
-  | "dairy"
-  | "wheat_gluten"
-  | "peanuts_nuts"
-  | "soy"
-  | "egg";
+export type FunnelStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export interface OnboardingSelections {
   watchlist: Category[];
@@ -28,11 +24,13 @@ export interface WatchlistMiniFunnelProps {
   initialSelected: Category[];
   initialStore?: Store;
   initialDietary?: DietaryOptionId[];
+  initialStep?: FunnelStep;
+  isReturningUser?: boolean;
   appliedCreator?: { code: string; name: string } | null;
-  onSelectStore?: (store: Store) => void;
   onApplyAndGuest: (selected: Category[], extras?: OnboardingSelections) => void;
   onApplyAndSignIn: (selected: Category[], extras?: OnboardingSelections) => void;
   onApplyAndStartTrial?: (selected: Category[], extras?: OnboardingSelections) => void;
+  onDismissFirstTime?: (selected: Category[], extras: OnboardingSelections) => void;
   onClose: () => void;
 }
 
@@ -231,6 +229,18 @@ const DIETARY_PILLS: Array<{
     title: "Egg Guard",
     subtitle: "Flags whole egg, egg whites/yolks, albumin & mayonnaise",
   },
+  {
+    id: "shellfish_fish",
+    icon: "🐟",
+    title: "Shellfish & Fish Guard",
+    subtitle: "Flags shrimp, crab, lobster, salmon, tuna, cod, anchovy & fish sauce",
+  },
+  {
+    id: "high_sodium",
+    icon: "🧂",
+    title: "High Sodium Watch",
+    subtitle: "Flags >=400mg sodium/100g, MSG, sodium nitrite/benzoate & brines",
+  },
 ];
 
 const MINI_TEST_SAMPLES: Array<{
@@ -279,8 +289,6 @@ const MINI_TEST_SAMPLES: Array<{
   },
 ];
 
-export type FunnelStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-
 const STEP_TITLES: Record<FunnelStep, string> = {
   1: "Household",
   2: "#1 Priority",
@@ -292,15 +300,34 @@ const STEP_TITLES: Record<FunnelStep, string> = {
   8: "Your Plan",
 };
 
+function trackOnboardingEvent(event: string, properties: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  const deviceId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
+  void fetch("/api/analytics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "track",
+      event,
+      deviceId,
+      platform: "web",
+      properties,
+    }),
+  }).catch(() => {});
+}
+
 export default function WatchlistMiniFunnel({
   open,
   initialSelected,
   initialStore = "walmart",
   initialDietary = [],
+  initialStep = 1,
+  isReturningUser = false,
   appliedCreator,
   onApplyAndGuest,
   onApplyAndSignIn,
   onApplyAndStartTrial,
+  onDismissFirstTime,
   onClose,
 }: WatchlistMiniFunnelProps) {
   const [selected, setSelected] = useState<Category[]>(initialSelected);
@@ -309,12 +336,15 @@ export default function WatchlistMiniFunnel({
   const [household, setHousehold] = useState<HouseholdProfileId>("kids_family");
   const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoalId>("seed_oil_free");
   const [sampleIdx, setSampleIdx] = useState<number>(0);
-  const [step, setStep] = useState<FunnelStep>(1);
+  const [step, setStep] = useState<FunnelStep>(initialStep);
   const wasOpenRef = useRef<boolean>(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const prevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
+      prevFocusRef.current =
+        typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
       setSelected(initialSelected);
       setDietarySelected(initialDietary);
       setSelectedStore(initialStore);
@@ -333,27 +363,76 @@ export default function WatchlistMiniFunnel({
         }
       }
       setSampleIdx(0);
-      setStep(1);
+      setStep(initialStep);
+      requestAnimationFrame(() => {
+        cardRef.current?.focus({ preventScroll: true });
+      });
+    } else if (!open && wasOpenRef.current) {
+      prevFocusRef.current?.focus?.({ preventScroll: true });
+      prevFocusRef.current = null;
     }
     wasOpenRef.current = open;
-  }, [open, initialSelected, initialDietary, initialStore]);
+  }, [open, initialSelected, initialDietary, initialStore, initialStep]);
 
   useEffect(() => {
     if (open) {
       cardRef.current?.scrollTo({ top: 0 });
+      trackOnboardingEvent("onboarding_step_viewed", {
+        step,
+        stepTitle: STEP_TITLES[step],
+        isReturningUser,
+      });
     }
-  }, [open, step]);
+  }, [open, step, isReturningUser]);
+
+  const buildExtras = (): OnboardingSelections => ({
+    watchlist: selected,
+    dietaryWatchlist: dietarySelected,
+    store: selectedStore,
+    householdProfile: household,
+    primaryGoal,
+  });
+
+  const handleBackdropOrEscapeDismiss = () => {
+    trackOnboardingEvent("onboarding_dismissed", { step, isReturningUser });
+    if (!isReturningUser && onDismissFirstTime) {
+      onDismissFirstTime(selected, buildExtras());
+      return;
+    }
+    onClose();
+  };
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        e.preventDefault();
+        handleBackdropOrEscapeDismiss();
+        return;
+      }
+      if (e.key === "Tab" && cardRef.current) {
+        const focusable = Array.from(
+          cardRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first || document.activeElement === cardRef.current) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  });
 
   if (!open) return null;
 
@@ -375,14 +454,6 @@ export default function WatchlistMiniFunnel({
     );
   };
 
-  const buildExtras = (): OnboardingSelections => ({
-    watchlist: selected,
-    dietaryWatchlist: dietarySelected,
-    store: selectedStore,
-    householdProfile: household,
-    primaryGoal,
-  });
-
   const activeGoalItems = WATCHLIST_PILLS.filter((p) => selected.includes(p.id));
   const displayGoalItems =
     activeGoalItems.length > 0 ? activeGoalItems : WATCHLIST_PILLS.slice(0, 3);
@@ -390,7 +461,10 @@ export default function WatchlistMiniFunnel({
     HOUSEHOLD_OPTIONS.find((h) => h.id === household) || HOUSEHOLD_OPTIONS[0];
   const activePrimaryGoalObj =
     PRIMARY_GOAL_OPTIONS.find((g) => g.id === primaryGoal) || PRIMARY_GOAL_OPTIONS[0];
-  const storeDisplayName = STORE_META[selectedStore]?.label || "Walmart";
+  const storeDisplayName =
+    STORE_CHOICES.find((s) => s.id === selectedStore)?.label ||
+    STORE_META[selectedStore]?.label ||
+    "Walmart";
   const activeSample = MINI_TEST_SAMPLES[sampleIdx] || MINI_TEST_SAMPLES[0];
 
   return (
@@ -398,8 +472,8 @@ export default function WatchlistMiniFunnel({
       className="modal-backdrop gococo-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="HeyBroc Clean-Eating Goals & Onboarding Funnel"
-      onClick={onClose}
+      aria-labelledby="heybroc-onboarding-heading"
+      onClick={handleBackdropOrEscapeDismiss}
       style={{
         position: "fixed",
         inset: 0,
@@ -415,6 +489,7 @@ export default function WatchlistMiniFunnel({
     >
       <div
         ref={cardRef}
+        tabIndex={-1}
         className="modal-card gococo-sheet"
         style={{
           width: "100%",
@@ -425,19 +500,21 @@ export default function WatchlistMiniFunnel({
           borderRadius: 26,
           padding: "22px 20px 20px",
           boxShadow: "0 24px 48px rgba(0, 0, 0, 0.30)",
+          outline: "none",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header: Back Button / Step Pill + Skip Button */}
+        {/* Top Header: Back Button / Step Pill + Skip / Close Button */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 6,
             marginBottom: 10,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
             {step > 1 && (
               <button
                 type="button"
@@ -446,11 +523,13 @@ export default function WatchlistMiniFunnel({
                   background: "#f3f4f6",
                   border: "none",
                   borderRadius: 999,
-                  padding: "5px 11px",
+                  padding: "5px 10px",
                   fontSize: 12,
                   fontWeight: 700,
                   color: "#374151",
                   cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 ← Back
@@ -458,44 +537,90 @@ export default function WatchlistMiniFunnel({
             )}
             <span
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
+                display: "inline-block",
                 background: "#e6f5ec",
                 color: "#0b5e39",
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: 800,
-                letterSpacing: "0.05em",
+                letterSpacing: "0.04em",
                 textTransform: "uppercase",
-                padding: "5px 11px",
+                padding: "5px 10px",
                 borderRadius: 999,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
               🥦 Step {step} of 8 · {STEP_TITLES[step]}
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => onApplyAndGuest(selected, buildExtras())}
-            aria-label="Skip and continue with Free Plan"
-            style={{
-              background: "#f3f4f6",
-              border: "none",
-              borderRadius: 999,
-              padding: "5px 12px",
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#4b5563",
-              cursor: "pointer",
-            }}
-          >
-            Skip →
-          </button>
+          {isReturningUser ? (
+            <button
+              type="button"
+              onClick={() => {
+                trackOnboardingEvent("onboarding_dismissed", { step, isReturningUser: true });
+                onClose();
+              }}
+              aria-label="Close watchlist calibration without saving"
+              style={{
+                background: "#f3f4f6",
+                border: "none",
+                borderRadius: 999,
+                padding: "5px 11px",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#4b5563",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              ✕ Close
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const extras = buildExtras();
+                trackOnboardingEvent("onboarding_completed", {
+                  exitAction: "skip",
+                  step,
+                  householdProfile: extras.householdProfile,
+                  primaryGoal: extras.primaryGoal,
+                  store: extras.store,
+                  watchlistCount: selected.length,
+                  dietaryCount: dietarySelected.length,
+                });
+                onApplyAndGuest(selected, extras);
+              }}
+              aria-label="Skip and continue with Free Plan"
+              style={{
+                background: "#f3f4f6",
+                border: "none",
+                borderRadius: 999,
+                padding: "5px 11px",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#4b5563",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              Skip →
+            </button>
+          )}
         </div>
 
         {/* 8-Segment Progress Bar */}
         <div
+          role="progressbar"
+          aria-valuenow={step}
+          aria-valuemin={1}
+          aria-valuemax={8}
+          aria-label={`Onboarding step ${step} of 8: ${STEP_TITLES[step]}`}
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(8, 1fr)",
@@ -503,23 +628,42 @@ export default function WatchlistMiniFunnel({
             marginBottom: 16,
           }}
         >
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((idx) => (
-            <div
-              key={idx}
-              style={{
-                height: 5,
-                borderRadius: 999,
-                background: idx <= step ? "#16a34a" : "#e5e7eb",
-                transition: "background 0.2s ease",
-              }}
-            />
-          ))}
+          {([1, 2, 3, 4, 5, 6, 7, 8] as FunnelStep[]).map((idx) =>
+            isReturningUser ? (
+              <button
+                key={idx}
+                type="button"
+                aria-label={`Jump to Step ${idx}: ${STEP_TITLES[idx]}`}
+                onClick={() => setStep(idx)}
+                style={{
+                  height: 6,
+                  padding: 0,
+                  border: "none",
+                  borderRadius: 999,
+                  background: idx <= step ? "#16a34a" : "#e5e7eb",
+                  cursor: "pointer",
+                  transition: "background 0.2s ease",
+                }}
+              />
+            ) : (
+              <div
+                key={idx}
+                style={{
+                  height: 5,
+                  borderRadius: 999,
+                  background: idx <= step ? "#16a34a" : "#e5e7eb",
+                  transition: "background 0.2s ease",
+                }}
+              />
+            )
+          )}
         </div>
 
         {/* ==================== STEP 1: HOUSEHOLD PROFILE ==================== */}
         {step === 1 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22.5,
                 fontWeight: 800,
@@ -632,7 +776,7 @@ export default function WatchlistMiniFunnel({
               <button
                 type="button"
                 onClick={() => {
-                  if (selected.length === 0) {
+                  if (!isReturningUser && selected.length === 0) {
                     setSelected([...activeHouseholdObj.recommendedCats]);
                   }
                   setStep(2);
@@ -660,6 +804,7 @@ export default function WatchlistMiniFunnel({
         {step === 2 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22.5,
                 fontWeight: 800,
@@ -759,7 +904,7 @@ export default function WatchlistMiniFunnel({
               <button
                 type="button"
                 onClick={() => {
-                  if (selected.length === 0) {
+                  if (!isReturningUser && selected.length === 0) {
                     setSelected([...activePrimaryGoalObj.boostCats]);
                   }
                   setStep(3);
@@ -787,6 +932,7 @@ export default function WatchlistMiniFunnel({
         {step === 3 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22.5,
                 fontWeight: 800,
@@ -805,7 +951,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              HeyBroc supports <b>all 13 major grocery stores</b>. Pick your main store so 1-tap Clean Swaps open directly in your store:
+              HeyBroc supports <b>all 12+ grocery &amp; delivery stores</b>. Pick your main store so 1-tap Clean Swaps open directly in your store:
             </p>
 
             <div
@@ -908,6 +1054,7 @@ export default function WatchlistMiniFunnel({
         {step === 4 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22.5,
                 fontWeight: 800,
@@ -1069,6 +1216,7 @@ export default function WatchlistMiniFunnel({
         {step === 5 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22.5,
                 fontWeight: 800,
@@ -1204,6 +1352,7 @@ export default function WatchlistMiniFunnel({
         {step === 6 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22,
                 fontWeight: 800,
@@ -1364,6 +1513,7 @@ export default function WatchlistMiniFunnel({
         {step === 7 && (
           <>
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22,
                 fontWeight: 800,
@@ -1396,14 +1546,18 @@ export default function WatchlistMiniFunnel({
                     aria-pressed={active}
                     onClick={() => setSampleIdx(idx)}
                     style={{
-                      padding: "8px 6px",
+                      padding: "8px 5px",
                       borderRadius: 12,
                       border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
                       background: active ? "#f0fdf4" : "#ffffff",
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: 800,
                       color: active ? "#14532d" : "#374151",
                       cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      minWidth: 0,
                     }}
                   >
                     {s.icon} {s.shortLabel}
@@ -1596,6 +1750,7 @@ export default function WatchlistMiniFunnel({
             )}
 
             <h2
+              id="heybroc-onboarding-heading"
               style={{
                 fontSize: 22,
                 fontWeight: 800,
@@ -1662,7 +1817,7 @@ export default function WatchlistMiniFunnel({
                 }}
               >
                 <li>
-                  <b>Unlimited 1-Tap Clean Swaps</b> at {storeDisplayName} &amp; all 13 stores
+                  <b>Unlimited 1-Tap Clean Swaps</b> at {storeDisplayName} &amp; all 12+ stores
                 </li>
                 <li>
                   <b>Whole-Cart Health Check</b> &amp; Swap-All Cart Cleaner
@@ -1681,6 +1836,14 @@ export default function WatchlistMiniFunnel({
                 type="button"
                 onClick={() => {
                   const extras = buildExtras();
+                  trackOnboardingEvent("onboarding_completed", {
+                    exitAction: "trial",
+                    householdProfile: extras.householdProfile,
+                    primaryGoal: extras.primaryGoal,
+                    store: extras.store,
+                    watchlistCount: selected.length,
+                    dietaryCount: dietarySelected.length,
+                  });
                   if (onApplyAndStartTrial) {
                     onApplyAndStartTrial(selected, extras);
                   } else {
@@ -1705,7 +1868,18 @@ export default function WatchlistMiniFunnel({
 
               <button
                 type="button"
-                onClick={() => onApplyAndGuest(selected, buildExtras())}
+                onClick={() => {
+                  const extras = buildExtras();
+                  trackOnboardingEvent("onboarding_completed", {
+                    exitAction: "guest",
+                    householdProfile: extras.householdProfile,
+                    primaryGoal: extras.primaryGoal,
+                    store: extras.store,
+                    watchlistCount: selected.length,
+                    dietaryCount: dietarySelected.length,
+                  });
+                  onApplyAndGuest(selected, extras);
+                }}
                 style={{
                   width: "100%",
                   padding: "12px 14px",
@@ -1723,7 +1897,18 @@ export default function WatchlistMiniFunnel({
 
               <button
                 type="button"
-                onClick={() => onApplyAndSignIn(selected, buildExtras())}
+                onClick={() => {
+                  const extras = buildExtras();
+                  trackOnboardingEvent("onboarding_completed", {
+                    exitAction: "signin",
+                    householdProfile: extras.householdProfile,
+                    primaryGoal: extras.primaryGoal,
+                    store: extras.store,
+                    watchlistCount: selected.length,
+                    dietaryCount: dietarySelected.length,
+                  });
+                  onApplyAndSignIn(selected, extras);
+                }}
                 style={{
                   width: "100%",
                   padding: "8px 12px",

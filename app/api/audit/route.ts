@@ -107,7 +107,11 @@ export async function POST(request: Request) {
         const barcodeStr = typeof reqItem.barcode === "string" ? reqItem.barcode.trim() : "";
         const titleStr = typeof reqItem.productTitle === "string" ? reqItem.productTitle.trim().toLowerCase() : "";
         const ingStr = typeof reqItem.rawIngredients === "string" ? reqItem.rawIngredients.trim().toLowerCase() : "";
-        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}`;
+        const effFw = reqItem.familyWatchlist ?? body.familyWatchlist;
+        const effDw = reqItem.dietaryWatchlist ?? body.dietaryWatchlist;
+        const fwSig = Array.isArray(effFw) ? [...effFw].sort().join(",") : "";
+        const dwSig = Array.isArray(effDw) ? [...effDw].sort().join(",") : "";
+        const dedupKey = `obj:${barcodeStr}|${titleStr}|${ingStr}|${fwSig}|${dwSig}`;
         let pending = memo.get(dedupKey);
         if (!pending) {
           pending = runScan({
@@ -117,8 +121,8 @@ export async function POST(request: Request) {
             deviceId: reqItem.deviceId ?? body.deviceId,
             deviceSecret: reqItem.deviceSecret ?? effectiveSecret,
             watchlist: body.watchlist,
-            familyWatchlist: reqItem.familyWatchlist ?? body.familyWatchlist,
-            dietaryWatchlist: reqItem.dietaryWatchlist ?? body.dietaryWatchlist,
+            familyWatchlist: effFw,
+            dietaryWatchlist: effDw,
           });
           memo.set(dedupKey, pending);
         }
