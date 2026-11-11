@@ -219,7 +219,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             ok: false,
-            error: "Weekly free swap limit reached. Upgrade to HeyBroc Pro for unlimited swaps.",
+            error: "Free swap limit reached. Upgrade to HeyBroc Pro for unlimited swaps.",
             entitlement: currentEnt,
           },
           { status: 402, headers: CORS }

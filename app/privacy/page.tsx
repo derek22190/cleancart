@@ -86,7 +86,7 @@ export default function PrivacyPage() {
             are cached on the server for up to 24 hours to reduce latency and load on these public databases.
           </li>
           <li>
-            <strong>Install-scoped Device ID &amp; referral records (7 to 365 days):</strong> To track free weekly swap allowances, Pro status, and
+            <strong>Install-scoped Device ID &amp; referral records (7 to 365 days):</strong> To track free swap allowances, Pro status, and
             referral credits without requiring an account login, the server stores a record keyed by your install-scoped random <code>deviceId</code>.
             Unactivated device records expire automatically after 7 days; active referral and Pro device records are retained for up to 1 year (365 days)
             and can be disassociated from your device at any time by clearing app storage or browser local storage.

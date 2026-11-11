@@ -80,7 +80,7 @@ export default function TermsPage() {
         <h2 style={{ fontSize: 20 }}>2. Subscriptions, Free Trials &amp; Automatic Renewal Disclosure</h2>
         <p>
           Core product ingredient scores (0–100) and additive explanations are available free of charge, along with a
-          weekly allowance of {PRICING.freeWeeklySwaps} free clean swaps. Upgrading to <strong>HeyBroc Family Pro</strong>{" "}
+          starter allowance of {PRICING.freeWeeklySwaps} free clean swaps. Upgrading to <strong>HeyBroc Family Pro</strong>{" "}
           unlocks unlimited 1-for-1 clean swaps, whole-cart &ldquo;Swap All&rdquo; makeovers, and custom family
           watchlist multipliers.
         </p>

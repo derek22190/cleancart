@@ -3444,7 +3444,7 @@ export default function Simulator({
                                   type="button"
                                   onClick={() => {
                                     setManualFunnelOpen(true);
-                                    setWatchlistFunnelStep(5);
+                                    setWatchlistFunnelStep(4);
                                     setWatchlistFunnelOpen(true);
                                   }}
                                   style={{
@@ -3489,7 +3489,7 @@ export default function Simulator({
                                       🔒 Clean Swap Locked · {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
                                     </span>
                                     <b>{swap.score}/100 Clean Replacement Available</b>
-                                    <span className="swap-score">All {weeklySwapLimit} free weekly Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
+                                    <span className="swap-score">All {weeklySwapLimit} free Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
                                   </div>
                                 </button>
                                 <button id="swap-item" className="swap-btn" onClick={() => setPaywallOpen(true)}>
@@ -3818,7 +3818,7 @@ export default function Simulator({
                                     type="button"
                                     onClick={() => {
                                       setManualFunnelOpen(true);
-                                      setWatchlistFunnelStep(badge === "Allergy Guard" ? 5 : 4);
+                                      setWatchlistFunnelStep(badge === "Allergy Guard" ? 4 : 2);
                                       setWatchlistFunnelOpen(true);
                                     }}
                                     style={{

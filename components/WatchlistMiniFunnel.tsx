@@ -9,7 +9,7 @@ import { STORE_META, type Store } from "@/lib/swaps";
 export type { DietaryOptionId };
 export type HouseholdProfileId = "kids_family" | "partner" | "myself" | "sensitivity";
 export type PrimaryGoalId = "seed_oil_free" | "kids_dye_free" | "whole_foods" | "clean_swaps";
-export type FunnelStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type FunnelStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface OnboardingSelections {
   watchlist: Category[];
@@ -17,6 +17,7 @@ export interface OnboardingSelections {
   store?: Store;
   stores?: Store[];
   householdProfile?: HouseholdProfileId;
+  householdProfiles?: HouseholdProfileId[];
   primaryGoal?: PrimaryGoalId;
 }
 
@@ -48,7 +49,7 @@ const HOUSEHOLD_OPTIONS: Array<{
     id: "kids_family",
     icon: "👨‍👩‍👧‍👦",
     title: "My Kids & Family",
-    subtitle: "Keep Red 40, seed oils & hidden syrups out of family meals and lunchboxes",
+    subtitle: "Keep Red 40, seed oils & hidden syrups out of family meals",
     badge: "Most Popular",
     recommendedCats: ["seedOils", "dyes", "hfcs", "nitrates"],
   },
@@ -56,7 +57,7 @@ const HOUSEHOLD_OPTIONS: Array<{
     id: "partner",
     icon: "💑",
     title: "Me & My Partner",
-    subtitle: "Upgrade our shared grocery cart to clean, whole-ingredient staples",
+    subtitle: "Upgrade our shared grocery cart to clean whole-food staples",
     badge: "Household",
     recommendedCats: ["seedOils", "hfcs", "preservatives"],
   },
@@ -64,7 +65,7 @@ const HOUSEHOLD_OPTIONS: Array<{
     id: "myself",
     icon: "🏃",
     title: "Just Myself",
-    subtitle: "Hit my personal clean-eating, fitness & ingredient quality goals",
+    subtitle: "Hit my personal clean-eating, fitness & ingredient goals",
     badge: "Personal",
     recommendedCats: ["seedOils", "hfcs", "sweeteners"],
   },
@@ -72,46 +73,9 @@ const HOUSEHOLD_OPTIONS: Array<{
     id: "sensitivity",
     icon: "🛡️",
     title: "Managing Food Sensitivities",
-    subtitle: "Strict ingredient, additive & allergen screening on every food label",
+    subtitle: "Strict ingredient, additive & allergen screening on every label",
     badge: "Strict Guard",
     recommendedCats: ["seedOils", "dyes", "hfcs", "preservatives", "sweeteners"],
-  },
-];
-
-const PRIMARY_GOAL_OPTIONS: Array<{
-  id: PrimaryGoalId;
-  icon: string;
-  title: string;
-  subtitle: string;
-  boostCats: Category[];
-}> = [
-  {
-    id: "seed_oil_free",
-    icon: "🌻",
-    title: "Eliminate Industrial Seed Oils",
-    subtitle: "Swap soybean, canola & corn oil for 100% avocado, olive & grass-fed butter",
-    boostCats: ["seedOils"],
-  },
-  {
-    id: "kids_dye_free",
-    icon: "🧪",
-    title: "Protect Against Red 40 & Dyes",
-    subtitle: "Spot petroleum-derived synthetic dyes disguised in snacks, cereals & drinks",
-    boostCats: ["dyes"],
-  },
-  {
-    id: "whole_foods",
-    icon: "🥑",
-    title: "Cut Ultra-Processed Additives & HFCS",
-    subtitle: "Ditch high-fructose corn syrup, curing nitrates & harsh BHA/BHT preservatives",
-    boostCats: ["hfcs", "nitrates", "preservatives"],
-  },
-  {
-    id: "clean_swaps",
-    icon: "⇄",
-    title: "Save Time with 1-Tap Clean Swaps",
-    subtitle: "Stop reading 40-ingredient labels — get instant 90–100/100 store replacements",
-    boostCats: ["seedOils", "dyes", "hfcs"],
   },
 ];
 
@@ -145,7 +109,7 @@ const WATCHLIST_PILLS: Array<{
     title: "Industrial Seed Oils",
     subtitle: "Soybean, canola, corn, cottonseed & sunflower oil",
     badge: "Most Popular",
-    problemNote: "Hidden in 70%+ of 'Natural' dressings, chips, crackers & oat milks",
+    problemNote: "Hidden in 70%+ of 'Natural' dressings, chips & crackers",
   },
   {
     id: "dyes",
@@ -153,7 +117,7 @@ const WATCHLIST_PILLS: Array<{
     title: "Red 40 & Artificial Dyes",
     subtitle: "Red 40, Yellow 5 & 6, Blue 1, Titanium Dioxide",
     badge: "Kids' Watchlist",
-    problemNote: "Disguised inside yogurts, fruit snacks, cereals & sports drinks",
+    problemNote: "Disguised in kids' yogurts, fruit snacks & cereals",
   },
   {
     id: "hfcs",
@@ -161,7 +125,7 @@ const WATCHLIST_PILLS: Array<{
     title: "High-Fructose Corn Syrup",
     subtitle: "HFCS, corn syrup solids & hidden refined syrups",
     badge: "Added Syrups",
-    problemNote: "Slipped into breads, ketchup, barbecue sauces & family staples",
+    problemNote: "Slipped into breads, ketchup & barbecue sauces",
   },
   {
     id: "nitrates",
@@ -169,7 +133,7 @@ const WATCHLIST_PILLS: Array<{
     title: "Nitrites & Curing Nitrates",
     subtitle: "Sodium nitrite/nitrate in bacon, deli meat & hot dogs",
     badge: "Deli & Meat",
-    problemNote: "Found in conventional lunch meats, sausage & cured deli turkey",
+    problemNote: "Found in conventional lunch meats, bacon & hot dogs",
   },
   {
     id: "sweeteners",
@@ -177,7 +141,7 @@ const WATCHLIST_PILLS: Array<{
     title: "Artificial Sweeteners",
     subtitle: "Sucralose, aspartame, acesulfame potassium & saccharin",
     badge: "Zero Artificial",
-    problemNote: "Used in 'Zero Sugar' sodas, protein shakes & light yogurts",
+    problemNote: "Used in 'Zero Sugar' sodas, shakes & light yogurts",
   },
   {
     id: "preservatives",
@@ -185,7 +149,7 @@ const WATCHLIST_PILLS: Array<{
     title: "BHA, BHT & Harsh Preservatives",
     subtitle: "TBHQ, BHA/BHT, potassium bromate & propylparaben",
     badge: "Synthetic",
-    problemNote: "Added to extend shelf life in cereals, tortillas & frozen meals",
+    problemNote: "Added to cereals, tortillas & frozen family meals",
   },
 ];
 
@@ -268,10 +232,10 @@ const MINI_TEST_SAMPLES: Array<{
     shortLabel: "Kids' Yogurt",
     dirtyTitle: "Berry Swirl Lowfat Yogurt",
     dirtyScore: 22,
-    dirtyFlags: "Flagged (2x): Red 40, High-Fructose Corn Syrup & Potassium Sorbate",
+    dirtyFlags: "Flagged (2x): Red 40, High-Fructose Corn Syrup & Sorbate",
     cleanTitle: "Organic Whole Milk Berry Yogurt",
     cleanScore: 94,
-    cleanPerks: "Organic milk & real strawberries — 0 synthetic dyes, 0 corn syrup",
+    cleanPerks: "Organic milk & real strawberries — 0 dyes, 0 corn syrup",
   },
   {
     id: "ranch",
@@ -279,10 +243,10 @@ const MINI_TEST_SAMPLES: Array<{
     shortLabel: "Creamy Ranch",
     dirtyTitle: '"Homestyle" Creamy Ranch Dressing',
     dirtyScore: 18,
-    dirtyFlags: "Flagged (2x): Soybean Oil (#1 ingredient), MSG, Calcium Disodium EDTA & Polysorbate 60",
+    dirtyFlags: "Flagged (2x): Soybean Oil (#1), MSG & Polysorbate 60",
     cleanTitle: "100% Avocado Oil Ranch Dressing",
     cleanScore: 92,
-    cleanPerks: "Made with 100% pure avocado oil & organic herbs — 0 seed oils, 0 EDTA",
+    cleanPerks: "100% pure avocado oil & organic herbs — 0 seed oils",
   },
   {
     id: "crackers",
@@ -290,22 +254,21 @@ const MINI_TEST_SAMPLES: Array<{
     shortLabel: "Cheddar Crackers",
     dirtyTitle: "Baked Cheddar Snack Crackers",
     dirtyScore: 24,
-    dirtyFlags: "Flagged (2x): Soybean & Canola Oil, TBHQ Preservative & Yellow 6",
+    dirtyFlags: "Flagged (2x): Soybean/Canola Oil, TBHQ & Yellow 6",
     cleanTitle: "Organic Grass-Fed Cheddar Crackers",
     cleanScore: 95,
-    cleanPerks: "Organic wheat & grass-fed cheddar — 0 seed oils, 0 TBHQ, 0 artificial dyes",
+    cleanPerks: "Organic wheat & grass-fed cheddar — 0 seed oils, 0 dyes",
   },
 ];
 
 const STEP_TITLES: Record<FunnelStep, string> = {
   1: "Household",
-  2: "#1 Priority",
+  2: "Your Goals",
   3: "Your Stores",
-  4: "Your Goals",
-  5: "Allergy Guard",
-  6: "The Problem",
-  7: "How Broc Works",
-  8: "Your Plan",
+  4: "Allergy Guard",
+  5: "Why It Matters",
+  6: "Live Demo",
+  7: "Your Plan",
 };
 
 function trackOnboardingEvent(event: string, properties: Record<string, unknown>) {
@@ -368,8 +331,7 @@ export default function WatchlistMiniFunnel({
   const [selectedStores, setSelectedStores] = useState<Store[]>(() =>
     normalizeChoiceStores(initialStores, initialStore)
   );
-  const [household, setHousehold] = useState<HouseholdProfileId>("kids_family");
-  const [primaryGoal, setPrimaryGoal] = useState<PrimaryGoalId>("seed_oil_free");
+  const [households, setHouseholds] = useState<HouseholdProfileId[]>(["kids_family"]);
   const [sampleIdx, setSampleIdx] = useState<number>(0);
   const [step, setStep] = useState<FunnelStep>(initialStep);
   const wasOpenRef = useRef<boolean>(false);
@@ -384,17 +346,17 @@ export default function WatchlistMiniFunnel({
       setDietarySelected(initialDietary);
       setSelectedStores(normalizeChoiceStores(initialStores, initialStore));
       if (typeof window !== "undefined") {
-        const savedHousehold = window.localStorage.getItem("heybroc_household_profile") as HouseholdProfileId | null;
-        if (savedHousehold && HOUSEHOLD_OPTIONS.some((h) => h.id === savedHousehold)) {
-          setHousehold(savedHousehold);
+        const savedHouseholdsCsv = window.localStorage.getItem("heybroc_household_profiles");
+        const validIds = new Set<HouseholdProfileId>(HOUSEHOLD_OPTIONS.map((h) => h.id));
+        if (savedHouseholdsCsv) {
+          const parsed = savedHouseholdsCsv
+            .split(",")
+            .map((s) => s.trim() as HouseholdProfileId)
+            .filter((s) => validIds.has(s));
+          setHouseholds(parsed.length > 0 ? parsed : ["kids_family"]);
         } else {
-          setHousehold("kids_family");
-        }
-        const savedPrimaryGoal = window.localStorage.getItem("heybroc_primary_goal") as PrimaryGoalId | null;
-        if (savedPrimaryGoal && PRIMARY_GOAL_OPTIONS.some((g) => g.id === savedPrimaryGoal)) {
-          setPrimaryGoal(savedPrimaryGoal);
-        } else {
-          setPrimaryGoal("seed_oil_free");
+          const savedSingle = window.localStorage.getItem("heybroc_household_profile") as HouseholdProfileId | null;
+          setHouseholds(savedSingle && validIds.has(savedSingle) ? [savedSingle] : ["kids_family"]);
         }
       }
       setSampleIdx(0);
@@ -421,14 +383,15 @@ export default function WatchlistMiniFunnel({
   }, [open, step, isReturningUser]);
 
   const primaryStore: Store = selectedStores[0] ?? initialStore ?? "walmart";
+  const primaryHousehold: HouseholdProfileId = households[0] ?? "kids_family";
 
   const buildExtras = (): OnboardingSelections => ({
     watchlist: selected,
     dietaryWatchlist: dietarySelected,
     store: primaryStore,
     stores: selectedStores,
-    householdProfile: household,
-    primaryGoal,
+    householdProfile: primaryHousehold,
+    householdProfiles: households,
   });
 
   const handleBackdropOrEscapeDismiss = () => {
@@ -483,6 +446,27 @@ export default function WatchlistMiniFunnel({
   );
   const effectiveTrialDays = PRICING.trialDays;
 
+  const toggleHousehold = (id: HouseholdProfileId) => {
+    setHouseholds((prev) => {
+      const next = prev.includes(id) ? prev.filter((h) => h !== id) : [...prev, id];
+      const finalNext = next.length > 0 ? next : [id];
+      const unionCats = Array.from(
+        new Set(
+          finalNext.flatMap(
+            (hId) => HOUSEHOLD_OPTIONS.find((o) => o.id === hId)?.recommendedCats ?? []
+          )
+        )
+      );
+      if (unionCats.length > 0) {
+        setSelected(unionCats);
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("heybroc_household_profiles", finalNext.join(","));
+      }
+      return finalNext;
+    });
+  };
+
   const toggle = (cat: Category) => {
     setSelected((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
@@ -503,11 +487,13 @@ export default function WatchlistMiniFunnel({
 
   const activeGoalItems = WATCHLIST_PILLS.filter((p) => selected.includes(p.id));
   const displayGoalItems =
-    activeGoalItems.length > 0 ? activeGoalItems : WATCHLIST_PILLS.slice(0, 3);
+    activeGoalItems.length > 0 ? activeGoalItems : WATCHLIST_PILLS.slice(0, 2);
   const activeHouseholdObj =
-    HOUSEHOLD_OPTIONS.find((h) => h.id === household) || HOUSEHOLD_OPTIONS[0];
-  const activePrimaryGoalObj =
-    PRIMARY_GOAL_OPTIONS.find((g) => g.id === primaryGoal) || PRIMARY_GOAL_OPTIONS[0];
+    HOUSEHOLD_OPTIONS.find((h) => h.id === primaryHousehold) || HOUSEHOLD_OPTIONS[0];
+  const householdSummaryLabel =
+    households.length > 1
+      ? `${activeHouseholdObj.title} + ${households.length - 1} more`
+      : activeHouseholdObj.title;
   const storeDisplayName = resolveStoreLabel(primaryStore);
   const storesSummaryLabel = formatStoresSummary(selectedStores);
   const activeSample = MINI_TEST_SAMPLES[sampleIdx] || MINI_TEST_SAMPLES[0];
@@ -597,7 +583,7 @@ export default function WatchlistMiniFunnel({
                 whiteSpace: "nowrap",
               }}
             >
-              🥦 Step {step} of 8 · {STEP_TITLES[step]}
+              🥦 Step {step} of 7 · {STEP_TITLES[step]}
             </span>
           </div>
 
@@ -627,21 +613,21 @@ export default function WatchlistMiniFunnel({
           )}
         </div>
 
-        {/* 8-Segment Progress Bar */}
+        {/* 7-Segment Progress Bar */}
         <div
           role="progressbar"
           aria-valuenow={step}
           aria-valuemin={1}
-          aria-valuemax={8}
-          aria-label={`Onboarding step ${step} of 8: ${STEP_TITLES[step]}`}
+          aria-valuemax={7}
+          aria-label={`Onboarding step ${step} of 7: ${STEP_TITLES[step]}`}
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(8, 1fr)",
+            gridTemplateColumns: "repeat(7, 1fr)",
             gap: 5,
             marginBottom: 16,
           }}
         >
-          {([1, 2, 3, 4, 5, 6, 7, 8] as FunnelStep[]).map((idx) =>
+          {([1, 2, 3, 4, 5, 6, 7] as FunnelStep[]).map((idx) =>
             isReturningUser ? (
               <button
                 key={idx}
@@ -672,7 +658,7 @@ export default function WatchlistMiniFunnel({
           )}
         </div>
 
-        {/* ==================== STEP 1: HOUSEHOLD PROFILE ==================== */}
+        {/* ==================== STEP 1: HOUSEHOLD PROFILE (MULTI-SELECT) ==================== */}
         {step === 1 && (
           <>
             <h2
@@ -695,22 +681,18 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              We&apos;ll calibrate your <b>0–100 food grading strictness</b> and{" "}
-              <b>1-tap Clean Swaps</b> for your household in 60 seconds:
+              Select <b>all that apply</b> — we&apos;ll calibrate your <b>0–100 food grading</b> in 60 seconds:
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {HOUSEHOLD_OPTIONS.map((opt) => {
-                const active = household === opt.id;
+                const active = households.includes(opt.id);
                 return (
                   <button
                     key={opt.id}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => {
-                      setHousehold(opt.id);
-                      setSelected([...opt.recommendedCats]);
-                    }}
+                    onClick={() => toggleHousehold(opt.id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -764,16 +746,16 @@ export default function WatchlistMiniFunnel({
                     </div>
                     <span
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 999,
+                        width: 23,
+                        height: 23,
+                        borderRadius: 7,
                         background: active ? "#16a34a" : "#ffffff",
                         border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
                         color: "#ffffff",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: 800,
                         flexShrink: 0,
                       }}
@@ -813,7 +795,7 @@ export default function WatchlistMiniFunnel({
           </>
         )}
 
-        {/* ==================== STEP 2: #1 CLEAN-EATING PRIORITY ==================== */}
+        {/* ==================== STEP 2: 2X INGREDIENT WATCHLIST GOALS (MULTI-SELECT) ==================== */}
         {step === 2 && (
           <>
             <h2
@@ -826,7 +808,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.2,
               }}
             >
-              What is your #1 clean-eating priority?
+              What are your clean-eating goals?
             </h2>
             <p
               style={{
@@ -836,31 +818,32 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              Pick what matters most right now — we&apos;ll prioritize Clean Swaps that match this first:
+              Select <b>as many as you want</b> — HeyBroc applies <b>2x strictness</b> to your choices and finds <b>90–100/100 Clean Swaps</b>:
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {PRIMARY_GOAL_OPTIONS.map((opt) => {
-                const active = primaryGoal === opt.id;
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 7,
+              }}
+            >
+              {WATCHLIST_PILLS.map((item) => {
+                const active = selected.includes(item.id);
                 return (
                   <button
-                    key={opt.id}
+                    key={item.id}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => {
-                      setPrimaryGoal(opt.id);
-                      setSelected((prev) =>
-                        Array.from(new Set([...prev, ...opt.boostCats]))
-                      );
-                    }}
+                    onClick={() => toggle(item.id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 12,
                       width: "100%",
                       textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 16,
+                      padding: "9px 12px",
+                      borderRadius: 15,
                       border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
                       background: active ? "#f0fdf4" : "#ffffff",
                       cursor: "pointer",
@@ -869,39 +852,75 @@ export default function WatchlistMiniFunnel({
                   >
                     <span
                       style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
+                        width: 36,
+                        height: 36,
+                        borderRadius: 11,
                         background: active ? "#dcfce7" : "#f3f4f6",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 21,
+                        fontSize: 19,
                         flexShrink: 0,
                       }}
                     >
-                      {opt.icon}
+                      {item.icon}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 800, color: "#111814" }}>
-                        {opt.title}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 800,
+                            color: "#111814",
+                          }}
+                        >
+                          {item.title}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: "2px 7px",
+                            borderRadius: 999,
+                            background: active ? "#16a34a" : "#e5e7eb",
+                            color: active ? "#ffffff" : "#4b5563",
+                          }}
+                        >
+                          {active ? "2x Penalty On" : item.badge}
+                        </span>
                       </div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.35 }}>
-                        {opt.subtitle}
+                      <div
+                        style={{
+                          fontSize: 11.5,
+                          color: "#6b7280",
+                          marginTop: 1,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.subtitle}
                       </div>
                     </div>
                     <span
                       style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 999,
+                        width: 23,
+                        height: 23,
+                        borderRadius: 7,
                         background: active ? "#16a34a" : "#ffffff",
                         border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
                         color: "#ffffff",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: 800,
                         flexShrink: 0,
                       }}
@@ -913,15 +932,10 @@ export default function WatchlistMiniFunnel({
               })}
             </div>
 
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 14 }}>
               <button
                 type="button"
-                onClick={() => {
-                  if (!isReturningUser && selected.length === 0) {
-                    setSelected([...activePrimaryGoalObj.boostCats]);
-                  }
-                  setStep(3);
-                }}
+                onClick={() => setStep(3)}
                 style={{
                   width: "100%",
                   padding: "14px 16px",
@@ -935,7 +949,7 @@ export default function WatchlistMiniFunnel({
                   boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
                 }}
               >
-                Continue →
+                Continue ({selected.length} {selected.length === 1 ? "Goal" : "Goals"} Selected) →
               </button>
             </div>
           </>
@@ -964,7 +978,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              Select <b>all the stores</b> you shop at — we&apos;ll pin your favorites first for 1-tap Clean Swaps:
+              Select <b>all the stores</b> you shop at — we&apos;ll pin your favorites first:
             </p>
 
             <div
@@ -1112,170 +1126,8 @@ export default function WatchlistMiniFunnel({
           </>
         )}
 
-        {/* ==================== STEP 4: 2X INGREDIENT WATCHLIST GOALS ==================== */}
+        {/* ==================== STEP 4: ALLERGY, DIETARY & GLYPHOSATE GUARD (MULTI-SELECT) ==================== */}
         {step === 4 && (
-          <>
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 22.5,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 6px",
-                lineHeight: 1.2,
-              }}
-            >
-              What are your clean-eating goals?
-            </h2>
-            <p
-              style={{
-                fontSize: 13.5,
-                color: "#4b5563",
-                margin: "0 0 14px",
-                lineHeight: 1.45,
-              }}
-            >
-              Tap the ingredients you want out of your kitchen. HeyBroc applies{" "}
-              <b>2x strictness</b> to your goals and finds{" "}
-              <b>90–100/100 Clean Swaps</b> across <b>{storesSummaryLabel}</b> automatically.
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 7,
-              }}
-            >
-              {WATCHLIST_PILLS.map((item) => {
-                const active = selected.includes(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggle(item.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "9px 12px",
-                      borderRadius: 15,
-                      border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
-                      background: active ? "#f0fdf4" : "#ffffff",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 11,
-                        background: active ? "#dcfce7" : "#f3f4f6",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 19,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {item.icon}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 7,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 800,
-                            color: "#111814",
-                          }}
-                        >
-                          {item.title}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: "2px 7px",
-                            borderRadius: 999,
-                            background: active ? "#16a34a" : "#e5e7eb",
-                            color: active ? "#ffffff" : "#4b5563",
-                          }}
-                        >
-                          {active ? "2x Penalty On" : item.badge}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: "#6b7280",
-                          marginTop: 1,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {item.subtitle}
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        width: 23,
-                        height: 23,
-                        borderRadius: 7,
-                        background: active ? "#16a34a" : "#ffffff",
-                        border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
-                        color: "#ffffff",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12.5,
-                        fontWeight: 800,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {active ? "✓" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={() => setStep(5)}
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  fontSize: 15,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
-                }}
-              >
-                Continue ({selected.length} {selected.length === 1 ? "Goal" : "Goals"} Selected) →
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ==================== STEP 5: ALLERGY & DIETARY GUARD ==================== */}
-        {step === 5 && (
           <>
             <h2
               id="heybroc-onboarding-heading"
@@ -1297,8 +1149,7 @@ export default function WatchlistMiniFunnel({
                 lineHeight: 1.45,
               }}
             >
-              Optional — check any boxes below and HeyBroc will display instant{" "}
-              <b>🛡️ Allergy &amp; Sugar badges</b> on your floating store pill:
+              Optional — select any watches below for instant <b>🛡️ Allergy, Sugar &amp; Glyphosate alerts</b>:
             </p>
 
             <div
@@ -1451,45 +1302,38 @@ export default function WatchlistMiniFunnel({
                     aria-label="United States map of agricultural glyphosate usage showing low usage in Western states and a dark crimson bullseye over Iowa and the Midwest Corn Belt"
                     style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fffaf5" }}
                   >
-                    {/* Base Contiguous USA Silhouette (Low-usage West, Rockies, Southwest & New England in pale sand) */}
                     <path
                       d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
                       fill="#fef3c7"
                       stroke="#9a3412"
                       strokeWidth="1.8"
                     />
-                    {/* Subtle US Regional State Grid Lines */}
                     <g stroke="#d97706" strokeWidth="0.7" opacity="0.45" fill="none">
                       <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
                       <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
                     </g>
-                    {/* Outer Plains & Mississippi River Delta Moderate/High Plume (ND, SD, NE, KS, MN, MO, AR, MS, LA, WI, MI, KY, TN) */}
                     <path
                       d="M124,22 L192,24 L214,44 L236,56 L238,88 L218,108 L196,148 L172,152 L166,118 L126,110 L118,68 Z"
                       fill="#fb923c"
                       opacity="0.72"
                     />
-                    {/* Core Corn Belt Intense Plume (Eastern NE, Southern MN, IA, IL, IN, Western OH) */}
                     <path
                       d="M142,44 L198,44 L228,62 L232,88 L204,98 L188,138 L174,138 L172,98 L144,92 Z"
                       fill="#c2410c"
                       opacity="0.88"
                     />
-                    {/* IOWA (#1 Glyphosate Epicenter in the USA) */}
                     <path
                       d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
                       fill="#431407"
                       stroke="#ffffff"
                       strokeWidth="2"
                     />
-                    {/* Illinois / Indiana Neighboring High-Spray States */}
                     <path
                       d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
                       fill="#7c2d12"
                       stroke="#fed7aa"
                       strokeWidth="1"
                     />
-                    {/* Bullseye Target Ring Around Iowa */}
                     <circle
                       cx="175"
                       cy="68"
@@ -1505,14 +1349,13 @@ export default function WatchlistMiniFunnel({
                     <text x="54" y="82" textAnchor="middle" fill="#92400e" fontSize="8.5" fontWeight="700">
                       LOW
                     </text>
-                    {/* Callout Pill */}
                     <rect x="64" y="6" width="192" height="20" rx="10" fill="#7c2d12" />
                     <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
                       🎯 IOWA &amp; CORN BELT: #1 GLYPHOSATE ZONE
                     </text>
                   </svg>
                   <div style={{ fontSize: 10.5, color: "#7c2d12", marginTop: 4, lineHeight: 1.3 }}>
-                    <b>National USGS Map:</b> Glyphosate is heavily concentrated right in <b>Iowa &amp; the Corn Belt</b> (sprayed on crops &amp; used to dry conventional oats/wheat/beans).
+                    <b>#1 U.S. Spray Zone:</b> Concentrated in <b>Iowa &amp; the Corn Belt</b> on conventional oats, wheat &amp; produce.
                   </div>
                 </div>
 
@@ -1534,45 +1377,38 @@ export default function WatchlistMiniFunnel({
                     aria-label="United States cancer incidence map showing matching dark crimson hotspot over Iowa (#2 highest and #1 fastest-rising cancer rate in the US)"
                     style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fff5f5" }}
                   >
-                    {/* Base Contiguous USA Silhouette */}
                     <path
                       d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
                       fill="#fee2e2"
                       stroke="#991b1b"
                       strokeWidth="1.8"
                     />
-                    {/* Subtle US Regional State Grid Lines */}
                     <g stroke="#ef4444" strokeWidth="0.7" opacity="0.38" fill="none">
                       <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
                       <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
                     </g>
-                    {/* Elevated Midwest / Agricultural Basin Cancer Belt */}
                     <path
                       d="M126,24 L196,26 L220,46 L242,60 L240,94 L220,114 L198,146 L172,148 L164,114 L128,106 L122,66 Z"
                       fill="#f87171"
                       opacity="0.72"
                     />
-                    {/* High Incidence Upper Midwest / Corn Belt Cluster */}
                     <path
                       d="M144,42 L202,42 L228,62 L230,90 L204,100 L186,132 L172,132 L170,96 L144,90 Z"
                       fill="#dc2626"
                       opacity="0.88"
                     />
-                    {/* IOWA (#2 Highest & #1 Fastest-Rising Cancer Rate in the USA; 82% of High-Glyphosate Counties > US NHL Avg) */}
                     <path
                       d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
                       fill="#450a0a"
                       stroke="#ffffff"
                       strokeWidth="2"
                     />
-                    {/* Neighboring Corn Belt States */}
                     <path
                       d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
                       fill="#991b1b"
                       stroke="#fecaca"
                       strokeWidth="1"
                     />
-                    {/* Bullseye Target Ring Around Iowa */}
                     <circle
                       cx="175"
                       cy="68"
@@ -1588,14 +1424,13 @@ export default function WatchlistMiniFunnel({
                     <text x="54" y="82" textAnchor="middle" fill="#991b1b" fontSize="8.5" fontWeight="700">
                       LOW
                     </text>
-                    {/* Callout Pill */}
                     <rect x="54" y="6" width="212" height="20" rx="10" fill="#7f1d1d" />
                     <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
                       🎯 IOWA: #2 US CANCER RATE (#1 RISING)
                     </text>
                   </svg>
                   <div style={{ fontSize: 10.5, color: "#7f1d1d", marginTop: 4, lineHeight: 1.3 }}>
-                    <b>Same Exact U.S. Bullseye:</b> Iowa has the <b>#2 highest &amp; fastest-rising cancer rate in America</b> — and <b>82%</b> of its high-glyphosate counties exceed the U.S. lymphoma average.
+                    <b>Same U.S. Bullseye:</b> Iowa has the <b>#2 highest &amp; fastest-rising cancer rate</b> (<b>82%</b> of high-spray counties exceed U.S. lymphoma avg).
                   </div>
                 </div>
               </div>
@@ -1612,7 +1447,7 @@ export default function WatchlistMiniFunnel({
                 }}
               >
                 <span style={{ fontSize: 11, color: "#7f1d1d", lineHeight: 1.35, flex: 1, minWidth: 180 }}>
-                  <b>Why this matters for your cart:</b> Crops grown in this zone go into nationwide cereals, oats, flour &amp; produce. <b>USDA Organic</b> prohibits glyphosate &amp; synthetic pesticides.
+                  <b>USDA Organic</b> prohibits synthetic glyphosate &amp; pesticides.
                 </span>
                 <button
                   type="button"
@@ -1645,7 +1480,7 @@ export default function WatchlistMiniFunnel({
             <div style={{ marginTop: 16 }}>
               <button
                 type="button"
-                onClick={() => setStep(6)}
+                onClick={() => setStep(5)}
                 style={{
                   width: "100%",
                   padding: "14px 16px",
@@ -1667,97 +1502,78 @@ export default function WatchlistMiniFunnel({
           </>
         )}
 
-        {/* ==================== STEP 6: THE PROBLEM ==================== */}
-        {step === 6 && (
+        {/* ==================== STEP 5: WHY IT MATTERS (HEALTHY FAMILY PHOTO + CONCISE VISUALS) ==================== */}
+        {step === 5 && (
           <>
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 6px",
-                lineHeight: 1.22,
-              }}
-            >
-              Why &ldquo;Healthy-Looking&rdquo; Groceries Fail Your Goals
-            </h2>
-            <p
-              style={{
-                fontSize: 13.5,
-                color: "#4b5563",
-                margin: "0 0 14px",
-                lineHeight: 1.45,
-              }}
-            >
-              Big food brands print <b>&ldquo;Natural&rdquo;</b> or{" "}
-              <b>&ldquo;Made with Real Fruit&rdquo;</b> on the front while hiding ultra-processed additives &amp; conventional herbicide-treated crops in tiny 6-point text:
-            </p>
-
-            {/* Personalized Trigger Traps Based on Selected Goals */}
+            {/* Warm Healthy Family Hero Photo */}
             <div
               style={{
-                background: "#fef2f2",
-                border: "1.5px solid #fecaca",
-                borderRadius: 16,
-                padding: "12px 14px",
+                position: "relative",
+                borderRadius: 18,
+                overflow: "hidden",
                 marginBottom: 12,
+                border: "1.5px solid #bbf7d0",
+                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)",
               }}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/onboarding-healthy-family.jpg"
+                alt="Happy family with kids eating healthy whole foods together at the kitchen table"
+                style={{
+                  width: "100%",
+                  height: 176,
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
               <div
                 style={{
+                  position: "absolute",
+                  left: 10,
+                  bottom: 10,
+                  background: "rgba(20, 83, 45, 0.90)",
+                  color: "#ffffff",
                   fontSize: 11,
                   fontWeight: 800,
-                  color: "#991b1b",
-                  letterSpacing: "0.05em",
-                  textTransform: "uppercase",
-                  marginBottom: 8,
+                  padding: "4px 10px",
+                  borderRadius: 999,
                 }}
               >
-                ⚠️ Hidden Across {storesSummaryLabel} ({activeHouseholdObj.title}):
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {displayGoalItems.slice(0, 3).map((g) => (
-                  <div
-                    key={g.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 8,
-                      fontSize: 12.5,
-                      color: "#7f1d1d",
-                    }}
-                  >
-                    <span>{g.icon}</span>
-                    <div>
-                      <b>{g.title}:</b> {g.problemNote}
-                    </div>
-                  </div>
-                ))}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 8,
-                    fontSize: 12.5,
-                    color: "#7f1d1d",
-                  }}
-                >
-                  <span>🌱</span>
-                  <div>
-                    <b>Herbicides &amp; Pesticides (Glyphosate):</b> USGS &amp; Iowa Cancer Registry maps show <b>82% of high-glyphosate Iowa counties</b> exceed national Non-Hodgkin Lymphoma rates — and conventional oats, wheat &amp; Dirty-Dozen produce permit synthetic herbicides unless certified <b>USDA Organic</b>.
-                  </div>
-                </div>
+                💚 Protecting {householdSummaryLabel}
               </div>
             </div>
 
-            {/* Side-by-Side Before vs. After Example */}
+            <h2
+              id="heybroc-onboarding-heading"
+              style={{
+                fontSize: 21,
+                fontWeight: 800,
+                color: "#111814",
+                margin: "0 0 4px",
+                lineHeight: 1.22,
+              }}
+            >
+              Front Labels Say &ldquo;Natural.&rdquo; Back Labels Hide the Truth.
+            </h2>
+            <p
+              style={{
+                fontSize: 13,
+                color: "#4b5563",
+                margin: "0 0 12px",
+                lineHeight: 1.4,
+              }}
+            >
+              HeyBroc reads the fine print instantly so clean family meals take seconds, not hours:
+            </p>
+
+            {/* Clean Side-by-Side Before vs. After Visual */}
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: 10,
-                marginBottom: 16,
+                marginBottom: 12,
               }}
             >
               <div
@@ -1765,7 +1581,7 @@ export default function WatchlistMiniFunnel({
                   background: "#fff5f5",
                   border: "1.5px solid #fca5a5",
                   borderRadius: 16,
-                  padding: "12px",
+                  padding: "11px 12px",
                 }}
               >
                 <div
@@ -1777,16 +1593,16 @@ export default function WatchlistMiniFunnel({
                     fontWeight: 800,
                     padding: "2px 8px",
                     borderRadius: 999,
-                    marginBottom: 6,
+                    marginBottom: 5,
                   }}
                 >
                   ✕ 18/100 · Poor
                 </div>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: "#111814" }}>
-                  &ldquo;Natural&rdquo; Store Brand Pick
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#111814" }}>
+                  &ldquo;Natural&rdquo; Store Pick
                 </div>
-                <div style={{ fontSize: 11.5, color: "#991b1b", marginTop: 4, lineHeight: 1.35 }}>
-                  Hides Soybean Oil, High-Fructose Corn Syrup &amp; Red 40 in fine print.
+                <div style={{ fontSize: 11.5, color: "#991b1b", marginTop: 3, lineHeight: 1.3 }}>
+                  Soybean oil, corn syrup &amp; Red 40.
                 </div>
               </div>
 
@@ -1795,7 +1611,7 @@ export default function WatchlistMiniFunnel({
                   background: "#f0fdf4",
                   border: "1.5px solid #86efac",
                   borderRadius: 16,
-                  padding: "12px",
+                  padding: "11px 12px",
                 }}
               >
                 <div
@@ -1807,23 +1623,50 @@ export default function WatchlistMiniFunnel({
                     fontWeight: 800,
                     padding: "2px 8px",
                     borderRadius: 999,
-                    marginBottom: 6,
+                    marginBottom: 5,
                   }}
                 >
-                  ✓ 95/100 · Excellent
+                  ✓ 95/100 · Clean
                 </div>
-                <div style={{ fontSize: 13.5, fontWeight: 800, color: "#111814" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#111814" }}>
                   1-Tap Clean Swap
                 </div>
-                <div style={{ fontSize: 11.5, color: "#166534", marginTop: 4, lineHeight: 1.35 }}>
-                  100% Avocado/Olive Oil or Organic whole ingredients across {storesSummaryLabel}.
+                <div style={{ fontSize: 11.5, color: "#166534", marginTop: 3, lineHeight: 1.3 }}>
+                  Real organic ingredients at {storeDisplayName}.
                 </div>
               </div>
             </div>
 
+            {/* Compact Watchlist Chips */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                marginBottom: 14,
+              }}
+            >
+              {displayGoalItems.slice(0, 3).map((g) => (
+                <span
+                  key={g.id}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: "#fef2f2",
+                    color: "#991b1b",
+                    border: "1px solid #fecaca",
+                    borderRadius: 999,
+                    padding: "4px 10px",
+                  }}
+                >
+                  {g.icon} No {g.title}
+                </span>
+              ))}
+            </div>
+
             <button
               type="button"
-              onClick={() => setStep(7)}
+              onClick={() => setStep(6)}
               style={{
                 width: "100%",
                 padding: "14px 16px",
@@ -1842,16 +1685,16 @@ export default function WatchlistMiniFunnel({
           </>
         )}
 
-        {/* ==================== STEP 7: INTERACTIVE MINI-TEST & HOW HEYBROC SOLVES IT ==================== */}
-        {step === 7 && (
+        {/* ==================== STEP 6: LIVE 1-SECOND DEMO (CONCISE) ==================== */}
+        {step === 6 && (
           <>
             <h2
               id="heybroc-onboarding-heading"
               style={{
-                fontSize: 22,
+                fontSize: 21.5,
                 fontWeight: 800,
                 color: "#111814",
-                margin: "0 0 6px",
+                margin: "0 0 4px",
                 lineHeight: 1.22,
               }}
             >
@@ -1862,10 +1705,10 @@ export default function WatchlistMiniFunnel({
                 fontSize: 13,
                 color: "#4b5563",
                 margin: "0 0 10px",
-                lineHeight: 1.42,
+                lineHeight: 1.4,
               }}
             >
-              Tap an everyday staple below to see how your <b>2x Watchlist</b> grades it and swaps it across <b>{storesSummaryLabel}</b> &amp; <b>1.5M+ foods</b>:
+              Tap a staple below to preview an instant <b>Clean Swap</b>:
             </p>
 
             {/* 1-Tap Interactive Sample Switcher */}
@@ -1924,10 +1767,10 @@ export default function WatchlistMiniFunnel({
                     flexShrink: 0,
                   }}
                 >
-                  {activeSample.dirtyScore}/100 · Poor
+                  {activeSample.dirtyScore}/100
                 </span>
               </div>
-              <div style={{ fontSize: 11.5, color: "#7f1d1d", marginTop: 3 }}>
+              <div style={{ fontSize: 11.5, color: "#7f1d1d", marginTop: 2 }}>
                 {activeSample.dirtyFlags}
               </div>
 
@@ -1941,11 +1784,7 @@ export default function WatchlistMiniFunnel({
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 800, color: "#14532d" }}>
-                  ⇄ {activeSample.cleanTitle} (
-                  {selectedStores.length > 1
-                    ? `${storeDisplayName} + ${selectedStores.length - 1} more`
-                    : storeDisplayName}
-                  )
+                  ⇄ {activeSample.cleanTitle} ({storeDisplayName})
                 </span>
                 <span
                   style={{
@@ -1958,63 +1797,52 @@ export default function WatchlistMiniFunnel({
                     flexShrink: 0,
                   }}
                 >
-                  {activeSample.cleanScore}/100 · Clean
+                  {activeSample.cleanScore}/100
                 </span>
               </div>
-              <div style={{ fontSize: 11.5, color: "#166534", marginTop: 3 }}>
+              <div style={{ fontSize: 11.5, color: "#166534", marginTop: 2 }}>
                 {activeSample.cleanPerks}
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            {/* Ultra-Short 2-Chip Feature Summary */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  padding: "10px 12px",
+                  padding: "10px 11px",
                   borderRadius: 14,
                   background: "#f8fafc",
                   border: "1.5px solid #e2e8f0",
                 }}
               >
-                <span style={{ fontSize: 19 }}>📷</span>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: "#111814" }}>
-                    1. Instant 0–100 Barcode &amp; Search Grading (100% Free)
-                  </div>
-                  <div style={{ fontSize: 12, color: "#4b5563", marginTop: 1, lineHeight: 1.35 }}>
-                    Transparent 60/30/10 Yuka-style breakdown with <b>2x strictness</b> on your watchlist.
-                  </div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#111814" }}>
+                  📷 Free Barcode &amp; Search
+                </div>
+                <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>
+                  0–100 scores on 1.5M+ foods.
                 </div>
               </div>
 
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  padding: "10px 12px",
+                  padding: "10px 11px",
                   borderRadius: 14,
                   background: "#f0fdf4",
                   border: "1.5px solid #bbf7d0",
                 }}
               >
-                <span style={{ fontSize: 19 }}>🟢</span>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: "#14532d" }}>
-                    2. Live Store Bubble &amp; Whole-Cart Health Check
-                  </div>
-                  <div style={{ fontSize: 12, color: "#166534", marginTop: 1, lineHeight: 1.35 }}>
-                    Grades items automatically while you browse {storesSummaryLabel} and swaps your whole cart in 1 tap.
-                  </div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#14532d" }}>
+                  🟢 Live Store Bubble
+                </div>
+                <div style={{ fontSize: 11.5, color: "#166534", marginTop: 2 }}>
+                  Auto-grades &amp; swaps your cart.
                 </div>
               </div>
             </div>
 
             <button
               type="button"
-              onClick={() => setStep(8)}
+              onClick={() => setStep(7)}
               style={{
                 width: "100%",
                 padding: "14px 16px",
@@ -2033,35 +1861,28 @@ export default function WatchlistMiniFunnel({
           </>
         )}
 
-        {/* ==================== STEP 8: PERSONALIZED PLAN (FREEMIUM + PRO TRIAL) ==================== */}
-        {step === 8 && (
+        {/* ==================== STEP 7: PERSONALIZED PLAN (FREEMIUM + PRO TRIAL) ==================== */}
+        {step === 7 && (
           <>
             <div
               style={{
                 background: "#ecfdf5",
                 border: "1.5px solid #6ee7b7",
                 borderRadius: 14,
-                padding: "10px 13px",
+                padding: "9px 12px",
                 marginBottom: 12,
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
+                gap: 9,
               }}
             >
-              <span style={{ fontSize: 20 }}>✅</span>
-              <div style={{ fontSize: 12, color: "#065f46", lineHeight: 1.4 }}>
-                <b>Your Custom Profile Is Calibrated:</b> {activeHouseholdObj.title} ·{" "}
-                <b>
-                  {selectedStores.length > 0
-                    ? `${storesSummaryLabel} (+ all 12+ unlocked)`
-                    : "All 12+ stores unlocked"}
-                </b>{" "}
-                · <b>{selected.length}</b> 2x Watchlist{" "}
-                {selected.length === 1 ? "goal" : "goals"}
+              <span style={{ fontSize: 18 }}>✅</span>
+              <div style={{ fontSize: 12, color: "#065f46", lineHeight: 1.35 }}>
+                <b>Ready:</b> {householdSummaryLabel} · <b>{storesSummaryLabel}</b> ·{" "}
+                <b>{selected.length}</b> {selected.length === 1 ? "goal" : "goals"}
                 {dietarySelected.length > 0
-                  ? ` · ${dietarySelected.length} Allergy/Diet ${dietarySelected.length === 1 ? "alert" : "alerts"}`
+                  ? ` · ${dietarySelected.length} ${dietarySelected.length === 1 ? "alert" : "alerts"}`
                   : ""}
-                .
               </div>
             </div>
 
@@ -2109,11 +1930,10 @@ export default function WatchlistMiniFunnel({
                 fontSize: 13,
                 color: "#4b5563",
                 margin: "0 0 12px",
-                lineHeight: 1.45,
+                lineHeight: 1.4,
               }}
             >
-              Barcode &amp; search grading is <b>always 100% free</b>. Unlock unlimited 1-tap Clean Swaps across <b>{storesSummaryLabel}</b> &amp; Whole-Cart Checks with a{" "}
-              <b>{effectiveTrialDays}-Day Free Pro Trial ($0 today)</b>, or start on the Free Plan:
+              Unlock unlimited 1-tap Clean Swaps with a <b>{effectiveTrialDays}-Day Free Pro Trial ($0 today)</b>, or start on the Free Plan ({PRICING.freeWeeklySwaps} free Clean Swaps included):
             </p>
 
             {/* Plan Comparison Card */}
@@ -2185,7 +2005,7 @@ export default function WatchlistMiniFunnel({
                   trackOnboardingEvent("onboarding_completed", {
                     exitAction: "trial",
                     householdProfile: extras.householdProfile,
-                    primaryGoal: extras.primaryGoal,
+                    householdProfiles: extras.householdProfiles,
                     store: extras.store,
                     stores: extras.stores,
                     storesCount: selectedStores.length,
@@ -2221,7 +2041,7 @@ export default function WatchlistMiniFunnel({
                   trackOnboardingEvent("onboarding_completed", {
                     exitAction: "guest",
                     householdProfile: extras.householdProfile,
-                    primaryGoal: extras.primaryGoal,
+                    householdProfiles: extras.householdProfiles,
                     store: extras.store,
                     stores: extras.stores,
                     storesCount: selectedStores.length,
@@ -2242,7 +2062,7 @@ export default function WatchlistMiniFunnel({
                   cursor: "pointer",
                 }}
               >
-                Continue with Free Plan (Unlimited Scans + {PRICING.freeWeeklySwaps} Swaps/Wk) →
+                Continue with Free Plan ({PRICING.freeWeeklySwaps} Free Swaps Included) →
               </button>
 
               <button
@@ -2252,7 +2072,7 @@ export default function WatchlistMiniFunnel({
                   trackOnboardingEvent("onboarding_completed", {
                     exitAction: "signin",
                     householdProfile: extras.householdProfile,
-                    primaryGoal: extras.primaryGoal,
+                    householdProfiles: extras.householdProfiles,
                     store: extras.store,
                     stores: extras.stores,
                     storesCount: selectedStores.length,
@@ -2282,3 +2102,4 @@ export default function WatchlistMiniFunnel({
     </div>
   );
 }
+

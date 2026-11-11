@@ -1,9 +1,9 @@
 /**
- * Device Entitlements, Weekly Free Swap Allowance, and Anti-Abuse Referral Engine.
+ * Device Entitlements, Starter Free Swap Allowance, and Anti-Abuse Referral Engine.
  *
  * Security & Anti-Abuse Rules:
  * - Product scores (0–100), expanded additive explanations, and live Cart Avg are 100% FREE forever.
- * - Free users get 3 single-item swaps per rolling 7-day week.
+ * - Free users get 3 single-item Clean Swaps included on the free plan.
  * - New deviceIds start on the free tier (`proUntil = 0`) so clearing app data or rotating deviceIds
  *   never mints free Pro days.
  * - Referral codes (`BROC-XXXXXXXX`, 8 base-32 chars = 32^8 > 1 trillion combinations) are generated
@@ -179,14 +179,6 @@ export async function getExistingDevice(
     setMemCache(entry);
   } else {
     entry = devices.get(deviceId) ?? null;
-  }
-  if (!entry) return null;
-  const now = Date.now();
-  if (now >= entry.weekResetAt) {
-    entry.weeklySwapsUsed = [];
-    entry.weekResetAt = now + WEEK_MS;
-    entry.courtesyRefillUsedThisWeek = false;
-    await saveDevice(entry);
   }
   return entry;
 }

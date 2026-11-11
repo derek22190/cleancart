@@ -1812,37 +1812,48 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const scanApiKtSrc = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt", "utf8");
   const simulatorOnboardingSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
   check(
-    "8-Step Micro-Commitment Onboarding Funnel (No first-time Skip leak + Multi-Select Stores + 2x Watchlist + Allergy Guard) on Web & Android",
+    "7-Step Non-Repeating Multi-Select Onboarding Funnel (Multi-Select Household/Goals/Stores/Allergy + Healthy Family Hero + 3 Starter Swaps) on Web & Android",
     Boolean(
       !watchlistFunnelSrc.includes("Skip →") &&
         !mainActivityKtSrc.includes("Skip →") &&
+        !watchlistFunnelSrc.includes("What is your #1 clean-eating priority?") &&
+        !mainActivityKtSrc.includes("What is your #1 clean-eating priority?") &&
+        !watchlistFunnelSrc.includes("Swaps/Wk") &&
+        !mainActivityKtSrc.includes("Swaps/Wk") &&
         watchlistFunnelSrc.includes("✕ Close") &&
         mainActivityKtSrc.includes("✕ Close") &&
         watchlistFunnelSrc.includes("Who are you protecting with HeyBroc?") &&
-        watchlistFunnelSrc.includes("What is your #1 clean-eating priority?") &&
+        watchlistFunnelSrc.includes("toggleHousehold") &&
+        watchlistFunnelSrc.includes("What are your clean-eating goals?") &&
         watchlistFunnelSrc.includes("Where do you usually grocery shop?") &&
         watchlistFunnelSrc.includes("All 12+ grocery &amp; delivery stores + 1.5M+ barcodes stay unlocked") &&
         watchlistFunnelSrc.includes("toggleStore") &&
         watchlistFunnelSrc.includes("formatStoresSummary") &&
-        watchlistFunnelSrc.includes("What are your clean-eating goals?") &&
         watchlistFunnelSrc.includes("Any family allergies or dietary watches?") &&
+        watchlistFunnelSrc.includes("/onboarding-healthy-family.jpg") &&
+        fs.existsSync("public/onboarding-healthy-family.jpg") &&
+        fs.existsSync("android-app/app/src/main/res/drawable-nodpi/onboarding_healthy_family.jpg") &&
         watchlistFunnelSrc.includes("See How HeyBroc Solves This") &&
         watchlistFunnelSrc.includes("How HeyBroc Protects Your Cart in 1 Second") &&
         watchlistFunnelSrc.includes("Choose How You Want to Start") &&
-        watchlistFunnelSrc.includes("Step {step} of 8") &&
+        watchlistFunnelSrc.includes("Step {step} of 7") &&
         watchlistFunnelSrc.includes("onApplyAndStartTrial") &&
         watchlistFunnelSrc.includes("appliedCreator") &&
         watchlistFunnelSrc.includes("aria-pressed={active}") &&
         watchlistFunnelSrc.includes('role="progressbar"') &&
         watchlistFunnelSrc.includes("isReturningUser") &&
-        watchlistFunnelSrc.includes("Continue with Free Plan") &&
+        watchlistFunnelSrc.includes("Continue with Free Plan ({PRICING.freeWeeklySwaps} Free Swaps Included) →") &&
         simulatorOnboardingSrc.includes("heybroc_preferred_stores") &&
         simulatorOnboardingSrc.includes("orderedStores") &&
         simulatorOnboardingSrc.includes("manualFunnelOpen") &&
         mainActivityKtSrc.includes("fun showOnboardingFunnelDialog()") &&
-        mainActivityKtSrc.includes("STEP 1 OF 8 · HOUSEHOLD") &&
-        mainActivityKtSrc.includes("STEP 3 OF 8 · YOUR STORES") &&
-        mainActivityKtSrc.includes("STEP 8 OF 8 · YOUR PLAN") &&
+        mainActivityKtSrc.includes("selectedHouseholds") &&
+        mainActivityKtSrc.includes("STEP 1 OF 7 · HOUSEHOLD") &&
+        mainActivityKtSrc.includes("STEP 2 OF 7 · YOUR GOALS") &&
+        mainActivityKtSrc.includes("STEP 3 OF 7 · YOUR STORES") &&
+        mainActivityKtSrc.includes("STEP 4 OF 7 · ALLERGY GUARD") &&
+        mainActivityKtSrc.includes("STEP 7 OF 7 · YOUR PLAN") &&
+        mainActivityKtSrc.includes("R.drawable.onboarding_healthy_family") &&
         mainActivityKtSrc.includes("preferredStoresCsv") &&
         mainActivityKtSrc.includes("All 12+ grocery & delivery stores + 1.5M+ barcodes stay unlocked") &&
         mainActivityKtSrc.includes("onboarding_funnel_done_v1") &&
@@ -1850,7 +1861,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         mainActivityKtSrc.includes("OnBackInvokedDispatcher") &&
         mainActivityKtSrc.includes('"nitrates" to "Nitrites & Curing Nitrates (2x)"') &&
         mainActivityKtSrc.includes('Start $effectiveTrialDays-Day Free Pro Trial ($0 Today)') &&
-        mainActivityKtSrc.includes('Continue with Free Plan (Unlimited Scans + $weeklyFreeSwaps Swaps/Wk)') &&
+        mainActivityKtSrc.includes('Continue with Free Plan ($freeStarterSwaps Free Swaps Included) →') &&
         mainActivityKtSrc.includes('if (!alreadyDone) {') &&
         scanApiKtSrc.includes("val is2x = cat.isNotEmpty() && cat in familySet")
     )

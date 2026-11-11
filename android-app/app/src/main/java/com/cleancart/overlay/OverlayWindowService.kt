@@ -2458,7 +2458,7 @@ class OverlayWindowService : Service() {
         } else {
             val lim = ScanApi.weeklySwapsLimit(this)
             sheet.addView(text(
-                "All $lim free weekly Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap store navigation, or invite a friend for +7 free Pro days!",
+                "All $lim free Clean Swaps used. Upgrade to HeyBroc Pro for unlimited 1-tap store navigation, or invite a friend for +7 free Pro days!",
                 11.5f,
                 INK_2
             ).apply {
@@ -2686,9 +2686,10 @@ class OverlayWindowService : Service() {
         val swapTitle = swap.optString("title").ifBlank { prodTitle }
 
         if (!ScanApi.isSwapUnlocked(this, prodTitle, swapTitle) && !ScanApi.canUseSwap(this)) {
+            val lim = ScanApi.weeklySwapsLimit(this)
             Toast.makeText(
                 this,
-                "All 3 free weekly Clean Swaps used — upgrade to HeyBroc Pro or invite a friend for +7 free Pro days!",
+                "All $lim free Clean Swaps used — upgrade to HeyBroc Pro or invite a friend for +7 free Pro days!",
                 Toast.LENGTH_LONG
             ).show()
             removeCard()

@@ -410,7 +410,7 @@ export default function AdminPage() {
                 </label>
 
                 <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 700 }}>
-                  Free Weekly Swaps Quota
+                  Free Starter Swaps Quota
                   <input
                     type="number"
                     min={1}

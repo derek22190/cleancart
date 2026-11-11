@@ -389,7 +389,7 @@ export default function Paywall({
             <div>
               <span className="eyebrow eyebrow--green">
                 {scanCount >= freeScanLimit
-                  ? `Weekly Free Swap Allowance Reached (${scanCount}/${freeScanLimit})`
+                  ? `Free Swap Allowance Reached (${scanCount}/${freeScanLimit})`
                   : "HeyBroc Family Pro · Unlimited Cart Swaps"}
               </span>
               <h2>{remoteHeadline}</h2>

@@ -2039,7 +2039,7 @@
               <span class="cc-eyebrow" style="color:#065f46">${esc(activeBucket.label)}${esc(swapPaidSuffix)}</span>
             </div>
             <b>${esc(activeSwap.title)}</b>
-            <span class="cc-swap-score">${esc(activeSwap.score)}/100 ${esc(swapRating)}${swapLocked ? " · Free weekly swaps used" : ""}</span>
+            <span class="cc-swap-score">${esc(activeSwap.score)}/100 ${esc(swapRating)}${swapLocked ? " · Free swaps used" : ""}</span>
           </div>
           <button class="cc-swap-btn" data-act="swap">${swapLocked ? "⚡ Unlock Pro ↗" : `Swap Item`}</button>
         </div>`;
