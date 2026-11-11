@@ -19,11 +19,15 @@
 	<key>CFBundleShortVersionString</key>
 	<string>2.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>18</string>
+	<string>101</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>HeyBroc uses the camera when you choose to scan a food or cosmetic barcode or ingredient label to calculate its 0–100 health score.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HeyBroc lets you choose a barcode or ingredient label photo from your library to calculate its 0–100 health score.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UISupportedInterfaceOrientations</key>

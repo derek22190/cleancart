@@ -2387,7 +2387,6 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         readerKtSrc.includes("activeCartSectionNodes")
     )
   );
-
   // 5-Feature Upgrade Suite Regressions: Share Sheet, Label OCR, Weekly Order Auditor, Product Exposé Card & Store-Brand Swaps
   const swapsMod = await import("../lib/swaps");
   const labelOcrMod = await import("../lib/label-ocr");
@@ -2569,6 +2568,32 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const iosViewControllerSrc = fs.readFileSync("ios-app/App/ViewController.swift", "utf8");
+  const iosMainHtmlSrc = fs.readFileSync("ios-app/App/Main.html", "utf8");
+  const buildIosYmlSrc = fs.readFileSync(".github/workflows/build-ios.yml", "utf8");
+  const freshSimTsx = fs.readFileSync("components/Simulator.tsx", "utf8");
+  check(
+    "iOS TestFlight App Host: custom ViewController.swift replaces dead Safari placeholder with full HeyBroc WKWebView, AVCaptureSession barcode scanner, Safari setup sheet, and auto-incremented build numbers",
+    Boolean(
+      iosViewControllerSrc.includes("@IBOutlet var webView: WKWebView!") &&
+        iosViewControllerSrc.includes("https://www.heybroc.com/?platform=ios") &&
+        iosViewControllerSrc.includes("isScrollEnabled = true") &&
+        iosViewControllerSrc.includes("NativeBarcodeScannerViewController") &&
+        iosViewControllerSrc.includes("AVCaptureSession") &&
+        iosViewControllerSrc.includes("SafariSetupSheetViewController") &&
+        iosViewControllerSrc.includes("UIApplication.openSettingsURLString") &&
+        !iosMainHtmlSrc.includes("You can turn on HeyBroc") &&
+        iosMainHtmlSrc.includes("sendNative('open-settings')") &&
+        iosMainHtmlSrc.includes("sendNative('reload-app')") &&
+        buildIosYmlSrc.includes("ios-app/App/ViewController.swift") &&
+        buildIosYmlSrc.includes("ios-app/App/Main.html") &&
+        buildIosYmlSrc.includes("GITHUB_RUN_NUMBER") &&
+        buildIosYmlSrc.includes("NSCameraUsageDescription") &&
+        buildIosYmlSrc.includes("ITSAppUsesNonExemptEncryption") &&
+        freshSimTsx.includes("__heybrocNativeBarcode") &&
+        freshSimTsx.includes("open-ios-safari-setup")
+    )
+  );
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

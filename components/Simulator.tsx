@@ -540,6 +540,7 @@ export default function Simulator({
     [store],
   );
   const [selectedSwapIdx, setSelectedSwapIdx] = useState(0);
+  const [isIosApp, setIsIosApp] = useState(false);
   const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false);
   const [barcodeCameraActive, setBarcodeCameraActive] = useState(false);
   const [barcodeStatus, setBarcodeStatus] = useState("");
@@ -677,6 +678,16 @@ export default function Simulator({
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
+        const iosNative =
+          params.get("platform") === "ios" ||
+          /HeyBrocIOS/i.test(window.navigator.userAgent || "") ||
+          Boolean(
+            (window as unknown as { webkit?: { messageHandlers?: { controller?: unknown } } })
+              .webkit?.messageHandlers?.controller,
+          );
+        if (!cancelled && iosNative) {
+          setIsIosApp(true);
+        }
         const urlStoreParam = (params.get("store") || "").trim();
         const validUrlStore =
           urlStoreParam && (STORES as string[]).includes(urlStoreParam) ? (urlStoreParam as Store) : undefined;
@@ -1622,8 +1633,44 @@ export default function Simulator({
     };
   }, [stopCameraScanner]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const win = window as unknown as {
+      __heybrocNativeBarcode?: (code: string) => void;
+    };
+    win.__heybrocNativeBarcode = (rawCode: string) => {
+      const cleaned = String(rawCode || "").trim();
+      if (!cleaned) return;
+      stopCameraScanner();
+      setBarcodeScannerOpen(false);
+      setWatchlistFunnelOpen(false);
+      setQuery(cleaned);
+      const digits = cleaned.replace(/\D/g, "");
+      void executeLiveLookup({
+        productTitle: cleaned,
+        barcode: /^\d{8,14}$/.test(digits) ? digits : undefined,
+        openCard: true,
+      });
+    };
+    return () => {
+      delete win.__heybrocNativeBarcode;
+    };
+  }, [executeLiveLookup, stopCameraScanner]);
+
   const startCameraScanner = useCallback(async () => {
     setBarcodeStatus("");
+    if (typeof window !== "undefined") {
+      const iosBridge = (
+        window as unknown as {
+          webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
+        }
+      ).webkit?.messageHandlers?.controller;
+      if (typeof iosBridge?.postMessage === "function") {
+        setBarcodeScannerOpen(false);
+        iosBridge.postMessage("open-barcode-scanner");
+        return;
+      }
+    }
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setBarcodeStatus("Camera access is unavailable in this browser — upload a barcode photo or type the UPC.");
       return;
@@ -2119,14 +2166,36 @@ export default function Simulator({
             📸 Label / Screenshot
           </button>
 
-          <a
-            id="download-android-apk"
-            href="/heybroc.apk"
-            download="heybroc.apk"
-            className="topbar-pill"
-          >
-            📲 Android APK
-          </a>
+          {isIosApp ? (
+            <button
+              id="open-ios-safari-setup"
+              type="button"
+              className="topbar-pill"
+              onClick={() => {
+                const iosBridge = (
+                  window as unknown as {
+                    webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
+                  }
+                ).webkit?.messageHandlers?.controller;
+                if (typeof iosBridge?.postMessage === "function") {
+                  iosBridge.postMessage("open-safari-setup");
+                } else {
+                  window.location.href = "/tools";
+                }
+              }}
+            >
+              🧭 Safari Bubble
+            </button>
+          ) : (
+            <a
+              id="download-android-apk"
+              href="/heybroc.apk"
+              download="heybroc.apk"
+              className="topbar-pill"
+            >
+              📲 Android APK
+            </a>
+          )}
 
           <a
             id="open-free-tools"

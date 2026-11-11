@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>HeyBroc — Clean Grocery Scanner</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --brand: #0f7a4a;
+      --brand-light: #ecfdf5;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      padding: 20px 18px 36px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 480px; margin: 0 auto; }
+    .hero {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+    }
+    .hero img {
+      width: 54px; height: 54px; border-radius: 14px; border: 2px solid #16a34a; background: #fff;
+    }
+    .hero h1 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+    .hero p { margin: 2px 0 0; font-size: 13px; color: var(--brand); font-weight: 700; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 14px -6px rgba(15, 23, 42, 0.07);
+    }
+    .card h2 { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+    .card p { margin: 0 0 12px; font-size: 13.5px; color: var(--muted); }
+
+    .btn {
+      display: block; width: 100%; padding: 13px 16px; border-radius: 14px; border: 0;
+      font: inherit; font-size: 15px; font-weight: 800; text-align: center; cursor: pointer;
+    }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .btn-secondary {
+      background: var(--brand-light); color: #065f46; border: 1px solid #86efac; margin-top: 9px;
+    }
+
+    .steps { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+    .steps li {
+      padding: 10px 12px; border-radius: 12px; background: #f8fafc; border: 1px solid var(--border);
+      font-size: 13.5px; font-weight: 600;
+    }
+    .pill-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .pill {
+      padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+      background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <img src="../Icon.png" alt="HeyBroc" />
+      <div>
+        <h1>HeyBroc</h1>
+        <p>Clean Food &amp; Grocery Scanner</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Connect to Live Grocery Catalog</h2>
+      <p>Check your Wi-Fi or cellular connection to search 500,000+ groceries, scan UPC barcodes, and see 1-tap Clean Swaps.</p>
+      <button class="btn btn-primary" type="button" onclick="sendNative('reload-app')">🔄 Open Live HeyBroc Scanner</button>
+      <button class="btn btn-secondary" type="button" onclick="sendNative('open-barcode-scanner')">📷 Scan Product Barcode</button>
+    </div>
+
+    <div class="card">
+      <h2>🧭 Enable Live Safari Score Bubble</h2>
+      <p>Get automatic floating 0–100 health scores while shopping Walmart, Target, Instacart, Kroger, Costco, ALDI &amp; Amazon in Safari:</p>
+      <ul class="steps">
+        <li>1. Open <strong>Settings → Apps → Safari → Extensions</strong></li>
+        <li>2. Tap <strong>HeyBroc</strong> and toggle <strong>Allow Extension</strong> ON</li>
+        <li>3. Set website access to <strong>Allow</strong></li>
+      </ul>
+      <button class="btn btn-primary" type="button" onclick="sendNative('open-settings')">⚙️ Open iPhone Settings</button>
+    </div>
+
+    <div class="card">
+      <h2>🛡️ Top Red-Flag Additives HeyBroc Catches</h2>
+      <p>Offline quick-reference for high-priority grocery label red flags:</p>
+      <div class="pill-grid">
+        <span class="pill">Red 40 / Yellow 5 &amp; 6</span>
+        <span class="pill">Soybean &amp; Canola Oil</span>
+        <span class="pill">Potassium Bromate</span>
+        <span class="pill">Titanium Dioxide</span>
+        <span class="pill">BHA / BHT / TBHQ</span>
+        <span class="pill">High Fructose Corn Syrup</span>
+        <span class="pill">Sodium Nitrite</span>
+        <span class="pill">Propylparaben</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function sendNative(action) {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.controller) {
+        window.webkit.messageHandlers.controller.postMessage(action);
+      } else if (action === "reload-app") {
+        window.location.href = "https://www.heybroc.com/?platform=ios";
+      }
+    }
+  </script>
+</body>
+</html>

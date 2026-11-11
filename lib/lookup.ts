@@ -461,7 +461,13 @@ async function fetchOffProductByCode(
 async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> | null> {
   const code = barcode.replace(/\D/g, "");
   if (!/^\d{8,14}$/.test(code)) return null;
-  const codes = [code];
+  const codes = Array.from(
+    new Set([
+      code,
+      ...(code.length === 13 && code.startsWith("0") ? [code.slice(1)] : []),
+      ...(code.length === 12 ? [`0${code}`] : []),
+    ]),
+  );
   const hosts = ["https://world.openfoodfacts.org", "https://world.openbeautyfacts.org", "https://world.openproductsfacts.org", "https://world.openpetfoodfacts.org"];
   return firstAvailable(codes.flatMap(c => hosts.map(async host => {
     const p = await fetchOffProductByCode(c, host);

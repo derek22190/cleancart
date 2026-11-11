@@ -1,19 +1,35 @@
 name: Build HeyBroc iOS & Safari Extension (No-Mac Cloud Builder)
 
-# Manual trigger (workflow_dispatch) — builds on GitHub's cloud macOS runner (no Mac needed!).
-# If App Store Connect API secrets (ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY_BASE64, APPLE_TEAM_ID)
-# are configured in GitHub Settings -> Secrets, it also signs and uploads the .ipa directly to TestFlight!
+# Builds on GitHub's cloud macOS runner (no Mac needed!) automatically whenever ios-app/
+# or this workflow changes on main, or manually via workflow_dispatch.
+# When App Store Connect API secrets (ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY_BASE64, APPLE_TEAM_ID)
+# are configured in GitHub Settings -> Secrets, it signs and uploads the .ipa directly to TestFlight.
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/build-ios.yml"
   workflow_dispatch:
     inputs:
       upload_to_testflight:
         description: "Sign & upload .ipa directly to TestFlight (requires ASC_* secrets)"
         required: false
-        default: "false"
+        default: "true"
+
+concurrency:
+  group: build-ios-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-ios:
     runs-on: macos-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,15 +51,100 @@ jobs:
             --no-prompt \
             --force
 
-      - name: Copy Apple Privacy Manifest & App Store Icon
+      - name: Inject Native HeyBroc Scanner UI, Camera Permissions, Icon & Build Version
         run: |
-          cp ios-app/App/PrivacyInfo.xcprivacy ios-app/build/HeyBroc/
-          cp store-assets/apple-app-store/icon-1024x1024.png ios-app/build/HeyBroc/
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import plistlib
+          import re
+          import shutil
+
+          build_root = pathlib.Path("ios-app/build/HeyBroc")
+          run_num = int(os.environ.get("GITHUB_RUN_NUMBER", "1") or "1")
+          build_version = str(100 + run_num)
+          marketing_version = "2.1.0"
+
+          # 1. Replace Apple's static Safari placeholder ViewController.swift with full HeyBroc native iOS controller
+          vc_files = list(build_root.rglob("ViewController.swift"))
+          if not vc_files:
+              raise SystemExit("ERROR: ViewController.swift not found in generated Xcode project")
+          for vc in vc_files:
+              shutil.copy2("ios-app/App/ViewController.swift", vc)
+              print(f"Injected custom ViewController.swift -> {vc}")
+
+          # 2. Replace Apple's static "You can turn on HeyBroc's Safari extension in Settings." Main.html
+          main_html_files = list(build_root.rglob("Main.html"))
+          if not main_html_files:
+              raise SystemExit("ERROR: Main.html not found in generated Xcode project")
+          for mh in main_html_files:
+              shutil.copy2("ios-app/App/Main.html", mh)
+              print(f"Injected interactive Main.html -> {mh}")
+
+          # 3. Copy Apple Privacy Manifest & crisp 1024x1024 App Icon
+          shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", build_root / "PrivacyInfo.xcprivacy")
+          for vc in vc_files:
+              shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", vc.parent / "PrivacyInfo.xcprivacy")
+
+          icon_src = pathlib.Path("store-assets/apple-app-store/icon-1024x1024.png")
+          for icon_png in build_root.rglob("Icon.png"):
+              shutil.copy2(icon_src, icon_png)
+
+          for appicon_dir in build_root.rglob("AppIcon.appiconset"):
+              for existing in appicon_dir.glob("*.png"):
+                  existing.unlink()
+              shutil.copy2(icon_src, appicon_dir / "icon-1024x1024.png")
+              contents = {
+                  "images": [
+                      {
+                          "filename": "icon-1024x1024.png",
+                          "idiom": "universal",
+                          "platform": "ios",
+                          "size": "1024x1024",
+                      }
+                  ],
+                  "info": {"author": "xcode", "version": 1},
+              }
+              (appicon_dir / "Contents.json").write_text(json.dumps(contents, indent=2) + "\n")
+              print(f"Configured 1024x1024 AppIcon -> {appicon_dir}")
+
+          # 4. Patch host App Info.plist files (camera, photo library, export compliance, versions)
+          cam_desc = "HeyBroc uses the camera when you choose to scan a food or cosmetic barcode or ingredient label to calculate its 0-100 health score."
+          photo_desc = "HeyBroc lets you choose a barcode or ingredient label photo from your library to calculate its 0-100 health score."
+
+          for plist_path in build_root.rglob("Info.plist"):
+              with plist_path.open("rb") as f:
+                  data = plistlib.load(f)
+              is_extension = "NSExtension" in data
+              if not is_extension:
+                  data["NSCameraUsageDescription"] = cam_desc
+                  data["NSPhotoLibraryUsageDescription"] = photo_desc
+                  data["ITSAppUsesNonExemptEncryption"] = False
+              with plist_path.open("wb") as f:
+                  plistlib.dump(data, f)
+              print(f"Updated Info.plist ({'extension' if is_extension else 'host app'}) -> {plist_path}")
+
+          # 5. Patch project.pbxproj bundle ID, MARKETING_VERSION, CURRENT_PROJECT_VERSION & generated plist keys
+          pbx_path = build_root / "HeyBroc.xcodeproj" / "project.pbxproj"
+          pbx = pbx_path.read_text()
+          pbx = pbx.replace("com.heybroc.HeyBroc", "com.heybroc.app")
+          pbx = re.sub(r"MARKETING_VERSION\s*=\s*[^;]+;", f"MARKETING_VERSION = {marketing_version};", pbx)
+          pbx = re.sub(r"CURRENT_PROJECT_VERSION\s*=\s*[^;]+;", f"CURRENT_PROJECT_VERSION = {build_version};", pbx)
+
+          extra_keys = (
+              f'INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;\n'
+              f'\t\t\t\tINFOPLIST_KEY_NSCameraUsageDescription = "{cam_desc}";\n'
+              f'\t\t\t\tINFOPLIST_KEY_NSPhotoLibraryUsageDescription = "{photo_desc}";\n'
+              f'\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app;'
+          )
+          pbx = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*"?com\.heybroc\.app"?;', extra_keys, pbx)
+          pbx_path.write_text(pbx)
+          print(f"Patched project.pbxproj -> version {marketing_version} ({build_version})")
+          PY
 
       - name: Build unsigned iOS Release Archive (Verification)
-        if: ${{ github.event.inputs.upload_to_testflight != 'true' || env.ASC_KEY_ID == '' }}
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        if: ${{ github.event.inputs.upload_to_testflight == 'false' || env.ASC_KEY_ID == '' }}
         run: |
           xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
             -scheme "HeyBroc" \
@@ -55,12 +156,7 @@ jobs:
             build
 
       - name: Cloud-Sign & Upload .ipa to TestFlight (No Mac Required)
-        if: ${{ github.event.inputs.upload_to_testflight == 'true' && env.ASC_KEY_ID != '' }}
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        if: ${{ github.event.inputs.upload_to_testflight != 'false' && env.ASC_KEY_ID != '' }}
         run: |
           mkdir -p ~/.appstoreconnect/private_keys ~/.private_keys ~/private_keys
           echo "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
@@ -82,7 +178,6 @@ jobs:
           </dict>
           </plist>
           EOF
-          sed -i '' 's/com\.heybroc\.HeyBroc/com.heybroc.app/g' ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj
           xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
             -scheme "HeyBroc" \
             -sdk iphoneos \
