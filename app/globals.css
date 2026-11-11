@@ -383,22 +383,24 @@ h1, h2, h3, h4, p { margin: 0; }
 
 /* ---------------- Responsive ---------------- */
 @media (max-width: 960px) {
-  .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 12px 16px 40px; }
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 8px 16px 32px; }
   .stage { position: static; order: -1; }
   .layout--ad-test .stage,
   .layout.is-ad-test-step1 .stage { order: 1; }
-  .topbar { padding: 14px 16px 6px; gap: 9px; }
+  .topbar { padding: 10px 16px 6px; gap: 6px; }
   .site-footer-wrap { padding: 0 14px !important; }
+}
+@media (max-width: 640px) {
+  .brand-tagline { display: none; }
+  .topbar-watch-word { display: none; }
 }
 @media (max-width: 520px) {
   .phone { padding: 0; border-radius: 0; background: none; box-shadow: none; width: 100%; }
-  .screen { border-radius: 24px; height: 78vh; min-height: 560px; box-shadow: var(--shadow-lg); }
+  .screen { border-radius: 24px; height: 74vh; min-height: 520px; box-shadow: var(--shadow-lg); }
   .tool-row { grid-template-columns: 1fr; }
   .watchlist ul { grid-template-columns: 1fr; }
   .topbar-link { display: none; }
-  .brand h1 { font-size: 17px; }
-  .brand-badge { font-size: 10px; padding: 2px 6px; }
-  .brand p { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand h1 { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -409,20 +411,27 @@ h1, h2, h3, h4, p { margin: 0; }
    ========================================================================== */
 
 .topbar-account {
-  display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto;
+  display: flex; align-items: center; gap: 7px; flex: none; margin-left: auto;
 }
 .topbar-actions {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
 }
 .topbar-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   font-size: 13px; font-weight: 750; color: var(--ink);
-  padding: 8px 14px; border-radius: 999px; background: var(--surface);
+  padding: 8px 13px; border-radius: 999px; background: var(--surface);
   border: 1px solid var(--line); box-shadow: var(--shadow-sm); white-space: nowrap;
   transition: transform .18s var(--ease), box-shadow .18s var(--ease), background .18s;
 }
 .topbar-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
 .topbar-btn.is-active {
   background: var(--brand-tint); color: var(--brand-2); border-color: rgba(15, 122, 74, 0.3);
+}
+.topbar-btn--watch {
+  font-weight: 800;
+}
+.topbar-btn--menu {
+  width: 36px; height: 36px; padding: 0; font-size: 15px; font-weight: 800;
 }
 .topbar-btn--pro {
   background: linear-gradient(180deg, #16935a, var(--brand-2)); color: #fff; border-color: transparent;
@@ -433,7 +442,7 @@ h1, h2, h3, h4, p { margin: 0; }
 .topbar-btn--signin {
   background: #0f172a; color: #ffffff; border: 1px solid rgba(15, 23, 42, 0.92);
   box-shadow: 0 6px 16px -6px rgba(15, 23, 42, 0.45);
-  max-width: 150px; overflow: hidden; text-overflow: ellipsis;
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis;
 }
 .topbar-btn--signin:hover {
   background: #1e293b;
@@ -443,46 +452,49 @@ h1, h2, h3, h4, p { margin: 0; }
   box-shadow: var(--shadow-sm);
 }
 
-.topbar-subnav {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%;
-  padding-bottom: 2px;
+.topbar-menu-wrap {
+  position: relative;
 }
-.topbar-pill {
-  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font-size: 12.5px; font-weight: 700; color: var(--ink); text-decoration: none;
-  padding: 7px 13px; border-radius: 999px; background: var(--surface);
-  border: 1px solid var(--line); box-shadow: var(--shadow-sm); white-space: nowrap;
-  min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s;
+.topbar-dropdown {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 80;
+  width: 248px; padding: 6px; border-radius: 16px;
+  background: #ffffff; border: 1px solid rgba(21, 32, 27, 0.12);
+  box-shadow: 0 20px 44px -12px rgba(15, 23, 42, 0.24), 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: flex; flex-direction: column; gap: 2px;
+  animation: fade .16s ease;
 }
-.topbar-pill:hover {
-  transform: translateY(-1px); box-shadow: var(--shadow); border-color: rgba(15, 122, 74, 0.32);
+.topbar-dropdown-item {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: 11px; text-align: left; text-decoration: none;
+  font-size: 13px; font-weight: 700; color: var(--ink); background: transparent;
+  transition: background .15s ease;
 }
+.topbar-dropdown-item:hover {
+  background: var(--bg);
+}
+.topbar-dropdown-sep {
+  height: 1px; background: var(--line); margin: 4px 6px;
+}
+.topbar-dropdown-badge {
+  padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800;
+  background: #e2e8f0; color: #475569;
+}
+.topbar-dropdown-badge.is-on {
+  background: #dcfce7; color: #166534;
+}
+.topbar-dropdown-arrow {
+  font-size: 12px; color: var(--ink-3); font-weight: 800;
+}
+
 .topbar-pill-dot {
   width: 7px; height: 7px; border-radius: 50%; background: #16a34a;
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18); flex: none;
 }
 @media (max-width: 520px) {
-  .topbar-account { gap: 6px; }
-  .topbar-btn { font-size: 11.5px; padding: 6px 9px; }
-  .topbar-btn--signin { max-width: 112px; }
-  .topbar-subnav {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
-  }
-  .topbar-pill {
-    width: 100%; font-size: 10.5px; padding: 7px 5px; gap: 4px;
-  }
-}
-@media (max-width: 420px) {
-  .topbar-subnav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .topbar-subnav > .topbar-pill:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-  .topbar-pill {
-    font-size: 11px; padding: 7px 8px;
-  }
+  .topbar-account { gap: 5px; }
+  .topbar-btn { font-size: 11.5px; padding: 6px 10px; }
+  .topbar-btn--menu { width: 33px; height: 33px; padding: 0; font-size: 14px; }
+  .topbar-btn--signin { max-width: 100px; }
 }
 
 .segmented--two { grid-template-columns: 1fr 1fr; }

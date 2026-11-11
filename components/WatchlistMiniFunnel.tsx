@@ -1154,13 +1154,14 @@ export default function WatchlistMiniFunnel({
 
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
                 gap: 7,
               }}
             >
               {DIETARY_PILLS.map((item) => {
                 const active = dietarySelected.includes(item.id);
+                const isGlyphosate = item.id === "pesticide_risk";
                 return (
                   <button
                     key={item.id}
@@ -1168,13 +1169,14 @@ export default function WatchlistMiniFunnel({
                     aria-pressed={active}
                     onClick={() => toggleDietary(item.id)}
                     style={{
+                      gridColumn: isGlyphosate ? "1 / -1" : undefined,
                       display: "flex",
                       alignItems: "center",
-                      gap: 12,
+                      gap: 9,
                       width: "100%",
                       textAlign: "left",
-                      padding: "9px 12px",
-                      borderRadius: 15,
+                      padding: "8px 10px",
+                      borderRadius: 14,
                       border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
                       background: active ? "#f0fdf4" : "#ffffff",
                       cursor: "pointer",
@@ -1183,48 +1185,59 @@ export default function WatchlistMiniFunnel({
                   >
                     <span
                       style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 11,
+                        width: 30,
+                        height: 30,
+                        borderRadius: 9,
                         background: active ? "#dcfce7" : "#f3f4f6",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 19,
+                        fontSize: 16,
                         flexShrink: 0,
                       }}
                     >
                       {item.icon}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: "#111814" }}>
-                        {item.title}
-                      </div>
                       <div
                         style={{
-                          fontSize: 11.5,
-                          color: "#6b7280",
-                          marginTop: 1,
-                          whiteSpace: "nowrap",
+                          fontSize: 12.5,
+                          fontWeight: 800,
+                          color: "#111814",
+                          whiteSpace: isGlyphosate ? "normal" : "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                         }}
                       >
-                        {item.subtitle}
+                        {item.title}
                       </div>
+                      {isGlyphosate && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#6b7280",
+                            marginTop: 1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {item.subtitle}
+                        </div>
+                      )}
                     </div>
                     <span
                       style={{
-                        width: 23,
-                        height: 23,
-                        borderRadius: 7,
+                        width: 20,
+                        height: 20,
+                        borderRadius: 6,
                         background: active ? "#16a34a" : "#ffffff",
                         border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
                         color: "#ffffff",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 12.5,
+                        fontSize: 11.5,
                         fontWeight: 800,
                         flexShrink: 0,
                       }}

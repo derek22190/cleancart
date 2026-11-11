@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import {
   ADDITIVE_RULES,
   CATEGORY_LABELS,
@@ -10,7 +9,6 @@ import {
   scoreProductYuka,
   type Category,
 } from "@/lib/rubric";
-import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
 
 const FAMILY_WATCH_CATS: Category[] = [
   "seedOils",
@@ -21,36 +19,52 @@ const FAMILY_WATCH_CATS: Category[] = [
   "preservatives",
 ];
 
+const ADDITIVE_FILTER_CATS: Array<{ id: "all" | Category; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "seedOils", label: "Seed Oils" },
+  { id: "dyes", label: "Dyes" },
+  { id: "hfcs", label: "Added Sugar" },
+  { id: "sweeteners", label: "Sweeteners" },
+  { id: "preservatives", label: "Preservatives" },
+  { id: "nitrates", label: "Nitrates" },
+  { id: "emulsifiers", label: "Emulsifiers" },
+];
+
 const SAMPLE_LABELS = [
   {
-    label: "Doritos Nacho Cheese (Seed Oils + Dyes)",
+    shortLabel: "🌮 Doritos",
     title: "Doritos Nacho Cheese Tortilla Chips",
     ingredients:
       "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Artificial Color (Yellow 6, Yellow 5, Red 40), Dextrose, Natural and Artificial Flavor.",
   },
   {
-    label: "Hidden Valley Ranch (Soybean Oil + MSG)",
+    shortLabel: "🥗 Ranch",
     title: "Hidden Valley Original Ranch",
     ingredients:
       "Vegetable Oil (Soybean and/or Canola Oil), Water, Sugar, Salt, Buttermilk, Egg Yolk, Monosodium Glutamate, Phosphoric Acid, Xanthan Gum, Natural and Artificial Flavor, Disodium Inosinate, Disodium Guanylate, Sorbic Acid, Calcium Disodium EDTA.",
   },
   {
-    label: "Sweetened Yogurt (HFCS + Red 40 + Modified Corn Starch)",
+    shortLabel: "🍓 Yogurt",
     title: "Strawberry Lowfat Yogurt",
     ingredients:
       "Cultured Grade A Reduced Fat Milk, Sugar, High Fructose Corn Syrup, Modified Corn Starch, Natural Flavor, Potassium Sorbate, Red 40.",
   },
   {
-    label: "Siete Avocado Oil Tortilla Chips (Clean Label)",
+    shortLabel: "🥑 Clean Chips",
     title: "Siete Grain-Free Sea Salt Tortilla Chips",
     ingredients: "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
   },
 ];
 
+type ToolTab = "grader" | "additives" | "setup";
+
 export default function ToolsClient() {
+  const [activeTab, setActiveTab] = useState<ToolTab>("grader");
   const [titleInput, setTitleInput] = useState(SAMPLE_LABELS[0].title);
   const [ingInput, setIngInput] = useState(SAMPLE_LABELS[0].ingredients);
   const [additiveFilter, setAdditiveFilter] = useState("");
+  const [additiveCategory, setAdditiveCategory] = useState<"all" | Category>("all");
+  const [showAllAdditives, setShowAllAdditives] = useState(false);
   const [copiedShortcutUrl, setCopiedShortcutUrl] = useState(false);
   const [familyWatchlist, setFamilyWatchlist] = useState<Category[]>([
     "seedOils",
@@ -65,6 +79,12 @@ export default function ToolsClient() {
       ) as Category[] | null;
       if (Array.isArray(saved)) {
         setFamilyWatchlist(saved);
+      }
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes("mobile-setup") || hash.includes("setup")) {
+        setActiveTab("setup");
+      } else if (hash.includes("additive")) {
+        setActiveTab("additives");
       }
     } catch {
       /* ignore */
@@ -87,7 +107,7 @@ export default function ToolsClient() {
 
   const liveScore = useMemo(
     () => scoreProductYuka(ingInput, {}, familyWatchlist, { productTitle: titleInput }),
-    [ingInput, titleInput, familyWatchlist],
+    [ingInput, titleInput, familyWatchlist]
   );
 
   const seedOilHits = liveScore.flagged.filter((f) => f.category === "seedOils");
@@ -95,22 +115,21 @@ export default function ToolsClient() {
 
   const filteredRules = useMemo(() => {
     const q = additiveFilter.trim().toLowerCase();
-    if (!q) return ADDITIVE_RULES;
-    return ADDITIVE_RULES.filter(
-      (r) =>
+    return ADDITIVE_RULES.filter((r) => {
+      if (additiveCategory !== "all" && r.category !== additiveCategory) return false;
+      if (!q) return true;
+      return (
         r.name.toLowerCase().includes(q) ||
         r.explanation.toLowerCase().includes(q) ||
-        CATEGORY_LABELS[r.category].toLowerCase().includes(q),
-    );
-  }, [additiveFilter]);
+        CATEGORY_LABELS[r.category].toLowerCase().includes(q)
+      );
+    });
+  }, [additiveFilter, additiveCategory]);
 
-  const evaluatedCatalog = useMemo(
-    () =>
-      SEO_PRODUCTS.filter((p) => hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)).map((p) =>
-        evaluateSeoProduct(p)
-      ),
-    [],
-  );
+  const visibleRules =
+    showAllAdditives || additiveFilter.trim().length > 0
+      ? filteredRules
+      : filteredRules.slice(0, 8);
 
   const badgeTone =
     liveScore.score >= 75
@@ -120,106 +139,654 @@ export default function ToolsClient() {
         : "#dc2626";
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "22px 18px 64px", fontFamily: "var(--font-sans), system-ui, sans-serif", color: "#0f172a" }}>
-      {/* Top Bar */}
-      <header style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#0f172a", minWidth: 0 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="HeyBroc" style={{ width: 40, height: 40, borderRadius: 12, border: "2px solid #16a34a", flexShrink: 0 }} />
-            <div style={{ minWidth: 0 }}>
-              <b style={{ fontSize: 18, fontWeight: 900, display: "block", lineHeight: 1.15 }}>HeyBroc</b>
-              <span style={{ fontSize: 12, color: "#15803d", fontWeight: 700, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                Clean Ingredient, Seed Oil &amp; Sugar Tools
-              </span>
-            </div>
-          </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <Link
-              href="/"
-              style={{ padding: "8px 13px", borderRadius: 999, background: "#f8fafc", border: "1px solid #cbd5e1", color: "#0f172a", fontWeight: 800, fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" }}
-            >
-              ← Scanner
-            </Link>
-            <Link
-              href="/?login=1"
-              style={{ padding: "8px 14px", borderRadius: 999, background: "#0f172a", color: "#ffffff", fontWeight: 800, fontSize: 12.5, textDecoration: "none", whiteSpace: "nowrap" }}
-            >
-              Sign in →
-            </Link>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+    <div
+      style={{
+        maxWidth: 880,
+        margin: "0 auto",
+        padding: "14px 16px 40px",
+        fontFamily: "var(--font-sans), system-ui, sans-serif",
+        color: "#0f172a",
+      }}
+    >
+      {/* Clean Single-Row Top Bar */}
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        <Link
+          href="/"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+            textDecoration: "none",
+            color: "#0f172a",
+            minWidth: 0,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/broc-mascot.jpg"
+            alt="HeyBroc"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: "2px solid #16a34a",
+              flexShrink: 0,
+            }}
+          />
+          <b style={{ fontSize: 18, fontWeight: 900, letterSpacing: "-0.02em" }}>
+            HeyBroc
+          </b>
+        </Link>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
           <Link
             href="/swaps"
-            style={{ padding: "7px 13px", borderRadius: 999, background: "#ecfdf5", border: "1px solid #86efac", color: "#065f46", fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
+            style={{
+              padding: "7px 12px",
+              borderRadius: 999,
+              background: "#ecfdf5",
+              border: "1px solid #86efac",
+              color: "#065f46",
+              fontWeight: 800,
+              fontSize: 12.5,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
           >
-            ⇄ Browse Clean Swaps Directory
+            ⇄ Swaps
           </Link>
-          <a
-            href="/heybroc.apk"
-            download="heybroc.apk"
-            style={{ padding: "7px 14px", borderRadius: 999, background: "#16a34a", color: "#ffffff", fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
+          <Link
+            href="/"
+            style={{
+              padding: "7px 13px",
+              borderRadius: 999,
+              background: "#0f172a",
+              color: "#ffffff",
+              fontWeight: 800,
+              fontSize: 12.5,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
           >
-            📲 Download Android App (.apk)
-          </a>
+            ← Scanner
+          </Link>
         </div>
       </header>
 
-      {/* Hero */}
-      <section style={{ background: "linear-gradient(135deg, #064e3b 0%, #047857 100%)", color: "#ffffff", borderRadius: 24, padding: "28px 26px", marginBottom: 28 }}>
-        <span style={{ display: "inline-block", background: "rgba(255,255,255,0.16)", padding: "4px 12px", borderRadius: 999, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-          100% Free Online Tools · Zero Paywall
-        </span>
-        <h1 style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.15, marginBottom: 10 }}>
-          Free Ingredient Label Grader, Seed Oil Detector &amp; Sugar / Refined-Carb Checker
+      {/* Compact Page Heading */}
+      <div style={{ marginBottom: 14 }}>
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 900,
+            lineHeight: 1.2,
+            letterSpacing: "-0.02em",
+            marginBottom: 4,
+          }}
+        >
+          Free Ingredient Label Grader &amp; Tools
         </h1>
-        <p style={{ fontSize: 15, color: "#d1fae5", maxWidth: 760, lineHeight: 1.5 }}>
-          Paste any food or beverage ingredient label below for an instant <b>0–100 clean-label score</b>, <b>3-Pillar Breakdown</b>, <b>Seed Oil &amp; Red 40 check</b>, and <b>Sugar &amp; refined-carb note</b>.
+        <p style={{ fontSize: 13.5, color: "#475569", lineHeight: 1.4, margin: 0 }}>
+          Paste any food label for an instant 0–100 score, search additives, or set up your phone.
         </p>
-      </section>
+      </div>
 
-      {/* MOBILE SETUP: Android 1-Switch Floating Pill & iPhone 1-Tap Shortcut + Safari Extension */}
-      <section
-        id="mobile-setup"
+      {/* 3-Tab Switcher — Eliminates Multi-Screen Scrolling */}
+      <div
+        role="tablist"
+        aria-label="HeyBroc free tools"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))",
-          gap: 16,
-          marginBottom: 28,
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 5,
+          padding: 4,
+          borderRadius: 14,
+          background: "#e8eae5",
+          marginBottom: 16,
         }}
       >
-        {/* Android 1-Switch Card */}
-        <div
+        {(
+          [
+            { id: "grader" as const, label: "🧪 Label Grader" },
+            { id: "additives" as const, label: `📚 Additives (${ADDITIVE_RULES.length})` },
+            { id: "setup" as const, label: "📲 Phone Setup" },
+          ]
+        ).map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              id={`tools-tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: "9px 6px",
+                borderRadius: 10,
+                border: "none",
+                background: active ? "#ffffff" : "transparent",
+                color: active ? "#0f172a" : "#475569",
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: "pointer",
+                boxShadow: active ? "0 1px 3px rgba(15,23,42,0.08)" : "none",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ==================== TAB 1: LABEL GRADER ==================== */}
+      {activeTab === "grader" && (
+        <section
+          id="ingredient-calculator"
           style={{
-            background: "#f0fdf4",
-            border: "1px solid #86efac",
-            borderRadius: 20,
-            padding: "20px",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 18,
+            padding: "16px",
+            boxShadow: "0 6px 20px rgba(15,23,42,0.04)",
+          }}
+        >
+          {/* Compact Sample Pills */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {SAMPLE_LABELS.map((s) => {
+              const active = titleInput === s.title;
+              return (
+                <button
+                  key={s.shortLabel}
+                  type="button"
+                  onClick={() => {
+                    setTitleInput(s.title);
+                    setIngInput(s.ingredients);
+                  }}
+                  style={{
+                    padding: "6px 11px",
+                    borderRadius: 999,
+                    border: active ? "2px solid #16a34a" : "1px solid #cbd5e1",
+                    background: active ? "#ecfdf5" : "#f8fafc",
+                    color: "#0f172a",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {s.shortLabel}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "grid", gap: 9, marginBottom: 12 }}>
+            <input
+              value={titleInput}
+              onChange={(e) => setTitleInput(e.target.value)}
+              placeholder="Product name (optional — e.g., Doritos, Kids Yogurt)…"
+              aria-label="Product name"
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                borderRadius: 11,
+                border: "1px solid #cbd5e1",
+                fontSize: 13.5,
+              }}
+            />
+            <textarea
+              rows={3}
+              value={ingInput}
+              onChange={(e) => setIngInput(e.target.value)}
+              placeholder="Paste ingredient list separated by commas…"
+              aria-label="Ingredients list"
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                borderRadius: 11,
+                border: "1px solid #cbd5e1",
+                fontSize: 13.5,
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          {/* Compact 2x Watchlist Strip */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              flexWrap: "wrap",
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", marginRight: 2 }}>
+              🛡️ 2x Watchlist:
+            </span>
+            {FAMILY_WATCH_CATS.map((cat) => {
+              const active = familyWatchlist.includes(cat);
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => toggleFamilyCat(cat)}
+                  style={{
+                    padding: "4px 9px",
+                    borderRadius: 999,
+                    border: active ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
+                    background: active ? "#dcfce7" : "#ffffff",
+                    color: active ? "#14532d" : "#475569",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {active ? "✓ " : ""}
+                  {CATEGORY_LABELS[cat]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Instant Score Result Box */}
+          <div
+            style={{
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: 14,
+              padding: "14px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {titleInput.trim() && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={`/api/product-image?title=${encodeURIComponent(titleInput.trim())}`}
+                    alt={titleInput.trim()}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      objectFit: "contain",
+                      borderRadius: 10,
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      padding: 3,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+                <div>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>
+                    {titleInput || "Custom Ingredient Label"}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                    <span
+                      style={{
+                        width: 13,
+                        height: 13,
+                        borderRadius: "50%",
+                        background: badgeTone,
+                        display: "inline-block",
+                      }}
+                    />
+                    <strong style={{ fontSize: 24, fontWeight: 900 }}>
+                      {liveScore.score}/100
+                    </strong>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: badgeTone }}>
+                      {liveScore.score >= 75
+                        ? "Excellent"
+                        : liveScore.score >= 50
+                          ? "Mediocre"
+                          : "Poor"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    background: seedOilHits.length === 0 ? "#dcfce7" : "#fee2e2",
+                    color: seedOilHits.length === 0 ? "#166534" : "#991b1b",
+                  }}
+                >
+                  {seedOilHits.length === 0
+                    ? "✓ Seed-Oil Free"
+                    : `✕ ${seedOilHits.length} Seed Oil(s)`}
+                </span>
+                <span
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    background: dyeHits.length === 0 ? "#dcfce7" : "#fee2e2",
+                    color: dyeHits.length === 0 ? "#166534" : "#991b1b",
+                  }}
+                >
+                  {dyeHits.length === 0 ? "✓ Dye-Free" : `✕ ${dyeHits.length} Dye(s)`}
+                </span>
+              </div>
+            </div>
+
+            {liveScore.yukaBreakdown && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#475569",
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 10,
+                  padding: "8px 11px",
+                  marginBottom: 10,
+                  lineHeight: 1.45,
+                }}
+              >
+                <b>3-Pillar Score:</b> Nutrition {liveScore.yukaBreakdown.nutritionScore}/60 ·
+                Additives {liveScore.yukaBreakdown.additiveScore}/30 · Organic{" "}
+                {liveScore.yukaBreakdown.organicScore}/10
+                {liveScore.yukaBreakdown.glucoseImpact
+                  ? ` · Sugar/Carb: ${liveScore.yukaBreakdown.glucoseImpact}`
+                  : ""}
+              </div>
+            )}
+
+            {liveScore.flagged.length === 0 ? (
+              <div
+                style={{
+                  background: "#dcfce7",
+                  color: "#166534",
+                  padding: "9px 12px",
+                  borderRadius: 10,
+                  fontWeight: 800,
+                  fontSize: 12.5,
+                }}
+              >
+                ✓ Clean Label — zero watchlist additives, seed oils, or synthetic dyes.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 6 }}>
+                {liveScore.flagged.map((f) => (
+                  <div
+                    key={f.id}
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #fecaca",
+                      borderRadius: 10,
+                      padding: "8px 11px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        fontWeight: 800,
+                        fontSize: 12.5,
+                      }}
+                    >
+                      <span>{f.name}</span>
+                      <span style={{ color: "#dc2626", flexShrink: 0 }}>
+                        {RISK_LABEL[f.risk]} (−{f.penalty})
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 11.5, color: "#475569", margin: "2px 0 0" }}>
+                      {f.explanation}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 1-Line Bridge to Swaps Directory */}
+          <div
+            style={{
+              marginTop: 12,
+              padding: "10px 14px",
+              borderRadius: 12,
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              flexWrap: "wrap",
+              fontSize: 12.5,
+            }}
+          >
+            <span style={{ fontWeight: 700, color: "#065f46" }}>
+              ⇄ Want 1-for-1 clean grocery replacements?
+            </span>
+            <Link
+              href="/swaps"
+              style={{ fontWeight: 800, color: "#047857", textDecoration: "none" }}
+            >
+              Browse Clean Swaps →
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* ==================== TAB 2: ADDITIVE LOOKUP (COMPACT + CAPPED) ==================== */}
+      {activeTab === "additives" && (
+        <section
+          id="additive-encyclopedia"
+          style={{
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 18,
+            padding: "16px",
+          }}
+        >
+          <input
+            value={additiveFilter}
+            onChange={(e) => setAdditiveFilter(e.target.value)}
+            placeholder="Search additive (e.g., Red 40, Soybean Oil, BHT, Carrageenan)…"
+            aria-label="Search additives"
+            style={{
+              width: "100%",
+              padding: "10px 13px",
+              borderRadius: 11,
+              border: "1px solid #cbd5e1",
+              fontSize: 13.5,
+              marginBottom: 10,
+            }}
+          />
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {ADDITIVE_FILTER_CATS.map((cat) => {
+              const active = additiveCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setAdditiveCategory(cat.id);
+                    setShowAllAdditives(false);
+                  }}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 999,
+                    border: active ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
+                    background: active ? "#ecfdf5" : "#f8fafc",
+                    color: active ? "#065f46" : "#475569",
+                    fontSize: 11.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {visibleRules.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 11,
+                  padding: "10px 12px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 6,
+                  }}
+                >
+                  <b style={{ fontSize: 13.5, color: "#0f172a" }}>{r.name}</b>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background:
+                        r.risk === "high"
+                          ? "#fee2e2"
+                          : r.risk === "moderate"
+                            ? "#ffedd5"
+                            : "#fef9c3",
+                      color:
+                        r.risk === "high"
+                          ? "#991b1b"
+                          : r.risk === "moderate"
+                            ? "#9a3412"
+                            : "#854d0e",
+                    }}
+                  >
+                    {CATEGORY_LABELS[r.category]} · {RISK_LABEL[r.risk]}
+                  </span>
+                </div>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "#475569",
+                    margin: "4px 0 0",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {r.explanation}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {filteredRules.length > 8 && additiveFilter.trim().length === 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllAdditives((v) => !v)}
+              style={{
+                marginTop: 12,
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: 999,
+                border: "1px solid #cbd5e1",
+                background: "#f8fafc",
+                color: "#0f172a",
+                fontWeight: 800,
+                fontSize: 12.5,
+                cursor: "pointer",
+              }}
+            >
+              {showAllAdditives
+                ? "Show fewer additives ▴"
+                : `Show all ${filteredRules.length} tracked additives ▾`}
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* ==================== TAB 3: PHONE SETUP (CONCISE) ==================== */}
+      {activeTab === "setup" && (
+        <section
+          id="mobile-setup"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 12,
           }}
         >
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              🤖 Android · New 1-Switch Store Bubble
-            </span>
-            <h2 style={{ fontSize: 19, fontWeight: 900, marginTop: 4, marginBottom: 6, color: "#064e3b" }}>
-              Live Floating Pill in Walmart, Instacart, Target &amp; 12 Apps
-            </h2>
-            <p style={{ fontSize: 13, color: "#166534", lineHeight: 1.5, margin: 0 }}>
-              Draws the floating 0–100 score pill directly through Android&apos;s Accessibility Overlay in <b>1 switch</b>—no separate &ldquo;Appear on top&rdquo; permission step required, plus instant tap pre-scanning.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Android Card */}
+          <div
+            style={{
+              background: "#f0fdf4",
+              border: "1px solid #86efac",
+              borderRadius: 18,
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <div>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: "#15803d",
+                  textTransform: "uppercase",
+                }}
+              >
+                🤖 Android · 1-Switch Store Bubble
+              </span>
+              <h2
+                style={{
+                  fontSize: 17,
+                  fontWeight: 900,
+                  margin: "4px 0 6px",
+                  color: "#064e3b",
+                }}
+              >
+                Floating Score Pill in Walmart, Target &amp; 12 Apps
+              </h2>
+              <p style={{ fontSize: 12.5, color: "#166534", lineHeight: 1.45, margin: 0 }}>
+                Enable once in Accessibility Settings to auto-grade items and your whole cart while you shop.
+              </p>
+            </div>
             <a
               href="/heybroc.apk"
               download="heybroc.apk"
               style={{
+                display: "inline-block",
+                textAlign: "center",
                 padding: "10px 16px",
-                borderRadius: 12,
+                borderRadius: 999,
                 background: "#16a34a",
                 color: "#ffffff",
                 fontWeight: 800,
@@ -229,511 +796,127 @@ export default function ToolsClient() {
             >
               📲 Download Android App (.apk)
             </a>
-            <span style={{ fontSize: 11.5, color: "#15803d", fontWeight: 700 }}>
-              ✓ 1-Switch Setup · ✓ Instant Tap Pre-Scan
-            </span>
           </div>
-        </div>
 
-        {/* iPhone 1-Tap Shortcut + Safari Extension Card */}
-        <div
-          style={{
-            background: "#eff6ff",
-            border: "1px solid #93c5fd",
-            borderRadius: 20,
-            padding: "20px",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              🍎 iPhone · Safari Floating Pill + 1-Line Share Sheet / Back Tap
-            </span>
-            <h2 style={{ fontSize: 19, fontWeight: 900, marginTop: 4, marginBottom: 6, color: "#1e3a8a" }}>
-              Scan Any iPhone Grocery App in 1 Tap (Zero JSON Setup)
-            </h2>
-            <p style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5, margin: "0 0 8px" }}>
-              <b>1. Safari Floating Pill:</b> Enable <b>HeyBroc</b> in <i>Settings → Apps → Safari → Extensions</i> for the automatic floating pill on grocery websites.<br />
-              <b>2. Native Store Apps (Share Sheet / Back Tap / Action Button):</b> No manual JSON or POST setup needed—paste this single GET URL into Apple Shortcuts&apos; <i>Get Contents of URL</i> → <i>Show Result</i>:
-            </p>
-            <code
-              style={{
-                display: "block",
-                padding: "8px 10px",
-                borderRadius: 10,
-                background: "#dbeafe",
-                color: "#1e3a8a",
-                fontSize: 11.5,
-                fontWeight: 700,
-                wordBreak: "break-all",
-              }}
-            >
-              {shortcutEndpointUrl}[Shortcut Input]
-            </code>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof navigator !== "undefined" && navigator.clipboard) {
-                  navigator.clipboard.writeText(shortcutEndpointUrl);
-                  setCopiedShortcutUrl(true);
-                  setTimeout(() => setCopiedShortcutUrl(false), 2500);
-                }
-              }}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 12,
-                border: "none",
-                background: "#2563eb",
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: 12.5,
-                cursor: "pointer",
-              }}
-            >
-              {copiedShortcutUrl ? "✓ Copied 1-Line Shortcut URL!" : "📋 Copy 1-Line Shortcut URL"}
-            </button>
-            <a
-              href="shortcuts://create-shortcut"
-              style={{
-                padding: "9px 14px",
-                borderRadius: 12,
-                background: "#ffffff",
-                border: "1px solid #93c5fd",
-                color: "#1d4ed8",
-                fontWeight: 800,
-                fontSize: 12.5,
-                textDecoration: "none",
-              }}
-            >
-              ⚡ Open Apple Shortcuts App
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* TOOL 1: Instant Ingredient Label & Paste Calculator */}
-      <section id="ingredient-calculator" style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "22px", marginBottom: 28, boxShadow: "0 8px 24px rgba(15,23,42,0.04)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Tool #1 · Instant 1-Second Custom Label Grader
-            </span>
-            <h2 style={{ fontSize: 21, fontWeight: 900, marginTop: 2 }}>
-              Paste Any Ingredient List (0–100 Score + Sugar / Carb &amp; Seed Oil Check)
-            </h2>
-          </div>
-        </div>
-
-        {/* Family 2x Watchlist Toggles */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 12, padding: "10px 12px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: "#334155", marginRight: 4 }}>
-            🛡️ Family Watchlist (2x Penalty):
-          </span>
-          {FAMILY_WATCH_CATS.map((cat) => {
-            const active = familyWatchlist.includes(cat);
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => toggleFamilyCat(cat)}
+          {/* iPhone Card */}
+          <div
+            style={{
+              background: "#eff6ff",
+              border: "1px solid #93c5fd",
+              borderRadius: 18,
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <div>
+              <span
                 style={{
-                  padding: "5px 10px",
-                  borderRadius: 999,
-                  border: active ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
-                  background: active ? "#dcfce7" : "#ffffff",
-                  color: active ? "#14532d" : "#475569",
-                  fontSize: 11.5,
+                  fontSize: 11,
                   fontWeight: 800,
+                  color: "#1d4ed8",
+                  textTransform: "uppercase",
+                }}
+              >
+                🍎 iPhone · Safari + 1-Tap Shortcut
+              </span>
+              <h2
+                style={{
+                  fontSize: 17,
+                  fontWeight: 900,
+                  margin: "4px 0 6px",
+                  color: "#1e3a8a",
+                }}
+              >
+                Scan Any iPhone Grocery App in 1 Tap
+              </h2>
+              <p style={{ fontSize: 12.5, color: "#1e40af", lineHeight: 1.45, margin: "0 0 8px" }}>
+                Paste this URL into Apple Shortcuts&apos; <i>Get Contents of URL → Show Result</i>:
+              </p>
+              <code
+                style={{
+                  display: "block",
+                  padding: "7px 9px",
+                  borderRadius: 9,
+                  background: "#dbeafe",
+                  color: "#1e3a8a",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  wordBreak: "break-all",
+                }}
+              >
+                {shortcutEndpointUrl}[Shortcut Input]
+              </code>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof navigator !== "undefined" && navigator.clipboard) {
+                    navigator.clipboard.writeText(shortcutEndpointUrl);
+                    setCopiedShortcutUrl(true);
+                    setTimeout(() => setCopiedShortcutUrl(false), 2500);
+                  }
+                }}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: "#2563eb",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 12,
                   cursor: "pointer",
                 }}
               >
-                {active ? "✓ 2x " : ""}{CATEGORY_LABELS[cat]}
+                {copiedShortcutUrl ? "✓ Copied!" : "📋 Copy URL"}
               </button>
-            );
-          })}
-        </div>
-
-        {/* Sample Preset Pills */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-          {SAMPLE_LABELS.map((s) => (
-            <button
-              key={s.label}
-              type="button"
-              onClick={() => {
-                setTitleInput(s.title);
-                setIngInput(s.ingredients);
-              }}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 999,
-                border: titleInput === s.title ? "2px solid #16a34a" : "1px solid #cbd5e1",
-                background: titleInput === s.title ? "#ecfdf5" : "#f8fafc",
-                color: "#0f172a",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Try: {s.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 4 }}>
-              Product Name (Optional — helps detect beverages, chips, dressings, or organic status)
-            </label>
-            <input
-              value={titleInput}
-              onChange={(e) => setTitleInput(e.target.value)}
-              placeholder="e.g., Doritos Nacho Cheese, Organic Almond Milk, Kids Fruit Snacks…"
-              style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid #cbd5e1", fontSize: 14 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 4 }}>
-              Ingredients List (Paste from any grocery website or nutrition label)
-            </label>
-            <textarea
-              rows={4}
-              value={ingInput}
-              onChange={(e) => setIngInput(e.target.value)}
-              placeholder="Paste ingredients separated by commas…"
-              style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid #cbd5e1", fontSize: 14, fontFamily: "inherit" }}
-            />
-          </div>
-        </div>
-
-        {/* Live Result Card */}
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 16, padding: "18px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {titleInput.trim() && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={`/api/product-image?title=${encodeURIComponent(titleInput.trim())}`}
-                  alt={titleInput.trim()}
-                  style={{
-                    width: 52,
-                    height: 52,
-                    objectFit: "contain",
-                    borderRadius: 12,
-                    background: "#ffffff",
-                    border: "1px solid #e2e8f0",
-                    padding: 4,
-                    flexShrink: 0,
-                  }}
-                />
-              )}
-              <div>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{titleInput || "Custom Ingredient Analysis"}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-                  <span style={{ width: 16, height: 16, borderRadius: "50%", background: badgeTone, display: "inline-block" }} />
-                  <strong style={{ fontSize: 28, fontWeight: 900 }}>{liveScore.score}/100</strong>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: badgeTone }}>
-                    {liveScore.score >= 75 ? "Excellent" : liveScore.score >= 50 ? "Mediocre" : "Poor"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Status Badges for Seed Oils, Dyes & Sugar/Carbs */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <span
+              <a
+                href="shortcuts://create-shortcut"
                 style={{
-                  padding: "6px 12px",
+                  padding: "9px 14px",
                   borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  background: seedOilHits.length === 0 ? "#dcfce7" : "#fee2e2",
-                  color: seedOilHits.length === 0 ? "#166534" : "#991b1b",
-                }}
-              >
-                {seedOilHits.length === 0 ? "✓ Seed-Oil Free" : `✕ ${seedOilHits.length} Seed Oil(s) Detected`}
-              </span>
-              <span
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  background: dyeHits.length === 0 ? "#dcfce7" : "#fee2e2",
-                  color: dyeHits.length === 0 ? "#166534" : "#991b1b",
-                }}
-              >
-                {dyeHits.length === 0 ? "✓ Zero Artificial Dyes" : `✕ ${dyeHits.length} Artificial Dye(s)`}
-              </span>
-              {liveScore.yukaBreakdown?.glucoseImpact && (
-                <span
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    background:
-                      liveScore.yukaBreakdown.glucoseImpact === "Low Sugar / Carb" ||
-                      liveScore.yukaBreakdown.glucoseImpact === "No Added Sugar in Ingredients"
-                        ? "#dcfce7"
-                        : liveScore.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
-                          ? "#fef3c7"
-                          : "#fee2e2",
-                    color:
-                      liveScore.yukaBreakdown.glucoseImpact === "Low Sugar / Carb" ||
-                      liveScore.yukaBreakdown.glucoseImpact === "No Added Sugar in Ingredients"
-                        ? "#166534"
-                        : liveScore.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
-                          ? "#92400e"
-                          : "#991b1b",
-                  }}
-                >
-                  🩸 Sugar &amp; Carb Note: {liveScore.yukaBreakdown.glucoseImpact}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* 3-Pillar + Sugar & Refined-Carb Note */}
-          {liveScore.yukaBreakdown && (
-            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.05em" }}>
-                3-PILLAR SCORE BREAKDOWN &amp; SUGAR / REFINED-CARB NOTE
-              </div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 4 }}>
-                🥗 Nutritional Quality: {liveScore.yukaBreakdown.nutritionScore}/60 (Nutri-Score {liveScore.yukaBreakdown.nutriScoreGrade}) &nbsp;·&nbsp; 🧪 Clean-Label Additives: {liveScore.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {liveScore.yukaBreakdown.organicScore}/10
-              </div>
-              <p style={{ fontSize: 12.5, color: "#475569", marginTop: 6, marginBottom: 0 }}>
-                <b>🩸 Sugar &amp; refined-carb note:</b> {liveScore.yukaBreakdown.glucoseNote} ({liveScore.yukaBreakdown.calorieNote})
-              </p>
-            </div>
-          )}
-
-          {/* Flagged Additives List */}
-          {liveScore.flagged.length === 0 ? (
-            <div style={{ background: "#dcfce7", color: "#166534", padding: "10px 14px", borderRadius: 10, fontWeight: 800, fontSize: 13 }}>
-              ✓ Clean Label! Zero watchlist additives, seed oils, or synthetic dyes.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              <b style={{ fontSize: 12, color: "#b91c1c", textTransform: "uppercase" }}>
-                Flagged Ingredients &amp; Nutrition Warnings ({liveScore.flagged.length}):
-              </b>
-              {liveScore.flagged.map((f) => (
-                <div key={f.id} style={{ background: "#ffffff", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 13.5 }}>
-                    <span>{f.name} ({CATEGORY_LABELS[f.category]})</span>
-                    <span style={{ color: "#dc2626" }}>{RISK_LABEL[f.risk]} · −{f.penalty} pts</span>
-                  </div>
-                  <p style={{ fontSize: 12, color: "#475569", margin: "4px 0 0" }}>{f.explanation}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* TOOL 2: Popular Grocery Product Reports & Clean Swaps */}
-      <section id="clean-swaps" style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Tool #2 · Most-Searched Grocery Products &amp; 1-Tap Clean Swaps
-            </span>
-            <h2 style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>
-              Popular Product Ingredient Reports (0–100)
-            </h2>
-          </div>
-          <Link href="/swaps" style={{ fontSize: 13, fontWeight: 800, color: "#16a34a", textDecoration: "none" }}>
-            View All Product Reports →
-          </Link>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(295px, 1fr))", gap: 14 }}>
-          {evaluatedCatalog.map(({ entry, result, swap }) => {
-            const scoreLabel = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
-            return (
-              <Link
-                key={entry.slug}
-                href={`/swaps/${entry.slug}`}
-                style={{
                   background: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 16,
-                  padding: "16px",
+                  border: "1px solid #93c5fd",
+                  color: "#1d4ed8",
+                  fontWeight: 800,
+                  fontSize: 12,
                   textDecoration: "none",
-                  color: "#0f172a",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  gap: 10,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`/api/product-image?title=${encodeURIComponent(entry.title)}`}
-                    alt={entry.title}
-                    loading="lazy"
-                    style={{
-                      width: 54,
-                      height: 54,
-                      objectFit: "contain",
-                      borderRadius: 12,
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
-                      padding: 4,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ minWidth: 0 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
-                      {entry.category} · {entry.brand}
-                    </span>
-                    <h3 style={{ fontSize: 16, fontWeight: 800, margin: "4px 0 6px" }}>{entry.title}</h3>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span
-                        style={{
-                          padding: "3px 9px",
-                          borderRadius: 999,
-                          fontSize: 12,
-                          fontWeight: 800,
-                          background:
-                            result.score >= 75
-                              ? "#dcfce7"
-                              : result.score >= 50
-                                ? "#fef3c7"
-                                : "#fee2e2",
-                          color:
-                            result.score >= 75
-                              ? "#166534"
-                              : result.score >= 50
-                                ? "#92400e"
-                                : "#991b1b",
-                        }}
-                      >
-                        Score: {result.score}/100 ({scoreLabel})
-                      </span>
-                      <span style={{ fontSize: 12, color: "#64748b" }}>
-                        {result.flagged.length} flag{result.flagged.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                {swap ? (
-                  <div
-                    style={{
-                      background: "#ecfdf5",
-                      border: "1px solid #a7f3d0",
-                      borderRadius: 10,
-                      padding: "8px 10px",
-                      fontSize: 12,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/product-image?title=${encodeURIComponent(swap.title)}`}
-                      alt={swap.title}
-                      loading="lazy"
-                      style={{
-                        width: 36,
-                        height: 36,
-                        objectFit: "contain",
-                        borderRadius: 8,
-                        background: "#ffffff",
-                        border: "1px solid #a7f3d0",
-                        padding: 2,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div style={{ minWidth: 0 }}>
-                      <b style={{ color: "#065f46", display: "block" }}>⇄ Clean Swap ({swap.score}/100):</b>
-                      <span style={{ color: "#047857", fontWeight: 700 }}>{swap.title}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "8px 10px", fontSize: 12, color: "#166534", fontWeight: 700 }}>
-                    ✓ Clean Category Pick — Inspect Full Report →
-                  </div>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* TOOL 3: Complete A-Z Food Additive Encyclopedia */}
-      <section id="additive-encyclopedia" style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 20, padding: "22px" }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Tool #3 · Clean-Label Ingredient Reference ({ADDITIVE_RULES.length} Tracked Food Additives)
-        </span>
-        <h2 style={{ fontSize: 22, fontWeight: 900, marginTop: 2, marginBottom: 8 }}>
-          A–Z Food Additive &amp; Clean-Label Encyclopedia
-        </h2>
-        <p style={{ fontSize: 13.5, color: "#475569", marginBottom: 14 }}>
-          Search every synthetic preservative, food dye, refined seed oil, artificial sweetener, and emulsifier tracked by HeyBroc—complete with EFSA, FDA, WHO/IARC, and NIH references.
-        </p>
-
-        <input
-          value={additiveFilter}
-          onChange={(e) => setAdditiveFilter(e.target.value)}
-          placeholder="Filter additives (e.g., Red 40, Soybean Oil, Carrageenan, Titanium Dioxide, BHT, Nitrite)…"
-          style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid #cbd5e1", fontSize: 14, marginBottom: 14 }}
-        />
-
-        <div style={{ display: "grid", gap: 10 }}>
-          {filteredRules.map((r) => (
-            <div
-              key={r.id}
-              style={{
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 12,
-                padding: "12px 14px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <b style={{ fontSize: 14.5, color: "#0f172a" }}>{r.name}</b>
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 800,
-                    padding: "3px 9px",
-                    borderRadius: 999,
-                    background: r.risk === "high" ? "#fee2e2" : r.risk === "moderate" ? "#ffedd5" : "#fef9c3",
-                    color: r.risk === "high" ? "#991b1b" : r.risk === "moderate" ? "#9a3412" : "#854d0e",
-                  }}
-                >
-                  {CATEGORY_LABELS[r.category]} · {RISK_LABEL[r.risk]}
-                </span>
-              </div>
-              <p style={{ fontSize: 12.5, color: "#475569", margin: "6px 0 0", lineHeight: 1.5 }}>{r.explanation}</p>
+                ⚡ Open Shortcuts
+              </a>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
-      <footer
-        style={{
-          marginTop: 24,
-          padding: "14px 16px",
-          background: "#f8fafc",
-          border: "1px solid #e2e8f0",
-          borderRadius: 14,
-          fontSize: 12,
-          color: "#64748b",
-          lineHeight: 1.55,
-        }}
-      >
-        <strong style={{ color: "#334155" }}>Independent Opinion &amp; Non-Affiliation Disclaimer:</strong>{" "}
-        HeyBroc scores, risk tiers, and additive summaries represent HeyBroc&apos;s subjective clean-label opinion for informational comparison only and are not medical, nutritional, or regulatory safety advice. Most flagged additives and oils are FDA-permitted or GRAS in the United States. Always verify the physical product package label before purchasing or consuming any food or beverage. HeyBroc is not affiliated with, endorsed by, or sponsored by any grocery retailer or food/beverage manufacturer.
+      {/* Compact Collapsible Disclaimer */}
+      <footer style={{ marginTop: 18 }}>
+        <details
+          style={{
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: 12,
+            padding: "9px 13px",
+            fontSize: 11.5,
+            color: "#64748b",
+          }}
+        >
+          <summary style={{ fontWeight: 700, cursor: "pointer", color: "#475569" }}>
+            Independent Opinion &amp; Non-Affiliation Disclaimer
+          </summary>
+          <p style={{ margin: "6px 0 0", lineHeight: 1.5 }}>
+            HeyBroc scores, risk tiers, and additive summaries represent HeyBroc&apos;s subjective
+            clean-label opinion for informational comparison only and are not medical, nutritional,
+            or regulatory safety advice. Most flagged additives and oils are FDA-permitted or GRAS
+            in the United States. Always verify the physical product package label before purchasing
+            or consuming any food or beverage. HeyBroc is not affiliated with, endorsed by, or
+            sponsored by any grocery retailer or food/beverage manufacturer.
+          </p>
+        </details>
       </footer>
     </div>
   );

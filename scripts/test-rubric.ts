@@ -2751,6 +2751,25 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const toolsClientSrc = fs.readFileSync("app/tools/ToolsClient.tsx", "utf8");
+  const swapsPageSrc = fs.readFileSync("app/swaps/page.tsx", "utf8");
+  const swapsDirClientSrc = fs.readFileSync("app/swaps/SwapsDirectoryClient.tsx", "utf8");
+  check(
+    "Compact Mobile Topbar & Scannable Subpages: single-row home header with overflow menu, 3-tab /tools layout, and searchable capped /swaps directory",
+    Boolean(
+      freshSimTsx.includes("topbar-more-menu-btn") &&
+        freshSimTsx.includes("topbar-dropdown") &&
+        !freshSimTsx.includes('className="topbar-subnav"') &&
+        toolsClientSrc.includes("tools-tab-${tab.id}") &&
+        toolsClientSrc.includes('id: "grader"') &&
+        toolsClientSrc.includes('id: "additives"') &&
+        toolsClientSrc.includes('id: "setup"') &&
+        swapsPageSrc.includes("SwapsDirectoryClient") &&
+        swapsDirClientSrc.includes("swaps-search-input") &&
+        swapsDirClientSrc.includes("swaps-show-all-btn")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

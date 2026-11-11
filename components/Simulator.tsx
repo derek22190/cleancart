@@ -590,6 +590,27 @@ export default function Simulator({
   const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
+  const [topMenuOpen, setTopMenuOpen] = useState(false);
+  const [showAllPresets, setShowAllPresets] = useState(false);
+  const topMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!topMenuOpen) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (topMenuRef.current && !topMenuRef.current.contains(e.target as Node)) {
+        setTopMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTopMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [topMenuOpen]);
 
   const togglePreferStoreBrand = useCallback((explicitNext?: boolean) => {
     setPreferStoreBrand((prev) => {
@@ -2156,13 +2177,33 @@ export default function Simulator({
             <div className="brand-copy">
               <div className="brand-title-row">
                 <h1>HeyBroc</h1>
-                <span className="brand-badge">Clean Scanner</span>
               </div>
-              <p>Instant food grader &amp; 1-tap clean swaps</p>
+              <p className="brand-tagline">Instant food grader &amp; 1-tap clean swaps</p>
             </div>
           </div>
 
-          <div className="topbar-account" aria-label="Account and membership">
+          <div className="topbar-account" aria-label="Quick controls and account">
+            {!adTestMode && (
+              <button
+                id="topbar-watchlist-funnel"
+                type="button"
+                className="topbar-btn topbar-btn--watch"
+                onClick={() => {
+                  setManualFunnelOpen(true);
+                  setWatchlistFunnelStep(1);
+                  setWatchlistFunnelOpen(true);
+                }}
+                title="Personalize your family's 2x additive, allergy & glyphosate watchlist"
+              >
+                <span className="topbar-pill-dot" aria-hidden />
+                <span>
+                  🛡️{" "}
+                  <span className="topbar-watch-word">Watchlist </span>(
+                  {familyWatchlist.length + dietaryWatchlist.length})
+                </span>
+              </button>
+            )}
+
             <button
               id="open-paywall"
               type="button"
@@ -2178,138 +2219,158 @@ export default function Simulator({
               className={`topbar-btn topbar-btn--signin ${authUser ? "is-authed" : ""}`}
               onClick={() => setAuthOpen(true)}
             >
-              {authUser ? `👤 ${authUser.displayName}` : "Sign in →"}
+              {authUser ? `👤 ${authUser.displayName}` : "Sign in"}
             </button>
+
+            {!adTestMode && (
+              <div className="topbar-menu-wrap" ref={topMenuRef}>
+                <button
+                  id="topbar-more-menu-btn"
+                  type="button"
+                  aria-label="More tools and settings"
+                  aria-expanded={topMenuOpen}
+                  className={`topbar-btn topbar-btn--menu ${topMenuOpen ? "is-active" : ""}`}
+                  onClick={() => setTopMenuOpen((v) => !v)}
+                >
+                  {topMenuOpen ? "✕" : "☰"}
+                </button>
+
+                {topMenuOpen && (
+                  <div className="topbar-dropdown" role="menu" aria-label="Quick tools">
+                    <button
+                      id="topbar-pesticide-toggle"
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={pesticideWatchEnabled}
+                      className="topbar-dropdown-item"
+                      onClick={() => {
+                        togglePesticideWatch();
+                      }}
+                    >
+                      <span>🌱 Glyphosate Watch</span>
+                      <span
+                        className={`topbar-dropdown-badge ${pesticideWatchEnabled ? "is-on" : ""}`}
+                      >
+                        {pesticideWatchEnabled ? "ON" : "OFF"}
+                      </span>
+                    </button>
+
+                    <button
+                      id="topbar-label-scanner"
+                      type="button"
+                      role="menuitem"
+                      className="topbar-dropdown-item"
+                      onClick={() => {
+                        setTopMenuOpen(false);
+                        setLabelScannerOpen(true);
+                      }}
+                    >
+                      <span>📸 Scan Label / Screenshot</span>
+                    </button>
+
+                    <button
+                      id="topbar-weekly-audit"
+                      type="button"
+                      role="menuitem"
+                      className="topbar-dropdown-item"
+                      onClick={() => {
+                        setTopMenuOpen(false);
+                        setWeeklyAuditOpen(true);
+                      }}
+                    >
+                      <span>🧾 Audit Pickup Order</span>
+                    </button>
+
+                    <div className="topbar-dropdown-sep" />
+
+                    <a
+                      id="open-free-tools"
+                      href="/tools"
+                      role="menuitem"
+                      className="topbar-dropdown-item"
+                    >
+                      <span>🧪 Free Label Grader</span>
+                      <span className="topbar-dropdown-arrow">→</span>
+                    </a>
+
+                    <a
+                      href="/swaps"
+                      role="menuitem"
+                      className="topbar-dropdown-item"
+                    >
+                      <span>⇄ Clean Swaps Directory</span>
+                      <span className="topbar-dropdown-arrow">→</span>
+                    </a>
+
+                    {isIosApp ? (
+                      <>
+                        <button
+                          id="open-ios-live-shop"
+                          type="button"
+                          role="menuitem"
+                          className="topbar-dropdown-item"
+                          onClick={() => {
+                            setTopMenuOpen(false);
+                            const iosBridge = (
+                              window as unknown as {
+                                webkit?: {
+                                  messageHandlers?: {
+                                    controller?: { postMessage?: (msg: string) => void };
+                                  };
+                                };
+                              }
+                            ).webkit?.messageHandlers?.controller;
+                            if (typeof iosBridge?.postMessage === "function") {
+                              iosBridge.postMessage("open-live-shop");
+                            }
+                          }}
+                        >
+                          <span>🛒 Live Shop Bubble</span>
+                        </button>
+                        <button
+                          id="open-ios-safari-setup"
+                          type="button"
+                          role="menuitem"
+                          className="topbar-dropdown-item"
+                          onClick={() => {
+                            setTopMenuOpen(false);
+                            const iosBridge = (
+                              window as unknown as {
+                                webkit?: {
+                                  messageHandlers?: {
+                                    controller?: { postMessage?: (msg: string) => void };
+                                  };
+                                };
+                              }
+                            ).webkit?.messageHandlers?.controller;
+                            if (typeof iosBridge?.postMessage === "function") {
+                              iosBridge.postMessage("open-safari-setup");
+                            } else {
+                              window.location.href = "/tools#mobile-setup";
+                            }
+                          }}
+                        >
+                          <span>⚡ iPhone Setup</span>
+                        </button>
+                      </>
+                    ) : (
+                      <a
+                        id="download-android-apk"
+                        href="/heybroc.apk"
+                        download="heybroc.apk"
+                        role="menuitem"
+                        className="topbar-dropdown-item"
+                      >
+                        <span>📲 Android App (.apk)</span>
+                        <span className="topbar-dropdown-arrow">↓</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-
-        <nav
-          className="topbar-subnav"
-          aria-label="Quick tools and setup"
-          style={adTestMode ? { display: "none" } : undefined}
-        >
-          <button
-            id="topbar-watchlist-funnel"
-            type="button"
-            className="topbar-pill"
-            onClick={() => {
-              setManualFunnelOpen(true);
-              setWatchlistFunnelStep(1);
-              setWatchlistFunnelOpen(true);
-            }}
-            title="Personalize your family's 2x additive & allergy watchlist"
-          >
-            <span className="topbar-pill-dot" aria-hidden />
-            🛡️ Avoid ({familyWatchlist.length}
-            {dietaryWatchlist.length > 0 ? ` + ${dietaryWatchlist.length} Guard` : ""})
-          </button>
-
-          <button
-            id="topbar-pesticide-toggle"
-            type="button"
-            role="switch"
-            aria-checked={pesticideWatchEnabled}
-            className="topbar-pill"
-            onClick={() => togglePesticideWatch()}
-            title="Toggle Herbicides & Pesticides (Glyphosate) Watch (USDA Dirty-Dozen produce + conventional oats/wheat/legumes)"
-            style={
-              pesticideWatchEnabled
-                ? {
-                    background: "#ecfdf5",
-                    borderColor: "#16a34a",
-                    color: "#065f46",
-                    fontWeight: 800,
-                  }
-                : undefined
-            }
-          >
-            🌱 Pesticides (Glyphosate): {pesticideWatchEnabled ? "ON" : "OFF"}
-          </button>
-
-          <button
-            id="topbar-weekly-audit"
-            type="button"
-            className="topbar-pill"
-            onClick={() => setWeeklyAuditOpen(true)}
-            title="Paste or upload your weekly grocery order or receipt to rank worst culprits"
-          >
-            🧾 Audit Order
-          </button>
-
-          <button
-            id="topbar-label-scanner"
-            type="button"
-            className="topbar-pill"
-            onClick={() => setLabelScannerOpen(true)}
-            title="Upload a screenshot or snap an Ingredients label"
-          >
-            📸 Label / Screenshot
-          </button>
-
-          {isIosApp ? (
-            <>
-              <button
-                id="open-ios-live-shop"
-                type="button"
-                className="topbar-pill"
-                style={{
-                  background: "#ecfdf5",
-                  borderColor: "#86efac",
-                  color: "#065f46",
-                  fontWeight: 800,
-                }}
-                onClick={() => {
-                  const iosBridge = (
-                    window as unknown as {
-                      webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
-                    }
-                  ).webkit?.messageHandlers?.controller;
-                  if (typeof iosBridge?.postMessage === "function") {
-                    iosBridge.postMessage("open-live-shop");
-                  }
-                }}
-              >
-                🛒 Live Shop Bubble
-              </button>
-              <button
-                id="open-ios-safari-setup"
-                type="button"
-                className="topbar-pill"
-                onClick={() => {
-                  const iosBridge = (
-                    window as unknown as {
-                      webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
-                    }
-                  ).webkit?.messageHandlers?.controller;
-                  if (typeof iosBridge?.postMessage === "function") {
-                    iosBridge.postMessage("open-safari-setup");
-                  } else {
-                    window.location.href = "/tools";
-                  }
-                }}
-              >
-                ⚡ iPhone Setup
-              </button>
-            </>
-          ) : (
-            <a
-              id="download-android-apk"
-              href="/heybroc.apk"
-              download="heybroc.apk"
-              className="topbar-pill"
-            >
-              📲 Android APK
-            </a>
-          )}
-
-          <a
-            id="open-free-tools"
-            href="/tools"
-            className="topbar-pill"
-          >
-            🧰 Tools &amp; iOS
-          </a>
-        </nav>
       </header>
 
       <main className={`layout ${adTestMode ? "layout--ad-test" : ""} ${adTestMode && !freeTestCompleted ? "is-ad-test-step1" : ""}`.trim()}>
@@ -2844,9 +2905,20 @@ export default function Simulator({
             className="card"
             style={adTestMode ? { display: "none" } : undefined}
           >
-            <div className="card-head"><h2>Popular Grocery Items</h2></div>
+            <div className="card-head">
+              <h2>Popular Grocery Items</h2>
+              {PRESETS.length > 5 && (
+                <button
+                  type="button"
+                  className="store-view-toggle"
+                  onClick={() => setShowAllPresets((v) => !v)}
+                >
+                  {showAllPresets ? "Show fewer ▴" : `Show all ${PRESETS.length} ▾`}
+                </button>
+              )}
+            </div>
             <ul className="preset-list">
-              {PRESETS.map((p) => {
+              {(showAllPresets ? PRESETS : PRESETS.slice(0, 5)).map((p) => {
                 const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
                 const on = active.key === p.id && viewMode === "product";
                 return (
@@ -2881,8 +2953,8 @@ export default function Simulator({
             <button id="open-weekly-audit" type="button" className="tool" onClick={() => setWeeklyAuditOpen(true)}>
               <span className="tool-icon">🧾</span>
               <span>
-                <b>Audit Weekly Order / Receipt</b>
-                <small>Paste Walmart, Instacart, Target or Amazon order text or screenshot</small>
+                <b>Audit Weekly Order</b>
+                <small>Paste or upload pickup order / receipt</small>
               </span>
             </button>
           </div>
@@ -2915,11 +2987,11 @@ export default function Simulator({
             <span className="tool-icon">🛡️</span>
             <span>
               <b>
-                Family Ingredient &amp; Allergy Watchlist ({familyWatchlist.length} Active · 2x Penalty
-                {dietaryWatchlist.length > 0 ? ` · ${dietaryWatchlist.length} Allergy/Diet` : ""})
+                Family Watchlist ({familyWatchlist.length} Active
+                {dietaryWatchlist.length > 0 ? ` · ${dietaryWatchlist.length} Allergy` : ""})
               </b>
               <small>
-                Choose ingredients &amp; family allergens to avoid (Seed Oils, Red 40, HFCS, Nitrites, Sugar, Dairy, Gluten, Peanuts &amp; more) — HeyBroc doubles penalties, surfaces instant Allergy/Sugar badges, and finds clean swaps. Tap to customize →
+                2x penalties on Seed Oils, Red 40, Sugar &amp; family allergens →
               </small>
             </span>
           </button>
@@ -2942,13 +3014,13 @@ export default function Simulator({
               borderColor: pesticideWatchEnabled ? "#22c55e" : undefined,
             }}
           >
-            <span style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
               <span className="tool-icon" aria-hidden>
                 🌱
               </span>
               <span style={{ minWidth: 0 }}>
                 <b>
-                  Herbicides &amp; Pesticides (Glyphosate) Watch{" "}
+                  Pesticides (Glyphosate) Watch{" "}
                   <span
                     style={{
                       display: "inline-block",
@@ -2965,7 +3037,7 @@ export default function Simulator({
                   </span>
                 </b>
                 <small style={{ display: "block", marginTop: 2 }}>
-                  Flags non-organic USDA Dirty-Dozen produce (strawberries, spinach, kale, apples, grapes, berries) &amp; conventional oats, wheat &amp; legumes where herbicides/desiccants (such as glyphosate) are permitted — and auto-recommends certified USDA Organic swaps.
+                  Flags Dirty-Dozen produce &amp; conventional oats/wheat → Organic swaps
                 </small>
               </span>
             </span>
