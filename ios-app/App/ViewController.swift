@@ -75,6 +75,15 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
         setupLoadingOverlay(above: freshWebView, below: bottomBar)
         loadAppURL(appHomeURL)
+
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("HeyBrocOpenLiveShopNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, self.presentedViewController == nil else { return }
+            self.presentLiveStoreBrowser()
+        }
     }
 
     private func buildBottomBar() -> UIView {
@@ -96,14 +105,14 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         container.addSubview(stack)
 
         let scannerBtn = makeBarButton(title: "🥦 Scanner", primary: false, action: #selector(tapScannerHome))
+        let liveShopBtn = makeBarButton(title: "🛒 Live Shop", primary: true, action: #selector(tapLiveShop))
         let barcodeBtn = makeBarButton(title: "📷 Barcode", primary: false, action: #selector(tapBarcodeScanner))
-        let safariBtn = makeBarButton(title: "🧭 Safari Pill", primary: true, action: #selector(tapSafariSetup))
-        let toolsBtn = makeBarButton(title: "🧰 Tools", primary: false, action: #selector(tapTools))
+        let safariBtn = makeBarButton(title: "⚡ iPhone Pill", primary: false, action: #selector(tapSafariSetup))
 
         stack.addArrangedSubview(scannerBtn)
+        stack.addArrangedSubview(liveShopBtn)
         stack.addArrangedSubview(barcodeBtn)
         stack.addArrangedSubview(safariBtn)
-        stack.addArrangedSubview(toolsBtn)
 
         NSLayoutConstraint.activate([
             topBorder.topAnchor.constraint(equalTo: container.topAnchor),
@@ -255,6 +264,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
+    @objc private func tapLiveShop() {
+        presentLiveStoreBrowser()
+    }
+
     @objc private func tapBarcodeScanner() {
         presentBarcodeScanner()
     }
@@ -273,8 +286,35 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
+    private func syncNativePrefsToWebView() {
+        guard let data = try? JSONSerialization.data(withJSONObject: HeyBrocSharedPrefs.dietaryWatchlist, options: []),
+              let jsonStr = String(data: data, encoding: .utf8) else { return }
+        let escaped = jsonStr.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
+        let js = """
+        try {
+          localStorage.setItem('heybroc_dietary_watchlist', '\(escaped)');
+          window.dispatchEvent(new Event('storage'));
+        } catch (_) {}
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func presentLiveStoreBrowser(initialStoreKey: String? = nil) {
+        let browser = LiveStoreBrowserViewController(
+            initialStoreKey: initialStoreKey,
+            onPreferencesUpdated: { [weak self] in
+                self?.syncNativePrefsToWebView()
+            }
+        )
+        browser.modalPresentationStyle = .fullScreen
+        present(browser, animated: true)
+    }
+
     private func presentSafariSetupSheet() {
         let sheet = SafariSetupSheetViewController(
+            onOpenLiveStore: { [weak self] storeKey in
+                self?.presentLiveStoreBrowser(initialStoreKey: storeKey)
+            },
             onOpenSettings: { [weak self] in
                 self?.openSystemSettings()
             },
@@ -287,7 +327,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
         )
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
-            pres.detents = [.medium(), .large()]
+            pres.detents = [.large()]
             pres.prefersGrabberVisible = true
             pres.preferredCornerRadius = 24
         }
@@ -340,11 +380,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "controller" else { return }
+        var payloadDict: [String: Any]?
         let action: String
         if let str = message.body as? String {
             action = str
         } else if let dict = message.body as? [String: Any], let cmd = dict["action"] as? String {
             action = cmd
+            payloadDict = dict
         } else {
             return
         }
@@ -354,6 +396,22 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             openSystemSettings()
         case "open-safari-setup":
             presentSafariSetupSheet()
+        case "open-live-shop":
+            let storeKey = payloadDict?["store"] as? String
+            presentLiveStoreBrowser(initialStoreKey: storeKey)
+        case "sync-preferences":
+            if let dietary = payloadDict?["dietaryWatchlist"] as? [String] {
+                HeyBrocSharedPrefs.dietaryWatchlist = dietary
+            }
+            if let family = payloadDict?["familyWatchlist"] as? [String] {
+                HeyBrocSharedPrefs.familyWatchlist = family
+            }
+            if let preferSB = payloadDict?["preferStoreBrand"] as? Bool {
+                HeyBrocSharedPrefs.preferStoreBrand = preferSB
+            }
+            if let activeStore = payloadDict?["store"] as? String, !activeStore.isEmpty {
+                HeyBrocSharedPrefs.activeStore = activeStore
+            }
         case "open-barcode-scanner":
             presentBarcodeScanner()
         case "reload-app", "open-scanner":
@@ -399,6 +457,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 openSystemSettings()
             } else if host == "safari" {
                 presentSafariSetupSheet()
+            } else if host == "liveshop" {
+                presentLiveStoreBrowser()
             } else if host == "barcode" {
                 presentBarcodeScanner()
             }
@@ -474,18 +534,21 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 }
 
-// MARK: - Safari Extension & iPhone Live Bubble Setup Sheet
+// MARK: - Complete iPhone Grocery Bubble, Share Sheet & Back-Tap Setup Sheet
 
 private final class SafariSetupSheetViewController: UIViewController {
+    private let onOpenLiveStore: (String?) -> Void
     private let onOpenSettings: () -> Void
     private let onOpenExternalURL: (URL) -> Void
     private let onOpenToolsShortcut: () -> Void
 
     init(
+        onOpenLiveStore: @escaping (String?) -> Void,
         onOpenSettings: @escaping () -> Void,
         onOpenExternalURL: @escaping (URL) -> Void,
         onOpenToolsShortcut: @escaping () -> Void
     ) {
+        self.onOpenLiveStore = onOpenLiveStore
         self.onOpenSettings = onOpenSettings
         self.onOpenExternalURL = onOpenExternalURL
         self.onOpenToolsShortcut = onOpenToolsShortcut
@@ -516,7 +579,7 @@ private final class SafariSetupSheetViewController: UIViewController {
         headerRow.distribution = .equalSpacing
 
         let titleLabel = UILabel()
-        titleLabel.text = "🥦 Safari Live Grocery Bubble"
+        titleLabel.text = "🥦 4 Ways to Shop on iPhone"
         titleLabel.font = UIFont.systemFont(ofSize: 20, weight: .heavy)
         titleLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
         titleLabel.numberOfLines = 2
@@ -531,78 +594,56 @@ private final class SafariSetupSheetViewController: UIViewController {
         headerRow.addArrangedSubview(closeBtn)
         content.addArrangedSubview(headerRow)
 
-        let subLabel = UILabel()
-        subLabel.text = "Enable HeyBroc's Safari Extension once to get automatic floating 0–100 health scores & 1-tap Clean Swaps on Walmart, Target, Instacart, Kroger, Costco, ALDI & Amazon."
-        subLabel.font = UIFont.systemFont(ofSize: 14, weight: .regular)
-        subLabel.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
-        subLabel.numberOfLines = 0
-        content.addArrangedSubview(subLabel)
-
-        let stepsCard = UIStackView()
-        stepsCard.axis = .vertical
-        stepsCard.spacing = 10
-        stepsCard.isLayoutMarginsRelativeArrangement = true
-        stepsCard.layoutMargins = UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
-        stepsCard.backgroundColor = .white
-        stepsCard.layer.cornerRadius = 16
-        stepsCard.layer.borderWidth = 1
-        stepsCard.layer.borderColor = UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0).cgColor
-
-        let steps = [
-            "1. Open the iPhone Settings app → Apps → Safari → Extensions.",
-            "2. Tap HeyBroc and turn Allow Extension ON.",
-            "3. Set All Websites (or grocery stores) to Allow."
-        ]
-        for step in steps {
-            let lbl = UILabel()
-            lbl.text = step
-            lbl.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-            lbl.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
-            lbl.numberOfLines = 0
-            stepsCard.addArrangedSubview(lbl)
-        }
-        content.addArrangedSubview(stepsCard)
-
-        let settingsBtn = UIButton(type: .system)
-        settingsBtn.setTitle("⚙️ Open iPhone Settings", for: .normal)
-        settingsBtn.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .heavy)
-        settingsBtn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
-        settingsBtn.setTitleColor(.white, for: .normal)
-        settingsBtn.layer.cornerRadius = 14
-        settingsBtn.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        settingsBtn.addTarget(self, action: #selector(tapOpenSettings), for: .touchUpInside)
-        content.addArrangedSubview(settingsBtn)
-
-        let testTitle = UILabel()
-        testTitle.text = "Test Live Floating Pill in Safari:"
-        testTitle.font = UIFont.systemFont(ofSize: 13, weight: .bold)
-        testTitle.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
-        content.addArrangedSubview(testTitle)
+        // 1. In-App Live Store Browser (Permanent Floating Bubble — Zero Tapping!)
+        let liveCard = makeCard(borderColor: UIColor(red: 0.525, green: 0.937, blue: 0.675, alpha: 1.0), bgColor: UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0))
+        liveCard.addArrangedSubview(makeBadge("⭐ ZERO SETUP • AUTOMATIC PERMANENT BUBBLE"))
+        liveCard.addArrangedSubview(makeHeading("1. 🛒 Live Store Browser Inside HeyBroc"))
+        liveCard.addArrangedSubview(makeBody("Sign into Walmart, Instacart, Target, Amazon Fresh, Costco, Sam's Club, Kroger or ALDI once. HeyBroc's floating broccoli pill stays on screen automatically across every food item—just like Android!"))
 
         let storesRow = UIStackView()
         storesRow.axis = .horizontal
         storesRow.distribution = .fillEqually
-        storesRow.spacing = 8
+        storesRow.spacing = 6
+        storesRow.addArrangedSubview(makeStoreBtn(title: "Walmart", storeKey: "walmart"))
+        storesRow.addArrangedSubview(makeStoreBtn(title: "Instacart", storeKey: "instacart"))
+        storesRow.addArrangedSubview(makeStoreBtn(title: "Target", storeKey: "target"))
+        storesRow.addArrangedSubview(makeStoreBtn(title: "Amazon", storeKey: "amazon"))
+        liveCard.addArrangedSubview(storesRow)
+        content.addArrangedSubview(liveCard)
 
-        let walmartBtn = makeStoreBtn(title: "Walmart", action: #selector(tapWalmart))
-        let targetBtn = makeStoreBtn(title: "Target", action: #selector(tapTarget))
-        let instacartBtn = makeStoreBtn(title: "Instacart", action: #selector(tapInstacart))
-        storesRow.addArrangedSubview(walmartBtn)
-        storesRow.addArrangedSubview(targetBtn)
-        storesRow.addArrangedSubview(instacartBtn)
-        content.addArrangedSubview(storesRow)
+        // 2. Native Grocery Apps Share Sheet (`↑ Share -> 🥦 HeyBroc`)
+        let shareCard = makeCard()
+        shareCard.addArrangedSubview(makeBadge("INSIDE WALMART / INSTACART / TARGET APPS"))
+        shareCard.addArrangedSubview(makeHeading("2. 📤 Tap ↑ Share → 🥦 HeyBroc"))
+        shareCard.addArrangedSubview(makeBody("Shopping inside the native Walmart, Instacart, Target, Costco or Amazon app? Tap the ↑ Share icon on any food item and tap 🥦 HeyBroc for an instant slide-up 0–100 score card, 🌱 Pesticide toggle & 1-tap Clean Swap without leaving your cart."))
+        content.addArrangedSubview(shareCard)
 
-        let shortcutBtn = UIButton(type: .system)
-        shortcutBtn.setTitle("⚡ Native Grocery App Share-Sheet Shortcut →", for: .normal)
-        shortcutBtn.titleLabel?.font = UIFont.systemFont(ofSize: 13.5, weight: .bold)
-        shortcutBtn.backgroundColor = .white
-        shortcutBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
-        shortcutBtn.layer.cornerRadius = 12
-        shortcutBtn.layer.borderWidth = 1
-        shortcutBtn.layer.borderColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0).cgColor
-        shortcutBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        shortcutBtn.addTarget(self, action: #selector(tapShortcut), for: .touchUpInside)
-        content.addArrangedSubview(shortcutBtn)
+        // 3. Back Tap / Action Button Screen Scanner (Set Up Once)
+        let backTapCard = makeCard()
+        backTapCard.addArrangedSubview(makeBadge("SET UP ONCE • DOUBLE-TAP ON ANY SCREEN"))
+        backTapCard.addArrangedSubview(makeHeading("3. ⚡ Back-Tap / Action Button Scanner"))
+        backTapCard.addArrangedSubview(makeBody("1. Open Shortcuts → tap + → Add Action → search \"HeyBroc\" → pick \"Scan Grocery Screenshot with HeyBroc\" (add \"Take Screenshot\" right above it and pass Screenshot into it).\n2. Open Settings → Accessibility → Touch → Back Tap → Double Tap → choose your HeyBroc shortcut.\nAfter this 1-time setup, double-tap the back of your iPhone on any food item to see a live score banner!"))
+
+        let shortcutRow = UIStackView()
+        shortcutRow.axis = .horizontal
+        shortcutRow.distribution = .fillEqually
+        shortcutRow.spacing = 8
+
+        let openShortcutsBtn = makeActionBtn(title: "⚡ Open Shortcuts", filled: true, action: #selector(tapOpenShortcutsApp))
+        let openSettingsBtn = makeActionBtn(title: "⚙️ iPhone Settings", filled: false, action: #selector(tapOpenSettings))
+        shortcutRow.addArrangedSubview(openShortcutsBtn)
+        shortcutRow.addArrangedSubview(openSettingsBtn)
+        backTapCard.addArrangedSubview(shortcutRow)
+        content.addArrangedSubview(backTapCard)
+
+        // 4. Safari Browser Floating Extension
+        let safariCard = makeCard()
+        safariCard.addArrangedSubview(makeBadge("SAFARI BROWSER EXTENSION"))
+        safariCard.addArrangedSubview(makeHeading("4. 🧭 Safari Automatic Floating Pill"))
+        safariCard.addArrangedSubview(makeBody("Shopping grocery websites in Safari? Enable Settings → Apps → Safari → Extensions → HeyBroc → Allow for an automatic floating score pill."))
+        let safariSettingsBtn = makeActionBtn(title: "⚙️ Enable Safari Extension in Settings", filled: false, action: #selector(tapOpenSettings))
+        safariCard.addArrangedSubview(safariSettingsBtn)
+        content.addArrangedSubview(safariCard)
 
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -617,16 +658,76 @@ private final class SafariSetupSheetViewController: UIViewController {
         ])
     }
 
-    private func makeStoreBtn(title: String, action: Selector) -> UIButton {
+    private func makeCard(
+        borderColor: UIColor = UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0),
+        bgColor: UIColor = .white
+    ) -> UIStackView {
+        let card = UIStackView()
+        card.axis = .vertical
+        card.spacing = 8
+        card.isLayoutMarginsRelativeArrangement = true
+        card.layoutMargins = UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        card.backgroundColor = bgColor
+        card.layer.cornerRadius = 16
+        card.layer.borderWidth = 1
+        card.layer.borderColor = borderColor.cgColor
+        return card
+    }
+
+    private func makeBadge(_ text: String) -> UILabel {
+        let lbl = UILabel()
+        lbl.text = text
+        lbl.font = UIFont.systemFont(ofSize: 10.5, weight: .heavy)
+        lbl.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
+        return lbl
+    }
+
+    private func makeHeading(_ text: String) -> UILabel {
+        let lbl = UILabel()
+        lbl.text = text
+        lbl.font = UIFont.systemFont(ofSize: 15.5, weight: .heavy)
+        lbl.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+        lbl.numberOfLines = 0
+        return lbl
+    }
+
+    private func makeBody(_ text: String) -> UILabel {
+        let lbl = UILabel()
+        lbl.text = text
+        lbl.font = UIFont.systemFont(ofSize: 13, weight: .regular)
+        lbl.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
+        lbl.numberOfLines = 0
+        return lbl
+    }
+
+    private func makeStoreBtn(title: String, storeKey: String) -> UIButton {
         let btn = UIButton(type: .system)
         btn.setTitle(title, for: .normal)
-        btn.titleLabel?.font = UIFont.systemFont(ofSize: 13.5, weight: .bold)
-        btn.backgroundColor = UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0)
-        btn.setTitleColor(UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0), for: .normal)
+        btn.accessibilityIdentifier = storeKey
+        btn.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .heavy)
+        btn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
+        btn.setTitleColor(.white, for: .normal)
+        btn.layer.cornerRadius = 10
+        btn.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        btn.addTarget(self, action: #selector(tapLaunchLiveStore(_:)), for: .touchUpInside)
+        return btn
+    }
+
+    private func makeActionBtn(title: String, filled: Bool, action: Selector) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(title, for: .normal)
+        btn.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
         btn.layer.cornerRadius = 12
-        btn.layer.borderWidth = 1
-        btn.layer.borderColor = UIColor(red: 0.655, green: 0.953, blue: 0.816, alpha: 1.0).cgColor
         btn.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        if filled {
+            btn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
+            btn.setTitleColor(.white, for: .normal)
+        } else {
+            btn.backgroundColor = .white
+            btn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
+            btn.layer.borderWidth = 1
+            btn.layer.borderColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0).cgColor
+        }
         btn.addTarget(self, action: action, for: .touchUpInside)
         return btn
     }
@@ -635,32 +736,21 @@ private final class SafariSetupSheetViewController: UIViewController {
         dismiss(animated: true)
     }
 
+    @objc private func tapLaunchLiveStore(_ sender: UIButton) {
+        let storeKey = sender.accessibilityIdentifier
+        dismiss(animated: true) { [onOpenLiveStore] in
+            onOpenLiveStore(storeKey)
+        }
+    }
+
+    @objc private func tapOpenShortcutsApp() {
+        if let url = URL(string: "shortcuts://") {
+            onOpenExternalURL(url)
+        }
+    }
+
     @objc private func tapOpenSettings() {
         onOpenSettings()
-    }
-
-    @objc private func tapWalmart() {
-        if let url = URL(string: "https://www.walmart.com/browse/food/976759") {
-            onOpenExternalURL(url)
-        }
-    }
-
-    @objc private func tapTarget() {
-        if let url = URL(string: "https://www.target.com/c/grocery/-/N-5xt1a") {
-            onOpenExternalURL(url)
-        }
-    }
-
-    @objc private func tapInstacart() {
-        if let url = URL(string: "https://www.instacart.com") {
-            onOpenExternalURL(url)
-        }
-    }
-
-    @objc private func tapShortcut() {
-        dismiss(animated: true) { [onOpenToolsShortcut] in
-            onOpenToolsShortcut()
-        }
     }
 }
 

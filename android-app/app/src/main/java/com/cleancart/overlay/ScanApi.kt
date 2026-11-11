@@ -416,6 +416,13 @@ object ScanApi {
             shortBadge = "SUGAR"
         ),
         DietaryOption(
+            id = "pesticide_risk",
+            emoji = "🌱",
+            title = "Herbicides & Pesticides Watch",
+            subtitle = "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes; swaps to USDA Organic",
+            shortBadge = "PESTICIDE"
+        ),
+        DietaryOption(
             id = "dairy",
             emoji = "🥛",
             title = "Dairy / Lactose Allergy",
@@ -678,6 +685,58 @@ object ScanApi {
                         reason = reasons.joinToString(" • ")
                     )
                 )
+            }
+        }
+
+        if ("pesticide_risk" in selected) {
+            val isOrganic = (nutrition?.optBoolean("isOrganic", false) == true) ||
+                Regex(
+                    "\\b(organic|organics|usda\\s+organic|biodynamic|glyphosate[\\s-]*residue[\\s-]*free|pesticide[\\s-]*free|herbicide[\\s-]*free)\\b",
+                    RegexOption.IGNORE_CASE
+                ).containsMatchIn(combined)
+            val isBeverageOrCandy = Regex(
+                "\\b(sparkling\\s+water|seltzer|club\\s+soda|energy\\s+drink|diet\\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\\s+gum|gummy|gummies|skittles|starburst|sunscreen|lotion|shampoo|soap|detergent|toothpaste)\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(title) && !Regex("\\b(oats?|oatmeal|wheat|flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
+
+            if (!isOrganic && !isBeverageOrCandy) {
+                val cleaned = combined
+                    .replace(
+                        Regex("\\borganic\\s+(?:whole\\s+grain\\s+|rolled\\s+|steel[\\s-]*cut\\s+|sprouted\\s+|gluten[\\s-]*free\\s+|unbleached\\s+|enriched\\s+|durum\\s+|baby\\s+|fresh\\s+|frozen\\s+)?[a-z]+(?:\\s+(?:oats?|wheat|flour|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?", RegexOption.IGNORE_CASE),
+                        " "
+                    )
+                    .replace(
+                        Regex("\\b(?:natural|artificial)\\s+[a-z\\s]{0,20}flavors?\\b|\\b(?:apple\\s+cider\\s+vinegar|apple\\s+pectin|fruit\\s+pectin|citrus\\s+pectin)\\b", RegexOption.IGNORE_CASE),
+                        " "
+                    )
+                val produceMatch = Regex(
+                    "\\b(strawberries|strawberry|baby\\s+spinach|spinach|kale|collard\\s+greens?|mustard\\s+greens?|seedless\\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|applesauce|apples?|bell\\s+peppers?|sweet\\s+peppers?|hot\\s+peppers?|cherries|blueberries|blueberry|green\\s+beans?|string\\s+beans?|potatoes|celery|tomatoes)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleaned)
+                val grainMatch = if (produceMatch == null) Regex(
+                    "\\b(rolled\\s+oats?|steel[\\s-]*cut\\s+oats?|whole\\s+grain\\s+oats?|instant\\s+oats?|oatmeal|oat\\s+flour|oat\\s+bran|oat\\s*milk|granola|oats|whole\\s+wheat(?:\\s+flour)?|enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|unbleached\\s+(?:wheat\\s+)?flour|graham\\s+flour|durum\\s+wheat|semolina|wheat\\s+flour|chickpeas?|garbanzo\\s+beans?|hummus|lentils?|pinto\\s+beans?|black\\s+beans?|navy\\s+beans?|kidney\\s+beans?)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleaned) else null
+
+                if (produceMatch != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "pesticide_risk",
+                            label = "🌱 Herbicide & Pesticide Watch",
+                            shortBadge = "PESTICIDE",
+                            reason = "Conventional ${produceMatch.value.lowercase()} — high-residue produce category in USDA Pesticide Data Program; choose USDA Organic (7 CFR § 205.105)"
+                        )
+                    )
+                } else if (grainMatch != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "pesticide_risk",
+                            label = "🌱 Herbicide & Pesticide Watch",
+                            shortBadge = "PESTICIDE",
+                            reason = "Conventional ${grainMatch.value.lowercase()} — non-organic crop permits synthetic herbicides; choose USDA Organic (7 CFR § 205.105)"
+                        )
+                    )
+                }
             }
         }
 

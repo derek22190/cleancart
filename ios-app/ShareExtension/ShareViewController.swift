@@ -1,368 +1,701 @@
 import UIKit
+import Vision
+import WebKit
 import UniformTypeIdentifiers
 
-/// Bundled native iOS Share Extension (`com.heybroc.app.ShareExtension`).
-/// Automatically appears in the iPhone/iPad Share Sheet inside native Walmart, Target,
-/// Instacart, Amazon, Kroger, ALDI, Sam's Club, BJ's, and Costco apps upon App Store install
-/// with zero manual Apple Shortcut configuration required.
 final class ShareViewController: UIViewController {
 
     private let cardView = UIView()
-    private let badgeLabel = UILabel()
-    private let titleLabel = UILabel()
-    private let detailLabel = UILabel()
-    private let swapBox = UIView()
-    private let swapTitleLabel = UILabel()
-    private let storeBrandBadge = UILabel()
-    private let primaryActionButton = UIButton(type: .system)
-    private let closeButton = UIButton(type: .system)
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let contentStack = UIStackView()
+    private let loadingStack = UIStackView()
+    private let spinner = UIActivityIndicatorView(style: .large)
+    private let statusLabel = UILabel()
+    private let pesticideSwitch = UISwitch()
 
-    private var swapTargetUrl: URL?
-    private var inspectWebUrl: URL?
-    private var scanTask: Task<Void, Never>?
+    private var extractedTitleAndUrl: String = ""
+    private var extractedOCRText: String = ""
+    private var currentSwapURL: URL?
 
-    deinit {
-        scanTask?.cancel()
+    private var sharedDefaults: UserDefaults {
+        return UserDefaults(suiteName: "group.com.heybroc.app") ?? .standard
+    }
+
+    private var dietaryWatchlist: [String] {
+        get {
+            return sharedDefaults.stringArray(forKey: "heybroc_dietary_watchlist")
+                ?? UserDefaults.standard.stringArray(forKey: "heybroc_dietary_watchlist")
+                ?? []
+        }
+        set {
+            sharedDefaults.set(newValue, forKey: "heybroc_dietary_watchlist")
+            UserDefaults.standard.set(newValue, forKey: "heybroc_dietary_watchlist")
+        }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureSheetUI()
-        scanTask = Task { [weak self] in
-            await self?.extractSharedPayloadAndScan()
-        }
+        setupSheetChrome()
+        extractSharedItemsAndScan()
     }
 
-    private func configureSheetUI() {
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.42)
+    private func setupSheetChrome() {
+        view.backgroundColor = UIColor(white: 0.0, alpha: 0.42)
+
+        let dismissTap = UITapGestureRecognizer(target: self, action: #selector(tapBackdrop(_:)))
+        dismissTap.cancelsTouchesInView = false
+        view.addGestureRecognizer(dismissTap)
 
         cardView.translatesAutoresizingMaskIntoConstraints = false
-        cardView.backgroundColor = UIColor(red: 0.96, green: 0.95, blue: 0.93, alpha: 1.0)
-        cardView.layer.cornerRadius = 24
-        cardView.layer.masksToBounds = true
+        cardView.backgroundColor = UIColor(red: 0.973, green: 0.980, blue: 0.988, alpha: 1.0)
+        cardView.layer.cornerRadius = 26
+        cardView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.22
+        cardView.layer.shadowRadius = 18
+        cardView.layer.shadowOffset = CGSize(width: 0, height: -4)
         view.addSubview(cardView)
 
-        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
-        badgeLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 22, weight: .heavy)
-        badgeLabel.textAlignment = .center
-        badgeLabel.layer.cornerRadius = 14
-        badgeLabel.layer.masksToBounds = true
-        badgeLabel.text = "🥦 Scanning…"
-        badgeLabel.backgroundColor = UIColor(red: 0.90, green: 0.96, blue: 0.92, alpha: 1.0)
-        badgeLabel.textColor = UIColor(red: 0.06, green: 0.48, blue: 0.29, alpha: 1.0)
+        let grabber = UIView()
+        grabber.translatesAutoresizingMaskIntoConstraints = false
+        grabber.backgroundColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0)
+        grabber.layer.cornerRadius = 2.5
+        cardView.addSubview(grabber)
 
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = UIFont.systemFont(ofSize: 18, weight: .bold)
-        titleLabel.textColor = UIColor(red: 0.09, green: 0.14, blue: 0.11, alpha: 1.0)
-        titleLabel.numberOfLines = 2
-        titleLabel.text = "Checking ingredient label…"
+        // Header bar with Pesticide Switch & Done button
+        let headerRow = UIStackView()
+        headerRow.translatesAutoresizingMaskIntoConstraints = false
+        headerRow.axis = .horizontal
+        headerRow.alignment = .center
+        headerRow.spacing = 8
 
-        detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        detailLabel.font = UIFont.systemFont(ofSize: 14, weight: .regular)
-        detailLabel.textColor = UIColor(red: 0.24, green: 0.30, blue: 0.26, alpha: 1.0)
-        detailLabel.numberOfLines = 5
-        detailLabel.text = "Extracting product details from Share Sheet…"
+        let brandLabel = UILabel()
+        brandLabel.text = "🥦 HeyBroc"
+        brandLabel.font = UIFont.systemFont(ofSize: 18, weight: .heavy)
+        brandLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+        brandLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        spinner.translatesAutoresizingMaskIntoConstraints = false
+        let pestLabel = UILabel()
+        pestLabel.text = "🌱 Pesticides"
+        pestLabel.font = UIFont.systemFont(ofSize: 12, weight: .bold)
+        pestLabel.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
+
+        pesticideSwitch.isOn = dietaryWatchlist.contains("pesticide_risk")
+        pesticideSwitch.onTintColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 1.0)
+        pesticideSwitch.transform = CGAffineTransform(scaleX: 0.82, y: 0.82)
+        pesticideSwitch.addTarget(self, action: #selector(handlePesticideToggle(_:)), for: .valueChanged)
+
+        let doneBtn = UIButton(type: .system)
+        doneBtn.setTitle("Done", for: .normal)
+        doneBtn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .bold)
+        doneBtn.setTitleColor(UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0), for: .normal)
+        doneBtn.addTarget(self, action: #selector(closeExtension), for: .touchUpInside)
+
+        headerRow.addArrangedSubview(brandLabel)
+        headerRow.addArrangedSubview(pestLabel)
+        headerRow.addArrangedSubview(pesticideSwitch)
+        headerRow.addArrangedSubview(doneBtn)
+        cardView.addSubview(headerRow)
+
+        let scroll = UIScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(scroll)
+
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = 12
+        scroll.addSubview(contentStack)
+
+        loadingStack.axis = .vertical
+        loadingStack.alignment = .center
+        loadingStack.spacing = 10
+        loadingStack.isLayoutMarginsRelativeArrangement = true
+        loadingStack.layoutMargins = UIEdgeInsets(top: 26, left: 16, bottom: 26, right: 16)
+
+        spinner.color = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 1.0)
         spinner.startAnimating()
 
-        swapBox.translatesAutoresizingMaskIntoConstraints = false
-        swapBox.backgroundColor = UIColor.white
-        swapBox.layer.cornerRadius = 16
-        swapBox.layer.borderWidth = 1
-        swapBox.layer.borderColor = UIColor(red: 0.06, green: 0.48, blue: 0.29, alpha: 0.22).cgColor
-        swapBox.isHidden = true
+        statusLabel.text = "Checking 0–100 score & Clean Swaps…"
+        statusLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        statusLabel.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 0
 
-        storeBrandBadge.translatesAutoresizingMaskIntoConstraints = false
-        storeBrandBadge.font = UIFont.systemFont(ofSize: 12, weight: .bold)
-        storeBrandBadge.textColor = UIColor(red: 0.05, green: 0.44, blue: 0.26, alpha: 1.0)
-        storeBrandBadge.text = "💚 Store-Brand Value Pick"
-        storeBrandBadge.isHidden = true
-
-        swapTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        swapTitleLabel.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        swapTitleLabel.textColor = UIColor(red: 0.09, green: 0.14, blue: 0.11, alpha: 1.0)
-        swapTitleLabel.numberOfLines = 3
-
-        let swapStack = UIStackView(arrangedSubviews: [storeBrandBadge, swapTitleLabel])
-        swapStack.translatesAutoresizingMaskIntoConstraints = false
-        swapStack.axis = .vertical
-        swapStack.spacing = 4
-        swapBox.addSubview(swapStack)
-
-        primaryActionButton.translatesAutoresizingMaskIntoConstraints = false
-        primaryActionButton.setTitle("Inspect Full Breakdown", for: .normal)
-        primaryActionButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .bold)
-        primaryActionButton.backgroundColor = UIColor(red: 0.06, green: 0.48, blue: 0.29, alpha: 1.0)
-        primaryActionButton.setTitleColor(.white, for: .normal)
-        primaryActionButton.layer.cornerRadius = 14
-        primaryActionButton.isHidden = true
-        primaryActionButton.addTarget(self, action: #selector(handlePrimaryTap), for: .touchUpInside)
-
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setTitle("Done", for: .normal)
-        closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        closeButton.setTitleColor(UIColor(red: 0.28, green: 0.34, blue: 0.30, alpha: 1.0), for: .normal)
-        closeButton.addTarget(self, action: #selector(handleCloseTap), for: .touchUpInside)
-
-        let stack = UIStackView(arrangedSubviews: [
-            badgeLabel,
-            spinner,
-            titleLabel,
-            detailLabel,
-            swapBox,
-            primaryActionButton,
-            closeButton
-        ])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.axis = .vertical
-        stack.spacing = 12
-        cardView.addSubview(stack)
+        loadingStack.addArrangedSubview(spinner)
+        loadingStack.addArrangedSubview(statusLabel)
+        contentStack.addArrangedSubview(loadingStack)
 
         NSLayoutConstraint.activate([
-            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            cardView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            cardView.heightAnchor.constraint(lessThanOrEqualTo: view.heightAnchor, multiplier: 0.84),
+            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 300),
 
-            badgeLabel.heightAnchor.constraint(equalToConstant: 46),
-            primaryActionButton.heightAnchor.constraint(equalToConstant: 48),
-            closeButton.heightAnchor.constraint(equalToConstant: 38),
+            grabber.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 10),
+            grabber.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            grabber.widthAnchor.constraint(equalToConstant: 40),
+            grabber.heightAnchor.constraint(equalToConstant: 5),
 
-            swapStack.topAnchor.constraint(equalTo: swapBox.topAnchor, constant: 12),
-            swapStack.leadingAnchor.constraint(equalTo: swapBox.leadingAnchor, constant: 14),
-            swapStack.trailingAnchor.constraint(equalTo: swapBox.trailingAnchor, constant: -14),
-            swapStack.bottomAnchor.constraint(equalTo: swapBox.bottomAnchor, constant: -12),
+            headerRow.topAnchor.constraint(equalTo: grabber.bottomAnchor, constant: 10),
+            headerRow.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 18),
+            headerRow.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -18),
 
-            stack.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 20),
-            stack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
-            stack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16)
+            scroll.topAnchor.constraint(equalTo: headerRow.bottomAnchor, constant: 10),
+            scroll.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: cardView.safeAreaLayoutGuide.bottomAnchor),
+
+            contentStack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 4),
+            contentStack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 18),
+            contentStack.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -18),
+            contentStack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -20)
         ])
     }
 
-    private func extractSharedPayloadAndScan() async {
-        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
-            presentError("No shared product link or text found.")
-            return
-        }
-
-        var sharedParts: [String] = []
-        for item in items {
-            if let attributed = item.attributedContentText?.string.trimmingCharacters(in: .whitespacesAndNewlines),
-               !attributed.isEmpty {
-                sharedParts.append(attributed)
-            }
-            guard let attachments = item.attachments else { continue }
-            for provider in attachments {
-                if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
-                   let urlItem = try? await provider.loadItem(forTypeIdentifier: UTType.url.identifier) {
-                    if let url = urlItem as? URL {
-                        sharedParts.append(url.absoluteString)
-                    } else if let str = urlItem as? String {
-                        sharedParts.append(str)
-                    }
-                } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-                          let textItem = try? await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) as? String {
-                    sharedParts.append(textItem)
-                }
-            }
-        }
-
-        let combined = sharedParts
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-
-        guard !combined.isEmpty else {
-            presentError("Share a grocery product link or title to see its 0–100 HeyBroc score.")
-            return
-        }
-
-        var components = URLComponents(string: "https://www.heybroc.com/")
-        components?.queryItems = [
-            URLQueryItem(name: "share", value: String(combined.prefix(240)))
-        ]
-        inspectWebUrl = components?.url
-
-        await runHeyBrocScan(sharedInput: combined)
-    }
-
-    private func getOrCreateExtensionDeviceCredentials() -> (defaults: UserDefaults, deviceId: String, deviceSecret: String?) {
-        let defaults = UserDefaults(suiteName: "group.com.heybroc.app") ?? .standard
-        var devId = defaults.string(forKey: "heybroc_device_id") ?? ""
-        if devId.isEmpty {
-            devId = "ios-ext-\(UUID().uuidString.lowercased())"
-            defaults.set(devId, forKey: "heybroc_device_id")
-        }
-        let devSecret = defaults.string(forKey: "heybroc_device_secret")
-        return (defaults, devId, devSecret)
-    }
-
-    private func runHeyBrocScan(sharedInput: String) async {
-        guard !Task.isCancelled else { return }
-        guard let endpoint = URL(string: "https://www.heybroc.com/api/scan") else { return }
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 12
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let creds = getOrCreateExtensionDeviceCredentials()
-        if let secret = creds.deviceSecret, !secret.isEmpty {
-            req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
-        }
-
-        let preferStoreBrand = creds.defaults.bool(forKey: "prefer_store_brand")
-        var payload: [String: Any] = [
-            "productTitle": sharedInput,
-            "preferStoreBrand": preferStoreBrand,
-            "surface": "web",
-            "deviceId": creds.deviceId,
-            "format": "json"
-        ]
-        if let secret = creds.deviceSecret, !secret.isEmpty {
-            payload["deviceSecret"] = secret
-        }
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-
-        do {
-            let (data, _) = try await URLSession.shared.data(for: req)
-            guard !Task.isCancelled else { return }
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                presentError("Unexpected response from HeyBroc scanner.")
-                return
-            }
-            if let issuedSecret = json["issuedDeviceSecret"] as? String, !issuedSecret.isEmpty {
-                creds.defaults.set(issuedSecret, forKey: "heybroc_device_secret")
-            }
-            if (json["ok"] as? Bool) != true {
-                let errMsg = (json["error"] as? String) ?? "Could not match ingredients for this item."
-                presentError(errMsg)
-                return
-            }
-
-            let product = json["product"] as? [String: Any]
-            let result = json["result"] as? [String: Any]
-            let swap = json["swap"] as? [String: Any]
-
-            let title = (product?["title"] as? String) ?? "Scored Product"
-            let score = (result?["score"] as? Int) ?? 0
-            let rating = (result?["rating"] as? String) ?? "Rated"
-            let color = (result?["color"] as? String) ?? "yellow"
-            let flagged = (result?["flagged"] as? [[String: Any]]) ?? []
-
-            await MainActor.run {
-                guard !Task.isCancelled else { return }
-                spinner.stopAnimating()
-                spinner.isHidden = true
-                titleLabel.text = title
-
-                if color == "green" {
-                    badgeLabel.text = "🟢 \(score)/100 • \(rating)"
-                    badgeLabel.backgroundColor = UIColor(red: 0.88, green: 0.96, blue: 0.91, alpha: 1.0)
-                    badgeLabel.textColor = UIColor(red: 0.05, green: 0.45, blue: 0.27, alpha: 1.0)
-                } else if color == "yellow" {
-                    badgeLabel.text = "🟡 \(score)/100 • \(rating)"
-                    badgeLabel.backgroundColor = UIColor(red: 0.99, green: 0.95, blue: 0.84, alpha: 1.0)
-                    badgeLabel.textColor = UIColor(red: 0.58, green: 0.36, blue: 0.04, alpha: 1.0)
-                } else {
-                    badgeLabel.text = "🔴 \(score)/100 • \(rating)"
-                    badgeLabel.backgroundColor = UIColor(red: 0.99, green: 0.89, blue: 0.89, alpha: 1.0)
-                    badgeLabel.textColor = UIColor(red: 0.72, green: 0.14, blue: 0.14, alpha: 1.0)
-                }
-
-                if flagged.isEmpty {
-                    detailLabel.text = "✅ Zero watchlist additives flagged."
-                } else {
-                    let names = flagged.prefix(4).compactMap { $0["name"] as? String }
-                    detailLabel.text = "⚠️ Flagged: " + names.joined(separator: " • ")
-                }
-
-                if let swap = swap, let swapTitle = swap["title"] as? String {
-                    let swapScore = (swap["score"] as? Int) ?? 90
-                    let isStoreBrand = (swap["isStoreBrand"] as? Bool) ?? false
-                    let isPaidLink = (swap["isPaidLink"] as? Bool) ?? false
-                    let paidSuffix = isPaidLink ? " · paid link" : ""
-
-                    if let deep = swap["deepLink"] as? String, let url = URL(string: deep) {
-                        storeBrandBadge.isHidden = !isStoreBrand
-                        swapTitleLabel.text = "🔁 Clean Swap (\(swapScore)/100): \(swapTitle)"
-                        swapBox.isHidden = false
-                        swapTargetUrl = url
-                        primaryActionButton.setTitle("🔁 Open 1-Tap Clean Swap\(paidSuffix)", for: .normal)
-                    } else if let web = swap["webUrl"] as? String, let url = URL(string: web) {
-                        storeBrandBadge.isHidden = !isStoreBrand
-                        swapTitleLabel.text = "🔁 Clean Swap (\(swapScore)/100): \(swapTitle)"
-                        swapBox.isHidden = false
-                        swapTargetUrl = url
-                        primaryActionButton.setTitle("🔁 Open 1-Tap Clean Swap\(paidSuffix)", for: .normal)
-                    } else {
-                        storeBrandBadge.isHidden = true
-                        swapTitleLabel.text = "🔒 \(swapScore)/100 Clean Replacement Available"
-                        swapBox.isHidden = false
-                        primaryActionButton.setTitle("Inspect & Unlock Clean Swap", for: .normal)
-                    }
-                } else {
-                    primaryActionButton.setTitle("Inspect Full Breakdown", for: .normal)
-                }
-                primaryActionButton.isHidden = false
-            }
-        } catch {
-            guard !Task.isCancelled else { return }
-            presentError("Offline or unable to reach HeyBroc right now. Tap below to retry in browser.")
+    @objc private func tapBackdrop(_ gesture: UITapGestureRecognizer) {
+        let loc = gesture.location(in: view)
+        if !cardView.frame.contains(loc) {
+            closeExtension()
         }
     }
 
-    @MainActor
-    private func presentError(_ message: String) {
-        spinner.stopAnimating()
-        spinner.isHidden = true
-        badgeLabel.text = "📸 Try Label Scanner"
-        titleLabel.text = "Couldn't auto-read that link"
-        detailLabel.text = message
-        primaryActionButton.setTitle("Open HeyBroc Scanner", for: .normal)
-        primaryActionButton.isHidden = false
-    }
-
-    @MainActor
-    private func handleOpenResult(_ opened: Bool, fallbackUrl: URL) {
-        if opened {
-            extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
-        } else {
-            UIPasteboard.general.string = fallbackUrl.absoluteString
-            detailLabel.text = "✓ Copied link to clipboard — open Safari or your store app and paste!"
-            primaryActionButton.setTitle("✓ Link Copied — Open in Safari", for: .normal)
-        }
-    }
-
-    private func openExternalUrl(_ url: URL) {
-        var responder: UIResponder? = self
-        while let current = responder {
-            if let app = current as? UIApplication {
-                app.open(url, options: [:]) { [weak self] opened in
-                    Task { @MainActor in
-                        self?.handleOpenResult(opened, fallbackUrl: url)
-                    }
-                }
-                return
-            }
-            responder = current.next
-        }
-        extensionContext?.open(url, completionHandler: { [weak self] opened in
-            Task { @MainActor in
-                self?.handleOpenResult(opened, fallbackUrl: url)
-            }
-        })
-    }
-
-    @objc private func handlePrimaryTap() {
-        let target = swapTargetUrl ?? inspectWebUrl ?? URL(string: "https://www.heybroc.com")!
-        openExternalUrl(target)
-    }
-
-    @objc private func handleCloseTap() {
-        scanTask?.cancel()
-        scanTask = nil
+    @objc private func closeExtension() {
         extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+    }
+
+    @objc private func handlePesticideToggle(_ sender: UISwitch) {
+        var current = dietaryWatchlist
+        if sender.isOn {
+            if !current.contains("pesticide_risk") { current.append("pesticide_risk") }
+        } else {
+            current.removeAll { $0 == "pesticide_risk" }
+        }
+        dietaryWatchlist = current
+        runScanRequest()
+    }
+
+    // MARK: - Extract Shared Grocery App URL / Title / Screenshot
+
+    private func extractSharedItemsAndScan() {
+        guard let items = extensionContext?.inputItems as? [NSExtensionItem], !items.isEmpty else {
+            renderError("Nothing was shared. Tap the ↑ Share button on any grocery item in Walmart, Instacart, Target, Amazon, or Costco.")
+            return
+        }
+
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var collectedTexts: [String] = []
+        var collectedURL: URL?
+        var collectedImage: UIImage?
+
+        for item in items {
+            if let t = item.attributedTitle?.string.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+                collectedTexts.append(t)
+            }
+            if let c = item.attributedContentText?.string.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+                collectedTexts.append(c)
+            }
+            for provider in item.attachments ?? [] {
+                if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                    group.enter()
+                    provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { raw, _ in
+                        lock.lock()
+                        if let u = raw as? URL {
+                            collectedURL = u
+                        } else if let s = raw as? String, let u = URL(string: s) {
+                            collectedURL = u
+                        }
+                        lock.unlock()
+                        group.leave()
+                    }
+                }
+                if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                    group.enter()
+                    provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { raw, _ in
+                        lock.lock()
+                        if let s = raw as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            collectedTexts.append(s)
+                        }
+                        lock.unlock()
+                        group.leave()
+                    }
+                }
+                if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                    group.enter()
+                    provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { raw, _ in
+                        var img: UIImage?
+                        if let direct = raw as? UIImage {
+                            img = direct
+                        } else if let fileURL = raw as? URL, let data = try? Data(contentsOf: fileURL) {
+                            img = UIImage(data: data)
+                        } else if let data = raw as? Data {
+                            img = UIImage(data: data)
+                        }
+                        lock.lock()
+                        if let img = img, collectedImage == nil {
+                            collectedImage = img
+                        }
+                        lock.unlock()
+                        group.leave()
+                    }
+                }
+            }
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            let joinedText = collectedTexts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            let urlStr = collectedURL?.absoluteString ?? ""
+
+            if let image = collectedImage, joinedText.isEmpty && urlStr.isEmpty {
+                self.statusLabel.text = "Reading screenshot ingredients & title…"
+                self.recognizeTextFromSharedImage(image) { ocr in
+                    self.extractedOCRText = ocr
+                    self.runScanRequest()
+                }
+                return
+            }
+
+            let combined = [joinedText, urlStr].filter { !$0.isEmpty }.joined(separator: " ")
+            if let url = collectedURL, self.needsResidentialTitleFetch(combinedText: joinedText, url: url) {
+                self.statusLabel.text = "Reading product from store link…"
+                self.resolveResidentialPageTitle(url: url) { fetchedTitle in
+                    if !fetchedTitle.isEmpty {
+                        self.extractedTitleAndUrl = "\(fetchedTitle) \(url.absoluteString)"
+                    } else {
+                        self.extractedTitleAndUrl = combined
+                    }
+                    self.runScanRequest()
+                }
+            } else {
+                self.extractedTitleAndUrl = combined
+                self.runScanRequest()
+            }
+        }
+    }
+
+    private func needsResidentialTitleFetch(combinedText: String, url: URL) -> Bool {
+        let stripped = combinedText
+            .replacingOccurrences(of: #"https?://\S+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"^(?:hey,?\s*)?(?:check\s+(?:this\s+)?out|i\s+found\s+this|see\s+what\s+i\s+found).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if stripped.split(separator: " ").count >= 2 {
+            return false
+        }
+        let p = url.path.lowercased()
+        if p.contains("/ip/seort/") || url.host == "a.co" || url.host == "amzn.to" || p.hasPrefix("/p/-/a-") {
+            return true
+        }
+        return stripped.isEmpty
+    }
+
+    private func resolveResidentialPageTitle(url: URL, completion: @escaping (String) -> Void) {
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3.0)
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, response, _ in
+            var found = ""
+            if let htmlData = data, let html = String(data: htmlData.prefix(64000), encoding: .utf8) {
+                let patterns = [
+                    #"<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]+content=["']([^"']{4,200})["']"#,
+                    #"<title[^>]*>([^<]{4,200})</title>"#
+                ]
+                for pat in patterns {
+                    if let rx = try? NSRegularExpression(pattern: pat, options: .caseInsensitive),
+                       let match = rx.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                       let range = Range(match.range(at: 1), in: html) {
+                        let raw = String(html[range])
+                            .replacingOccurrences(of: "&amp;", with: "&")
+                            .replacingOccurrences(of: "&#39;", with: "'")
+                            .replacingOccurrences(of: "&quot;", with: "\"")
+                            .replacingOccurrences(of: #"\s*[-|:]\s*(Walmart|Target|Instacart|Amazon|Costco|Sam's Club|Kroger|ALDI).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        if raw.count >= 4 && !raw.lowercased().contains("robot or human") {
+                            found = raw
+                            break
+                        }
+                    }
+                }
+            }
+            if found.isEmpty, let finalURL = response?.url, finalURL.absoluteString != url.absoluteString {
+                found = finalURL.absoluteString
+            }
+            DispatchQueue.main.async {
+                completion(found)
+            }
+        }.resume()
+    }
+
+    private func recognizeTextFromSharedImage(_ image: UIImage, completion: @escaping (String) -> Void) {
+        guard let cgImage = image.cgImage else {
+            completion("")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let req = VNRecognizeTextRequest { request, _ in
+                let obs = (request.results as? [VNRecognizedTextObservation]) ?? []
+                let text = obs.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+                DispatchQueue.main.async {
+                    completion(text)
+                }
+            }
+            req.recognitionLevel = .accurate
+            req.usesLanguageCorrection = true
+            try? VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([req])
+        }
+    }
+
+    // MARK: - API Call & Result Rendering
+
+    private func runScanRequest() {
+        showLoading("Checking 0–100 score & Clean Swaps…")
+
+        guard let apiURL = URL(string: "https://www.heybroc.com/api/scan") else { return }
+        var req = URLRequest(url: apiURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("ios-share", forHTTPHeaderField: "X-HeyBroc-Platform")
+
+        var body: [String: Any] = [
+            "dietaryWatchlist": dietaryWatchlist,
+            "familyWatchlist": sharedDefaults.stringArray(forKey: "heybroc_family_watchlist") ?? ["seedOils", "dyes", "hfcs"]
+        ]
+        if !extractedTitleAndUrl.isEmpty {
+            body["productTitle"] = String(extractedTitleAndUrl.prefix(480))
+        }
+        if !extractedOCRText.isEmpty {
+            body["rawText"] = String(extractedOCRText.prefix(12000))
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if let error = error {
+                    self.renderError("Network error: \(error.localizedDescription)")
+                    return
+                }
+                guard let data = data,
+                      let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                    self.renderError("Unexpected response from HeyBroc.")
+                    return
+                }
+                let ok = (json["ok"] as? Bool) ?? false
+                if !ok {
+                    let msg = (json["error"] as? String) ?? "Could not match this item. Try taking a quick screenshot of the product page and sharing it to HeyBroc!"
+                    self.renderError(msg)
+                    return
+                }
+                self.renderScanResult(json)
+            }
+        }.resume()
+    }
+
+    private func showLoading(_ text: String) {
+        for sub in contentStack.arrangedSubviews {
+            contentStack.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+        statusLabel.text = text
+        spinner.startAnimating()
+        contentStack.addArrangedSubview(loadingStack)
+    }
+
+    private func renderError(_ message: String) {
+        for sub in contentStack.arrangedSubviews {
+            contentStack.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+        let box = UIStackView()
+        box.axis = .vertical
+        box.spacing = 8
+        box.isLayoutMarginsRelativeArrangement = true
+        box.layoutMargins = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        box.backgroundColor = .white
+        box.layer.cornerRadius = 16
+        box.layer.borderWidth = 1
+        box.layer.borderColor = UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0).cgColor
+
+        let lbl = UILabel()
+        lbl.text = message
+        lbl.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        lbl.textColor = UIColor(red: 0.200, green: 0.255, blue: 0.333, alpha: 1.0)
+        lbl.numberOfLines = 0
+        box.addArrangedSubview(lbl)
+        contentStack.addArrangedSubview(box)
+    }
+
+    private func renderScanResult(_ json: [String: Any]) {
+        for sub in contentStack.arrangedSubviews {
+            contentStack.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+
+        let prod = (json["product"] as? [String: Any]) ?? [:]
+        let res = (json["result"] as? [String: Any]) ?? [:]
+        let title = (prod["title"] as? String) ?? "Scanned Item"
+        let score = (res["score"] as? Int) ?? 50
+        let rating = (res["rating"] as? String) ?? (score >= 75 ? "Excellent" : score >= 50 ? "Good" : "Poor")
+        let alerts = (json["dietaryAlerts"] as? [[String: Any]]) ?? []
+        let flagged = (res["flagged"] as? [[String: Any]]) ?? []
+
+        // 1. Score Summary Row
+        let scoreCard = UIStackView()
+        scoreCard.axis = .horizontal
+        scoreCard.alignment = .center
+        scoreCard.spacing = 12
+        scoreCard.isLayoutMarginsRelativeArrangement = true
+        scoreCard.layoutMargins = UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        scoreCard.backgroundColor = .white
+        scoreCard.layer.cornerRadius = 18
+        scoreCard.layer.borderWidth = 1
+        scoreCard.layer.borderColor = UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0).cgColor
+
+        let badge = UILabel()
+        badge.text = "\(score)"
+        badge.font = UIFont.systemFont(ofSize: 23, weight: .heavy)
+        badge.textColor = .white
+        badge.textAlignment = .center
+        badge.layer.cornerRadius = 16
+        badge.layer.masksToBounds = true
+        badge.widthAnchor.constraint(equalToConstant: 58).isActive = true
+        badge.heightAnchor.constraint(equalToConstant: 58).isActive = true
+        if !alerts.isEmpty || score < 50 {
+            badge.backgroundColor = UIColor(red: 0.863, green: 0.149, blue: 0.149, alpha: 1.0)
+        } else if score < 75 {
+            badge.backgroundColor = UIColor(red: 0.851, green: 0.467, blue: 0.024, alpha: 1.0)
+        } else {
+            badge.backgroundColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 1.0)
+        }
+
+        let metaStack = UIStackView()
+        metaStack.axis = .vertical
+        metaStack.spacing = 3
+
+        let titleLbl = UILabel()
+        titleLbl.text = title
+        titleLbl.font = UIFont.systemFont(ofSize: 16, weight: .heavy)
+        titleLbl.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+        titleLbl.numberOfLines = 3
+
+        let subLbl = UILabel()
+        subLbl.text = "\(rating) • \(score)/100"
+        subLbl.font = UIFont.systemFont(ofSize: 13, weight: .bold)
+        subLbl.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
+
+        metaStack.addArrangedSubview(titleLbl)
+        metaStack.addArrangedSubview(subLbl)
+        scoreCard.addArrangedSubview(badge)
+        scoreCard.addArrangedSubview(metaStack)
+        contentStack.addArrangedSubview(scoreCard)
+
+        // 2. Pesticide / Allergy Alerts
+        for a in alerts {
+            let alertBox = UIStackView()
+            alertBox.axis = .vertical
+            alertBox.spacing = 4
+            alertBox.isLayoutMarginsRelativeArrangement = true
+            alertBox.layoutMargins = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+            alertBox.backgroundColor = UIColor(red: 0.996, green: 0.949, blue: 0.949, alpha: 1.0)
+            alertBox.layer.cornerRadius = 14
+            alertBox.layer.borderWidth = 1
+            alertBox.layer.borderColor = UIColor(red: 0.988, green: 0.647, blue: 0.647, alpha: 1.0).cgColor
+
+            let h = UILabel()
+            h.text = (a["label"] as? String) ?? "⚠️ Alert"
+            h.font = UIFont.systemFont(ofSize: 13.5, weight: .heavy)
+            h.textColor = UIColor(red: 0.600, green: 0.106, blue: 0.106, alpha: 1.0)
+
+            let r = UILabel()
+            r.text = (a["reason"] as? String) ?? ""
+            r.font = UIFont.systemFont(ofSize: 12.5, weight: .medium)
+            r.textColor = UIColor(red: 0.498, green: 0.114, blue: 0.114, alpha: 1.0)
+            r.numberOfLines = 0
+
+            alertBox.addArrangedSubview(h)
+            alertBox.addArrangedSubview(r)
+            contentStack.addArrangedSubview(alertBox)
+        }
+
+        // 3. 1-Tap Clean Swap Card
+        if let sw = json["swap"] as? [String: Any], let swTitle = sw["title"] as? String {
+            let swScore = (sw["score"] as? Int) ?? 90
+            let nut = sw["nutrition"] as? [String: Any]
+            let isOrg = (nut?["isOrganic"] as? Bool) ?? swTitle.lowercased().contains("organic")
+            let urlStr = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
+            self.currentSwapURL = urlStr != nil ? URL(string: urlStr!) : nil
+
+            let swapCard = UIStackView()
+            swapCard.axis = .vertical
+            swapCard.spacing = 9
+            swapCard.isLayoutMarginsRelativeArrangement = true
+            swapCard.layoutMargins = UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+            swapCard.backgroundColor = UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0)
+            swapCard.layer.cornerRadius = 16
+            swapCard.layer.borderWidth = 1.5
+            swapCard.layer.borderColor = UIColor(red: 0.525, green: 0.937, blue: 0.675, alpha: 1.0).cgColor
+
+            let head = UILabel()
+            head.text = isOrg ? "🌱 CERTIFIED USDA ORGANIC SWAP • \(swScore)/100" : "🔁 CLEAN SWAP • \(swScore)/100"
+            head.font = UIFont.systemFont(ofSize: 11.5, weight: .heavy)
+            head.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
+
+            let name = UILabel()
+            name.text = swTitle
+            name.font = UIFont.systemFont(ofSize: 15.5, weight: .heavy)
+            name.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+            name.numberOfLines = 0
+
+            swapCard.addArrangedSubview(head)
+            swapCard.addArrangedSubview(name)
+
+            if self.currentSwapURL != nil {
+                let btn = UIButton(type: .system)
+                btn.setTitle("🛒 View Clean Swap in Store →", for: .normal)
+                btn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .heavy)
+                btn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
+                btn.setTitleColor(.white, for: .normal)
+                btn.layer.cornerRadius = 12
+                btn.heightAnchor.constraint(equalToConstant: 46).isActive = true
+                btn.addTarget(self, action: #selector(tapOpenSwapURL), for: .touchUpInside)
+                swapCard.addArrangedSubview(btn)
+            }
+            contentStack.addArrangedSubview(swapCard)
+        }
+
+        // 4. Flagged Additives List
+        let flagsBox = UIStackView()
+        flagsBox.axis = .vertical
+        flagsBox.spacing = 6
+        flagsBox.isLayoutMarginsRelativeArrangement = true
+        flagsBox.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+        flagsBox.backgroundColor = .white
+        flagsBox.layer.cornerRadius = 16
+        flagsBox.layer.borderWidth = 1
+        flagsBox.layer.borderColor = UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0).cgColor
+
+        if flagged.isEmpty {
+            let okLbl = UILabel()
+            okLbl.text = "✅ Zero Watchlist Chemical Additives Found"
+            okLbl.font = UIFont.systemFont(ofSize: 13.5, weight: .bold)
+            okLbl.textColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
+            flagsBox.addArrangedSubview(okLbl)
+        } else {
+            let fh = UILabel()
+            fh.text = "⚠️ Flagged Additives (\(flagged.count))"
+            fh.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
+            fh.textColor = UIColor(red: 0.725, green: 0.110, blue: 0.110, alpha: 1.0)
+            flagsBox.addArrangedSubview(fh)
+
+            for f in flagged.prefix(5) {
+                let n = (f["name"] as? String) ?? "Additive"
+                let p = (f["penalty"] as? Int) ?? 0
+                let ex = (f["explanation"] as? String) ?? ""
+                let itemLbl = UILabel()
+                itemLbl.text = "• \(n) (-\(p)): \(ex)"
+                itemLbl.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+                itemLbl.textColor = UIColor(red: 0.200, green: 0.255, blue: 0.333, alpha: 1.0)
+                itemLbl.numberOfLines = 0
+                flagsBox.addArrangedSubview(itemLbl)
+            }
+        }
+        contentStack.addArrangedSubview(flagsBox)
+
+        let fullBtn = UIButton(type: .system)
+        fullBtn.setTitle("🔍 Open Full Breakdown & Exposé Card →", for: .normal)
+        fullBtn.titleLabel?.font = UIFont.systemFont(ofSize: 13.5, weight: .bold)
+        fullBtn.backgroundColor = .white
+        fullBtn.setTitleColor(UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0), for: .normal)
+        fullBtn.layer.cornerRadius = 12
+        fullBtn.layer.borderWidth = 1
+        fullBtn.layer.borderColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0).cgColor
+        fullBtn.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        fullBtn.addTarget(self, action: #selector(tapOpenFullHeyBroc), for: .touchUpInside)
+        contentStack.addArrangedSubview(fullBtn)
+    }
+
+    @objc private func tapOpenSwapURL() {
+        guard let url = currentSwapURL else { return }
+        presentWebModal(url: url, title: "Clean Swap")
+    }
+
+    @objc private func tapOpenFullHeyBroc() {
+        var comps = URLComponents(string: "https://www.heybroc.com/")
+        let shareQuery = !extractedTitleAndUrl.isEmpty ? extractedTitleAndUrl : String(extractedOCRText.prefix(240))
+        comps?.queryItems = [
+            URLQueryItem(name: "platform", value: "ios"),
+            URLQueryItem(name: "share", value: shareQuery)
+        ]
+        guard let url = comps?.url else { return }
+        presentWebModal(url: url, title: "HeyBroc")
+    }
+
+    private func presentWebModal(url: URL, title: String) {
+        let modal = ShareWebPreviewController(url: url, headerTitle: title)
+        present(modal, animated: true)
+    }
+}
+
+private final class ShareWebPreviewController: UIViewController {
+    private let targetURL: URL
+    private let headerTitle: String
+
+    init(url: URL, headerTitle: String) {
+        self.targetURL = url
+        self.headerTitle = headerTitle
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .white
+
+        let bar = UIStackView()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.axis = .horizontal
+        bar.alignment = .center
+        bar.distribution = .equalSpacing
+        bar.isLayoutMarginsRelativeArrangement = true
+        bar.layoutMargins = UIEdgeInsets(top: 12, left: 16, bottom: 10, right: 16)
+
+        let titleLbl = UILabel()
+        titleLbl.text = "🥦 \(headerTitle)"
+        titleLbl.font = UIFont.systemFont(ofSize: 16, weight: .heavy)
+        titleLbl.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+
+        let closeBtn = UIButton(type: .system)
+        closeBtn.setTitle("Done", for: .normal)
+        closeBtn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .bold)
+        closeBtn.setTitleColor(UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0), for: .normal)
+        closeBtn.addTarget(self, action: #selector(tapClose), for: .touchUpInside)
+
+        bar.addArrangedSubview(titleLbl)
+        bar.addArrangedSubview(closeBtn)
+        view.addSubview(bar)
+
+        let wv = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        wv.translatesAutoresizingMaskIntoConstraints = false
+        wv.allowsBackForwardNavigationGestures = true
+        view.addSubview(wv)
+
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            wv.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            wv.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            wv.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        wv.load(URLRequest(url: targetURL))
+    }
+
+    @objc private func tapClose() {
+        dismiss(animated: true)
     }
 }

@@ -10,6 +10,7 @@
  */
 import { scoreIngredients, scoreProductYuka, type Watchlist, type NutritionInput } from "./rubric";
 import { passesVariantGuard } from "./drinks-catalog";
+import { detectPesticideRisk } from "./dietary";
 
 export type Store =
   | "walmart"
@@ -1461,6 +1462,157 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       itemIds: { walmart: "895065260" },
     },
   },
+  // --- USDA Organic High-Residue Produce, Grains & Legumes (for 🌱 Herbicides & Pesticides Watch) ---
+  {
+    match: /^(?!.*\b(yogurt|ice\s+cream|gelato|sorbet|milk|creamer|cheese|butter|jam|jelly|preserves?|marmalade|syrup|sauce|dressing|cereal|oatmeal|granola|muffin|bagel|waffle|pancake|bread|cookie|cake|pie|pastry|tart|donut|bars?|snacks?|gummies|candy|chocolate|juice|soda|pop|tea|lemonade|drink|beverage|water|seltzer|energy|smoothie|shake|pouch|pouches|frosting|jell-?o|pudding)\b).*\b(strawberries|fresh\s+strawberry)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Driscoll's",
+      name: "Organic Fresh Strawberries",
+      size: "16 oz clamshell",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic strawberries.",
+      nutrition: { caloriesKcal100g: 32, sugarsG100g: 4.9, saturatedFatG100g: 0, sodiumMg100g: 1, fiberG100g: 2.0, proteinG100g: 0.7, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.driscolls.com/strawberries/organic-strawberries",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(yogurt|ice\s+cream|gelato|sorbet|milk|creamer|cheese|butter|jam|jelly|preserves?|syrup|sauce|cereal|oatmeal|granola|muffin|bagel|waffle|pancake|bread|cookie|cake|pie|pastry|tart|donut|bars?|snacks?|gummies|candy|chocolate|juice|soda|pop|tea|lemonade|drink|beverage|water|seltzer|energy|smoothie|pouch|pouches)\b).*\b(blueberries|fresh\s+blueberry)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Driscoll's",
+      name: "Organic Fresh Blueberries",
+      size: "6 oz clamshell",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic blueberries.",
+      nutrition: { caloriesKcal100g: 57, sugarsG100g: 10.0, saturatedFatG100g: 0, sodiumMg100g: 1, fiberG100g: 2.4, proteinG100g: 0.7, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.driscolls.com/blueberries/organic-blueberries",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(dip|pizza|ravioli|pasta|tortellini|lasagna|quiche|wrap|tortilla|chips?|crackers?|soup|broth|artichoke|fet[ta]|pie|pastry|nuggets?|bites|smoothie|juice|powder)\b).*\b(spinach|kale|collard\s+greens?|mustard\s+greens?)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Earthbound Farm",
+      name: "Organic Baby Spinach",
+      size: "5 oz clamshell",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic baby spinach.",
+      nutrition: { caloriesKcal100g: 23, sugarsG100g: 0.4, saturatedFatG100g: 0, sodiumMg100g: 79, fiberG100g: 2.2, proteinG100g: 2.9, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.earthboundfarm.com/products/organic-baby-spinach/",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(yogurt|milk|butter|jam|jelly|syrup|cider|vinegar|juice|soda|tea|drink|beverage|water|seltzer|energy|cereal|oatmeal|granola|muffin|waffle|bread|cookie|cake|pie|pastry|tart|donut|bars?|snacks?|chips?|crisps?|gummies|candy|caramel|sausage|bacon|ham|pouch|pouches)\b).*\b(apples|honeycrisp|gala\s+apples?|fuji\s+apples?|granny\s+smith|pink\s+lady\s+apples?)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Stemilt",
+      name: "Organic Honeycrisp Apples",
+      size: "2 lb pouch",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic Honeycrisp apples.",
+      nutrition: { caloriesKcal100g: 52, sugarsG100g: 10.4, saturatedFatG100g: 0, sodiumMg100g: 1, fiberG100g: 2.4, proteinG100g: 0.3, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.stemilt.com/fruits/apples/artisan-organics/",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(jam|jelly|preserves?|juice|soda|pop|drink|beverage|water|seltzer|energy|candy|gummies|snacks?|bars?|cereal|bran|bread|bagel|cookie|oatmeal|chocolate|seed\s+oil|grapeseed)\b).*\b(grapes|seedless\s+grapes?|red\s+grapes?|green\s+grapes?|black\s+grapes?)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Sunview",
+      name: "Organic Red Seedless Grapes",
+      size: "2 lb bag",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic red seedless grapes.",
+      nutrition: { caloriesKcal100g: 69, sugarsG100g: 15.5, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0.9, proteinG100g: 0.7, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.sunviewmarketing.com/organic-grapes",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(yogurt|ice\s+cream|jam|jelly|preserves?|syrup|juice|soda|tea|drink|beverage|water|seltzer|energy|candy|rings|gummies|cereal|oatmeal|pie|cobbler|tart|bars?|snacks?|pouch|pouches)\b).*\b(peaches|sliced\s+peaches|yellow\s+peaches|white\s+peaches|pears|bartlett\s+pears?|anjou\s+pears?|nectarines|cherries|sweet\s+cherries)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Cascadian Farm",
+      name: "Organic Sliced Peaches",
+      size: "10 oz bag",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic peaches.",
+      nutrition: { caloriesKcal100g: 39, sugarsG100g: 8.4, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 1.5, proteinG100g: 0.9, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.cascadianfarm.com/products/frozen-fruits/",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(soup|broth|sauce|paste|salsa|ketchup|juice|chips?|crackers?|dip|salad|dressing|cheese|pizza|pasta|sausage|turkey|bacon|ham|deli|salt|powder|seed|bites|crisps?)\b).*\b(bell\s+peppers?|sweet\s+peppers?|celery|green\s+beans?|string\s+beans?|fresh\s+tomatoes|roma\s+tomatoes|cherry\s+tomatoes|grape\s+tomatoes)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Earthbound Farm",
+      name: "Organic Celery Hearts",
+      size: "16 oz bag",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic celery.",
+      nutrition: { caloriesKcal100g: 14, sugarsG100g: 1.3, saturatedFatG100g: 0, sodiumMg100g: 80, fiberG100g: 1.6, proteinG100g: 0.7, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.earthboundfarm.com/products/organic-celery-hearts/",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(chips?|crisps?|fries|tots|hash\s*browns?|mashed|salad|soup|au\s+gratin|scalloped|bread|rolls?|buns?|starch|flakes?|gnocchi|knish|pierog\w*|skins?|wedges)\b).*\b(russet\s+potatoes?|yukon\s+gold\s+potatoes?|red\s+potatoes?|yellow\s+potatoes?|baby\s+potatoes?|idaho\s+potatoes?|fresh\s+potatoes|potatoes)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Cal-Organic Farms",
+      name: "Organic Russet Potatoes",
+      size: "5 lb bag",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic russet potatoes.",
+      nutrition: { caloriesKcal100g: 77, sugarsG100g: 0.8, saturatedFatG100g: 0, sodiumMg100g: 6, fiberG100g: 2.2, proteinG100g: 2.0, fruitsVegNutsPct: 100, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://www.calorganicfarms.com/products/potatoes/",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(tortillas?|wraps?|bread|buns?|rolls?|bagels?|pasta|noodles?|crackers?|cookies?|pretzels?|pancake|waffle|muffin|cake|brownie|biscuit|crust)\b).*\b(all[- ]?purpose\s+flour|wheat\s+flour|bleached\s+flour|unbleached\s+flour|bread\s+flour)\b/i,
+    alt: {
+      category: "Bread",
+      brand: "King Arthur Baking Company",
+      name: "Organic Unbleached All-Purpose Flour",
+      size: "5 lb bag",
+      isOrganic: true,
+      image: "/swaps/bread.jpg",
+      ingredients: "Organic unbleached hard red wheat flour, organic malted barley flour.",
+      nutrition: { caloriesKcal100g: 366, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 3.3, proteinG100g: 13.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://shop.kingarthurbaking.com/items/organic-all-purpose-flour",
+      verifiedAt: "2026-11-11",
+    },
+  },
+  {
+    match: /^(?!.*\b(pasta|rotini|penne|spaghetti|macaroni|chips?|puffs?|crisps?|crackers?|soup|chili|burrito|dip|salad|flour)\b).*\b(chickpeas?|garbanzo\s+beans?|lentils?|pinto\s+beans?|black\s+beans?|navy\s+beans?|kidney\s+beans?)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Eden Organic",
+      name: "Organic Garbanzo Beans No Salt Added",
+      size: "15 oz can",
+      isOrganic: true,
+      image: "/swaps/produce.png",
+      ingredients: "Organic garbanzo beans, water.",
+      nutrition: { caloriesKcal100g: 115, sugarsG100g: 0.8, saturatedFatG100g: 0.4, sodiumMg100g: 12, fiberG100g: 5.4, proteinG100g: 6.9, fruitsVegNutsPct: 90, isOrganic: true, isWholeFood: true },
+      sourceUrl: "https://store.edenfoods.com/garbanzo-beans-chick-peas-organic-15-oz/",
+      verifiedAt: "2026-11-11",
+    },
+  },
 ];
 
 /**
@@ -2555,13 +2707,16 @@ export function resolveCleanAlternative(
   productTitle = "",
   category?: SwapCategory,
   store?: Store,
-  preferStoreBrand = false
+  preferStoreBrand = false,
+  requireOrganic = false
 ): CleanAlternative {
   const title = productTitle.trim();
+  const passesOrganic = (alt: CleanAlternative) =>
+    !requireOrganic || alt.isOrganic === true || alt.nutrition?.isOrganic === true;
   if (title && store) {
     if (preferStoreBrand && store === "walmart") {
       for (const rule of WALMART_STORE_BRAND_ALTERNATIVES) {
-        if (rule.match.test(title)) {
+        if (rule.match.test(title) && passesOrganic(rule.alt)) {
           return rule.alt;
         }
       }
@@ -2569,7 +2724,7 @@ export function resolveCleanAlternative(
     const storeRules = STORE_SPECIFIC_OVERRIDES[store];
     if (storeRules) {
       for (const rule of storeRules) {
-        if (rule.match.test(title)) {
+        if (rule.match.test(title) && passesOrganic(rule.alt)) {
           return rule.alt;
         }
       }
@@ -2577,7 +2732,7 @@ export function resolveCleanAlternative(
   }
   if (title) {
     for (const rule of EXACT_PRODUCT_ALTERNATIVES) {
-      if (rule.match.test(title)) {
+      if (rule.match.test(title) && passesOrganic(rule.alt)) {
         return rule.alt;
       }
     }
@@ -3019,8 +3174,12 @@ function evaluateCandidateForSwap(
     surface: ScanSurface;
     instacartRetailerSlug?: string;
     requireZeroFlags?: boolean;
+    requireOrganicUpgrade?: boolean;
   }
 ): { swap: SwapResult; baseCleanScore: number; flagCount: number } | null {
+  const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
+  if (params.requireOrganicUpgrade && !isOrganic) return null;
+
   const baseClean = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist);
   if (baseClean.score < 85) return null;
   if (params.requireZeroFlags && baseClean.flagged.length > 0) return null;
@@ -3084,14 +3243,13 @@ function evaluateCandidateForSwap(
     }
   }
 
-  const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
   const yukaRes = scoreProductYuka(alt.ingredients, params.watchlist, params.familyWatchlist, {
     ...alt.nutrition,
     productTitle: fullTitle,
     isOrganic,
   });
   const altScore = yukaRes.score;
-  if (altScore <= params.score) return null;
+  if (params.requireOrganicUpgrade ? altScore < params.score : altScore <= params.score) return null;
 
   const swap: SwapResult = {
     category: alt.category,
@@ -3119,8 +3277,23 @@ function evaluateCandidateForSwap(
   };
 }
 
+function isPesticideWatchTriggered(
+  dietaryWatchlist: string[] | undefined,
+  productTitle?: string,
+  ingredients?: string,
+  nutrition?: NutritionInput,
+): { watchActive: boolean; hasPesticideRisk: boolean } {
+  const watchActive =
+    Array.isArray(dietaryWatchlist) &&
+    dietaryWatchlist.some((d) => String(d).trim().toLowerCase() === "pesticide_risk");
+  if (!watchActive) return { watchActive: false, hasPesticideRisk: false };
+  const hasPesticideRisk = Boolean(detectPesticideRisk(productTitle || "", ingredients || "", nutrition));
+  return { watchActive, hasPesticideRisk };
+}
+
 /**
- * Returns a reference clean swap when a product scores < 75, else null.
+ * Returns a reference clean swap when a product scores < 75 (or when pesticide_risk is triggered
+ * on a non-organic high-residue crop / conventional grain), else null.
  * The alternative is checked against the deterministic additive rubric (with active watchlist)
  * and scored with the 3-pillar Yuka rubric.
  */
@@ -3128,15 +3301,23 @@ export function resolveSwap(params: {
   score: number;
   productTitle?: string;
   ingredients?: string;
+  nutrition?: NutritionInput;
   store?: Store;
   category?: SwapCategory;
   watchlist?: Watchlist;
   familyWatchlist?: import("./rubric").Category[];
+  dietaryWatchlist?: string[];
   surface?: ScanSurface;
   instacartRetailerSlug?: string;
   preferStoreBrand?: boolean;
 }): SwapResult | null {
-  if (params.score >= 75) return null;
+  const { watchActive: pesticideWatchActive, hasPesticideRisk } = isPesticideWatchTriggered(
+    params.dietaryWatchlist,
+    params.productTitle,
+    params.ingredients,
+    params.nutrition,
+  );
+  if (params.score >= 75 && !hasPesticideRisk) return null;
   if (
     params.productTitle &&
     (NON_FOOD_SWAP_GUARD.test(params.productTitle) || ALREADY_PURE_MAPLE_SYRUP_GUARD.test(params.productTitle))
@@ -3148,7 +3329,14 @@ export function resolveSwap(params: {
     params.surface === "android" || params.surface === "extension"
       ? params.surface
       : "web";
-  const alt = resolveCleanAlternative(params.productTitle, params.category, store, Boolean(params.preferStoreBrand));
+  const requireOrganicUpgrade = params.score >= 75 && hasPesticideRisk;
+  const alt = resolveCleanAlternative(
+    params.productTitle,
+    params.category,
+    store,
+    Boolean(params.preferStoreBrand),
+    pesticideWatchActive,
+  );
   const evaluated = evaluateCandidateForSwap(alt, {
     score: params.score,
     productTitle: params.productTitle,
@@ -3157,10 +3345,11 @@ export function resolveSwap(params: {
     familyWatchlist: params.familyWatchlist,
     surface,
     instacartRetailerSlug: params.instacartRetailerSlug,
+    requireOrganicUpgrade,
   });
   if (evaluated) return evaluated.swap;
-  if (params.preferStoreBrand) {
-    const fallbackAlt = resolveCleanAlternative(params.productTitle, params.category, store, false);
+  if (params.preferStoreBrand || (pesticideWatchActive && !requireOrganicUpgrade)) {
+    const fallbackAlt = resolveCleanAlternative(params.productTitle, params.category, store, false, requireOrganicUpgrade);
     const fallbackEval = evaluateCandidateForSwap(fallbackAlt, {
       score: params.score,
       productTitle: params.productTitle,
@@ -3169,6 +3358,7 @@ export function resolveSwap(params: {
       familyWatchlist: params.familyWatchlist,
       surface,
       instacartRetailerSlug: params.instacartRetailerSlug,
+      requireOrganicUpgrade,
     });
     return fallbackEval ? fallbackEval.swap : null;
   }
@@ -3176,7 +3366,7 @@ export function resolveSwap(params: {
 }
 
 const SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT =
-  /\b(soda|cola|pepsi|coke|sprite|mountain\s+dew|fanta|root\s+beer|ginger\s+ale|energy\s+drink|monster|red\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|peanut\s+butter|almond\s+butter|hazelnut|nutella|jam|jelly|preserves|ice\s+cream|gelato|milk|oat\s*milk|almond\s*milk|eggs?|soup|chowder|broth|stock|ketchup|mustard|mayo|mayonnaise|salsa|marinara|pasta\s+sauce|bbq|guacamole|hummus|ramen|pasta|spaghetti|mac\s*(?:&|and)\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?)\b/i;
+  /\b(soda|cola|pepsi|coke|sprite|mountain\s+dew|fanta|root\s+beer|ginger\s+ale|energy\s+drink|monster|red\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|peanut\s+butter|almond\s+butter|hazelnut|nutella|jam|jelly|preserves|ice\s+cream|gelato|milk|oat\s*milk|almond\s*milk|eggs?|soup|chowder|broth|stock|ketchup|mustard|mayo|mayonnaise|salsa|marinara|pasta\s+sauce|bbq|guacamole|hummus|ramen|pasta|spaghetti|mac\s*(?:&|and)\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|nectarines?|cherries|peppers?|potatoes?|celery|tomatoes?|green\s+beans?|chickpeas?|garbanzo|lentils?|flour)\b/i;
 
 /**
  * Returns ranked clean alternatives (up to `limit ?? 4`) for a product's exact food type,
@@ -3187,17 +3377,25 @@ export function resolveSwapCandidates(params: {
   score: number;
   productTitle: string;
   ingredients?: string;
+  nutrition?: NutritionInput;
   category?: SwapCategory;
   store: Store;
   watchlist?: Watchlist;
   familyWatchlist?: import("./rubric").Category[];
+  dietaryWatchlist?: string[];
   surface?: ScanSurface;
   instacartRetailerSlug?: string;
   limit?: number;
   preferStoreBrand?: boolean;
 }): SwapResult[] {
   const title = (params.productTitle || "").trim();
-  if (params.score >= 75 || !title) return [];
+  const { watchActive: pesticideWatchActive, hasPesticideRisk } = isPesticideWatchTriggered(
+    params.dietaryWatchlist,
+    title,
+    params.ingredients,
+    params.nutrition,
+  );
+  if ((params.score >= 75 && !hasPesticideRisk) || !title) return [];
   if (NON_FOOD_SWAP_GUARD.test(title) || ALREADY_PURE_MAPLE_SYRUP_GUARD.test(title)) {
     return [];
   }
@@ -3208,9 +3406,10 @@ export function resolveSwapCandidates(params: {
       ? params.surface
       : "web";
   const maxItems = Math.max(1, Math.min(10, params.limit ?? 4));
+  const requireOrganicUpgrade = params.score >= 75 && hasPesticideRisk;
 
   const primaryAltKey = formatSwapFullTitle(
-    resolveCleanAlternative(title, params.category, store, Boolean(params.preferStoreBrand))
+    resolveCleanAlternative(title, params.category, store, Boolean(params.preferStoreBrand), pesticideWatchActive)
   ).toLowerCase();
 
   const rawPool: Array<{ alt: CleanAlternative; tier: number }> = [];
@@ -3273,6 +3472,7 @@ export function resolveSwapCandidates(params: {
       surface,
       instacartRetailerSlug: params.instacartRetailerSlug,
       requireZeroFlags: true,
+      requireOrganicUpgrade,
     });
     if (res) {
       evaluated.push({ swap: res.swap, tier: entry.tier, isPrimary: key === primaryAltKey });
@@ -3285,6 +3485,11 @@ export function resolveSwapCandidates(params: {
   const pool = highYuka.length > 0 ? highYuka : evaluated;
 
   pool.sort((a, b) => {
+    if (pesticideWatchActive) {
+      const aOrg = Boolean(a.swap.nutrition?.isOrganic);
+      const bOrg = Boolean(b.swap.nutrition?.isOrganic);
+      if (aOrg !== bOrg) return bOrg ? 1 : -1;
+    }
     if (params.preferStoreBrand && Boolean(b.swap.isStoreBrand) !== Boolean(a.swap.isStoreBrand)) {
       return b.swap.isStoreBrand ? 1 : -1;
     }

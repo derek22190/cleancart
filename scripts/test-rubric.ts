@@ -2594,6 +2594,146 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         freshSimTsx.includes("open-ios-safari-setup")
     )
   );
+  const dietaryMod = await import("../lib/dietary");
+  const scanMod = await import("../lib/scan");
+
+  const convStrawberryRisk = dietaryMod.detectPesticideRisk("Fresh Strawberries, 1 lb", "Fresh strawberries.");
+  const convSpinachRisk = dietaryMod.detectPesticideRisk("Fresh Baby Spinach, 10 oz", "Baby spinach.");
+  const convOatsRisk = dietaryMod.detectPesticideRisk("Quaker Old Fashioned Oats, 42 oz", "Whole grain rolled oats.");
+  const convFlourRisk = dietaryMod.detectPesticideRisk("Gold Medal Unbleached All-Purpose Flour", "Bleached wheat flour, niacin, iron.");
+  const convHummusRisk = dietaryMod.detectPesticideRisk("Classic Hummus, 10 oz", "Cooked chickpeas, tahini, olive oil, garlic, sea salt.");
+  const orgStrawberryRisk = dietaryMod.detectPesticideRisk(
+    "Driscoll's Organic Fresh Strawberries, 16 oz",
+    "Organic strawberries.",
+    { isOrganic: true }
+  );
+  const orgOatsRisk = dietaryMod.detectPesticideRisk(
+    "One Degree Organic Foods Sprouted Rolled Oats",
+    "Organic sprouted whole grain oats.",
+    { isOrganic: true }
+  );
+  const sparklingWaterNoFalsePositive = dietaryMod.detectPesticideRisk(
+    "Spindrift Raspberry Lime Sparkling Water",
+    "Carbonated water, raspberry puree, lime juice."
+  );
+  const pectinNoFalsePositive = dietaryMod.detectPesticideRisk(
+    "Stonyfield Organic Whole Milk Berry Yogurt",
+    "Cultured pasteurized organic whole milk, apple pectin."
+  );
+  const alertsWhenOff = dietaryMod.evaluateDietaryAlerts([], "Fresh Strawberries, 1 lb", "Fresh strawberries.");
+  const alertsWhenOn = dietaryMod.evaluateDietaryAlerts(["pesticide_risk"], "Fresh Strawberries, 1 lb", "Fresh strawberries.");
+  check(
+    "Herbicide & Pesticide Watch (pesticide_risk): flags conventional USDA PDP Dirty Dozen produce & desiccant-risk oats/wheat/chickpeas, never flags USDA Organic or trace pectin/flavors, and stays opt-in when off",
+    Boolean(
+      convStrawberryRisk !== null &&
+        convStrawberryRisk.category === "high_residue_produce" &&
+        convSpinachRisk !== null &&
+        convOatsRisk !== null &&
+        convOatsRisk.category === "conventional_grain_legume" &&
+        convFlourRisk !== null &&
+        convHummusRisk !== null &&
+        orgStrawberryRisk === null &&
+        orgOatsRisk === null &&
+        sparklingWaterNoFalsePositive === null &&
+        pectinNoFalsePositive === null &&
+        alertsWhenOff.length === 0 &&
+        alertsWhenOn.length === 1 &&
+        alertsWhenOn[0]?.id === "pesticide_risk"
+    )
+  );
+
+  const convStrawberryScanOff = await runScan({
+    productTitle: "Fresh Strawberries, 1 lb",
+    rawIngredients: "Fresh strawberries.",
+    store: "walmart",
+    dietaryWatchlist: [],
+  });
+  const convStrawberryScanOn = await runScan({
+    productTitle: "Fresh Strawberries, 1 lb",
+    rawIngredients: "Fresh strawberries.",
+    store: "walmart",
+    dietaryWatchlist: ["pesticide_risk"],
+  });
+  const convOatsScanOn = await runScan({
+    productTitle: "Old Fashioned Rolled Oats, 42 oz",
+    rawIngredients: "100% whole grain rolled oats.",
+    store: "walmart",
+    dietaryWatchlist: ["pesticide_risk"],
+  });
+  const orgStrawberryScanOn = await runScan({
+    productTitle: "Driscoll's Organic Fresh Strawberries, 1 lb",
+    rawIngredients: "Organic fresh strawberries.",
+    store: "walmart",
+    dietaryWatchlist: ["pesticide_risk"],
+  });
+  check(
+    "Herbicide & Pesticide Watch Swaps: conventional strawberries & oats (90/100) keep swap=null when off, upgrade to certified USDA Organic swaps when pesticide_risk is on, and already-organic berries emit 0 alerts & null swap",
+    Boolean(
+      convStrawberryScanOff.ok &&
+        convStrawberryScanOff.result.score >= 85 &&
+        convStrawberryScanOff.swap === null &&
+        convStrawberryScanOn.ok &&
+        convStrawberryScanOn.dietaryAlerts?.some((a) => a.id === "pesticide_risk") &&
+        convStrawberryScanOn.swap &&
+        convStrawberryScanOn.swap.title.includes("Organic") &&
+        convOatsScanOn.ok &&
+        convOatsScanOn.dietaryAlerts?.some((a) => a.id === "pesticide_risk") &&
+        convOatsScanOn.swap &&
+        convOatsScanOn.swap.title.includes("Organic") &&
+        orgStrawberryScanOn.ok &&
+        (orgStrawberryScanOn.dietaryAlerts?.length ?? 0) === 0 &&
+        orgStrawberryScanOn.swap === null
+    )
+  );
+
+  const seortSlug = scanMod.extractTitleSlugFromUrl("https://www.walmart.com/ip/seort/197577662");
+  const normalizedWalmartShare = scanMod.normalizeIosShareOrOcrInput(
+    "Hey, check this out at Walmart! Great Value Crunchy Cheese Puffs, 8 oz https://www.walmart.com/ip/seort/197577662",
+    ""
+  );
+  const liveBrowserSwiftSrc = fs.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+  const shortcutsSwiftSrc = fs.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+  const shareInfoPlistSrc = fs.readFileSync("ios-app/ShareExtension/Info.plist", "utf8");
+  const androidScanApiKtSrc = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+    "utf8"
+  );
+  const strawberryYogurtSwap = resolveSwap({
+    score: 45,
+    productTitle: "Strawberry Lowfat Yogurt, 32 oz",
+    category: "Yogurt",
+    store: "walmart",
+    dietaryWatchlist: ["pesticide_risk"],
+  });
+  check(
+    "3-Part Native iPhone Grocery Suite + Share Boilerplate Guard + Android Pesticide Parity: LiveStoreBrowserViewController, AppIntents (Back-Tap/OCR), App-Store-safe ShareExtension (.appex), and seort URL guard",
+    Boolean(
+      seortSlug === "" &&
+        normalizedWalmartShare.title.includes("Great Value Crunchy Cheese Puffs") &&
+        !normalizedWalmartShare.title.toLowerCase().includes("check this out") &&
+        strawberryYogurtSwap?.title.includes("Stonyfield") &&
+        liveBrowserSwiftSrc.includes("websiteDataStore = .default()") &&
+        liveBrowserSwiftSrc.includes("heybrocStoreBridge") &&
+        liveBrowserSwiftSrc.includes("floatingBubble") &&
+        liveBrowserSwiftSrc.includes("tapTogglePesticide") &&
+        shortcutsSwiftSrc.includes("ScanGroceryScreenshotIntent") &&
+        shortcutsSwiftSrc.includes("CheckFoodWithHeyBrocIntent") &&
+        shortcutsSwiftSrc.includes("TogglePesticideWatchIntent") &&
+        shortcutsSwiftSrc.includes("HeyBrocShortcutsProvider") &&
+        shortcutsSwiftSrc.includes("VNRecognizeTextRequest") &&
+        !iosShareSwift.includes("UIApplication.shared") &&
+        !shareInfoPlistSrc.includes("TRUEPREDICATE") &&
+        shareInfoPlistSrc.includes("com.apple.share-services") &&
+        buildIosYmlSrc.includes("LiveStoreBrowserViewController.swift") &&
+        buildIosYmlSrc.includes("HeyBrocShortcuts.swift") &&
+        buildIosYmlSrc.includes("com.heybroc.app.ShareExtension") &&
+        buildIosYmlSrc.includes("APPLICATION_EXTENSION_API_ONLY") &&
+        freshSimTsx.includes("open-ios-live-shop") &&
+        freshSimTsx.includes("pesticide-watch-switch-card") &&
+        androidScanApiKtSrc.includes('"pesticide_risk"')
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

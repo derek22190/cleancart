@@ -67,12 +67,15 @@ jobs:
           marketing_version = "2.1.0"
 
           # 1. Replace Apple's static Safari placeholder ViewController.swift with full HeyBroc native iOS controller
+          #    and stage LiveStoreBrowserViewController.swift + HeyBrocShortcuts.swift alongside it.
           vc_files = list(build_root.rglob("ViewController.swift"))
           if not vc_files:
               raise SystemExit("ERROR: ViewController.swift not found in generated Xcode project")
           for vc in vc_files:
               shutil.copy2("ios-app/App/ViewController.swift", vc)
-              print(f"Injected custom ViewController.swift -> {vc}")
+              shutil.copy2("ios-app/App/LiveStoreBrowserViewController.swift", vc.parent / "LiveStoreBrowserViewController.swift")
+              shutil.copy2("ios-app/App/HeyBrocShortcuts.swift", vc.parent / "HeyBrocShortcuts.swift")
+              print(f"Injected ViewController.swift, LiveStoreBrowserViewController.swift & HeyBrocShortcuts.swift -> {vc.parent}")
 
           # 2. Replace Apple's static "You can turn on HeyBroc's Safari extension in Settings." Main.html
           main_html_files = list(build_root.rglob("Main.html"))
@@ -125,7 +128,15 @@ jobs:
                   plistlib.dump(data, f)
               print(f"Updated Info.plist ({'extension' if is_extension else 'host app'}) -> {plist_path}")
 
-          # 5. Patch project.pbxproj bundle ID, MARKETING_VERSION, CURRENT_PROJECT_VERSION & generated plist keys
+          # 5. Stage Native iOS Share Sheet Extension (HeyBrocShare) files
+          share_dir = build_root / "HeyBrocShare"
+          share_dir.mkdir(parents=True, exist_ok=True)
+          shutil.copy2("ios-app/ShareExtension/ShareViewController.swift", share_dir / "ShareViewController.swift")
+          shutil.copy2("ios-app/ShareExtension/Info.plist", share_dir / "Info.plist")
+          shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")
+          print(f"Staged HeyBrocShare extension sources -> {share_dir}")
+
+          # 6. Patch project.pbxproj bundle ID, MARKETING_VERSION, CURRENT_PROJECT_VERSION & generated plist keys
           pbx_path = build_root / "HeyBroc.xcodeproj" / "project.pbxproj"
           pbx = pbx_path.read_text()
           pbx = pbx.replace("com.heybroc.HeyBroc", "com.heybroc.app")
@@ -142,6 +153,88 @@ jobs:
           pbx_path.write_text(pbx)
           print(f"Patched project.pbxproj -> version {marketing_version} ({build_version})")
           PY
+
+      - name: Wire Live Store Browser, AppIntents & Native Share Extension Target in Xcode Project
+        run: |
+          export GEM_HOME="$(ruby -e 'puts Gem.user_dir')"
+          export PATH="$GEM_HOME/bin:$PATH"
+          ruby -rxcodeproj -e 'puts "xcodeproj ready"' 2>/dev/null || gem install xcodeproj --user-install --no-document
+          ruby - <<'RUBY'
+          require 'xcodeproj'
+          require 'fileutils'
+
+          proj_path = 'ios-app/build/HeyBroc/HeyBroc.xcodeproj'
+          project = Xcodeproj::Project.open(proj_path)
+          run_num = (ENV['GITHUB_RUN_NUMBER'] || '1').to_i
+          build_version = (100 + run_num).to_s
+          marketing_version = '2.1.0'
+
+          app_target = project.targets.find { |t| t.product_type == 'com.apple.product-type.application' }
+          raise 'Host application target not found in generated Xcode project' unless app_target
+
+          vc_ref = project.files.find { |f| f.path&.end_with?('ViewController.swift') }
+          raise 'ViewController.swift file reference not found' unless vc_ref
+          app_group = vc_ref.parent
+          vc_dir_prefix = File.dirname(vc_ref.path)
+
+          ['LiveStoreBrowserViewController.swift', 'HeyBrocShortcuts.swift'].each do |fname|
+            rel_path = (vc_dir_prefix == '.' || vc_dir_prefix.empty?) ? fname : "#{vc_dir_prefix}/#{fname}"
+            ref = app_group.files.find { |f| f.path == rel_path } || app_group.new_file(rel_path)
+            ref.source_tree = vc_ref.source_tree if vc_ref.source_tree
+            unless app_target.source_build_phase.files_references.include?(ref)
+              app_target.add_file_references([ref])
+            end
+            puts "Added #{rel_path} to #{app_target.name} Compile Sources"
+          end
+
+          project.targets.each do |t|
+            t.build_configurations.each do |cfg|
+              cur = (cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '15.0').to_f
+              cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0' if cur < 15.0
+            end
+          end
+
+          project.save
+          FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.no-share")
+          puts "Saved fallback project.pbxproj.no-share"
+
+          # Add Native iOS Share Sheet Extension target (HeyBrocShare -> com.heybroc.app.ShareExtension)
+          share_target = project.new_target(:app_extension, 'HeyBrocShare', :ios, '15.0')
+          share_group = project.main_group.new_group('HeyBrocShare', 'HeyBrocShare', :source_root)
+          share_vc_ref = share_group.new_file('ShareViewController.swift')
+          share_group.new_file('Info.plist')
+          share_privacy_ref = share_group.new_file('PrivacyInfo.xcprivacy')
+
+          share_target.add_file_references([share_vc_ref])
+          share_target.resources_build_phase.add_file_reference(share_privacy_ref, true)
+
+          share_target.build_configurations.each do |cfg|
+            cfg.build_settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
+            cfg.build_settings['PRODUCT_MODULE_NAME'] = 'HeyBrocShare'
+            cfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.heybroc.app.ShareExtension'
+            cfg.build_settings['INFOPLIST_FILE'] = 'HeyBrocShare/Info.plist'
+            cfg.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
+            cfg.build_settings['MARKETING_VERSION'] = marketing_version
+            cfg.build_settings['CURRENT_PROJECT_VERSION'] = build_version
+            cfg.build_settings['SWIFT_VERSION'] = '5.0'
+            cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+            cfg.build_settings['TARGETED_DEVICE_FAMILY'] = '1,2'
+            cfg.build_settings['SKIP_INSTALL'] = 'YES'
+            cfg.build_settings['APPLICATION_EXTENSION_API_ONLY'] = 'YES'
+            cfg.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
+          end
+
+          app_target.add_dependency(share_target)
+
+          embed_phase = app_target.copy_files_build_phases.find { |p| p.symbol_dst_subfolder_spec == :plug_ins } ||
+                        app_target.new_copy_files_build_phase('Embed App Extensions')
+          embed_phase.symbol_dst_subfolder_spec = :plug_ins
+          build_file = embed_phase.add_file_reference(share_target.product_reference, true)
+          build_file.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy', 'CodeSignOnCopy'] }
+
+          project.save
+          puts "Added HeyBrocShare.appex (com.heybroc.app.ShareExtension) to #{app_target.name}"
+          RUBY
 
       - name: Build unsigned iOS Release Archive (Verification)
         if: ${{ github.event.inputs.upload_to_testflight == 'false' || env.ASC_KEY_ID == '' }}
@@ -187,14 +280,35 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             archive
-          xcodebuild -exportArchive \
+          if ! xcodebuild -exportArchive \
             -archivePath "ios-app/build/HeyBroc.xcarchive" \
             -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
             -exportPath "ios-app/build/ipa" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
+            echo "::warning::App Store Connect API key could not auto-provision new com.heybroc.app.ShareExtension bundle ID; re-archiving with LiveStoreBrowser + AppIntents + SafariExtension so TestFlight upload succeeds immediately."
+            cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.no-share" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
+            rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
+            xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
+              -scheme "HeyBroc" \
+              -sdk iphoneos \
+              -configuration Release \
+              -archivePath "ios-app/build/HeyBroc.xcarchive" \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              archive
+            xcodebuild -exportArchive \
+              -archivePath "ios-app/build/HeyBroc.xcarchive" \
+              -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
+              -exportPath "ios-app/build/ipa" \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          fi
           xcrun altool --upload-app \
             --type ios \
             --file "ios-app/build/ipa/HeyBroc.ipa" \

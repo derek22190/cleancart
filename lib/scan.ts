@@ -102,7 +102,10 @@ export function detectStoreFromUrl(text: string): Store | undefined {
   return undefined;
 }
 
-function extractTitleSlugFromUrl(urlStr: string): string {
+const URL_SLUG_PLACEHOLDER_TOKEN =
+  /^(?:seort|seo|ip|p|dp|gp|d|s|product|products|item|items|store|stores|shop|browse|detail|ps|ref|-|\d+)$/i;
+
+export function extractTitleSlugFromUrl(urlStr: string): string {
   try {
     const u = new URL(urlStr);
     const p = decodeURIComponent(u.pathname);
@@ -119,15 +122,113 @@ function extractTitleSlugFromUrl(urlStr: string): string {
     for (const re of patterns) {
       const m = p.match(re);
       if (m?.[1]) {
-        return m[1]
+        const cleaned = m[1]
           .replace(/[-_]+/g, " ")
           .replace(/\b(?:prod|item)?\d{6,}\b/gi, "")
           .replace(/\s+/g, " ")
           .trim();
+        if (cleaned.length >= 3 && !URL_SLUG_PLACEHOLDER_TOKEN.test(cleaned)) {
+          return cleaned;
+        }
       }
     }
   } catch {
     /* ignore malformed URL */
+  }
+  return "";
+}
+
+const ALLOWED_RETAILER_SHARE_HOSTS = [
+  "walmart.com",
+  "walmrt.co",
+  "target.com",
+  "instacart.com",
+  "kroger.com",
+  "aldi.us",
+  "samsclub.com",
+  "costco.com",
+  "bjs.com",
+  "amazon.com",
+  "a.co",
+  "amzn.to",
+  "wholefoodsmarket.com",
+  "shipt.com",
+  "doordash.com",
+  "ubereats.com",
+];
+
+function isAllowedRetailerHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/\.$/, "");
+  return ALLOWED_RETAILER_SHARE_HOSTS.some((base) => h === base || h.endsWith(`.${base}`));
+}
+
+function decodeBasicHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&ndash;/gi, "-")
+    .replace(/&mdash;/gi, "-")
+    .replace(/&#(\d+);/g, (_, code) => {
+      const n = Number(code);
+      return Number.isFinite(n) && n >= 32 && n <= 126 ? String.fromCharCode(n) : " ";
+    });
+}
+
+async function resolveRetailerShareUrlTitle(urlStr: string): Promise<string> {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== "https:" || !isAllowedRetailerHost(parsed.hostname)) {
+      return "";
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2600);
+    try {
+      const res = await fetch(parsed.toString(), {
+        method: "GET",
+        redirect: "follow",
+        signal: ctrl.signal,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+          Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+      if (res.url) {
+        const finalUrl = new URL(res.url);
+        if (!isAllowedRetailerHost(finalUrl.hostname)) return "";
+        const redirectedSlug = extractTitleSlugFromUrl(res.url);
+        if (redirectedSlug) return redirectedSlug;
+      }
+      const html = (await res.text()).slice(0, 64_000);
+      const ogMatch =
+        html.match(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]+content=["']([^"']{4,220})["']/i) ||
+        html.match(/<meta[^>]+content=["']([^"']{4,220})["'][^>]+(?:property|name)=["'](?:og:title|twitter:title)["']/i) ||
+        html.match(/<title[^>]*>([^<]{4,220})<\/title>/i);
+      if (ogMatch?.[1]) {
+        const cleaned = decodeBasicHtmlEntities(ogMatch[1])
+          .replace(/^(?:amazon\.com\s*:\s*|walmart\.com\s*:\s*)/i, "")
+          .replace(
+            /\s*(?:[-|•:]\s*(?:walmart(?:\.com)?|target|instacart|sam'?s\s+club|costco|kroger|aldi|amazon(?:\.com)?|shipt|bjs\.com).*)$/i,
+            "",
+          )
+          .replace(/\s+/g, " ")
+          .trim();
+        if (
+          cleaned.length >= 4 &&
+          !/^(?:robot\s+or\s+human|access\s+denied|just\s+a\s+moment|page\s+not\s+found|sign\s+in|verify\s+your\s+identity|walmart(?:\.com)?|target|amazon(?:\.com)?|instacart)$/i.test(
+            cleaned,
+          )
+        ) {
+          return cleaned;
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    /* network or timeout fallback */
   }
   return "";
 }
@@ -149,11 +250,11 @@ function isolateSingleIngredientsBlock(rawIng: string): string {
   return cleaned.replace(/\s+/g, " ").trim();
 }
 
-function normalizeIosShareOrOcrInput(
+export function normalizeIosShareOrOcrInput(
   rawTitle: string,
   rawIng: string,
   rawText = "",
-): { title: string; candidates: string[]; extractedIngredients: string; detectedStore?: Store } {
+): { title: string; candidates: string[]; extractedIngredients: string; detectedStore?: Store; sharedUrl?: string } {
   const combinedSource = rawTitle || rawText;
   const detectedStore = detectStoreFromUrl(combinedSource);
   let extractedIngredients = isolateSingleIngredientsBlock(rawIng);
@@ -243,25 +344,34 @@ function normalizeIosShareOrOcrInput(
   }
 
   // Extract URL if present (iOS Share Sheet from Walmart, Target, Sam's Club, Costco, Amazon, Instacart, ALDI, Kroger)
-  const urlMatch = rawTitle.match(/https?:\/\/[^\s]+/i);
+  const urlMatch = combinedSource.match(/https?:\/\/[^\s"'<>]+/i);
   const sharedUrl = urlMatch?.[0] || "";
   const withoutUrl = rawTitle
     .replace(/https?:\/\/[^\s]+/gi, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/^(?:check\s+(?:this\s+)?out(?:\s+this\s+item)?(?:\s+(?:at|on|from)\s+[a-z0-9.'\s]+?)?\s*[:\-–—!]?\s*)/i, "")
-    .replace(/^(?:i\s+found\s+this|look\s+what\s+i\s+found)\s+(?:at|on|from)\s+[a-z0-9.'\s]+?\s*[:\-–—!]?\s*/i, "")
+    .replace(
+      /^(?:(?:hey|hi|yo)\s*[,!.]*\s*)?(?:check\s+(?:this\s+)?out(?:\s+what\s+i\s+found|\s+this\s+item)?|i\s+found\s+this|look\s+what\s+i\s+found|see\s+what\s+i\s+found|thought\s+you(?:'d|\s+might)\s+like(?:\s+this)?)(?:\s+(?:at|on|from)\s+(?:walmart(?:\.com)?|sam'?s\s+club|target(?:\.com)?|costco(?:\.com)?|instacart|amazon(?:\.com|\s+fresh)?|aldi|kroger|whole\s+foods(?:\s+market)?|bj'?s(?:\s+wholesale)?|shipt|doordash|uber\s*eats))?\s*[:\-–—!.]*\s*/i,
+      "",
+    )
     .replace(/\s+(?:from|at|on)\s+(?:sam'?s\s+club|walmart|target|costco|instacart|amazon(?:\.com)?|aldi|kroger|whole\s+foods(?:\s+market)?)\s*[!.]*$/i, "")
     .trim();
 
   if (withoutUrl && /[a-zA-Z]{2,}\s+[a-zA-Z0-9]{2,}/.test(withoutUrl)) {
-    return { title: withoutUrl, candidates: ocrCandidates.length ? ocrCandidates : [withoutUrl], extractedIngredients, detectedStore };
+    return {
+      title: withoutUrl,
+      candidates: ocrCandidates.length ? ocrCandidates : [withoutUrl],
+      extractedIngredients,
+      detectedStore,
+      sharedUrl: sharedUrl || undefined,
+    };
   }
   if (sharedUrl) {
     const slugTitle = extractTitleSlugFromUrl(sharedUrl);
     if (slugTitle) {
-      return { title: slugTitle, candidates: [slugTitle], extractedIngredients, detectedStore };
+      return { title: slugTitle, candidates: [slugTitle], extractedIngredients, detectedStore, sharedUrl };
     }
+    return { title: "", candidates: [], extractedIngredients, detectedStore, sharedUrl };
   }
   const finalTitle = withoutUrl || rawTitle;
   return { title: finalTitle, candidates: ocrCandidates.length ? ocrCandidates : [finalTitle], extractedIngredients, detectedStore };
@@ -309,10 +419,23 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const rawIngOrig = typeof req.rawIngredients === "string" ? req.rawIngredients.trim() : "";
   const rawTextOrig = typeof req.rawText === "string" ? req.rawText.trim() : "";
   const normalizedIos = normalizeIosShareOrOcrInput(rawTitleOrig, rawIngOrig, rawTextOrig);
-  const rawTitleInput = normalizedIos.title;
+  let rawTitleInput = normalizedIos.title;
   const rawIngredients = normalizedIos.extractedIngredients;
   const barcode =
     typeof req.barcode === "string" || typeof req.barcode === "number" ? String(req.barcode).trim().slice(0, 32) : "";
+
+  if (
+    !rawIngredients &&
+    !barcode &&
+    normalizedIos.sharedUrl &&
+    (!rawTitleInput || /^https?:\/\//i.test(rawTitleInput))
+  ) {
+    const resolvedTitle = await resolveRetailerShareUrlTitle(normalizedIos.sharedUrl);
+    if (resolvedTitle) {
+      rawTitleInput = resolvedTitle;
+      normalizedIos.candidates = [resolvedTitle];
+    }
+  }
 
   if (rawIngredients && !/[a-zA-Z]{2,}/.test(rawIngredients)) {
     return {
@@ -381,7 +504,14 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
 
   let productTitle = cleanCandidate(rawTitleInput);
 
-  if (!productTitle && !rawIngredients && !barcode) {
+  if ((!productTitle || /^https?:\/\//i.test(productTitle)) && !rawIngredients && !barcode) {
+    if (normalizedIos.sharedUrl) {
+      return {
+        ok: false,
+        status: 422,
+        error: "Could not read the product name from that short store link. Take a quick screenshot or include the product title.",
+      };
+    }
     return { ok: false, status: 400, error: "Provide productTitle, barcode, or rawIngredients." };
   }
   if (
@@ -482,9 +612,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     score: result.score,
     productTitle: `${productTitle} ${title}`,
     ingredients: found.ingredients,
+    nutrition: found.nutrition,
     store,
     watchlist,
     familyWatchlist,
+    dietaryWatchlist: req.dietaryWatchlist,
     surface: resolvedSurface,
     instacartRetailerSlug: req.instacartRetailerSlug,
     preferStoreBrand,
@@ -493,9 +625,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     score: result.score,
     productTitle: `${productTitle} ${title}`,
     ingredients: found.ingredients,
+    nutrition: found.nutrition,
     store,
     watchlist,
     familyWatchlist,
+    dietaryWatchlist: req.dietaryWatchlist,
     surface: resolvedSurface,
     instacartRetailerSlug: req.instacartRetailerSlug,
     preferStoreBrand,
@@ -556,9 +690,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       score: result.score,
       productTitle: `${productTitle} ${title}`,
       ingredients: found.ingredients,
+      nutrition: found.nutrition,
       store,
       watchlist,
       familyWatchlist,
+      dietaryWatchlist: req.dietaryWatchlist,
       surface: resolvedSurface,
       instacartRetailerSlug: req.instacartRetailerSlug,
       preferStoreBrand: true,
@@ -626,11 +762,16 @@ export function toIosText(scan: ScanResponse): string {
   const r = scan.result;
   const dot = r.color === "green" ? "🟢" : r.color === "yellow" ? "🟡" : "🔴";
   const lines = [`${dot} ${r.score}/100 ${r.rating} — ${scan.product.title}`];
+  if (scan.dietaryAlerts?.length) {
+    for (const alert of scan.dietaryAlerts) {
+      lines.push(`${alert.label}: ${alert.reason}`);
+    }
+  }
   if (r.flagged.length) {
     lines.push("", "⚠️ Flagged:");
     for (const f of r.flagged.slice(0, 6)) lines.push(`• ${f.name} (-${f.penalty}): ${f.explanation}`);
     if (r.flagged.length > 6) lines.push(`• +${r.flagged.length - 6} more`);
-  } else {
+  } else if (!scan.dietaryAlerts?.length) {
     lines.push("", "✅ No watchlist additives found.");
   }
   if (scan.swap) {

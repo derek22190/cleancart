@@ -604,6 +604,58 @@ export default function Simulator({
 
   const [toast, setToast] = useState<{ title: string; body: string; href?: string; isPaidLink?: boolean } | null>(null);
 
+  const pesticideWatchEnabled = useMemo(
+    () => dietaryWatchlist.includes("pesticide_risk"),
+    [dietaryWatchlist],
+  );
+
+  const togglePesticideWatch = useCallback((explicitNext?: boolean) => {
+    setDietaryWatchlist((prev) => {
+      const has = prev.includes("pesticide_risk");
+      const shouldEnable = typeof explicitNext === "boolean" ? explicitNext : !has;
+      const next: DietaryOptionId[] = shouldEnable
+        ? has
+          ? prev
+          : [...prev, "pesticide_risk"]
+        : prev.filter((id) => id !== "pesticide_risk");
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("heybroc_dietary_watchlist", JSON.stringify(next));
+      }
+      setToast({
+        title: shouldEnable
+          ? "🌱 Herbicides & Pesticides Watch: ON"
+          : "🌱 Herbicides & Pesticides Watch: OFF",
+        body: shouldEnable
+          ? "Flagging conventional Dirty-Dozen produce & non-organic oats, wheat & legumes — and surfacing certified USDA Organic swaps."
+          : "Conventional produce & grain pesticide alerts turned off.",
+      });
+      return next;
+    });
+    setSelectedSwapIdx(0);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const iosBridge = (
+      window as unknown as {
+        webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: unknown) => void } } };
+      }
+    ).webkit?.messageHandlers?.controller;
+    if (typeof iosBridge?.postMessage === "function") {
+      try {
+        iosBridge.postMessage({
+          action: "sync-preferences",
+          dietaryWatchlist,
+          familyWatchlist,
+          preferStoreBrand,
+          store,
+        });
+      } catch {
+        /* ignore bridge errors */
+      }
+    }
+  }, [dietaryWatchlist, familyWatchlist, preferStoreBrand, store]);
+
   useEffect(() => {
     let cancelled = false;
     async function checkEntitlement() {
@@ -1062,13 +1114,15 @@ export default function Simulator({
         score: score.score,
         productTitle: `${active.brand} ${active.title}`,
         ingredients: active.ingredients,
+        nutrition: active.nutrition,
         category: active.category,
         store,
         watchlist: watch,
         familyWatchlist,
+        dietaryWatchlist,
         preferStoreBrand,
       }),
-    [score.score, active, store, watch, familyWatchlist, preferStoreBrand],
+    [score.score, active, store, watch, familyWatchlist, dietaryWatchlist, preferStoreBrand],
   );
   const swap = useMemo(() => {
     if (swapCandidates.length > 0) {
@@ -1078,13 +1132,15 @@ export default function Simulator({
       score: score.score,
       productTitle: `${active.brand} ${active.title}`,
       ingredients: active.ingredients,
+      nutrition: active.nutrition,
       category: active.category,
       store,
       watchlist: watch,
       familyWatchlist,
+      dietaryWatchlist,
       preferStoreBrand,
     });
-  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist, preferStoreBrand]);
+  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist, dietaryWatchlist, preferStoreBrand]);
   const storeBrandCandidateIdx = useMemo(
     () => swapCandidates.findIndex((c) => c.isStoreBrand),
     [swapCandidates],
@@ -1100,15 +1156,17 @@ export default function Simulator({
           score: s.score,
           productTitle: `${item.brand} ${item.title}`,
           ingredients: item.ingredients,
+          nutrition: item.nutrition,
           category: item.category,
           store,
           watchlist: watch,
           familyWatchlist,
+          dietaryWatchlist,
           preferStoreBrand,
         });
         return { item, s, sw };
       }),
-    [cart, watch, store, familyWatchlist, preferStoreBrand],
+    [cart, watch, store, familyWatchlist, dietaryWatchlist, preferStoreBrand],
   );
   const totalCartUnits = useMemo(
     () => cart.reduce((sum, item) => sum + clampQty(item.quantity), 0),
@@ -2147,6 +2205,28 @@ export default function Simulator({
           </button>
 
           <button
+            id="topbar-pesticide-toggle"
+            type="button"
+            role="switch"
+            aria-checked={pesticideWatchEnabled}
+            className="topbar-pill"
+            onClick={() => togglePesticideWatch()}
+            title="Toggle Herbicides & Pesticides Watch (USDA Dirty-Dozen produce + conventional oats/wheat/legumes)"
+            style={
+              pesticideWatchEnabled
+                ? {
+                    background: "#ecfdf5",
+                    borderColor: "#16a34a",
+                    color: "#065f46",
+                    fontWeight: 800,
+                  }
+                : undefined
+            }
+          >
+            🌱 Pesticides: {pesticideWatchEnabled ? "ON" : "OFF"}
+          </button>
+
+          <button
             id="topbar-weekly-audit"
             type="button"
             className="topbar-pill"
@@ -2167,25 +2247,50 @@ export default function Simulator({
           </button>
 
           {isIosApp ? (
-            <button
-              id="open-ios-safari-setup"
-              type="button"
-              className="topbar-pill"
-              onClick={() => {
-                const iosBridge = (
-                  window as unknown as {
-                    webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
+            <>
+              <button
+                id="open-ios-live-shop"
+                type="button"
+                className="topbar-pill"
+                style={{
+                  background: "#ecfdf5",
+                  borderColor: "#86efac",
+                  color: "#065f46",
+                  fontWeight: 800,
+                }}
+                onClick={() => {
+                  const iosBridge = (
+                    window as unknown as {
+                      webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
+                    }
+                  ).webkit?.messageHandlers?.controller;
+                  if (typeof iosBridge?.postMessage === "function") {
+                    iosBridge.postMessage("open-live-shop");
                   }
-                ).webkit?.messageHandlers?.controller;
-                if (typeof iosBridge?.postMessage === "function") {
-                  iosBridge.postMessage("open-safari-setup");
-                } else {
-                  window.location.href = "/tools";
-                }
-              }}
-            >
-              🧭 Safari Bubble
-            </button>
+                }}
+              >
+                🛒 Live Shop Bubble
+              </button>
+              <button
+                id="open-ios-safari-setup"
+                type="button"
+                className="topbar-pill"
+                onClick={() => {
+                  const iosBridge = (
+                    window as unknown as {
+                      webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
+                    }
+                  ).webkit?.messageHandlers?.controller;
+                  if (typeof iosBridge?.postMessage === "function") {
+                    iosBridge.postMessage("open-safari-setup");
+                  } else {
+                    window.location.href = "/tools";
+                  }
+                }}
+              >
+                ⚡ iPhone Setup
+              </button>
+            </>
           ) : (
             <a
               id="download-android-apk"
@@ -2816,6 +2921,80 @@ export default function Simulator({
               <small>
                 Choose ingredients &amp; family allergens to avoid (Seed Oils, Red 40, HFCS, Nitrites, Sugar, Dairy, Gluten, Peanuts &amp; more) — HeyBroc doubles penalties, surfaces instant Allergy/Sugar badges, and finds clean swaps. Tap to customize →
               </small>
+            </span>
+          </button>
+
+          <button
+            id="pesticide-watch-switch-card"
+            type="button"
+            role="switch"
+            aria-checked={pesticideWatchEnabled}
+            className="tool"
+            onClick={() => togglePesticideWatch()}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              display: adTestMode && !freeTestCompleted ? "none" : "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              background: pesticideWatchEnabled ? "#f0fdf4" : undefined,
+              borderColor: pesticideWatchEnabled ? "#22c55e" : undefined,
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0 }}>
+              <span className="tool-icon" aria-hidden>
+                🌱
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <b>
+                  Herbicides &amp; Pesticides Watch{" "}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      marginLeft: 6,
+                      padding: "2px 7px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      background: pesticideWatchEnabled ? "#16a34a" : "#e2e8f0",
+                      color: pesticideWatchEnabled ? "#ffffff" : "#475569",
+                    }}
+                  >
+                    {pesticideWatchEnabled ? "ON" : "OFF"}
+                  </span>
+                </b>
+                <small style={{ display: "block", marginTop: 2 }}>
+                  Flags non-organic USDA Dirty-Dozen produce (strawberries, spinach, kale, apples, grapes, berries) &amp; conventional oats, wheat &amp; legumes — and auto-recommends certified USDA Organic swaps.
+                </small>
+              </span>
+            </span>
+            <span
+              aria-hidden
+              style={{
+                flexShrink: 0,
+                width: 46,
+                height: 26,
+                borderRadius: 999,
+                background: pesticideWatchEnabled ? "#16a34a" : "#cbd5e1",
+                position: "relative",
+                transition: "background 0.18s ease",
+                boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.14)",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 3,
+                  left: pesticideWatchEnabled ? 23 : 3,
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.25)",
+                  transition: "left 0.18s ease",
+                }}
+              />
             </span>
           </button>
 

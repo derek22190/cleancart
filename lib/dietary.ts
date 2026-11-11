@@ -2,6 +2,7 @@ import type { NutritionInput } from "./rubric";
 
 export type DietaryOptionId =
   | "sugar_diabetes"
+  | "pesticide_risk"
   | "dairy"
   | "wheat_gluten"
   | "peanuts_nuts"
@@ -15,6 +16,82 @@ export interface DietaryAlert {
   label: string;
   shortBadge: string;
   reason: string;
+}
+
+const CERTIFIED_ORGANIC_OR_CLEAN_CROP =
+  /\b(organic|organics|usda\s+organic|biodynamic|glyphosate[\s-]*residue[\s-]*free|pesticide[\s-]*free|herbicide[\s-]*free|regenerative\s+organic)\b/i;
+
+const NON_PRODUCE_BEVERAGE_OR_CANDY =
+  /\b(sparkling\s+water|seltzer|club\s+soda|energy\s+drink|diet\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\s+gum|gummy|gummies|jelly\s+beans?|skittles|starburst|jolly\s+rancher|cough\s+drop|sunscreen|lotion|shampoo|conditioner|body\s+wash|soap|detergent|toothpaste|deodorant|lip\s+balm)\b/i;
+
+export interface PesticideRiskMatch {
+  crop: string;
+  category: "high_residue_produce" | "conventional_grain_legume";
+  reason: string;
+}
+
+/**
+ * Deterministic USDA Pesticide Data Program (PDP) & conventional herbicide/desiccant crop detector.
+ * Never accuses a specific brand or lot of illegal contamination; strictly identifies non-organic
+ * high-residue produce and conventional grain/legume crop categories vs. USDA Organic (7 CFR § 205.105).
+ */
+export function detectPesticideRisk(
+  productTitle: string,
+  ingredients: string,
+  nutrition?: NutritionInput,
+): PesticideRiskMatch | null {
+  const combined = `${productTitle || ""} ${ingredients || ""}`.trim();
+  if (!combined) return null;
+  if (nutrition?.isOrganic === true || CERTIFIED_ORGANIC_OR_CLEAN_CROP.test(combined)) {
+    return null;
+  }
+  if (NON_PRODUCE_BEVERAGE_OR_CANDY.test(productTitle || "") && !/\b(oats?|oatmeal|wheat|flour)\b/i.test(ingredients || "")) {
+    return null;
+  }
+
+  // Strip explicitly organic sub-ingredients and flavor/pectin/vinegar trace terms so they don't trigger false positives
+  const stripOrganicAndFlavorNoise = (s: string) =>
+    s
+      .replace(
+        /\borganic\s+(?:whole\s+grain\s+|rolled\s+|steel[\s-]*cut\s+|sprouted\s+|gluten[\s-]*free\s+|unbleached\s+|enriched\s+|durum\s+|baby\s+|fresh\s+|frozen\s+|sweet\s+|red\s+|green\s+|black\s+)?[a-z]+(?:\s+(?:oats?|wheat|flour|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?/gi,
+        " ",
+      )
+      .replace(
+        /\b(?:natural|artificial)\s+[a-z\s]{0,20}flavors?\b|\b(?:apple\s+cider\s+vinegar|apple\s+pectin|fruit\s+pectin|citrus\s+pectin|tomato\s+lycopene|grape\s+skin\s+extract|rosemary\s+extract)\b/gi,
+        " ",
+      );
+
+  const cleanTitle = stripOrganicAndFlavorNoise(productTitle || "");
+  const cleanIng = stripOrganicAndFlavorNoise(ingredients || "");
+  const cleanCombined = `${cleanTitle} ${cleanIng}`;
+
+  // 1) USDA Pesticide Data Program (PDP) high-residue conventional produce categories
+  const produceMatch = cleanCombined.match(
+    /\b(strawberries|strawberry|baby\s+spinach|spinach|kale|collard\s+greens?|mustard\s+greens?|seedless\s+grapes?|red\s+grapes?|green\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|honeycrisp\s+apples?|gala\s+apples?|fuji\s+apples?|granny\s+smith\s+apples?|applesauce|apples?|bell\s+peppers?|sweet\s+peppers?|jalape[nñ]o\s+peppers?|hot\s+peppers?|cherries|blueberries|blueberry|green\s+beans?|string\s+beans?|russet\s+potatoes?|yukon\s+gold\s+potatoes?|red\s+potatoes?|potatoes|celery|roma\s+tomatoes?|cherry\s+tomatoes?|grape\s+tomatoes?|tomatoes)\b/i,
+  );
+  if (produceMatch) {
+    const crop = produceMatch[0].toLowerCase();
+    return {
+      crop,
+      category: "high_residue_produce",
+      reason: `Conventional ${crop} — high-residue produce category in USDA Pesticide Data Program monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides`,
+    };
+  }
+
+  // 2) Conventional grains & legumes where synthetic herbicides / pre-harvest desiccants are permitted in non-organic farming
+  const grainLegumeMatch = cleanCombined.match(
+    /\b(rolled\s+oats?|steel[\s-]*cut\s+oats?|whole\s+grain\s+oats?|instant\s+oats?|oatmeal|oat\s+flour|oat\s+bran|oat\s*milk|granola|oats|whole\s+wheat(?:\s+flour)?|enriched\s+(?:wheat\s+)?flour|bleached\s+(?:wheat\s+)?flour|unbleached\s+(?:wheat\s+)?flour|graham\s+flour|durum\s+wheat|semolina|wheat\s+flour|chickpeas?|garbanzo\s+beans?|hummus|red\s+lentils?|green\s+lentils?|brown\s+lentils?|lentils?|pinto\s+beans?|black\s+beans?|navy\s+beans?|kidney\s+beans?)\b/i,
+  );
+  if (grainLegumeMatch) {
+    const crop = grainLegumeMatch[0].toLowerCase();
+    return {
+      crop,
+      category: "conventional_grain_legume",
+      reason: `Conventional ${crop} — non-organic grain/legume farming permits synthetic herbicides; USDA Organic (7 CFR § 205.105) prohibits synthetic herbicides & pre-harvest desiccants`,
+    };
+  }
+
+  return null;
 }
 
 export function evaluateDietaryAlerts(
@@ -167,6 +244,18 @@ export function evaluateDietaryAlerts(
         label: "🧂 High Sodium Watch",
         shortBadge: "SODIUM",
         reason: reasons.join(" • "),
+      });
+    }
+  }
+
+  if (selected.has("pesticide_risk")) {
+    const pestMatch = detectPesticideRisk(productTitle, ingredients, nutrition);
+    if (pestMatch) {
+      alerts.push({
+        id: "pesticide_risk",
+        label: "🌱 Herbicide & Pesticide Watch",
+        shortBadge: "PESTICIDE",
+        reason: pestMatch.reason,
       });
     }
   }

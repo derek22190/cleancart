@@ -202,6 +202,12 @@ const DIETARY_PILLS: Array<{
     subtitle: "Flags added cane sugar, corn syrups, >=10g sugar/100g & refined starches",
   },
   {
+    id: "pesticide_risk",
+    icon: "🌱",
+    title: "Herbicides & Pesticides Watch",
+    subtitle: "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes; swaps to USDA Organic",
+  },
+  {
     id: "dairy",
     icon: "🥛",
     title: "Dairy & Lactose Guard",
