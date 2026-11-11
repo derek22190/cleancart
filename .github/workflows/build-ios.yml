@@ -154,11 +154,14 @@ jobs:
           print(f"Patched project.pbxproj -> version {marketing_version} ({build_version})")
           PY
 
+      - name: Set up Ruby 3.3 for Xcodeproj
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
       - name: Wire Live Store Browser, AppIntents & Native Share Extension Target in Xcode Project
         run: |
-          export GEM_HOME="$(ruby -e 'puts Gem.user_dir')"
-          export PATH="$GEM_HOME/bin:$PATH"
-          ruby -rxcodeproj -e 'puts "xcodeproj ready"' 2>/dev/null || gem install xcodeproj --user-install --no-document
+          gem install xcodeproj --no-document
           ruby - <<'RUBY'
           require 'xcodeproj'
           require 'fileutils'
@@ -180,7 +183,6 @@ jobs:
           ['LiveStoreBrowserViewController.swift', 'HeyBrocShortcuts.swift'].each do |fname|
             rel_path = (vc_dir_prefix == '.' || vc_dir_prefix.empty?) ? fname : "#{vc_dir_prefix}/#{fname}"
             ref = app_group.files.find { |f| f.path == rel_path } || app_group.new_file(rel_path)
-            ref.source_tree = vc_ref.source_tree if vc_ref.source_tree
             unless app_target.source_build_phase.files_references.include?(ref)
               app_target.add_file_references([ref])
             end
@@ -200,7 +202,7 @@ jobs:
 
           # Add Native iOS Share Sheet Extension target (HeyBrocShare -> com.heybroc.app.ShareExtension)
           share_target = project.new_target(:app_extension, 'HeyBrocShare', :ios, '15.0')
-          share_group = project.main_group.new_group('HeyBrocShare', 'HeyBrocShare', :source_root)
+          share_group = project.main_group.new_group('HeyBrocShare', 'HeyBrocShare', :project)
           share_vc_ref = share_group.new_file('ShareViewController.swift')
           share_group.new_file('Info.plist')
           share_privacy_ref = share_group.new_file('PrivacyInfo.xcprivacy')
