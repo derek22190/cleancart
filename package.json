@@ -8,9 +8,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test:rubric": "tsx scripts/test-rubric.ts",
-    "audit:ai": "node scripts/ai-audit.mjs --engine=local",
-    "audit:codex": "node scripts/ai-audit.mjs --engine=codex --skip-build",
-    "audit:claude": "node scripts/ai-audit.mjs --engine=claude --skip-build",
+    "audit:ai": "node scripts/ai-audit.mjs",
     "ops": "tsx --conditions=react-server scripts/ops-cli.ts"
   },
   "dependencies": {

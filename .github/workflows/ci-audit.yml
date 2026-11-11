@@ -1,4 +1,4 @@
-name: HeyBroc CI & Automated AI Audit
+name: HeyBroc CI & Compliance Checks
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  verify-and-audit:
-    name: Typecheck, 487 Rubric Checks, Build & AI Audit
+  verify:
+    name: Typecheck, Rubric Checks, Build & Static Compliance
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -38,8 +38,5 @@ jobs:
       - name: Run Next.js Production Build
         run: npm run build
 
-      - name: Run Static Compliance & Cross-AI Diff Audit (Codex / Claude)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Run Static Diff Compliance Check (Local Only)
         run: node scripts/ai-audit.mjs --skip-build

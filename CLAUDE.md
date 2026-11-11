@@ -1,8 +1,8 @@
 @AGENTS.md
 
-# Claude Code & Cross-Agent Instructions (`CLAUDE.md`)
+# Agent Instructions (`CLAUDE.md`)
 
-This repository uses [`AGENTS.md`](./AGENTS.md) as the single source of truth for all coding agents (**Claude Code**, **OpenAI Codex CLI**, and **Antigravity**).
+This repository uses [`AGENTS.md`](./AGENTS.md) as the single source of truth for all coding agents.
 
 ## Mandatory Workflow for Every Task
 
@@ -12,20 +12,13 @@ This repository uses [`AGENTS.md`](./AGENTS.md) as the single source of truth fo
    - Preserve the variant guard (`passesVariantGuard`) and never infer USDA Organic bonus without explicit `isOrganic === true`.
    - Never hardcode retail dollar prices or emit physiological blood-glucose predictions.
 
-2. **Zero Copy-Paste Cross-Audit (`npm run audit:ai`)**:
-   - After implementing changes, run:
+2. **Local Deterministic Verification Only (No External Codex / Claude Audits)**:
+   - After implementing changes, run the local verification gate:
      ```bash
      npm run audit:ai
      ```
-   - This single command runs static compliance/security checks on your `git diff`, runs `npm run typecheck`, `npm run test:rubric`, and `npm run build`, and automatically invokes headless **Codex CLI** (`codex exec`) or **Claude Code** (`claude -p`) / API review if installed in the environment.
-   - To explicitly cross-audit your work with Codex CLI from inside Claude Code:
-     ```bash
-     npm run audit:codex
-     ```
-   - To explicitly cross-audit your work with Claude Code from inside Codex:
-     ```bash
-     npm run audit:claude
-     ```
+     (which runs deterministic static diff compliance checks, `npm run typecheck`, `npm run test:rubric`, and `npm run build` locally).
+   - **Never** automatically spawn external `codex` or `claude` CLI sub-processes or call OpenAI/Anthropic APIs to cross-audit diffs, as doing so burns extra credits.
 
 3. **Mandatory Push to `main`**:
-   - Once all checks pass with zero findings, commit and push directly to `origin/main`.
+   - Once all deterministic checks pass, commit and push directly to `origin/main`.

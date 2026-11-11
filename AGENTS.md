@@ -22,10 +22,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **No Unverified Organic Bonus**: Never infer whole-product USDA Organic certification from `"organic"` appearing in `rawIngredients`; `organicScore` requires explicit product-level `nutrition.isOrganic === true`.
 - **No Hardcoded Retail Prices or Medical Predictions**: Never hardcode retail dollar prices on product or swap cards, and never emit blood-glucose or physiological predictions (`"Low Spike"`, `"Moderate Spike"`, `"High Spike"`, `"Steady glycemic profile"`).
 
-### Automated Cross-Audit & Verification Gate (`npm run audit:ai`)
-- Before committing and pushing to `main`, agents **MUST** run `npm run audit:ai` (or `npm run typecheck && npm run test:rubric && npm run build`).
-- By default, `npm run audit:ai` runs with `--engine=local` so it **never** burns external Codex or Claude Code credits, while running all deterministic diff compliance checks, TypeScript route typechecks, 487 rubric checks, and the production build. In Antigravity, use built-in subagents (`invoke_subagent`) for multi-pass AI code audits.
-- If `npm run audit:ai` surfaces any actionable bug, regression, or rule violation, fix it and re-run `npm run audit:ai` until zero issues remain before pushing to `origin/main`.
+### Local Deterministic Verification Gate (`npm run audit:ai`) — No Automatic External AI Audits
+- Before committing and pushing to `main`, agents **MUST** run `npm run audit:ai` (which runs local static diff compliance checks, `npm run typecheck`, `npm run test:rubric`, and `npm run build`).
+- **NEVER** automatically invoke Codex (`codex exec`), Claude Code (`claude -p`), OpenAI/Anthropic audit APIs, or extra multi-agent AI audit passes on every change unless the user explicitly asks for an audit—keep verification 100% local and deterministic so zero extra AI credits are burned.
+- If `npm run audit:ai` surfaces a TypeScript, rubric, build, or static compliance error, fix it and re-run `npm run audit:ai` before pushing to `origin/main`.
 
 ### Growth, Revenue, Paywall & Meta Ads Command Center (`npm run ops`)
 - Use `npm run ops` (`scripts/ops-cli.ts`) to inspect and control live funnel metrics, PostHog status, Paywall A/B tests, Creator Affiliate codes, Stripe subscriptions/MRR, and Meta Ads campaigns:
