@@ -9,6 +9,7 @@ import {
   scoreProductYuka,
   type Category,
 } from "@/lib/rubric";
+import CleanArcScoreCard from "@/components/CleanArcScoreCard";
 
 const FAMILY_WATCH_CATS: Category[] = [
   "seedOils",
@@ -496,25 +497,37 @@ export default function ToolsClient() {
             </div>
 
             {liveScore.yukaBreakdown && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#475569",
-                  background: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 10,
-                  padding: "8px 11px",
-                  marginBottom: 10,
-                  lineHeight: 1.45,
-                }}
-              >
-                <b>3-Pillar Score:</b> Nutrition {liveScore.yukaBreakdown.nutritionScore}/60 ·
-                Additives {liveScore.yukaBreakdown.additiveScore}/30 · Organic{" "}
-                {liveScore.yukaBreakdown.organicScore}/10
-                {liveScore.yukaBreakdown.glucoseImpact
-                  ? ` · Sugar/Carb: ${liveScore.yukaBreakdown.glucoseImpact}`
-                  : ""}
-              </div>
+              <CleanArcScoreCard
+                id="tools-clean-arc-card"
+                compact
+                headline={titleInput.trim() || "Ingredient Label Score"}
+                leftStatValue={liveScore.flagged.length}
+                leftStatLabel={liveScore.flagged.length === 1 ? "Flagged" : "Flags"}
+                rightStatValue={seedOilHits.length + dyeHits.length}
+                rightStatLabel="Oils & Dyes"
+                score={liveScore.score}
+                scoreSublabel="Clean Score"
+                miniRings={[
+                  {
+                    label: "Nutrition",
+                    valueText: `${liveScore.yukaBreakdown.nutritionScore}/60`,
+                    fillPct: Math.round((liveScore.yukaBreakdown.nutritionScore / 60) * 100),
+                    color: "#f59e0b",
+                  },
+                  {
+                    label: "Additives",
+                    valueText: `${liveScore.yukaBreakdown.additiveScore}/30`,
+                    fillPct: Math.round((liveScore.yukaBreakdown.additiveScore / 30) * 100),
+                    color: liveScore.yukaBreakdown.additiveScore >= 24 ? "#10b981" : "#ef4444",
+                  },
+                  {
+                    label: "Oils & Dyes",
+                    valueText: `${seedOilHits.length + dyeHits.length}`,
+                    fillPct: seedOilHits.length + dyeHits.length === 0 ? 100 : 20,
+                    color: seedOilHits.length + dyeHits.length === 0 ? "#10b981" : "#a855f7",
+                  },
+                ]}
+              />
             )}
 
             {liveScore.flagged.length === 0 ? (

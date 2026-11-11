@@ -37,6 +37,7 @@ import {
 import type { PlanId } from "@/lib/pricing";
 import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
+import CleanArcScoreCard from "./CleanArcScoreCard";
 import LabelScannerModal from "./LabelScannerModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import PostCheckoutOtoModal from "./PostCheckoutOtoModal";
@@ -3679,52 +3680,100 @@ export default function Simulator({
                             📤 Share Before/After Score Card (iMessage / IG / TikTok)
                           </button>
 
-                          {/* 3-Pillar Score & Sugar / Refined Carb / Calorie Insight Card */}
+                          {/* Curved Horseshoe Score Gauge + 3 Mini Sub-Score Rings */}
                           {score.yukaBreakdown && (
-                            <div
-                              style={{
-                                background: "#f8fafc",
-                                border: "1px solid #e2e8f0",
-                                borderRadius: 14,
-                                padding: "12px 14px",
-                                marginBottom: 12,
-                              }}
-                            >
-                              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "#64748b", textTransform: "uppercase" }}>
-                                3-PILLAR SCORE BREAKDOWN
-                              </div>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginTop: 4 }}>
-                                🥗 Nutritional Quality: {score.yukaBreakdown.nutritionScore}/60 (Nutri-Score {score.yukaBreakdown.nutriScoreGrade})
-                              </div>
-                              <div style={{ fontSize: 12.5, color: "#475569", marginTop: 2 }}>
-                                🧪 Clean-Label Additives: {score.yukaBreakdown.additiveScore}/30 &nbsp;·&nbsp; 🌱 Organic Bonus: {score.yukaBreakdown.organicScore}/10
-                              </div>
-                              {score.yukaBreakdown.glucoseImpact && (
-                                <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 8, paddingTop: 8 }}>
-                                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.06em", color: "#64748b", textTransform: "uppercase" }}>
-                                    SUGAR, REFINED CARB &amp; CALORIE INSIGHT
+                            <CleanArcScoreCard
+                              id="inspect-clean-arc-card"
+                              headline={
+                                score.score >= 75
+                                  ? "Clean family pick"
+                                  : score.score >= 50
+                                    ? "Room for a cleaner swap"
+                                    : "Watchlist flags detected"
+                              }
+                              leftStatValue={score.flagged.length}
+                              leftStatLabel={score.flagged.length === 1 ? "Flagged" : "Flags"}
+                              rightStatValue={swap ? `${swap.score}/100` : "✓ Clean"}
+                              rightStatLabel={swap ? "Swap Score" : "Top Pick"}
+                              score={score.score}
+                              scoreSublabel={`Clean Score · ${score.score < 25 ? "Bad" : score.rating}`}
+                              miniRings={[
+                                {
+                                  label: "Nutrition",
+                                  valueText: `${score.yukaBreakdown.nutritionScore}/60`,
+                                  fillPct: Math.round((score.yukaBreakdown.nutritionScore / 60) * 100),
+                                  color: "#f59e0b",
+                                  sublabel: `Grade ${score.yukaBreakdown.nutriScoreGrade}`,
+                                },
+                                {
+                                  label: "Additives",
+                                  valueText: `${score.yukaBreakdown.additiveScore}/30`,
+                                  fillPct: Math.round((score.yukaBreakdown.additiveScore / 30) * 100),
+                                  color: score.yukaBreakdown.additiveScore >= 24 ? "#10b981" : "#ef4444",
+                                  sublabel: `${score.flagged.length} flagged`,
+                                },
+                                {
+                                  label: "Oils & Dyes",
+                                  valueText: `${
+                                    score.flagged.filter(
+                                      (f) => f.category === "seedOils" || f.category === "dyes",
+                                    ).length
+                                  } hit${
+                                    score.flagged.filter(
+                                      (f) => f.category === "seedOils" || f.category === "dyes",
+                                    ).length === 1
+                                      ? ""
+                                      : "s"
+                                  }`,
+                                  fillPct:
+                                    score.flagged.some(
+                                      (f) => f.category === "seedOils" || f.category === "dyes",
+                                    )
+                                      ? 25
+                                      : 100,
+                                  color: score.flagged.some(
+                                    (f) => f.category === "seedOils" || f.category === "dyes",
+                                  )
+                                    ? "#a855f7"
+                                    : "#10b981",
+                                  sublabel:
+                                    score.yukaBreakdown.organicScore > 0
+                                      ? `+${score.yukaBreakdown.organicScore} Organic`
+                                      : "Seed oil / dye",
+                                },
+                              ]}
+                              footerNote={
+                                score.yukaBreakdown.glucoseImpact ? (
+                                  <div>
+                                    <div
+                                      style={{
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        color:
+                                          score.yukaBreakdown.glucoseImpact === "High Sugar / Carb"
+                                            ? "#dc2626"
+                                            : score.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
+                                              ? "#ea580c"
+                                              : "#16a34a",
+                                      }}
+                                    >
+                                      🩸 Sugar &amp; Carb Note: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp; 🔥{" "}
+                                      {score.yukaBreakdown.calorieNote}
+                                    </div>
+                                    <p
+                                      style={{
+                                        fontSize: 11,
+                                        color: "#57534e",
+                                        margin: "2px 0 0",
+                                        lineHeight: 1.4,
+                                      }}
+                                    >
+                                      {score.yukaBreakdown.glucoseNote}
+                                    </p>
                                   </div>
-                                  <div
-                                    style={{
-                                      fontSize: 12.5,
-                                      fontWeight: 800,
-                                      marginTop: 3,
-                                      color:
-                                        score.yukaBreakdown.glucoseImpact === "High Sugar / Carb"
-                                          ? "#dc2626"
-                                          : score.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
-                                            ? "#ea580c"
-                                            : "#16a34a",
-                                    }}
-                                  >
-                                    🩸 Sugar &amp; Carb Note: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp; 🔥 {score.yukaBreakdown.calorieNote}
-                                  </div>
-                                  <p style={{ fontSize: 11.5, color: "#475569", margin: "2px 0 0", lineHeight: 1.45 }}>
-                                    {score.yukaBreakdown.glucoseNote}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
+                                ) : undefined
+                              }
+                            />
                           )}
 
                           {/* NEGATIVES Section */}
@@ -4221,23 +4270,94 @@ export default function Simulator({
                       </div>
                     </div>
                     {auditOpen && (
-                      <div className="audit-summary">
-                        <Gauge
-                          score={cartAvg === null ? null : animatedCartAvg}
-                          rating={cartAvg === null ? "Empty" : "Cart avg"}
-                          color={cartAvgTone}
-                          size={78}
-                        />
-                        <p>
-                          {auditBusy
-                            ? "Checking your cart ingredients…"
-                            : cartAvg === null
-                              ? `Your ${STORE_META[store].label} cart is empty (Cart Avg: --). Add items to see your live quantity-weighted Cart Avg.`
-                              : dirty.length
-                                ? <><b>{dirty.length}</b> of {cart.length} items score under 75. Tap any item to inspect, or tap <b>Swap</b> to watch your Cart Avg climb!</>
-                                : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
-                        </p>
-                      </div>
+                      <CleanArcScoreCard
+                        id="cart-audit-arc-card"
+                        compact
+                        headline={
+                          cartAvg === null
+                            ? `${STORE_META[store].label} Cart Empty`
+                            : dirty.length === 0
+                              ? "Great job today!"
+                              : "Clean up your cart"
+                        }
+                        leftStatValue={dirty.length}
+                        leftStatLabel="To Swap"
+                        rightStatValue={cart.length}
+                        rightStatLabel="Items"
+                        score={cartAvg === null ? null : animatedCartAvg}
+                        scoreSublabel="Cart Clean Avg"
+                        miniRings={[
+                          {
+                            label: "Clean Picks",
+                            valueText: `${Math.max(0, cart.length - dirty.length)}/${cart.length}`,
+                            fillPct:
+                              cart.length > 0
+                                ? Math.round(((cart.length - dirty.length) / cart.length) * 100)
+                                : 0,
+                            color: "#10b981",
+                          },
+                          {
+                            label: "Seed Oils",
+                            valueText: `${
+                              cartScored.filter(({ s }) =>
+                                s.flagged.some((f) => f.category === "seedOils"),
+                              ).length
+                            }`,
+                            fillPct:
+                              cart.length > 0
+                                ? Math.round(
+                                    ((cart.length -
+                                      cartScored.filter(({ s }) =>
+                                        s.flagged.some((f) => f.category === "seedOils"),
+                                      ).length) /
+                                      cart.length) *
+                                      100,
+                                  )
+                                : 0,
+                            color: "#f59e0b",
+                          },
+                          {
+                            label: "Dyes & HFCS",
+                            valueText: `${
+                              cartScored.filter(({ s }) =>
+                                s.flagged.some(
+                                  (f) => f.category === "dyes" || f.category === "hfcs",
+                                ),
+                              ).length
+                            }`,
+                            fillPct:
+                              cart.length > 0
+                                ? Math.round(
+                                    ((cart.length -
+                                      cartScored.filter(({ s }) =>
+                                        s.flagged.some(
+                                          (f) => f.category === "dyes" || f.category === "hfcs",
+                                        ),
+                                      ).length) /
+                                      cart.length) *
+                                      100,
+                                  )
+                                : 0,
+                            color: "#a855f7",
+                          },
+                        ]}
+                        footerNote={
+                          <p style={{ fontSize: 12, color: "#44403c", margin: 0, textAlign: "center", lineHeight: 1.4 }}>
+                            {auditBusy
+                              ? "Checking your cart ingredients…"
+                              : cartAvg === null
+                                ? `Your ${STORE_META[store].label} cart is empty. Add items to see your live Cart Avg.`
+                                : dirty.length
+                                  ? (
+                                      <>
+                                        <b>{dirty.length}</b> of {cart.length} items score under 75. Tap{" "}
+                                        <b>Swap</b> to watch your Cart Avg climb!
+                                      </>
+                                    )
+                                  : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
+                          </p>
+                        }
+                      />
                     )}
                     {cartScored.length === 0 ? (
                       <div

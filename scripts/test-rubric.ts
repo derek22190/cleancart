@@ -2754,12 +2754,19 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const toolsClientSrc = fs.readFileSync("app/tools/ToolsClient.tsx", "utf8");
   const swapsPageSrc = fs.readFileSync("app/swaps/page.tsx", "utf8");
   const swapsDirClientSrc = fs.readFileSync("app/swaps/SwapsDirectoryClient.tsx", "utf8");
+  const cleanArcSrc = fs.readFileSync("components/CleanArcScoreCard.tsx", "utf8");
+  const weeklyAuditSrc = fs.readFileSync("components/WeeklyOrderAuditModal.tsx", "utf8");
   check(
-    "Compact Mobile Topbar & Scannable Subpages: single-row home header with overflow menu, 3-tab /tools layout, and searchable capped /swaps directory",
+    "Compact Mobile Topbar & Scannable Subpages: single-row home header with overflow menu, 3-tab /tools layout, searchable capped /swaps directory, and CleanArcScoreCard horseshoe gauge + 3 mini rings",
     Boolean(
       freshSimTsx.includes("topbar-more-menu-btn") &&
         freshSimTsx.includes("topbar-dropdown") &&
         !freshSimTsx.includes('className="topbar-subnav"') &&
+        freshSimTsx.includes("inspect-clean-arc-card") &&
+        freshSimTsx.includes("cart-audit-arc-card") &&
+        weeklyAuditSrc.includes("weekly-audit-arc-card") &&
+        cleanArcSrc.includes("cleanArcGrad-") &&
+        toolsClientSrc.includes("tools-clean-arc-card") &&
         toolsClientSrc.includes("tools-tab-${tab.id}") &&
         toolsClientSrc.includes('id: "grader"') &&
         toolsClientSrc.includes('id: "additives"') &&

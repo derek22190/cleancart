@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SAMPLE_WEEKLY_FAMILY_ORDER } from "@/lib/order-parser";
 import type { Category, NutritionInput, ScoreResult, Watchlist } from "@/lib/rubric";
 import { STORE_META, STORES, type Store, type SwapResult } from "@/lib/swaps";
+import CleanArcScoreCard from "./CleanArcScoreCard";
 
 export interface AuditedOrderItem {
   ok: boolean;
@@ -438,75 +439,133 @@ export default function WeeklyOrderAuditModal({
         {/* AUDIT RESULTS */}
         {report && (
           <div id="weekly-audit-results" style={{ marginTop: 18, borderTop: "1px solid #e2e8f0", paddingTop: 16 }}>
-            <div
-              style={{
-                background: "linear-gradient(135deg, #0b2418 0%, #134e32 100%)",
-                color: "#ffffff",
-                borderRadius: 16,
-                padding: "16px 18px",
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginBottom: 14,
-              }}
-            >
-              <div>
-                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", color: "#86efac" }}>
-                  WEEKLY HAUL SCORE JUMP · {STORE_META[store].label.toUpperCase()}
-                </span>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-                  <span style={{ fontSize: 28, fontWeight: 900, color: "#fca5a5" }}>
-                    {report.averageBefore ?? "--"}/100
+            <CleanArcScoreCard
+              id="weekly-audit-arc-card"
+              headline={
+                (report.averageAfter ?? 0) >= 80
+                  ? `Great job · +${Math.max(0, (report.averageAfter ?? 0) - (report.averageBefore ?? 0))} pt Clean Jump`
+                  : "Weekly Haul Clean-Up"
+              }
+              leftStatValue={report.swapsAvailable}
+              leftStatLabel="Swaps Ready"
+              rightStatValue={report.itemsScored}
+              rightStatLabel="Staples"
+              score={report.averageAfter ?? report.averageBefore}
+              beforeScore={report.averageBefore}
+              scoreSublabel={`After Clean Swaps · ${STORE_META[store].label}`}
+              miniRings={[
+                {
+                  label: "Clean Picks",
+                  valueText: `${scoredItems.filter((r) => (r.result?.score ?? 0) >= 75).length}/${scoredItems.length}`,
+                  fillPct:
+                    scoredItems.length > 0
+                      ? Math.round(
+                          (scoredItems.filter((r) => (r.result?.score ?? 0) >= 75).length /
+                            scoredItems.length) *
+                            100,
+                        )
+                      : 0,
+                  color: "#10b981",
+                  sublabel: "75+ score",
+                },
+                {
+                  label: "Seed Oils",
+                  valueText: `${
+                    scoredItems.filter((r) =>
+                      r.result?.flagged.some((f) => f.category === "seedOils"),
+                    ).length
+                  } hit${
+                    scoredItems.filter((r) =>
+                      r.result?.flagged.some((f) => f.category === "seedOils"),
+                    ).length === 1
+                      ? ""
+                      : "s"
+                  }`,
+                  fillPct:
+                    scoredItems.length > 0
+                      ? Math.round(
+                          ((scoredItems.length -
+                            scoredItems.filter((r) =>
+                              r.result?.flagged.some((f) => f.category === "seedOils"),
+                            ).length) /
+                            scoredItems.length) *
+                            100,
+                        )
+                      : 0,
+                  color: "#f59e0b",
+                  sublabel: "Soy/canola",
+                },
+                {
+                  label: "Dyes & HFCS",
+                  valueText: `${
+                    scoredItems.filter((r) =>
+                      r.result?.flagged.some(
+                        (f) => f.category === "dyes" || f.category === "hfcs",
+                      ),
+                    ).length
+                  } hit${
+                    scoredItems.filter((r) =>
+                      r.result?.flagged.some(
+                        (f) => f.category === "dyes" || f.category === "hfcs",
+                      ),
+                    ).length === 1
+                      ? ""
+                      : "s"
+                  }`,
+                  fillPct:
+                    scoredItems.length > 0
+                      ? Math.round(
+                          ((scoredItems.length -
+                            scoredItems.filter((r) =>
+                              r.result?.flagged.some(
+                                (f) => f.category === "dyes" || f.category === "hfcs",
+                              ),
+                            ).length) /
+                            scoredItems.length) *
+                            100,
+                        )
+                      : 0,
+                  color: "#a855f7",
+                  sublabel:
+                    storeBrandCount > 0 ? `💚 ${storeBrandCount} Store-Brand` : "Red 40 / syrup",
+                },
+              ]}
+              footerNote={
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#44403c" }}>
+                    Before swaps: <b>{report.averageBefore ?? "--"}/100</b> → After swaps:{" "}
+                    <b style={{ color: "#15803d" }}>{report.averageAfter ?? "--"}/100</b>
+                    {storeBrandCount > 0 ? ` · 💚 ${storeBrandCount} Store-Brand Value Picks` : ""}
                   </span>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: "#86efac" }}>→</span>
-                  <span style={{ fontSize: 32, fontWeight: 900, color: "#4ade80" }}>
-                    {report.averageAfter ?? "--"}/100
-                  </span>
-                  {report.averageBefore !== null &&
-                    report.averageAfter !== null &&
-                    report.averageAfter > report.averageBefore && (
-                      <span
-                        style={{
-                          background: "#16a34a",
-                          color: "#ffffff",
-                          padding: "2px 9px",
-                          borderRadius: 999,
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        +{report.averageAfter - report.averageBefore} pts
-                      </span>
-                    )}
+                  <button
+                    id="weekly-audit-load-cart-btn"
+                    type="button"
+                    className="swap-btn"
+                    disabled={scoredItems.length === 0}
+                    onClick={() => {
+                      if (scoredItems.length === 0) return;
+                      onLoadIntoCart(scoredItems, store);
+                      onClose();
+                    }}
+                    style={{
+                      padding: "8px 14px",
+                      fontSize: 12.5,
+                      fontWeight: 900,
+                    }}
+                  >
+                    🛒 Load Into {STORE_META[store].label} Cart →
+                  </button>
                 </div>
-                <div style={{ fontSize: 12.5, color: "#dcfce7", marginTop: 4 }}>
-                  Scored <b>{report.itemsScored}</b> staple{report.itemsScored === 1 ? "" : "s"} ·{" "}
-                  <b>{report.swapsAvailable}</b> clean swap{report.swapsAvailable === 1 ? "" : "s"} ready
-                  {storeBrandCount > 0 ? ` · 💚 ${storeBrandCount} Store-Brand Value Picks` : ""}
-                </div>
-              </div>
-
-              <button
-                id="weekly-audit-load-cart-btn"
-                type="button"
-                className="swap-btn"
-                disabled={scoredItems.length === 0}
-                onClick={() => {
-                  if (scoredItems.length === 0) return;
-                  onLoadIntoCart(scoredItems, store);
-                  onClose();
-                }}
-                style={{
-                  background: scoredItems.length === 0 ? "#94a3b8" : "#22c55e",
-                  color: "#052e16",
-                  fontWeight: 900,
-                }}
-              >
-                🛒 Load Into {STORE_META[store].label} Simulator Cart →
-              </button>
-            </div>
+              }
+            />
 
             {scoredItems.length === 0 ? (
               <div
