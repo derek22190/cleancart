@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { isAdminAuthorized } from "@/lib/admin-auth";
+import { getAuthenticatedUser, type UserAccount } from "@/lib/auth";
 import {
   createCreator,
   createCreatorAccessToken,
   createStripeConnectOnboardingLink,
   deleteCreator,
   executeCreatorPayout,
+  generateCreatorTokenNonce,
   getCreator,
   listCreatorPayouts,
   listCreators,
@@ -14,11 +16,12 @@ import {
   trackEvent,
   updateCreator,
   verifyCreatorAccessToken,
+  type Creator,
   type CreatorEvent,
   type CreatorPayoutMethod,
 } from "@/lib/influencers";
 import { PRICING, commissionFor } from "@/lib/pricing";
-import { checkRateLimit } from "@/lib/scan";
+import { checkRateLimitAsync } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +31,74 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Creator-Token",
 };
+
+const ALLOWED_ORIGINS = new Set([
+  "https://heybroc.com",
+  "https://www.heybroc.com",
+  "https://cleancart.vercel.app",
+  "https://cleancart-teal.vercel.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]);
+
+function resolveAllowedOrigin(raw?: string | null): string {
+  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (configured && /^https?:\/\//i.test(configured)) {
+    ALLOWED_ORIGINS.add(configured);
+  }
+  const clean = (raw || "").trim().replace(/\/+$/, "");
+  if (clean && ALLOWED_ORIGINS.has(clean)) return clean;
+  return configured && /^https?:\/\//i.test(configured)
+    ? configured
+    : "https://heybroc.com";
+}
+
+function getClientIp(request: Request): string {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "anon"
+  );
+}
+
+function normalizeValidEmail(raw?: string | null): string {
+  if (!raw) return "";
+  const clean = raw.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(clean) ? clean : "";
+}
+
+async function resolveSessionUser(request: Request): Promise<UserAccount | null> {
+  const authHeader = request.headers.get("authorization") || "";
+  if (!/^Bearer\s+/i.test(authHeader)) return null;
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token.startsWith("hb_")) return null;
+  return getAuthenticatedUser(token).catch(() => null);
+}
+
+async function resolveAuthenticatedCreatorEmail(
+  request: Request,
+  preloadedUser?: UserAccount | null
+): Promise<string | null> {
+  const user =
+    preloadedUser !== undefined ? preloadedUser : await resolveSessionUser(request);
+  if (!user || user.emailVerified !== true) return null;
+  const norm = normalizeValidEmail(user.email);
+  return norm || null;
+}
+
+function isSessionVerifiedCreatorOwner(
+  sessionUser: UserAccount | null,
+  creator?: Pick<Creator, "payoutEmail"> | string | null
+): boolean {
+  if (!sessionUser || sessionUser.emailVerified !== true) return false;
+  const rawEmail =
+    typeof creator === "string" ? creator : creator?.payoutEmail || "";
+  const targetEmail = normalizeValidEmail(rawEmail);
+  if (!targetEmail) return false;
+  return normalizeValidEmail(sessionUser.email) === targetEmail;
+}
 
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
@@ -56,20 +127,47 @@ async function snapshot() {
 /**
  * GET /api/influencers            -> all creators + totals + payouts (requires admin auth)
  * GET /api/influencers?code=XYZ   -> validate a creator code on the paywall (public safe summary),
- *                                    or full creator stats + payouts when X-Creator-Token / admin auth is supplied.
+ *                                    or full creator stats + payouts when X-Creator-Token, verified Bearer session, or admin auth is supplied.
  */
 export async function GET(request: Request) {
+  const ip = getClientIp(request);
+  if (!(await checkRateLimitAsync(`inf-get:${ip}`, 60))) {
+    return NextResponse.json(
+      { ok: false, error: "Too many requests." },
+      { status: 429, headers: CORS }
+    );
+  }
+
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const isAdmin = isAdminAuthorized(request);
 
   if (code) {
-    const c = await getCreator(code);
+    let c = await getCreator(code);
     const creatorToken =
       request.headers.get("x-creator-token")?.trim() ||
       url.searchParams.get("token")?.trim() ||
       "";
-    const isOwner = Boolean(c && verifyCreatorAccessToken(c.code, creatorToken));
+    const sessionUser = !isAdmin ? await resolveSessionUser(request) : null;
+    const isVerifiedSession = Boolean(
+      c && isSessionVerifiedCreatorOwner(sessionUser, c)
+    );
+    if (c && isVerifiedSession && c.payoutEmailVerified !== true) {
+      c = await updateCreator(c.code, {
+        payoutEmailVerified: true,
+        rotateTokenNonce: true,
+      });
+    }
+    const isValidToken = Boolean(
+      c &&
+        verifyCreatorAccessToken(c.code, creatorToken, c) &&
+        (c.payoutEmailVerified === true ||
+          (c.payoutEmailVerified !== false && Boolean(c.payoutEmail)) ||
+          (c.grossRevenue === 0 &&
+            c.commissionEarned === 0 &&
+            c.commissionPaid === 0))
+    );
+    const isOwner = isVerifiedSession || isValidToken;
 
     if (!c || (!c.active && !isAdmin && !isOwner)) {
       return NextResponse.json(
@@ -86,6 +184,9 @@ export async function GET(request: Request) {
           authenticated: true,
           creator: c,
           payouts,
+          ...(isVerifiedSession
+            ? { creatorToken: createCreatorAccessToken(c.code, c) }
+            : {}),
         },
         { status: 200, headers: CORS }
       );
@@ -169,14 +270,41 @@ export async function POST(request: Request) {
     );
   }
 
+  const ip = getClientIp(request);
   const isAdmin = isAdminAuthorized(request);
+  const sessionUser = !isAdmin ? await resolveSessionUser(request) : null;
+  const authedCreatorEmail = !isAdmin
+    ? await resolveAuthenticatedCreatorEmail(request, sessionUser)
+    : null;
   const suppliedCreatorToken =
     body.creatorToken?.trim() ||
     request.headers.get("x-creator-token")?.trim() ||
     "";
-  const isOwnerForCode = Boolean(
-    body.code && verifyCreatorAccessToken(body.code, suppliedCreatorToken)
+
+  const targetCreatorForSelfAction =
+    !isAdmin &&
+    body.code &&
+    (body.action === "update_payout_settings" || body.action === "connect_stripe")
+      ? await getCreator(body.code)
+      : null;
+
+  const isVerifiedSessionOwnerForCode = isSessionVerifiedCreatorOwner(
+    sessionUser,
+    targetCreatorForSelfAction
   );
+  const isVerifiedTokenOwnerForCode = Boolean(
+    targetCreatorForSelfAction &&
+      targetCreatorForSelfAction.payoutEmail &&
+      targetCreatorForSelfAction.payoutEmailVerified !== false &&
+      verifyCreatorAccessToken(
+        targetCreatorForSelfAction.code,
+        suppliedCreatorToken,
+        targetCreatorForSelfAction
+      )
+  );
+  const isOwnerForCode =
+    isVerifiedSessionOwnerForCode || isVerifiedTokenOwnerForCode;
+
   const isPublicClickTrack = body.action === "track" && body.event === "click";
   const isSelfRegister = body.action === "self_register";
   const isCreatorSelfAction =
@@ -185,6 +313,21 @@ export async function POST(request: Request) {
     isOwnerForCode;
 
   if (!isAdmin && !isPublicClickTrack && !isSelfRegister && !isCreatorSelfAction) {
+    if (
+      (body.action === "update_payout_settings" ||
+        body.action === "connect_stripe") &&
+      targetCreatorForSelfAction &&
+      targetCreatorForSelfAction.payoutEmailVerified === false
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Please sign in and verify your payout email address before updating payout settings or connecting Stripe.",
+        },
+        { status: 401, headers: CORS }
+      );
+    }
     return NextResponse.json(
       { ok: false, error: "Unauthorized." },
       { status: 401, headers: CORS }
@@ -192,12 +335,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (!isAdmin && isSelfRegister) {
-      const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-        request.headers.get("x-real-ip") ||
-        "anon";
-      if (!checkRateLimit(`inf-selfreg:${ip}`, 10)) {
+    if (isSelfRegister) {
+      if (!isAdmin && !(await checkRateLimitAsync(`inf-selfreg:${ip}`, 10))) {
         return NextResponse.json(
           { ok: false, error: "Too many attempts. Please wait a minute." },
           { status: 429, headers: CORS }
@@ -229,20 +368,42 @@ export async function POST(request: Request) {
         );
       }
 
+      const normalizedPayoutEmail = normalizeValidEmail(body.payoutEmail);
       const existing = await getCreator(rawCode);
       if (existing) {
-        const emailMatches = Boolean(
-          existing.payoutEmail &&
-            body.payoutEmail &&
-            existing.payoutEmail.toLowerCase() ===
-              body.payoutEmail.trim().toLowerCase()
+        const isExistingSessionOwner = isSessionVerifiedCreatorOwner(
+          sessionUser,
+          existing
         );
-        if (verifyCreatorAccessToken(existing.code, suppliedCreatorToken) || emailMatches) {
+        const isExistingVerifiedTokenOwner = Boolean(
+          existing.payoutEmail &&
+            existing.payoutEmailVerified !== false &&
+            verifyCreatorAccessToken(existing.code, suppliedCreatorToken, existing)
+        );
+        const canUpdateExisting =
+          isAdmin || isExistingSessionOwner || isExistingVerifiedTokenOwner;
+
+        if (canUpdateExisting) {
+          const nextEmail =
+            body.payoutEmail !== undefined
+              ? normalizedPayoutEmail
+              : existing.payoutEmail || "";
+          const nextVerified = isAdmin
+            ? Boolean(nextEmail)
+            : nextEmail
+              ? Boolean(authedCreatorEmail && authedCreatorEmail === nextEmail) ||
+                (body.payoutEmail === undefined &&
+                  existing.payoutEmailVerified === true)
+              : false;
           const updated = await updateCreator(existing.code, {
             name: body.name?.trim() || undefined,
             payoutEmail: body.payoutEmail,
+            payoutEmailVerified: nextVerified,
             payoutMethod: body.payoutMethod,
             payoutHandle: body.payoutHandle,
+            ...(isExistingSessionOwner && existing.payoutEmailVerified !== true
+              ? { rotateTokenNonce: true }
+              : {}),
           });
           const payouts = await listCreatorPayouts(existing.code);
           return NextResponse.json(
@@ -251,7 +412,7 @@ export async function POST(request: Request) {
               alreadyExisted: true,
               creator: updated,
               payouts,
-              creatorToken: createCreatorAccessToken(existing.code),
+              creatorToken: createCreatorAccessToken(updated.code, updated),
             },
             { headers: CORS }
           );
@@ -261,22 +422,30 @@ export async function POST(request: Request) {
           {
             ok: false,
             alreadyExisted: true,
-            error: existing.payoutEmail
-              ? `Code ${rawCode} is already registered. Enter your registered payout email to unlock your creator dashboard, or choose a new code.`
-              : `Code ${rawCode} is already claimed by another creator. Please choose your own unique code (e.g. ${rawCode}26).`,
+            error:
+              "That creator code is already claimed. Sign in with your verified payout email to update payout settings.",
           },
           { status: 409, headers: CORS }
         );
       }
 
       const cleanName = (body.name || rawCode).trim().slice(0, 60) || rawCode;
+      const payoutEmailVerified = isAdmin
+        ? Boolean(normalizedPayoutEmail)
+        : Boolean(
+            authedCreatorEmail &&
+              normalizedPayoutEmail &&
+              authedCreatorEmail === normalizedPayoutEmail
+          );
       const created = await createCreator({
         code: rawCode,
         name: cleanName,
         commissionPct: PRICING.defaultCommissionPct,
         payoutEmail: body.payoutEmail,
+        payoutEmailVerified,
         payoutMethod: body.payoutMethod,
         payoutHandle: body.payoutHandle,
+        tokenNonce: generateCreatorTokenNonce(),
       });
       return NextResponse.json(
         {
@@ -284,18 +453,48 @@ export async function POST(request: Request) {
           alreadyExisted: false,
           creator: created,
           payouts: [],
-          creatorToken: createCreatorAccessToken(created.code),
+          creatorToken: createCreatorAccessToken(created.code, created),
         },
         { headers: CORS }
       );
     }
 
     if (body.action === "update_payout_settings" && (isAdmin || isOwnerForCode)) {
+      if (!isAdmin && !(await checkRateLimitAsync(`inf-payout-cfg:${ip}`, 20))) {
+        return NextResponse.json(
+          { ok: false, error: "Too many requests. Please wait a minute." },
+          { status: 429, headers: CORS }
+        );
+      }
+      const existingTarget =
+        targetCreatorForSelfAction ?? (await getCreator(body.code || ""));
+      const requestedEmail =
+        body.payoutEmail !== undefined
+          ? normalizeValidEmail(body.payoutEmail)
+          : existingTarget?.payoutEmail || "";
+      const nextPayoutEmailVerified = isAdmin
+        ? requestedEmail
+          ? true
+          : false
+        : requestedEmail
+          ? Boolean(
+              authedCreatorEmail && authedCreatorEmail === requestedEmail
+            ) ||
+            (body.payoutEmail === undefined &&
+              existingTarget?.payoutEmailVerified === true)
+          : false;
+      const shouldRotateOnClaim = Boolean(
+        isVerifiedSessionOwnerForCode &&
+          existingTarget?.payoutEmailVerified !== true
+      );
+
       const updated = await updateCreator(body.code || "", {
         name: body.name,
         payoutEmail: body.payoutEmail,
+        payoutEmailVerified: nextPayoutEmailVerified,
         payoutMethod: body.payoutMethod,
         payoutHandle: body.payoutHandle,
+        ...(shouldRotateOnClaim ? { rotateTokenNonce: true } : {}),
         ...(isAdmin
           ? {
               stripeConnectAccountId: body.stripeConnectAccountId,
@@ -306,31 +505,50 @@ export async function POST(request: Request) {
       });
       const payouts = await listCreatorPayouts(updated.code);
       return NextResponse.json(
-        { ok: true, creator: updated, payouts },
+        {
+          ok: true,
+          creator: updated,
+          payouts,
+          creatorToken: createCreatorAccessToken(updated.code, updated),
+        },
         { headers: CORS }
       );
     }
 
     if (body.action === "connect_stripe" && (isAdmin || isOwnerForCode)) {
-      const origin =
-        body.origin?.trim() ||
-        request.headers.get("origin")?.trim() ||
-        process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-        "https://heybroc.com";
+      if (!isAdmin && !(await checkRateLimitAsync(`inf-connect:${ip}`, 10))) {
+        return NextResponse.json(
+          { ok: false, error: "Too many onboarding attempts. Please wait a minute." },
+          { status: 429, headers: CORS }
+        );
+      }
+      if (
+        !isAdmin &&
+        isVerifiedSessionOwnerForCode &&
+        targetCreatorForSelfAction &&
+        targetCreatorForSelfAction.payoutEmailVerified !== true
+      ) {
+        await updateCreator(targetCreatorForSelfAction.code, {
+          payoutEmailVerified: true,
+          rotateTokenNonce: true,
+        });
+      }
+      const candidateOrigin =
+        body.origin?.trim() || request.headers.get("origin")?.trim() || "";
+      const origin = resolveAllowedOrigin(candidateOrigin);
+      const connectEmail = isAdmin
+        ? body.payoutEmail
+        : targetCreatorForSelfAction?.payoutEmail;
       const onboarding = await createStripeConnectOnboardingLink({
         code: body.code || "",
-        email: body.payoutEmail,
+        email: connectEmail,
         origin,
       });
       return NextResponse.json(onboarding, { headers: CORS });
     }
 
     if (!isAdmin && isPublicClickTrack) {
-      const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-        request.headers.get("x-real-ip") ||
-        "anon";
-      if (!checkRateLimit(`inf-click:${ip}`, 20)) {
+      if (!(await checkRateLimitAsync(`inf-click:${ip}`, 20))) {
         return NextResponse.json(
           { ok: false, error: "Too many requests." },
           { status: 429, headers: CORS }

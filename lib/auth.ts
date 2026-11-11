@@ -4,16 +4,24 @@ import { kvDel, kvGet, kvSet } from "./storage";
 import {
   getDevicePaidEntitlement,
   getEmailEntitlement,
+  normalizeRealDeviceId,
+  redactEntitlementEmail,
   saveEntitlement,
   type EntitlementStatus,
 } from "./entitlements";
 import { PRICING } from "./pricing";
 import {
+  MAX_BANKED_PRO_DAYS,
+  USER_BY_DEVICE_PREFIX,
+  USER_BY_ID_PREFIX,
   codeFromDeviceId,
   ensureReferralCodeRegistered,
   getExistingDevice,
   getOrCreateDevice,
+  purgeUserVirtualDevice,
+  saveDevice,
   verifyDeviceSecret,
+  type UserDeviceIndexRecord,
 } from "./referrals";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./email";
 
@@ -61,11 +69,19 @@ export interface PublicUserProfile {
 }
 
 const USER_EMAIL_PREFIX = "heybroc:user:email:";
+const USER_EMAIL_HASH_PREFIX = "heybroc:user:email_sha256:";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const KV_TTL_SECONDS = 60 * 60 * 24 * 365;
+const DELETED_TOMBSTONE_TTL_SECONDS = 60 * 60 * 24 * 365;
 const PBKDF2_ITERATIONS = 600_000;
 const LEGACY_PBKDF2_ITERATIONS = 12_000;
 const MIN_PASSWORD_LENGTH = 8;
+
+function hashEmailStorageKey(rawEmail: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(normalizeEmail(rawEmail), "utf8")
+    .digest("hex");
+}
 
 function getAuthSecret(): string {
   const secret = (process.env.AUTH_SECRET || "").trim();
@@ -105,7 +121,8 @@ function safeEqualStrings(a: string, b: string): boolean {
 
 async function verifyPasswordAndUpgrade(
   user: UserAccount,
-  password: string
+  password: string,
+  deferSave = false
 ): Promise<boolean> {
   if (!user.passwordSalt || !user.passwordHash) return false;
   const storedIterations = user.passwordIterations || LEGACY_PBKDF2_ITERATIONS;
@@ -116,7 +133,9 @@ async function verifyPasswordAndUpgrade(
       user.passwordSalt = newSalt;
       user.passwordHash = hashPassword(password, newSalt, PBKDF2_ITERATIONS);
       user.passwordIterations = PBKDF2_ITERATIONS;
-      await saveUser(user);
+      if (!deferSave) {
+        await saveUser(user);
+      }
     }
     return true;
   }
@@ -128,7 +147,9 @@ async function verifyPasswordAndUpgrade(
     );
     if (safeEqualStrings(modernCandidate, user.passwordHash)) {
       user.passwordIterations = PBKDF2_ITERATIONS;
-      await saveUser(user);
+      if (!deferSave) {
+        await saveUser(user);
+      }
       return true;
     }
   }
@@ -211,19 +232,67 @@ export function verifySessionToken(token: string): {
   }
 }
 
+async function getRawUserRecordByEmail(rawEmail: string): Promise<UserAccount | null> {
+  const email = normalizeEmail(rawEmail);
+  if (!email) return null;
+  const emailHash = hashEmailStorageKey(email);
+  const byHash = await kvGet<UserAccount>(`${USER_EMAIL_HASH_PREFIX}${emailHash}`);
+  if (byHash) return byHash;
+  const legacy = await kvGet<UserAccount>(`${USER_EMAIL_PREFIX}${email}`);
+  return legacy ?? null;
+}
+
 export async function getUserByEmail(rawEmail: string): Promise<UserAccount | null> {
   const email = normalizeEmail(rawEmail);
   if (!email) return null;
-  const stored = await kvGet<UserAccount>(`${USER_EMAIL_PREFIX}${email}`);
-  if (stored && !stored.deleted && typeof stored.email === "string") {
+  const stored = await getRawUserRecordByEmail(email);
+  if (
+    stored &&
+    !stored.deleted &&
+    typeof stored.email === "string" &&
+    stored.email !== "[redacted]"
+  ) {
+    stored.linkedDevices = Array.from(
+      new Set(
+        (stored.linkedDevices || [])
+          .map((d) => normalizeRealDeviceId(d))
+          .filter(Boolean)
+      )
+    );
     return stored;
   }
   return null;
 }
 
 export async function saveUser(user: UserAccount): Promise<void> {
+  const cleanEmail = normalizeEmail(user.email);
+  user.email = cleanEmail;
+  user.linkedDevices = Array.from(
+    new Set(
+      (user.linkedDevices || [])
+        .map((d) => normalizeRealDeviceId(d))
+        .filter(Boolean)
+    )
+  );
   user.updatedAt = new Date().toISOString();
-  await kvSet(`${USER_EMAIL_PREFIX}${user.email}`, user, KV_TTL_SECONDS);
+  const emailHash = hashEmailStorageKey(cleanEmail);
+  // Active UserAccount records are persisted under SHA-256 email key without an expiration TTL so paid/registered accounts never silently vanish after 1 year
+  await kvSet(`${USER_EMAIL_HASH_PREFIX}${emailHash}`, user);
+  await kvDel(`${USER_EMAIL_PREFIX}${cleanEmail}`).catch(() => {});
+
+  if (!user.deleted) {
+    const indexRec: UserDeviceIndexRecord = {
+      userId: user.userId,
+      email: user.email,
+      linkedDevices: user.linkedDevices,
+      referralCode: user.referralCode,
+    };
+    await kvSet(`${USER_BY_ID_PREFIX}${user.userId}`, indexRec).catch(() => {});
+    for (const devId of user.linkedDevices) {
+      await kvSet(`${USER_BY_DEVICE_PREFIX}${devId}`, user.userId).catch(() => {});
+    }
+  }
+
   if (user.referralCode && !user.deleted) {
     const preferredDeviceId =
       user.linkedDevices[0] || `user:${user.userId}`;
@@ -232,6 +301,93 @@ export async function saveUser(user: UserAccount): Promise<void> {
       preferredDeviceId
     ).catch(() => null);
   }
+}
+
+/**
+ * Links a verified real `deviceId` to `user.linkedDevices` and bidirectionally merges
+ * any active referral `proUntil` days between the device, `user:${user.userId}`, and `user.proUntil`
+ * so mobile devices inherit web referral Pro days and vice-versa.
+ */
+export async function linkDeviceToUser(
+  user: UserAccount,
+  rawDeviceId?: string,
+  rawDeviceSecret?: string
+): Promise<{ linked: boolean; deviceId?: string; changed: boolean }> {
+  const normDeviceId = normalizeRealDeviceId(rawDeviceId);
+  if (!normDeviceId) {
+    return { linked: false, changed: false };
+  }
+
+  user.linkedDevices = Array.from(
+    new Set(
+      (user.linkedDevices || [])
+        .map((d) => normalizeRealDeviceId(d))
+        .filter(Boolean)
+    )
+  );
+  const cleanSecret = (rawDeviceSecret || "").trim();
+  const alreadyLinked = user.linkedDevices.includes(normDeviceId);
+
+  const dev = cleanSecret
+    ? await getOrCreateDevice(normDeviceId, cleanSecret).catch(() => null)
+    : await getExistingDevice(normDeviceId).catch(() => null);
+
+  if (!alreadyLinked) {
+    const secretVerified = Boolean(
+      dev && cleanSecret && verifyDeviceSecret(dev, cleanSecret)
+    );
+    if (!secretVerified) {
+      return { linked: false, changed: false };
+    }
+  } else if (dev?.deviceSecretHash && cleanSecret && !verifyDeviceSecret(dev, cleanSecret)) {
+    return { linked: false, changed: false };
+  }
+
+  let changed = false;
+  if (!alreadyLinked) {
+    user.linkedDevices.push(normDeviceId);
+    changed = true;
+  }
+
+  const primaryLinkedId = normalizeRealDeviceId(user.linkedDevices[0]);
+  const [userRefDevice, primaryRefDevice] = await Promise.all([
+    getExistingDevice(`user:${user.userId}`).catch(() => null),
+    primaryLinkedId && primaryLinkedId !== normDeviceId
+      ? getExistingDevice(primaryLinkedId).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  const now = Date.now();
+  const maxBankedUntil = now + MAX_BANKED_PRO_DAYS * DAY_MS;
+  const mergedProUntil = Math.min(
+    maxBankedUntil,
+    Math.max(
+      user.proUntil || 0,
+      dev?.proUntil || 0,
+      userRefDevice?.proUntil || 0,
+      primaryRefDevice?.proUntil || 0
+    )
+  );
+
+  if (mergedProUntil > now) {
+    if (mergedProUntil > (user.proUntil || 0)) {
+      user.proUntil = mergedProUntil;
+      changed = true;
+    }
+    if (dev && mergedProUntil > (dev.proUntil || 0)) {
+      dev.proUntil = mergedProUntil;
+      await saveDevice(dev).catch(() => {});
+    }
+    if (
+      userRefDevice &&
+      userRefDevice.deviceId !== dev?.deviceId &&
+      mergedProUntil > (userRefDevice.proUntil || 0)
+    ) {
+      userRefDevice.proUntil = mergedProUntil;
+      await saveDevice(userRefDevice).catch(() => {});
+    }
+  }
+
+  return { linked: true, deviceId: normDeviceId, changed };
 }
 
 export async function getAuthenticatedUser(
@@ -246,25 +402,48 @@ export async function getAuthenticatedUser(
   return user;
 }
 
+export const getUserBySessionToken = getAuthenticatedUser;
+
 export async function toPublicProfile(
   user: UserAccount,
-  deviceId?: string
+  deviceId?: string,
+  opts?: { skipUserSave?: boolean }
 ): Promise<PublicUserProfile> {
   const now = Date.now();
-  const backingRefDevice = await getExistingDevice(
-    user.linkedDevices[0] || `user:${user.userId}`
-  ).catch(() => null);
-  const proUntil = Math.max(user.proUntil || 0, backingRefDevice?.proUntil || 0);
+  const normalizedDeviceId = normalizeRealDeviceId(deviceId);
+  const isLinkedCallerDevice = Boolean(
+    normalizedDeviceId && user.linkedDevices.includes(normalizedDeviceId)
+  );
+
+  const primaryLinkedDevId = normalizeRealDeviceId(user.linkedDevices[0]);
+  const userVirtualDevId = `user:${user.userId}`;
+  const [primaryRefDevice, userRefDevice, callerRefDevice] = await Promise.all([
+    primaryLinkedDevId
+      ? getExistingDevice(primaryLinkedDevId).catch(() => null)
+      : Promise.resolve(null),
+    getExistingDevice(userVirtualDevId).catch(() => null),
+    isLinkedCallerDevice && normalizedDeviceId !== primaryLinkedDevId
+      ? getExistingDevice(normalizedDeviceId).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  const proUntil = Math.max(
+    user.proUntil || 0,
+    primaryRefDevice?.proUntil || 0,
+    userRefDevice?.proUntil || 0,
+    callerRefDevice?.proUntil || 0
+  );
   let isStripePro = false;
   const isVerified = Boolean(user.emailVerified);
 
-  // Only read or rebind Stripe email entitlements when the account's email is verified (H02)
+  // Only read or rebind Stripe email entitlements when the account's email is verified (H02),
+  // and ONLY merge `deviceId` pass/entitlement status when normalizedDeviceId is non-empty AND linked to user!
   const stripeEmailEnt = isVerified
     ? await getEmailEntitlement(user.email).catch(() => null)
     : null;
   const stripeDeviceEnt =
-    deviceId && isVerified && user.linkedDevices.includes(deviceId)
-      ? await getDevicePaidEntitlement(deviceId).catch(() => null)
+    isLinkedCallerDevice && isVerified
+      ? await getDevicePaidEntitlement(normalizedDeviceId).catch(() => null)
       : null;
   const activeStripeEnt =
     (stripeEmailEnt?.active ? stripeEmailEnt : null) ??
@@ -281,21 +460,27 @@ export async function toPublicProfile(
         (!activeStripeEnt.customerEmail ||
           activeStripeEnt.customerEmail.toLowerCase() === user.email) &&
         (activeStripeEnt.customerEmail?.toLowerCase() !== user.email ||
-          (deviceId && activeStripeEnt.deviceId !== deviceId))
+          (isLinkedCallerDevice && activeStripeEnt.deviceId !== normalizedDeviceId))
       ) {
         await saveEntitlement({
           ...activeStripeEnt,
           customerEmail: user.email,
-          deviceId: deviceId || activeStripeEnt.deviceId,
+          deviceId:
+            (isLinkedCallerDevice ? normalizedDeviceId : undefined) ||
+            normalizeRealDeviceId(activeStripeEnt.deviceId) ||
+            undefined,
+          userId: user.userId,
         }).catch(() => {});
       }
     }
   }
 
-  // Never mint future proUntil from a subscription read (H03)
+  // Never mint future proUntil on the persisted UserAccount from a subscription read (H03)
   if (isStripePro !== user.isStripePro) {
     user.isStripePro = isStripePro;
-    await saveUser(user).catch(() => {});
+    if (!opts?.skipUserSave) {
+      await saveUser(user).catch(() => {});
+    }
   }
 
   const isProActive = isStripePro || proUntil > now;
@@ -305,12 +490,26 @@ export async function toPublicProfile(
       : activeStripeEnt?.plan === "monthly"
         ? 31
         : 365;
+  const explicitStripeExpiryMs = activeStripeEnt
+    ? Math.max(
+        typeof activeStripeEnt.expiresAtMs === "number" &&
+          Number.isFinite(activeStripeEnt.expiresAtMs)
+          ? activeStripeEnt.expiresAtMs
+          : 0,
+        typeof activeStripeEnt.paidPassExpiresAtMs === "number" &&
+          Number.isFinite(activeStripeEnt.paidPassExpiresAtMs)
+          ? activeStripeEnt.paidPassExpiresAtMs
+          : 0
+      )
+    : 0;
   const stripeRemainingDays =
-    activeStripeEnt &&
-    typeof activeStripeEnt.expiresAtMs === "number" &&
-    activeStripeEnt.expiresAtMs > now
-      ? Math.max(1, Math.ceil((activeStripeEnt.expiresAtMs - now) / DAY_MS))
+    isStripePro && explicitStripeExpiryMs > now
+      ? Math.max(1, Math.ceil((explicitStripeExpiryMs - now) / DAY_MS))
       : stripeFallbackDays;
+  const effectiveProUntil =
+    isStripePro && explicitStripeExpiryMs > now
+      ? Math.max(proUntil, explicitStripeExpiryMs)
+      : proUntil;
   const referralRemainingDays = Math.max(0, Math.ceil((proUntil - now) / DAY_MS));
   const proDaysRemaining = isStripePro
     ? Math.max(stripeRemainingDays, referralRemainingDays)
@@ -323,7 +522,7 @@ export async function toPublicProfile(
     provider: user.provider,
     emailVerified: isVerified,
     referralCode: user.referralCode,
-    proUntil,
+    proUntil: effectiveProUntil,
     isProActive,
     proDaysRemaining,
     entitlementStatus: isStripePro
@@ -364,18 +563,8 @@ export async function registerOrLoginEmail(params: {
   }
 
   const existing = await getUserByEmail(email);
-  const cleanDeviceId = (params.deviceId || "").trim();
+  const cleanDeviceId = normalizeRealDeviceId(params.deviceId);
   const cleanDeviceSecret = (params.deviceSecret || "").trim();
-  const dev =
-    cleanDeviceId && cleanDeviceId !== "anon-web"
-      ? cleanDeviceSecret
-        ? await getOrCreateDevice(cleanDeviceId, cleanDeviceSecret)
-        : await getExistingDevice(cleanDeviceId)
-      : null;
-  const isDeviceSecretVerified = Boolean(
-    dev && cleanDeviceSecret && verifyDeviceSecret(dev, cleanDeviceSecret)
-  );
-  const verifiedDeviceId = isDeviceSecretVerified ? cleanDeviceId : undefined;
 
   if (params.mode === "login") {
     if (!existing) {
@@ -392,7 +581,7 @@ export async function registerOrLoginEmail(params: {
       };
     }
 
-    const passwordValid = await verifyPasswordAndUpgrade(existing, password);
+    const passwordValid = await verifyPasswordAndUpgrade(existing, password, true);
     if (!passwordValid) {
       return {
         ok: false,
@@ -400,20 +589,23 @@ export async function registerOrLoginEmail(params: {
       };
     }
 
-    if (
-      verifiedDeviceId &&
-      !existing.linkedDevices.includes(verifiedDeviceId)
-    ) {
-      existing.linkedDevices.push(verifiedDeviceId);
-    }
+    const linkRes = await linkDeviceToUser(
+      existing,
+      cleanDeviceId,
+      cleanDeviceSecret
+    );
+    const verifiedDeviceId = linkRes.linked ? linkRes.deviceId : undefined;
     if (params.watchlist && !existing.watchlist) {
       existing.watchlist = params.watchlist;
     }
+    const profile = await toPublicProfile(existing, verifiedDeviceId, {
+      skipUserSave: true,
+    });
+    const token = createSessionToken(existing);
     await saveUser(existing);
-    const profile = await toPublicProfile(existing, verifiedDeviceId);
     return {
       ok: true,
-      token: createSessionToken(existing),
+      token,
       user: profile,
       created: false,
     };
@@ -427,6 +619,20 @@ export async function registerOrLoginEmail(params: {
     };
   }
 
+  const dev =
+    cleanDeviceId
+      ? cleanDeviceSecret
+        ? await getOrCreateDevice(cleanDeviceId, cleanDeviceSecret)
+        : await getExistingDevice(cleanDeviceId)
+      : null;
+  const isDeviceSecretVerified = Boolean(
+    dev && cleanDeviceSecret && verifyDeviceSecret(dev, cleanDeviceSecret)
+  );
+
+  const priorRecord = await getRawUserRecordByEmail(email);
+  const initialTokenVersion = priorRecord?.deleted
+    ? (priorRecord.tokenVersion ?? 0) + 1
+    : 0;
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = hashPassword(password, salt, PBKDF2_ITERATIONS);
   const verificationCode = String(crypto.randomInt(100000, 1000000));
@@ -440,26 +646,35 @@ export async function registerOrLoginEmail(params: {
     passwordHash: hash,
     passwordIterations: PBKDF2_ITERATIONS,
     emailVerified: false,
-    tokenVersion: 0,
+    tokenVersion: initialTokenVersion,
     referralCode:
       (isDeviceSecretVerified ? dev?.referralCode : undefined) ||
       codeFromDeviceId(email),
     proUntil: 0,
     isStripePro: false,
     watchlist: params.watchlist,
-    linkedDevices: verifiedDeviceId ? [verifiedDeviceId] : [],
+    linkedDevices: [],
     verificationCode,
     verificationExpiresAt: Date.now() + 15 * 60 * 1000,
     verificationAttempts: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  const linkRes = await linkDeviceToUser(
+    newUser,
+    cleanDeviceId,
+    cleanDeviceSecret
+  );
+  const verifiedDeviceId = linkRes.linked ? linkRes.deviceId : undefined;
+  const profile = await toPublicProfile(newUser, verifiedDeviceId, {
+    skipUserSave: true,
+  });
+  const token = createSessionToken(newUser);
   await saveUser(newUser);
   await sendVerificationEmail(email, verificationCode).catch(() => {});
-  const profile = await toPublicProfile(newUser, verifiedDeviceId);
   return {
     ok: true,
-    token: createSessionToken(newUser),
+    token,
     user: profile,
     created: true,
   };
@@ -646,10 +861,10 @@ export async function loginWithOAuth(params: {
 
   const email = verification.email;
   const existing = await getUserByEmail(email);
-  const cleanDeviceId = (params.deviceId || "").trim();
+  const cleanDeviceId = normalizeRealDeviceId(params.deviceId);
   const cleanDeviceSecret = (params.deviceSecret || "").trim();
   const dev =
-    cleanDeviceId && cleanDeviceId !== "anon-web"
+    cleanDeviceId
       ? cleanDeviceSecret
         ? await getOrCreateDevice(cleanDeviceId, cleanDeviceSecret)
         : await getExistingDevice(cleanDeviceId)
@@ -657,8 +872,12 @@ export async function loginWithOAuth(params: {
   const isDeviceSecretVerified = Boolean(
     dev && cleanDeviceSecret && verifyDeviceSecret(dev, cleanDeviceSecret)
   );
-  const verifiedDeviceId = isDeviceSecretVerified ? cleanDeviceId : undefined;
   const fallbackName = email.split("@")[0].replace(/[._-]+/g, " ");
+
+  const priorRecord = existing ? null : await getRawUserRecordByEmail(email);
+  const initialTokenVersion = priorRecord?.deleted
+    ? (priorRecord.tokenVersion ?? 0) + 1
+    : 0;
 
   const user: UserAccount = existing || {
     userId: `usr_${crypto.randomBytes(8).toString("hex")}`,
@@ -666,14 +885,14 @@ export async function loginWithOAuth(params: {
     displayName: (params.displayName || fallbackName || "HeyBroc Shopper").trim(),
     provider: params.provider,
     emailVerified: true,
-    tokenVersion: 0,
+    tokenVersion: initialTokenVersion,
     referralCode:
       (isDeviceSecretVerified ? dev?.referralCode : undefined) ||
       codeFromDeviceId(email),
     proUntil: 0,
     isStripePro: false,
     watchlist: params.watchlist,
-    linkedDevices: verifiedDeviceId ? [verifiedDeviceId] : [],
+    linkedDevices: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -681,19 +900,21 @@ export async function loginWithOAuth(params: {
   user.emailVerified = true;
   if (existing) {
     if (params.displayName) user.displayName = params.displayName.trim();
-    if (verifiedDeviceId && !user.linkedDevices.includes(verifiedDeviceId)) {
-      user.linkedDevices.push(verifiedDeviceId);
-    }
     if (params.watchlist && !user.watchlist) {
       user.watchlist = params.watchlist;
     }
   }
 
+  const linkRes = await linkDeviceToUser(user, cleanDeviceId, cleanDeviceSecret);
+  const verifiedDeviceId = linkRes.linked ? linkRes.deviceId : undefined;
+  const profile = await toPublicProfile(user, verifiedDeviceId, {
+    skipUserSave: true,
+  });
+  const token = createSessionToken(user);
   await saveUser(user);
-  const profile = await toPublicProfile(user, verifiedDeviceId);
   return {
     ok: true,
-    token: createSessionToken(user),
+    token,
     user: profile,
   };
 }
@@ -784,11 +1005,14 @@ export async function verifyEmailCode(params: {
   existing.verificationCode = undefined;
   existing.verificationExpiresAt = undefined;
   existing.verificationAttempts = 0;
+  const profile = await toPublicProfile(existing, params.deviceId, {
+    skipUserSave: true,
+  });
   await saveUser(existing);
 
   return {
     ok: true,
-    user: await toPublicProfile(existing, params.deviceId),
+    user: profile,
   };
 }
 
@@ -873,7 +1097,7 @@ export async function confirmPasswordReset(params: {
     }
   } else if (
     params.currentPassword &&
-    (await verifyPasswordAndUpgrade(existing, params.currentPassword))
+    (await verifyPasswordAndUpgrade(existing, params.currentPassword, true))
   ) {
     authorized = true;
   }
@@ -895,12 +1119,16 @@ export async function confirmPasswordReset(params: {
   existing.resetCode = undefined;
   existing.resetExpiresAt = undefined;
   existing.resetAttempts = 0;
+
+  const profile = await toPublicProfile(existing, params.deviceId, {
+    skipUserSave: true,
+  });
+  const token = createSessionToken(existing);
   await saveUser(existing);
 
-  const profile = await toPublicProfile(existing, params.deviceId);
   return {
     ok: true,
-    token: createSessionToken(existing),
+    token,
     user: profile,
   };
 }
@@ -909,32 +1137,54 @@ export async function deleteUserAccount(rawEmail: string): Promise<boolean> {
   const email = normalizeEmail(rawEmail);
   if (!email) return false;
   try {
-    const existing = await kvGet<UserAccount>(`${USER_EMAIL_PREFIX}${email}`);
+    const existing = await getRawUserRecordByEmail(email);
     if (!existing || existing.deleted) return false;
     const nextTokenVersion = (existing.tokenVersion ?? 0) + 1;
+    const legacyLinkedIds = Array.isArray(
+      (existing as { linkedDeviceIds?: string[] }).linkedDeviceIds
+    )
+      ? ((existing as { linkedDeviceIds?: string[] }).linkedDeviceIds as string[])
+      : [];
+    const linkedDevices = Array.from(
+      new Set([
+        ...(Array.isArray(existing.linkedDevices) ? existing.linkedDevices : []),
+        ...legacyLinkedIds,
+      ])
+    );
 
-    // Remove email index from entitlements and pseudonymize customerEmail on any linked subscription
-    const emailEnt = await getEmailEntitlement(email).catch(() => null);
-    if (emailEnt) {
-      await kvDel(`heybroc:entitlement:email:${email}`).catch(() => {});
-      if (emailEnt.customerEmail?.toLowerCase() === email) {
-        await saveEntitlement({
-          ...emailEnt,
-          customerEmail: undefined,
-        }).catch(() => {});
-      }
-    }
+    // Scrub email entitlement/consent lookup keys and raw email/IP PII from linked device/sub/session/consent records
+    await redactEntitlementEmail(email, linkedDevices, existing.userId).catch(
+      () => {}
+    );
 
+    // Purge virtual user referral device (`heybroc:device:user:<userId>` / `device:user:<userId>`) and referral mapping
+    await purgeUserVirtualDevice(existing.userId, existing.referralCode).catch(
+      () => {}
+    );
+
+    // Clean up reverse account-device index keys and any legacy plaintext email key
+    await Promise.all([
+      kvDel(`${USER_BY_ID_PREFIX}${existing.userId}`).catch(() => {}),
+      kvDel(`${USER_EMAIL_PREFIX}${email}`).catch(() => {}),
+      ...linkedDevices.map((rawDev) => {
+        const normDev = normalizeRealDeviceId(rawDev);
+        return normDev
+          ? kvDel(`${USER_BY_DEVICE_PREFIX}${normDev}`).catch(() => {})
+          : Promise.resolve();
+      }),
+    ]);
+
+    const emailHash = hashEmailStorageKey(email);
     await kvSet(
-      `${USER_EMAIL_PREFIX}${email}`,
+      `${USER_EMAIL_HASH_PREFIX}${emailHash}`,
       {
         userId: existing.userId,
-        email,
+        email: "[redacted]",
         deleted: true,
         tokenVersion: nextTokenVersion,
         updatedAt: new Date().toISOString(),
       },
-      KV_TTL_SECONDS
+      DELETED_TOMBSTONE_TTL_SECONDS
     );
     return true;
   } catch {

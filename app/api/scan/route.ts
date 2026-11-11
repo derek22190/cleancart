@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { checkRateLimit, runScan, toIosText, type ScanRequest } from "@/lib/scan";
+import { checkRateLimitAsync, inferClientPlatform, runScan, toIosText, type ScanRequest } from "@/lib/scan";
 import { ADDITIVE_RULES, CATEGORY_LABELS, RUBRIC_VERSION } from "@/lib/rubric";
+import { isAffiliateAllowedOnClient } from "@/lib/swaps";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret, X-Client-Platform, X-HeyBroc-Platform",
 };
 
 export function OPTIONS() {
@@ -27,19 +28,36 @@ export async function GET(request: Request) {
   const barcode = (searchParams.get("barcode") || "").trim();
   if (q || barcode) {
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-    if (!checkRateLimit(`scan:${ip}`, 90)) {
+    if (!(await checkRateLimitAsync(`scan:${ip}`, 90))) {
       return NextResponse.json({ ok: false, error: "Too many scan requests. Please wait a moment." }, { status: 429, headers: CORS });
     }
     const format = (searchParams.get("format") || "ios_text").trim();
     const store = (searchParams.get("store") || "walmart").trim() as ScanRequest["store"];
     const preferStoreBrand =
       searchParams.get("preferStoreBrand") === "1" || searchParams.get("preferStoreBrand") === "true";
+    const resolvedFormat = format === "json" ? "json" : "ios_text";
+    const deviceIdParam = (searchParams.get("deviceId") || "").trim() || undefined;
+    const clientPlatform = inferClientPlatform({
+      clientPlatform:
+        searchParams.get("clientPlatform") ||
+        request.headers.get("x-client-platform") ||
+        request.headers.get("x-heybroc-platform") ||
+        undefined,
+      surface: searchParams.get("surface") || undefined,
+      format: resolvedFormat,
+      deviceId: deviceIdParam,
+      origin: request.headers.get("origin") || undefined,
+      userAgent: request.headers.get("user-agent") || undefined,
+    });
     const scan = await runScan({
       productTitle: q || undefined,
       barcode: barcode || undefined,
       store,
       preferStoreBrand,
-      format: format === "json" ? "json" : "ios_text",
+      deviceId: deviceIdParam,
+      clientPlatform,
+      surface: !isAffiliateAllowedOnClient("web", clientPlatform) ? "extension" : undefined,
+      format: resolvedFormat,
     });
     if (format !== "json") {
       const text = scan.ok ? toIosText(scan) : `⚠️ CleanCart: ${scan.error}`;
@@ -58,7 +76,7 @@ export async function GET(request: Request) {
     {
       service: "CleanCart scan API",
       rubricVersion: RUBRIC_VERSION,
-      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, surface?, watchlist?, format?: 'json' | 'ios_text' } or GET /api/scan?q=<title>&format=ios_text",
+      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, surface?, clientPlatform?, watchlist?, dietaryWatchlist?, format?: 'json' | 'ios_text' } or GET /api/scan?q=<title>&format=ios_text",
       categories: CATEGORY_LABELS,
       rules: ADDITIVE_RULES.map(({ id, name, risk, category }) => ({ id, name, risk, category })),
     },
@@ -68,7 +86,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (!checkRateLimit(`scan:${ip}`, 90)) {
+  if (!(await checkRateLimitAsync(`scan:${ip}`, 90))) {
     return NextResponse.json({ ok: false, error: "Too many scan requests. Please wait a moment." }, { status: 429, headers: CORS });
   }
   let body: ScanRequest;
@@ -90,12 +108,20 @@ export async function POST(request: Request) {
   if (headerSecret && !body.deviceSecret) {
     body.deviceSecret = headerSecret;
   }
-  const reqOrigin = (request.headers.get("origin") || "").toLowerCase();
-  if (
-    reqOrigin.startsWith("chrome-extension://") ||
-    reqOrigin.startsWith("safari-web-extension://") ||
-    reqOrigin.startsWith("moz-extension://")
-  ) {
+  const clientPlatform = inferClientPlatform({
+    clientPlatform:
+      body.clientPlatform ||
+      request.headers.get("x-client-platform") ||
+      request.headers.get("x-heybroc-platform") ||
+      undefined,
+    surface: body.surface,
+    format: body.format,
+    deviceId: body.deviceId,
+    origin: request.headers.get("origin") || undefined,
+    userAgent: request.headers.get("user-agent") || undefined,
+  });
+  body.clientPlatform = clientPlatform;
+  if (!isAffiliateAllowedOnClient(body.surface ?? "web", clientPlatform)) {
     body.surface = "extension";
   }
 

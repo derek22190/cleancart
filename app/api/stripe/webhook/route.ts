@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import {
   applyOneTimeAnnualPass,
+  getCustomerEntitlement,
+  getDevicePaidEntitlement,
+  getEmailEntitlement,
   getSubscriptionEntitlement,
+  normalizeRealDeviceId,
   recordSubscriptionConsent,
   refreshSubscriptionConsentOnRenewal,
+  revokeCheckoutSessionEntitlement,
   revokeOneTimeAnnualPass,
   saveEntitlement,
   updateSubscriptionEntitlement,
@@ -46,6 +51,72 @@ function normalizeStripeSubStatus(raw: unknown): EntitlementStatus {
   }
 }
 
+function extractStripeCustomerId(raw: unknown): string | undefined {
+  const candidate =
+    typeof raw === "string"
+      ? raw.trim()
+      : raw && typeof (raw as { id?: unknown }).id === "string"
+        ? (raw as { id: string }).id.trim()
+        : "";
+  return typeof candidate === "string" && candidate.startsWith("cus_")
+    ? candidate
+    : undefined;
+}
+
+function inferPlanFromStripeInterval(
+  obj: Record<string, unknown>,
+  metadata: Record<string, string>,
+  fallback?: PlanId
+): PlanId | undefined {
+  if (metadata.plan === "monthly") return "monthly";
+  if (metadata.plan === "annual") return "annual";
+  if (metadata.oto_offer === "oto_annual" || metadata.oto_offer === "oto_gift_year") {
+    return "annual";
+  }
+
+  // Check subscription items: items.data[0].price.recurring.interval or plan.interval
+  const items = obj.items as
+    | {
+        data?: Array<{
+          price?: { recurring?: { interval?: string } };
+          plan?: { interval?: string };
+        }>;
+      }
+    | undefined;
+  const subInterval =
+    items?.data?.[0]?.price?.recurring?.interval ||
+    items?.data?.[0]?.plan?.interval;
+  if (subInterval === "year") return "annual";
+  if (subInterval === "month") return "monthly";
+
+  // Check invoice lines: lines.data[0].price.recurring.interval or plan.interval
+  const lines = obj.lines as
+    | {
+        data?: Array<{
+          price?: { recurring?: { interval?: string } };
+          plan?: { interval?: string };
+          pricing?: {
+            price_details?: { recurring?: { interval?: string } };
+          };
+        }>;
+      }
+    | undefined;
+  for (const line of lines?.data ?? []) {
+    const lineInterval =
+      line?.price?.recurring?.interval ||
+      line?.plan?.interval ||
+      line?.pricing?.price_details?.recurring?.interval;
+    if (lineInterval === "year") return "annual";
+    if (lineInterval === "month") return "monthly";
+  }
+
+  const singlePlan = obj.plan as { interval?: string } | undefined;
+  if (singlePlan?.interval === "year") return "annual";
+  if (singlePlan?.interval === "month") return "monthly";
+
+  return fallback;
+}
+
 function extractSubIdFromInvoiceObject(inv: Record<string, unknown>): string {
   const parentObj = (inv.parent ?? {}) as {
     subscription_details?: {
@@ -70,9 +141,14 @@ function extractInvoicePeriodEndMs(inv: Record<string, unknown>): number | undef
   const lines = inv.lines as
     | { data?: Array<{ period?: { end?: number } }> }
     | undefined;
-  const lineEnd = lines?.data?.[0]?.period?.end;
-  if (typeof lineEnd === "number" && lineEnd > 0) {
-    return lineEnd * 1000;
+  let maxLineEndSec = 0;
+  for (const line of lines?.data ?? []) {
+    if (typeof line?.period?.end === "number" && line.period.end > maxLineEndSec) {
+      maxLineEndSec = line.period.end;
+    }
+  }
+  if (maxLineEndSec > 0) {
+    return maxLineEndSec * 1000;
   }
   if (typeof inv.period_end === "number" && inv.period_end > 0) {
     return inv.period_end * 1000;
@@ -84,18 +160,41 @@ function extractSubscriptionExpiryMs(
   sub: Record<string, unknown>,
   status: EntitlementStatus
 ): number | undefined {
-  if (status === "trialing" && typeof sub.trial_end === "number" && sub.trial_end > 0) {
-    return sub.trial_end * 1000;
-  }
-  if (typeof sub.current_period_end === "number" && sub.current_period_end > 0) {
-    return sub.current_period_end * 1000;
-  }
+  const trialEndSec =
+    typeof sub.trial_end === "number" && sub.trial_end > 0 ? sub.trial_end : 0;
+  const metaObj = (sub.metadata ?? {}) as Record<string, string>;
+  const metaTrialEndSec = Number(metaObj.trial_end_sec || 0);
+  const subPeriodEndSec =
+    typeof sub.current_period_end === "number" && sub.current_period_end > 0
+      ? sub.current_period_end
+      : 0;
   const items = sub.items as
     | { data?: Array<{ current_period_end?: number }> }
     | undefined;
-  const itemPeriodEnd = items?.data?.[0]?.current_period_end;
-  if (typeof itemPeriodEnd === "number" && itemPeriodEnd > 0) {
-    return itemPeriodEnd * 1000;
+  const itemPeriodEndSec =
+    typeof items?.data?.[0]?.current_period_end === "number" &&
+    items.data[0].current_period_end > 0
+      ? items.data[0].current_period_end
+      : 0;
+  const periodEndSec = Math.max(subPeriodEndSec, itemPeriodEndSec);
+
+  if (status === "trialing" || trialEndSec > periodEndSec) {
+    const bestTrialSec = Math.max(
+      trialEndSec,
+      periodEndSec,
+      status === "trialing" && Number.isFinite(metaTrialEndSec) && metaTrialEndSec > 0
+        ? metaTrialEndSec
+        : 0
+    );
+    if (bestTrialSec > 0) {
+      return bestTrialSec * 1000;
+    }
+  }
+  if (periodEndSec > 0) {
+    return periodEndSec * 1000;
+  }
+  if (trialEndSec > 0) {
+    return trialEndSec * 1000;
   }
   return undefined;
 }
@@ -296,7 +395,8 @@ export async function POST(req: Request) {
 
   try {
     switch (event.type) {
-      case "checkout.session.completed": {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
         const sessionId = typeof obj.id === "string" ? obj.id : "";
         if (!sessionId) break;
 
@@ -314,22 +414,21 @@ export async function POST(req: Request) {
         const subscriptionId =
           rawSubscriptionId ||
           (isOneTimeOtoPass ? `oto_pass_${sessionId}` : undefined);
-        const customerId =
-          typeof obj.customer === "string"
-            ? obj.customer
-            : typeof (obj.customer as { id?: string } | null)?.id === "string"
-              ? (obj.customer as { id: string }).id
-              : undefined;
+        const customerId = extractStripeCustomerId(obj.customer);
         const customerDetails = obj.customer_details as
           | { email?: string | null }
           | undefined;
-        const plan: PlanId = metadata.plan === "monthly" ? "monthly" : "annual";
+        const plan: PlanId =
+          inferPlanFromStripeInterval(obj, metadata, "annual") || "annual";
         const creatorCode = metadata.creator_code || undefined;
         const deviceId =
-          metadata.device_id ||
-          (typeof obj.client_reference_id === "string"
-            ? obj.client_reference_id
-            : undefined);
+          normalizeRealDeviceId(
+            metadata.device_id ||
+              (typeof obj.client_reference_id === "string"
+                ? obj.client_reference_id
+                : undefined)
+          ) || undefined;
+        const userId = metadata.user_id || undefined;
         const resolvedEmail =
           customerDetails?.email || metadata.customer_email || "";
         const amountTotalCents =
@@ -339,11 +438,15 @@ export async function POST(req: Request) {
             ? Math.min(amountTotalCents || obj.amount_subtotal, obj.amount_subtotal)
             : amountTotalCents;
 
-        // Require explicit payment_status ("paid" or "no_payment_required" for trial)
+        // Require explicit payment_status ("paid" or "no_payment_required" for trial), or async_payment_succeeded event
         const paymentStatus =
           typeof obj.payment_status === "string" ? obj.payment_status : "";
-        const isPaid = paymentStatus === "paid";
-        const isTrial = paymentStatus === "no_payment_required";
+        const isPaid =
+          paymentStatus === "paid" ||
+          event.type === "checkout.session.async_payment_succeeded";
+        const isTrial =
+          event.type === "checkout.session.completed" &&
+          paymentStatus === "no_payment_required";
 
         if (isOneTimeOtoPass) {
           if (isPaid) {
@@ -352,6 +455,7 @@ export async function POST(req: Request) {
               customerId,
               customerEmail: resolvedEmail || undefined,
               deviceId,
+              userId,
               creatorCode,
               lastStripeEventCreated: eventCreated,
             });
@@ -361,6 +465,7 @@ export async function POST(req: Request) {
                   deviceId: deviceId || `checkout:${sessionId}`,
                   referralCode: creatorCode,
                   activateNow: true,
+                  userId,
                 });
               } else if (amountSubtotalCents > 0) {
                 // One-time payment (`mode=payment`) does not emit `invoice.paid`; credit creator here idempotently on pre-tax subtotal
@@ -375,35 +480,55 @@ export async function POST(req: Request) {
             }
           }
         } else {
+          // If `invoice.paid` already arrived ahead of `checkout.session.completed`, preserve its exact period end while writing `session:${sessionId}`
+          const existingSub = subscriptionId
+            ? await getSubscriptionEntitlement(subscriptionId)
+            : null;
           const status: EntitlementStatus = isPaid
             ? "active"
             : isTrial
               ? "trialing"
-              : "incomplete";
+              : existingSub?.active
+                ? existingSub.status
+                : "incomplete";
           const nowMs = Date.now();
-          const initialExpiresAtMs = isTrial
-            ? nowMs + PRICING.trialDays * DAY_MS
+          const metaTrialEndSec = Number(metadata.trial_end_sec || 0);
+          const computedInitialExpiresAtMs = isTrial
+            ? Number.isFinite(metaTrialEndSec) && metaTrialEndSec * 1000 > nowMs
+              ? metaTrialEndSec * 1000 + 2 * DAY_MS
+              : nowMs + PRICING.trialDays * DAY_MS
             : isPaid
               ? nowMs + (plan === "monthly" ? 32 : 366) * DAY_MS
               : undefined;
+          const initialExpiresAtMs =
+            existingSub?.expiresAtMs && existingSub.expiresAtMs > nowMs
+              ? computedInitialExpiresAtMs
+                ? Math.max(existingSub.expiresAtMs, computedInitialExpiresAtMs)
+                : existingSub.expiresAtMs
+              : computedInitialExpiresAtMs;
 
           await saveEntitlement({
             sessionId,
+            checkoutSessionId: sessionId,
             subscriptionId,
             customerId,
             customerEmail: resolvedEmail || undefined,
             deviceId,
+            userId,
             plan,
             creatorCode,
             status,
-            active: isPaid || isTrial,
+            active: isPaid || isTrial || Boolean(existingSub?.active),
             ...(initialExpiresAtMs ? { expiresAtMs: initialExpiresAtMs } : {}),
+            ...(isPaid && amountTotalCents > 0
+              ? { lastChargeSucceeded: true }
+              : {}),
             lastStripeEventCreated: eventCreated,
             updatedAt: new Date().toISOString(),
           });
 
           await recordSubscriptionConsent({
-            deviceId: deviceId || "anon-web",
+            deviceId: deviceId || `session:${sessionId}`,
             email: resolvedEmail,
             plan,
             termsVersion: metadata.terms_version || TERMS_VERSION,
@@ -461,6 +586,7 @@ export async function POST(req: Request) {
                 deviceId: deviceId || `checkout:${sessionId}`,
                 referralCode: creatorCode,
                 activateNow: true,
+                userId,
               });
             } else if (isTrial) {
               // Non-monetary trial start tracking only; paid subscription commissions are credited strictly on invoice.paid (amount_paid > 0)
@@ -487,7 +613,7 @@ export async function POST(req: Request) {
                 event: "pro_subscribed",
                 distinctId: deviceId || sessionId,
                 platform: "web",
-                variant: assignPaywallVariant(deviceId, true),
+                variant: assignPaywallVariant(deviceId || sessionId, true),
                 userEmail: resolvedEmail || undefined,
                 properties: {
                   plan,
@@ -504,23 +630,39 @@ export async function POST(req: Request) {
         break;
       }
 
+      case "checkout.session.async_payment_failed": {
+        const sessionId = typeof obj.id === "string" ? obj.id : "";
+        if (!sessionId) break;
+        const rawSubscriptionId =
+          typeof obj.subscription === "string"
+            ? obj.subscription
+            : typeof (obj.subscription as { id?: string } | null)?.id === "string"
+              ? (obj.subscription as { id: string }).id
+              : undefined;
+        if (rawSubscriptionId) {
+          await updateSubscriptionEntitlement(rawSubscriptionId, {
+            status: "unpaid",
+            checkoutSessionId: sessionId,
+            lastStripeEventCreated: eventCreated,
+          });
+        }
+        await revokeCheckoutSessionEntitlement(sessionId, eventCreated);
+        break;
+      }
+
+      case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscriptionId = typeof obj.id === "string" ? obj.id : "";
         if (!subscriptionId) break;
 
         const status = normalizeStripeSubStatus(obj.status);
         const metadata = (obj.metadata ?? {}) as Record<string, string>;
-        const plan: PlanId | undefined =
-          metadata.plan === "monthly"
-            ? "monthly"
-            : metadata.plan === "annual"
-              ? "annual"
-              : undefined;
+        const plan = inferPlanFromStripeInterval(obj, metadata);
         const creatorCode = metadata.creator_code || undefined;
-        const deviceId = metadata.device_id || undefined;
+        const deviceId = normalizeRealDeviceId(metadata.device_id) || undefined;
+        const userId = metadata.user_id || undefined;
         const customerEmail = metadata.customer_email || undefined;
-        const customerId =
-          typeof obj.customer === "string" ? obj.customer : undefined;
+        const customerId = extractStripeCustomerId(obj.customer);
         const expiresAtMs = extractSubscriptionExpiryMs(obj, status);
 
         await updateSubscriptionEntitlement(subscriptionId, {
@@ -530,6 +672,7 @@ export async function POST(req: Request) {
           customerEmail,
           creatorCode,
           deviceId,
+          userId,
           expiresAtMs,
           lastStripeEventCreated: eventCreated,
         });
@@ -564,12 +707,7 @@ export async function POST(req: Request) {
               ? Math.min(amountPaidCents, obj.subtotal_excluding_tax)
               : amountPaidCents;
 
-        const customerId =
-          typeof obj.customer === "string"
-            ? obj.customer
-            : typeof (obj.customer as { id?: string } | null)?.id === "string"
-              ? (obj.customer as { id: string }).id
-              : undefined;
+        const customerId = extractStripeCustomerId(obj.customer);
 
         const metadata = {
           ...((obj.metadata ?? {}) as Record<string, string>),
@@ -579,32 +717,76 @@ export async function POST(req: Request) {
 
         const existing = await getSubscriptionEntitlement(subscriptionId);
         const plan: PlanId =
-          metadata.plan === "monthly"
-            ? "monthly"
-            : metadata.plan === "annual"
-              ? "annual"
-              : existing?.plan || "annual";
+          inferPlanFromStripeInterval(obj, metadata, existing?.plan || "annual") ||
+          "annual";
         const creatorCode =
           metadata.creator_code || existing?.creatorCode || undefined;
+        const metaDeviceId = normalizeRealDeviceId(metadata.device_id) || undefined;
+        const userId = metadata.user_id || existing?.userId || undefined;
         const periodEndMs = extractInvoicePeriodEndMs(obj);
+        const nowMs = Date.now();
+        const invoiceMetaTrialSec = Number(metadata.trial_end_sec || 0);
+        const invoiceTrialEndMs =
+          amountPaidCents === 0 &&
+          Number.isFinite(invoiceMetaTrialSec) &&
+          invoiceMetaTrialSec * 1000 > nowMs
+            ? invoiceMetaTrialSec * 1000 + 2 * DAY_MS
+            : undefined;
+        const fallbackRenewalMs =
+          nowMs + (plan === "monthly" ? 32 : 370) * DAY_MS;
+        const isRenewalCycle =
+          obj.billing_reason === "subscription_cycle" ||
+          (typeof periodEndMs === "number" &&
+            typeof existing?.expiresAtMs === "number" &&
+            periodEndMs > existing.expiresAtMs);
+        const resolvedExpiresAtMs = invoiceTrialEndMs
+          ? Math.max(periodEndMs ?? 0, invoiceTrialEndMs)
+          : periodEndMs ??
+            (isRenewalCycle && amountPaidCents > 0 ? fallbackRenewalMs : undefined);
 
-        // If a trialing annual subscriber who bought a +366d pass converts to paid Year 1, stack the paid year
-        const convertedPassMs =
+        // Extend `paidPassExpiresAtMs` on renewals (and stack paid Year 1 if trialing annual had a +366d OTO pass)
+        let nextPaidPassExpiresAtMs: number | undefined;
+        if (
           existing?.status === "trialing" &&
           amountPaidCents > 0 &&
           plan === "annual" &&
           existing?.paidPassExpiresAtMs &&
-          existing.paidPassExpiresAtMs > Date.now()
-            ? existing.paidPassExpiresAtMs + 365 * 86_400_000
-            : undefined;
+          existing.paidPassExpiresAtMs > nowMs
+        ) {
+          nextPaidPassExpiresAtMs = existing.paidPassExpiresAtMs + 365 * DAY_MS;
+        } else if (
+          isRenewalCycle &&
+          (amountPaidCents > 0 || typeof periodEndMs === "number")
+        ) {
+          const cycleEndMs = periodEndMs ?? fallbackRenewalMs;
+          if (existing?.otoPassSessionIds && existing.otoPassSessionIds.length > 0) {
+            nextPaidPassExpiresAtMs = Math.max(
+              existing.paidPassExpiresAtMs ?? 0,
+              cycleEndMs + existing.otoPassSessionIds.length * 366 * DAY_MS
+            );
+          } else {
+            nextPaidPassExpiresAtMs = cycleEndMs;
+          }
+        }
+
+        const nextInvoiceStatus: EntitlementStatus =
+          amountPaidCents === 0 &&
+          (existing?.status === "trialing" || Boolean(invoiceTrialEndMs))
+            ? "trialing"
+            : "active";
 
         const updated = await updateSubscriptionEntitlement(subscriptionId, {
-          status: "active",
+          status: nextInvoiceStatus,
           plan,
           customerId,
           creatorCode,
-          ...(periodEndMs ? { expiresAtMs: periodEndMs } : {}),
-          ...(convertedPassMs ? { paidPassExpiresAtMs: convertedPassMs } : {}),
+          deviceId: metaDeviceId,
+          userId,
+          ...(resolvedExpiresAtMs ? { expiresAtMs: resolvedExpiresAtMs } : {}),
+          ...(nextPaidPassExpiresAtMs
+            ? { paidPassExpiresAtMs: nextPaidPassExpiresAtMs }
+            : {}),
+          ...(amountPaidCents > 0 ? { lastChargeSucceeded: true } : {}),
           lastStripeEventCreated: eventCreated,
         });
 
@@ -615,17 +797,21 @@ export async function POST(req: Request) {
           existing?.customerEmail ||
           "";
 
+        const invoiceDeviceId =
+          metaDeviceId ||
+          normalizeRealDeviceId(updated?.deviceId) ||
+          normalizeRealDeviceId(existing?.deviceId) ||
+          undefined;
+
         await refreshSubscriptionConsentOnRenewal({
           sessionId: updated?.sessionId || existing?.sessionId,
           customerId: customerId || updated?.customerId || existing?.customerId,
           email: resolvedInvoiceEmail,
-          deviceId: metadata.device_id || updated?.deviceId || existing?.deviceId,
+          deviceId: invoiceDeviceId,
           subscriptionId,
           plan,
         });
 
-        const invoiceDeviceId =
-          metadata.device_id || updated?.deviceId || existing?.deviceId;
         const invoiceRefCode =
           metadata.referral_code ||
           (creatorCode && /^BROC-[A-Z0-9]{4,10}$/.test(creatorCode)
@@ -636,6 +822,7 @@ export async function POST(req: Request) {
             deviceId: invoiceDeviceId,
             referralCode: invoiceRefCode,
             activateNow: true,
+            userId,
           });
         }
 
@@ -703,26 +890,124 @@ export async function POST(req: Request) {
             : typeof obj.amount === "number"
               ? obj.amount
               : amountRefundedCents;
+
+        const piObj =
+          chargeSource.payment_intent &&
+          typeof chargeSource.payment_intent === "object"
+            ? (chargeSource.payment_intent as {
+                id?: string;
+                metadata?: Record<string, string>;
+              })
+            : null;
+        const paymentIntentId =
+          typeof chargeSource.payment_intent === "string"
+            ? chargeSource.payment_intent
+            : piObj?.id || "";
+
         const metadata = {
+          ...(piObj?.metadata ?? {}),
           ...((chargeSource.metadata ?? {}) as Record<string, string>),
           ...((obj.metadata ?? {}) as Record<string, string>),
         };
 
-        const subscriptionId = await resolveSubscriptionFromCharge(chargeSource);
-        const existing = subscriptionId
+        const customerId =
+          extractStripeCustomerId(chargeSource.customer) ??
+          extractStripeCustomerId(obj.customer);
+        const normChargeDeviceId =
+          normalizeRealDeviceId(metadata.device_id) || undefined;
+        const billingDetails = chargeSource.billing_details as
+          | { email?: string | null }
+          | undefined;
+        const chargeEmail =
+          metadata.customer_email ||
+          (typeof chargeSource.receipt_email === "string"
+            ? chargeSource.receipt_email
+            : "") ||
+          billingDetails?.email ||
+          "";
+
+        let subscriptionId = await resolveSubscriptionFromCharge(chargeSource);
+        let existing = subscriptionId
           ? await getSubscriptionEntitlement(subscriptionId)
           : null;
-        const creatorCode =
-          metadata.creator_code || existing?.creatorCode || undefined;
-        const plan: PlanId =
-          metadata.plan === "monthly"
-            ? "monthly"
-            : existing?.plan || "annual";
+        const isOneTimeOtoPassCharge = metadata.oto_offer === "oto_gift_year";
+
+        const existingPass =
+          !existing && (isOneTimeOtoPassCharge || !subscriptionId)
+            ? (customerId ? await getCustomerEntitlement(customerId) : null) ??
+              (normChargeDeviceId
+                ? await getDevicePaidEntitlement(normChargeDeviceId)
+                : null) ??
+              (chargeEmail ? await getEmailEntitlement(chargeEmail) : null)
+            : null;
+
+        if (
+          !subscriptionId &&
+          !isOneTimeOtoPassCharge &&
+          existingPass?.subscriptionId?.startsWith("sub_")
+        ) {
+          subscriptionId = existingPass.subscriptionId;
+          existing =
+            (await getSubscriptionEntitlement(subscriptionId)) ?? existingPass;
+        }
+
+        let resolvedCheckoutSessionId =
+          metadata.session_id ||
+          metadata.checkout_session_id ||
+          (isOneTimeOtoPassCharge
+            ? existingPass?.otoPassSessionIds?.[
+                existingPass.otoPassSessionIds.length - 1
+              ] || existingPass?.checkoutSessionId
+            : existing?.checkoutSessionId || existingPass?.checkoutSessionId) ||
+          (existing?.sessionId?.startsWith("cs_") ? existing.sessionId : "") ||
+          (existingPass?.sessionId?.startsWith("cs_")
+            ? existingPass.sessionId
+            : "") ||
+          "";
 
         const isFullRefund =
           isDispute ||
           (amountRefundedCents >= amountCapturedCents && amountCapturedCents > 0);
-        const isOneTimeOtoPassCharge = metadata.oto_offer === "oto_gift_year";
+
+        const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+        if (
+          isFullRefund &&
+          !resolvedCheckoutSessionId &&
+          secretKey &&
+          paymentIntentId
+        ) {
+          try {
+            const csUrl = new URL("https://api.stripe.com/v1/checkout/sessions");
+            csUrl.searchParams.set("payment_intent", paymentIntentId);
+            csUrl.searchParams.set("limit", "1");
+            const csRes = await fetch(csUrl.toString(), {
+              method: "GET",
+              headers: { Authorization: `Bearer ${secretKey}` },
+              cache: "no-store",
+            });
+            if (csRes.ok) {
+              const csList = (await csRes.json()) as {
+                data?: Array<{ id?: string }>;
+              };
+              const foundCsId = csList.data?.[0]?.id;
+              if (typeof foundCsId === "string" && foundCsId.startsWith("cs_")) {
+                resolvedCheckoutSessionId = foundCsId;
+              }
+            }
+          } catch {
+            /* best-effort session lookup */
+          }
+        }
+
+        const creatorCode =
+          metadata.creator_code ||
+          existing?.creatorCode ||
+          existingPass?.creatorCode ||
+          undefined;
+        const plan: PlanId =
+          metadata.plan === "monthly"
+            ? "monthly"
+            : existing?.plan || existingPass?.plan || "annual";
 
         const hasInvoiceReference = Boolean(
           chargeObjHasSubscriptionLink(chargeSource)
@@ -735,20 +1020,31 @@ export async function POST(req: Request) {
 
         if (isFullRefund && isOneTimeOtoPassCharge) {
           await revokeOneTimeAnnualPass({
-            sessionId: metadata.session_id || undefined,
-            customerId:
-              typeof obj.customer === "string" ? obj.customer : undefined,
-            deviceId: metadata.device_id || undefined,
-            customerEmail: metadata.customer_email || undefined,
+            sessionId: resolvedCheckoutSessionId || undefined,
+            customerId,
+            deviceId: normChargeDeviceId,
+            customerEmail: chargeEmail || undefined,
           });
+          if (resolvedCheckoutSessionId) {
+            await revokeCheckoutSessionEntitlement(
+              resolvedCheckoutSessionId,
+              eventCreated
+            );
+          }
         }
 
         if (subscriptionId && isFullRefund) {
           await updateSubscriptionEntitlement(subscriptionId, {
             status: "canceled",
+            checkoutSessionId: resolvedCheckoutSessionId || undefined,
             lastStripeEventCreated: eventCreated,
           });
-          const secretKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+          if (resolvedCheckoutSessionId) {
+            await revokeCheckoutSessionEntitlement(
+              resolvedCheckoutSessionId,
+              eventCreated
+            );
+          }
           if (secretKey && subscriptionId.startsWith("sub_")) {
             const delRes = await fetch(
               `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
@@ -763,31 +1059,71 @@ export async function POST(req: Request) {
               );
             }
           }
+        } else if (
+          isFullRefund &&
+          !subscriptionId &&
+          !isOneTimeOtoPassCharge &&
+          resolvedCheckoutSessionId
+        ) {
+          await revokeCheckoutSessionEntitlement(
+            resolvedCheckoutSessionId,
+            eventCreated
+          );
         }
 
         if (creatorCode && !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) && amountRefundedCents > 0) {
+          const rawInvoice = chargeSource.invoice;
+          const invoiceIdForClawback =
+            typeof rawInvoice === "string"
+              ? rawInvoice
+              : rawInvoice &&
+                  typeof (rawInvoice as { id?: string }).id === "string"
+                ? (rawInvoice as { id: string }).id
+                : "";
+          const originalConversionKey = invoiceIdForClawback
+            ? `invoice:${invoiceIdForClawback}`
+            : isOneTimeOtoPassCharge && resolvedCheckoutSessionId
+              ? `session:${resolvedCheckoutSessionId}`
+              : undefined;
+          const buyerEmail =
+            chargeEmail ||
+            existing?.customerEmail ||
+            existingPass?.customerEmail ||
+            undefined;
+          const otoOfferMeta = metadata.oto_offer || undefined;
+
           const refundsObj = chargeSource.refunds as
             | { data?: Array<{ id?: string; amount?: number }> }
             | undefined;
           const refundList =
             !isDispute && Array.isArray(refundsObj?.data)
               ? refundsObj.data.filter(
-                  (r) =>
-                    typeof r?.id === "string" &&
-                    typeof r?.amount === "number" &&
-                    r.amount > 0
-                )
+                (r) =>
+                  typeof r?.id === "string" &&
+                  typeof r?.amount === "number" &&
+                  r.amount > 0
+              )
               : [];
           if (refundList.length > 0) {
             for (const r of refundList) {
               const itemIsFullRefund =
                 amountCapturedCents > 0 && r.amount! >= amountCapturedCents;
+              const refundRatio =
+                amountCapturedCents > 0
+                  ? Math.min(1, r.amount! / amountCapturedCents)
+                  : undefined;
               await recordStripeCreatorRefundOnce(
                 `refund:${r.id!}`,
                 creatorCode,
                 plan,
                 r.amount! / 100,
-                itemIsFullRefund ? true : undefined
+                itemIsFullRefund ? true : undefined,
+                {
+                  buyerEmail,
+                  originalConversionKey,
+                  otoOffer: otoOfferMeta,
+                  refundRatio,
+                }
               );
             }
           } else {
@@ -801,12 +1137,22 @@ export async function POST(req: Request) {
               const deltaIsFullRefund =
                 isDispute ||
                 (amountCapturedCents > 0 && deltaCents >= amountCapturedCents);
+              const refundRatio =
+                amountCapturedCents > 0
+                  ? Math.min(1, deltaCents / amountCapturedCents)
+                  : undefined;
               const recorded = await recordStripeCreatorRefundOnce(
                 `${isDispute ? "dispute" : "refund"}:${chargeId}:${event.id || amountRefundedCents}`,
                 creatorCode,
                 plan,
                 deltaCents / 100,
-                deltaIsFullRefund ? true : undefined
+                deltaIsFullRefund ? true : undefined,
+                {
+                  buyerEmail,
+                  originalConversionKey,
+                  otoOffer: otoOfferMeta,
+                  refundRatio,
+                }
               );
               if (recorded && !isDispute) {
                 await kvSet(
@@ -824,10 +1170,17 @@ export async function POST(req: Request) {
       case "customer.subscription.deleted": {
         const subscriptionId = typeof obj.id === "string" ? obj.id : "";
         if (!subscriptionId) break;
+        const existing = await getSubscriptionEntitlement(subscriptionId);
         await updateSubscriptionEntitlement(subscriptionId, {
           status: "canceled",
           lastStripeEventCreated: eventCreated,
         });
+        if (existing?.checkoutSessionId) {
+          await revokeCheckoutSessionEntitlement(
+            existing.checkoutSessionId,
+            eventCreated
+          );
+        }
         break;
       }
 

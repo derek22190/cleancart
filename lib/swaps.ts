@@ -10,7 +10,7 @@
  */
 import { scoreIngredients, scoreProductYuka, type Watchlist, type NutritionInput } from "./rubric";
 import { passesVariantGuard } from "./drinks-catalog";
-import { detectPesticideRisk } from "./dietary";
+import { detectMajorAllergens, detectPesticideRisk, evaluateDietaryAlerts } from "./dietary";
 
 export type Store =
   | "walmart"
@@ -74,6 +74,15 @@ export interface CleanAlternative {
 }
 
 export type ScanSurface = "web" | "android" | "extension";
+
+export type ClientPlatform =
+  | "web"
+  | "android"
+  | "chrome-extension"
+  | "ios-safari"
+  | "ios-share"
+  | "ios-shortcut"
+  | "ios-app";
 
 export interface SwapResult {
   sourceUrl?: string;
@@ -214,26 +223,96 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
   },
   Snacks: {
     category: "Snacks",
-    brand: "LÄRABAR",
-    name: "Cashew Cookie Fruit & Nut Bar",
-    size: "1.7 oz bar",
-    image: "/swaps/snacks.jpg",
-    ingredients: "Cashews, dates.",
-    nutrition: { caloriesKcal100g: 220 / 0.48, sugarsG100g: 15 / 0.48, saturatedFatG100g: 2.5 / 0.48, sodiumMg100g: 5 / 0.48, fiberG100g: 2 / 0.48, proteinG100g: 5 / 0.48, fruitsVegNutsPct: 100, isOrganic: false },
-    sourceUrl: "https://www.larabar.com/our-products/larabar/cashew-cookie",
+    brand: "That's It.",
+    name: "100% Real Fruit Bars (Apple + Strawberry)",
+    size: "5 count box",
+    image: "/swaps/fruitbar.png",
+    ingredients: "Apples, strawberries.",
+    nutrition: {
+      caloriesKcal100g: 100 / 0.35,
+      sugarsG100g: 19 / 0.35,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 25 / 0.35,
+      fiberG100g: 3 / 0.35,
+      proteinG100g: 1 / 0.35,
+      fruitsVegNutsPct: 100,
+      isOrganic: false,
+    },
+    sourceUrl: "https://www.thatsitfruit.com/products/apple-strawberry",
     verifiedAt: "2026-11-09",
-    itemIds: { walmart: "10311442" },
+    itemIds: { walmart: "470907558" },
   },
 };
+
+const PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE =
+  "earth\\s+balance|country\\s+crock\\s+plant|plant[- ]?based|plant\\s+(?:butter|buttery|cream|creamer|cheese|spread|yogh?urt|milk)|violife|daiya|miyoko(?:'?s)?|kite\\s+hill|follow\\s+your\\s+heart|so\\s+delicious|forager|chao|dairy[- ]?free|non[- ]?dairy|vegan";
+
+const PLANT_MILK_QUALIFIER_RE =
+  `almond|almondmilk|oat|oatmilk|oatly|planet\\s+oat|soy|soymilk|silk|westsoy|edensoy|coconut|coconutmilk|cashew|cashewmilk|rice\\s+milk|hemp|pea\\s+milk|ripple|malk|califia|nutpods|elmhurst|laird|${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE}`;
+
+const DAIRY_BUTTER_EXCLUSIONS_RE =
+  `peanut|almond|cashew|sunflower|sun|cookie|cookies|apple|cocoa|shea|body|butter\\s+milk|buttermilk|butter\\s+pecan|butter\\s+lettuce|butter\\s+beans?|butter\\s+potato\\w*|butternut|steak|salmon|shrimp|fish|chicken|turkey|beef|pork|crab|lobster|jam|jelly|preserves|fruit\\s+spread|latte|matcha|tea|coffee|popcorn|crackers?|wafers?|croissants?|rolls?|roll|buns?|bread|waffles?|pancakes?|syrup|pasta|noodles?|ramen|shells|macaroni|sauce|soup|chowder|candy|toffee|butterfinger|${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE}`;
 
 /**
  * 1-for-1 exact sub-category swap table: ensures butter swaps to butter, milk swaps to milk,
  * cheese swaps to cheese, bacon swaps to bacon, tortilla chips swap to tortilla chips, etc.
  */
 export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative }[] = [
-  // --- Butter / Margarine / Spreads (1-for-1 Butter, excluding nut/fruit/cookie butters & butter-seasoned entrees) ---
+  // --- Plant-Based / Vegan / Dairy-Free Butters & Spreads (seed-oil-free, zero cow's dairy) ---
   {
-    match: /^(?!.*\b(peanut|almond|cashew|sunflower|sun|cookie|apple|cocoa|shea|body)\s+butter\b).*\b(unsalted\s+butter|butter\s+unsalted)\b/i,
+    match: /\b(miyoko(?:'?s)?.*\b(?:butter|spread)\b|(?:cashew|almond)\b.*\b(?:plant[- ]?(?:based\s+)?|vegan\s+|dairy[- ]?free\s+|non[- ]?dairy\s+)(?:butter|buttery\s+spread))\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Miyoko's Creamery",
+      name: "Organic Cultured Vegan Butter",
+      sourceUrl: "https://www.miyokos.com/products/european-style-plant-milk-butter-salted",
+      verifiedAt: "2026-11-11",
+      size: "8 oz block",
+      isOrganic: true,
+      image: "/swaps/butter.jpg",
+      ingredients: "Organic coconut oil, filtered water, organic cashew milk (filtered water, organic cashews), organic sunflower lecithin, sea salt, cultures.",
+      nutrition: {
+        caloriesKcal100g: 714,
+        sugarsG100g: 0,
+        saturatedFatG100g: 57.1,
+        sodiumMg100g: 500,
+        fiberG100g: 0,
+        proteinG100g: 0,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
+    },
+  },
+  {
+    match: /\b(earth\s+balance|country\s+crock\s+plant|plant[- ]?(?:based\s+)?(?:butter|buttery\s+spread)|vegan\s+(?:butter|buttery\s+spread)|dairy[- ]?free\s+(?:butter|buttery\s+spread)|non[- ]?dairy\s+(?:butter|buttery\s+spread))\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Nutiva",
+      name: "Organic Coconut Oil Buttery Flavor",
+      sourceUrl: "https://nutiva.com/products/organic-buttery-coconut-oil",
+      verifiedAt: "2026-11-11",
+      size: "14 fl oz jar",
+      isOrganic: true,
+      image: "/swaps/butter.jpg",
+      ingredients: "Organic refined expeller-pressed coconut oil, organic natural flavors, organic annatto extract (for color).",
+      nutrition: {
+        caloriesKcal100g: 928,
+        sugarsG100g: 0,
+        saturatedFatG100g: 85.7,
+        sodiumMg100g: 0,
+        fiberG100g: 0,
+        proteinG100g: 0,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
+    },
+  },
+
+  // --- Butter / Margarine / Spreads (1-for-1 Dairy Butter, excluding plant-based, nut/fruit/cookie butters & butter-seasoned entrees) ---
+  {
+    match: new RegExp(`^(?!.*\\b(${DAIRY_BUTTER_EXCLUSIONS_RE})\\b).*\\b(unsalted\\s+butter|butter\\s+unsalted)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -248,11 +327,11 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(peanut|almond|cashew|sunflower|sun|cookie|apple|cocoa|shea|body|butter\s+milk|buttermilk|butter\s+pecan|butter\s+lettuce|butter\s+beans?|butter\s+potato\w*|butternut|steak|salmon|shrimp|fish|chicken|turkey|beef|pork|jam|jelly|preserves|fruit\s+spread|latte|matcha|tea|coffee|popcorn|crackers?|cookies?|wafers?|croissants?|rolls?|buns?|bread|pasta|noodles?|ramen|shells|macaroni|sauce|soup|chowder|candy|toffee|butterfinger)\b).*\b(butter|margarine|buttery spread|country crock|imperial|blue bonnet|parkay|smart balance|earth balance|i can'?t believe it'?s not butter|kerrygold|land o'? ?lakes)\b/i,
+    match: new RegExp(`^(?!.*\\b(${DAIRY_BUTTER_EXCLUSIONS_RE})\\b).*\\b(butter|margarine|buttery spread|country crock|imperial|blue bonnet|parkay|smart balance|i can'?t believe it'?s not butter|kerrygold|land o'? ?lakes)\\b`, "i"),
     alt: CLEAN_ALTERNATIVES["Butter/Dairy"],
   },
 
-  // --- Milk & Protein Shakes (1-for-1: Protein Shakes, Chocolate Milk, 2%, Whole/Skim/Lactose-Free, Plant Milks) ---
+  // --- Milk & Protein Shakes (1-for-1: Protein Shakes, Chocolate Milk, Plant Milks, 2%, Whole/Skim/Lactose-Free) ---
   {
     match: /\b(core\s+power|premier\s+protein|muscle\s+milk|fairlife\s+(?:elite|nutrition\s+plan|protein)|whey\s+protein|gold\s+standard\s+whey|ghost\s+whey|protein\s+shake|protein\s+milk\s+shake|protein\s+powder)\b/i,
     alt: {
@@ -270,7 +349,32 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(chocolate\s+milk|fairlife\s+chocolate|nesquik|ooey\s+gooey.*milk|trumu)\b/i,
+    match: new RegExp(`^(?=.*\\b(${PLANT_MILK_QUALIFIER_RE})\\b).*\\bchocolate\\b.*\\b(milk|almondmilk|oatmilk|soymilk|coconutmilk|beverage)\\b`, "i"),
+    alt: {
+      category: "Butter/Dairy",
+      brand: "MALK",
+      name: "Organic Chocolate Oat Milk",
+      sourceUrl: "https://malkorganics.com/products/chocolate-oat-malk/",
+      verifiedAt: "2026-11-10",
+      size: "28 fl oz bottle",
+      isOrganic: true,
+      image: "/swaps/milk.png",
+      ingredients: "Filtered water, organic gluten-free oats, organic coconut sugar, organic dutch processed cocoa powder, Himalayan pink salt.",
+      nutrition: {
+        caloriesKcal100g: 37.5,
+        sugarsG100g: 3.8,
+        saturatedFatG100g: 0.2,
+        sodiumMg100g: 46,
+        fiberG100g: 0.8,
+        proteinG100g: 1.3,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
+    },
+  },
+  {
+    match: new RegExp(`^(?!.*\\b(${PLANT_MILK_QUALIFIER_RE})\\b).*\\b(chocolate\\s+milk|fairlife\\s+chocolate|nesquik|ooey\\s+gooey.*milk|trumu|tru\\s*moo)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -285,7 +389,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(oat\s*milk|planet\s+oat|oatly|chobani\s+oat)\b/i,
+    match: /^(?!.*\bcreamer\b).*\b(oat\s*(?:milk|beverage|drink|barista)|oatmilk|milked\s+oats?|planet\s+oat|oatly|chobani\s+oat|silk\s+oat(?:milk|\s+yeah)?|califia.*\boat\b)\b/i,
     alt: {
       category: "Butter/Dairy",
       brand: "Califia Farms",
@@ -311,7 +415,57 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(almond\s*milk|almond\s+breeze|silk\s+almond)\b/i,
+    match: /^(?!.*\bcreamer\b).*\b(soy\s*(?:milk|beverage|drink)|soymilk|silk\s+(?:original\s+|unsweetened\s+|vanilla\s+|organic\s+)?soy|westsoy|edensoy)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "WestSoy",
+      name: "Organic Unsweetened Plain Soymilk",
+      sourceUrl: "https://www.westsoytofu.com/products/unsweetened-plain-organic-plus/",
+      verifiedAt: "2026-11-10",
+      size: "32 fl oz carton",
+      isOrganic: true,
+      image: "/swaps/milk.png",
+      ingredients: "Filtered water, whole organic soybeans.",
+      nutrition: {
+        caloriesKcal100g: 37.5,
+        sugarsG100g: 0.8,
+        saturatedFatG100g: 0.2,
+        sodiumMg100g: 12.5,
+        fiberG100g: 0.8,
+        proteinG100g: 3.8,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
+    },
+  },
+  {
+    match: /^(?!.*\b(creamer|coconut\s+water|harmless\s+harvest|vita\s+coco)\b).*\b(coconut\s*(?:milk\s+beverage|beverage|drink)|coconutmilk|so\s+delicious.*coconut|silk.*coconut)\b/i,
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Native Forest",
+      name: "Organic Simple Unsweetened Coconut Milk",
+      sourceUrl: "https://store.edwardandsons.com/products/organic-simple-coconut-milk",
+      verifiedAt: "2026-11-10",
+      size: "13.5 fl oz can",
+      isOrganic: true,
+      image: "/swaps/milk.png",
+      ingredients: "Organic coconut, filtered water.",
+      nutrition: {
+        caloriesKcal100g: 185,
+        sugarsG100g: 1.2,
+        saturatedFatG100g: 15,
+        sodiumMg100g: 18,
+        fiberG100g: 0,
+        proteinG100g: 1.2,
+        fruitsVegNutsPct: 0,
+        isOrganic: true,
+        isWholeFood: false,
+      },
+    },
+  },
+  {
+    match: /^(?!.*\bcreamer\b).*\b(almond\s*(?:milk|beverage|drink)|almondmilk|almond\s+breeze|silk\s+almond|califia.*\balmond\b)\b/i,
     alt: {
       category: "Butter/Dairy",
       brand: "Califia Farms",
@@ -337,7 +491,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(2%\s*(reduced\s*fat\s*)?milk|reduced\s*fat\s*milk)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_MILK_QUALIFIER_RE}|milk\\s+chocolate)\\b).*\\b(2%\\s*(?:reduced\\s*fat\\s*)?milk|reduced\\s*fat\\s*milk)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -352,7 +506,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(milk\s+chocolate|coconut\s+milk)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|1%\s*milk|lowfat\s+milk|skim\s+milk|fat\s*free\s+milk|milk\s*gallon|gallon\s*milk|lactaid|fairlife|horizon.*milk|great\s+value.*milk)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_MILK_QUALIFIER_RE}|milk\\s+chocolate|condensed|evaporated)\\b).*\\b(whole\\s+milk|vitamin\\s+d\\s+milk|1%\\s*milk|lowfat\\s+milk|skim\\s+milk|fat\\s*free\\s+milk|milk\\s*gallon|gallon\\s*milk|lactaid|fairlife|horizon.*milk|great\\s+value.*milk)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -370,7 +524,21 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Creamer, Heavy Cream, Half & Half, Sour Cream, Cottage Cheese, Cream Cheese ---
   {
-    match: /\b(creamer|coffee-?mate|international\s+delight|starbucks\s+creamer|dunkin.*creamer)\b/i,
+    match: new RegExp(`^(?=.*\\b(${PLANT_MILK_QUALIFIER_RE})\\b).*\\b(creamer|barista\\s+blend)\\b|\\bnutpods\\b`, "i"),
+    alt: {
+      category: "Butter/Dairy",
+      brand: "Laird Superfood",
+      name: "Organic Unsweetened Non-Dairy Superfood Creamer",
+      sourceUrl: "https://lairdsuperfood.com/products/unsweetened-superfood-creamer",
+      verifiedAt: "2026-11-10",
+      size: "8 oz bag",
+      isOrganic: true,
+      image: "/swaps/milk.png",
+      ingredients: "Organic coconut milk powder, organic extra virgin coconut oil, aquamin (calcified marine algae).",
+    },
+  },
+  {
+    match: new RegExp(`^(?!.*\\b(${PLANT_MILK_QUALIFIER_RE})\\b).*\\b(creamer|coffee-?mate|international\\s+delight|starbucks\\s+creamer|dunkin.*creamer)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -385,7 +553,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(heavy\s+cream|whipping\s+cream|whipped\s+cream|whipped\s+topping|cool\s+whip|reddi-?wip)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(heavy\\s+cream|whipping\\s+cream|whipped\\s+cream|whipped\\s+topping|cool\\s+whip|reddi-?wip)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -400,7 +568,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(half\s+and\s+half|half\s*&\s*half)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(half\\s+and\\s+half|half\\s*&\\s*half)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -415,7 +583,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(sour\s+cream|daisy\s+sour\s+cream)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(sour\\s+cream|daisy\\s+sour\\s+cream)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -430,7 +598,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(cottage\s+cheese)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(cottage\\s+cheese)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Good Culture",
@@ -445,7 +613,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(cream\s+cheese|philadelphia|neufchatel)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(cream\\s+cheese|philadelphia|neufchatel)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -462,7 +630,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Cheese, Eggs, Ice Cream ---
   {
-    match: /\b(string\s+cheese|mozzarella|babybel)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(string\\s+cheese|mozzarella|babybel)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -477,7 +645,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(american\s+(?:sliced\s+|cheese|pasteurized|singles)|kraft\s+singles|velveeta\s+slices|sargento.*\bamerican\b|borden.*\bamerican\b|great\s+value.*\bamerican\b)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE}|mac.*cheese|macaroni|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\\b).*\\b(american\\s+(?:sliced\\s+|cheese|pasteurized|singles)|kraft\\s+singles|velveeta\\s+slices|sargento.*\\bamerican\\b|borden.*\\bamerican\\b|great\\s+value.*\\bamerican\\b)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -492,7 +660,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(mac.*cheese|macaroni|shells?\s*(?:&|and)\s*(?:real\s+aged\s+|white\s+)?cheddar|annie'?s.*shells|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\b).*\b(cheese|cheddar|velveeta|kraft\s+singles|american\s+singles|queso|colby|monterey\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE}|mac.*cheese|macaroni|shells?\\s*(?:&|and)\\s*(?:real\\s+aged\\s+|white\\s+)?cheddar|annie'?s.*shells|crackers?|cheetos|doritos|cheez-?it|puffs?|chips?|crisps?|tortilla|popcorn|fries|tots|dip|sauce|soup|chowder|burrito|sandwich|croissant|danish|pastry|bagels?|pizza|pretzels?)\\b).*\\b(cheese|cheddar|velveeta|kraft\\s+singles|american\\s+singles|queso|colby|monterey\\s+jack|swiss|provolone|gouda|parmesan|sargento|tillamook)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Organic Valley",
@@ -537,7 +705,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(ice\s+cream|gelato|sorbet|popsicle|outshine|fudge\s+bar|drumstick|klondike|ben\s*&\s*jerry|talenti|breyers|blue\s+bell|edys|halo\s+top|sundae\s+shoppe|haagen-?dazs|häagen-?dazs)\b/i,
+    match: new RegExp(`^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b).*\\b(ice\\s+cream|gelato|sorbet|popsicle|outshine|fudge\\s+bar|drumstick|klondike|ben\\s*&\\s*jerry|talenti|breyers|blue\\s+bell|edys|halo\\s+top|sundae\\s+shoppe|haagen-?dazs|häagen-?dazs)\\b`, "i"),
     alt: {
       category: "Butter/Dairy",
       brand: "Alden's Organic",
@@ -1155,7 +1323,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       verifiedAt: "2026-11-10",
       size: "10 oz steak",
       isOrganic: true,
-      image: "/swaps/beef.png",
+      image: "",
       ingredients: "100% organic grass-fed beef.",
       nutrition: { caloriesKcal100g: 191, sugarsG100g: 0, saturatedFatG100g: 4.5, sodiumMg100g: 58, fiberG100g: 0, proteinG100g: 21.5, isOrganic: true, isWholeFood: true },
     },
@@ -1194,7 +1362,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /\b(tortillas?|wraps?|mission\s+flour|mission\s+carb|guerrero)\b/i,
+    match: /\balmond\s+flour\s+tortillas?\b/i,
     alt: {
       category: "Bread",
       brand: "Siete",
@@ -1205,6 +1373,20 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       image: "/swaps/tortillas.png",
       ingredients: "Almond flour, tapioca flour, water, cassava flour, coconut oil, sea salt.",
       itemIds: { walmart: "506938184" },
+    },
+  },
+  {
+    match: /\b(tortillas?|wraps?|mission\s+flour|mission\s+carb|guerrero)\b/i,
+    alt: {
+      category: "Bread",
+      brand: "Mi Rancho",
+      name: "Organic Corn Tortillas",
+      sourceUrl: "https://mirancho.com/products/organic-corn-tortillas/",
+      verifiedAt: "2026-11-10",
+      size: "10.9 oz pack (12 tortillas)",
+      isOrganic: true,
+      image: "/swaps/tortillas.png",
+      ingredients: "Water, organic white corn, organic yellow corn, trace of lime.",
     },
   },
   {
@@ -1284,7 +1466,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Snacks, Cookies, Candy, Chocolate, Soda, Sports Drinks, Juice ---
   {
-    match: /^(?!.*\b(cereal|puffs?|o'?s)\b).*\b(cookies?|oreos?|chips\s+ahoy|nutter\s+butter|keebler|wafers?|knoppers|biscuits?|biscoff|cake\s+rolls?|swiss\s+rolls?|snack\s+cakes?|little\s+debbie|hostess|twinkies?|cupcakes?|donuts?|doughnuts?|bismarks?|fritters?|eclairs?|strudels?|turnovers?|muffins?|pastries|pastry|toaster\s+pastr(?:y|ies)|pop[- ]?tarts?|danish|cinnamon\s+rolls?|honey\s+buns?)\b/i,
+    match: /\b(almond.*cookies?|nutter\s+butter|peanut\s+butter\s+cookies?|pecan\s+sandies|macadamia.*cookies?)\b/i,
     alt: {
       category: "Snacks",
       brand: "Simple Mills",
@@ -1295,6 +1477,33 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       sourceUrl: "https://simplemills.com/Products/Product/Crunchy-Chocolate-Chip-Cookies.aspx",
       verifiedAt: "2026-11-09",
       itemIds: { walmart: "189635069" },
+    },
+  },
+  {
+    match: /^(?!.*\b(cereal|puffs?|o'?s)\b).*\b(cookies?|oreos?|chips\s+ahoy|keebler|wafers?|knoppers|biscuits?|biscoff|cake\s+rolls?|swiss\s+rolls?|snack\s+cakes?|little\s+debbie|hostess|twinkies?|cupcakes?|donuts?|doughnuts?|bismarks?|fritters?|eclairs?|strudels?|turnovers?|muffins?|pastries|pastry|toaster\s+pastr(?:y|ies)|pop[- ]?tarts?|danish|cinnamon\s+rolls?|honey\s+buns?)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "Simple Mills",
+      name: "Honey Cinnamon Seed Flour Sweet Thins",
+      size: "4.25 oz box",
+      image: "/swaps/cookies.png",
+      ingredients: "Seed flour blend (sunflower seeds, pumpkin seeds, flax seeds), tapioca starch, arrowroot, organic coconut oil, organic coconut sugar, organic honey, organic cinnamon, vanilla extract, sea salt, baking soda, rosemary extract.",
+      sourceUrl: "https://www.simplemills.com/Shop/Product/Honey-Cinnamon-Seed-Flour-Sweet-Thins.aspx",
+      verifiedAt: "2026-11-10",
+    },
+  },
+  {
+    match: /\b(larabar|lärabar|rxbar|kind\s+bar|nut\s+bar|cashew\s+bar|almond\s+bar|trail\s+mix\s+bar)\b/i,
+    alt: {
+      category: "Snacks",
+      brand: "LÄRABAR",
+      name: "Cashew Cookie Fruit & Nut Bar",
+      sourceUrl: "https://www.larabar.com/products/cashew-cookie",
+      verifiedAt: "2026-11-10",
+      size: "1.7 oz bar",
+      image: "/swaps/fruitbar.png",
+      ingredients: "Cashews, dates.",
+      itemIds: { walmart: "10311610" },
     },
   },
   {
@@ -1621,10 +1830,27 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
  * Kirkland Signature Organic at Costco, Simply Nature Organic at ALDI, Wellsley Farms Organic at BJ's,
  * Good & Gather Organic at Target, Simple Truth Organic at Kroger, and 365 by Whole Foods Market at Amazon).
  */
+const STORE_DAIRY_REDUCED_FAT_MILK_MATCH = new RegExp(
+  `^(?!.*\\b(${PLANT_MILK_QUALIFIER_RE}|milk\\s+chocolate|creamer)\\b)(?:.*\\b(?:2%|reduced\\s+fat|1%|low\\s*fat)\\s+milk\\b|.*\\bmilk\\b.*\\b(?:2%|reduced\\s+fat|1%|low\\s*fat)\\b)`,
+  "i"
+);
+const STORE_DAIRY_WHOLE_MILK_MATCH = new RegExp(
+  `^(?!.*\\b(chocolate|strawberry|condensed|evaporated|creamer|milk\\s+chocolate|${PLANT_MILK_QUALIFIER_RE})\\b).*\\b(whole\\s+milk|vitamin\\s+d\\s+milk|milk)\\b`,
+  "i"
+);
+const STORE_DAIRY_BUTTER_MATCH = new RegExp(
+  `^(?!.*\\b(${DAIRY_BUTTER_EXCLUSIONS_RE})\\b).*\\b(butter|margarine|country\\s+crock|parkay|imperial|blue\\s+bonnet|i\\s+can'?t\\s+believe)\\b`,
+  "i"
+);
+const STORE_DAIRY_YOGURT_MATCH = new RegExp(
+  `^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b)(?:.*\\b(yogh?urt|skyr|yoplait|dannon)\\b|(?!.*\\b(creamer|coffee|oat\\s*milk|oatmilk|barista)\\b).*\\bchobani\\b)`,
+  "i"
+);
+
 export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; alt: CleanAlternative }[]>> = {
   sams: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Member's Mark",
@@ -1638,7 +1864,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Member's Mark",
@@ -1652,7 +1878,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(almond\s*milk|silk\s+almond|almond\s+breeze)\b/i,
+      match: /^(?!.*\b(creamer|chocolate)\b).*\b(almond\s*(?:milk|beverage)|almondmilk|silk\s+almond|almond\s+breeze|califia.*almond|malk.*almond)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Member's Mark",
@@ -1666,7 +1892,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Member's Mark",
@@ -1694,7 +1920,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(yogh?urt|skyr|chobani|yoplait|dannon)\b/i,
+      match: STORE_DAIRY_YOGURT_MATCH,
       alt: {
         category: "Yogurt",
         brand: "Member's Mark",
@@ -1752,7 +1978,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   costco: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1766,7 +1992,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1780,7 +2006,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(oat\s*milk|oatly|planet\s+oat|chobani\s+oat)\b/i,
+      match: /^(?!.*\b(creamer|chocolate)\b).*\b(oat\s*(?:milk|beverage|drink|barista)|oatmilk|milked\s+oats?|planet\s+oat|oatly|chobani\s+oat|silk\s+oat(?:milk|\s+yeah)?|califia.*\boat\b)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1794,7 +2020,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(almond\s*milk|silk\s+almond|almond\s+breeze)\b/i,
+      match: /^(?!.*\b(creamer|chocolate)\b).*\b(almond\s*(?:milk|beverage)|almondmilk|silk\s+almond|almond\s+breeze|califia.*almond|malk.*almond)\b/i,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1808,7 +2034,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Kirkland Signature",
@@ -1836,7 +2062,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(yogh?urt|skyr|chobani|yoplait|dannon)\b/i,
+      match: STORE_DAIRY_YOGURT_MATCH,
       alt: {
         category: "Yogurt",
         brand: "Kirkland Signature",
@@ -1950,7 +2176,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   aldi: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Simply Nature",
@@ -1964,7 +2190,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Simply Nature",
@@ -1978,7 +2204,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Simply Nature",
@@ -2006,7 +2232,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(yogh?urt|skyr|chobani|yoplait|dannon)\b/i,
+      match: STORE_DAIRY_YOGURT_MATCH,
       alt: {
         category: "Yogurt",
         brand: "Simply Nature",
@@ -2134,7 +2360,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   bjs: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Wellsley Farms",
@@ -2148,7 +2374,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Wellsley Farms",
@@ -2162,7 +2388,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Wellsley Farms",
@@ -2234,7 +2460,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   target: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Good & Gather",
@@ -2248,7 +2474,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Good & Gather",
@@ -2262,7 +2488,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Good & Gather",
@@ -2321,7 +2547,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   kroger: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
@@ -2335,7 +2561,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
@@ -2349,7 +2575,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "Simple Truth Organic",
@@ -2363,7 +2589,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(yogh?urt|skyr|chobani|yoplait|dannon)\b/i,
+      match: STORE_DAIRY_YOGURT_MATCH,
       alt: {
         category: "Yogurt",
         brand: "Simple Truth Organic",
@@ -2422,7 +2648,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
   ],
   amazon: [
     {
-      match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+      match: STORE_DAIRY_BUTTER_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "365 by Whole Foods Market",
@@ -2436,7 +2662,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+      match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "365 by Whole Foods Market",
@@ -2450,7 +2676,7 @@ export const STORE_SPECIFIC_OVERRIDES: Partial<Record<Store, { match: RegExp; al
       },
     },
     {
-      match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+      match: STORE_DAIRY_WHOLE_MILK_MATCH,
       alt: {
         category: "Butter/Dairy",
         brand: "365 by Whole Foods Market",
@@ -2507,7 +2733,10 @@ export const DIRTY_FALLBACK_IMAGES: Record<SwapCategory, string> = {
 };
 
 const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
-  ["Yogurt", /\b(yogh?urt|skyr|kefir|chobani|yoplait|dannon|fage|siggi)\b/i],
+  [
+    "Yogurt",
+    /\b(yogh?urt|skyr|kefir|yoplait|dannon|fage|siggi)\b|^(?!.*\b(creamer|coffee|oat\s*milk|oatmilk|barista)\b).*\bchobani\b/i,
+  ],
   ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat thins|graham)\b/i],
   ["Chips", /\b(chips|crisps|tortilla chips|doritos|pringles|cheetos|cheese puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
   ["Cereal", /\b(cereal|flakes|granola|loops|o'?s|oreo\s+puffs?|reese'?s\s+puffs?|cocoa\s+puffs?|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran|syrup)\b/i],
@@ -2555,7 +2784,7 @@ export function isStoreBrandForStore(brand = "", store?: Store): boolean {
  */
 export const WALMART_STORE_BRAND_ALTERNATIVES: { match: RegExp; alt: CleanAlternative }[] = [
   {
-    match: /^(?!.*\b(peanut|almond|cashew|sunflower|cookie|cookies|apple|cocoa|body|shea|steak|salmon|shrimp|chicken|turkey|beef|pork|fish|crab|lobster|jam|jelly|latte|matcha|tea|coffee|popcorn|croissant|roll|buns?|bread|waffles?|pancakes?|syrup|sauce)\b).*\b(butter|margarine|country\s+crock|parkay|imperial|blue\s+bonnet|i\s+can'?t\s+believe)\b/i,
+    match: STORE_DAIRY_BUTTER_MATCH,
     alt: {
       category: "Butter/Dairy",
       brand: "Great Value",
@@ -2569,7 +2798,7 @@ export const WALMART_STORE_BRAND_ALTERNATIVES: { match: RegExp; alt: CleanAltern
     },
   },
   {
-    match: /\b(2%|reduced\s+fat|1%|low\s*fat)\s+milk\b|\bmilk\b.*\b(2%|reduced\s+fat|1%|low\s*fat)\b/i,
+    match: STORE_DAIRY_REDUCED_FAT_MILK_MATCH,
     alt: {
       category: "Butter/Dairy",
       brand: "Great Value",
@@ -2583,7 +2812,7 @@ export const WALMART_STORE_BRAND_ALTERNATIVES: { match: RegExp; alt: CleanAltern
     },
   },
   {
-    match: /^(?!.*\b(chocolate|strawberry|condensed|evaporated|coconut|almond|oat|soy|cashew|milk\s+chocolate)\b).*\b(whole\s+milk|vitamin\s+d\s+milk|milk)\b/i,
+    match: STORE_DAIRY_WHOLE_MILK_MATCH,
     alt: {
       category: "Butter/Dairy",
       brand: "Great Value",
@@ -2611,7 +2840,7 @@ export const WALMART_STORE_BRAND_ALTERNATIVES: { match: RegExp; alt: CleanAltern
     },
   },
   {
-    match: /\b(yogh?urt|skyr|chobani|yoplait|dannon)\b/i,
+    match: STORE_DAIRY_YOGURT_MATCH,
     alt: {
       category: "Yogurt",
       brand: "Great Value",
@@ -2770,21 +2999,40 @@ function impactRedirectBase(store: Store): string {
   }
 }
 
+export function isAffiliateAllowedOnClient(
+  surface: ScanSurface = "web",
+  clientPlatform?: ClientPlatform
+): boolean {
+  if (surface === "extension") return false;
+  if (
+    clientPlatform === "chrome-extension" ||
+    clientPlatform === "ios-safari" ||
+    clientPlatform === "ios-share" ||
+    clientPlatform === "ios-shortcut" ||
+    clientPlatform === "ios-app"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function withAffiliate(
   url: string,
   store: Store,
   clickId: string,
-  surface: ScanSurface = "web"
+  surface: ScanSurface = "web",
+  clientPlatform?: ClientPlatform
 ): { url: string; isPaidLink: boolean } {
-  // Browser extensions (Chrome / Safari) must never inject Amazon tags or Walmart Impact links
-  if (surface === "extension") {
+  // Browser extensions (Chrome / Safari) and all iOS App Store surfaces (Guideline 3.2.2(ix))
+  // must never inject Amazon Associates tags or Walmart/Target/Instacart Impact affiliate links.
+  if (!isAffiliateAllowedOnClient(surface, clientPlatform)) {
     return { url, isPaidLink: false };
   }
   const sep = url.includes("?") ? "&" : "?";
   if (store === "amazon") {
     // Android must not attach Amazon Associates tag until explicitly approved by Amazon
     if (
-      surface === "android" &&
+      (surface === "android" || clientPlatform === "android") &&
       (typeof process === "undefined" ||
         (process.env?.AMAZON_APP_APPROVED !== "true" &&
           process.env?.CLEANCART_AMAZON_MOBILE_APPROVED !== "true"))
@@ -2916,7 +3164,8 @@ export function buildLinks(
   store: Store,
   clickId = impactClickId(),
   surface: ScanSurface = "web",
-  instacartRetailerSlug?: string
+  instacartRetailerSlug?: string,
+  clientPlatform?: ClientPlatform
 ) {
   const meta = STORE_META[store];
   const query = alt.searchQuery || formatSwapFullTitle(alt);
@@ -2929,11 +3178,12 @@ export function buildLinks(
     `https://${meta.host}${path}`,
     store,
     clickId,
-    surface
+    surface,
+    clientPlatform
   );
   // Always use HTTPS App Links / Universal Links so native grocery apps preserve Impact/Amazon affiliate params when permitted.
   const deepLink = webUrl;
-  const { url: intentPath } = withAffiliate(path, store, clickId, surface);
+  const { url: intentPath } = withAffiliate(path, store, clickId, surface, clientPlatform);
   const androidIntentUrl =
     `intent://${meta.host}${intentPath}#Intent;scheme=https;package=${meta.androidPackage};` +
     `S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
@@ -2955,7 +3205,7 @@ const ALREADY_PURE_MAPLE_SYRUP_GUARD =
 
 const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternative[] }> = [
   {
-    match: /\b(oat\s*milk|planet\s+oat|oatly|chobani\s+oat)\b/i,
+    match: /^(?!.*\b(creamer|chocolate)\b).*\b(oat\s*(?:milk|beverage|drink|barista)|oatmilk|milked\s+oats?|planet\s+oat|oatly|chobani\s+oat|silk\s+oat(?:milk|\s+yeah)?|califia.*\boat\b)\b/i,
     alts: [
       {
         category: "Butter/Dairy",
@@ -2982,7 +3232,34 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
     ],
   },
   {
-    match: /\b(almond\s*milk|almond\s+breeze|silk\s+almond)\b/i,
+    match: /^(?!.*\b(creamer|chocolate)\b).*\b(soy\s*(?:milk|beverage|drink)|soymilk|silk\s+(?:original\s+|unsweetened\s+|vanilla\s+|organic\s+)?soy|westsoy|edensoy)\b/i,
+    alts: [
+      {
+        category: "Butter/Dairy",
+        brand: "Edensoy",
+        name: "Organic Unsweetened Soymilk",
+        sourceUrl: "https://store.edenfoods.com/edensoy-unsweetened-organic/",
+        verifiedAt: "2026-11-10",
+        size: "32 fl oz carton",
+        isOrganic: true,
+        image: "/swaps/milk.png",
+        ingredients: "Purified water, organic soybeans.",
+        nutrition: {
+          caloriesKcal100g: 37.5,
+          sugarsG100g: 0.4,
+          saturatedFatG100g: 0.4,
+          sodiumMg100g: 12.5,
+          fiberG100g: 0.8,
+          proteinG100g: 4.2,
+          fruitsVegNutsPct: 0,
+          isOrganic: true,
+          isWholeFood: false,
+        },
+      },
+    ],
+  },
+  {
+    match: /^(?!.*\b(creamer|chocolate)\b).*\b(almond\s*(?:milk|beverage)|almondmilk|almond\s+breeze|silk\s+almond|califia.*almond|malk.*almond)\b/i,
     alts: [
       {
         category: "Butter/Dairy",
@@ -3009,7 +3286,7 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
     ],
   },
   {
-    match: /^(?!.*\b(oat|almond|coconut|soy|cashew|chocolate|strawberry|condensed|evaporated|milk\s+chocolate)\b).*\b(milk)\b/i,
+    match: STORE_DAIRY_WHOLE_MILK_MATCH,
     alts: [
       {
         category: "Butter/Dairy",
@@ -3021,6 +3298,49 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
         isOrganic: true,
         image: "/swaps/milk.png",
         ingredients: "Organic Grade A whole milk, vitamin D3.",
+      },
+    ],
+  },
+  {
+    match: /\b(tortillas?|wraps?|mission\s+flour|mission\s+carb|guerrero)\b/i,
+    alts: [
+      {
+        category: "Bread",
+        brand: "Food For Life",
+        name: "Ezekiel 4:9 Organic Sprouted Whole Grain Tortillas",
+        sourceUrl: "https://www.foodforlife.com/product/tortillas/ezekiel-49-sprouted-whole-grain-tortillas",
+        verifiedAt: "2026-11-10",
+        size: "12 oz pack (6 tortillas)",
+        isOrganic: true,
+        image: "/swaps/tortillas.png",
+        ingredients: "Organic sprouted wheat, filtered water, organic sesame seeds, organic sprouted soybeans, organic sprouted barley, organic sprouted millet, organic sprouted lentils, organic sprouted spelt, sea salt.",
+      },
+      {
+        category: "Bread",
+        brand: "Siete",
+        name: "Almond Flour Grain Free Tortillas",
+        sourceUrl: "https://sietefoods.com/products/almond-flour-tortillas",
+        verifiedAt: "2026-11-09",
+        size: "7 oz pack (8 tortillas)",
+        image: "/swaps/tortillas.png",
+        ingredients: "Almond flour, tapioca flour, water, cassava flour, coconut oil, sea salt.",
+        itemIds: { walmart: "506938184" },
+      },
+    ],
+  },
+  {
+    match: /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat\s+thins|graham)\b/i,
+    alts: [
+      {
+        category: "Crackers",
+        brand: "Lundberg Family Farms",
+        name: "Organic Brown Rice Thin Stackers",
+        sourceUrl: "https://www.lundberg.com/products/organic-brown-rice-thin-stackers",
+        verifiedAt: "2026-11-10",
+        size: "5.9 oz box",
+        isOrganic: true,
+        image: "/swaps/crackers.jpg",
+        ingredients: "Organic whole grain brown rice, sea salt.",
       },
     ],
   },
@@ -3088,7 +3408,37 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
     ],
   },
   {
-    match: /\b(yogh?urt|skyr|chobani|yoplait|dannon|oikos)\b/i,
+    match: /\b(earth\s+balance|country\s+crock\s+plant|miyoko(?:'?s)?.*\b(?:butter|spread)\b|plant[- ]?(?:based\s+)?(?:butter|buttery\s+spread)|vegan\s+(?:butter|buttery\s+spread)|dairy[- ]?free\s+(?:butter|buttery\s+spread)|non[- ]?dairy\s+(?:butter|buttery\s+spread))\b/i,
+    alts: [
+      {
+        category: "Butter/Dairy",
+        brand: "Miyoko's Creamery",
+        name: "Organic Cultured Vegan Butter",
+        sourceUrl: "https://www.miyokos.com/products/european-style-plant-milk-butter-salted",
+        verifiedAt: "2026-11-11",
+        size: "8 oz block",
+        isOrganic: true,
+        image: "/swaps/butter.jpg",
+        ingredients: "Organic coconut oil, filtered water, organic cashew milk (filtered water, organic cashews), organic sunflower lecithin, sea salt, cultures.",
+        nutrition: {
+          caloriesKcal100g: 714,
+          sugarsG100g: 0,
+          saturatedFatG100g: 57.1,
+          sodiumMg100g: 500,
+          fiberG100g: 0,
+          proteinG100g: 0,
+          fruitsVegNutsPct: 0,
+          isOrganic: true,
+          isWholeFood: false,
+        },
+      },
+    ],
+  },
+  {
+    match: new RegExp(
+      `^(?!.*\\b(${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b)(?:.*\\b(yogh?urt|skyr|yoplait|dannon|oikos)\\b|(?!.*\\b(creamer|coffee|oat\\s*milk|oatmilk|barista)\\b).*\\bchobani\\b)`,
+      "i"
+    ),
     alts: [
       {
         category: "Yogurt",
@@ -3099,6 +3449,22 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
         size: "24 oz tub",
         image: "/swaps/yogurt.jpg",
         ingredients: "Pasteurized whole milk, live active cultures.",
+      },
+    ],
+  },
+  {
+    match: /^(?!.*\b(cereal|puffs?|o'?s)\b).*\b(cookies?|oreos?|chips\s+ahoy|nutter\s+butter|keebler|wafers?|biscuits?)\b/i,
+    alts: [
+      {
+        category: "Snacks",
+        brand: "Simple Mills",
+        name: "Crunchy Almond Flour Chocolate Chip Cookies",
+        size: "5.5 oz box",
+        image: "/swaps/cookies.png",
+        ingredients: "Nut and seed flour blend (almonds, organic coconut, flaxseeds), tapioca starch, chocolate chips (cane sugar, unsweetened chocolate, cocoa butter), organic coconut sugar, organic coconut oil, arrowroot, vanilla extract, sea salt, baking soda, cream of tartar, rosemary extract.",
+        sourceUrl: "https://simplemills.com/Products/Product/Crunchy-Chocolate-Chip-Cookies.aspx",
+        verifiedAt: "2026-11-09",
+        itemIds: { walmart: "189635069" },
       },
     ],
   },
@@ -3163,15 +3529,47 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
 
 export type RetailerId = Store;
 
+const PLANT_OR_DAIRY_FREE_SOURCE_RE = new RegExp(`\\b(${PLANT_MILK_QUALIFIER_RE})\\b`, "i");
+
+const BENIGN_NON_DAIRY_COMPOUNDS_RE =
+  /\b(?:(?:coconut|oat|almond|soy|cashew|rice|hemp|pea|flax|macadamia)\s+milk|(?:cocoa|cacao|shea|peanut|almond|cashew|sunflower|seed|apple|pumpkin|fruit|vegan|plant[- ]?(?:based\s+)?)\s*butter|sunbutter|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi;
+
+function stripBenignNonDairyCompounds(text: string): string {
+  return text.replace(BENIGN_NON_DAIRY_COMPOUNDS_RE, " ");
+}
+
+function hasMatchedSpecificSwapRule(
+  productTitle = "",
+  store?: Store,
+  preferStoreBrand = false,
+  requireOrganic = false
+): boolean {
+  const title = productTitle.trim();
+  if (!title) return false;
+  const passesOrganic = (alt: CleanAlternative) =>
+    !requireOrganic || alt.isOrganic === true || alt.nutrition?.isOrganic === true;
+  if (store) {
+    if (preferStoreBrand && store === "walmart") {
+      if (WALMART_STORE_BRAND_ALTERNATIVES.some((r) => r.match.test(title) && passesOrganic(r.alt))) return true;
+    }
+    const storeRules = STORE_SPECIFIC_OVERRIDES[store];
+    if (storeRules && storeRules.some((r) => r.match.test(title) && passesOrganic(r.alt))) return true;
+  }
+  return EXACT_PRODUCT_ALTERNATIVES.some((r) => r.match.test(title) && passesOrganic(r.alt));
+}
+
 function evaluateCandidateForSwap(
   alt: CleanAlternative,
   params: {
     score: number;
     productTitle?: string;
+    ingredients?: string;
     store: Store;
     watchlist?: Watchlist;
     familyWatchlist?: import("./rubric").Category[];
+    dietaryWatchlist?: string[];
     surface: ScanSurface;
+    clientPlatform?: ClientPlatform;
     instacartRetailerSlug?: string;
     requireZeroFlags?: boolean;
     requireOrganicUpgrade?: boolean;
@@ -3185,6 +3583,50 @@ function evaluateCandidateForSwap(
   if (params.requireZeroFlags && baseClean.flagged.length > 0) return null;
 
   const fullTitle = formatSwapFullTitle(alt);
+
+  // Enforce explicit household dietary / allergy watchlist (Dairy, Gluten, Nuts, Soy, Egg, Fish, Sesame, High Sodium)
+  if (params.dietaryWatchlist && params.dietaryWatchlist.length > 0) {
+    const dietaryViolations = evaluateDietaryAlerts(
+      params.dietaryWatchlist,
+      fullTitle,
+      alt.ingredients,
+      { ...alt.nutrition, isOrganic }
+    );
+    if (dietaryViolations.length > 0) return null;
+  }
+
+  // Implicit major-allergen introduction guard:
+  // Never introduce Peanuts/Tree Nuts, Shellfish/Fish, or Dairy (onto plant-based/non-dairy items)
+  // when absent from the scanned product.
+  const sourceTitle = params.productTitle || "";
+  const sourceIng = params.ingredients || "";
+  const sourceAllergens = detectMajorAllergens(sourceTitle, sourceIng);
+  const candidateAllergens = detectMajorAllergens(fullTitle, alt.ingredients);
+
+  if (candidateAllergens.has("peanuts_nuts")) {
+    if (!sourceAllergens.has("peanuts_nuts")) return null;
+    const sourceCombined = `${sourceTitle} ${sourceIng}`;
+    const candCombined = `${fullTitle} ${alt.ingredients}`;
+    const sourceHasPeanut = /\b(peanuts?|jif|skippy|peter\s+pan|reese'?s|nutter\s+butter)\b/i.test(sourceCombined);
+    const sourceHasTreeNut =
+      /\b(almonds?|almondmilk|cashews?|cashewmilk|walnuts?|pecans?|hazelnuts?|nutella|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?)\b/i.test(
+        sourceCombined
+      );
+    const candHasPeanut = /\bpeanuts?\b/i.test(candCombined) && !/\bpeanut[\s-]*free\b/i.test(fullTitle);
+    const candHasTreeNut =
+      /\b(almonds?|almondmilk|cashews?|cashewmilk|walnuts?|pecans?|hazelnuts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?)\b/i.test(
+        candCombined
+      );
+    if (candHasPeanut && !sourceHasPeanut) return null;
+    if (candHasTreeNut && !sourceHasTreeNut) return null;
+  }
+  if (candidateAllergens.has("shellfish_fish") && !sourceAllergens.has("shellfish_fish")) {
+    return null;
+  }
+  if (candidateAllergens.has("dairy") && PLANT_OR_DAIRY_FREE_SOURCE_RE.test(sourceTitle)) {
+    return null;
+  }
+
   if (params.productTitle) {
     const normTitle = params.productTitle.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
     const normBrand = alt.brand.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -3211,19 +3653,24 @@ function evaluateCandidateForSwap(
       .trim();
     const isPlainDairyMilk =
       /\bmilk\b/i.test(requested) &&
-      !/\b(chocolate|strawberry|yogurt|yoghurt|ice\s+cream|cheese|butter|condensed|evaporated|almond|oat|soy|coconut|cashew)\b/i.test(requested);
+      !PLANT_OR_DAIRY_FREE_SOURCE_RE.test(requested) &&
+      !/\b(chocolate|strawberry|yogurt|yoghurt|ice\s+cream|cheese|butter|condensed|evaporated)\b/i.test(requested);
     const altHasZeroAddedSugar =
       !/\b(sugar|cane\s+sugar|maple\s+syrup|honey|agave|corn\s+syrup|dextrose|fructose|malt\s+syrup|date\s+paste|concentrated\s+.*juice)\b/i.test(
         alt.ingredients
       );
     // A named alternative can have a different flavor or protein amount, but must
     // preserve explicit dietary/formulation restrictions requested by the shopper.
+    // ("extra creamy" / "full fat" on plant milks indicate emulsified oil blends being swapped away from, not a dietary restriction.)
     const rawRestrictions =
       requested.match(
-        /\b(?:plain|unflavored|unsweetened|extra\s+creamy|zero\s+sugar|sugar[ -]*free|organic|gluten[ -]*free|grain[ -]*free|lactose[ -]*free|skim|nonfat|fat[ -]*free|whole\s+milk)\b|\b[012]\s*%/gi
+        /\b(?:plain|unflavored|unsweetened|zero\s+sugar|sugar[ -]*free|organic|gluten[ -]*free|grain[ -]*free|lactose[ -]*free|skim|nonfat|fat[ -]*free|whole\s+milk)\b|\b[012]\s*%/gi
       ) || [];
     const restrictions = rawRestrictions.filter((tok) => {
       if (/^(?:[012]\s*%|skim|nonfat|fat[ -]*free|whole\s+milk)$/i.test(tok) && !isPlainDairyMilk) {
+        return false;
+      }
+      if (/^plain$/i.test(tok) && PLANT_OR_DAIRY_FREE_SOURCE_RE.test(requested) && altHasZeroAddedSugar) {
         return false;
       }
       if (/^(?:zero\s+sugar|sugar[ -]*free)$/i.test(tok) && altHasZeroAddedSugar && !/\b(soda|cola|pop|energy|drink|tea|lemonade)\b/i.test(requested)) {
@@ -3233,10 +3680,21 @@ function evaluateCandidateForSwap(
     });
     const guardQuery = restrictions.join(" ") + (isPlainDairyMilk ? " milk" : "");
     if (!passesVariantGuard(guardQuery, variantTitle, { allowCleanerSwap: true })) return null;
+    const sanitizedAltTitle = stripBenignNonDairyCompounds(fullTitle);
+    const sanitizedAltIng = stripBenignNonDairyCompounds(alt.ingredients);
+    const sanitizedAltCombined = `${sanitizedAltTitle} ${sanitizedAltIng}`;
     if (
-      /\b(vegan|dairy[ -]*free|non[ -]*dairy)\b/i.test(requested) &&
-      /\b(milk|cream|whey|casein|butter|cheese|yogurt|lactose|eggs?|beef|pork|chicken|turkey|fish|gelatin)\b/i.test(
-        alt.ingredients
+      (PLANT_OR_DAIRY_FREE_SOURCE_RE.test(requested) || /\b(vegan|dairy[ -]*free|non[ -]*dairy)\b/i.test(requested)) &&
+      /\b(milk|cream|whey|casein|butter|cheese|yogh?urt|lactose|ghee|buttermilk|milkfat)\b/i.test(
+        sanitizedAltCombined
+      )
+    ) {
+      return null;
+    }
+    if (
+      /\bvegan\b/i.test(requested) &&
+      /\b(eggs?|beef|pork|chicken|turkey|fish|gelatin|honey|lard|tallow)\b/i.test(
+        sanitizedAltCombined
       )
     ) {
       return null;
@@ -3267,7 +3725,14 @@ function evaluateCandidateForSwap(
     score: altScore,
     store: params.store,
     isStoreBrand: isStoreBrandForStore(alt.brand, params.store),
-    ...buildLinks(alt, params.store, impactClickId(), params.surface, params.instacartRetailerSlug),
+    ...buildLinks(
+      alt,
+      params.store,
+      impactClickId(),
+      params.surface,
+      params.instacartRetailerSlug,
+      params.clientPlatform
+    ),
   };
 
   return {
@@ -3291,11 +3756,63 @@ function isPesticideWatchTriggered(
   return { watchActive, hasPesticideRisk };
 }
 
+const SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT = new RegExp(
+  `\\b(soda|cola|pepsi|coke|sprite|mountain\\s+dew|fanta|root\\s+beer|ginger\\s+ale|energy\\s+drink|monster|red\\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|pre[- ]?workout|protein\\s+(?:shake|powder)|peanut\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|sunbutter|hazelnut|nutella|jam|jelly|preserves|chocolate|cacao|hershey'?s|reese'?s|snickers|twix|m&m'?s|kit\\s*kat|lindt|ghirardelli|cookies?|oreos?|chips\\s+ahoy|brownies?|cupcakes?|donuts?|doughnuts?|pop[- ]?tarts?|cheese|cheddar|mozzarella|parmesan|gouda|provolone|swiss|velveeta|kraft\\s+singles|american\\s+singles|cream\\s+cheese|sour\\s+cream|cottage\\s+cheese|heavy\\s+cream|whipping\\s+cream|half\\s+and\\s+half|ice\\s+cream|gelato|milk|oat\\s*milk|oatmilk|soymilk|soy\\s*milk|almond\\s*milk|almondmilk|coconutmilk|coconut\\s*milk|cashew\\s*milk|creamer|eggs?|eggnog|soup|chowder|broth|stock|gravy|ketchup|mustard|mayo|mayonnaise|aioli|salsa|marinara|pasta\\s+sauce|bbq|barbecue|guacamole|hummus|tzatziki|ramen|pasta|spaghetti|mac\\s*(?:&|and)\\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?|syrup|oatmeal|fries|tater\\s+tots?|hash\\s*browns?|mashed\\s+potato|burger|beyond|impossible|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|nectarines?|cherries|peppers?|potatoes?|celery|tomatoes?|green\\s+beans?|chickpeas?|garbanzo|lentils?|flour|${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b`,
+  "i"
+);
+
+function isCategoryDefaultAllowed(productTitle = "", category: SwapCategory): boolean {
+  const title = productTitle.trim();
+  if (!title) return true;
+  if (
+    PLANT_OR_DAIRY_FREE_SOURCE_RE.test(title) &&
+    (category === "Yogurt" || category === "Butter/Dairy" || category === "Deli Meat")
+  ) {
+    return false;
+  }
+  if (/\bvegan\b/i.test(title) && category === "Dressings") {
+    return false;
+  }
+  if (
+    category === "Yogurt" &&
+    /\b(yogh?urt|skyr|kefir)\b/i.test(title) &&
+    !/\b(pretzels?|raisins?|bites?|drops?|bars?|covered|coated)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (
+    category === "Cereal" &&
+    /\b(cereals?|flakes|puffs|granola|muesli|o'?s|crunch)\b/i.test(title) &&
+    !/\b(oatmeal|instant\s+oats|bars?|shakes?|powders?)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (
+    category === "Chips" &&
+    /\b(chips|crisps)\b/i.test(title) &&
+    !/\b(chocolate\s+chips?|chips\s+ahoy|cookies?)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (category === "Crackers" && /\bcrackers?\b/i.test(title)) {
+    return true;
+  }
+  if (
+    category === "Bread" &&
+    /\b(bread|loaf|buns?|rolls?)\b/i.test(title) &&
+    !/\b(tortillas?|waffles?|pancakes?|pizza|garlic\s+bread)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT.test(title)) return false;
+  return true;
+}
+
 /**
  * Returns a reference clean swap when a product scores < 75 (or when pesticide_risk is triggered
  * on a non-organic high-residue crop / conventional grain), else null.
- * The alternative is checked against the deterministic additive rubric (with active watchlist)
- * and scored with the 3-pillar Yuka rubric.
+ * The alternative is checked against the deterministic additive rubric (with active watchlist),
+ * household dietary/allergen watchlist, and scored with the 3-pillar Yuka rubric.
  */
 export function resolveSwap(params: {
   score: number;
@@ -3308,6 +3825,7 @@ export function resolveSwap(params: {
   familyWatchlist?: import("./rubric").Category[];
   dietaryWatchlist?: string[];
   surface?: ScanSurface;
+  clientPlatform?: ClientPlatform;
   instacartRetailerSlug?: string;
   preferStoreBrand?: boolean;
 }): SwapResult | null {
@@ -3328,49 +3846,95 @@ export function resolveSwap(params: {
   const surface: ScanSurface =
     params.surface === "android" || params.surface === "extension"
       ? params.surface
-      : "web";
+      : !isAffiliateAllowedOnClient("web", params.clientPlatform)
+        ? "extension"
+        : "web";
   const requireOrganicUpgrade = params.score >= 75 && hasPesticideRisk;
-  const alt = resolveCleanAlternative(
-    params.productTitle,
-    params.category,
+  const title = (params.productTitle || "").trim();
+  const detectedCat = params.category ?? detectCategory(title, params.ingredients);
+  const allowCatDefault = isCategoryDefaultAllowed(title, detectedCat);
+
+  const matchedSpecificPrimary = hasMatchedSpecificSwapRule(
+    title,
     store,
     Boolean(params.preferStoreBrand),
-    pesticideWatchActive,
+    pesticideWatchActive
   );
-  const evaluated = evaluateCandidateForSwap(alt, {
-    score: params.score,
-    productTitle: params.productTitle,
-    store,
-    watchlist: params.watchlist,
-    familyWatchlist: params.familyWatchlist,
-    surface,
-    instacartRetailerSlug: params.instacartRetailerSlug,
-    requireOrganicUpgrade,
-  });
-  if (evaluated) return evaluated.swap;
-  if (params.preferStoreBrand || (pesticideWatchActive && !requireOrganicUpgrade)) {
-    const fallbackAlt = resolveCleanAlternative(params.productTitle, params.category, store, false, requireOrganicUpgrade);
-    const fallbackEval = evaluateCandidateForSwap(fallbackAlt, {
+  if (matchedSpecificPrimary || allowCatDefault) {
+    const alt = resolveCleanAlternative(
+      params.productTitle,
+      params.category,
+      store,
+      Boolean(params.preferStoreBrand),
+      pesticideWatchActive
+    );
+    const evaluated = evaluateCandidateForSwap(alt, {
       score: params.score,
       productTitle: params.productTitle,
+      ingredients: params.ingredients,
       store,
       watchlist: params.watchlist,
       familyWatchlist: params.familyWatchlist,
+      dietaryWatchlist: params.dietaryWatchlist,
       surface,
+      clientPlatform: params.clientPlatform,
       instacartRetailerSlug: params.instacartRetailerSlug,
       requireOrganicUpgrade,
     });
-    return fallbackEval ? fallbackEval.swap : null;
+    if (evaluated) return evaluated.swap;
+  }
+
+  if (params.preferStoreBrand || (pesticideWatchActive && !requireOrganicUpgrade)) {
+    const matchedSpecificFallback = hasMatchedSpecificSwapRule(title, store, false, requireOrganicUpgrade);
+    if (matchedSpecificFallback || allowCatDefault) {
+      const fallbackAlt = resolveCleanAlternative(
+        params.productTitle,
+        params.category,
+        store,
+        false,
+        requireOrganicUpgrade
+      );
+      const fallbackEval = evaluateCandidateForSwap(fallbackAlt, {
+        score: params.score,
+        productTitle: params.productTitle,
+        ingredients: params.ingredients,
+        store,
+        watchlist: params.watchlist,
+        familyWatchlist: params.familyWatchlist,
+        dietaryWatchlist: params.dietaryWatchlist,
+        surface,
+        clientPlatform: params.clientPlatform,
+        instacartRetailerSlug: params.instacartRetailerSlug,
+        requireOrganicUpgrade,
+      });
+      if (fallbackEval) return fallbackEval.swap;
+    }
+  }
+  if (params.productTitle) {
+    const fallbackPool = resolveSwapCandidates({
+      score: params.score,
+      productTitle: params.productTitle,
+      ingredients: params.ingredients,
+      nutrition: params.nutrition,
+      category: params.category,
+      store,
+      watchlist: params.watchlist,
+      familyWatchlist: params.familyWatchlist,
+      dietaryWatchlist: params.dietaryWatchlist,
+      surface,
+      clientPlatform: params.clientPlatform,
+      instacartRetailerSlug: params.instacartRetailerSlug,
+      preferStoreBrand: params.preferStoreBrand,
+      limit: 1,
+    });
+    if (fallbackPool.length > 0) return fallbackPool[0];
   }
   return null;
 }
 
-const SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT =
-  /\b(soda|cola|pepsi|coke|sprite|mountain\s+dew|fanta|root\s+beer|ginger\s+ale|energy\s+drink|monster|red\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|peanut\s+butter|almond\s+butter|hazelnut|nutella|jam|jelly|preserves|ice\s+cream|gelato|milk|oat\s*milk|almond\s*milk|eggs?|soup|chowder|broth|stock|ketchup|mustard|mayo|mayonnaise|salsa|marinara|pasta\s+sauce|bbq|guacamole|hummus|ramen|pasta|spaghetti|mac\s*(?:&|and)\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|nectarines?|cherries|peppers?|potatoes?|celery|tomatoes?|green\s+beans?|chickpeas?|garbanzo|lentils?|flour)\b/i;
-
 /**
  * Returns ranked clean alternatives (up to `limit ?? 4`) for a product's exact food type,
- * deduplicated by brand + name, passing `passesVariantGuard`, with 0 watchlist violations,
+ * deduplicated by brand + name, passing `passesVariantGuard`, with 0 watchlist & dietary violations,
  * and preserving `instacartRetailerSlug` when shopping inside Instacart.
  */
 export function resolveSwapCandidates(params: {
@@ -3384,6 +3948,7 @@ export function resolveSwapCandidates(params: {
   familyWatchlist?: import("./rubric").Category[];
   dietaryWatchlist?: string[];
   surface?: ScanSurface;
+  clientPlatform?: ClientPlatform;
   instacartRetailerSlug?: string;
   limit?: number;
   preferStoreBrand?: boolean;
@@ -3404,13 +3969,26 @@ export function resolveSwapCandidates(params: {
   const surface: ScanSurface =
     params.surface === "android" || params.surface === "extension"
       ? params.surface
-      : "web";
+      : !isAffiliateAllowedOnClient("web", params.clientPlatform)
+        ? "extension"
+        : "web";
   const maxItems = Math.max(1, Math.min(10, params.limit ?? 4));
   const requireOrganicUpgrade = params.score >= 75 && hasPesticideRisk;
 
-  const primaryAltKey = formatSwapFullTitle(
-    resolveCleanAlternative(title, params.category, store, Boolean(params.preferStoreBrand), pesticideWatchActive)
-  ).toLowerCase();
+  const detectedCat = params.category ?? detectCategory(title, params.ingredients);
+  const allowCatDefault = isCategoryDefaultAllowed(title, detectedCat);
+  const matchedSpecificPrimary = hasMatchedSpecificSwapRule(
+    title,
+    store,
+    Boolean(params.preferStoreBrand),
+    pesticideWatchActive
+  );
+  const primaryAltKey =
+    matchedSpecificPrimary || allowCatDefault
+      ? formatSwapFullTitle(
+          resolveCleanAlternative(title, params.category, store, Boolean(params.preferStoreBrand), pesticideWatchActive)
+        ).toLowerCase()
+      : "";
 
   const rawPool: Array<{ alt: CleanAlternative; tier: number }> = [];
 
@@ -3449,9 +4027,9 @@ export function resolveSwapCandidates(params: {
     }
   }
 
-  // Tier 1: Category clean default only if the food sub-type aligns (never suggest Fruit Bar for Soda or Ranch for Soup)
-  const detectedCat = params.category ?? detectCategory(title, params.ingredients);
-  if (!SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT.test(title) || rawPool.length === 0) {
+  // Tier 1: Category clean default only if the food sub-type & dietary profile align
+  // (never suggest Fruit Bars for Cheese/Chocolate/Soda or cow's Dairy for Plant-Based items)
+  if (allowCatDefault) {
     rawPool.push({ alt: CLEAN_ALTERNATIVES[detectedCat], tier: 1 });
   }
 
@@ -3466,10 +4044,13 @@ export function resolveSwapCandidates(params: {
     const res = evaluateCandidateForSwap(entry.alt, {
       score: params.score,
       productTitle: title,
+      ingredients: params.ingredients,
       store,
       watchlist: params.watchlist,
       familyWatchlist: params.familyWatchlist,
+      dietaryWatchlist: params.dietaryWatchlist,
       surface,
+      clientPlatform: params.clientPlatform,
       instacartRetailerSlug: params.instacartRetailerSlug,
       requireZeroFlags: true,
       requireOrganicUpgrade,
@@ -3499,5 +4080,6 @@ export function resolveSwapCandidates(params: {
 
   return pool.slice(0, maxItems).map((e) => e.swap);
 }
+
 
 

@@ -1,0 +1,95 @@
+name: HeyBroc
+options:
+  bundleIdPrefix: com.heybroc
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.2"
+  generateEmptyDirectories: false
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  HeyBroc:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: App/HeyBrocApp.swift
+      - path: App/Assets.xcassets
+      - path: App/LaunchScreen.storyboard
+      - path: App/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.heybroc.app
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/HeyBroc.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - target: HeyBrocSafariExtension
+        embed: true
+      - target: HeyBrocShareExtension
+        embed: true
+      - sdk: SwiftUI.framework
+      - sdk: WebKit.framework
+      - sdk: SafariServices.framework
+
+  HeyBrocSafariExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: SafariExtension/SafariWebExtensionHandler.swift
+      - path: SafariExtension/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: SafariExtension/Resources
+        type: group
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.heybroc.app.SafariExtension
+        PRODUCT_MODULE_NAME: HeyBrocSafariExtension
+        INFOPLIST_FILE: SafariExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: SafariExtension/SafariExtension.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: SafariServices.framework
+
+  HeyBrocShareExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: ShareExtension/ShareViewController.swift
+      - path: ShareExtension/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.heybroc.app.ShareExtension
+        PRODUCT_MODULE_NAME: HeyBrocShareExtension
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/ShareExtension.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: UniformTypeIdentifiers.framework
+
+schemes:
+  HeyBroc:
+    build:
+      targets:
+        HeyBroc: all
+        HeyBrocSafariExtension: [running, profiling, archiving]
+        HeyBrocShareExtension: [running, profiling, archiving]
+    run:
+      config: Debug
+    archive:
+      config: Release

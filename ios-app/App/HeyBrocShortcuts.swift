@@ -243,11 +243,12 @@ enum HeyBrocNativeScannerAPI {
         if let sw = obj["swap"] as? [String: Any], let swTitle = sw["title"] as? String {
             let nut = sw["nutrition"] as? [String: Any]
             let isOrg = (nut?["isOrganic"] as? Bool) ?? swTitle.lowercased().contains("organic")
+            let rawUrl = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
             parsedSwap = HeyBrocNativeSwap(
                 title: swTitle,
                 brand: (sw["brand"] as? String) ?? "",
                 score: (sw["score"] as? Int) ?? 90,
-                webUrl: (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String),
+                webUrl: rawUrl.flatMap { sanitizeRetailerURL($0) },
                 isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
                 isOrganic: isOrg
             )
@@ -269,6 +270,26 @@ enum HeyBrocNativeScannerAPI {
         )
     }
 
+    static func sanitizeRetailerURL(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var comps = URLComponents(string: trimmed) else { return nil }
+        if comps.path.lowercased().hasPrefix("/c/"),
+           let targetParam = comps.queryItems?.first(where: { $0.name.lowercased() == "u" })?.value,
+           !targetParam.isEmpty {
+            let decoded = targetParam.removingPercentEncoding ?? targetParam
+            if let unwrapped = URLComponents(string: decoded) {
+                comps = unwrapped
+            }
+        }
+        guard let scheme = comps.scheme?.lowercased(), scheme == "https" || scheme == "http" else { return nil }
+        let blockedParams: Set<String> = ["tag", "linkcode", "ascsubtag", "camp", "creative", "subid1", "irclickid"]
+        if let items = comps.queryItems {
+            let filtered = items.filter { !blockedParams.contains($0.name.lowercased()) }
+            comps.queryItems = filtered.isEmpty ? nil : filtered
+        }
+        return comps.url?.absoluteString
+    }
+
     static func scan(
         productTitle: String = "",
         rawIngredients: String = "",
@@ -281,9 +302,12 @@ enum HeyBrocNativeScannerAPI {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("ios", forHTTPHeaderField: "X-HeyBroc-Platform")
+        req.setValue("ios-app", forHTTPHeaderField: "X-Client-Platform")
 
         var payload: [String: Any] = [
             "store": store ?? HeyBrocSharedPrefs.activeStore,
+            "surface": "extension",
+            "clientPlatform": "ios-app",
             "deviceId": HeyBrocSharedPrefs.deviceId,
             "familyWatchlist": HeyBrocSharedPrefs.familyWatchlist,
             "dietaryWatchlist": HeyBrocSharedPrefs.dietaryWatchlist,

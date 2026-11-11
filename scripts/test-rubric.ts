@@ -2777,6 +2777,467 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  // ==================== 10-PILLAR LAUNCH AUDIT REGRESSION SUITE (WORKSTREAMS 1–5) ====================
+  const { isUsMarketOffProduct } = await import("../lib/lookup");
+  const { detectMajorAllergens } = await import("../lib/dietary");
+  const { isAffiliateAllowedOnClient } = await import("../lib/swaps");
+  const { inferClientPlatform } = await import("../lib/scan");
+  const productImageRouteMod = await import("../app/api/product-image/route");
+  const influencersRouteMod = await import("../app/api/influencers/route");
+  const influencersLibMod = await import("../lib/influencers");
+  const entitlementsLibMod = await import("../lib/entitlements");
+
+  // Workstream 1A: US label formulation priority in Open Food Facts lookups
+  check(
+    "Workstream 1A: isUsMarketOffProduct accepts US-tagged & North American UPC entries and rejects UK/EU/CA/AU & foreign EAN-13 entries",
+    isUsMarketOffProduct({ countries_tags: ["en:united-states"], code: "016000275287" }) === true &&
+      isUsMarketOffProduct({ countries_tags: undefined, code: "016000275287" }) === true &&
+      isUsMarketOffProduct({ countries_tags: undefined, code: "0016000275287" }) === true &&
+      isUsMarketOffProduct({ countries_tags: ["en:united-kingdom"], code: "5000159459228" }) === false &&
+      isUsMarketOffProduct({ countries_tags: ["en:france", "en:germany"], code: "3017620422003" }) === false &&
+      isUsMarketOffProduct({ countries_tags: ["en:canada"], code: "0060383888237" }) === false &&
+      isUsMarketOffProduct({ countries_tags: ["en:australia"], code: "9300675024846" }) === false &&
+      isUsMarketOffProduct({ countries_tags: undefined, code: "5000159459228" }) === false &&
+      isUsMarketOffProduct({ countries_tags: undefined, code: "3017620422003" }) === false
+  );
+
+  // Workstream 1B: Plant-milk/dairy separation, nut-free defaults & dietaryWatchlist (including sesame) swap safety
+  const oatExtraCreamySwap = resolveSwap({
+    score: 42,
+    productTitle: "Planet Oat Extra Creamy Oatmilk, 52 fl oz",
+    store: "walmart",
+  });
+  const oatKrogerSwap = resolveSwap({
+    score: 42,
+    productTitle: "Chobani Oat Milk Extra Creamy, 52 fl oz",
+    store: "kroger",
+  });
+  const oatCostcoSwap = resolveSwap({
+    score: 42,
+    productTitle: "Oatly Oatmilk Original, 64 fl oz",
+    store: "costco",
+  });
+  const soyMilkSwap = resolveSwap({
+    score: 45,
+    productTitle: "Silk Original Soymilk, 64 fl oz",
+    store: "target",
+  });
+  const coconutMilkSwap = resolveSwap({
+    score: 45,
+    productTitle: "Silk Unsweetened Coconut Milk, 64 fl oz",
+    store: "walmart",
+  });
+  const plantCreamerSwap = resolveSwap({
+    score: 38,
+    productTitle: "Silk Vanilla Oat Coffee Creamer, 32 fl oz",
+    store: "walmart",
+  });
+  check(
+    "Workstream 1B: Oat, soy, coconut, and plant-based creamers swap strictly to plant-based dairy-free & nut-free alternatives across stores",
+    Boolean(
+      oatExtraCreamySwap &&
+        !detectMajorAllergens(oatExtraCreamySwap.title, oatExtraCreamySwap.ingredients).has("dairy") &&
+        !detectMajorAllergens(oatExtraCreamySwap.title, oatExtraCreamySwap.ingredients).has("peanuts_nuts") &&
+        oatKrogerSwap &&
+        !detectMajorAllergens(oatKrogerSwap.title, oatKrogerSwap.ingredients).has("dairy") &&
+        oatCostcoSwap &&
+        oatCostcoSwap.brand === "Kirkland Signature" &&
+        !detectMajorAllergens(oatCostcoSwap.title, oatCostcoSwap.ingredients).has("dairy") &&
+        soyMilkSwap &&
+        soyMilkSwap.brand === "WestSoy" &&
+        !detectMajorAllergens(soyMilkSwap.title, soyMilkSwap.ingredients).has("dairy") &&
+        coconutMilkSwap &&
+        coconutMilkSwap.brand === "Native Forest" &&
+        !detectMajorAllergens(coconutMilkSwap.title, coconutMilkSwap.ingredients).has("dairy") &&
+        plantCreamerSwap &&
+        plantCreamerSwap.brand === "Laird Superfood" &&
+        !detectMajorAllergens(plantCreamerSwap.title, plantCreamerSwap.ingredients).has("dairy")
+    )
+  );
+
+  const tortillaNutFreeSwap = resolveSwap({
+    score: 25,
+    productTitle: "Mission Soft Taco Flour Tortillas, 10 ct",
+    store: "walmart",
+  });
+  const cookieNutFreeSwap = resolveSwap({
+    score: 18,
+    productTitle: "Nabisco Oreo Chocolate Sandwich Cookies",
+    store: "walmart",
+  });
+  const snackDefaultSwap = resolveSwap({
+    score: 22,
+    productTitle: "Hostess Mystery Snack Pack",
+    store: "walmart",
+  });
+  const sesameFreeCrackerSwap = resolveSwap({
+    score: 15,
+    productTitle: "Cheez-It Original Crackers",
+    store: "walmart",
+    dietaryWatchlist: ["sesame"],
+  });
+  const pbStaysPeanutSwap = resolveSwap({
+    score: 25,
+    productTitle: "Skippy Creamy Peanut Butter",
+    store: "walmart",
+  });
+  const abStaysTreeNutSwap = resolveSwap({
+    score: 35,
+    productTitle: "Justin's Classic Almond Butter",
+    store: "walmart",
+  });
+  check(
+    "Workstream 1B: Nut-free tortillas/cookies/snacks never introduce nuts, peanut/tree-nut stay separated, and sesame dietaryWatchlist filters swaps",
+    Boolean(
+      tortillaNutFreeSwap &&
+        tortillaNutFreeSwap.brand === "Mi Rancho" &&
+        !detectMajorAllergens(tortillaNutFreeSwap.title, tortillaNutFreeSwap.ingredients).has("peanuts_nuts") &&
+        cookieNutFreeSwap &&
+        cookieNutFreeSwap.name.includes("Seed Flour") &&
+        !detectMajorAllergens(cookieNutFreeSwap.title, cookieNutFreeSwap.ingredients).has("peanuts_nuts") &&
+        snackDefaultSwap &&
+        !detectMajorAllergens(snackDefaultSwap.title, snackDefaultSwap.ingredients).has("peanuts_nuts") &&
+        sesameFreeCrackerSwap &&
+        sesameFreeCrackerSwap.brand === "Lundberg Family Farms" &&
+        !detectMajorAllergens(sesameFreeCrackerSwap.title, sesameFreeCrackerSwap.ingredients).has("sesame") &&
+        pbStaysPeanutSwap &&
+        /peanut/i.test(pbStaysPeanutSwap.ingredients) &&
+        !/almond|cashew/i.test(pbStaysPeanutSwap.ingredients) &&
+        abStaysTreeNutSwap &&
+        /almond/i.test(abStaysTreeNutSwap.ingredients) &&
+        !/\bpeanuts?\b/i.test(abStaysTreeNutSwap.ingredients)
+    )
+  );
+
+  // Workstream 1C: Verified product photos & Yuka-style missing-photo UX
+  const missingPhotoRes = await productImageRouteMod.GET(
+    new Request("http://localhost:3000/api/product-image?q=Unverified+Fictional+Item+998877", {
+      headers: { "x-forwarded-for": "127.0.0.88" },
+    })
+  );
+  const missingPhotoBody = await missingPhotoRes.text();
+  const simulatorSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
+  const chromeContentJs = fs.readFileSync("chrome-extension/content.js", "utf8");
+  const safariContentJs = fs.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+  check(
+    "Workstream 1C: /api/product-image serves Yuka-style neutral SVG placeholder on unverified items, Simulator taps to LabelScannerModal, and extensions sync domImageUrl",
+    Boolean(
+      missingPhotoRes.status === 200 &&
+        (missingPhotoRes.headers.get("content-type") || "").includes("image/svg+xml") &&
+        (missingPhotoRes.headers.get("x-image-source") || "").includes("Placeholder") &&
+        missingPhotoBody.includes("<svg") &&
+        !missingPhotoBody.includes("Grass-Fed") &&
+        fs.existsSync("public/product-photo-unavailable.svg") &&
+        simulatorSrc.includes("product-art--missing-photo") &&
+        simulatorSrc.includes("setLabelScannerOpen(true)") &&
+        chromeContentJs === safariContentJs &&
+        chromeContentJs.includes("domImageUrl") &&
+        chromeContentJs.includes("cc-thumb-empty")
+    )
+  );
+
+  // Workstream 2: iOS Guideline 3.2.2(ix) / 4.2 zero-affiliate compliance & 3-target Xcode project
+  const iosShareAmzScan = await runScan({
+    productTitle: "Nabisco Oreo Chocolate Sandwich Cookies",
+    store: "amazon",
+    clientPlatform: "ios-share",
+  });
+  const iosSafariAmzScan = await runScan({
+    productTitle: "Nabisco Oreo Chocolate Sandwich Cookies",
+    store: "amazon",
+    clientPlatform: "ios-safari",
+  });
+  const iosShortcutAmzScan = await runScan({
+    productTitle: "Nabisco Oreo Chocolate Sandwich Cookies",
+    store: "amazon",
+    format: "ios_text",
+  });
+  const iosAppAmzScan = await runScan({
+    productTitle: "Nabisco Oreo Chocolate Sandwich Cookies",
+    store: "amazon",
+    clientPlatform: "ios-app",
+  });
+  check(
+    "Workstream 2: Zero affiliate tags or paid links across all iOS surfaces (ios-share, ios-safari, ios-shortcut, ios-app) & complete 3-target Xcode project",
+    Boolean(
+      !isAffiliateAllowedOnClient("web", "ios-share") &&
+        !isAffiliateAllowedOnClient("web", "ios-safari") &&
+        !isAffiliateAllowedOnClient("web", "ios-shortcut") &&
+        !isAffiliateAllowedOnClient("web", "ios-app") &&
+        !isAffiliateAllowedOnClient("extension", "chrome-extension") &&
+        inferClientPlatform({ origin: "safari-web-extension://abc" }) === "ios-safari" &&
+        inferClientPlatform({ format: "ios_text" }) === "ios-shortcut" &&
+        inferClientPlatform({ deviceId: "ios-share-1234" }) === "ios-share" &&
+        inferClientPlatform({ clientPlatform: "ios" }) === "ios-app" &&
+        iosShareAmzScan.ok &&
+        iosShareAmzScan.swap &&
+        !iosShareAmzScan.swap.isPaidLink &&
+        !(iosShareAmzScan.swap.webUrl || "").includes("tag=") &&
+        iosSafariAmzScan.ok &&
+        iosSafariAmzScan.swap &&
+        !iosSafariAmzScan.swap.isPaidLink &&
+        !(iosSafariAmzScan.swap.webUrl || "").includes("tag=") &&
+        iosShortcutAmzScan.ok &&
+        iosShortcutAmzScan.swap &&
+        !iosShortcutAmzScan.swap.isPaidLink &&
+        !(iosShortcutAmzScan.swap.webUrl || "").includes("tag=") &&
+        iosAppAmzScan.ok &&
+        iosAppAmzScan.swap &&
+        !iosAppAmzScan.swap.isPaidLink &&
+        !(iosAppAmzScan.swap.webUrl || "").includes("tag=") &&
+        fs.existsSync("ios-app/HeyBroc.xcodeproj/project.pbxproj") &&
+        fs.existsSync("ios-app/App/HeyBrocApp.swift") &&
+        fs.existsSync("ios-app/SafariExtension/SafariWebExtensionHandler.swift") &&
+        fs.existsSync("ios-app/App/PrivacyInfo.xcprivacy") &&
+        fs.existsSync("ios-app/SafariExtension/PrivacyInfo.xcprivacy") &&
+        fs.existsSync("ios-app/ShareExtension/PrivacyInfo.xcprivacy") &&
+        iosShareSwift.includes("sanitizedRetailerURL")
+    )
+  );
+
+  // Workstream 3 & 4: Android race/stepper/cart guards & self-hosted Tesseract v7 + CSP/camera headers
+  const androidReaderKt = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt",
+    "utf8"
+  );
+  const androidOverlayKt = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+    "utf8"
+  );
+  const androidScanApiKt = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+    "utf8"
+  );
+  const auditNextConfigSrc = fs.readFileSync("next.config.ts", "utf8");
+  check(
+    "Workstreams 3 & 4: Android scanGeneration/EXTRA_QTY_DELTA/storeBucket guards + self-hosted /tesseract/* OCR & CSP/camera=(self)",
+    Boolean(
+      androidReaderKt.includes("scanGeneration") &&
+        androidReaderKt.includes("EXTRA_QTY_DELTA") &&
+        androidOverlayKt.includes("matchesCartRemovalTarget") &&
+        androidScanApiKt.includes("storeBucket") &&
+        updatedMainActivityKt.includes("liveSearchSeq") &&
+        fs.existsSync("public/tesseract/worker.min.js") &&
+        fs.existsSync("public/tesseract/eng.traineddata.gz") &&
+        auditNextConfigSrc.includes("camera=(self)") &&
+        auditNextConfigSrc.includes("wasm-unsafe-eval") &&
+        auditNextConfigSrc.includes("worker-src 'self' blob:") &&
+        labelModalSrc.includes("/tesseract/worker.min.js") &&
+        auditModalSrc.includes("/tesseract/worker.min.js")
+    )
+  );
+
+  // Workstream 5: Creator takeover block, anon-web isolation, OTO trial_end, RevenueCat CUSTOMER_SUPPORT refund, atomic Lua payout & referral lock
+  const testHijackCode = `AUDITLOCK${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  const initialClaimRes = await influencersRouteMod.POST(
+    new Request("http://localhost:3000/api/influencers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.98" },
+      body: JSON.stringify({
+        action: "self_register",
+        code: testHijackCode,
+        name: "Verified Creator",
+        payoutEmail: "owner@heybroc-test.example",
+        payoutMethod: "paypal",
+        payoutHandle: "@owner-real",
+      }),
+    })
+  );
+  const hijackRes = await influencersRouteMod.POST(
+    new Request("http://localhost:3000/api/influencers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.99" },
+      body: JSON.stringify({
+        action: "self_register",
+        code: testHijackCode,
+        name: "Attacker",
+        payoutEmail: "owner@heybroc-test.example",
+        payoutMethod: "venmo",
+        payoutHandle: "@attacker-stolen",
+      }),
+    })
+  );
+  const creatorAfterHijack = await influencersLibMod.getCreator(testHijackCode);
+  await influencersLibMod.deleteCreator(testHijackCode).catch(() => {});
+  const checkoutRouteSrc = fs.readFileSync("app/api/checkout/route.ts", "utf8");
+  const rcWebhookSrc = fs.readFileSync("app/api/revenuecat/webhook/route.ts", "utf8");
+  const storageSrc = fs.readFileSync("lib/storage.ts", "utf8");
+  const referralsSrc = fs.readFileSync("lib/referrals.ts", "utf8");
+  const authSrc = fs.readFileSync("lib/auth.ts", "utf8");
+  check(
+    "Workstream 5: Unauthenticated creator takeover returns 409, anon-web rejected, OTO trial_end & RC CUSTOMER_SUPPORT refund wired, and Lua/kvSetNx/GDPR locks active",
+    Boolean(
+      initialClaimRes.status === 200 &&
+        hijackRes.status === 409 &&
+        creatorAfterHijack?.payoutHandle === "@owner-real" &&
+        entitlementsLibMod.normalizeRealDeviceId("anon-web") === "" &&
+        entitlementsLibMod.normalizeRealDeviceId("anonymous") === "" &&
+        entitlementsLibMod.normalizeRealDeviceId("web-valid-device-123") === "web-valid-device-123" &&
+        checkoutRouteSrc.includes("subscription_data[trial_end]") &&
+        rcWebhookSrc.includes("CUSTOMER_SUPPORT") &&
+        storageSrc.includes("kvEvalLua") &&
+        referralsSrc.includes("reward-lock") &&
+        authSrc.includes("redactEntitlementEmail")
+    )
+  );
+
+  // ==================== PASS-2 ADVERSARIAL DIFF AUDIT REGRESSIONS (#1–#13) ====================
+  const earthBalanceSwap = resolveSwap({
+    score: 28,
+    productTitle: "Earth Balance Original Buttery Spread, 15 oz",
+    store: "walmart",
+  });
+  const countryCrockPlantSwap = resolveSwap({
+    score: 28,
+    productTitle: "Country Crock Plant Butter with Olive Oil",
+    store: "kroger",
+    preferStoreBrand: true,
+  });
+  const violifeCheeseSwap = resolveSwap({
+    score: 35,
+    productTitle: "Violife Just Like Cheddar Shreds, 8 oz",
+    store: "walmart",
+  });
+  const daiyaSlicesSwap = resolveSwap({
+    score: 35,
+    productTitle: "Daiya Dairy-Free Cheddar Style Slices",
+    store: "target",
+  });
+  const naturalBlissOatCreamerSwap = resolveSwap({
+    score: 38,
+    productTitle: "Coffee mate Natural Bliss Non-Dairy Oat Milk Creamer",
+    store: "walmart",
+  });
+  const enjoyLifeChocSwap = resolveSwap({
+    score: 48,
+    productTitle: "Enjoy Life Dairy-Free Dark Chocolate Bar",
+    store: "walmart",
+  });
+  const chobaniCreamerKrogerSwap = resolveSwap({
+    score: 45,
+    productTitle: "Chobani Coffee Creamer Sweet Cream, 24 fl oz",
+    store: "kroger",
+    preferStoreBrand: true,
+  });
+  const chobaniCreamerCostcoSwap = resolveSwap({
+    score: 45,
+    productTitle: "Chobani Coffee Creamer Sweet Cream, 24 fl oz",
+    store: "costco",
+    preferStoreBrand: true,
+  });
+  check(
+    "Pass-2 (#1–#3): Plant-based butters/cheeses never swap to cow's dairy or Fruit Bars, benign coconut milk/cocoa butter pass dairy guard, and Chobani Creamer never swaps to Greek yogurt",
+    Boolean(
+      earthBalanceSwap &&
+        !detectMajorAllergens(earthBalanceSwap.title, earthBalanceSwap.ingredients).has("dairy") &&
+        countryCrockPlantSwap &&
+        !detectMajorAllergens(countryCrockPlantSwap.title, countryCrockPlantSwap.ingredients).has("dairy") &&
+        violifeCheeseSwap === null &&
+        daiyaSlicesSwap === null &&
+        naturalBlissOatCreamerSwap &&
+        naturalBlissOatCreamerSwap.brand === "Laird Superfood" &&
+        enjoyLifeChocSwap &&
+        enjoyLifeChocSwap.brand === "Hu" &&
+        chobaniCreamerKrogerSwap &&
+        !/yogurt|skyr/i.test(chobaniCreamerKrogerSwap.title) &&
+        /creamer/i.test(chobaniCreamerKrogerSwap.title) &&
+        chobaniCreamerCostcoSwap &&
+        !/yogurt|skyr/i.test(chobaniCreamerCostcoSwap.title)
+    )
+  );
+
+  const iosHeyBrocAppSwift = fs.readFileSync("ios-app/App/HeyBrocApp.swift", "utf8");
+  const weeklyOrderModalUpdatedSrc = fs.readFileSync("components/WeeklyOrderAuditModal.tsx", "utf8");
+  const simulatorUpdatedSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
+  const iosWebViewSwapCheck = resolveSwap({
+    score: 18,
+    productTitle: "Nabisco Oreo Chocolate Sandwich Cookies",
+    store: "amazon",
+    surface: "extension",
+    clientPlatform: "ios-app",
+  });
+  check(
+    "Pass-2 (#4–#7): Web Simulator wires dietaryWatchlist & isIosAppClient, suppresses Stripe Paywall in iOS WKWebView, syncs preferStoreBrand & sesame guard, and blocks *.stripe.com in WKWebView",
+    Boolean(
+      simulatorUpdatedSrc.includes("detectIosAppClient") &&
+        simulatorUpdatedSrc.includes("requestProUpgrade") &&
+        simulatorUpdatedSrc.includes("dietaryWatchlist,") &&
+        weeklyOrderModalUpdatedSrc.includes("detectIosAppClient") &&
+        iosHeyBrocAppSwift.includes('applicationNameForUserAgent = "HeyBrocIOS/1.0"') &&
+        iosHeyBrocAppSwift.includes("checkout.stripe.com") &&
+        iosHeyBrocAppSwift.includes("billing.stripe.com") &&
+        iosHeyBrocAppSwift.includes('"sesame"') &&
+        iosViewControllerSrc.includes('host.hasSuffix(".stripe.com")') &&
+        iosWebViewSwapCheck &&
+        iosWebViewSwapCheck.isPaidLink === false &&
+        !(iosWebViewSwapCheck.webUrl || "").includes("tag=")
+    )
+  );
+
+  // Verify unverified squatter creatorToken cannot update payout settings or connect Stripe (#8)
+  const squatterCode = `SQUAT${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  const squatterRegRes = await influencersRouteMod.POST(
+    new Request("http://localhost:3000/api/influencers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.101" },
+      body: JSON.stringify({
+        action: "self_register",
+        code: squatterCode,
+        name: "Squatter",
+        payoutEmail: "victim-creator@heybroc-test.example",
+        payoutMethod: "paypal",
+        payoutHandle: "@victim-public",
+      }),
+    })
+  );
+  const squatterRegData = (await squatterRegRes.json()) as { creatorToken?: string };
+  const squatterMutateRes = await influencersRouteMod.POST(
+    new Request("http://localhost:3000/api/influencers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.102" },
+      body: JSON.stringify({
+        action: "update_payout_settings",
+        code: squatterCode,
+        creatorToken: squatterRegData.creatorToken,
+        payoutMethod: "venmo",
+        payoutHandle: "@squatter-theft",
+      }),
+    })
+  );
+  await influencersLibMod.deleteCreator(squatterCode).catch(() => {});
+
+  const stripeWebhookUpdatedSrc = fs.readFileSync("app/api/stripe/webhook/route.ts", "utf8");
+  const rcWebhookUpdatedSrc = fs.readFileSync("app/api/revenuecat/webhook/route.ts", "utf8");
+  const checkoutUpdatedSrc = fs.readFileSync("app/api/checkout/route.ts", "utf8");
+  const billingPortalUpdatedSrc = fs.readFileSync("app/api/billing/portal/route.ts", "utf8");
+  const paywallUpdatedSrc = fs.readFileSync("components/Paywall.tsx", "utf8");
+  const otoModalUpdatedSrc = fs.readFileSync("components/PostCheckoutOtoModal.tsx", "utf8");
+  const influencersLibUpdatedSrc = fs.readFileSync("lib/influencers.ts", "utf8");
+  const entitlementsUpdatedSrc = fs.readFileSync("lib/entitlements.ts", "utf8");
+  const referralsUpdatedSrc = fs.readFileSync("lib/referrals.ts", "utf8");
+  const authUpdatedSrc = fs.readFileSync("lib/auth.ts", "utf8");
+  check(
+    "Pass-2 (#8–#13): Unverified squatter creatorToken blocked (403), OTO trial_end_sec & non-regressing expiry preserved, RC $0 trial clawback blocked, Billing Portal auth precedence, paidPassExpiresAtMs serialized, atomic Lua payout history & SHA-256 GDPR scrubbing",
+    Boolean(
+      squatterRegRes.status === 200 &&
+        (squatterMutateRes.status === 401 || squatterMutateRes.status === 403) &&
+        influencersLibUpdatedSrc.includes("tokenNonce") &&
+        influencersLibUpdatedSrc.includes("prependPayoutRecordAtomic") &&
+        checkoutUpdatedSrc.includes("metadata[trial_end_sec]") &&
+        stripeWebhookUpdatedSrc.includes("trial_end_sec") &&
+        entitlementsUpdatedSrc.includes("resolveNonRegressingExpiryMs") &&
+        rcWebhookUpdatedSrc.includes("TRIAL") &&
+        rcWebhookUpdatedSrc.includes("lastChargeSucceeded") &&
+        billingPortalUpdatedSrc.includes("isSessionAuthenticated") &&
+        paywallUpdatedSrc.includes("Authorization") &&
+        otoModalUpdatedSrc.includes("Authorization") &&
+        referralsUpdatedSrc.includes("paidPassExpiresAtMs") &&
+        authUpdatedSrc.includes("paidPassExpiresAtMs") &&
+        authUpdatedSrc.includes("email_sha256") &&
+        authUpdatedSrc.includes("purgeUserVirtualDevice")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

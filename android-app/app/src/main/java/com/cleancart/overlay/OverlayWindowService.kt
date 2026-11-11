@@ -65,6 +65,7 @@ class OverlayWindowService : Service() {
         const val ACTION_IDLE_CART_AVG = "com.cleancart.overlay.IDLE_CART_AVG"
         const val ACTION_PDP_SCROLL_HINT = "com.cleancart.overlay.PDP_SCROLL_HINT"
         const val ACTION_SYNC_CART = "com.cleancart.overlay.SYNC_CART"
+        const val ACTION_CART_REMOVE_ITEM = "com.cleancart.overlay.CART_REMOVE_ITEM"
         const val ACTION_HIDE = "com.cleancart.overlay.HIDE"
         const val ACTION_RESET_HIDDEN = "com.cleancart.overlay.RESET_HIDDEN"
         const val ACTION_SHOW_SETUP_GUIDE = "com.cleancart.overlay.SHOW_SETUP_GUIDE"
@@ -78,6 +79,8 @@ class OverlayWindowService : Service() {
         const val EXTRA_PAGE_OUT_OF_STOCK = "page_out_of_stock"
         const val EXTRA_CART_ARRAY = "cart_array"
         const val EXTRA_CART_QUANTITIES = "cart_quantities"
+        const val EXTRA_QTY_DELTA = "qty_delta"
+        const val EXTRA_CART_BADGE_COUNT = "cart_badge_count"
         const val EXTRA_REPLACE_CART = "replace_cart"
         const val EXTRA_REMOVED_TITLES = "removed_titles"
         const val EXTRA_STORE_PKG = "store_pkg"
@@ -108,6 +111,10 @@ class OverlayWindowService : Service() {
         private val VARIANT_NOISE_TITLE = Regex(
             """^(?i)((flavor|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|for\s+[a-z0-9].*|.*notify\s+me\s+when\s+back\s+in\s+stock.*|.*back\s+in\s+stock.*|.*out\s+of\s+stock.*|cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c.*|\d+[km]?\+?\s*bought.*|.*bought\s+\d+\+?\s*times?.*|.*stay\s+stocked.*|.*last\s+purchased.*|.*straight\s+talk.*|.*google\s+pixel.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|.*barcode\s+scanner.*|.*preferred\s+address.*|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|\d+\s+[a-z0-9.\s]+\b(st|street|rd|road|dr|drive|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|cir|circle|way|pkwy|parkway|hwy|highway|ter|terrace|trl|trail)\b.*|(express|today|tomorrow|asap)\s*,?\s*.*|.*\b(\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm))\b.*|.*\bfree\s+with\s+(walmart\+?|w\+).*|.*\b(thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|no\s+longer\s+available|not\s+available\s+in\s+your\s+area|based\s+on\s+items\s+in\s+your\s+cart|complete\s+your\s+cart)\b.*|.*&\s*more\.?$|.*,\s*was|.*[!?])$"""
         )
+        private val TRAILING_PACK_SIZE_SUFFIX = Regex(
+            """(?i)(?:,\s*|\s+-\s+|\s*\()?\b\d+(?:\.\d+)?\s*(?:fl\s*oz|oz|lb|lbs|ct|count|pk|pack|gal|gallon|qt|pt|ml|l|kg|ea)\)?$"""
+        )
+        private val IDENTITY_CONNECTOR_WORDS = setOf("the", "and", "with", "for", "of", "in", "a", "an")
     }
 
     private data class TripCartItem(
@@ -134,6 +141,7 @@ class OverlayWindowService : Service() {
     private var pillParams: WindowManager.LayoutParams? = null
     private var pillY = 0
     private var data: JSONObject? = null
+    private var open = false
     private var openFlag: String? = null
 
     private var isCartAvgMode = false
@@ -241,18 +249,27 @@ class OverlayWindowService : Service() {
             else -> currentStoreBucket
         }
         if (nextStore != currentStoreKey || nextBucket != currentStoreBucket) {
-            val storeAppChanged = nextStore != currentStoreKey
+            climbAnimator?.cancel()
             persistCart()
             currentStoreKey = nextStore
             currentStoreBucket = nextBucket
-            if (storeAppChanged) {
-                data = null
-                openFlag = null
-                hiddenForCurrentScreen = false
-                removeCard()
-            }
+            data = null
+            open = false
+            openFlag = null
+            isPdpScrollHint = false
+            isCartAvgMode = true
+            hiddenForCurrentScreen = false
+            pendingSwapFromKey = null
+            pendingSwapTitle = null
+            pendingSwapCandidates = emptyList()
+            pendingSwapCandidateIdx = 0
+            pendingSwapExplicitItem = null
+            removeCard()
             loadPersistedCart(currentStoreBucket)
             displayedCartAvg = calcCartAvg()
+            if (pill != null && intent?.action != ACTION_HIDE) {
+                showPill()
+            }
         }
     }
 
@@ -329,7 +346,7 @@ class OverlayWindowService : Service() {
                     isPdpScrollHint = false
                     runCatching { ScanHistoryStore.recordScan(this, incoming, currentStoreKey) }
                     if (intent.getBooleanExtra(EXTRA_IN_CART, false)) {
-                        recordScannedItem(data)
+                        recordScannedItem(data, intent.getIntExtra(EXTRA_QTY_DELTA, 0))
                     }
                     openFlag = null
                     if (!hiddenForCurrentScreen && card == null) {
@@ -376,8 +393,20 @@ class OverlayWindowService : Service() {
                 val arrRaw = intent.getStringExtra(EXTRA_CART_ARRAY) ?: "[]"
                 val remRaw = intent.getStringExtra(EXTRA_REMOVED_TITLES) ?: "[]"
                 val qtyRaw = intent.getStringExtra(EXTRA_CART_QUANTITIES) ?: "{}"
+                val qtyDelta = intent.getIntExtra(EXTRA_QTY_DELTA, 0)
+                val targetTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+                val badgeCount = intent.getIntExtra(EXTRA_CART_BADGE_COUNT, -1)
                 val replaceCart = intent.getBooleanExtra(EXTRA_REPLACE_CART, false)
-                syncCartFromScreen(arrRaw, remRaw, replaceCart, keepMode, qtyRaw)
+                syncCartFromScreen(
+                    arrRaw = arrRaw,
+                    remRaw = remRaw,
+                    replaceCart = replaceCart,
+                    keepMode = keepMode,
+                    qtyRaw = qtyRaw,
+                    qtyDelta = qtyDelta,
+                    targetTitle = targetTitle,
+                    badgeCount = badgeCount
+                )
                 if (!keepMode) {
                     isCartAvgMode = true
                 }
@@ -386,6 +415,53 @@ class OverlayWindowService : Service() {
                         showAuditorDrawer()
                     }
                 } else if (!hiddenForCurrentScreen && card == null && (!keepMode || isCartAvgMode)) {
+                    showPill()
+                }
+            }
+            ACTION_CART_REMOVE_ITEM -> {
+                isTestMode = false
+                val prevSize = totalCartUnits()
+                val prevAvg = displayedCartAvg
+                val targetTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty().trim()
+                val remRaw = intent.getStringExtra(EXTRA_REMOVED_TITLES) ?: "[]"
+                val qtyDelta = intent.getIntExtra(EXTRA_QTY_DELTA, 0)
+                val targets = mutableListOf<String>()
+                if (targetTitle.isNotBlank()) targets.add(targetTitle)
+                runCatching { JSONArray(remRaw) }.getOrNull()?.let { remArr ->
+                    for (i in 0 until remArr.length()) {
+                        val t = remArr.optString(i).trim()
+                        if (t.isNotBlank()) targets.add(t)
+                    }
+                }
+                var changed = false
+                for (t in targets) {
+                    if (qtyDelta < 0) {
+                        val existing = tripCart.firstOrNull {
+                            matchesCartRemovalTarget(it.key, t) || matchesCartRemovalTarget(it.title, t)
+                        }
+                        if (existing != null) {
+                            existing.quantity = existing.quantity + qtyDelta
+                            if (existing.quantity <= 0) {
+                                tripCart.remove(existing)
+                            }
+                            changed = true
+                        }
+                    } else {
+                        val removedAny = tripCart.removeAll {
+                            matchesCartRemovalTarget(it.key, t) || matchesCartRemovalTarget(it.title, t)
+                        }
+                        if (removedAny) changed = true
+                    }
+                }
+                if (changed) {
+                    displayedCartAvg = calcCartAvg()
+                    persistCart()
+                }
+                if (card != null && isAuditorOpen) {
+                    if (totalCartUnits() != prevSize || displayedCartAvg != prevAvg) {
+                        showAuditorDrawer()
+                    }
+                } else if (!hiddenForCurrentScreen && card == null && isCartAvgMode) {
                     showPill()
                 }
             }
@@ -533,6 +609,42 @@ class OverlayWindowService : Service() {
             .replace(Regex("\\s+"), " ")
             .trim()
 
+    private fun normalizeTitleForIdentity(raw: String): String {
+        var stripped = cleanCartTitle(raw)
+        while (true) {
+            val next = stripped.replace(TRAILING_PACK_SIZE_SUFFIX, " ").trim()
+            if (next == stripped) break
+            stripped = next
+        }
+        return stripped.lowercase()
+            .replace(Regex("^conventional grocery\\s+"), "")
+            .replace(Regex("[,•|\\-–—.…*()/]+"), " ")
+            .replace(Regex("[^a-z0-9\\s%]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun identityTokens(norm: String): Set<String> =
+        norm.split(" ")
+            .map { it.trim() }
+            .filter { it.length >= 2 && it !in IDENTITY_CONNECTOR_WORDS }
+            .toSet()
+
+    private fun matchesCartRemovalTarget(candidateTitle: String, targetTitle: String): Boolean {
+        val normCand = normalizeTitleForIdentity(candidateTitle)
+        val normTarget = normalizeTitleForIdentity(targetTitle)
+        if (normCand.isEmpty() || normTarget.isEmpty()) return false
+        if (normCand == normTarget) return true
+        val candTokens = identityTokens(normCand)
+        val targetTokens = identityTokens(normTarget)
+        if (candTokens.isEmpty() || targetTokens.isEmpty()) return false
+        val intersection = candTokens.intersect(targetTokens).size
+        val union = candTokens.union(targetTokens).size
+        if (union <= 0) return false
+        val jaccard = intersection.toDouble() / union.toDouble()
+        return jaccard >= 0.80
+    }
+
     private fun isSameCartItem(a: String, b: String): Boolean {
         if (a.equals(b, ignoreCase = true)) return true
         val na = normalizeCartKey(a)
@@ -570,7 +682,10 @@ class OverlayWindowService : Service() {
         remRaw: String,
         replaceCart: Boolean,
         keepMode: Boolean = false,
-        qtyRaw: String = "{}"
+        qtyRaw: String = "{}",
+        qtyDelta: Int = 0,
+        targetTitle: String = "",
+        badgeCount: Int = -1
     ) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
@@ -579,29 +694,54 @@ class OverlayWindowService : Service() {
         val now = System.currentTimeMillis()
         var swapDetectedInCart = false
         if (replaceCart) {
-            tripCart.clear()
+            if ((arr.length() == 0 && qtyDelta == 0 && targetTitle.isBlank()) || badgeCount == 0) {
+                tripCart.clear()
+            } else {
+                // Virtualized RecyclerView carts only expose 2–4 visible rows on frame 1; preserve offscreen & PDP-added items
+                tripCart.removeAll {
+                    it.isSeed ||
+                        it.isNonFood ||
+                        NON_FOOD_CART_ITEM.containsMatchIn(it.title) ||
+                        it.title.lowercase() in DEMO_SEED_TITLES ||
+                        VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
+                        ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) ||
+                        (now - it.lastSeenAtMs > 2 * 60 * 60 * 1000L)
+                }
+            }
         } else {
-            // When syncing from the real Cart screen (`!keepMode`), drop non-cart-screen items (e.g. PDP browsing leftovers)
-            // and items from previous shopping sessions (>30 min old), while retaining items scrolled during the active Cart session.
             tripCart.removeAll {
                 it.isSeed ||
                     it.isNonFood ||
                     NON_FOOD_CART_ITEM.containsMatchIn(it.title) ||
                     it.title.lowercase() in DEMO_SEED_TITLES ||
                     VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
-                    (!keepMode && arr.length() > 0 && (!it.fromCartScreen || now - it.lastSeenAtMs > 30 * 60 * 1000L))
+                    ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) ||
+                    (!keepMode && arr.length() > 0 && now - it.lastSeenAtMs > 2 * 60 * 60 * 1000L)
             }
         }
         if (remArr != null) {
             for (i in 0 until remArr.length()) {
                 val remTitle = remArr.optString(i).trim()
-                if (remTitle.length >= 4) {
+                if (remTitle.length >= 2) {
                     tripCart.removeAll {
-                        isSameCartItem(it.key, remTitle) ||
-                            isSameCartItem(it.title, remTitle) ||
-                            normalizeCartKey(it.title).contains(normalizeCartKey(remTitle)) ||
-                            normalizeCartKey(remTitle).contains(normalizeCartKey(it.title))
+                        matchesCartRemovalTarget(it.key, remTitle) ||
+                            matchesCartRemovalTarget(it.title, remTitle)
                     }
+                }
+            }
+        }
+        if (arr.length() == 0 && targetTitle.isNotBlank() && qtyDelta != 0) {
+            val existing = tripCart.firstOrNull {
+                isSameCartItem(it.key, targetTitle) ||
+                    isSameCartItem(it.title, targetTitle) ||
+                    matchesCartRemovalTarget(it.key, targetTitle) ||
+                    matchesCartRemovalTarget(it.title, targetTitle)
+            }
+            if (existing != null) {
+                existing.quantity = (existing.quantity + qtyDelta).coerceAtMost(99)
+                existing.lastSeenAtMs = now
+                if (existing.quantity <= 0) {
+                    tripCart.remove(existing)
                 }
             }
         }
@@ -630,12 +770,22 @@ class OverlayWindowService : Service() {
                 pendingSwapExplicitItem = null
                 swapDetectedInCart = true
             }
+            val itemMatchesDeltaTarget = qtyDelta != 0 && (
+                arr.length() == 1 ||
+                    (targetTitle.isNotBlank() && (isSameCartItem(rawTitle, targetTitle) || matchesCartRemovalTarget(rawTitle, targetTitle)))
+                )
             val existing = tripCart.firstOrNull { isSameCartItem(it.key, rawTitle) || isSameCartItem(it.title, rawTitle) }
             if (existing != null) {
                 existing.score = score
                 existing.swapObj = swap
                 existing.fullJson = d
-                if (scrapedQty != null) {
+                if (itemMatchesDeltaTarget) {
+                    existing.quantity = (existing.quantity + qtyDelta).coerceAtMost(99)
+                    if (existing.quantity <= 0) {
+                        tripCart.remove(existing)
+                        continue
+                    }
+                } else if (scrapedQty != null) {
                     existing.quantity = scrapedQty
                 }
                 if (!keepMode) {
@@ -646,6 +796,7 @@ class OverlayWindowService : Service() {
                     existing.title = rawTitle
                 }
             } else {
+                if (itemMatchesDeltaTarget && qtyDelta < 0) continue
                 tripCart.add(
                     TripCartItem(
                         key = rawTitle,
@@ -656,12 +807,25 @@ class OverlayWindowService : Service() {
                         fullJson = d,
                         fromCartScreen = !keepMode,
                         lastSeenAtMs = now,
-                        quantity = (scrapedQty ?: 1).coerceIn(1, 99),
+                        quantity = (scrapedQty ?: if (itemMatchesDeltaTarget && qtyDelta > 0) qtyDelta else 1).coerceIn(1, 99),
                         isNonFood = false,
                     )
                 )
                 while (tripCart.size > 60) {
                     tripCart.removeAt(tripCart.size - 1)
+                }
+            }
+        }
+        // Only prune unseen offscreen/PDP items when an authoritative cart badge count proves fewer total units exist
+        if (!keepMode && badgeCount > 0 && totalCartUnits() > badgeCount) {
+            while (totalCartUnits() > badgeCount) {
+                val unseen = tripCart.filter { it.lastSeenAtMs < now }
+                val candidate = unseen.minByOrNull { if (!it.fromCartScreen) it.lastSeenAtMs - 86_400_000L else it.lastSeenAtMs }
+                    ?: break
+                if (candidate.quantity > 1 && totalCartUnits() - 1 >= badgeCount) {
+                    candidate.quantity -= 1
+                } else {
+                    tripCart.remove(candidate)
                 }
             }
         }
@@ -673,7 +837,7 @@ class OverlayWindowService : Service() {
         }
     }
 
-    private fun recordScannedItem(d: JSONObject?) {
+    private fun recordScannedItem(d: JSONObject?, qtyDelta: Int = 0) {
         if (d?.optBoolean("ok") != true) return
         ScanApi.applyLocalWatchlistToData(this, d)
         val result = d.optJSONObject("result") ?: return
@@ -715,7 +879,13 @@ class OverlayWindowService : Service() {
             existing.swapObj = swap
             existing.fullJson = d
             existing.lastSeenAtMs = now
-        } else {
+            if (qtyDelta != 0) {
+                existing.quantity = (existing.quantity + qtyDelta).coerceAtMost(99)
+                if (existing.quantity <= 0) {
+                    tripCart.remove(existing)
+                }
+            }
+        } else if (qtyDelta >= 0) {
             tripCart.add(
                 0,
                 TripCartItem(
@@ -727,7 +897,7 @@ class OverlayWindowService : Service() {
                     fullJson = d,
                     fromCartScreen = false,
                     lastSeenAtMs = now,
-                    quantity = 1,
+                    quantity = (if (qtyDelta > 0) qtyDelta else 1).coerceIn(1, 99),
                     isNonFood = false,
                 )
             )
@@ -1485,6 +1655,7 @@ class OverlayWindowService : Service() {
         })
         if (addOverlayView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true))) {
             card = backdrop
+            open = true
             isAuditorOpen = true
         }
     }
@@ -1681,6 +1852,7 @@ class OverlayWindowService : Service() {
         })
         if (addOverlayView(backdrop, overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true))) {
             card = backdrop
+            open = true
             isAuditorOpen = true
         }
     }
@@ -2274,6 +2446,7 @@ class OverlayWindowService : Service() {
         val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)
         if (addOverlayView(backdrop, params)) {
             card = backdrop
+            open = true
         }
     }
 
@@ -2530,6 +2703,7 @@ class OverlayWindowService : Service() {
         val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, focusable = true)
         if (addOverlayView(backdrop, params)) {
             card = backdrop
+            open = true
         }
     }
 
@@ -2617,6 +2791,7 @@ class OverlayWindowService : Service() {
     private fun removeCard() {
         removeOverlayView(card)
         card = null
+        open = false
         isAuditorOpen = false
         openedCardFromAuditor = false
     }

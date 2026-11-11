@@ -62,6 +62,74 @@
     return `${base}/api/product-image?q=${encodeURIComponent(String(title || "grocery"))}&v=4`;
   }
 
+  function isPlaceholderProductImage(url) {
+    if (!url || typeof url !== "string") return true;
+    const trimmed = url.trim();
+    if (!trimmed) return true;
+    return (
+      trimmed.includes("product-photo-unavailable") ||
+      trimmed.toLowerCase().includes("placeholder")
+    );
+  }
+
+  function sanitizeDomImageUrl(rawUrl, imgEl = null) {
+    if (!rawUrl || typeof rawUrl !== "string") return null;
+    const trimmed = rawUrl.trim();
+    if (!trimmed || /^data:/i.test(trimmed) || /^blob:/i.test(trimmed)) return null;
+    let parsed;
+    try {
+      parsed = new URL(trimmed, location.href);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    const href = parsed.href;
+    if (isPlaceholderProductImage(href)) return null;
+    if (/\.svg(?:$|[?#])/i.test(parsed.pathname)) return null;
+    if (
+      /(?:1x1|pixel|spacer|spinner|loading|skeleton|sprite|logo|icon|badge|avatar|transparent\.gif|grey-pixel|blank\.gif)/i.test(
+        href
+      )
+    ) {
+      return null;
+    }
+    if (imgEl && typeof imgEl.getBoundingClientRect === "function") {
+      if (imgEl.complete && imgEl.naturalWidth > 0 && (imgEl.naturalWidth < 32 || imgEl.naturalHeight < 32)) {
+        return null;
+      }
+      const attrW = Number(imgEl.getAttribute?.("width") || 0);
+      const attrH = Number(imgEl.getAttribute?.("height") || 0);
+      if ((attrW > 0 && attrW < 32) || (attrH > 0 && attrH < 32)) return null;
+      const rect = imgEl.getBoundingClientRect();
+      if ((rect.width > 0 && rect.width < 32) || (rect.height > 0 && rect.height < 32)) {
+        return null;
+      }
+    }
+    return href;
+  }
+
+  const NEUTRAL_THUMB_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>`;
+
+  const apiImagePlaceholderCache = new Map();
+
+  async function checkApiImageIsPlaceholder(url) {
+    if (!url || typeof url !== "string" || !url.includes("/api/product-image")) return false;
+    if (apiImagePlaceholderCache.has(url)) return apiImagePlaceholderCache.get(url);
+    try {
+      const res = await fetch(url, { method: "HEAD" });
+      const imgSrcHeader = res.headers.get("x-image-source") || "";
+      const cType = res.headers.get("content-type") || "";
+      const isPh =
+        imgSrcHeader.toLowerCase().includes("placeholder") ||
+        res.url?.includes("product-photo-unavailable") ||
+        cType.includes("image/svg+xml");
+      apiImagePlaceholderCache.set(url, isPh);
+      return isPh;
+    } catch {
+      return false;
+    }
+  }
+
   /* ---------------- Per-Store & Per-Marketplace-Retailer Bucket Resolution ---------------- */
   function cleanSlug(raw) {
     if (!raw || typeof raw !== "string") return "";
@@ -134,41 +202,57 @@
 
   function detectAmazonBannerBucket() {
     if (HOST.includes("wholefoods")) {
-      return { bucketKey: "wholefoods", label: "Whole Foods" };
+      return { bucketKey: "amazon:wholefoods", label: "Whole Foods" };
     }
-    const urlFull = `${location.pathname}${location.search}`.toLowerCase();
+    const pathLower = location.pathname.toLowerCase();
+    const urlFull = `${pathLower}${location.search.toLowerCase()}`;
+    let almBrandId = "";
+    try {
+      almBrandId = (new URLSearchParams(location.search).get("almBrandId") || "").toLowerCase();
+    } catch {
+      /* ignore */
+    }
     const domHint = (
       document.querySelector(
-        "#nav-subnav, #almDetailPagePoi, #fresh-merchant-info, #alm-cards-link, [data-csa-c-painter*='alm' i], #sc-alm-buy-box"
+        "#nav-subnav, #almDetailPagePoi, #fresh-merchant-info, #alm-cards-link, [data-csa-c-painter*='alm' i], #sc-alm-buy-box, .sc-alm-banner, #sc-active-cart h1, #sc-active-cart h2, [data-name='Active Items'] h2"
       )?.textContent || ""
     ).toLowerCase();
+
     if (
+      pathLower.includes("/wholefoods") ||
+      almBrandId === "vufhifdob2xliezvb2rz" ||
       urlFull.includes("wholefoods") ||
       urlFull.includes("vufhifdob2xliezvb2rz") ||
-      /\bwhole\s+foods\s+market\b/.test(domHint)
+      /\bwhole\s+foods(?:\s+market)?\b/.test(domHint)
     ) {
-      try { sessionStorage.setItem("heybroc_last_amazon_banner", "wholefoods"); } catch { /* ignore */ }
-      return { bucketKey: "wholefoods", label: "Whole Foods" };
+      try { sessionStorage.setItem("heybroc_last_amazon_banner", "amazon:wholefoods"); } catch { /* ignore */ }
+      return { bucketKey: "amazon:wholefoods", label: "Whole Foods" };
     }
     if (
+      /^\/(?:alm|fresh)(?:\/|$)/.test(pathLower) ||
+      pathLower.includes("/alm/") ||
+      pathLower.includes("/fresh/") ||
       urlFull.includes("amazonfresh") ||
-      urlFull.includes("/alm/") ||
-      urlFull.includes("almbrandid=") ||
+      Boolean(almBrandId) ||
       /\bamazon\s+fresh\b/.test(domHint)
     ) {
-      try { sessionStorage.setItem("heybroc_last_amazon_banner", "amazon_fresh"); } catch { /* ignore */ }
-      return { bucketKey: "amazon_fresh", label: "Amazon Fresh" };
+      try { sessionStorage.setItem("heybroc_last_amazon_banner", "amazon:fresh"); } catch { /* ignore */ }
+      return { bucketKey: "amazon:fresh", label: "Amazon Fresh" };
     }
-    if (/\/gp\/cart|\/cart/i.test(location.pathname)) {
+    if (/\/cart\/localmarket/i.test(pathLower)) {
       try {
         const lastBanner = sessionStorage.getItem("heybroc_last_amazon_banner");
-        if (lastBanner === "wholefoods") return { bucketKey: "wholefoods", label: "Whole Foods" };
-        if (lastBanner === "amazon_fresh") return { bucketKey: "amazon_fresh", label: "Amazon Fresh" };
+        if (lastBanner === "amazon:wholefoods" || lastBanner === "wholefoods") {
+          return { bucketKey: "amazon:wholefoods", label: "Whole Foods" };
+        }
+        if (lastBanner === "amazon:fresh" || lastBanner === "amazon_fresh") {
+          return { bucketKey: "amazon:fresh", label: "Amazon Fresh" };
+        }
       } catch {
         /* ignore */
       }
     }
-    return { bucketKey: "amazon", label: "Amazon" };
+    return { bucketKey: "amazon:core", label: "Amazon" };
   }
 
   function resolveStoreBucket() {
@@ -246,8 +330,15 @@
   let timer = null;
   let state = {
     mode: "cart_avg", // "product" | "cart_avg"
+    get pillMode() {
+      return this.mode;
+    },
+    set pillMode(nextMode) {
+      this.mode = nextMode;
+    },
     drawerTab: "product", // "product" | "cart"
     data: null,
+    lastDomProductImageUrl: null,
     activeSwap: null, // verified in-stock SwapResult or primary
     swapStockChecking: false,
     allSwapsOutOfStock: false,
@@ -255,7 +346,7 @@
     auditorOpen: false,
     openFlag: null,
     y: 50,
-    cartItems: [], // [{ key, title, quantity, image, score, pending, isNonFood, dietaryAlerts, swapTitle, swapScore, swapUrl, swapImage, swapIsPaidLink, swapInStock, swapOutOfStock, swapCandidates }]
+    cartItems: [], // [{ key, title, quantity, image, domImageUrl, score, pending, isNonFood, dietaryAlerts, swapTitle, swapScore, swapUrl, swapImage, swapIsPaidLink, swapInStock, swapOutOfStock, swapCandidates }]
     displayedAvg: null,
     dragging: false,
     overHide: false,
@@ -349,16 +440,63 @@
     return false;
   }
 
+  const DISMISSED_CART_TTL_MS = 12000;
+  const dismissedCartKeys = new Map(); // normalizedKey -> expiresAtMs
+
+  function pruneDismissedCartKeys() {
+    const now = Date.now();
+    for (const [k, exp] of dismissedCartKeys.entries()) {
+      if (!exp || exp <= now) dismissedCartKeys.delete(k);
+    }
+  }
+
+  function markCartItemDismissed(titleOrKey) {
+    const norm = normalizeTitleForMatch(titleOrKey);
+    if (!norm) return;
+    pruneDismissedCartKeys();
+    dismissedCartKeys.set(norm, Date.now() + DISMISSED_CART_TTL_MS);
+  }
+
+  function clearCartItemDismissed(titleOrKey) {
+    const norm = normalizeTitleForMatch(titleOrKey);
+    if (!norm) return;
+    pruneDismissedCartKeys();
+    dismissedCartKeys.delete(norm);
+    for (const k of [...dismissedCartKeys.keys()]) {
+      if (isSameCartTitle(k, norm)) dismissedCartKeys.delete(k);
+    }
+  }
+
+  function isCartKeyDismissed(normKey) {
+    if (!normKey) return false;
+    pruneDismissedCartKeys();
+    if (dismissedCartKeys.has(normKey)) return true;
+    for (const k of dismissedCartKeys.keys()) {
+      if (isSameCartTitle(k, normKey)) return true;
+    }
+    return false;
+  }
+
+  function isCartItemDismissed(titleOrKey) {
+    return isCartKeyDismissed(normalizeTitleForMatch(titleOrKey));
+  }
+
   function sanitizeStoredCartItem(raw) {
     if (!raw || typeof raw !== "object") return null;
     const title = String(raw.title || raw.key || "").trim();
     if (!title || title.startsWith("seed-") || String(raw.key || "").startsWith("seed-")) return null;
     const hasValidScore = raw.score !== null && raw.score !== undefined && Number.isFinite(Number(raw.score));
+    const verifiedImg =
+      typeof raw.image === "string" && raw.image.startsWith("http") && !isPlaceholderProductImage(raw.image)
+        ? raw.image
+        : null;
+    const domImg = sanitizeDomImageUrl(raw.domImageUrl) || null;
     return {
       key: String(raw.key || title).trim(),
       title,
       quantity: clampQty(raw.quantity),
-      image: typeof raw.image === "string" && raw.image.startsWith("http") ? raw.image : null,
+      image: verifiedImg,
+      domImageUrl: domImg,
       score: hasValidScore ? Math.max(0, Math.min(100, Math.round(Number(raw.score)))) : null,
       pending: Boolean(raw.pending && !hasValidScore),
       isNonFood: Boolean(raw.isNonFood),
@@ -385,18 +523,30 @@
     }
     activeBucket = nextBucket;
     const v2Key = storageKeyForBucket(activeBucket.bucketKey);
-    const legacyKey = !activeBucket.bucketKey.includes(":") && activeBucket.bucketKey === BASE_STORE
-      ? `cleancart_trip_cart_${BASE_STORE}`
-      : null;
+    const legacyKeys = [];
+    if (activeBucket.bucketKey === "amazon:wholefoods") {
+      legacyKeys.push("heybroc_cart_v2_wholefoods");
+    } else if (activeBucket.bucketKey === "amazon:fresh") {
+      legacyKeys.push("heybroc_cart_v2_amazon_fresh");
+    } else if (activeBucket.bucketKey === "amazon:core") {
+      legacyKeys.push("heybroc_cart_v2_amazon", "cleancart_trip_cart_amazon");
+    } else if (!activeBucket.bucketKey.includes(":") && activeBucket.bucketKey === BASE_STORE) {
+      legacyKeys.push(`cleancart_trip_cart_${BASE_STORE}`);
+    }
 
     try {
-      const keysToFetch = legacyKey ? [v2Key, legacyKey] : [v2Key];
+      const keysToFetch = [v2Key, ...legacyKeys];
       const stored = await chrome.storage.local.get(keysToFetch);
       let rawList = stored?.[v2Key];
-      if (!Array.isArray(rawList) && legacyKey && Array.isArray(stored?.[legacyKey])) {
-        rawList = stored[legacyKey];
-        await chrome.storage.local.set({ [v2Key]: rawList });
-        await chrome.storage.local.remove(legacyKey);
+      if (!Array.isArray(rawList)) {
+        for (const lk of legacyKeys) {
+          if (Array.isArray(stored?.[lk])) {
+            rawList = stored[lk];
+            await chrome.storage.local.set({ [v2Key]: rawList });
+            await chrome.storage.local.remove(lk);
+            break;
+          }
+        }
       }
       state.cartItems = Array.isArray(rawList)
         ? rawList.map(sanitizeStoredCartItem).filter(Boolean).slice(0, MAX_CART_ITEMS)
@@ -975,19 +1125,20 @@
       '[data-testid*="hero-image" i] img',
       '[data-testid*="product-image" i] img',
       '[data-testid*="item-details-image" i] img',
+      '[data-test*="product-image" i] img',
       'img[itemprop="image"]',
       "img",
     ];
-    for (const sel of selectors) {
-      const imgs = searchRoot.querySelectorAll(sel);
-      for (const img of imgs) {
-        if (!isElementVisible(img)) continue;
-        if (isInsideExcludedSection(img, modalScope || document.body)) continue;
-        const rect = img.getBoundingClientRect();
-        if (rect.width < 80 || rect.height < 80) continue;
-        const src = img.currentSrc || img.getAttribute("src") || "";
-        if (src.startsWith("https://") && !/sprite|logo|icon|badge|avatar|1x1|pixel/i.test(src)) {
-          return src;
+    for (const minSize of [64, 32]) {
+      for (const sel of selectors) {
+        const imgs = searchRoot.querySelectorAll(sel);
+        for (const img of imgs) {
+          if (!isElementVisible(img)) continue;
+          if (isInsideExcludedSection(img, modalScope || document.body)) continue;
+          const rect = img.getBoundingClientRect();
+          if (rect.width < minSize || rect.height < minSize) continue;
+          const cleanUrl = sanitizeDomImageUrl(img.currentSrc || img.getAttribute("src") || "", img);
+          if (cleanUrl) return cleanUrl;
         }
       }
     }
@@ -996,7 +1147,7 @@
 
   function isAmazonGroceryPage(modalScope) {
     if (HOST.includes("wholefoods")) return true;
-    if (activeBucket.bucketKey === "wholefoods" || activeBucket.bucketKey === "amazon_fresh") return true;
+    if (activeBucket.bucketKey === "amazon:wholefoods" || activeBucket.bucketKey === "amazon:fresh") return true;
     const crumbText =
       document.querySelector(
         "#wayfinding-breadcrumbs_feature_div, #nav-subnav, #brandByline_feature_div, #bylineInfo, #almDetailPagePoi, #fresh-merchant-info, #alm-cards-link, a[href*='almBrandId']"
@@ -1049,6 +1200,8 @@
     '[data-testid*="product-card" i]',
     '[data-testid*="item-card" i]',
     '[data-testid*="product-tile" i]',
+    '[data-test*="product-card" i]',
+    '[data-qa*="product-card" i]',
     '[data-automation-id*="product" i]',
     '[data-component-type="s-search-result"]',
     'article[class*="product" i]',
@@ -1061,9 +1214,11 @@
 
     const titleSelectors = [
       '[data-automation-id="product-title"]',
+      '[data-test="product-title"]',
       '[data-testid*="product-title" i]',
       '[data-testid*="item-title" i]',
       '[data-testid*="product-card-name" i]',
+      '[data-qa*="product-name" i]',
       "h2 a span",
       "h3 a span",
       "h2",
@@ -1083,9 +1238,16 @@
       }
     }
     if (!title) return null;
-    const imgEl = cardEl.querySelector("img[src^='https://']");
-    const image = imgEl ? imgEl.currentSrc || imgEl.getAttribute("src") : null;
-    return { title, image };
+    let domImageUrl = null;
+    const imgs = cardEl.querySelectorAll("img");
+    for (const img of imgs) {
+      const cand = sanitizeDomImageUrl(img.currentSrc || img.getAttribute("src") || "", img);
+      if (cand) {
+        domImageUrl = cand;
+        break;
+      }
+    }
+    return { title, image: domImageUrl, domImageUrl };
   }
 
   /* ---------------- Live Store Cart Scraping & Instant Deletion Sync ---------------- */
@@ -1115,7 +1277,11 @@
 
     // 2. Check dedicated /cart page main container
     if (isCartPageUrl()) {
-      return document.querySelector("#sc-active-cart, [data-testid*='cart-page' i], main") || document.body;
+      return (
+        document.querySelector(
+          "#sc-active-cart, [data-testid*='cart-page' i], [data-test*='cart-container' i], [data-qa*='cart' i], main"
+        ) || document.body
+      );
     }
     return null;
   }
@@ -1126,9 +1292,22 @@
   const CART_ROW_UI_NOISE_RE =
     /^(?:subtotal.*|estimated\s+total.*|order\s+total.*|taxes?.*|delivery(?:\s+fee)?.*|service\s+fee.*|bag\s+fee.*|driver\s+tip.*|tip.*|checkout.*|proceed\s+to\s+checkout.*|continue\s+to\s+checkout.*|go\s+to\s+checkout.*|substitutions?.*|choose\s+substitution.*|remove|delete|save\s+for\s+later|move\s+to\s+cart|clip\s+coupon|free\s+(?:shipping|delivery|pickup).*|snap\s+ebt.*|sold\s+by.*|fulfilled\s+by.*|arrives\s+.*|pickup\s+.*|shipping\s+.*|\$?\d+(?:\.\d{2})?(?:\s*\/\s*\w+)?|qty\s*:?\s*\d+|\d+\s*(?:ct|items?))$/i;
 
+  const CART_ROW_SELECTORS = [
+    '[data-test="cartItem"]',
+    '[data-qa*="cart-item" i]',
+    ".sc-list-item-content",
+    'div[data-asin]:not([data-asin=""])',
+    '[data-testid*="cart-item" i]',
+    '[data-testid*="line-item" i]',
+    '[data-automation-id*="cart-item" i]',
+    '[data-item-id]',
+    "li",
+    "article",
+  ];
+
   function isInsideCartExcludedArea(el, cartRoot) {
     if (!el || typeof el.closest !== "function") return false;
-    if (el.closest('#sc-saved-cart, [data-testid*="saved" i], [data-testid*="buy-again" i], [data-testid*="recommend" i], [data-testid*="upsell" i], [data-testid*="addon" i]')) {
+    if (el.closest('#sc-saved-cart, [data-testid*="saved" i], [data-test*="savedForLater" i], [data-testid*="buy-again" i], [data-testid*="recommend" i], [data-testid*="upsell" i], [data-testid*="addon" i]')) {
       return true;
     }
     return isInsideExcludedSection(el, cartRoot);
@@ -1141,12 +1320,15 @@
       const n = Number(numInput.value);
       if (Number.isFinite(n) && n >= 0) return n === 0 ? 0 : clampQty(n);
     }
-    const sel = rowEl.querySelector('select[name*="quantity" i], select[aria-label*="quantity" i], select[data-testid*="qty" i], select');
+    const sel = rowEl.querySelector('select[name*="quantity" i], select[aria-label*="quantity" i], select[data-testid*="qty" i], select[data-test*="qty" i], select[data-qa*="qty" i], select');
     if (sel && sel.value !== "") {
       const m = String(sel.value).match(/\d+/);
-      if (m) return clampQty(Number(m[0]));
+      if (m) {
+        const parsed = Number(m[0]);
+        return parsed === 0 ? 0 : clampQty(parsed);
+      }
     }
-    const ariaQty = rowEl.querySelector('[aria-label*="quantity" i], [data-testid*="quantity" i], .a-dropdown-prompt');
+    const ariaQty = rowEl.querySelector('[aria-label*="quantity" i], [data-testid*="quantity" i], [data-test*="quantity" i], .a-dropdown-prompt');
     if (ariaQty) {
       const txt = `${ariaQty.textContent || ""} ${ariaQty.getAttribute("aria-label") || ""}`;
       const m = txt.match(/(?:qty|quantity|in\s+cart)\s*:?\s*(\d{1,2})\b/i) || txt.trim().match(/^(\d{1,2})(?:\s*ct)?$/i);
@@ -1168,6 +1350,10 @@
   function extractRowTitleAndImage(rowEl) {
     if (!rowEl) return null;
     const titleSelectors = [
+      '[data-test="cartItem-title"]',
+      '[data-qa*="cart-item-title" i]',
+      '[data-qa*="item-name" i]',
+      '[data-qa*="product-name" i]',
       ".sc-product-title",
       '[data-automation-id*="product-title" i]',
       '[data-testid*="item-title" i]',
@@ -1205,41 +1391,154 @@
     }
     if (!title) return null;
 
-    let image = null;
+    let domImageUrl = null;
     const imgs = rowEl.querySelectorAll("img");
     for (const img of imgs) {
-      const src = img.currentSrc || img.getAttribute("src") || "";
-      if (src.startsWith("https://") && !/icon|sprite|logo|badge|1x1/i.test(src)) {
-        image = src;
+      const cand = sanitizeDomImageUrl(img.currentSrc || img.getAttribute("src") || "", img);
+      if (cand) {
+        domImageUrl = cand;
         break;
       }
     }
-    return { title, image };
+    return { title, image: domImageUrl, domImageUrl };
   }
 
-  function readHeaderCartCountOnCartPage() {
-    if (!isCartPageUrl()) return null;
+  function readExplicitCartCount(cartRoot) {
     const badgeSelectors = [
       "#nav-cart-count",
       '[data-testid*="cart-count" i]',
       '[data-automation-id*="cart-count" i]',
-      '[aria-label*="0 items in cart" i]',
+      '[data-test*="cart-count" i]',
+      '[data-qa*="cart-count" i]',
+      '[aria-label*="items in cart" i]',
+      '[aria-label*="item in cart" i]',
       'a[href*="/cart"] span',
     ];
     for (const sel of badgeSelectors) {
       const el = document.querySelector(sel);
       if (!el) continue;
       const aria = el.getAttribute("aria-label") || "";
-      if (/\b0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag)\b/i.test(aria)) return 0;
+      const ariaMatch = aria.match(/\b(\d{1,3})\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)\b/i);
+      if (ariaMatch) return Number(ariaMatch[1]);
       const txt = (el.textContent || "").trim();
-      if (txt === "0") return 0;
+      if (/^\d{1,3}$/.test(txt)) return Number(txt);
+    }
+    if (cartRoot) {
+      const headerEls = cartRoot.querySelectorAll("h1, h2, h3, [role='heading'], [data-testid*='subtotal' i], [data-test*='subtotal' i]");
+      for (const h of headerEls) {
+        if (isInsideCartExcludedArea(h, cartRoot)) continue;
+        const t = (h.textContent || "").replace(/\s+/g, " ").trim();
+        const m = t.match(/\b(\d{1,3})\s+items?\b/i) || t.match(/^(?:cart|bag|basket)\s*\((\d{1,3})\)$/i);
+        if (m) return Number(m[1]);
+      }
     }
     return null;
+  }
+
+  function isVirtualizedOrScrolledCart(cartRoot) {
+    if (!cartRoot) return false;
+    if (
+      cartRoot.querySelector(
+        '[data-virtualized], [data-testid*="virtual" i], [class*="ReactVirtualized" i], [class*="virtual" i][style*="height"]'
+      )
+    ) {
+      return true;
+    }
+    const candidates = [cartRoot, ...cartRoot.querySelectorAll("div, ul, section")];
+    for (let i = 0; i < candidates.length && i < 48; i++) {
+      const el = candidates[i];
+      if (!el || isInsideCartExcludedArea(el, cartRoot)) continue;
+      if (el.scrollTop > 8) return true;
+      if (el.clientHeight >= 140 && el.scrollHeight > el.clientHeight + 48) {
+        const st = window.getComputedStyle(el);
+        if (/(?:auto|scroll|overlay)/i.test(`${st.overflowY} ${st.overflow}`)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function clickNativeCartRemoveButton(targetTitle) {
+    if (!targetTitle) return false;
+    const cartRoot = detectOpenCartRoot();
+    if (!cartRoot) return false;
+
+    const nativeRemoveSelectors = [
+      '[data-test="cartItem-deleteBtn"]',
+      'button[data-test*="delete" i]',
+      'button[data-test*="remove" i]',
+      '[data-automation-id*="remove" i]',
+      '[data-qa*="remove" i]',
+      'button[data-qa*="delete" i]',
+      '[data-testid*="cart-item-remove" i]',
+      '[data-testid*="remove" i]',
+      '[data-testid*="delete" i]',
+      'input[name^="submit.delete"]',
+      'input[value*="Delete" i]',
+      '[data-action="delete"] input',
+      '[data-action="delete"] button',
+      'button[aria-label*="Remove" i]',
+      'button[aria-label*="Delete" i]',
+    ];
+
+    for (const sel of CART_ROW_SELECTORS) {
+      const rows = cartRoot.querySelectorAll(sel);
+      for (const row of rows) {
+        if (!isElementVisible(row) || isInsideCartExcludedArea(row, cartRoot)) continue;
+        const subProductLinks = row.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/products/"]');
+        const distinctHrefs = new Set([...subProductLinks].map((a) => (a.getAttribute("href") || "").split("?")[0]).filter(Boolean));
+        if (distinctHrefs.size > 1) continue;
+
+        const info = extractRowTitleAndImage(row);
+        if (!info || !isSameCartTitle(info.title, targetTitle)) continue;
+
+        for (const btnSel of nativeRemoveSelectors) {
+          const btn = row.querySelector(btnSel);
+          if (btn && isElementVisible(btn)) {
+            btn.click();
+            return true;
+          }
+        }
+        const allBtns = row.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]');
+        for (const btn of allBtns) {
+          if (!isElementVisible(btn)) continue;
+          const lbl = `${btn.textContent || ""} ${btn.getAttribute("aria-label") || ""} ${btn.getAttribute("title") || ""} ${btn.value || ""}`;
+          if (!/\bundo\b/i.test(lbl) && /\b(remove|delete|trash)\b/i.test(lbl)) {
+            btn.click();
+            return true;
+          }
+        }
+        if (extractRowQuantity(row) === 1) {
+          for (const btn of allBtns) {
+            if (!isElementVisible(btn)) continue;
+            const txt = (btn.textContent || "").trim();
+            const lbl = `${txt} ${btn.getAttribute("aria-label") || ""}`;
+            if (txt === "-" || txt === "−" || /\b(decrease|decrement|minus)\b/i.test(lbl)) {
+              btn.click();
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  let cartSyncTimer = null;
+  function scheduleCartSync(delayMs = 240) {
+    clearTimeout(cartSyncTimer);
+    cartSyncTimer = setTimeout(() => {
+      cartSyncTimer = null;
+      scrapeAndSyncLiveCart();
+    }, delayMs);
   }
 
   function scrapeAndSyncLiveCart() {
     const cartRoot = detectOpenCartRoot();
     if (!cartRoot) return false;
+
+    pruneDismissedCartKeys();
 
     // Gather text outside excluded carousels / saved-for-later to check empty signal
     const primaryTextChunks = [];
@@ -1252,8 +1551,9 @@
       if (t) primaryTextChunks.push(t);
     }
     const primaryCartText = primaryTextChunks.join(" \n ");
+    const explicitCount = readExplicitCartCount(cartRoot);
 
-    if (EMPTY_CART_RE.test(primaryCartText) || readHeaderCartCountOnCartPage() === 0) {
+    if (EMPTY_CART_RE.test(primaryCartText) || (isCartPageUrl() && explicitCount === 0) || (explicitCount === 0 && primaryCartText.length > 0)) {
       if (state.cartItems.length > 0) {
         state.cartItems = [];
         state.displayedAvg = null;
@@ -1263,21 +1563,10 @@
       return true;
     }
 
-    const rowSelectors = [
-      ".sc-list-item-content",
-      'div[data-asin]:not([data-asin=""])',
-      '[data-testid*="cart-item" i]',
-      '[data-testid*="line-item" i]',
-      '[data-automation-id*="cart-item" i]',
-      '[data-item-id]',
-      "li",
-      "article",
-    ];
-
     const scrapedMap = new Map();
     const visitedEls = new Set();
 
-    for (const sel of rowSelectors) {
+    for (const sel of CART_ROW_SELECTORS) {
       const rows = cartRoot.querySelectorAll(sel);
       for (const row of rows) {
         if (visitedEls.has(row) || !isElementVisible(row)) continue;
@@ -1293,7 +1582,7 @@
           /\$\s*\d+/.test(rowText) ||
           Boolean(
             row.querySelector(
-              'input[type="number"], select, button[aria-label*="remove" i], button[aria-label*="delete" i], button[aria-label*="quantity" i], [data-testid*="remove" i], [data-testid*="quantity" i]'
+              'input[type="number"], select, [data-test="cartItem-deleteBtn"], [data-qa*="remove" i], [data-automation-id*="remove" i], input[value*="Delete" i], button[aria-label*="remove" i], button[aria-label*="delete" i], button[aria-label*="quantity" i], [data-testid*="remove" i], [data-testid*="quantity" i]'
             )
           );
         if (!hasRowControl) continue;
@@ -1305,12 +1594,16 @@
 
         visitedEls.add(row);
         const norm = normalizeTitleForMatch(info.title);
-        if (!norm) continue;
+        if (!norm || isCartKeyDismissed(norm)) continue;
         const prev = scrapedMap.get(norm);
         if (prev) {
-          if (info.image && !prev.image) prev.image = info.image;
+          if (info.domImageUrl && !prev.domImageUrl) prev.domImageUrl = info.domImageUrl;
         } else if (scrapedMap.size < MAX_CART_ITEMS) {
-          scrapedMap.set(norm, { title: info.title, quantity: qty, image: info.image });
+          scrapedMap.set(norm, {
+            title: info.title,
+            quantity: qty,
+            domImageUrl: info.domImageUrl || null,
+          });
         }
       }
       if (scrapedMap.size >= 1 && sel !== "li" && sel !== "article") {
@@ -1321,11 +1614,19 @@
 
     const scrapedList = [...scrapedMap.values()];
     if (scrapedList.length === 0) {
-      // Cart drawer/page may still be hydrating skeleton rows; don't wipe unless empty signal matched above
+      // Filter any tombstoned items from state.cartItems even if remaining rows haven't hydrated
+      const filteredExisting = state.cartItems.filter(
+        (c) => !isCartItemDismissed(c.title) && !isCartItemDismissed(c.key)
+      );
+      if (filteredExisting.length !== state.cartItems.length) {
+        state.cartItems = filteredExisting;
+        state.displayedAvg = calcCartAvg();
+        saveBucketCart();
+        render();
+      }
       return false;
     }
 
-    // Authoritative sync: keep matching items, drop deleted items, add newly discovered items!
     let changed = false;
     const nextCart = [];
     const toAudit = [];
@@ -1333,13 +1634,16 @@
     for (const scraped of scrapedList) {
       const existing = state.cartItems.find((c) => isSameCartTitle(c.title, scraped.title) || isSameCartTitle(c.key, scraped.title));
       if (existing) {
-        if (existing.quantity !== scraped.quantity || (scraped.image && existing.image !== scraped.image)) {
+        if (
+          existing.quantity !== scraped.quantity ||
+          (scraped.domImageUrl && existing.domImageUrl !== scraped.domImageUrl)
+        ) {
           changed = true;
         }
         const updated = {
           ...existing,
           quantity: scraped.quantity,
-          image: scraped.image || existing.image || null,
+          domImageUrl: scraped.domImageUrl || existing.domImageUrl || null,
         };
         nextCart.push(updated);
         if (updated.pending || (updated.score === null && !updated.isNonFood)) {
@@ -1351,7 +1655,8 @@
           key: scraped.title,
           title: scraped.title,
           quantity: scraped.quantity,
-          image: scraped.image || null,
+          image: null,
+          domImageUrl: scraped.domImageUrl || null,
           score: null,
           pending: true,
           isNonFood: false,
@@ -1370,8 +1675,39 @@
       }
     }
 
+    // Protect virtualized cart drawers (Instacart/Walmart/Target) where scrolling unmounts offscreen rows,
+    // while still honoring explicit removals (dismissedCartKeys or header/subtotal count drop).
+    if (isVirtualizedOrScrolledCart(cartRoot)) {
+      let runningUnits = totalCartUnits(nextCart);
+      const countCapAllowsPreserve = explicitCount === null || runningUnits < explicitCount;
+      if (countCapAllowsPreserve) {
+        for (const prevItem of state.cartItems) {
+          if (nextCart.length >= MAX_CART_ITEMS) break;
+          if (isCartItemDismissed(prevItem.title) || isCartItemDismissed(prevItem.key)) continue;
+          const alreadyInNext = nextCart.some(
+            (n) => isSameCartTitle(n.title, prevItem.title) || isSameCartTitle(n.key, prevItem.key)
+          );
+          if (alreadyInNext) continue;
+          const itemUnits = clampQty(prevItem.quantity);
+          if (explicitCount !== null && runningUnits + itemUnits > explicitCount) continue;
+          nextCart.push(prevItem);
+          runningUnits += itemUnits;
+          if (prevItem.pending || (prevItem.score === null && !prevItem.isNonFood)) {
+            toAudit.push(prevItem);
+          }
+        }
+      }
+    }
+
     if (nextCart.length !== state.cartItems.length) {
       changed = true;
+    } else {
+      for (let i = 0; i < nextCart.length; i++) {
+        if (nextCart[i]?.key !== state.cartItems[i]?.key) {
+          changed = true;
+          break;
+        }
+      }
     }
 
     if (changed) {
@@ -1387,92 +1723,184 @@
     return true;
   }
 
-  let auditInFlight = false;
-  async function auditCartItemsBatch(titlesToAudit, forceAll = false) {
-    if (auditInFlight && !forceAll) return;
-    const targetItems = forceAll
-      ? state.cartItems
-      : state.cartItems.filter((c) => titlesToAudit.some((t) => isSameCartTitle(c.title, t)));
-    if (targetItems.length === 0) return;
+  let cartAuditInFlight = false;
+  let auditDirtyPending = false;
+  let auditPendingForceAll = false;
+  const auditPendingTitles = new Set();
 
-    auditInFlight = true;
-    const bucketSnapshot = activeBucket.bucketKey;
+  function findCartItemIndexBySnapshot(items, snap) {
+    if (!Array.isArray(items) || !snap) return -1;
+    return items.findIndex(
+      (c) =>
+        (snap.normKey &&
+          (normalizeTitleForMatch(c.key) === snap.normKey ||
+            normalizeTitleForMatch(c.title) === snap.normKey)) ||
+        isSameCartTitle(c.title, snap.title) ||
+        isSameCartTitle(c.key, snap.key)
+    );
+  }
+
+  async function auditCartItemsBatch(titlesToAudit = [], forceAll = false) {
+    if (forceAll) auditPendingForceAll = true;
+    if (Array.isArray(titlesToAudit)) {
+      for (const t of titlesToAudit) {
+        if (t) auditPendingTitles.add(t);
+      }
+    }
+    if (cartAuditInFlight) {
+      auditDirtyPending = true;
+      return;
+    }
+
+    const useForceAll = forceAll || auditPendingForceAll;
+    const queuedTitles = [...auditPendingTitles];
+    auditPendingForceAll = false;
+    auditPendingTitles.clear();
+
+    const capturedBucketObj = resolveStoreBucket();
+    const capturedBucket = capturedBucketObj.bucketKey;
+
+    const targetItems = useForceAll
+      ? state.cartItems.filter((c) => !isCartItemDismissed(c.title) && !isCartItemDismissed(c.key))
+      : state.cartItems.filter(
+          (c) =>
+            !isCartItemDismissed(c.title) &&
+            !isCartItemDismissed(c.key) &&
+            (queuedTitles.length > 0
+              ? queuedTitles.some((t) => isSameCartTitle(c.title, t) || isSameCartTitle(c.key, t))
+              : c.pending || (c.score === null && !c.isNonFood))
+        );
+
+    const requestSnapshots = targetItems.slice(0, MAX_CART_ITEMS).map((item) => ({
+      key: item.key,
+      title: item.title,
+      normKey: normalizeTitleForMatch(item.key || item.title),
+      quantity: clampQty(item.quantity),
+    }));
+    if (requestSnapshots.length === 0) return;
+
+    cartAuditInFlight = true;
     const payload = {
-      store: activeBucket.store,
-      instacartRetailerSlug: activeBucket.instacartRetailerSlug,
-      items: targetItems.slice(0, MAX_CART_ITEMS).map((item) => ({
-        productTitle: item.title,
-        quantity: clampQty(item.quantity),
-        instacartRetailerSlug: activeBucket.instacartRetailerSlug,
+      store: capturedBucketObj.store,
+      instacartRetailerSlug: capturedBucketObj.instacartRetailerSlug,
+      items: requestSnapshots.map((snap) => ({
+        productTitle: snap.title,
+        quantity: snap.quantity,
+        instacartRetailerSlug: capturedBucketObj.instacartRetailerSlug,
       })),
     };
 
     try {
-      chrome.runtime.sendMessage({ type: "CLEANCART_AUDIT", payload }, async (resp) => {
-        auditInFlight = false;
-        if (!resp?.ok || !Array.isArray(resp.results) || activeBucket.bucketKey !== bucketSnapshot) return;
+      const resp = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: "CLEANCART_AUDIT", payload }, (r) => {
+            resolve(r || null);
+          });
+        } catch {
+          resolve(null);
+        }
+      });
 
-        for (let i = 0; i < targetItems.length && i < resp.results.length; i++) {
-          const srcTitle = targetItems[i].title;
-          const scanRes = resp.results[i];
-          const idx = state.cartItems.findIndex((c) => isSameCartTitle(c.title, srcTitle));
-          if (idx === -1) continue;
+      if (
+        !resp?.ok ||
+        !Array.isArray(resp.results) ||
+        resolveStoreBucket().bucketKey !== capturedBucket ||
+        activeBucket.bucketKey !== capturedBucket
+      ) {
+        return;
+      }
 
-          if (!scanRes?.ok) {
-            state.cartItems[idx] = {
-              ...state.cartItems[idx],
-              pending: false,
-              isNonFood: true,
-              score: null,
-            };
-            continue;
-          }
+      let mutatedAny = false;
+      for (let i = 0; i < requestSnapshots.length && i < resp.results.length; i++) {
+        if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) {
+          return;
+        }
+        const snap = requestSnapshots[i];
+        if (isCartKeyDismissed(snap.normKey) || isCartItemDismissed(snap.title)) continue;
 
-          const isNonFood =
-            scanRes.product?.nutrition?.productKind === "non-food" ||
-            scanRes.result?.yukaBreakdown?.nutriScoreGrade === "N/A";
-
-          const candidates = Array.isArray(scanRes.swapCandidates) && scanRes.swapCandidates.length
-            ? scanRes.swapCandidates
-            : scanRes.swap
-              ? [scanRes.swap]
-              : [];
-
-          let chosenSwap = scanRes.swap || null;
-          let swapOutOfStock = false;
-          if (candidates.length > 0 && !isNonFood && scanRes.result?.score < 75) {
-            const stockRes = await resolveFirstInStockSwap(candidates, scanRes.swap, bucketSnapshot);
-            chosenSwap = stockRes.chosen;
-            swapOutOfStock = stockRes.allOutOfStock;
-          }
-
-          const cur = state.cartItems[idx];
-          if (!cur) continue;
-          state.cartItems[idx] = {
-            ...cur,
-            title: cur.title || scanRes.product?.title,
-            image: cur.image || scanRes.product?.imageUrl || null,
-            score: isNonFood ? null : scanRes.result.score,
+        const scanRes = resp.results[i];
+        if (!scanRes?.ok) {
+          const failIdx = findCartItemIndexBySnapshot(state.cartItems, snap);
+          if (failIdx === -1) continue;
+          state.cartItems[failIdx] = {
+            ...state.cartItems[failIdx],
             pending: false,
-            isNonFood,
-            dietaryAlerts: Array.isArray(scanRes.dietaryAlerts) ? scanRes.dietaryAlerts : [],
-            swapTitle: chosenSwap?.title || null,
-            swapScore: chosenSwap?.score ?? null,
-            swapUrl: chosenSwap?.webUrl || null,
-            swapImage: chosenSwap?.image || null,
-            swapIsPaidLink: Boolean(chosenSwap?.isPaidLink),
-            swapInStock: Boolean(chosenSwap?.inStock),
-            swapOutOfStock,
-            swapCandidates: candidates,
+            isNonFood: true,
+            score: null,
           };
+          mutatedAny = true;
+          continue;
         }
 
+        const isNonFood =
+          scanRes.product?.nutrition?.productKind === "non-food" ||
+          scanRes.result?.yukaBreakdown?.nutriScoreGrade === "N/A";
+
+        const candidates = Array.isArray(scanRes.swapCandidates) && scanRes.swapCandidates.length
+          ? scanRes.swapCandidates
+          : scanRes.swap
+            ? [scanRes.swap]
+            : [];
+
+        let chosenSwap = scanRes.swap || null;
+        let swapOutOfStock = false;
+        if (candidates.length > 0 && !isNonFood && scanRes.result?.score < 75) {
+          const stockRes = await resolveFirstInStockSwap(candidates, scanRes.swap, capturedBucket);
+          if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) {
+            return;
+          }
+          if (isCartKeyDismissed(snap.normKey) || isCartItemDismissed(snap.title)) {
+            continue;
+          }
+          chosenSwap = stockRes.chosen;
+          swapOutOfStock = stockRes.allOutOfStock;
+        }
+
+        // Re-lookup live index AFTER awaits so an item deleted mid-audit is never resurrected or written onto a neighbor
+        const liveIdx = findCartItemIndexBySnapshot(state.cartItems, snap);
+        if (liveIdx === -1) continue;
+        const cur = state.cartItems[liveIdx];
+        if (!cur) continue;
+
+        const serverVerifiedImg =
+          scanRes.product?.imageUrl && !isPlaceholderProductImage(scanRes.product.imageUrl)
+            ? scanRes.product.imageUrl
+            : null;
+
+        state.cartItems[liveIdx] = {
+          ...cur,
+          title: cur.title || scanRes.product?.title,
+          image: cur.image || serverVerifiedImg || null,
+          domImageUrl: cur.domImageUrl || null,
+          score: isNonFood ? null : scanRes.result.score,
+          pending: false,
+          isNonFood,
+          dietaryAlerts: Array.isArray(scanRes.dietaryAlerts) ? scanRes.dietaryAlerts : [],
+          swapTitle: chosenSwap?.title || null,
+          swapScore: chosenSwap?.score ?? null,
+          swapUrl: chosenSwap?.webUrl || null,
+          swapImage: chosenSwap?.image || null,
+          swapIsPaidLink: Boolean(chosenSwap?.isPaidLink),
+          swapInStock: Boolean(chosenSwap?.inStock),
+          swapOutOfStock,
+          swapCandidates: candidates,
+        };
+        mutatedAny = true;
+      }
+
+      if (mutatedAny && resolveStoreBucket().bucketKey === capturedBucket) {
         state.displayedAvg = calcCartAvg();
         saveBucketCart();
         render();
-      });
+      }
     } catch {
-      auditInFlight = false;
+      /* ignore transient runtime messaging errors */
+    } finally {
+      cartAuditInFlight = false;
+      if (auditDirtyPending) {
+        auditDirtyPending = false;
+        void auditCartItemsBatch([...auditPendingTitles], auditPendingForceAll);
+      }
     }
   }
 
@@ -1483,6 +1911,7 @@
 
   async function recordProductInCart(resp, fallbackTitle, addQty = 1, productImg = null) {
     if (!resp?.ok || !resp.result) return;
+    const capturedBucket = resolveStoreBucket().bucketKey;
     const isNonFood =
       resp.product?.nutrition?.productKind === "non-food" ||
       resp.result?.yukaBreakdown?.nutriScoreGrade === "N/A";
@@ -1490,10 +1919,14 @@
     const itemKey = (fallbackTitle || resp.product?.title || "").trim();
     if (!itemKey) return;
 
+    clearCartItemDismissed(itemKey);
+    if (resp.product?.title) clearCartItemDismissed(resp.product.title);
+
     let swappedInCart = false;
     if (matchesPendingSwapTitle(itemKey)) {
       const fromKey = state.pendingSwap?.fromKey;
       if (fromKey) {
+        markCartItemDismissed(fromKey);
         state.cartItems = state.cartItems.filter((i) => !isSameCartTitle(i.key, fromKey) && !isSameCartTitle(i.title, fromKey));
       }
       state.pendingSwap = null;
@@ -1508,33 +1941,49 @@
     let chosenSwap = state.activeSwap || null;
     let swapOutOfStock = Boolean(state.allSwapsOutOfStock);
     if (!chosenSwap && !swapOutOfStock && !isNonFood && candidates.length > 0 && resp.result?.score < 75) {
-      const stockRes = await resolveFirstInStockSwap(candidates, resp.swap, activeBucket.bucketKey);
+      const stockRes = await resolveFirstInStockSwap(candidates, resp.swap, capturedBucket);
+      if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) return;
+      if (isCartItemDismissed(itemKey)) return;
       chosenSwap = stockRes.chosen;
       swapOutOfStock = stockRes.allOutOfStock;
     }
 
-    const existing = state.cartItems.find((i) => isSameCartTitle(i.key, itemKey) || isSameCartTitle(i.title, itemKey));
-    if (existing) {
-      existing.quantity = clampQty((existing.quantity || 1) + addQty);
-      existing.score = isNonFood ? null : resp.result.score;
-      existing.pending = false;
-      existing.isNonFood = isNonFood;
-      existing.image = productImg || existing.image || resp.product?.imageUrl || null;
-      existing.dietaryAlerts = Array.isArray(resp.dietaryAlerts) ? resp.dietaryAlerts : [];
-      existing.swapTitle = chosenSwap?.title || null;
-      existing.swapScore = chosenSwap?.score ?? null;
-      existing.swapUrl = chosenSwap?.webUrl || null;
-      existing.swapImage = chosenSwap?.image || null;
-      existing.swapIsPaidLink = Boolean(chosenSwap?.isPaidLink);
-      existing.swapInStock = Boolean(chosenSwap?.inStock);
-      existing.swapOutOfStock = Boolean(swapOutOfStock);
-      existing.swapCandidates = candidates;
+    const domImgClean = sanitizeDomImageUrl(productImg) || null;
+    const serverImgClean =
+      resp.product?.imageUrl && !isPlaceholderProductImage(resp.product.imageUrl)
+        ? resp.product.imageUrl
+        : null;
+
+    const existingIdx = state.cartItems.findIndex(
+      (i) => isSameCartTitle(i.key, itemKey) || isSameCartTitle(i.title, itemKey)
+    );
+    if (existingIdx !== -1) {
+      const existing = state.cartItems[existingIdx];
+      state.cartItems[existingIdx] = {
+        ...existing,
+        quantity: clampQty((existing.quantity || 1) + addQty),
+        score: isNonFood ? null : resp.result.score,
+        pending: false,
+        isNonFood,
+        image: existing.image || serverImgClean || null,
+        domImageUrl: domImgClean || existing.domImageUrl || null,
+        dietaryAlerts: Array.isArray(resp.dietaryAlerts) ? resp.dietaryAlerts : [],
+        swapTitle: chosenSwap?.title || null,
+        swapScore: chosenSwap?.score ?? null,
+        swapUrl: chosenSwap?.webUrl || null,
+        swapImage: chosenSwap?.image || null,
+        swapIsPaidLink: Boolean(chosenSwap?.isPaidLink),
+        swapInStock: Boolean(chosenSwap?.inStock),
+        swapOutOfStock: Boolean(swapOutOfStock),
+        swapCandidates: candidates,
+      };
     } else {
       state.cartItems.unshift({
         key: itemKey,
         title: resp.product?.title || itemKey,
         quantity: clampQty(addQty),
-        image: productImg || resp.product?.imageUrl || null,
+        image: serverImgClean || null,
+        domImageUrl: domImgClean,
         score: isNonFood ? null : resp.result.score,
         pending: false,
         isNonFood,
@@ -1563,6 +2012,7 @@
 
   function removeCartItemByTitle(targetTitle) {
     if (!targetTitle) return;
+    markCartItemDismissed(targetTitle);
     const before = state.cartItems.length;
     state.cartItems = state.cartItems.filter(
       (item) => !isSameCartTitle(item.title, targetTitle) && !isSameCartTitle(item.key, targetTitle)
@@ -1582,6 +2032,8 @@
     if (idx === -1) return false;
     const nextQty = (state.cartItems[idx].quantity || 1) + delta;
     if (nextQty <= 0) {
+      markCartItemDismissed(state.cartItems[idx].key);
+      markCartItemDismissed(state.cartItems[idx].title);
       state.cartItems.splice(idx, 1);
     } else {
       state.cartItems[idx].quantity = clampQty(nextQty);
@@ -1592,7 +2044,58 @@
     return true;
   }
 
-  /* ---------------- Capture-Phase Store Click Listeners (Add / Remove / Stepper) ---------------- */
+  function setCartItemQtyByTitle(targetTitle, exactQty) {
+    if (!targetTitle) return false;
+    const idx = state.cartItems.findIndex(
+      (item) => isSameCartTitle(item.title, targetTitle) || isSameCartTitle(item.key, targetTitle)
+    );
+    if (idx === -1) return false;
+    if (exactQty <= 0) {
+      markCartItemDismissed(state.cartItems[idx].key);
+      markCartItemDismissed(state.cartItems[idx].title);
+      state.cartItems.splice(idx, 1);
+    } else {
+      clearCartItemDismissed(targetTitle);
+      state.cartItems[idx].quantity = clampQty(exactQty);
+    }
+    state.displayedAvg = calcCartAvg();
+    saveBucketCart();
+    render();
+    return true;
+  }
+
+  /* ---------------- Capture-Phase Store Click & Quantity Change Listeners ---------------- */
+  document.addEventListener(
+    "change",
+    (e) => {
+      if (host?.contains(e.target)) return;
+      const ctrl = e.target?.closest?.(
+        'select, input[type="number"], input[role="spinbutton"], input[name*="quantity" i], input[aria-label*="quantity" i]'
+      );
+      if (!ctrl) return;
+      const rowContainer = ctrl.closest(
+        '[data-test="cartItem"], [data-qa*="cart-item" i], .sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [data-item-id], li, article'
+      );
+      const cartRoot = detectOpenCartRoot();
+      if (!rowContainer && (!cartRoot || !cartRoot.contains(ctrl))) return;
+
+      const rawVal = String(ctrl.value ?? "").trim();
+      const numMatch = rawVal.match(/^\d+$/) || rawVal.match(/\b(\d{1,2})\b/);
+      const parsedQty = numMatch ? Number(numMatch[1]) : NaN;
+      const rowInfo = rowContainer ? extractRowTitleAndImage(rowContainer) : null;
+
+      if (Number.isFinite(parsedQty) && rowInfo?.title) {
+        if (parsedQty <= 0) {
+          removeCartItemByTitle(rowInfo.title);
+        } else {
+          setCartItemQtyByTitle(rowInfo.title, parsedQty);
+        }
+      }
+      scheduleCartSync(260);
+    },
+    true
+  );
+
   document.addEventListener(
     "click",
     (e) => {
@@ -1600,12 +2103,12 @@
       const btn = e.target?.closest?.('button, [role="button"], input[type="submit"], input[type="button"], a[role="button"]');
       if (!btn) return;
 
-      const label = `${btn.textContent || ""} ${btn.getAttribute("aria-label") || ""} ${btn.getAttribute("title") || ""} ${btn.getAttribute("data-testid") || ""} ${btn.getAttribute("data-automation-id") || ""} ${btn.value || ""}`
+      const label = `${btn.textContent || ""} ${btn.getAttribute("aria-label") || ""} ${btn.getAttribute("title") || ""} ${btn.getAttribute("data-testid") || ""} ${btn.getAttribute("data-test") || ""} ${btn.getAttribute("data-qa") || ""} ${btn.getAttribute("data-automation-id") || ""} ${btn.value || ""}`
         .replace(/\s+/g, " ")
         .trim();
 
       const rowContainer = btn.closest(
-        '.sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [data-item-id], [data-testid*="product-card" i], [data-testid*="item-card" i], li, article'
+        '[data-test="cartItem"], [data-qa*="cart-item" i], .sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [data-item-id], [data-testid*="product-card" i], [data-testid*="item-card" i], li, article'
       );
       const rowInfo = rowContainer ? extractRowTitleAndImage(rowContainer) : null;
       const contextTitle = rowInfo?.title || readTitle();
@@ -1613,11 +2116,11 @@
       // 1. Explicit Remove / Delete / Trash / Save for Later in cart or card
       const isHardRemove =
         !/\bundo\b/i.test(label) &&
-        (/\b(remove(?:\s+item|\s+from\s+cart)?|delete(?:\s+item)?|save\s+for\s+later|trash)\b/i.test(label) ||
+        (/\b(remove(?:\s+item|\s+from\s+cart)?|delete(?:\s+item)?|cartitem-deletebtn|save\s+for\s+later|trash)\b/i.test(label) ||
           Boolean(btn.querySelector('svg[data-testid*="trash" i], svg[data-testid*="delete" i], [class*="trash" i]')));
       if (isHardRemove && contextTitle) {
         removeCartItemByTitle(contextTitle);
-        setTimeout(() => scrapeAndSyncLiveCart(), 650);
+        scheduleCartSync(650);
         return;
       }
 
@@ -1634,7 +2137,7 @@
         } else {
           adjustCartItemQtyByTitle(contextTitle, -1);
         }
-        setTimeout(() => scrapeAndSyncLiveCart(), 650);
+        scheduleCartSync(650);
         return;
       }
 
@@ -1644,32 +2147,37 @@
         btnTextTrim === "+" || /\b(increase|increment|plus|add\s+one)\b/i.test(label);
 
       if (isExplicitAdd || isIncrement) {
+        if (contextTitle) clearCartItemDismissed(contextTitle);
         // If on active PDP / modal and current scanned item matches
         if (isProductPage() && state.data?.ok) {
           const modalOrDoc = activeDialogScope();
+          const pdpTitle = readTitle(modalOrDoc);
+          if (pdpTitle) clearCartItemDismissed(pdpTitle);
           if (!rowContainer || (modalOrDoc && modalOrDoc.contains(btn)) || isSameCartTitle(contextTitle, state.data.product?.title)) {
-            void recordProductInCart(state.data, readTitle(modalOrDoc), 1, readProductImage(modalOrDoc));
+            void recordProductInCart(state.data, pdpTitle, 1, readProductImage(modalOrDoc));
             return;
           }
         }
         // Increment existing cart item or add from product grid card!
         if (contextTitle) {
           if (isIncrement && adjustCartItemQtyByTitle(contextTitle, 1)) {
+            scheduleCartSync(500);
             return;
           }
+          const addBucket = resolveStoreBucket();
           // Added directly from grid/search tile: scan & insert into active store cart!
           chrome.runtime.sendMessage(
             {
               type: "CLEANCART_SCAN",
               payload: {
                 productTitle: contextTitle,
-                store: activeBucket.store,
-                instacartRetailerSlug: activeBucket.instacartRetailerSlug,
+                store: addBucket.store,
+                instacartRetailerSlug: addBucket.instacartRetailerSlug,
               },
             },
             (resp) => {
-              if (resp?.ok) {
-                void recordProductInCart(resp, contextTitle, 1, rowInfo?.image || null);
+              if (resp?.ok && resolveStoreBucket().bucketKey === addBucket.bucketKey) {
+                void recordProductInCart(resp, contextTitle, 1, rowInfo?.domImageUrl || rowInfo?.image || null);
               }
             }
           );
@@ -1701,6 +2209,10 @@
     .cc-card { width: min(430px, calc(100vw - 20px)); max-height: min(78vh, 560px); overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 10px; padding: 18px; border-radius: 24px; background: #fff; box-shadow: 0 24px 54px -12px rgba(15,23,42,.36); }
     .cc-hide-drop { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483646; padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 800; background: rgba(15,23,20,.92); color: #fecaca; border: 1.5px dashed rgba(248,113,113,.75); pointer-events: none; }
     .cc-hide-drop.is-hot { background: #dc2626; color: #fff; border-style: solid; }
+    .cc-thumb-empty { background: #F4F5F7 !important; border: 1px solid #E5E7EB !important; display: inline-flex !important; align-items: center; justify-content: center; color: #9CA3AF; padding: 0 !important; flex: none; }
+    .cc-prod-thumb.cc-thumb-empty { width: 44px; height: 44px; border-radius: 10px; }
+    .cc-row-thumb.cc-thumb-empty, .cc-cart-thumb.cc-thumb-empty { width: 36px; height: 36px; border-radius: 8px; }
+    .cc-swap-thumb.cc-thumb-empty { width: 42px; height: 42px; border-radius: 10px; }
   `;
 
   const host = document.createElement("div");
@@ -1756,6 +2268,70 @@
 
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function buildThumbMarkup(className, verifiedUrl, domImageUrl, lazy = false) {
+    const hasVerified = Boolean(verifiedUrl && !isPlaceholderProductImage(verifiedUrl));
+    const cleanDom = sanitizeDomImageUrl(domImageUrl);
+    if (hasVerified) {
+      return `<img class="${className}" src="${esc(verifiedUrl)}"${
+        cleanDom ? ` data-dom-fallback="${esc(cleanDom)}"` : ""
+      } referrerpolicy="no-referrer" alt=""${lazy ? ' loading="lazy"' : ""} />`;
+    }
+    if (cleanDom) {
+      return `<img class="${className}" src="${esc(cleanDom)}" referrerpolicy="no-referrer" alt=""${
+        lazy ? ' loading="lazy"' : ""
+      } />`;
+    }
+    return `<div class="${className} cc-thumb-empty" aria-hidden="true">${NEUTRAL_THUMB_SVG}</div>`;
+  }
+
+  function handleThumbFallback(imgEl) {
+    if (!imgEl || !imgEl.isConnected) return;
+    const domFallback = sanitizeDomImageUrl(imgEl.getAttribute("data-dom-fallback") || "");
+    const curSrc = imgEl.getAttribute("src") || "";
+    if (domFallback && imgEl.dataset.triedDomFallback !== "1" && curSrc !== domFallback) {
+      imgEl.dataset.triedDomFallback = "1";
+      imgEl.setAttribute("referrerpolicy", "no-referrer");
+      imgEl.setAttribute("src", domFallback);
+      return;
+    }
+    const neutralBox = document.createElement("div");
+    neutralBox.className = `${imgEl.className || "cc-prod-thumb"} cc-thumb-empty`;
+    neutralBox.setAttribute("aria-hidden", "true");
+    neutralBox.innerHTML = NEUTRAL_THUMB_SVG;
+    imgEl.replaceWith(neutralBox);
+  }
+
+  function attachModalThumbHandlers() {
+    const thumbs = modalSlot.querySelectorAll("img.cc-prod-thumb, img.cc-cart-thumb, img.cc-swap-thumb");
+    for (const img of thumbs) {
+      img.onerror = () => handleThumbFallback(img);
+      const src = img.getAttribute("src") || "";
+      if (src.includes("/api/product-image")) {
+        void checkApiImageIsPlaceholder(src).then((isPh) => {
+          if (isPh && img.isConnected && (img.getAttribute("src") || "") === src) {
+            handleThumbFallback(img);
+          }
+        });
+      }
+    }
+  }
+
+  root.addEventListener(
+    "error",
+    (e) => {
+      const target = e.target;
+      if (
+        target?.tagName === "IMG" &&
+        (target.classList.contains("cc-prod-thumb") ||
+          target.classList.contains("cc-cart-thumb") ||
+          target.classList.contains("cc-swap-thumb"))
+      ) {
+        handleThumbFallback(target);
+      }
+    },
+    true
+  );
 
   /* ---------------- Persistent Pill Drag + PointerCancel + Escape Handling ---------------- */
   (() => {
@@ -1890,7 +2466,7 @@
             const hasScore = isScoredCartItem(item);
             const rowTone = hasScore ? toneForScore(item.score) : "gray";
             const chipLabel = item.pending ? "…" : item.isNonFood ? "N/A" : hasScore ? String(item.score) : "--";
-            const thumbSrc = item.image || fallbackThumbUrl(item.title);
+            const thumbHtml = buildThumbMarkup("cc-row-thumb cc-cart-thumb", item.image, item.domImageUrl, true);
             const qty = clampQty(item.quantity);
             const alertBadges = Array.isArray(item.dietaryAlerts) && item.dietaryAlerts.length
               ? ` · ⚠️ ${item.dietaryAlerts.map((a) => esc(a.shortBadge)).join(", ")}`
@@ -1912,7 +2488,7 @@
             const showSwapBtn = hasScore && item.score < 75 && item.swapTitle && !item.swapOutOfStock;
 
             return `<li class="cc-audit-row">
-              <img class="cc-row-thumb" src="${esc(thumbSrc)}" alt="" loading="lazy" />
+              ${thumbHtml}
               <div class="cc-row-main">
                 <div class="cc-row-title-line">
                   <b>${esc(item.title)}</b>
@@ -1979,7 +2555,12 @@
       d.product?.nutrition?.productKind === "non-food" || r.yukaBreakdown?.nutriScoreGrade === "N/A";
     const safeScore = Math.max(0, Math.min(100, Math.round(Number(r.score ?? 0))));
     const C = 2 * Math.PI * 42;
-    const prodImg = d.product?.imageUrl || fallbackThumbUrl(d.product?.title);
+    const prodThumbHtml = buildThumbMarkup(
+      "cc-prod-thumb",
+      d.product?.imageUrl,
+      state.lastDomProductImageUrl,
+      false
+    );
 
     const srcKey = d.lookup?.origin || d.lookup?.source || "catalog";
     const srcName = srcKey === "screen" ? "Store page ingredients"
@@ -2030,9 +2611,12 @@
         const swapLocked = !activeSwap.webUrl;
         const swapPaidSuffix = !swapLocked && activeSwap.isPaidLink ? " · paid link" : "";
         const swapRating = ratingLabelForScore(activeSwap.score);
-        const swapThumb = activeSwap.image || fallbackThumbUrl(activeSwap.title);
+        const swapThumb =
+          activeSwap.image && !isPlaceholderProductImage(activeSwap.image)
+            ? activeSwap.image
+            : fallbackThumbUrl(activeSwap.title);
         swapHtml = `<div class="cc-swap">
-          <img class="cc-swap-thumb" src="${esc(swapThumb)}" alt="" loading="lazy" />
+          ${buildThumbMarkup("cc-swap-thumb", swapThumb, null, true)}
           <div class="cc-swap-info">
             <div class="cc-swap-badges">
               ${swapLocked ? `<span class="cc-eyebrow">🔒 Swap Locked</span>` : `<span class="cc-instock-badge">✓ In Stock</span>`}
@@ -2050,7 +2634,7 @@
 
     return `
       <div class="cc-prod-hero">
-        <img class="cc-prod-thumb" src="${esc(prodImg)}" alt="" />
+        ${prodThumbHtml}
         <div style="min-width:0">
           <p class="cc-product">${esc(d.product.title)}</p>
           <p class="cc-meta-line">${esc(srcName)}${updatedPart} · <a href="${reportHref}" target="_blank" rel="noopener">Report mismatch</a></p>
@@ -2174,6 +2758,7 @@
         ${activeTab === "cart" ? renderCartTabBody(avg, avgToneClass) : renderProductTabBody(state.data)}
       </div>
     </div>`;
+    attachModalThumbHandlers();
   }
 
   /* ---------------- Drawer & Pill Event Delegation ---------------- */
@@ -2182,10 +2767,19 @@
     if (removeBtn) {
       const idx = Number(removeBtn.dataset.removeIdx);
       if (Number.isFinite(idx) && idx >= 0 && idx < state.cartItems.length) {
+        const removedItem = state.cartItems[idx];
+        if (removedItem) {
+          markCartItemDismissed(removedItem.key);
+          markCartItemDismissed(removedItem.title);
+        }
         state.cartItems.splice(idx, 1);
         state.displayedAvg = calcCartAvg();
         saveBucketCart();
         render();
+        if (removedItem) {
+          clickNativeCartRemoveButton(removedItem.title || removedItem.key);
+          scheduleCartSync(750);
+        }
       }
       return;
     }
@@ -2235,6 +2829,10 @@
       return;
     }
     if (act === "clear-cart") {
+      for (const item of state.cartItems) {
+        markCartItemDismissed(item.key);
+        markCartItemDismissed(item.title);
+      }
       state.cartItems = [];
       state.displayedAvg = null;
       saveBucketCart();
@@ -2284,17 +2882,17 @@
     return `${activeBucket.bucketKey}|${String(title || "").toLowerCase().replace(/\s+/g, " ").trim()}|${String(rawIng || "").trim()}`;
   }
 
-  async function applyScanResult(resp, domImage = null) {
+  async function applyScanResult(resp, domImage = null, seq = scanSeq) {
+    if (seq !== scanSeq) return;
     if (!resp?.ok) {
       state.mode = "cart_avg";
+      state.lastDomProductImageUrl = null;
       state.expanded = false;
       state.openFlag = null;
       render();
       return;
     }
-    if (domImage && resp.product && (!resp.product.imageUrl || resp.product.imageUrl.includes("/api/product-image"))) {
-      resp = { ...resp, product: { ...resp.product, imageUrl: domImage } };
-    }
+    state.lastDomProductImageUrl = sanitizeDomImageUrl(domImage) || null;
     const candidates = Array.isArray(resp.swapCandidates) && resp.swapCandidates.length
       ? resp.swapCandidates
       : resp.swap
@@ -2313,9 +2911,10 @@
 
     if (state.swapStockChecking) {
       const checkForTitle = resp.product?.title;
-      const bKey = activeBucket.bucketKey;
+      const bKey = resolveStoreBucket().bucketKey;
       const stockRes = await resolveFirstInStockSwap(candidates, resp.swap, bKey);
-      if (state.data?.product?.title === checkForTitle && activeBucket.bucketKey === bKey) {
+      if (seq !== scanSeq || state.pillMode === "cart_avg") return;
+      if (state.data?.product?.title === checkForTitle && resolveStoreBucket().bucketKey === bKey) {
         state.swapStockChecking = false;
         state.activeSwap = stockRes.chosen;
         state.activeSwapCandidates = stockRes.remainingCandidates || candidates;
@@ -2337,9 +2936,10 @@
     if (!isProductPage()) {
       // On multi-product grid/search/aisle pages: keep hovered/focused card score if active, else show Cart Avg!
       if (!state.hoveredCardData && !state.expanded) {
-        scanSeq++;
+        ++scanSeq;
         lastKey = "";
         state.mode = "cart_avg";
+        state.lastDomProductImageUrl = null;
       }
       render();
       return;
@@ -2348,9 +2948,10 @@
     state.hoveredCardData = null;
     const productTitle = readTitle(modalScope);
     if (!productTitle) {
-      scanSeq++;
+      ++scanSeq;
       lastKey = "";
       state.mode = "cart_avg";
+      state.lastDomProductImageUrl = null;
       render();
       return;
     }
@@ -2360,30 +2961,32 @@
     if (key === lastKey) return;
     lastKey = key;
 
+    // Increment scanSeq BEFORE synchronous scanCache hits so any older in-flight network scan is immediately invalidated!
+    const seq = ++scanSeq;
     const cKey = normCacheKey(productTitle, rawIngredients);
     const cached = scanCache.get(cKey) || (!rawIngredients ? scanCache.get(normCacheKey(productTitle, "")) : null);
     if (cached?.ok) {
-      void applyScanResult(cached, domImage);
+      void applyScanResult(cached, domImage, seq);
       return;
     }
 
-    const reqSeq = ++scanSeq;
+    const reqBucket = activeBucket;
     chrome.runtime.sendMessage(
       {
         type: "CLEANCART_SCAN",
         payload: {
           productTitle,
           rawIngredients: rawIngredients || undefined,
-          store: activeBucket.store,
-          instacartRetailerSlug: activeBucket.instacartRetailerSlug,
+          store: reqBucket.store,
+          instacartRetailerSlug: reqBucket.instacartRetailerSlug,
         },
       },
       (resp) => {
         if (resp?.ok) {
           scanCache.set(cKey, resp);
         }
-        if (reqSeq !== scanSeq || !isProductPage()) return;
-        void applyScanResult(resp, domImage);
+        if (seq !== scanSeq || !isProductPage() || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
+        void applyScanResult(resp, domImage, seq);
       }
     );
   }
@@ -2397,27 +3000,37 @@
     if (isProductPage() || isCartPageUrl()) return;
     const info = readProductCardInfo(cardEl);
     if (!info) return;
+    // Increment scanSeq BEFORE synchronous scanCache hits so any older in-flight network scan is immediately invalidated!
+    const seq = ++scanSeq;
     state.hoveredCardData = info;
+    const domImg = info.domImageUrl || info.image || null;
     const cKey = normCacheKey(info.title, "");
     const cached = scanCache.get(cKey);
     if (cached?.ok) {
-      void applyScanResult(cached, info.image);
+      void applyScanResult(cached, domImg, seq);
       return;
     }
-    const reqSeq = ++scanSeq;
+    const reqBucket = activeBucket;
     chrome.runtime.sendMessage(
       {
         type: "CLEANCART_SCAN",
         payload: {
           productTitle: info.title,
-          store: activeBucket.store,
-          instacartRetailerSlug: activeBucket.instacartRetailerSlug,
+          store: reqBucket.store,
+          instacartRetailerSlug: reqBucket.instacartRetailerSlug,
         },
       },
       (resp) => {
         if (resp?.ok) scanCache.set(cKey, resp);
-        if (reqSeq !== scanSeq || isProductPage() || state.hoveredCardData?.title !== info.title) return;
-        void applyScanResult(resp, info.image);
+        if (
+          seq !== scanSeq ||
+          isProductPage() ||
+          state.hoveredCardData?.title !== info.title ||
+          resolveStoreBucket().bucketKey !== reqBucket.bucketKey
+        ) {
+          return;
+        }
+        void applyScanResult(resp, domImg, seq);
       }
     );
   }
@@ -2434,7 +3047,9 @@
       if (!card) {
         hoverTimer = setTimeout(() => {
           if (!isProductPage() && !state.expanded) {
+            ++scanSeq;
             state.hoveredCardData = null;
+            state.lastDomProductImageUrl = null;
             state.mode = "cart_avg";
             render();
           }

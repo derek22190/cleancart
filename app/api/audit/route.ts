@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { checkRateLimit, runScan, type ScanRequest, type ScanResponse, type ScanError } from "@/lib/scan";
+import { checkRateLimitAsync, inferClientPlatform, runScan, type ScanRequest, type ScanResponse, type ScanError } from "@/lib/scan";
 import type { Category, Watchlist } from "@/lib/rubric";
+import { isAffiliateAllowedOnClient, type ClientPlatform } from "@/lib/swaps";
 import { parseGroceryOrderText } from "@/lib/order-parser";
 
 export const runtime = "nodejs";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret, X-Client-Platform, X-HeyBroc-Platform",
 };
 
 export function OPTIONS() {
@@ -42,7 +43,7 @@ type AuditedItemResult = (ScanResponse | ScanError) & { quantity: number };
  */
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (!checkRateLimit(`audit:${ip}`, 10)) {
+  if (!(await checkRateLimitAsync(`audit:${ip}`, 10))) {
     return NextResponse.json(
       { ok: false, error: "Too many cart audit requests. Please wait a moment." },
       { status: 429, headers: CORS },
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
     store?: string;
     instacartRetailerSlug?: string;
     surface?: "web" | "android" | "extension";
+    clientPlatform?: ClientPlatform;
     deviceId?: string;
     deviceSecret?: string;
     watchlist?: Watchlist;
@@ -100,13 +102,20 @@ export async function POST(request: Request) {
   if (!Array.isArray(resolvedItems) || resolvedItems.length === 0) {
     return NextResponse.json({ ok: false, error: "Provide a non-empty items array or rawOrderText." }, { status: 400, headers: CORS });
   }
-  const reqOrigin = (request.headers.get("origin") || "").toLowerCase();
-  const effectiveSurface =
-    reqOrigin.startsWith("chrome-extension://") ||
-    reqOrigin.startsWith("safari-web-extension://") ||
-    reqOrigin.startsWith("moz-extension://")
-      ? "extension"
-      : body.surface;
+  const clientPlatform = inferClientPlatform({
+    clientPlatform:
+      body.clientPlatform ||
+      request.headers.get("x-client-platform") ||
+      request.headers.get("x-heybroc-platform") ||
+      undefined,
+    surface: body.surface,
+    deviceId: body.deviceId,
+    origin: request.headers.get("origin") || undefined,
+    userAgent: request.headers.get("user-agent") || undefined,
+  });
+  const effectiveSurface = !isAffiliateAllowedOnClient(body.surface ?? "web", clientPlatform)
+    ? "extension"
+    : body.surface;
   const effectiveSecret =
     request.headers.get("x-device-secret")?.trim() || body.deviceSecret;
   const preferStoreBrand = body.preferStoreBrand === true;
@@ -128,6 +137,7 @@ export async function POST(request: Request) {
               store: body.store,
               instacartRetailerSlug: body.instacartRetailerSlug,
               surface: effectiveSurface,
+              clientPlatform,
               deviceId: body.deviceId,
               deviceSecret: effectiveSecret,
               watchlist: body.watchlist,
@@ -187,6 +197,7 @@ export async function POST(request: Request) {
             store: body.store,
             instacartRetailerSlug: reqItem.instacartRetailerSlug ?? body.instacartRetailerSlug,
             surface: effectiveSurface ?? reqItem.surface,
+            clientPlatform: reqItem.clientPlatform ?? clientPlatform,
             deviceId: reqItem.deviceId ?? body.deviceId,
             deviceSecret: reqItem.deviceSecret ?? effectiveSecret,
             watchlist: effWatchlist,

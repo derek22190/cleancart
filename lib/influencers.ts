@@ -14,6 +14,7 @@ import { PRICING, commissionFor, type PlanId } from "./pricing";
 import {
   kvAtomicHashUpdateOnce,
   kvDel,
+  kvEvalLua,
   kvGet,
   kvHGetAll,
   kvHIncrBy,
@@ -52,12 +53,16 @@ export interface Creator {
   /** Net revenue retained by HeyBroc after creator commissions. */
   netRevenue: number;
   payoutEmail?: string;
+  payoutEmailVerified?: boolean;
   payoutMethod?: CreatorPayoutMethod;
   payoutHandle?: string;
   stripeConnectAccountId?: string;
+  tokenNonce?: string;
   lastPayoutAt?: string;
   createdAt: string;
 }
+
+export type CreatorRecord = Creator;
 
 export interface CreatorPayoutRecord {
   id: string;
@@ -86,6 +91,7 @@ const CREATOR_PAYOUTS_PREFIX = "heybroc:creator:payouts:";
 const RECENT_PAYOUTS_KEY = "heybroc:creator:payouts:__recent__";
 const CREATORS_SEEDED_KEY = "heybroc:creators:seeded:v2";
 const PAYOUT_TTL_SECONDS = 5 * 365 * 86400; // Retain payout tax/audit records for 5 years
+const CREATOR_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30-day bounded creator token lifetime
 
 const SEED: Array<Pick<Creator, "code" | "name">> = [
   { code: "CLEANMOM", name: "Clean Mom Club" },
@@ -120,30 +126,65 @@ function getCreatorSigningSecret(): string {
   return secret;
 }
 
-export function createCreatorAccessToken(rawCode: string): string {
+export function generateCreatorTokenNonce(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+export function createCreatorAccessToken(
+  rawCode: string,
+  opts?: {
+    payoutEmail?: string | null;
+    tokenNonce?: string | null;
+    expiresInSec?: number;
+  } | null
+): string {
   const code = normalizeCode(rawCode);
+  const normEmail = normalizeEmailOpt(opts?.payoutEmail ?? undefined) || "";
+  const normNonce = (opts?.tokenNonce || "").trim();
+  const ttlSec =
+    typeof opts?.expiresInSec === "number" && Number.isFinite(opts.expiresInSec)
+      ? Math.max(1, Math.floor(opts.expiresInSec))
+      : CREATOR_TOKEN_TTL_SEC;
+  const expSec = Math.floor(Date.now() / 1000) + ttlSec;
   const sig = crypto
     .createHmac("sha256", getCreatorSigningSecret())
-    .update(`creator:v1:${code}`, "utf8")
+    .update(`creator:v2:${code}:${expSec}:${normEmail}:${normNonce}`, "utf8")
     .digest("base64url");
-  return `hbc_${code}.${sig}`;
+  return `hbc_${code}.${expSec}.${sig}`;
 }
 
 export function verifyCreatorAccessToken(
   rawCode: string,
-  candidateToken?: string | null
+  candidateToken?: string | null,
+  creator?: Pick<CreatorRecord, "payoutEmail" | "tokenNonce"> | null
 ): boolean {
   const code = normalizeCode(rawCode);
   const clean = (candidateToken || "").trim();
-  if (!code || !clean) return false;
-  let expected: string;
+  const prefix = `hbc_${code}.`;
+  if (!code || !clean || !clean.startsWith(prefix)) return false;
+  const rest = clean.slice(prefix.length);
+  const dotIdx = rest.indexOf(".");
+  if (dotIdx <= 0) return false;
+  const expStr = rest.slice(0, dotIdx);
+  const sig = rest.slice(dotIdx + 1);
+  if (!/^\d{9,12}$/.test(expStr) || !sig) return false;
+  const expSec = Number(expStr);
+  if (!Number.isFinite(expSec) || expSec <= Math.floor(Date.now() / 1000)) {
+    return false;
+  }
+  const normEmail = normalizeEmailOpt(creator?.payoutEmail ?? undefined) || "";
+  const normNonce = (creator?.tokenNonce || "").trim();
+  let expectedSig: string;
   try {
-    expected = createCreatorAccessToken(code);
+    expectedSig = crypto
+      .createHmac("sha256", getCreatorSigningSecret())
+      .update(`creator:v2:${code}:${expSec}:${normEmail}:${normNonce}`, "utf8")
+      .digest("base64url");
   } catch {
     return false;
   }
-  const bufA = Buffer.from(clean, "utf8");
-  const bufB = Buffer.from(expected, "utf8");
+  const bufA = Buffer.from(sig, "utf8");
+  const bufB = Buffer.from(expectedSig, "utf8");
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
 }
@@ -215,6 +256,11 @@ function hashToCreator(
     fields.active === undefined
       ? true
       : fields.active !== "0" && fields.active !== "false";
+  const payoutEmailVerified =
+    fields.payoutEmailVerified === undefined || fields.payoutEmailVerified === ""
+      ? undefined
+      : fields.payoutEmailVerified === "1" ||
+        fields.payoutEmailVerified === "true";
 
   return {
     code: fields.code || code,
@@ -235,9 +281,11 @@ function hashToCreator(
     commissionOwed,
     netRevenue: round2(grossRevenue - commissionEarned),
     payoutEmail: fields.payoutEmail || undefined,
+    payoutEmailVerified,
     payoutMethod: normalizePayoutMethod(fields.payoutMethod),
     payoutHandle: fields.payoutHandle || undefined,
     stripeConnectAccountId: fields.stripeConnectAccountId || undefined,
+    tokenNonce: fields.tokenNonce || undefined,
     lastPayoutAt: fields.lastPayoutAt || undefined,
     createdAt: fields.createdAt || new Date().toISOString(),
   };
@@ -260,11 +308,15 @@ async function saveCreatorHash(c: Creator): Promise<void> {
     createdAt: c.createdAt,
   };
   if (c.payoutEmail !== undefined) hashFields.payoutEmail = c.payoutEmail;
+  if (c.payoutEmailVerified !== undefined) {
+    hashFields.payoutEmailVerified = c.payoutEmailVerified ? "1" : "0";
+  }
   if (c.payoutMethod !== undefined) hashFields.payoutMethod = c.payoutMethod;
   if (c.payoutHandle !== undefined) hashFields.payoutHandle = c.payoutHandle;
   if (c.stripeConnectAccountId !== undefined) {
     hashFields.stripeConnectAccountId = c.stripeConnectAccountId;
   }
+  if (c.tokenNonce !== undefined) hashFields.tokenNonce = c.tokenNonce;
   if (c.lastPayoutAt !== undefined) hashFields.lastPayoutAt = c.lastPayoutAt;
 
   await kvHSet(creatorKey(c.code), hashFields);
@@ -334,9 +386,11 @@ export async function createCreator(input: {
   name?: string;
   commissionPct?: number;
   payoutEmail?: string;
+  payoutEmailVerified?: boolean;
   payoutMethod?: CreatorPayoutMethod;
   payoutHandle?: string;
   stripeConnectAccountId?: string;
+  tokenNonce?: string;
   active?: boolean;
 }): Promise<Creator> {
   await ensureInitialized();
@@ -354,6 +408,7 @@ export async function createCreator(input: {
       commissionPct: input.commissionPct,
       name: input.name,
       payoutEmail: input.payoutEmail,
+      payoutEmailVerified: input.payoutEmailVerified,
       payoutMethod: input.payoutMethod,
       payoutHandle: input.payoutHandle,
       stripeConnectAccountId: input.stripeConnectAccountId,
@@ -362,13 +417,21 @@ export async function createCreator(input: {
   }
 
   const pct = clampPct(input.commissionPct ?? PRICING.defaultCommissionPct);
+  const cleanEmail = normalizeEmailOpt(input.payoutEmail);
   const created: Creator = {
     ...blank(code, input.name?.trim() || code, pct),
     active: input.active ?? true,
-    payoutEmail: normalizeEmailOpt(input.payoutEmail),
+    payoutEmail: cleanEmail,
+    payoutEmailVerified:
+      input.payoutEmailVerified !== undefined
+        ? Boolean(input.payoutEmailVerified)
+        : cleanEmail
+          ? true
+          : undefined,
     payoutMethod: normalizePayoutMethod(input.payoutMethod),
     payoutHandle: input.payoutHandle?.trim().slice(0, 120) || undefined,
     stripeConnectAccountId: input.stripeConnectAccountId?.trim() || undefined,
+    tokenNonce: input.tokenNonce?.trim() || generateCreatorTokenNonce(),
   };
   await saveCreatorHash(created);
   return created;
@@ -381,9 +444,11 @@ export async function updateCreator(
     name?: string;
     active?: boolean;
     payoutEmail?: string;
+    payoutEmailVerified?: boolean;
     payoutMethod?: CreatorPayoutMethod;
     payoutHandle?: string;
     stripeConnectAccountId?: string;
+    rotateTokenNonce?: boolean;
   }
 ): Promise<Creator> {
   await ensureInitialized();
@@ -392,6 +457,8 @@ export async function updateCreator(
   if (!existing) throw new Error("Unknown creator code.");
 
   const patchFields: Record<string, string | number> = {};
+  let shouldRotateNonce = Boolean(patch.rotateTokenNonce);
+
   if (patch.commissionPct !== undefined) {
     existing.commissionPct = clampPct(patch.commissionPct);
     patchFields.commissionPct = existing.commissionPct;
@@ -405,9 +472,21 @@ export async function updateCreator(
     patchFields.active = existing.active ? "1" : "0";
   }
   if (patch.payoutEmail !== undefined) {
+    const prevEmail = (existing.payoutEmail || "").trim().toLowerCase();
     const cleanEmail = normalizeEmailOpt(patch.payoutEmail) || "";
+    if (cleanEmail !== prevEmail) {
+      shouldRotateNonce = true;
+    }
     existing.payoutEmail = cleanEmail || undefined;
     patchFields.payoutEmail = cleanEmail;
+  }
+  if (patch.payoutEmailVerified !== undefined) {
+    const nextVerified = Boolean(patch.payoutEmailVerified);
+    if (nextVerified !== existing.payoutEmailVerified) {
+      shouldRotateNonce = true;
+    }
+    existing.payoutEmailVerified = nextVerified;
+    patchFields.payoutEmailVerified = nextVerified ? "1" : "0";
   }
   if (patch.payoutMethod !== undefined) {
     const cleanMethod = normalizePayoutMethod(patch.payoutMethod);
@@ -423,6 +502,11 @@ export async function updateCreator(
     const cleanAcct = patch.stripeConnectAccountId.trim().slice(0, 80);
     existing.stripeConnectAccountId = cleanAcct || undefined;
     patchFields.stripeConnectAccountId = cleanAcct;
+  }
+  if (shouldRotateNonce || !existing.tokenNonce) {
+    const nextNonce = generateCreatorTokenNonce();
+    existing.tokenNonce = nextNonce;
+    patchFields.tokenNonce = nextNonce;
   }
 
   if (Object.keys(patchFields).length > 0) {
@@ -489,6 +573,45 @@ export async function trackEvent(
   return updated;
 }
 
+interface CreatorConversionMeta {
+  code: string;
+  blockedSelfDeal: boolean;
+  commissionCents: number;
+  grossUsd: number;
+  buyerEmail?: string;
+}
+
+export interface CreatorRefundOptions {
+  buyerEmail?: string;
+  originalConversionKey?: string;
+  otoOffer?: string;
+  originalPreTaxUsd?: number;
+  refundRatio?: number;
+}
+
+const ALLOWED_CONNECT_ORIGINS = new Set([
+  "https://heybroc.com",
+  "https://www.heybroc.com",
+  "https://cleancart.vercel.app",
+  "https://cleancart-teal.vercel.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]);
+
+export function resolveSafeConnectOrigin(raw?: string | null): string {
+  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (configured && /^https?:\/\//i.test(configured)) {
+    ALLOWED_CONNECT_ORIGINS.add(configured);
+  }
+  const clean = (raw || "").trim().replace(/\/+$/, "");
+  if (clean && ALLOWED_CONNECT_ORIGINS.has(clean)) return clean;
+  return configured && /^https?:\/\//i.test(configured)
+    ? configured
+    : "https://heybroc.com";
+}
+
 /**
  * Idempotently records a creator conversion from a verified Stripe/RevenueCat webhook event.
  * Uses `kvAtomicHashUpdateOnce` so concurrent webhook deliveries cannot double-credit the ledger.
@@ -505,18 +628,34 @@ export async function recordStripeCreatorConversionOnce(
   const creator = await getCreator(norm);
   if (!creator || !creator.active) return null;
 
+  const cleanBuyerEmail = buyerEmail?.trim().toLowerCase() || undefined;
+  const metaKey = `heybroc:creator:conv_meta:${idempotencyKey}`;
+
   // Anti-self-dealing guard: creators cannot earn affiliate commission on their own personal email purchase
   if (
-    buyerEmail &&
+    cleanBuyerEmail &&
     creator.payoutEmail &&
-    buyerEmail.trim().toLowerCase() === creator.payoutEmail.trim().toLowerCase()
+    cleanBuyerEmail === creator.payoutEmail.trim().toLowerCase()
   ) {
+    await kvSet<CreatorConversionMeta>(
+      metaKey,
+      {
+        code: norm,
+        blockedSelfDeal: true,
+        commissionCents: 0,
+        grossUsd: 0,
+        buyerEmail: cleanBuyerEmail,
+      },
+      400 * 24 * 60 * 60
+    ).catch(() => {});
     return creator;
   }
 
   const markerKey = `heybroc:creator:conv:${idempotencyKey}`;
   const key = creatorKey(norm);
   const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
+  let recordedGross = 0;
+  let recordedComm = 0;
 
   const resolveGrossAndComm = (plan: PlanId) => {
     const gross =
@@ -542,6 +681,8 @@ export async function recordStripeCreatorConversionOnce(
     deltas.push({ field: "trials", delta: 1 });
   } else if (event === "paid_annual") {
     const { gross, comm } = resolveGrossAndComm("annual");
+    recordedGross = gross;
+    recordedComm = comm;
     deltas.push(
       { field: "paidAnnual", delta: 1 },
       { field: "grossRevenue", delta: gross, isFloat: true },
@@ -550,6 +691,8 @@ export async function recordStripeCreatorConversionOnce(
     );
   } else if (event === "checkout_annual") {
     const { gross, comm } = resolveGrossAndComm("annual");
+    recordedGross = gross;
+    recordedComm = comm;
     deltas.push(
       { field: "trials", delta: 1 },
       { field: "paidAnnual", delta: 1 },
@@ -559,6 +702,8 @@ export async function recordStripeCreatorConversionOnce(
     );
   } else if (event === "paid_monthly") {
     const { gross, comm } = resolveGrossAndComm("monthly");
+    recordedGross = gross;
+    recordedComm = comm;
     deltas.push(
       { field: "paidMonthly", delta: 1 },
       { field: "grossRevenue", delta: gross, isFloat: true },
@@ -567,42 +712,113 @@ export async function recordStripeCreatorConversionOnce(
     );
   }
 
-  await kvAtomicHashUpdateOnce(markerKey, key, deltas, 60 * 60 * 24 * 365);
+  const applied = await kvAtomicHashUpdateOnce(
+    markerKey,
+    key,
+    deltas,
+    60 * 60 * 24 * 365
+  );
+  if (applied && (recordedGross > 0 || recordedComm > 0)) {
+    await kvSet<CreatorConversionMeta>(
+      metaKey,
+      {
+        code: norm,
+        blockedSelfDeal: false,
+        commissionCents: Math.round(recordedComm * 100),
+        grossUsd: recordedGross,
+        buyerEmail: cleanBuyerEmail,
+      },
+      400 * 24 * 60 * 60
+    ).catch(() => {});
+  }
   return getCreator(norm);
 }
 
+export const recordCreatorConversion = recordStripeCreatorConversionOnce;
+
 /**
  * Idempotently claws back creator revenue & commission when a charge is refunded or disputed.
+ * Never subtracts phantom commission when the original conversion was blocked for self-dealing
+ * (`commissionCents === 0`), and enforces pre-tax plan/OTO price caps on proportional clawbacks.
  */
 export async function recordStripeCreatorRefundOnce(
   idempotencyKey: string,
   code: string,
   plan: PlanId,
   refundAmountUsd?: number,
-  isFullRefundOverride?: boolean
+  isFullRefundOverride?: boolean,
+  options?: CreatorRefundOptions
 ): Promise<Creator | null> {
   const norm = normalizeCode(code);
   if (!norm) return null;
   const creator = await getCreator(norm);
   if (!creator) return null;
 
+  const cleanBuyerEmail = options?.buyerEmail?.trim().toLowerCase() || "";
+  if (
+    cleanBuyerEmail &&
+    creator.payoutEmail &&
+    cleanBuyerEmail === creator.payoutEmail.trim().toLowerCase()
+  ) {
+    return creator;
+  }
+
+  let convMeta: CreatorConversionMeta | null = null;
+  if (options?.originalConversionKey) {
+    convMeta = await kvGet<CreatorConversionMeta>(
+      `heybroc:creator:conv_meta:${options.originalConversionKey}`
+    ).catch(() => null);
+    if (convMeta && (convMeta.blockedSelfDeal || convMeta.commissionCents <= 0)) {
+      return creator;
+    }
+  }
+
   const markerKey = `heybroc:creator:refund:${idempotencyKey}`;
-  const fullPrice = plan === "annual" ? PRICING.annual : PRICING.monthly;
+  const planPriceCap =
+    options?.otoOffer === "oto_gift_year"
+      ? PRICING.otoExtraYearPass
+      : options?.otoOffer === "oto_annual"
+        ? PRICING.otoAnnualLockIn
+        : plan === "annual"
+          ? PRICING.annual
+          : PRICING.monthly;
+  const effectiveCap =
+    convMeta && typeof convMeta.grossUsd === "number" && convMeta.grossUsd > 0
+      ? Math.min(planPriceCap, convMeta.grossUsd)
+      : options?.originalPreTaxUsd && options.originalPreTaxUsd > 0
+        ? Math.min(planPriceCap, round2(options.originalPreTaxUsd))
+        : planPriceCap;
+
+  const hasValidRatio =
+    typeof options?.refundRatio === "number" &&
+    Number.isFinite(options.refundRatio) &&
+    options.refundRatio > 0 &&
+    options.refundRatio <= 1;
+
   const requestedGross =
-    refundAmountUsd !== undefined && refundAmountUsd > 0
-      ? Math.min(fullPrice, round2(refundAmountUsd))
-      : fullPrice;
+    hasValidRatio &&
+    (refundAmountUsd === undefined || round2(refundAmountUsd) > effectiveCap)
+      ? round2(effectiveCap * options!.refundRatio!)
+      : refundAmountUsd !== undefined && refundAmountUsd > 0
+        ? Math.min(effectiveCap, round2(refundAmountUsd))
+        : effectiveCap;
+
   const grossDelta = Math.min(creator.grossRevenue, requestedGross);
   const rawCommDelta = round2(grossDelta * (creator.commissionPct / 100));
+  const maxConvCommUsd =
+    convMeta && convMeta.commissionCents > 0
+      ? round2(convMeta.commissionCents / 100)
+      : rawCommDelta;
+  const cappedCommDelta = Math.min(rawCommDelta, maxConvCommUsd);
   const earnedDelta = Math.min(
     Math.max(0, creator.commissionEarned - creator.commissionPaid),
-    rawCommDelta
+    cappedCommDelta
   );
-  const owedDelta = Math.min(creator.commissionOwed, rawCommDelta);
+  const owedDelta = Math.min(creator.commissionOwed, cappedCommDelta);
 
   const isFullRefund =
     isFullRefundOverride ??
-    (grossDelta >= fullPrice * 0.99 ||
+    (grossDelta >= effectiveCap * 0.99 ||
       requestedGross >= PRICING.otoExtraYearPass * 0.99);
   const planField = plan === "annual" ? "paidAnnual" : "paidMonthly";
   const currentPlanCount =
@@ -631,6 +847,8 @@ export async function recordStripeCreatorRefundOnce(
   return getCreator(norm);
 }
 
+export const clawbackCreatorCommission = recordStripeCreatorRefundOnce;
+
 /**
  * Lists payout history for a specific creator code (or recent payouts across all creators).
  */
@@ -650,7 +868,8 @@ export async function listCreatorPayouts(
 
 /**
  * Executes an affiliate payout (optionally creating a live Stripe Connect `/v1/transfers` transfer)
- * and atomically moves `amount` from `commissionOwed` to `commissionPaid`.
+ * by atomically reserving `commissionOwed` via `kvEvalLua` BEFORE calling Stripe `/v1/transfers`,
+ * and atomically rolling back the reservation if the Stripe transfer fails.
  */
 export async function executeCreatorPayout(params: {
   code: string;
@@ -667,59 +886,182 @@ export async function executeCreatorPayout(params: {
   if (!creator) {
     throw new Error("Unknown creator code.");
   }
-  if (creator.commissionOwed <= 0) {
-    throw new Error(`No unpaid commission balance owed for ${norm}.`);
-  }
 
-  const amount =
-    params.amount !== undefined
-      ? round2(Number(params.amount))
-      : creator.commissionOwed;
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("Payout amount must be greater than $0.00.");
+  if (params.amount !== undefined) {
+    const requested = round2(Number(params.amount));
+    if (!Number.isFinite(requested) || requested <= 0) {
+      throw new Error("Payout amount must be greater than $0.00.");
+    }
   }
-  if (amount > round2(creator.commissionOwed + 0.005)) {
-    throw new Error(
-      `Payout amount ($${amount.toFixed(2)}) exceeds unpaid balance owed ($${creator.commissionOwed.toFixed(2)}).`
-    );
-  }
-  const effectiveAmount = Math.min(creator.commissionOwed, amount);
 
   const method: CreatorPayoutMethod =
     normalizePayoutMethod(params.method) ||
     creator.payoutMethod ||
     (creator.stripeConnectAccountId ? "stripe_connect" : "manual");
 
+  const willExecuteStripeTransfer = Boolean(
+    (params.executeStripeTransfer || method === "stripe_connect") &&
+      params.executeStripeTransfer !== false &&
+      method === "stripe_connect"
+  );
+
+  const stripeKey = (process.env.STRIPE_SECRET_KEY || "").trim();
+  const connectAcct = (
+    params.destination?.trim() ||
+    creator.stripeConnectAccountId ||
+    ""
+  ).trim();
+
+  if (willExecuteStripeTransfer) {
+    if (!connectAcct || !connectAcct.startsWith("acct_")) {
+      throw new Error(
+        `Creator ${norm} does not have a connected Stripe Express account (acct_...) yet. Ask them to connect on /creators or record a PayPal/Venmo/manual payout.`
+      );
+    }
+    if (!stripeKey) {
+      throw new Error(
+        "STRIPE_SECRET_KEY is not configured on this server to execute a live Stripe Connect transfer."
+      );
+    }
+  }
+
   const payoutId =
     params.idempotencyKey?.trim() ||
     `po_${norm}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
   const markerKey = `heybroc:creator:payout_once:${payoutId}`;
+  const key = creatorKey(norm);
+  const requestedArg =
+    params.amount !== undefined ? String(round2(Number(params.amount))) : "";
 
-  let stripeTransferId: string | undefined;
+  const reserveLua = [
+    'if redis.call("EXISTS", KEYS[1]) == 1 then',
+    '  return {"DUPLICATE", redis.call("GET", KEYS[1]) or "1"}',
+    "end",
+    'local owedRaw = redis.call("HGET", KEYS[2], "commissionOwed")',
+    'local owed = tonumber(owedRaw or "0") or 0',
+    "owed = math.floor(owed * 100 + 0.5) / 100",
+    "if owed <= 0 then",
+    '  return {"NO_BALANCE", "0"}',
+    "end",
+    "local reqStr = ARGV[1]",
+    "local amt = owed",
+    'if reqStr ~= "" then',
+    "  amt = tonumber(reqStr) or 0",
+    "  amt = math.floor(amt * 100 + 0.5) / 100",
+    "  if amt <= 0 then",
+    '    return {"INVALID_AMOUNT", "0"}',
+    "  end",
+    "  if amt > owed + 0.005 then",
+    '    return {"EXCEEDS_BALANCE", tostring(owed)}',
+    "  end",
+    "  if amt > owed then",
+    "    amt = owed",
+    "  end",
+    "end",
+    'redis.call("SET", KEYS[1], "reserved", "EX", tonumber(ARGV[2]))',
+    'redis.call("HINCRBYFLOAT", KEYS[2], "commissionOwed", -amt)',
+    'redis.call("HINCRBYFLOAT", KEYS[2], "commissionPaid", amt)',
+    'return {"OK", tostring(amt)}',
+  ].join("\n");
+
+  const reserveResult = await kvEvalLua<[string, string]>(
+    reserveLua,
+    [markerKey, key],
+    [requestedArg, Math.floor(PAYOUT_TTL_SECONDS)],
+    async () => {
+      const existingMarker = await kvGet<string>(markerKey);
+      if (existingMarker !== null) {
+        return ["DUPLICATE", existingMarker];
+      }
+      const latest = await getCreator(norm);
+      const owed = round2(latest?.commissionOwed ?? 0);
+      if (owed <= 0) {
+        return ["NO_BALANCE", "0"];
+      }
+      let amt = owed;
+      if (requestedArg !== "") {
+        amt = round2(Number(requestedArg));
+        if (!Number.isFinite(amt) || amt <= 0) {
+          return ["INVALID_AMOUNT", "0"];
+        }
+        if (amt > round2(owed + 0.005)) {
+          return ["EXCEEDS_BALANCE", String(owed)];
+        }
+        if (amt > owed) {
+          amt = owed;
+        }
+      }
+      await kvSet(markerKey, "reserved", PAYOUT_TTL_SECONDS);
+      await kvHIncrByFloat(key, "commissionOwed", -amt);
+      await kvHIncrByFloat(key, "commissionPaid", amt);
+      return ["OK", String(amt)];
+    }
+  );
+
+  const [reserveStatus, reserveVal] = reserveResult ?? ["NO_BALANCE", "0"];
+
+  if (reserveStatus === "DUPLICATE") {
+    const existingPayouts = await listCreatorPayouts(norm);
+    const matchedPayout = existingPayouts.find((p) => p.id === payoutId);
+    const reloaded = await getCreator(norm);
+    if (matchedPayout && reloaded) {
+      return { creator: reloaded, payout: matchedPayout };
+    }
+    throw new Error(`Payout ${payoutId} is already in progress or completed.`);
+  }
+  if (reserveStatus === "NO_BALANCE") {
+    throw new Error(`No unpaid commission balance owed for ${norm}.`);
+  }
+  if (reserveStatus === "INVALID_AMOUNT") {
+    throw new Error("Payout amount must be greater than $0.00.");
+  }
+  if (reserveStatus === "EXCEEDS_BALANCE") {
+    const currentOwed = Number(reserveVal) || 0;
+    const attempted = round2(Number(params.amount ?? 0));
+    throw new Error(
+      `Payout amount ($${attempted.toFixed(2)}) exceeds unpaid balance owed ($${currentOwed.toFixed(2)}).`
+    );
+  }
+
+  const effectiveAmount = round2(Number(reserveVal));
   const destination =
     params.destination?.trim() ||
     (method === "stripe_connect"
       ? creator.stripeConnectAccountId
       : creator.payoutHandle || creator.payoutEmail);
 
-  if (params.executeStripeTransfer || method === "stripe_connect") {
-    if (params.executeStripeTransfer !== false && method === "stripe_connect") {
-      const stripeKey = (process.env.STRIPE_SECRET_KEY || "").trim();
-      const connectAcct = (
-        params.destination?.trim() ||
-        creator.stripeConnectAccountId ||
-        ""
-      ).trim();
-      if (!connectAcct || !connectAcct.startsWith("acct_")) {
-        throw new Error(
-          `Creator ${norm} does not have a connected Stripe Express account (acct_...) yet. Ask them to connect on /creators or record a PayPal/Venmo/manual payout.`
-        );
+  const rollbackReservation = async () => {
+    const rollbackLua = [
+      'if redis.call("GET", KEYS[1]) == "reserved" then',
+      '  redis.call("DEL", KEYS[1])',
+      '  local amt = tonumber(ARGV[1]) or 0',
+      '  redis.call("HINCRBYFLOAT", KEYS[2], "commissionOwed", amt)',
+      '  redis.call("HINCRBYFLOAT", KEYS[2], "commissionPaid", -amt)',
+      "  return 1",
+      "end",
+      "return 0",
+    ].join("\n");
+
+    await kvEvalLua<number>(
+      rollbackLua,
+      [markerKey, key],
+      [String(effectiveAmount)],
+      async () => {
+        const cur = await kvGet<string>(markerKey);
+        if (cur === "reserved") {
+          await kvDel(markerKey);
+          await kvHIncrByFloat(key, "commissionOwed", effectiveAmount);
+          await kvHIncrByFloat(key, "commissionPaid", -effectiveAmount);
+          return 1;
+        }
+        return 0;
       }
-      if (!stripeKey) {
-        throw new Error(
-          "STRIPE_SECRET_KEY is not configured on this server to execute a live Stripe Connect transfer."
-        );
-      }
+    );
+  };
+
+  let stripeTransferId: string | undefined;
+  if (willExecuteStripeTransfer) {
+    try {
       const transferParams = new URLSearchParams();
       transferParams.set("amount", String(Math.round(effectiveAmount * 100)));
       transferParams.set("currency", "usd");
@@ -751,18 +1093,25 @@ export async function executeCreatorPayout(params: {
         );
       }
       stripeTransferId = transferData.id;
+    } catch (err) {
+      await rollbackReservation();
+      throw err;
     }
   }
 
-  const key = creatorKey(norm);
-  const applied = await kvAtomicHashUpdateOnce(
-    markerKey,
-    key,
-    [
-      { field: "commissionOwed", delta: -effectiveAmount, isFloat: true },
-      { field: "commissionPaid", delta: effectiveAmount, isFloat: true },
-    ],
-    PAYOUT_TTL_SECONDS
+  // Finalize reservation marker so subsequent retries return the completed payout record
+  const finalizeLua = [
+    'redis.call("SET", KEYS[1], "paid", "EX", tonumber(ARGV[1]))',
+    "return 1",
+  ].join("\n");
+  await kvEvalLua<number>(
+    finalizeLua,
+    [markerKey],
+    [Math.floor(PAYOUT_TTL_SECONDS)],
+    async () => {
+      await kvSet(markerKey, "paid", PAYOUT_TTL_SECONDS);
+      return 1;
+    }
   );
 
   const nowIso = new Date().toISOString();
@@ -779,16 +1128,9 @@ export async function executeCreatorPayout(params: {
     createdAt: nowIso,
   };
 
-  if (applied) {
-    await kvHSet(key, { lastPayoutAt: nowIso });
-    const existingList = await listCreatorPayouts(norm);
-    const nextList = [payoutRecord, ...existingList].slice(0, 100);
-    await kvSet(creatorPayoutsKey(norm), nextList, PAYOUT_TTL_SECONDS);
-
-    const existingRecent = await listCreatorPayouts();
-    const nextRecent = [payoutRecord, ...existingRecent].slice(0, 200);
-    await kvSet(RECENT_PAYOUTS_KEY, nextRecent, PAYOUT_TTL_SECONDS);
-  }
+  await kvHSet(key, { lastPayoutAt: nowIso });
+  await prependPayoutRecordAtomic(creatorPayoutsKey(norm), payoutRecord, 100);
+  await prependPayoutRecordAtomic(RECENT_PAYOUTS_KEY, payoutRecord, 200);
 
   const updated = await getCreator(norm);
   if (!updated) {
@@ -796,6 +1138,60 @@ export async function executeCreatorPayout(params: {
   }
   return { creator: updated, payout: payoutRecord };
 }
+
+async function prependPayoutRecordAtomic(
+  listKey: string,
+  record: CreatorPayoutRecord,
+  maxItems: number
+): Promise<void> {
+  const prependLua = [
+    'local raw = redis.call("GET", KEYS[1])',
+    "local list = {}",
+    'if raw and type(raw) == "string" and raw ~= "" then',
+    "  local ok, parsed = pcall(cjson.decode, raw)",
+    '  if ok and type(parsed) == "table" then',
+    "    list = parsed",
+    "  end",
+    "end",
+    "local newItem = cjson.decode(ARGV[1])",
+    "local maxLen = tonumber(ARGV[2]) or 100",
+    "local ttl = tonumber(ARGV[3]) or 157680000",
+    "local out = { newItem }",
+    "for i = 1, #list do",
+    "  if #out >= maxLen then break end",
+    "  local item = list[i]",
+    '  if type(item) ~= "table" or item["id"] ~= newItem["id"] then',
+    "    table.insert(out, item)",
+    "  end",
+    "end",
+    'redis.call("SET", KEYS[1], cjson.encode(out), "EX", ttl)',
+    "return #out",
+  ].join("\n");
+
+  let ranFallback = false;
+  const runLocalPrepend = async (): Promise<number> => {
+    ranFallback = true;
+    const existing = await kvGet<CreatorPayoutRecord[]>(listKey);
+    const base = Array.isArray(existing)
+      ? existing.filter((p) => p?.id !== record.id)
+      : [];
+    const next = [record, ...base].slice(0, maxItems);
+    await kvSet(listKey, next, PAYOUT_TTL_SECONDS);
+    return next.length;
+  };
+
+  const luaResult = await kvEvalLua<number>(
+    prependLua,
+    [listKey],
+    [JSON.stringify(record), maxItems, Math.floor(PAYOUT_TTL_SECONDS)],
+    runLocalPrepend
+  );
+  if (luaResult === null && !ranFallback) {
+    await runLocalPrepend();
+  }
+}
+
+export const executeCreatorStripePayout = executeCreatorPayout;
 
 /**
  * Creates a Stripe Connect Express account (if not yet created) and returns an onboarding Account Link URL
@@ -859,7 +1255,7 @@ export async function createStripeConnectOnboardingLink(params: {
     });
   }
 
-  const safeOrigin = params.origin.replace(/\/+$/, "") || "https://heybroc.com";
+  const safeOrigin = resolveSafeConnectOrigin(params.origin);
   const linkParams = new URLSearchParams();
   linkParams.set("account", accountId);
   linkParams.set("type", "account_onboarding");
@@ -906,9 +1302,11 @@ export async function resetStats(): Promise<void> {
     await saveCreatorHash({
       ...blank(c.code, c.name, c.commissionPct),
       payoutEmail: c.payoutEmail,
+      payoutEmailVerified: c.payoutEmailVerified,
       payoutMethod: c.payoutMethod,
       payoutHandle: c.payoutHandle,
       stripeConnectAccountId: c.stripeConnectAccountId,
+      tokenNonce: c.tokenNonce,
       createdAt: c.createdAt,
     });
   }

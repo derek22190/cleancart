@@ -73,6 +73,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             deviceId,
             deviceSecret,
             surface: "extension",
+            clientPlatform: "ios-safari",
             format: "json",
           }),
         });
@@ -103,6 +104,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             deviceId,
             deviceSecret,
             surface: "extension",
+            clientPlatform: "ios-safari",
           }),
         });
         const data = await res.json();

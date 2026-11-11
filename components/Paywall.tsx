@@ -156,10 +156,15 @@ export default function Paywall({
         const devSecret =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) ||
           "";
+        const authToken =
+          typeof window !== "undefined"
+            ? (window.localStorage.getItem("heybroc_auth_token") || "").trim()
+            : "";
         const refRes = await fetch("/api/referral", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
             ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
           },
           body: JSON.stringify({
@@ -246,8 +251,9 @@ export default function Paywall({
         (typeof window !== "undefined" && window.localStorage.getItem("heybroc_session_id")) ||
         "";
       const authToken =
-        (typeof window !== "undefined" && window.localStorage.getItem("heybroc_auth_token")) ||
-        "";
+        typeof window !== "undefined"
+          ? (window.localStorage.getItem("heybroc_auth_token") || "").trim()
+          : "";
       let userEmail = sp?.get("email") || "";
       if (!userEmail && typeof window !== "undefined") {
         try {
@@ -315,6 +321,10 @@ export default function Paywall({
       const devSecret =
         (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_secret")) ||
         "";
+      const authToken =
+        typeof window !== "undefined"
+          ? (window.localStorage.getItem("heybroc_auth_token") || "").trim()
+          : "";
       let userEmail = sp?.get("email") || "";
       if (!userEmail && typeof window !== "undefined") {
         try {
@@ -342,6 +352,7 @@ export default function Paywall({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
         },
         body: JSON.stringify({
@@ -358,6 +369,18 @@ export default function Paywall({
         }),
       });
       const checkoutData = await checkoutRes.json().catch(() => ({}));
+      if (
+        typeof window !== "undefined" &&
+        typeof checkoutData?.deviceId === "string" &&
+        checkoutData.deviceId &&
+        (!devId || devId === "anon-web")
+      ) {
+        try {
+          window.localStorage.setItem("heybroc_device_id", checkoutData.deviceId);
+        } catch {
+          /* ignore storage quota */
+        }
+      }
       if (checkoutData?.ok && checkoutData?.mode === "stripe" && checkoutData?.url) {
         window.location.href = checkoutData.url;
         return;

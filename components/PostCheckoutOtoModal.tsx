@@ -86,9 +86,9 @@ export default function PostCheckoutOtoModal({
           window.localStorage.getItem("heybroc_device_secret")) ||
         "";
       const authToken =
-        (typeof window !== "undefined" &&
-          window.localStorage.getItem("heybroc_auth_token")) ||
-        "";
+        typeof window !== "undefined"
+          ? (window.localStorage.getItem("heybroc_auth_token") || "").trim()
+          : "";
       const prevSessId =
         sessionId ||
         (typeof window !== "undefined" &&
@@ -171,6 +171,18 @@ export default function PostCheckoutOtoModal({
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (
+        typeof window !== "undefined" &&
+        typeof data?.deviceId === "string" &&
+        data.deviceId &&
+        (!devId || devId === "anon-web")
+      ) {
+        try {
+          window.localStorage.setItem("heybroc_device_id", data.deviceId);
+        } catch {
+          /* ignore storage quota */
+        }
+      }
       if (data?.ok && data?.mode === "stripe" && data?.url) {
         window.location.href = data.url;
         return;

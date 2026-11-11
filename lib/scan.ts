@@ -11,10 +11,12 @@ import {
 } from "./referrals";
 import { ALL_CATEGORIES, scoreProductYuka, type Category, type NutritionInput, type ScoreResult, type Watchlist } from "./rubric";
 import {
+  isAffiliateAllowedOnClient,
   resolveSwap,
   resolveSwapCandidates,
   STORES,
   STORE_META,
+  type ClientPlatform,
   type ScanSurface,
   type Store,
   type SwapResult,
@@ -22,6 +24,57 @@ import {
 
 import { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId } from "./dietary";
 export { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId };
+
+const VALID_CLIENT_PLATFORMS = new Set<ClientPlatform>([
+  "web",
+  "android",
+  "chrome-extension",
+  "ios-safari",
+  "ios-share",
+  "ios-shortcut",
+  "ios-app",
+]);
+
+export function inferClientPlatform(params: {
+  clientPlatform?: string;
+  surface?: string;
+  format?: string;
+  deviceId?: string;
+  origin?: string;
+  userAgent?: string;
+}): ClientPlatform {
+  const rawLower = (params.clientPlatform || "").trim().toLowerCase();
+  if (rawLower === "ios") return "ios-app";
+  const rawPlatform = rawLower as ClientPlatform;
+  if (VALID_CLIENT_PLATFORMS.has(rawPlatform)) {
+    return rawPlatform;
+  }
+  const origin = (params.origin || "").trim().toLowerCase();
+  if (origin.startsWith("safari-web-extension://")) return "ios-safari";
+  if (origin.startsWith("chrome-extension://") || origin.startsWith("moz-extension://")) return "chrome-extension";
+  if (origin.startsWith("capacitor://") || origin.startsWith("ionic://")) return "ios-app";
+
+  if (params.format === "ios_text") return "ios-shortcut";
+
+  const dev = (params.deviceId || "").trim().toLowerCase();
+  if (dev.startsWith("ios-safari-")) return "ios-safari";
+  if (dev.startsWith("ios-app-")) return "ios-app";
+  if (dev.startsWith("ios-")) return "ios-share";
+  if (dev.startsWith("ext-")) return "chrome-extension";
+
+  const ua = (params.userAgent || "").trim();
+  if (/Shortcuts|CFNetwork.*Darwin/i.test(ua)) return "ios-shortcut";
+  if (/HeyBrocIOS|CleanCartIOS/i.test(ua) || (/(iPhone|iPad|iPod)/i.test(ua) && /Capacitor/i.test(ua))) {
+    return "ios-app";
+  }
+
+  if (params.surface === "extension") return "chrome-extension";
+  if (params.surface === "android") return "android";
+  if (dev && dev !== "anon-web" && dev !== "anonymous" && !dev.startsWith("web-")) {
+    return "android";
+  }
+  return "web";
+}
 
 export interface ScanRequest {
   productTitle?: string;
@@ -31,6 +84,7 @@ export interface ScanRequest {
   store?: string;
   instacartRetailerSlug?: string;
   surface?: ScanSurface;
+  clientPlatform?: ClientPlatform;
   watchlist?: Watchlist;
   familyWatchlist?: Category[];
   dietaryWatchlist?: string[];
@@ -595,18 +649,21 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     found.ingredients,
     found.nutrition,
   );
-  const effectiveDeviceId =
-    typeof req.deviceId === "string" && req.deviceId.trim().length >= 4
-      ? req.deviceId.trim()
-      : "anon-web";
-  const resolvedSurface: ScanSurface =
-    req.surface === "extension" || req.surface === "android" || req.surface === "web"
-      ? req.surface
-      : effectiveDeviceId.startsWith("ext-")
-        ? "extension"
-        : effectiveDeviceId !== "anon-web" && !effectiveDeviceId.startsWith("web-")
-          ? "android"
-          : "web";
+  const rawDev = typeof req.deviceId === "string" ? req.deviceId.trim() : "";
+  const isAnonDevice =
+    !rawDev || rawDev.length < 4 || /^(?:anon-web|anonymous|anon|null|undefined)$/i.test(rawDev);
+  const effectiveDeviceId = isAnonDevice ? "anon-web" : rawDev;
+  const clientPlatform = inferClientPlatform({
+    clientPlatform: req.clientPlatform,
+    surface: req.surface,
+    format: req.format,
+    deviceId: effectiveDeviceId,
+  });
+  const resolvedSurface: ScanSurface = !isAffiliateAllowedOnClient(req.surface ?? "web", clientPlatform)
+    ? "extension"
+    : req.surface === "android" || clientPlatform === "android"
+      ? "android"
+      : "web";
   const preferStoreBrand = req.preferStoreBrand === true;
   const swap = resolveSwap({
     score: result.score,
@@ -618,6 +675,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     familyWatchlist,
     dietaryWatchlist: req.dietaryWatchlist,
     surface: resolvedSurface,
+    clientPlatform,
     instacartRetailerSlug: req.instacartRetailerSlug,
     preferStoreBrand,
   });
@@ -631,30 +689,33 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     familyWatchlist,
     dietaryWatchlist: req.dietaryWatchlist,
     surface: resolvedSurface,
+    clientPlatform,
     instacartRetailerSlug: req.instacartRetailerSlug,
     preferStoreBrand,
     limit: 4,
   });
   let entitlement: EntitlementSummary | undefined;
-  try {
-    if (req.referredByCode && effectiveDeviceId !== "anon-web") {
-      const { device } = await applyOrActivateReferral({
-        deviceId: effectiveDeviceId,
-        referralCode: req.referredByCode,
-        activateNow: false,
-        deviceSecret: req.deviceSecret,
-      });
-      entitlement = await serializeEntitlementWithPaidLookup(device);
-    } else {
-      const device = await getOrCreateDevice(effectiveDeviceId, req.deviceSecret);
-      entitlement = await serializeEntitlementWithPaidLookup(device);
+  if (!isAnonDevice) {
+    try {
+      if (req.referredByCode) {
+        const { device } = await applyOrActivateReferral({
+          deviceId: effectiveDeviceId,
+          referralCode: req.referredByCode,
+          activateNow: false,
+          deviceSecret: req.deviceSecret,
+        });
+        entitlement = await serializeEntitlementWithPaidLookup(device);
+      } else {
+        const device = await getOrCreateDevice(effectiveDeviceId, req.deviceSecret);
+        entitlement = await serializeEntitlementWithPaidLookup(device);
+      }
+    } catch {
+      entitlement = undefined;
     }
-  } catch {
-    entitlement = undefined;
   }
-  const canAccessSwapLinks = Boolean(
-    entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)
-  );
+  const canAccessSwapLinks = isAnonDevice
+    ? true
+    : Boolean(entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0));
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
@@ -696,6 +757,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       familyWatchlist,
       dietaryWatchlist: req.dietaryWatchlist,
       surface: resolvedSurface,
+      clientPlatform,
       instacartRetailerSlug: req.instacartRetailerSlug,
       preferStoreBrand: true,
     });
@@ -709,7 +771,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
         trackServerEvent({
           event: "product_scanned",
           distinctId: effectiveDeviceId,
-          platform: req.format === "ios_text" ? "ios" : resolvedSurface,
+          platform: clientPlatform.startsWith("ios-") ? "ios" : resolvedSurface,
           store,
           properties: {
             title: title.slice(0, 60),

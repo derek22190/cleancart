@@ -9,7 +9,18 @@ export type DietaryOptionId =
   | "soy"
   | "egg"
   | "shellfish_fish"
+  | "sesame"
   | "high_sodium";
+
+export const MAJOR_ALLERGEN_IDS: readonly DietaryOptionId[] = [
+  "peanuts_nuts",
+  "dairy",
+  "wheat_gluten",
+  "soy",
+  "egg",
+  "shellfish_fish",
+  "sesame",
+] as const;
 
 export interface DietaryAlert {
   id: DietaryOptionId;
@@ -137,7 +148,7 @@ export function evaluateDietaryAlerts(
 
   if (selected.has("dairy") && !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/i.test(productTitle)) {
     const dairyCleaned = text.replace(
-      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+tartar|coconut\s+cream|lactic\s+acid)\b/gi,
+      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|pea\s+milk|oat\s+beverage|almond\s+beverage|soy\s+beverage|coconut\s+beverage|milked\s+oats?|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+tartar|coconut\s+cream|oat\s+creamer|almond\s+creamer|soy\s+creamer|coconut\s+creamer|plant\s+creamer|lactic\s+acid)\b/gi,
       " ",
     );
     const m = dairyCleaned.match(
@@ -174,7 +185,7 @@ export function evaluateDietaryAlerts(
       " ",
     );
     const m = nutCleaned.match(
-      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|peanuts?|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
+      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|peanuts?|almonds?|almondmilk|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
     );
     if (m) {
       alerts.push({
@@ -230,6 +241,21 @@ export function evaluateDietaryAlerts(
     }
   }
 
+  if (selected.has("sesame")) {
+    const sesameCleaned = text.replace(/\b(sesame[\s-]*free|no\s+sesame|without\s+sesame|free\s+of\s+sesame)\b/gi, " ");
+    const m = sesameCleaned.match(
+      /\b(sesame\s+seeds?|sesame\s+oil|sesame\s+flour|sesame\s+paste|tahini|sesame|benne\s+seeds?|gomasio|halvah)\b/i,
+    );
+    if (m) {
+      alerts.push({
+        id: "sesame",
+        label: "🌱 Sesame Alert",
+        shortBadge: "SESAME",
+        reason: `Contains ${m[0].toLowerCase()}`,
+      });
+    }
+  }
+
   if (selected.has("high_sodium")) {
     const sodiumMg = nutrition?.sodiumMg100g ?? 0;
     const sodiumAddMatch = ing.match(
@@ -261,4 +287,9 @@ export function evaluateDietaryAlerts(
   }
 
   return alerts;
+}
+
+export function detectMajorAllergens(productTitle: string, ingredients = ""): Set<DietaryOptionId> {
+  const alerts = evaluateDietaryAlerts([...MAJOR_ALLERGEN_IDS], productTitle, ingredients);
+  return new Set(alerts.map((a) => a.id));
 }

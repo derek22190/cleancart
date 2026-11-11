@@ -13,10 +13,17 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { trackServerEvent } from "@/lib/analytics";
-import { saveEntitlement, type EntitlementStatus } from "@/lib/entitlements";
 import {
+  getDevicePaidEntitlement,
+  getEmailEntitlement,
+  getSubscriptionEntitlement,
+  normalizeRealDeviceId,
+  saveEntitlement,
+  type EntitlementStatus,
+} from "@/lib/entitlements";
+import {
+  clawbackCreatorCommission,
   recordStripeCreatorConversionOnce,
-  recordStripeCreatorRefundOnce,
 } from "@/lib/influencers";
 import type { PlanId } from "@/lib/pricing";
 import { applyOrActivateReferral } from "@/lib/referrals";
@@ -40,8 +47,11 @@ interface RevenueCatEvent {
   store?: "APP_STORE" | "PLAY_STORE" | "STRIPE" | "PROMOTIONAL" | string;
   transaction_id?: string;
   original_transaction_id?: string;
+  cancellation_reason?: string;
+  cancel_reason?: string;
   price?: number;
   currency?: string;
+  tax_percentage?: number;
   price_in_purchased_currency?: number;
   subscriber_attributes?: Record<string, RevenueCatSubscriberAttribute | undefined>;
 }
@@ -59,8 +69,9 @@ function verifyBearerSecret(authHeader: string | null, secret: string): boolean 
   return crypto.timingSafeEqual(expected, actual);
 }
 
-function inferPlanFromProductId(productId?: string): PlanId {
-  const id = (productId || "").toLowerCase();
+function inferPlanFromProductId(productId?: string, fallback: PlanId = "annual"): PlanId {
+  const id = (productId || "").trim().toLowerCase();
+  if (!id) return fallback;
   if (/(?:^|[_\-.])(month|monthly|mo|m)(?:$|[_\-.])/i.test(id)) {
     return "monthly";
   }
@@ -107,31 +118,77 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Missing RevenueCat event object." }, { status: 400 });
   }
 
-  if (ev.type === "TEST") {
+  const eventType = ev.type.trim().toUpperCase();
+  if (eventType === "TEST") {
     return NextResponse.json({ ok: true, received: "TEST" });
   }
 
   const attrs = ev.subscriber_attributes;
   const appUserId = (ev.app_user_id || ev.original_app_user_id || "").trim();
+
   const attrEmail = extractAttr(attrs, "$email", "email")?.toLowerCase();
-  const customerEmail =
+  const prelimEmail =
     attrEmail || (appUserId.includes("@") ? appUserId.toLowerCase() : undefined);
 
   const attrDeviceId = extractAttr(attrs, "$deviceId", "deviceId", "device_id");
-  const deviceId =
-    attrDeviceId || (!appUserId.includes("@") && !appUserId.startsWith("$RCAnonymousID") ? appUserId : undefined);
+  const candidateDeviceId =
+    attrDeviceId ||
+    (!appUserId.includes("@") && !appUserId.startsWith("$RCAnonymousID")
+      ? appUserId
+      : undefined);
+  const prelimDeviceId = normalizeRealDeviceId(candidateDeviceId) || undefined;
 
-  const rawCreatorCode = extractAttr(attrs, "$creatorCode", "creatorCode", "creator_code", "$campaign");
+  const explicitOrigSubId = ev.original_transaction_id
+    ? `rc_${ev.original_transaction_id}`
+    : undefined;
+  const prelimTxSubId =
+    explicitOrigSubId || (ev.transaction_id ? `rc_${ev.transaction_id}` : undefined);
+
+  // Look up existing stored entitlement BEFORE finalizing subscriptionId so REFUND / CANCELLATION / EXPIRATION
+  // events omitting original_transaction_id resolve and revoke the exact `sub:rc_<orig>` record
+  const existing =
+    (explicitOrigSubId
+      ? await getSubscriptionEntitlement(explicitOrigSubId)
+      : null) ??
+    (prelimTxSubId && prelimTxSubId !== explicitOrigSubId
+      ? await getSubscriptionEntitlement(prelimTxSubId)
+      : null) ??
+    (prelimDeviceId ? await getDevicePaidEntitlement(prelimDeviceId) : null) ??
+    (prelimEmail ? await getEmailEntitlement(prelimEmail) : null);
+
+  const subscriptionId = explicitOrigSubId
+    ? explicitOrigSubId
+    : existing?.subscriptionId?.startsWith("rc_")
+      ? existing.subscriptionId
+      : `rc_${ev.transaction_id || appUserId || ev.id || "sub"}`;
+  const sessionId = existing?.sessionId || `rc_sess_${subscriptionId}`;
+
+  const customerEmail = prelimEmail || existing?.customerEmail;
+  const deviceId =
+    prelimDeviceId || normalizeRealDeviceId(existing?.deviceId) || undefined;
+  const attrUserId = extractAttr(attrs, "$userId", "userId", "user_id");
+  const userId =
+    attrUserId ||
+    (appUserId.startsWith("usr_") ? appUserId : undefined) ||
+    existing?.userId;
+
+  const rawCreatorCode = extractAttr(
+    attrs,
+    "$creatorCode",
+    "creatorCode",
+    "creator_code",
+    "$campaign"
+  );
   const isFriendCreatorAttr = Boolean(
     rawCreatorCode && /^BROC-[A-Z0-9]{4,10}$/i.test(rawCreatorCode)
   );
-  const creatorCode = isFriendCreatorAttr ? undefined : rawCreatorCode;
+  const creatorCode =
+    (isFriendCreatorAttr ? undefined : rawCreatorCode) || existing?.creatorCode;
   const referralCode =
     extractAttr(attrs, "referredByCode", "referral_code") ||
     (isFriendCreatorAttr ? rawCreatorCode?.toUpperCase() : undefined);
-  const plan = inferPlanFromProductId(ev.product_id);
-  const subscriptionId = `rc_${ev.original_transaction_id || ev.transaction_id || appUserId || ev.id || "sub"}`;
-  const sessionId = `rc_sess_${subscriptionId}`;
+  const plan = inferPlanFromProductId(ev.product_id, existing?.plan || "annual");
+
   const eventCreatedSec = ev.event_timestamp_ms
     ? Math.floor(ev.event_timestamp_ms / 1000)
     : Math.floor(Date.now() / 1000);
@@ -140,8 +197,26 @@ export async function POST(req: Request) {
   const stillWithinPaidPeriod =
     typeof ev.expiration_at_ms === "number" && ev.expiration_at_ms > nowMs;
 
+  const cancellationReason = (
+    ev.cancellation_reason ||
+    ev.cancel_reason ||
+    ""
+  )
+    .trim()
+    .toUpperCase();
+  const hasNegativePrice =
+    (typeof ev.price === "number" && Number.isFinite(ev.price) && ev.price < 0) ||
+    (typeof ev.price_in_purchased_currency === "number" &&
+      Number.isFinite(ev.price_in_purchased_currency) &&
+      ev.price_in_purchased_currency < 0);
+  const isImmediateRefundEvent =
+    eventType === "REFUND" ||
+    eventType === "REFUNDED" ||
+    (eventType === "CANCELLATION" &&
+      (cancellationReason === "CUSTOMER_SUPPORT" || hasNegativePrice));
+
   let status: EntitlementStatus = "active";
-  switch (ev.type) {
+  switch (eventType) {
     case "INITIAL_PURCHASE":
     case "RENEWAL":
     case "UNCANCELLATION":
@@ -153,12 +228,14 @@ export async function POST(req: Request) {
       status = "trialing";
       break;
     case "CANCELLATION":
-      // When a user cancels auto-renew, keep Pro active until expiration_at_ms passes;
-      // if it was an immediate refund (price < 0 or already expired), revoke immediately.
+      // Immediate refund (`CUSTOMER_SUPPORT` or `price < 0`) revokes immediately;
+      // voluntary auto-renew cancellation keeps Pro active until `expiration_at_ms` passes.
       status =
-        stillWithinPaidPeriod && (ev.price_in_purchased_currency ?? 0) >= 0
-          ? "active"
-          : "canceled";
+        !isImmediateRefundEvent && stillWithinPaidPeriod ? "active" : "canceled";
+      break;
+    case "REFUND":
+    case "REFUNDED":
+      status = "canceled";
       break;
     case "BILLING_ISSUE":
       status = stillWithinPaidPeriod ? "active" : "past_due";
@@ -174,31 +251,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: ev.type });
   }
 
-  const expiresAtMs =
-    status === "canceled"
+  const expiresAtMs = isImmediateRefundEvent
+    ? nowMs - 1000
+    : status === "canceled"
       ? typeof ev.expiration_at_ms === "number"
         ? Math.min(ev.expiration_at_ms, nowMs)
-        : nowMs
+        : nowMs - 1000
       : typeof ev.expiration_at_ms === "number"
         ? ev.expiration_at_ms
-        : undefined;
+        : existing?.expiresAtMs;
 
-  await saveEntitlement({
-    sessionId,
-    subscriptionId,
-    customerId: appUserId || undefined,
-    customerEmail,
-    deviceId,
-    plan,
-    creatorCode,
-    status,
-    active: status === "active" || status === "trialing",
-    expiresAtMs,
-    lastStripeEventCreated: eventCreatedSec,
-    updatedAt: new Date().toISOString(),
-  });
+  const customerId = appUserId.startsWith("cus_")
+    ? appUserId
+    : existing?.customerId?.startsWith("cus_")
+      ? existing.customerId
+      : undefined;
 
-  // Credit creator / referral on initial purchase or renewal
   const eventId = ev.id || `${subscriptionId}_${eventCreatedSec}`;
   const rawUsdPrice =
     typeof ev.price === "number" && Number.isFinite(ev.price)
@@ -209,17 +277,58 @@ export async function POST(req: Request) {
         ? ev.price_in_purchased_currency
         : 0;
   const taxPct =
-    typeof (ev as { tax_percentage?: number }).tax_percentage === "number" &&
-    Number.isFinite((ev as { tax_percentage?: number }).tax_percentage)
-      ? Math.max(0, Math.min(0.5, (ev as { tax_percentage: number }).tax_percentage))
+    typeof ev.tax_percentage === "number" && Number.isFinite(ev.tax_percentage)
+      ? Math.max(0, Math.min(0.5, ev.tax_percentage))
       : 0;
   const preTaxUsdPrice =
-    rawUsdPrice > 0 ? Math.round(rawUsdPrice * (1 - taxPct) * 100) / 100 : rawUsdPrice;
-  if (ev.type === "INITIAL_PURCHASE" || ev.type === "RENEWAL" || ev.type === "TRIAL_STARTED") {
+    rawUsdPrice !== 0
+      ? Math.round(rawUsdPrice * (1 - taxPct) * 100) / 100
+      : 0;
+
+  const isPositivePaidEvent =
+    !isImmediateRefundEvent &&
+    ev.period_type !== "TRIAL" &&
+    (eventType === "INITIAL_PURCHASE" ||
+      eventType === "RENEWAL" ||
+      eventType === "NON_RENEWING_PURCHASE" ||
+      eventType === "PRODUCT_CHANGE") &&
+    preTaxUsdPrice > 0;
+
+  await saveEntitlement({
+    sessionId,
+    subscriptionId,
+    customerId,
+    customerEmail,
+    deviceId,
+    userId,
+    plan,
+    creatorCode,
+    status,
+    active: !isImmediateRefundEvent && (status === "active" || status === "trialing"),
+    expiresAtMs,
+    lastChargeSucceeded: isPositivePaidEvent
+      ? true
+      : existing?.lastChargeSucceeded ?? false,
+    ...(isImmediateRefundEvent
+      ? {
+          paidPassExpiresAtMs: nowMs - 1000,
+          passRevokedAtMs: nowMs,
+        }
+      : {}),
+    lastStripeEventCreated: eventCreatedSec,
+    updatedAt: new Date().toISOString(),
+  });
+
+  // Credit creator / referral on initial purchase or renewal; claw back proportionally ONLY on real paid refunds
+  if (
+    eventType === "INITIAL_PURCHASE" ||
+    eventType === "RENEWAL" ||
+    eventType === "TRIAL_STARTED"
+  ) {
     if (creatorCode) {
       const amountPaidUsd = preTaxUsdPrice > 0 ? preTaxUsdPrice : 0;
       const isTrialEvent = status === "trialing" || amountPaidUsd <= 0;
-      if (!isTrialEvent || ev.type !== "RENEWAL") {
+      if (!isTrialEvent || eventType !== "RENEWAL") {
         const creatorEvent = isTrialEvent
           ? "trial"
           : plan === "annual"
@@ -239,6 +348,7 @@ export async function POST(req: Request) {
         deviceId,
         referralCode,
         activateNow: true,
+        userId,
       });
     }
     const platform =
@@ -256,13 +366,39 @@ export async function POST(req: Request) {
         amountUsd: rcAmountUsd,
       },
     });
-  } else if (ev.type === "CANCELLATION" && rawUsdPrice < 0 && creatorCode) {
-    await recordStripeCreatorRefundOnce(
-      `rc_refund_${eventId}`,
-      creatorCode,
-      plan,
-      Math.abs(rawUsdPrice),
-    );
+  } else if (
+    isImmediateRefundEvent &&
+    creatorCode &&
+    !/^BROC-[A-Z0-9]{4,10}$/i.test(creatorCode)
+  ) {
+    const explicitPrice =
+      typeof ev.price === "number" && Number.isFinite(ev.price)
+        ? ev.price
+        : undefined;
+    const shouldSkipClawback =
+      ev.period_type === "TRIAL" ||
+      explicitPrice === 0 ||
+      ev.price_in_purchased_currency === 0 ||
+      (explicitPrice === undefined && !existing?.lastChargeSucceeded);
+
+    if (!shouldSkipClawback) {
+      const preTaxRefundUsd =
+        explicitPrice !== undefined && explicitPrice !== 0
+          ? Math.round(Math.abs(explicitPrice) * (1 - taxPct) * 100) / 100
+          : preTaxUsdPrice !== 0
+            ? Math.abs(preTaxUsdPrice)
+            : undefined;
+      await clawbackCreatorCommission(
+        `rc_refund_${ev.transaction_id || eventId}`,
+        creatorCode,
+        plan,
+        preTaxRefundUsd,
+        preTaxRefundUsd === undefined ? true : undefined,
+        {
+          buyerEmail: customerEmail,
+        }
+      );
+    }
   }
 
   return NextResponse.json({

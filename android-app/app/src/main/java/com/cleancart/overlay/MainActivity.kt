@@ -80,6 +80,8 @@ class MainActivity : Activity() {
     private var selectedTopCategory: String? = null
     private var lastSearchQuery = ""
     private var isSearching = false
+    @Volatile
+    private var liveSearchSeq = 0
     private var expandedPrefSection: String? = "bubble"
     private var pendingSuggestRunnable: Runnable? = null
 
@@ -1515,6 +1517,8 @@ class MainActivity : Activity() {
         attachLiveAutocomplete(searchInput, suggestionsBox) { pickedTitle, fullItem ->
             lastSearchQuery = pickedTitle
             if (fullItem != null) {
+                ++liveSearchSeq
+                isSearching = false
                 ScanHistoryStore.recordScan(this, fullItem, "search")
                 renderScreen()
                 showProductDetailDialog(fullItem)
@@ -3846,7 +3850,7 @@ class MainActivity : Activity() {
         rawIngredients: String = "",
         storeOverride: String? = null
     ) {
-        if (isSearching) return
+        val seq = ++liveSearchSeq
         lastSearchQuery = query
         isSearching = true
         hideKeyboard()
@@ -3855,10 +3859,12 @@ class MainActivity : Activity() {
         val appCtx = applicationContext
         val storeKey = storeOverride?.takeIf { it.isNotBlank() } ?: preferredStoreKey()
         io.execute {
+            if (seq != liveSearchSeq) return@execute
             val raw = runCatching { ScanApi.scan(appCtx, query, rawIngredients, storeKey) }.getOrNull()
+            if (seq != liveSearchSeq) return@execute
             val parsed = raw?.let { runCatching { JSONObject(it) }.getOrNull() }
             runOnUiThread {
-                if (isDestroyed || isFinishing) return@runOnUiThread
+                if (isDestroyed || isFinishing || seq != liveSearchSeq) return@runOnUiThread
                 isSearching = false
                 if (parsed?.optBoolean("ok") == true) {
                     ScanHistoryStore.recordScan(this, parsed, storeKey)

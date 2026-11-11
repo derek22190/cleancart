@@ -473,12 +473,22 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         let host = (url.host ?? "").lowercased()
+        if host == "stripe.com" || host.hasSuffix(".stripe.com") {
+            let alert = UIAlertController(
+                title: "HeyBroc Pro on iOS",
+                message: "Pro membership is managed natively in the HeyBroc iOS app — sign in to sync an existing account.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            decisionHandler(.cancel)
+            return
+        }
+
         let isAllowedInAppHost =
             host == "heybroc.com" ||
             host.hasSuffix(".heybroc.com") ||
-            host == "cleancart-teal.vercel.app" ||
-            host.hasSuffix(".stripe.com") ||
-            host == "stripe.com"
+            host == "cleancart-teal.vercel.app"
 
         if !isAllowedInAppHost && navigationAction.navigationType == .linkActivated {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
@@ -496,11 +506,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             return nil
         }
         let host = (url.host ?? "").lowercased()
+        if host == "stripe.com" || host.hasSuffix(".stripe.com") {
+            return nil
+        }
         let isInApp =
             host == "heybroc.com" ||
             host.hasSuffix(".heybroc.com") ||
-            host == "cleancart-teal.vercel.app" ||
-            host.hasSuffix(".stripe.com")
+            host == "cleancart-teal.vercel.app"
 
         if isInApp {
             webView.load(navigationAction.request)

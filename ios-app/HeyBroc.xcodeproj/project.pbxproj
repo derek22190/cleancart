@@ -1,0 +1,633 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		48B000100000000000000001 /* HeyBrocApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000001 /* HeyBrocApp.swift */; };
+		48B000100000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000002 /* Assets.xcassets */; };
+		48B000100000000000000003 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000003 /* LaunchScreen.storyboard */; };
+		48B000100000000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000004 /* PrivacyInfo.xcprivacy */; };
+		48B000100000000000000005 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000021 /* SwiftUI.framework */; };
+		48B000100000000000000006 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000022 /* WebKit.framework */; };
+		48B000100000000000000007 /* SafariServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000023 /* SafariServices.framework */; };
+		48B000100000000000000008 /* HeyBrocSafariExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000032 /* HeyBrocSafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		48B000100000000000000009 /* HeyBrocShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000033 /* HeyBrocShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		48B000100000000000000010 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000007 /* SafariWebExtensionHandler.swift */; };
+		48B000100000000000000011 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000010 /* PrivacyInfo.xcprivacy */; };
+		48B000100000000000000012 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000011 /* manifest.json */; };
+		48B000100000000000000013 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000012 /* background.js */; };
+		48B000100000000000000014 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000013 /* content.js */; };
+		48B000100000000000000015 /* overlay.css in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000014 /* overlay.css */; };
+		48B000100000000000000016 /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000015 /* popup.html */; };
+		48B000100000000000000017 /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000016 /* popup.js */; };
+		48B000100000000000000018 /* broc-mascot.png in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000017 /* broc-mascot.png */; };
+		48B000100000000000000019 /* SafariServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000023 /* SafariServices.framework */; };
+		48B000100000000000000020 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000018 /* ShareViewController.swift */; };
+		48B000100000000000000021 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000025 /* PrivacyInfo.xcprivacy */; };
+		48B000100000000000000022 /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48B000200000000000000024 /* UniformTypeIdentifiers.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		48B000400000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48B000900000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 48B000300000000000000002;
+			remoteInfo = HeyBrocSafariExtension;
+		};
+		48B000400000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48B000900000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 48B000300000000000000003;
+			remoteInfo = HeyBrocShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		48B000500000000000000001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				48B000100000000000000008 /* HeyBrocSafariExtension.appex in Embed App Extensions */,
+				48B000100000000000000009 /* HeyBrocShareExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		48B000200000000000000001 /* HeyBrocApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeyBrocApp.swift; sourceTree = "<group>"; };
+		48B000200000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		48B000200000000000000003 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		48B000200000000000000004 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		48B000200000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		48B000200000000000000006 /* HeyBroc.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HeyBroc.entitlements; sourceTree = "<group>"; };
+		48B000200000000000000007 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		48B000200000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		48B000200000000000000009 /* SafariExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SafariExtension.entitlements; sourceTree = "<group>"; };
+		48B000200000000000000010 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		48B000200000000000000011 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+		48B000200000000000000012 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
+		48B000200000000000000013 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = content.js; sourceTree = "<group>"; };
+		48B000200000000000000014 /* overlay.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = overlay.css; sourceTree = "<group>"; };
+		48B000200000000000000015 /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = popup.html; sourceTree = "<group>"; };
+		48B000200000000000000016 /* popup.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = popup.js; sourceTree = "<group>"; };
+		48B000200000000000000017 /* broc-mascot.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "broc-mascot.png"; sourceTree = "<group>"; };
+		48B000200000000000000018 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		48B000200000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		48B000200000000000000020 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
+		48B000200000000000000021 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		48B000200000000000000022 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		48B000200000000000000023 /* SafariServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SafariServices.framework; path = System/Library/Frameworks/SafariServices.framework; sourceTree = SDKROOT; };
+		48B000200000000000000024 /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
+		48B000200000000000000025 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		48B000200000000000000031 /* HeyBroc.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HeyBroc.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		48B000200000000000000032 /* HeyBrocSafariExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HeyBrocSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		48B000200000000000000033 /* HeyBrocShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HeyBrocShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		48B000600000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000005 /* SwiftUI.framework in Frameworks */,
+				48B000100000000000000006 /* WebKit.framework in Frameworks */,
+				48B000100000000000000007 /* SafariServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48B000600000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000019 /* SafariServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48B000600000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000022 /* UniformTypeIdentifiers.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		48B000700000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				48B000700000000000000002 /* App */,
+				48B000700000000000000003 /* SafariExtension */,
+				48B000700000000000000005 /* ShareExtension */,
+				48B000700000000000000006 /* Frameworks */,
+				48B000700000000000000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		48B000700000000000000002 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				48B000200000000000000001 /* HeyBrocApp.swift */,
+				48B000200000000000000002 /* Assets.xcassets */,
+				48B000200000000000000003 /* LaunchScreen.storyboard */,
+				48B000200000000000000004 /* PrivacyInfo.xcprivacy */,
+				48B000200000000000000005 /* Info.plist */,
+				48B000200000000000000006 /* HeyBroc.entitlements */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		48B000700000000000000003 /* SafariExtension */ = {
+			isa = PBXGroup;
+			children = (
+				48B000200000000000000007 /* SafariWebExtensionHandler.swift */,
+				48B000200000000000000008 /* Info.plist */,
+				48B000200000000000000009 /* SafariExtension.entitlements */,
+				48B000200000000000000010 /* PrivacyInfo.xcprivacy */,
+				48B000700000000000000004 /* Resources */,
+			);
+			path = SafariExtension;
+			sourceTree = "<group>";
+		};
+		48B000700000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				48B000200000000000000011 /* manifest.json */,
+				48B000200000000000000012 /* background.js */,
+				48B000200000000000000013 /* content.js */,
+				48B000200000000000000014 /* overlay.css */,
+				48B000200000000000000015 /* popup.html */,
+				48B000200000000000000016 /* popup.js */,
+				48B000200000000000000017 /* broc-mascot.png */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		48B000700000000000000005 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				48B000200000000000000018 /* ShareViewController.swift */,
+				48B000200000000000000019 /* Info.plist */,
+				48B000200000000000000020 /* ShareExtension.entitlements */,
+				48B000200000000000000025 /* PrivacyInfo.xcprivacy */,
+			);
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
+		48B000700000000000000006 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				48B000200000000000000021 /* SwiftUI.framework */,
+				48B000200000000000000022 /* WebKit.framework */,
+				48B000200000000000000023 /* SafariServices.framework */,
+				48B000200000000000000024 /* UniformTypeIdentifiers.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		48B000700000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				48B000200000000000000031 /* HeyBroc.app */,
+				48B000200000000000000032 /* HeyBrocSafariExtension.appex */,
+				48B000200000000000000033 /* HeyBrocShareExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		48B000300000000000000001 /* HeyBroc */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48B000A00000000000000002 /* Build configuration list for PBXNativeTarget "HeyBroc" */;
+			buildPhases = (
+				48B000800000000000000001 /* Sources */,
+				48B000600000000000000001 /* Frameworks */,
+				48B000800000000000000004 /* Resources */,
+				48B000500000000000000001 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				48B000B00000000000000001 /* PBXTargetDependency */,
+				48B000B00000000000000002 /* PBXTargetDependency */,
+			);
+			name = HeyBroc;
+			productName = HeyBroc;
+			productReference = 48B000200000000000000031 /* HeyBroc.app */;
+			productType = "com.apple.product-type.application";
+		};
+		48B000300000000000000002 /* HeyBrocSafariExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48B000A00000000000000003 /* Build configuration list for PBXNativeTarget "HeyBrocSafariExtension" */;
+			buildPhases = (
+				48B000800000000000000002 /* Sources */,
+				48B000600000000000000002 /* Frameworks */,
+				48B000800000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HeyBrocSafariExtension;
+			productName = HeyBrocSafariExtension;
+			productReference = 48B000200000000000000032 /* HeyBrocSafariExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		48B000300000000000000003 /* HeyBrocShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48B000A00000000000000004 /* Build configuration list for PBXNativeTarget "HeyBrocShareExtension" */;
+			buildPhases = (
+				48B000800000000000000003 /* Sources */,
+				48B000600000000000000003 /* Frameworks */,
+				48B000800000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HeyBrocShareExtension;
+			productName = HeyBrocShareExtension;
+			productReference = 48B000200000000000000033 /* HeyBrocShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		48B000900000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1520;
+				LastUpgradeCheck = 1520;
+				TargetAttributes = {
+					48B000300000000000000001 = {
+						CreatedOnToolsVersion = 15.2;
+						ProvisioningStyle = Automatic;
+					};
+					48B000300000000000000002 = {
+						CreatedOnToolsVersion = 15.2;
+						ProvisioningStyle = Automatic;
+					};
+					48B000300000000000000003 = {
+						CreatedOnToolsVersion = 15.2;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 48B000A00000000000000001 /* Build configuration list for PBXProject "HeyBroc" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 48B000700000000000000001;
+			productRefGroup = 48B000700000000000000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				48B000300000000000000001 /* HeyBroc */,
+				48B000300000000000000002 /* HeyBrocSafariExtension */,
+				48B000300000000000000003 /* HeyBrocShareExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		48B000800000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000002 /* Assets.xcassets in Resources */,
+				48B000100000000000000003 /* LaunchScreen.storyboard in Resources */,
+				48B000100000000000000004 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48B000800000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000011 /* PrivacyInfo.xcprivacy in Resources */,
+				48B000100000000000000012 /* manifest.json in Resources */,
+				48B000100000000000000013 /* background.js in Resources */,
+				48B000100000000000000014 /* content.js in Resources */,
+				48B000100000000000000015 /* overlay.css in Resources */,
+				48B000100000000000000016 /* popup.html in Resources */,
+				48B000100000000000000017 /* popup.js in Resources */,
+				48B000100000000000000018 /* broc-mascot.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48B000800000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000021 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		48B000800000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000001 /* HeyBrocApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48B000800000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000010 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		48B000800000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B000100000000000000020 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		48B000B00000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 48B000300000000000000002 /* HeyBrocSafariExtension */;
+			targetProxy = 48B000400000000000000001 /* PBXContainerItemProxy */;
+		};
+		48B000B00000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 48B000300000000000000003 /* HeyBrocShareExtension */;
+			targetProxy = 48B000400000000000000002 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		48B000C00000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		48B000C00000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		48B000C00000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = App/HeyBroc.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		48B000C00000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = App/HeyBroc.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		48B000C00000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SafariExtension/SafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SafariExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app.SafariExtension;
+				PRODUCT_MODULE_NAME = HeyBrocSafariExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		48B000C00000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SafariExtension/SafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SafariExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app.SafariExtension;
+				PRODUCT_MODULE_NAME = HeyBrocSafariExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		48B000C00000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app.ShareExtension;
+				PRODUCT_MODULE_NAME = HeyBrocShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		48B000C00000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heybroc.app.ShareExtension;
+				PRODUCT_MODULE_NAME = HeyBrocShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		48B000A00000000000000001 /* Build configuration list for PBXProject "HeyBroc" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48B000C00000000000000001 /* Debug */,
+				48B000C00000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		48B000A00000000000000002 /* Build configuration list for PBXNativeTarget "HeyBroc" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48B000C00000000000000003 /* Debug */,
+				48B000C00000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		48B000A00000000000000003 /* Build configuration list for PBXNativeTarget "HeyBrocSafariExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48B000C00000000000000005 /* Debug */,
+				48B000C00000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		48B000A00000000000000004 /* Build configuration list for PBXNativeTarget "HeyBrocShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48B000C00000000000000007 /* Debug */,
+				48B000C00000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 48B000900000000000000001 /* Project object */;
+}

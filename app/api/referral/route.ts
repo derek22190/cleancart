@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth";
+import { normalizeRealDeviceId } from "@/lib/entitlements";
 import {
   applyOrActivateReferral,
-  codeFromDeviceId,
+  buildTransientFreeDevice,
   getExistingDevice,
   getOrCreateDevice,
   isValidReferralCode,
   saveDevice,
   serializeEntitlementWithPaidLookup,
   verifyDeviceSecret,
-  type DeviceEntitlement,
 } from "@/lib/referrals";
 import { PRICING } from "@/lib/pricing";
-import { checkRateLimit } from "@/lib/scan";
+import { checkRateLimitAsync } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Device-Secret",
 };
 
 function getClientIp(req: Request): string {
@@ -30,28 +31,13 @@ function getClientIp(req: Request): string {
   );
 }
 
-function buildTransientDevice(deviceId: string): DeviceEntitlement {
-  const now = Date.now();
-  return {
-    deviceId,
-    referralCode: codeFromDeviceId(deviceId),
-    referralActivated: false,
-    firstSeenAt: now,
-    proUntil: 0,
-    referralsCompleted: 0,
-    weeklySwapsUsed: [],
-    weekResetAt: now + 7 * 24 * 60 * 60 * 1000,
-    courtesyRefillUsedThisWeek: false,
-  };
-}
-
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
 export async function GET(request: Request) {
   const ip = getClientIp(request);
-  if (!checkRateLimit(`referral-get:${ip}`, 30)) {
+  if (!(await checkRateLimitAsync(`referral-get:${ip}`, 30))) {
     return NextResponse.json(
       { ok: false, error: "Too many requests." },
       { status: 429, headers: CORS }
@@ -66,12 +52,15 @@ export async function GET(request: Request) {
       { status: valid ? 200 : 404, headers: CORS }
     );
   }
-  const deviceId = (searchParams.get("deviceId") || "anon-web").trim();
+  const rawDeviceId = (searchParams.get("deviceId") || "anon-web").trim();
+  const normDeviceId = normalizeRealDeviceId(rawDeviceId);
   const deviceSecret = request.headers.get("x-device-secret") || undefined;
-  const device =
-    deviceSecret || deviceId === "anon-web"
-      ? await getOrCreateDevice(deviceId, deviceSecret)
-      : (await getExistingDevice(deviceId)) ?? buildTransientDevice(deviceId);
+  const device = !normDeviceId
+    ? buildTransientFreeDevice(rawDeviceId)
+    : deviceSecret
+      ? await getOrCreateDevice(normDeviceId, deviceSecret)
+      : (await getExistingDevice(normDeviceId)) ??
+        buildTransientFreeDevice(normDeviceId);
   return NextResponse.json(
     { ok: true, entitlement: await serializeEntitlementWithPaidLookup(device) },
     { headers: CORS }
@@ -80,7 +69,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  if (!checkRateLimit(`referral-post:${ip}`, 20)) {
+  if (!(await checkRateLimitAsync(`referral-post:${ip}`, 20))) {
     return NextResponse.json(
       { ok: false, error: "Too many requests." },
       { status: 429, headers: CORS }
@@ -96,10 +85,18 @@ export async function POST(request: Request) {
       referredByCode?: string;
       productKey?: string;
     };
-    const deviceId = (body.deviceId || "anon-web").trim();
+    const rawDeviceId = (body.deviceId || "anon-web").trim();
+    const deviceId = normalizeRealDeviceId(rawDeviceId);
     const action = body.action || "status";
     const deviceSecret =
       request.headers.get("x-device-secret") || body.deviceSecret || undefined;
+    const authHeader = request.headers.get("authorization") || "";
+    const authToken = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+    const authUser = authToken.startsWith("hb_")
+      ? await getAuthenticatedUser(authToken).catch(() => null)
+      : null;
     const resolvedReferralCode = (
       body.referralCode ||
       body.referredByCode ||
@@ -124,7 +121,7 @@ export async function POST(request: Request) {
       action === "record_swap";
 
     if (requiresAuth) {
-      if (!deviceId || deviceId === "anon-web" || !deviceSecret) {
+      if (!deviceId || !deviceSecret) {
         return NextResponse.json(
           {
             ok: false,
@@ -136,10 +133,11 @@ export async function POST(request: Request) {
       }
     }
 
-    const device =
-      deviceSecret || deviceId === "anon-web"
+    const device = !deviceId
+      ? buildTransientFreeDevice(rawDeviceId)
+      : deviceSecret
         ? await getOrCreateDevice(deviceId, deviceSecret)
-        : (await getExistingDevice(deviceId)) ?? buildTransientDevice(deviceId);
+        : (await getExistingDevice(deviceId)) ?? buildTransientFreeDevice(deviceId);
 
     if (requiresAuth) {
       if (!device.deviceSecretHash) {
@@ -171,6 +169,8 @@ export async function POST(request: Request) {
         referralCode: resolvedReferralCode,
         activateNow: false,
         deviceSecret,
+        userId: authUser?.userId,
+        linkedDevices: authUser?.linkedDevices,
       });
       if (!res.ok) {
         return NextResponse.json(
@@ -233,8 +233,8 @@ export async function POST(request: Request) {
         .then(({ trackServerEvent }) =>
           trackServerEvent({
             event: "clean_swap_clicked",
-            distinctId: deviceId,
-            platform: deviceId === "anon-web" ? "web" : "android",
+            distinctId: deviceId || ip,
+            platform: !deviceId ? "web" : "android",
             properties: { product: normKey },
           }),
         )

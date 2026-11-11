@@ -22,8 +22,6 @@ const gradeProduct = (
   scoreProductYuka(ingredients, watchlist, familyWatchlist, { ...nutrition, productTitle: title });
 import { PRESETS } from "@/lib/presets";
 import {
-  CLEAN_ALTERNATIVES,
-  DIRTY_FALLBACK_IMAGES,
   STORE_META,
   STORES,
   detectCategory,
@@ -136,6 +134,47 @@ function pickClosestBarcodeToCenter(
     }
   }
   return best.rawValue!.trim();
+}
+
+function detectIosAppClient(): boolean {
+  if (typeof window === "undefined") return false;
+  const win = window as unknown as {
+    __HEYBROC_CLIENT_PLATFORM__?: string;
+    webkit?: { messageHandlers?: { controller?: unknown } };
+  };
+  if (win.__HEYBROC_CLIENT_PLATFORM__ === "ios-app" || win.__HEYBROC_CLIENT_PLATFORM__ === "ios") return true;
+  if (win.webkit?.messageHandlers?.controller) return true;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const plat = params.get("platform");
+    if (plat === "ios-app" || plat === "ios") {
+      window.localStorage.setItem("heybroc_client_platform", "ios-app");
+      return true;
+    }
+    if (window.localStorage.getItem("heybroc_client_platform") === "ios-app") {
+      return true;
+    }
+  } catch {
+    // ignore storage access errors
+  }
+  return typeof navigator !== "undefined" && /HeyBrocIOS/i.test(navigator.userAgent);
+}
+
+function postIosBridgeMessage(
+  handler: "heybrocBridge" | "heybrocNative",
+  payload: Record<string, unknown>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const win = window as unknown as {
+      webkit?: {
+        messageHandlers?: Record<string, { postMessage?: (msg: unknown) => void }>;
+      };
+    };
+    win.webkit?.messageHandlers?.[handler]?.postMessage?.(payload);
+  } catch {
+    // ignore WKScriptMessageHandler errors outside native iOS app
+  }
 }
 
 type Watch = Record<Category, boolean>;
@@ -311,22 +350,54 @@ function Gauge({ score, rating, color, size = 112 }: { score: number | null; rat
   );
 }
 
-function ProductArt({ product, className = "", showAttribution = false }: { product: Product; className?: string; showAttribution?: boolean }) {
+function normalizeProductArtUrl(url?: string | null): string {
+  if (!url) return "";
+  return url.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "");
+}
+
+function isMissingProductPhotoUrl(url?: string | null): boolean {
+  if (!url) return true;
+  const lower = url.toLowerCase();
+  return lower.includes("product-photo-unavailable") || lower.includes("placeholder");
+}
+
+function ProductArt({
+  product,
+  className = "",
+  showAttribution = false,
+  onSnapLabel,
+}: {
+  product: Product;
+  className?: string;
+  showAttribution?: boolean;
+  onSnapLabel?: () => void;
+}) {
   const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}&v=5`;
-  const primarySrc = product.image || apiFallbackSrc;
+  const normalizedProductImg = normalizeProductArtUrl(product.image);
+  const explicitMissing = Boolean(product.image) && isMissingProductPhotoUrl(normalizedProductImg);
+  const primarySrc = !explicitMissing && normalizedProductImg ? normalizedProductImg : apiFallbackSrc;
+
   const [failedSrcs, setFailedSrcs] = useState<Record<string, boolean>>({});
+  const [placeholderSrcs, setPlaceholderSrcs] = useState<Record<string, boolean>>({});
   const [imgLicense, setImgLicense] = useState<string | null>(null);
   const [imgSource, setImgSource] = useState<string | null>(null);
 
-  const activeSrc = !failedSrcs[primarySrc]
+  const primaryUnusable =
+    explicitMissing || Boolean(failedSrcs[primarySrc]) || Boolean(placeholderSrcs[primarySrc]);
+  const fallbackUnusable =
+    explicitMissing || Boolean(failedSrcs[apiFallbackSrc]) || Boolean(placeholderSrcs[apiFallbackSrc]);
+
+  const activeSrc = !primaryUnusable
     ? primarySrc
-    : !failedSrcs[apiFallbackSrc]
+    : !fallbackUnusable
       ? apiFallbackSrc
-      : "/swaps/snacks.jpg";
+      : "";
+
+  const isMissingPhoto = !activeSrc || isMissingProductPhotoUrl(activeSrc);
 
   useEffect(() => {
     const src = activeSrc;
-    if (!src) {
+    if (!src || isMissingProductPhotoUrl(src)) {
       setImgLicense(null);
       setImgSource(null);
       return;
@@ -338,12 +409,28 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
     }
     if (src.includes("/api/product-image")) {
       let cancelled = false;
-      const probeUrl = src.replace(/^https?:\/\/(www\.)?heybroc\.com/i, "");
+      const probeUrl = normalizeProductArtUrl(src);
       fetch(probeUrl, { method: "HEAD" })
         .then((res) => {
           if (cancelled) return;
           const lic = res.headers.get("x-image-license");
           const srcHeader = res.headers.get("x-image-source");
+          const contentType = res.headers.get("content-type") || "";
+          const isPlaceholder =
+            !res.ok ||
+            Boolean(srcHeader && srcHeader.toLowerCase().includes("placeholder")) ||
+            res.url.toLowerCase().includes("product-photo-unavailable") ||
+            contentType.toLowerCase().includes("image/svg+xml");
+          if (isPlaceholder) {
+            setImgLicense(null);
+            setImgSource(null);
+            setPlaceholderSrcs((prev) =>
+              prev[src] && prev[apiFallbackSrc]
+                ? prev
+                : { ...prev, [src]: true, [apiFallbackSrc]: true },
+            );
+            return;
+          }
           if (lic && lic.includes("CC BY-SA")) {
             setImgLicense(lic);
             const urlMatch = srcHeader?.match(/https:\/\/[^\s)]+/);
@@ -360,7 +447,89 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
     }
     setImgLicense(null);
     setImgSource(null);
-  }, [activeSrc]);
+  }, [activeSrc, apiFallbackSrc]);
+
+  if (isMissingPhoto) {
+    const isCompactThumb = /\b(swap-art|cart-art|yuka-history-img|yuka-rec-img)\b/.test(className);
+    const isHeroThumb = className.includes("yuka-hero-img");
+    const boxStyle: React.CSSProperties = {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: isHeroThumb ? 4 : 6,
+      width: "100%",
+      height: "100%",
+      background: "#F4F5F7",
+      border: "1px solid #E5E7EB",
+      borderRadius: isCompactThumb ? 10 : 14,
+      color: "#6B7280",
+      padding: isCompactThumb ? 4 : isHeroThumb ? 6 : 12,
+      boxSizing: "border-box",
+      textAlign: "center",
+      ...(onSnapLabel ? { cursor: "pointer" } : {}),
+    };
+    const cameraIcon = (
+      <svg
+        viewBox="0 0 24 24"
+        width={isCompactThumb ? 18 : isHeroThumb ? 22 : 30}
+        height={isCompactThumb ? 18 : isHeroThumb ? 22 : 30}
+        fill="none"
+        stroke="#9CA3AF"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+        <circle cx="12" cy="13" r="3.5" />
+      </svg>
+    );
+
+    if (onSnapLabel) {
+      return (
+        <button
+          type="button"
+          className={`product-art product-art--missing-photo ${className}`.trim()}
+          style={boxStyle}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSnapLabel();
+          }}
+          title="No photo · Snap label"
+          aria-label={`No verified package photo for ${product.brand} ${product.title} — tap to snap ingredient label`}
+        >
+          {cameraIcon}
+          <span
+            style={{
+              fontSize: isHeroThumb ? 9.5 : 12,
+              fontWeight: 600,
+              lineHeight: 1.2,
+              color: "#6B7280",
+            }}
+          >
+            {isHeroThumb ? "No photo · Snap" : "No photo · Snap label"}
+          </span>
+        </button>
+      );
+    }
+
+    return (
+      <div
+        className={`product-art product-art--missing-photo ${className}`.trim()}
+        style={boxStyle}
+        role="img"
+        aria-label="No verified package photo"
+      >
+        {cameraIcon}
+        {!isCompactThumb && (
+          <span style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.2, color: "#9CA3AF" }}>
+            No photo
+          </span>
+        )}
+      </div>
+    );
+  }
 
   const isCcBySa = Boolean(imgLicense && imgLicense.includes("CC BY-SA")) || product.lookup?.source === "openfoodfacts";
   const resolvedSourceUrl =
@@ -377,7 +546,16 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
       src={activeSrc}
       alt={`${product.brand} ${product.title}`}
       title={isCcBySa ? `Image: Open Food Facts (${resolvedSourceUrl}) — CC BY-SA 3.0` : undefined}
-      onError={() => setFailedSrcs((prev) => (prev[activeSrc] ? prev : { ...prev, [activeSrc]: true }))}
+      onError={() =>
+        setFailedSrcs((prev) => {
+          if (srcIsProductImageEndpoint(activeSrc)) {
+            return prev[activeSrc] && prev[apiFallbackSrc]
+              ? prev
+              : { ...prev, [activeSrc]: true, [apiFallbackSrc]: true };
+          }
+          return prev[activeSrc] ? prev : { ...prev, [activeSrc]: true };
+        })
+      }
     />
   );
 
@@ -399,6 +577,10 @@ function ProductArt({ product, className = "", showAttribution = false }: { prod
   }
 
   return imgEl;
+}
+
+function srcIsProductImageEndpoint(url: string): boolean {
+  return url.includes("/api/product-image");
 }
 
 function ScoreChip({ score, color }: { score: number; color: string }) {
@@ -594,6 +776,7 @@ export default function Simulator({
   const [topMenuOpen, setTopMenuOpen] = useState(false);
   const [showAllPresets, setShowAllPresets] = useState(false);
   const topMenuRef = useRef<HTMLDivElement | null>(null);
+  const [isIosAppClient, setIsIosAppClient] = useState<boolean>(false);
 
   useEffect(() => {
     if (!topMenuOpen) return;
@@ -618,6 +801,7 @@ export default function Simulator({
       const next = typeof explicitNext === "boolean" ? explicitNext : !prev;
       if (typeof window !== "undefined") {
         window.localStorage.setItem("heybroc_prefer_store_brand", next ? "1" : "0");
+        postIosBridgeMessage("heybrocBridge", { preferStoreBrand: next });
       }
       return next;
     });
@@ -678,18 +862,38 @@ export default function Simulator({
     }
   }, [dietaryWatchlist, familyWatchlist, preferStoreBrand, store]);
 
+  const requestProUpgrade = useCallback(() => {
+    if (isIosAppClient || detectIosAppClient()) {
+      setIsIosAppClient(true);
+      setIsIosApp(true);
+      setPaywallOpen(false);
+      postIosBridgeMessage("heybrocNative", { action: "managePro" });
+      setToast({
+        title: "HeyBroc Pro on iOS",
+        body: "Pro membership is managed natively in the HeyBroc iOS app — sign in to sync an existing account.",
+      });
+      return;
+    }
+    setPaywallOpen(true);
+  }, [isIosAppClient]);
+
   useEffect(() => {
     let cancelled = false;
     async function checkEntitlement() {
       try {
+        const iosApp = detectIosAppClient();
+        if (!cancelled && iosApp) {
+          setIsIosAppClient(true);
+          setIsIosApp(true);
+        }
         const randomHex = (bytes: number) => {
           const arr = new Uint8Array(bytes);
           window.crypto.getRandomValues(arr);
           return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
         };
         let deviceId = window.localStorage.getItem("heybroc_device_id");
-        if (!deviceId) {
-          deviceId = `web-${randomHex(8)}-${Date.now().toString(36)}`;
+        if (!deviceId || (iosApp && deviceId.startsWith("web-"))) {
+          deviceId = `${iosApp ? "ios-app" : "web"}-${randomHex(8)}-${Date.now().toString(36)}`;
           window.localStorage.setItem("heybroc_device_id", deviceId);
         }
         let deviceSecret = window.localStorage.getItem("heybroc_device_secret");
@@ -701,7 +905,8 @@ export default function Simulator({
 
         let savedPreferSb = false;
         try {
-          savedPreferSb = window.localStorage.getItem("heybroc_prefer_store_brand") === "1";
+          const rawPreferSb = window.localStorage.getItem("heybroc_prefer_store_brand");
+          savedPreferSb = rawPreferSb === "1" || rawPreferSb === "true";
           if (savedPreferSb && !cancelled) {
             setPreferStoreBrand(true);
           }
@@ -754,6 +959,7 @@ export default function Simulator({
         const params = new URLSearchParams(window.location.search);
         const iosNative =
           params.get("platform") === "ios" ||
+          params.get("platform") === "ios-app" ||
           /HeyBrocIOS/i.test(window.navigator.userAgent || "") ||
           Boolean(
             (window as unknown as { webkit?: { messageHandlers?: { controller?: unknown } } })
@@ -761,6 +967,7 @@ export default function Simulator({
           );
         if (!cancelled && iosNative) {
           setIsIosApp(true);
+          setIsIosAppClient(true);
         }
         const urlStoreParam = (params.get("store") || "").trim();
         const validUrlStore =
@@ -793,7 +1000,15 @@ export default function Simulator({
         if (params.get("login") === "1") {
           setAuthOpen(true);
         } else if (params.get("upgrade") === "1") {
-          setPaywallOpen(true);
+          if (iosApp) {
+            postIosBridgeMessage("heybrocNative", { action: "managePro" });
+            setToast({
+              title: "HeyBroc Pro on iOS",
+              body: "Pro membership is managed natively in the HeyBroc iOS app — sign in to sync an existing account.",
+            });
+          } else {
+            setPaywallOpen(true);
+          }
         } else if (
           params.get("onboarding") === "1" ||
           (!onboardingDone &&
@@ -1038,7 +1253,7 @@ export default function Simulator({
                   ? "Pro is active on your phone! Return to the HeyBroc app to enjoy unlimited store overlays and 1-tap swaps."
                   : "Unlimited store overlays, 1-tap clean swaps & whole-cart health checks are now active.",
             });
-            if (!isPhoneCheckout && !urlOto) {
+            if (!iosApp && !isPhoneCheckout && !urlOto) {
               const otoSeenKey = `heybroc_oto_seen_${urlSessionId}`;
               if (!window.localStorage.getItem(otoSeenKey)) {
                 window.localStorage.setItem(otoSeenKey, "1");
@@ -1068,6 +1283,59 @@ export default function Simulator({
   const [apiJson, setApiJson] = useState<unknown>(null);
   const [iosText, setIosText] = useState("");
   const [inspectTab, setInspectTab] = useState<"json" | "ios">("json");
+
+  const lookupSeqRef = useRef(0);
+  const lookupAbortRef = useRef<AbortController | null>(null);
+  const lastLiveLookupOptsRef = useRef<{
+    productTitle: string;
+    rawIngredients?: string;
+    barcode?: string;
+    openCard?: boolean;
+    liveProductKey?: string;
+  } | null>(null);
+  const executeLiveLookupRef = useRef<
+    | ((opts: {
+        productTitle: string;
+        rawIngredients?: string;
+        barcode?: string;
+        storeOverride?: Store;
+        openCard?: boolean;
+        preserveOverlay?: boolean;
+        skipScanCount?: boolean;
+      }) => Promise<void>)
+    | null
+  >(null);
+  const auditSeqRef = useRef(0);
+  const auditAbortRef = useRef<AbortController | null>(null);
+
+  const cancelPendingLiveLookup = useCallback(() => {
+    lookupSeqRef.current += 1;
+    if (lookupAbortRef.current) {
+      lookupAbortRef.current.abort();
+      lookupAbortRef.current = null;
+    }
+    setLiveState((prev) => (prev === "loading" ? "idle" : prev));
+  }, []);
+
+  const cancelPendingAudit = useCallback(() => {
+    auditSeqRef.current += 1;
+    if (auditAbortRef.current) {
+      auditAbortRef.current.abort();
+      auditAbortRef.current = null;
+    }
+    setAuditBusy(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      lookupSeqRef.current += 1;
+      lookupAbortRef.current?.abort();
+      lookupAbortRef.current = null;
+      auditSeqRef.current += 1;
+      auditAbortRef.current?.abort();
+      auditAbortRef.current = null;
+    };
+  }, []);
 
   const [panel, setPanel] = useState<"none" | "watchlist">("none");
   const [pillTheme, setPillTheme] = useState<"dark" | "green" | "score" | "white">("dark");
@@ -1143,8 +1411,10 @@ export default function Simulator({
         familyWatchlist,
         dietaryWatchlist,
         preferStoreBrand,
+        surface: isIosAppClient ? "extension" : "web",
+        clientPlatform: isIosAppClient ? "ios-app" : "web",
       }),
-    [score.score, active, store, watch, familyWatchlist, dietaryWatchlist, preferStoreBrand],
+    [score.score, active, store, watch, familyWatchlist, dietaryWatchlist, preferStoreBrand, isIosAppClient],
   );
   const swap = useMemo(() => {
     if (swapCandidates.length > 0) {
@@ -1161,8 +1431,10 @@ export default function Simulator({
       familyWatchlist,
       dietaryWatchlist,
       preferStoreBrand,
+      surface: isIosAppClient ? "extension" : "web",
+      clientPlatform: isIosAppClient ? "ios-app" : "web",
     });
-  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist, dietaryWatchlist, preferStoreBrand]);
+  }, [swapCandidates, selectedSwapIdx, score.score, active, store, watch, familyWatchlist, dietaryWatchlist, preferStoreBrand, isIosAppClient]);
   const storeBrandCandidateIdx = useMemo(
     () => swapCandidates.findIndex((c) => c.isStoreBrand),
     [swapCandidates],
@@ -1185,10 +1457,12 @@ export default function Simulator({
           familyWatchlist,
           dietaryWatchlist,
           preferStoreBrand,
+          surface: isIosAppClient ? "extension" : "web",
+          clientPlatform: isIosAppClient ? "ios-app" : "web",
         });
         return { item, s, sw };
       }),
-    [cart, watch, store, familyWatchlist, dietaryWatchlist, preferStoreBrand],
+    [cart, watch, store, familyWatchlist, dietaryWatchlist, preferStoreBrand, isIosAppClient],
   );
   const totalCartUnits = useMemo(
     () => cart.reduce((sum, item) => sum + clampQty(item.quantity), 0),
@@ -1234,7 +1508,10 @@ export default function Simulator({
           store,
           watchlist: watch,
           familyWatchlist,
+          dietaryWatchlist,
           preferStoreBrand,
+          surface: isIosAppClient ? "extension" : "web",
+          clientPlatform: isIosAppClient ? "ios-app" : "web",
         });
         if (!sw) return null;
         return {
@@ -1245,7 +1522,7 @@ export default function Simulator({
           dodged: s.flagged.map((f) => f.name),
         };
       }).filter((x): x is SwapRecord => Boolean(x)),
-    [watch, store, familyWatchlist, preferStoreBrand],
+    [watch, store, familyWatchlist, dietaryWatchlist, preferStoreBrand, isIosAppClient],
   );
 
   useEffect(() => {
@@ -1268,13 +1545,13 @@ export default function Simulator({
             action: "track",
             event: "product_scanned",
             deviceId: devId,
-            platform: "web",
+            platform: isIosAppClient ? "ios-app" : "web",
             store,
           }),
         }).catch(() => {});
       }
     },
-    [store]
+    [store, isIosAppClient]
   );
 
   const [storeExpanded, setStoreExpanded] = useState(false);
@@ -1294,38 +1571,76 @@ export default function Simulator({
           ? cleanToProduct(prev.category, prev.replacedItem, s, preferStoreBrand)
           : prev,
       );
+      const lastOpts = lastLiveLookupOptsRef.current;
+      if (lookupAbortRef.current && lastOpts && executeLiveLookupRef.current) {
+        void executeLiveLookupRef.current({
+          productTitle: lastOpts.productTitle,
+          rawIngredients: lastOpts.rawIngredients,
+          barcode: lastOpts.barcode,
+          openCard: lastOpts.openCard,
+          storeOverride: s,
+        });
+      } else if (
+        active.origin === "live" &&
+        lastOpts &&
+        (!lastOpts.liveProductKey || lastOpts.liveProductKey === active.key) &&
+        executeLiveLookupRef.current
+      ) {
+        void executeLiveLookupRef.current({
+          productTitle: lastOpts.productTitle,
+          rawIngredients: lastOpts.rawIngredients,
+          barcode: lastOpts.barcode,
+          storeOverride: s,
+          preserveOverlay: true,
+          skipScanCount: true,
+        });
+      }
     },
-    [preferStoreBrand],
+    [preferStoreBrand, active.origin, active.key],
   );
 
   const showProduct = useCallback(
-    (p: Product, countAsScan = true, openCardImmediately = false) => {
+    (
+      p: Product,
+      countAsScan = true,
+      openCardImmediately = false,
+      opts?: { fromLiveSeq?: number; preserveOverlay?: boolean },
+    ) => {
+      if (opts?.fromLiveSeq === undefined) {
+        cancelPendingLiveLookup();
+        setLiveError("");
+      }
       setActive(p);
       setSelectedSwapIdx(0);
       setPreviousDirtyItem(null);
       setViewMode("product");
       setYukaTab("inspect");
       setFavOnly(false);
-      setOverlay(openCardImmediately ? "card" : "pill");
+      if (!opts?.preserveOverlay) {
+        setOverlay(openCardImmediately ? "card" : "pill");
+      }
       setOpenFlag(null);
       setScanHistory((prev) => [
         { product: p, timeLabel: "Just now" },
         ...prev.filter((h) => h.product.key !== p.key),
       ]);
-      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      if (!opts?.preserveOverlay) {
+        scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      }
       // Live scans are already recorded server-side by `/api/scan`; only fire client `/api/analytics` on local presets
       if (countAsScan) registerScan(p.origin === "live");
     },
-    [registerScan],
+    [registerScan, cancelPendingLiveLookup],
   );
 
   /** Inspects the Clean Swap item when the user clicks its photo or title inside Health Insights. */
   const inspectCleanSwap = useCallback(
     (cat: SwapCategory, replaced?: Product, chosenSwap?: SwapResult | null) => {
       if (!isPro && swapsUsedThisWeek >= weeklySwapLimit) {
-        setPaywallOpen(true);
+        requestProUpgrade();
         return;
       }
+      cancelPendingLiveLookup();
       const target = replaced ?? (active.origin !== "swap" ? active : previousDirtyItem ?? undefined);
       const clean = chosenSwap
         ? swapResultToProduct(chosenSwap, target, store)
@@ -1344,7 +1659,7 @@ export default function Simulator({
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [active, previousDirtyItem, isPro, swapsUsedThisWeek, weeklySwapLimit, store, preferStoreBrand],
+    [active, previousDirtyItem, isPro, swapsUsedThisWeek, weeklySwapLimit, store, preferStoreBrand, cancelPendingLiveLookup, requestProUpgrade],
   );
 
   const triggerClimbFlash = useCallback(() => {
@@ -1456,7 +1771,7 @@ export default function Simulator({
     (targetItem: Product, explicitSwap?: SwapResult | null) => {
       const weeklyAllowance = weeklySwapLimit;
       if (!isPro && swapsUsedThisWeek >= weeklyAllowance) {
-        setPaywallOpen(true);
+        requestProUpgrade();
         return;
       }
       const itemScore = gradeProduct(
@@ -1476,9 +1791,13 @@ export default function Simulator({
           store,
           watchlist: watch,
           familyWatchlist,
+          dietaryWatchlist,
           preferStoreBrand,
+          surface: isIosAppClient ? "extension" : "web",
+          clientPlatform: isIosAppClient ? "ios-app" : "web",
         });
       if (!targetSwap) return;
+      cancelPendingLiveLookup();
       setSwapsUsedThisWeek((n) => n + 1);
       if (typeof window !== "undefined") {
         const devId = window.localStorage.getItem("heybroc_device_id") || "anon-web";
@@ -1515,7 +1834,7 @@ export default function Simulator({
         isPaidLink: targetSwap.isPaidLink,
       });
     },
-    [watch, familyWatchlist, store, preferStoreBrand, isPro, swapsUsedThisWeek, weeklySwapLimit],
+    [watch, familyWatchlist, dietaryWatchlist, store, preferStoreBrand, isPro, swapsUsedThisWeek, weeklySwapLimit, cancelPendingLiveLookup, isIosAppClient, requestProUpgrade],
   );
 
   const doSwap = useCallback(() => {
@@ -1544,6 +1863,7 @@ export default function Simulator({
     (cleanItem: Product = active) => {
       const orig = getRevertTarget(cleanItem);
       if (!orig) return;
+      cancelPendingLiveLookup();
       setCart((c) => {
         const idx = c.findIndex((i) => i.key === cleanItem.key);
         if (idx === -1) return c;
@@ -1558,7 +1878,7 @@ export default function Simulator({
         body: `Restored original item in your ${STORE_META[store].label} cart.`,
       });
     },
-    [active, getRevertTarget, store, setCart],
+    [active, getRevertTarget, store, setCart, cancelPendingLiveLookup],
   );
   const activeRevertTarget = getRevertTarget(active);
 
@@ -1570,10 +1890,26 @@ export default function Simulator({
       barcode?: string;
       storeOverride?: Store;
       openCard?: boolean;
+      preserveOverlay?: boolean;
+      skipScanCount?: boolean;
     }) => {
       const q = opts.productTitle.trim();
       const rawIng = (opts.rawIngredients || "").trim();
       if (!q && !rawIng && !opts.barcode) return;
+
+      const seq = ++lookupSeqRef.current;
+      if (lookupAbortRef.current) {
+        lookupAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      lookupAbortRef.current = controller;
+      lastLiveLookupOptsRef.current = {
+        productTitle: q,
+        rawIngredients: rawIng || undefined,
+        barcode: opts.barcode,
+        openCard: opts.openCard,
+      };
+
       if (opts.storeOverride) {
         setStore(opts.storeOverride);
       }
@@ -1587,6 +1923,7 @@ export default function Simulator({
         const referredByCode =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_referred_by")) || undefined;
         const targetStore = opts.storeOverride ?? store;
+        const iosClient = isIosAppClient || detectIosAppClient();
         const payload = {
           productTitle: q || opts.barcode || "",
           ...(rawIng ? { rawIngredients: rawIng } : {}),
@@ -1596,16 +1933,24 @@ export default function Simulator({
           watchlist: watch,
           familyWatchlist,
           dietaryWatchlist,
+          surface: iosClient ? "extension" : "web",
+          clientPlatform: iosClient ? "ios-app" : "web",
           deviceId,
           deviceSecret,
           referredByCode,
+          ...(opts.skipScanCount ? { skipAnalytics: true } : {}),
         };
         const res = await fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
         const data = (await res.json()) as ApiScan;
+        if (seq !== lookupSeqRef.current || controller.signal.aborted) return;
+        if (lookupAbortRef.current === controller) {
+          lookupAbortRef.current = null;
+        }
         setApiJson(data);
         if (!data.ok || !data.product) {
           if (data.reason === "NON_FOOD_PRODUCT") {
@@ -1625,12 +1970,12 @@ export default function Simulator({
           setStore(data.store);
         }
         const cat = detectCategory(`${q} ${data.product.title}`, data.product.ingredients);
-        const liveScore =
-          data.result?.score ??
-          gradeProduct(data.product.title, data.product.ingredients, watch, data.product.nutrition, familyWatchlist).score;
-        const fallbackImg = liveScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
+        const liveKey = `live-${data.product.barcode || q || data.product.title}-${rawIng ? "ocr" : "db"}`;
+        if (lastLiveLookupOptsRef.current && seq === lookupSeqRef.current) {
+          lastLiveLookupOptsRef.current.liveProductKey = liveKey;
+        }
         const p: Product = {
-          key: `live-${data.product.barcode || q || data.product.title}-${rawIng ? "ocr" : "db"}`,
+          key: liveKey,
           title:
             data.product.title.replace(
               new RegExp(`^${(data.product.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
@@ -1638,7 +1983,7 @@ export default function Simulator({
             ) || data.product.title,
           brand: data.product.brand || (rawIng ? "Scanned Label" : "Open data"),
           description: data.product.description,
-          image: data.product.imageUrl || fallbackImg,
+          image: data.product.imageUrl || "/product-photo-unavailable.svg",
           ingredients: data.product.ingredients,
           nutrition: data.product.nutrition,
           category: cat,
@@ -1646,24 +1991,47 @@ export default function Simulator({
           lookup: data.lookup,
           quantity: 1,
         };
-        showProduct(p, true, Boolean(opts.openCard) || adTestMode);
+        showProduct(p, !opts.skipScanCount, Boolean(opts.openCard) || adTestMode, {
+          fromLiveSeq: seq,
+          preserveOverlay: opts.preserveOverlay,
+        });
         setFreeTestCompleted(true);
         setLiveState("idle");
         fetch("/api/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, format: "ios_text", skipAnalytics: true }),
+          signal: controller.signal,
         })
           .then((r) => r.text())
-          .then(setIosText)
-          .catch(() => setIosText(""));
-      } catch {
+          .then((txt) => {
+            if (seq === lookupSeqRef.current && !controller.signal.aborted) {
+              setIosText(txt);
+            }
+          })
+          .catch(() => {
+            if (seq === lookupSeqRef.current && !controller.signal.aborted) {
+              setIosText("");
+            }
+          });
+      } catch (err) {
+        if (
+          seq !== lookupSeqRef.current ||
+          controller.signal.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          return;
+        }
+        if (lookupAbortRef.current === controller) {
+          lookupAbortRef.current = null;
+        }
         setLiveState("error");
         setLiveError("Network error — is the server reachable?");
       }
     },
-    [store, preferStoreBrand, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode],
+    [store, preferStoreBrand, watch, familyWatchlist, dietaryWatchlist, showProduct, adTestMode, isIosAppClient],
   );
+  executeLiveLookupRef.current = executeLiveLookup;
 
   useEffect(() => {
     if (!pendingSharedQuery) return;
@@ -1858,10 +2226,17 @@ export default function Simulator({
 
   /* ---------------- Whole-Cart Audit ---------------- */
   const openAudit = useCallback(async () => {
+    const seq = ++auditSeqRef.current;
+    if (auditAbortRef.current) {
+      auditAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    auditAbortRef.current = controller;
     setAuditOpen(true);
     setCartOpen(false);
     setAuditBusy(true);
     try {
+      const iosClient = isIosAppClient || detectIosAppClient();
       const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1871,30 +2246,38 @@ export default function Simulator({
           watchlist: watch,
           familyWatchlist,
           dietaryWatchlist,
+          surface: iosClient ? "extension" : "web",
+          clientPlatform: iosClient ? "ios-app" : "web",
           items: cart.map((i) => ({
             productTitle: `${i.brand} ${i.title}`,
             rawIngredients: i.ingredients,
             quantity: clampQty(i.quantity),
           })),
         }),
+        signal: controller.signal,
       });
-      setApiJson(await res.json());
+      const data = await res.json();
+      if (seq !== auditSeqRef.current || controller.signal.aborted) return;
+      setApiJson(data);
       setIosText("");
       setInspectTab("json");
     } catch {
-      /* client-side scores are identical */
+      /* client-side scores are identical; ignore aborts/network errors */
     } finally {
-      setAuditBusy(false);
+      if (seq === auditSeqRef.current) {
+        if (auditAbortRef.current === controller) {
+          auditAbortRef.current = null;
+        }
+        setAuditBusy(false);
+      }
     }
-  }, [cart, store, preferStoreBrand, watch, familyWatchlist, dietaryWatchlist]);
+  }, [cart, store, preferStoreBrand, watch, familyWatchlist, dietaryWatchlist, isIosAppClient]);
 
   const convertAuditedItemToProduct = useCallback(
     (auditedItem: AuditedOrderItem, idx: number): Product | null => {
       if (!auditedItem.product) return null;
       const prod = auditedItem.product;
       const cat = detectCategory(prod.title, prod.ingredients);
-      const itemScore = auditedItem.result?.score ?? 50;
-      const fallbackImg = itemScore >= 75 ? CLEAN_ALTERNATIVES[cat]?.image : DIRTY_FALLBACK_IMAGES[cat];
       return {
         key: `order-${idx}-${prod.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 36)}`,
         title:
@@ -1903,7 +2286,7 @@ export default function Simulator({
             "",
           ) || prod.title,
         brand: prod.brand || "Order Item",
-        image: prod.imageUrl || fallbackImg,
+        image: prod.imageUrl || "/product-photo-unavailable.svg",
         ingredients: prod.ingredients,
         nutrition: prod.nutrition,
         category: cat,
@@ -1920,6 +2303,7 @@ export default function Simulator({
         .map((it, idx) => convertAuditedItemToProduct(it, idx))
         .filter((p): p is Product => Boolean(p));
       if (nextProducts.length === 0) return;
+      cancelPendingLiveLookup();
       setStore(targetStore);
       setCartsByStore((prev) => ({ ...prev, [targetStore]: nextProducts }));
       setActive(nextProducts[0]);
@@ -1930,7 +2314,7 @@ export default function Simulator({
         body: "Tap Swap on any flagged item or Swap All to upgrade your weekly haul!",
       });
     },
-    [convertAuditedItemToProduct],
+    [convertAuditedItemToProduct, cancelPendingLiveLookup],
   );
 
   const handleInspectAuditedItem = useCallback(
@@ -1948,7 +2332,7 @@ export default function Simulator({
     if (n === 0) return;
     const weeklyAllowance = weeklySwapLimit;
     if (!isPro && swapsUsedThisWeek + n > weeklyAllowance) {
-      setPaywallOpen(true);
+      requestProUpgrade();
       return;
     }
     setSwapsUsedThisWeek((prev) => prev + n);
@@ -2005,14 +2389,15 @@ export default function Simulator({
       title: `✓ Swapped ${n} item${n === 1 ? "" : "s"} → Cart Avg ${nextAvg}/100!`,
       body: `Upgraded ${n} item${n === 1 ? "" : "s"} to clean alternatives at ${STORE_META[store].label}.`,
     });
-  }, [dirty, cart, setCart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit]);
+  }, [dirty, cart, setCart, watch, familyWatchlist, active.key, store, triggerClimbFlash, isPro, swapsUsedThisWeek, weeklySwapLimit, requestProUpgrade]);
 
   const resetCartPresets = useCallback(() => {
+    cancelPendingLiveLookup();
     setCart(PRESETS.map(presetToProduct));
     setSwapHistory([]);
     setPreviousDirtyItem(null);
     setActive(presetToProduct(PRESETS[0]));
-  }, [setCart]);
+  }, [setCart, cancelPendingLiveLookup]);
 
   /* ---------------- 2D Pill drag + Drag-to-Hide drop zone ---------------- */
   const drag = useRef<{ startX: number; startY: number; startPill: number; moved: boolean } | null>(null);
@@ -2141,6 +2526,10 @@ export default function Simulator({
           window.localStorage.setItem("heybroc_primary_goal", extras.primaryGoal);
         }
         window.localStorage.setItem("heybroc_onboarding_done", "1");
+        postIosBridgeMessage("heybrocBridge", {
+          familyWatchlist: selected,
+          ...(extras?.dietaryWatchlist ? { dietaryWatchlist: extras.dietaryWatchlist } : {}),
+        });
       }
     },
     [switchStore]
@@ -2209,7 +2598,7 @@ export default function Simulator({
               id="open-paywall"
               type="button"
               className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
-              onClick={() => setPaywallOpen(true)}
+              onClick={requestProUpgrade}
             >
               {isPro ? "★ PRO" : "★ Pro"}
             </button>
@@ -2303,7 +2692,7 @@ export default function Simulator({
                       <span className="topbar-dropdown-arrow">→</span>
                     </a>
 
-                    {isIosApp ? (
+                    {(isIosApp || isIosAppClient) ? (
                       <>
                         <button
                           id="open-ios-live-shop"
@@ -2323,6 +2712,8 @@ export default function Simulator({
                             ).webkit?.messageHandlers?.controller;
                             if (typeof iosBridge?.postMessage === "function") {
                               iosBridge.postMessage("open-live-shop");
+                            } else {
+                              postIosBridgeMessage("heybrocNative", { action: "openStoreBrowser" });
                             }
                           }}
                         >
@@ -2460,7 +2851,7 @@ export default function Simulator({
                 <button
                   id="ad-test-search-submit"
                   type="submit"
-                  disabled={liveState === "loading" || !query.trim()}
+                  disabled={!query.trim()}
                 >
                   {liveState === "loading" ? (
                     <span className="spinner" aria-label="Scanning" />
@@ -2539,7 +2930,7 @@ export default function Simulator({
                     id="ad-test-unlock-pro-btn"
                     type="button"
                     className="swap-btn"
-                    onClick={() => setPaywallOpen(true)}
+                    onClick={requestProUpgrade}
                     style={{ width: "100%", fontWeight: 800 }}
                   >
                     Step 2: Unlock Unlimited 1-Tap Clean Swaps Across All 12 Stores ($0 Today) →
@@ -2765,7 +3156,7 @@ export default function Simulator({
                 placeholder="Search item, UPC barcode, or paste a Walmart / Target / Amazon link…"
                 aria-label="Search any grocery product"
               />
-              <button id="live-search-submit" type="submit" disabled={liveState === "loading" || !query.trim()}>
+              <button id="live-search-submit" type="submit" disabled={!query.trim()}>
                 {liveState === "loading" ? <span className="spinner" aria-label="Scanning" /> : "Scan"}
               </button>
             </form>
@@ -3208,7 +3599,7 @@ export default function Simulator({
                   </div>
                 ) : (
                   <div className="pdp">
-                    <div className="pdp-art"><ProductArt product={active} /></div>
+                    <div className="pdp-art"><ProductArt product={active} onSnapLabel={() => setLabelScannerOpen(true)} /></div>
                     <p className="pdp-brand">{active.brand}</p>
                     <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
                     <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
@@ -3462,7 +3853,12 @@ export default function Simulator({
                         <>
                           {/* Yuka Product Hero Header (Photo Left, Title/Brand/Dot/Score Right) */}
                           <div className="yuka-hero">
-                            <ProductArt product={active} className="yuka-hero-img" showAttribution />
+                            <ProductArt
+                              product={active}
+                              className="yuka-hero-img"
+                              showAttribution
+                              onSnapLabel={() => setLabelScannerOpen(true)}
+                            />
                             <div className="yuka-hero-info">
                               <b className="yuka-hero-title">{active.title}</b>
                               <span className="yuka-hero-brand">{active.brand}</span>
@@ -3555,7 +3951,7 @@ export default function Simulator({
                                   id="inspect-clean-swap"
                                   type="button"
                                   className="swap-info swap-info--btn"
-                                  onClick={() => setPaywallOpen(true)}
+                                  onClick={requestProUpgrade}
                                 >
                                   <div className="swap-info-copy">
                                     <span className="eyebrow eyebrow--green">
@@ -3565,7 +3961,7 @@ export default function Simulator({
                                     <span className="swap-score">All {weeklySwapLimit} free Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
                                   </div>
                                 </button>
-                                <button id="swap-item" className="swap-btn" onClick={() => setPaywallOpen(true)}>
+                                <button id="swap-item" className="swap-btn" onClick={requestProUpgrade}>
                                   ⚡ Unlock Pro
                                 </button>
                               </div>
@@ -4010,14 +4406,6 @@ export default function Simulator({
                             {PRESETS.map((p) => {
                               const dirtyProd = presetToProduct(p);
                               const dirtyScore = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
-                              const cleanProd = cleanToProduct(p.category, dirtyProd, store);
-                              const cleanScore = gradeProduct(
-                                `${cleanProd.brand} ${cleanProd.title}`,
-                                cleanProd.ingredients,
-                                watch,
-                                cleanProd.nutrition,
-                                familyWatchlist,
-                              );
                               const recSwap = resolveSwap({
                                 score: dirtyScore.score,
                                 productTitle: `${p.brand} ${p.title}`,
@@ -4026,7 +4414,21 @@ export default function Simulator({
                                 store,
                                 watchlist: watch,
                                 familyWatchlist,
+                                dietaryWatchlist,
+                                preferStoreBrand,
+                                surface: isIosAppClient ? "extension" : "web",
+                                clientPlatform: isIosAppClient ? "ios-app" : "web",
                               });
+                              const cleanProd = recSwap
+                                ? swapResultToProduct(recSwap, dirtyProd, store)
+                                : cleanToProduct(p.category, dirtyProd, store, preferStoreBrand);
+                              const cleanScore = gradeProduct(
+                                `${cleanProd.brand} ${cleanProd.title}`,
+                                cleanProd.ingredients,
+                                watch,
+                                cleanProd.nutrition,
+                                familyWatchlist,
+                              );
                               return (
                                 <div key={p.id} className="yuka-rec-pair">
                                   {/* Left Dirty Card */}
@@ -4053,7 +4455,7 @@ export default function Simulator({
                                     <button
                                       type="button"
                                       className="yuka-rec-card-inner"
-                                      onClick={() => inspectCleanSwap(p.category, dirtyProd)}
+                                      onClick={() => inspectCleanSwap(p.category, dirtyProd, recSwap)}
                                     >
                                       <span className="yuka-rec-badge is-good">✓</span>
                                       <ProductArt product={cleanProd} className="yuka-rec-img" />
@@ -4067,7 +4469,7 @@ export default function Simulator({
                                     <button
                                       type="button"
                                       className="yuka-rec-swap-btn"
-                                      onClick={() => swapCartItem(dirtyProd)}
+                                      onClick={() => swapCartItem(dirtyProd, recSwap)}
                                     >
                                       ⚡ 1-Tap Swap{recSwap?.isPaidLink ? " · paid link" : ""}
                                     </button>
@@ -4120,7 +4522,7 @@ export default function Simulator({
                                     className={`yuka-cat-row ${locked ? "is-locked" : ""}`}
                                     onClick={() => {
                                       if (locked) {
-                                        setPaywallOpen(true);
+                                        requestProUpgrade();
                                       } else {
                                         inspectCleanSwap(row.cat);
                                       }
@@ -4155,7 +4557,7 @@ export default function Simulator({
                               placeholder="Search any grocery or beverage item…"
                               aria-label="Search any grocery or beverage product"
                             />
-                            <button type="submit" disabled={liveState === "loading" || !query.trim()}>
+                            <button type="submit" disabled={!query.trim()}>
                               {liveState === "loading" ? "…" : "Scan"}
                             </button>
                           </form>
@@ -4169,7 +4571,7 @@ export default function Simulator({
                               <button
                                 type="button"
                                 className="yuka-member-btn"
-                                onClick={() => setPaywallOpen(true)}
+                                onClick={requestProUpgrade}
                               >
                                 Become a member
                               </button>
@@ -4238,6 +4640,7 @@ export default function Simulator({
                   className="backdrop"
                   onClick={() => {
                     if (Date.now() - cardOpenedAtRef.current < 450) return;
+                    cancelPendingAudit();
                     setCartOpen(false);
                     setAuditOpen(false);
                   }}
@@ -4266,7 +4669,7 @@ export default function Simulator({
                             Clear
                           </button>
                         )}
-                        <button className="close" onClick={() => { setCartOpen(false); setAuditOpen(false); }} aria-label="Close">×</button>
+                        <button className="close" onClick={() => { cancelPendingAudit(); setCartOpen(false); setAuditOpen(false); }} aria-label="Close">×</button>
                       </div>
                     </div>
                     {auditOpen && (
@@ -4681,6 +5084,10 @@ export default function Simulator({
               <button
                 type="button"
                 onClick={async () => {
+                  if (isIosAppClient || detectIosAppClient()) {
+                    requestProUpgrade();
+                    return;
+                  }
                   const devId = window.localStorage.getItem("heybroc_device_id") || deviceIdState;
                   const devSecret = window.localStorage.getItem("heybroc_device_secret") || undefined;
                   const sId = window.localStorage.getItem("heybroc_session_id") || undefined;
@@ -4813,7 +5220,7 @@ export default function Simulator({
         onApplyAndStartTrial={(selected, extras?: OnboardingSelections) => {
           persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
-          setPaywallOpen(true);
+          requestProUpgrade();
         }}
       />
 
@@ -4868,7 +5275,7 @@ export default function Simulator({
       />
 
       <Paywall
-        open={paywallOpen}
+        open={!isIosAppClient && paywallOpen}
         onClose={() => setPaywallOpen(false)}
         scanCount={swapsUsedThisWeek}
         freeScanLimit={weeklySwapLimit}
@@ -4919,7 +5326,7 @@ export default function Simulator({
       />
 
       <PostCheckoutOtoModal
-        open={otoModalOpen}
+        open={!isIosAppClient && otoModalOpen}
         onClose={() => setOtoModalOpen(false)}
         initialPlan={otoInitialPlan}
         sessionId={otoSessionId}
@@ -4967,6 +5374,7 @@ export default function Simulator({
         familyWatchlist={familyWatchlist}
         dietaryWatchlist={dietaryWatchlist}
         isPro={isPro}
+        isIosAppClient={isIosAppClient}
         freeSwapsRemaining={Math.max(0, weeklySwapLimit - swapsUsedThisWeek)}
         onConsumeSwap={(_swapTitle, replacedTitle) => {
           setSwapsUsedThisWeek((n) => n + 1);
@@ -4991,7 +5399,7 @@ export default function Simulator({
         swapUnlocked={isPro || swapsUsedThisWeek < weeklySwapLimit}
         onUnlockPro={() => {
           setWeeklyAuditOpen(false);
-          setPaywallOpen(true);
+          requestProUpgrade();
         }}
         onLoadIntoCart={handleLoadAuditedOrderIntoCart}
         onInspectAuditedItem={handleInspectAuditedItem}

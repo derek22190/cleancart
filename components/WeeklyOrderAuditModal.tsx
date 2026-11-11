@@ -37,6 +37,33 @@ interface AuditApiResponse {
   results: AuditedOrderItem[];
 }
 
+function detectIosAppClient(): boolean {
+  if (typeof window === "undefined") return false;
+  const win = window as Window & {
+    __HEYBROC_CLIENT_PLATFORM__?: string;
+    webkit?: { messageHandlers?: { controller?: unknown } };
+  };
+  if (win.__HEYBROC_CLIENT_PLATFORM__ === "ios-app" || win.__HEYBROC_CLIENT_PLATFORM__ === "ios") return true;
+  if (win.webkit?.messageHandlers?.controller) return true;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const plat = params.get("platform");
+    if (plat === "ios-app" || plat === "ios") {
+      try {
+        window.localStorage.setItem("heybroc_client_platform", "ios-app");
+      } catch {}
+      return true;
+    }
+    if (window.localStorage.getItem("heybroc_client_platform") === "ios-app") {
+      return true;
+    }
+  } catch {}
+  if (typeof navigator !== "undefined" && /HeyBrocIOS/i.test(navigator.userAgent)) {
+    return true;
+  }
+  return false;
+}
+
 interface WeeklyOrderAuditModalProps {
   open: boolean;
   onClose: () => void;
@@ -48,6 +75,7 @@ interface WeeklyOrderAuditModalProps {
   familyWatchlist: Category[];
   dietaryWatchlist: string[];
   isPro?: boolean;
+  isIosAppClient?: boolean;
   freeSwapsRemaining?: number;
   onConsumeSwap?: (swapTitle: string, replacedTitle: string) => void;
   swapUnlocked?: boolean;
@@ -67,6 +95,7 @@ export default function WeeklyOrderAuditModal({
   familyWatchlist,
   dietaryWatchlist,
   isPro = false,
+  isIosAppClient = false,
   freeSwapsRemaining,
   onConsumeSwap,
   swapUnlocked = true,
@@ -85,6 +114,8 @@ export default function WeeklyOrderAuditModal({
   const openRef = useRef(open);
   const ocrRunIdRef = useRef(0);
   const workerRef = useRef<{ terminate: () => Promise<unknown> } | null>(null);
+  const auditReqSeqRef = useRef(0);
+  const auditAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     openRef.current = open;
@@ -94,6 +125,12 @@ export default function WeeklyOrderAuditModal({
         void workerRef.current.terminate().catch(() => {});
         workerRef.current = null;
       }
+      auditReqSeqRef.current += 1;
+      if (auditAbortRef.current) {
+        auditAbortRef.current.abort();
+        auditAbortRef.current = null;
+      }
+      setBusy(false);
       setOcrBusy(false);
       setOcrStatus("");
     }
@@ -105,6 +142,11 @@ export default function WeeklyOrderAuditModal({
       if (workerRef.current) {
         void workerRef.current.terminate().catch(() => {});
         workerRef.current = null;
+      }
+      auditReqSeqRef.current += 1;
+      if (auditAbortRef.current) {
+        auditAbortRef.current.abort();
+        auditAbortRef.current = null;
       }
     };
   }, []);
@@ -125,9 +167,17 @@ export default function WeeklyOrderAuditModal({
         setErrorMsg("Paste your grocery order, receipt, or shopping list first (or load the sample family order).");
         return;
       }
+      const reqSeq = ++auditReqSeqRef.current;
+      if (auditAbortRef.current) {
+        auditAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      auditAbortRef.current = controller;
+
       setErrorMsg("");
       setBusy(true);
       try {
+        const iosApp = isIosAppClient || detectIosAppClient();
         const devId =
           (typeof window !== "undefined" && window.localStorage.getItem("heybroc_device_id")) || undefined;
         const devSecret =
@@ -136,6 +186,7 @@ export default function WeeklyOrderAuditModal({
         const activeSb = preferSbOverride ?? preferStoreBrand;
         const res = await fetch("/api/audit", {
           method: "POST",
+          signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
             ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
@@ -145,7 +196,8 @@ export default function WeeklyOrderAuditModal({
             store: activeStore,
             preferDetectedStore: !storeOverride,
             preferStoreBrand: activeSb,
-            surface: "web",
+            surface: iosApp ? "extension" : "web",
+            clientPlatform: iosApp ? "ios-app" : "web",
             deviceId: devId,
             deviceSecret: devSecret,
             watchlist,
@@ -154,6 +206,9 @@ export default function WeeklyOrderAuditModal({
           }),
         });
         const data = (await res.json()) as AuditApiResponse;
+        if (!openRef.current || reqSeq !== auditReqSeqRef.current || controller.signal.aborted) {
+          return;
+        }
         if (!res.ok || !data.ok) {
           setErrorMsg(data.error || "Could not audit order text. Try listing one product per line.");
           return;
@@ -163,13 +218,26 @@ export default function WeeklyOrderAuditModal({
           onSelectStore(resolvedStore);
         }
         setReport(data);
-      } catch {
+      } catch (err) {
+        if (
+          controller.signal.aborted ||
+          reqSeq !== auditReqSeqRef.current ||
+          !openRef.current ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          return;
+        }
         setErrorMsg("Network error while auditing your order. Please try again.");
       } finally {
-        setBusy(false);
+        if (reqSeq === auditReqSeqRef.current) {
+          if (auditAbortRef.current === controller) {
+            auditAbortRef.current = null;
+          }
+          setBusy(false);
+        }
       }
     },
-    [store, preferStoreBrand, watchlist, familyWatchlist, dietaryWatchlist, onSelectStore],
+    [store, preferStoreBrand, watchlist, familyWatchlist, dietaryWatchlist, onSelectStore, isIosAppClient],
   );
 
   const handleOrderScreenshot = async (file: File) => {
@@ -184,7 +252,11 @@ export default function WeeklyOrderAuditModal({
     try {
       const tesseract = await import("tesseract.js");
       if (!openRef.current || runId !== ocrRunIdRef.current) return;
-      const worker = await tesseract.createWorker("eng", tesseract.OEM.DEFAULT, {
+      const worker = await tesseract.createWorker("eng", 1, {
+        workerPath: "/tesseract/worker.min.js",
+        corePath: "/tesseract",
+        langPath: "/tesseract",
+        workerBlobURL: false,
         logger: (m: { status?: string; progress?: number }) => {
           if (!openRef.current || runId !== ocrRunIdRef.current) return;
           if (m.status === "recognizing text" && typeof m.progress === "number") {

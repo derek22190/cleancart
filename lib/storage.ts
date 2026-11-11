@@ -47,8 +47,8 @@ export function isPersistentKvConfigured(): boolean {
   return getRedisConfig() !== null;
 }
 
-const CRITICAL_KV_KEY_PATTERN =
-  /^(?:ent:|heybroc:entitlement:|consent:|heybroc:consent:|stripe:webhook:|heybroc:stripe:|rc:webhook:|heybroc:rc:|inf:|heybroc:inf|heybroc:creator:|heybroc:influencers|heybroc:device:|heybroc:refcode:|heybroc:auth:|heybroc:charge:)/i;
+export const CRITICAL_KV_KEY_PATTERN =
+  /^(?:ent:|heybroc:entitlement:|consent:|heybroc:consent:|stripe:webhook:|heybroc:stripe:|rc:webhook:|heybroc:rc:|inf:|heybroc:inf|heybroc:creator:|heybroc:creators:|heybroc:influencers|heybroc:device:|heybroc:refcode:|heybroc:auth:|heybroc:charge:|heybroc:user:|heybroc:referral:)/i;
 
 function ensureStorageReady(key?: string): RedisConfig | null {
   const cfg = getRedisConfig();
@@ -276,22 +276,35 @@ export async function kvSetNx(
   value: string,
   ttlSeconds = 60 * 60 * 24 * 30
 ): Promise<boolean> {
-  const cfg = ensureStorageReady();
+  const cfg = ensureStorageReady(key);
   if (cfg) {
-    const result = await upstashCommand<string>([
-      "SET",
-      key,
-       JSON.stringify(value),
-      "NX",
-      "EX",
-      Math.floor(ttlSeconds),
-    ]);
+    const result = await upstashCommand<string>(
+      [
+        "SET",
+        key,
+        JSON.stringify(value),
+        "NX",
+        "EX",
+        Math.floor(ttlSeconds),
+      ],
+      key
+    );
     return result === "OK";
   }
 
-  const existing = await kvGet<string>(key);
-  if (existing !== null) return false;
-  await kvSet(key, value, ttlSeconds);
+  const now = Date.now();
+  const localObj = readLocalDevStore();
+  const entry = memoryFallback.get(key) ?? localObj[key];
+  if (entry && (!entry.expiresAt || entry.expiresAt > now)) {
+    return false;
+  }
+  const raw = JSON.stringify(value);
+  const expiresAt =
+    ttlSeconds && ttlSeconds > 0 ? now + ttlSeconds * 1000 : undefined;
+  const newEntry = { raw, expiresAt };
+  setBoundedMemoryFallback(key, newEntry);
+  localObj[key] = newEntry;
+  writeLocalDevStore(localObj);
   return true;
 }
 
@@ -507,4 +520,34 @@ export async function kvAtomicHashUpdateOnce(
   );
   return next;
 }
+
+/**
+ * Evaluates a Redis Lua script (`EVAL script numkeys key... arg...`) when persistent KV
+ * is configured, or runs `localFallback` sequentially inside the in-process atomic mutex
+ * in local development / offline test runs.
+ */
+export async function kvEvalLua<T = unknown>(
+  script: string,
+  keys: string[],
+  args: (string | number)[],
+  localFallback?: () => Promise<T>
+): Promise<T | null> {
+  const cfg = ensureStorageReady(keys[0]);
+  if (cfg) {
+    return upstashCommand<T>(
+      ["EVAL", script, keys.length, ...keys, ...args],
+      keys[0]
+    );
+  }
+  if (localFallback) {
+    const next = localAtomicQueue.then(localFallback, localFallback);
+    localAtomicQueue = next.then(
+      () => undefined,
+      () => undefined
+    );
+    return next;
+  }
+  return null;
+}
+
 

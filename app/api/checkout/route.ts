@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
@@ -5,6 +6,7 @@ import {
   getEmailEntitlement,
   hasPriorEntitlementHistory,
   isValidStripeSessionIdFormat,
+  normalizeRealDeviceId,
   recordSubscriptionConsent,
   verifyStripeCheckoutSession,
   type EntitlementRecord,
@@ -17,8 +19,10 @@ import {
   type PlanId,
 } from "@/lib/pricing";
 import {
+  getDeviceIdByReferralCode,
   getExistingDevice,
   getOrCreateDevice,
+  isSelfReferralForAccount,
   isValidReferralCode,
   verifyDeviceSecret,
 } from "@/lib/referrals";
@@ -122,10 +126,9 @@ export async function POST(req: NextRequest) {
       typeof body.creatorCode === "string"
         ? body.creatorCode.trim().toUpperCase()
         : "";
-    const deviceId =
-      typeof body.deviceId === "string"
-        ? body.deviceId.trim().slice(0, 128)
-        : "";
+    const normalizedBodyDeviceId = normalizeRealDeviceId(
+      typeof body.deviceId === "string" ? body.deviceId : ""
+    );
     const deviceSecret =
       typeof body.deviceSecret === "string"
         ? body.deviceSecret.trim()
@@ -135,6 +138,9 @@ export async function POST(req: NextRequest) {
         .get("authorization")
         ?.replace(/^Bearer\s+/i, "")
         .trim() || "";
+    const authUser = authToken
+      ? await getAuthenticatedUser(authToken).catch(() => null)
+      : null;
     const termsVersion = TERMS_VERSION;
     const rawEmail =
       typeof body.email === "string"
@@ -149,18 +155,25 @@ export async function POST(req: NextRequest) {
     let deviceReferredBy = "";
     let ownReferralCode = "";
     let hasVerifiedDeviceSecret = false;
-    if (deviceId && deviceId !== "anon-web" && deviceSecret) {
-      const existingDev = await getExistingDevice(deviceId).catch(() => null);
+    if (normalizedBodyDeviceId && deviceSecret) {
+      const existingDev = await getExistingDevice(normalizedBodyDeviceId).catch(
+        () => null
+      );
       if (existingDev?.deviceSecretHash && verifyDeviceSecret(existingDev, deviceSecret)) {
         hasVerifiedDeviceSecret = true;
       }
-      const devRes = await getOrCreateDevice(deviceId, deviceSecret).catch(() => null);
+      const devRes = await getOrCreateDevice(normalizedBodyDeviceId, deviceSecret).catch(
+        () => null
+      );
       if (devRes?.referralCode) {
         ownReferralCode = devRes.referralCode.trim().toUpperCase();
       }
       if (devRes?.referredByCode) {
         deviceReferredBy = devRes.referredByCode.trim().toUpperCase();
       }
+    }
+    if (!ownReferralCode && authUser?.referralCode) {
+      ownReferralCode = authUser.referralCode.trim().toUpperCase();
     }
 
     const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
@@ -172,17 +185,14 @@ export async function POST(req: NextRequest) {
       if (previousSessionId && isValidStripeSessionIdFormat(previousSessionId)) {
         priorEntitlement = await verifyStripeCheckoutSession(
           previousSessionId,
-          deviceId || undefined
+          normalizedBodyDeviceId || undefined
         );
       }
-      if (!priorEntitlement && deviceId && deviceId !== "anon-web" && hasVerifiedDeviceSecret) {
-        priorEntitlement = await getDevicePaidEntitlement(deviceId);
+      if (!priorEntitlement && normalizedBodyDeviceId && hasVerifiedDeviceSecret) {
+        priorEntitlement = await getDevicePaidEntitlement(normalizedBodyDeviceId);
       }
-      if (!priorEntitlement && authToken) {
-        const authUser = await getAuthenticatedUser(authToken).catch(() => null);
-        if (authUser?.emailVerified && authUser.email) {
-          priorEntitlement = await getEmailEntitlement(authUser.email);
-        }
+      if (!priorEntitlement && authUser?.emailVerified && authUser.email) {
+        priorEntitlement = await getEmailEntitlement(authUser.email);
       }
       if (!priorEntitlement?.active && !isPreviewAllowed) {
         return NextResponse.json(
@@ -194,19 +204,117 @@ export async function POST(req: NextRequest) {
           { status: 403 }
         );
       }
+      // Restrict `oto_annual` strictly to upgrades from an initial `"monthly"` plan (never downgrade/duplicate an annual or OTO pass)
+      if (
+        otoOffer === "oto_annual" &&
+        priorEntitlement &&
+        (priorEntitlement.plan !== "monthly" ||
+          priorEntitlement.subscriptionId?.startsWith("oto_pass_"))
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "The VIP Annual upgrade offer is only available immediately after starting a monthly membership.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
-    const existingCustomerId = priorEntitlement?.customerId || "";
+    // Mint an isolated `web-<uuid>` whenever caller omitted or passed a placeholder deviceId (`"anon-web"`, etc.)
+    const deviceId =
+      normalizedBodyDeviceId ||
+      normalizeRealDeviceId(priorEntitlement?.deviceId) ||
+      `web-${crypto.randomUUID()}`;
+
+    const existingCustomerId =
+      typeof priorEntitlement?.customerId === "string" &&
+      priorEntitlement.customerId.startsWith("cus_")
+        ? priorEntitlement.customerId
+        : "";
     const previousSubscriptionId =
       priorEntitlement?.subscriptionId && priorEntitlement.subscriptionId.startsWith("sub_")
         ? priorEntitlement.subscriptionId
         : "";
+
+    let priorPeriodEndSec =
+      otoOffer === "oto_annual" &&
+      priorEntitlement?.status === "active" &&
+      typeof priorEntitlement.expiresAtMs === "number" &&
+      priorEntitlement.expiresAtMs > Date.now()
+        ? Math.floor(priorEntitlement.expiresAtMs / 1000)
+        : 0;
+
+    if (otoOffer === "oto_annual" && stripeKey && previousSubscriptionId) {
+      try {
+        const subRes = await fetch(
+          `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(previousSubscriptionId)}`,
+          {
+            method: "GET",
+            headers: { Authorization: `Bearer ${stripeKey}` },
+            cache: "no-store",
+          }
+        );
+        if (subRes.ok) {
+          const priorSub = (await subRes.json()) as {
+            status?: string;
+            current_period_end?: number | null;
+            metadata?: Record<string, string>;
+            items?: {
+              data?: Array<{
+                current_period_end?: number | null;
+                price?: { recurring?: { interval?: string } };
+                plan?: { interval?: string };
+              }>;
+            };
+          };
+          const priorSubOto = priorSub.metadata?.oto_offer || "";
+          const priorSubPlan = priorSub.metadata?.plan || "";
+          const priorInterval =
+            priorSub.items?.data?.[0]?.price?.recurring?.interval ||
+            priorSub.items?.data?.[0]?.plan?.interval ||
+            "";
+          if (
+            priorSubOto === "oto_annual" ||
+            priorSubOto === "oto_gift_year" ||
+            priorSubPlan === "annual" ||
+            priorInterval === "year"
+          ) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error:
+                  "The VIP Annual upgrade offer is only available when upgrading from an active monthly subscription.",
+              },
+              { status: 400 }
+            );
+          }
+          const livePeriodEnd =
+            typeof priorSub.current_period_end === "number" && priorSub.current_period_end > 0
+              ? priorSub.current_period_end
+              : typeof priorSub.items?.data?.[0]?.current_period_end === "number" &&
+                  priorSub.items.data[0].current_period_end! > 0
+                ? priorSub.items.data[0].current_period_end!
+                : 0;
+          if (livePeriodEnd > 0 && priorSub.status === "active") {
+            priorPeriodEndSec = livePeriodEnd;
+          }
+        }
+      } catch {
+        /* fall back to stored priorEntitlement.expiresAtMs */
+      }
+    }
+
     const effectiveEmail =
-      customerEmail || priorEntitlement?.customerEmail?.trim().toLowerCase() || "";
+      customerEmail ||
+      priorEntitlement?.customerEmail?.trim().toLowerCase() ||
+      (authUser?.emailVerified ? authUser.email : "") ||
+      "";
     const priorHistory =
       priorEntitlement ??
       (await hasPriorEntitlementHistory({
-        deviceId,
+        deviceId: normalizedBodyDeviceId || undefined,
         email: effectiveEmail,
       }).catch(() => null));
     const isOneTimeOtoPass = otoOffer === "oto_gift_year";
@@ -221,7 +329,7 @@ export async function POST(req: NextRequest) {
     // Only record auto-renewal consent on recurring subscriptions (never overwrite Step 1's ARL consent on a one-time pass)
     if (!isOneTimeOtoPass) {
       await recordSubscriptionConsent({
-        deviceId: deviceId || "anon-web",
+        deviceId,
         email: effectiveEmail,
         plan,
         termsVersion,
@@ -240,7 +348,20 @@ export async function POST(req: NextRequest) {
 
     if (candidateCreatorCode) {
       if (isFriendCodeFormat) {
-        if (ownReferralCode && candidateCreatorCode === ownReferralCode) {
+        const inviterOwnerId = await getDeviceIdByReferralCode(candidateCreatorCode);
+        const isSelfFriendCode =
+          Boolean(ownReferralCode && candidateCreatorCode === ownReferralCode) ||
+          (inviterOwnerId
+            ? await isSelfReferralForAccount({
+                inviterDeviceId: inviterOwnerId,
+                referralCode: candidateCreatorCode,
+                claimantDeviceId: normalizedBodyDeviceId || deviceId,
+                claimantUserId: authUser?.userId,
+                claimantLinkedDevices: authUser?.linkedDevices,
+              })
+            : false);
+
+        if (isSelfFriendCode) {
           if (rawCreatorCode) {
             return NextResponse.json(
               { ok: false, error: "You cannot use your own referral code." },
@@ -248,7 +369,7 @@ export async function POST(req: NextRequest) {
             );
           }
         } else {
-          const exists = await isValidReferralCode(candidateCreatorCode);
+          const exists = Boolean(inviterOwnerId);
           if (!exists && rawCreatorCode) {
             return NextResponse.json(
               { ok: false, error: "Invalid or expired friend referral code." },
@@ -291,7 +412,19 @@ export async function POST(req: NextRequest) {
       deviceReferredBy !== ownReferralCode &&
       (await isValidReferralCode(deviceReferredBy))
     ) {
-      verifiedCode = deviceReferredBy;
+      const refOwner = await getDeviceIdByReferralCode(deviceReferredBy);
+      const selfRef = refOwner
+        ? await isSelfReferralForAccount({
+            inviterDeviceId: refOwner,
+            referralCode: deviceReferredBy,
+            claimantDeviceId: normalizedBodyDeviceId || deviceId,
+            claimantUserId: authUser?.userId,
+            claimantLinkedDevices: authUser?.linkedDevices,
+          })
+        : false;
+      if (!selfRef) {
+        verifiedCode = deviceReferredBy;
+      }
     }
 
     const candidateOrigin =
@@ -318,6 +451,7 @@ export async function POST(req: NextRequest) {
           otoOffer,
           trialDays,
           creatorCode: verifiedCode || null,
+          deviceId,
         });
       }
       return NextResponse.json(
@@ -374,6 +508,9 @@ export async function POST(req: NextRequest) {
     params.set("metadata[plan]", plan);
     params.set("metadata[terms_version]", termsVersion);
     params.set("metadata[terms_accepted_at]", consentTimestamp);
+    if (authUser?.userId) {
+      params.set("metadata[user_id]", authUser.userId);
+    }
     if (otoOffer) {
       params.set("metadata[oto_offer]", otoOffer);
     }
@@ -387,6 +524,9 @@ export async function POST(req: NextRequest) {
         "subscription_data[metadata][terms_accepted_at]",
         consentTimestamp
       );
+      if (authUser?.userId) {
+        params.set("subscription_data[metadata][user_id]", authUser.userId);
+      }
       if (otoOffer) {
         params.set("subscription_data[metadata][oto_offer]", otoOffer);
       }
@@ -401,6 +541,9 @@ export async function POST(req: NextRequest) {
       params.set("payment_intent_data[metadata][oto_offer]", "oto_gift_year");
       params.set("payment_intent_data[metadata][plan]", "annual");
       params.set("payment_intent_data[metadata][session_type]", "oto_gift_year");
+      if (authUser?.userId) {
+        params.set("payment_intent_data[metadata][user_id]", authUser.userId);
+      }
       if (previousSessionId) {
         params.set("payment_intent_data[metadata][previous_session_id]", previousSessionId);
       }
@@ -435,9 +578,24 @@ export async function POST(req: NextRequest) {
         params.set("payment_intent_data[metadata][customer_email]", effectiveEmail);
       }
     }
-    if (!isOneTimeOtoPass && trialDays > 0) {
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (
+      !isOneTimeOtoPass &&
+      otoOffer === "oto_annual" &&
+      priorPeriodEndSec > nowSec + 60
+    ) {
+      // Credit remaining prepaid days of the initial $9.99 monthly cycle so the customer isn't double-billed on Day 0
+      params.set("subscription_data[trial_end]", String(priorPeriodEndSec));
+      params.set("metadata[trial_end_sec]", String(priorPeriodEndSec));
+      params.set(
+        "subscription_data[metadata][trial_end_sec]",
+        String(priorPeriodEndSec)
+      );
+    } else if (!isOneTimeOtoPass && trialDays > 0) {
       params.set("subscription_data[trial_period_days]", String(trialDays));
     }
+
     if (verifiedCode) {
       params.set("metadata[creator_code]", verifiedCode);
       if (!isOneTimeOtoPass) {
@@ -471,7 +629,7 @@ export async function POST(req: NextRequest) {
 
     if (!isOneTimeOtoPass && typeof session.id === "string" && session.id.trim()) {
       await recordSubscriptionConsent({
-        deviceId: deviceId || "anon-web",
+        deviceId,
         email: effectiveEmail,
         plan,
         termsVersion,
@@ -488,7 +646,7 @@ export async function POST(req: NextRequest) {
       .then(({ assignPaywallVariant, trackServerEvent }) =>
         trackServerEvent({
           event: "checkout_started",
-          distinctId: deviceId || session.id || "anon-web",
+          distinctId: deviceId || session.id,
           platform: "web",
           variant: assignPaywallVariant(deviceId, true),
           properties: {
@@ -506,6 +664,7 @@ export async function POST(req: NextRequest) {
       mode: "stripe",
       url: session.url,
       trialDays,
+      deviceId,
     });
   } catch (err) {
     return NextResponse.json(

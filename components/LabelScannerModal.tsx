@@ -130,7 +130,11 @@ export default function LabelScannerModal({
       const tesseract = await import("tesseract.js");
       if (!openRef.current || runId !== ocrRunIdRef.current) return;
 
-      const worker = await tesseract.createWorker("eng", tesseract.OEM.DEFAULT, {
+      const worker = await tesseract.createWorker("eng", 1, {
+        workerPath: "/tesseract/worker.min.js",
+        corePath: "/tesseract",
+        langPath: "/tesseract",
+        workerBlobURL: false,
         logger: (m: { status?: string; progress?: number }) => {
           if (!openRef.current || runId !== ocrRunIdRef.current) return;
           if (m.status === "recognizing text" && typeof m.progress === "number") {

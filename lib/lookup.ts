@@ -309,6 +309,7 @@ interface OffProduct {
   last_modified_t?: number;
   nutriments?: Record<string, number | string | undefined>;
   categories_tags?: string[];
+  countries_tags?: string[];
 }
 
 function normalizeOffBrand(brands?: string | string[]): string {
@@ -318,7 +319,37 @@ function normalizeOffBrand(brands?: string | string[]): string {
 }
 
 const OFF_FIELDS =
-  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,categories_tags,last_modified_t,nutriments";
+  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,countries_tags,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,categories_tags,last_modified_t,nutriments";
+
+/**
+ * Ensures Open Food Facts records match US market formulations:
+ * - Explicitly tagged `en:united-states` -> accepted.
+ * - Explicitly tagged with foreign countries only (e.g. UK, EU, Canada, Australia) -> rejected so US USDA Branded labels win.
+ * - Untagged legacy records -> accepted only for North American UPC-A/UPC-E/0-prefixed GTINs; foreign [2-9] EAN-13s are rejected.
+ */
+export function isUsMarketOffProduct(p?: { code?: string; countries_tags?: string[] } | null): boolean {
+  if (!p) return false;
+  const tags = Array.isArray(p.countries_tags)
+    ? p.countries_tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (
+    tags.includes("en:united-states") ||
+    tags.includes("united-states") ||
+    tags.includes("en:us") ||
+    tags.includes("en:usa")
+  ) {
+    return true;
+  }
+  if (tags.length > 0) {
+    return false;
+  }
+  const codeStr = String(p.code || "").replace(/\D/g, "");
+  if (!codeStr) return false;
+  if (/^[2-9]\d{12}$/.test(codeStr) || /^[1-9]\d{7}$/.test(codeStr)) {
+    return false;
+  }
+  return /^(?:00?\d{11,12}|\d{11,12}|0\d{7})$/.test(codeStr);
+}
 
 const SCREEN_UI_NON_INGREDIENTS =
   /\b(items to add next|frequently bought together|customers also (bought|viewed|considered)|you may also like|you might also like|similar items|related products|sponsored|add to cart|buy now|many in stock|out of stock|product information|product details|nutrition facts|shipping|delivery|pickup|reviews|ratings|select a store|return policy|disclaimer|warnings?|tap to expand|show more|see more|velveeta\s+original|frito[- ]?lay|doritos|cheetos|bold\s+snack)\b/i;
@@ -365,6 +396,7 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
   const qToks = tokens(query);
   const firstTok = qToks[0] || "";
   for (const p of products) {
+    if (!isUsMarketOffProduct(p)) continue;
     const ing = englishIngredients(p);
     if (!ing) continue;
     const brandStr = normalizeOffBrand(p.brands);
@@ -472,6 +504,7 @@ async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> |
   return firstAvailable(codes.flatMap(c => hosts.map(async host => {
     const p = await fetchOffProductByCode(c, host);
     if (!p?.code || p.code.replace(/^0+/, "") !== code.replace(/^0+/, "")) return null;
+    if (!isUsMarketOffProduct(p)) return null;
     if (host === "https://world.openfoodfacts.org") return englishIngredients(p) ? offToResult(p, c) : null;
     return (p.ingredients_text_en || p.ingredients_text || "").trim() ? verticalResult(p, c, host) : null;
   })));
@@ -487,7 +520,7 @@ async function openFactsVerticalSearch(title: string): Promise<Omit<LookupResult
   const responses = await Promise.all(
     hosts.map((host) =>
       getJson<{ products?: OffProduct[] }>(
-        `${host}/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=20&fields=${OFF_FIELDS}`,
+        `${host}/cgi/search.pl?search_terms=${q}&search_simple=1&action=process&json=1&page_size=20&tagtype_0=countries&tag_contains_0=contains&tag_0=united-states&fields=${OFF_FIELDS}`,
       ),
     ),
   );
@@ -558,7 +591,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     "code,product_name,product_name_en,brands,states_tags,countries_tags,image_front_url,image_url,image_front_small_url";
   const [v3Brand, v3Text, vertical] = await Promise.all([
     getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=12&fields=${searchFields}`,
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(`${brandQuery} countries_tags:"en:united-states"`)}&page_size=12&fields=${searchFields}`,
     ),
     getJson<{ hits?: OffSearchHit[] }>(
       `https://search.openfoodfacts.org/search?q=${encodeURIComponent(title)}&page_size=16&fields=${searchFields}`,
@@ -580,6 +613,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     .filter(
       (h) =>
         h.code &&
+        isUsMarketOffProduct(h) &&
         (!Array.isArray(h.states_tags) || h.states_tags.includes("en:ingredients-completed")),
     )
     .map((h) => {
@@ -598,10 +632,8 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
       const isUsCountry =
         Array.isArray(h.countries_tags) && h.countries_tags.includes("en:united-states");
       const isNorthAmericanUpc = /^(?:00?\d{11}|\d{11,12}|0\d{7})$/.test(codeStr);
-      const isNonUsEan13 = /^[2-9]\d{12}$/.test(codeStr);
-      const usMarketBonus = isNonUsEan13
-        ? -0.22
-        : isUsCountry && isNorthAmericanUpc
+      const usMarketBonus =
+        isUsCountry && isNorthAmericanUpc
           ? 0.25
           : isNorthAmericanUpc
             ? 0.14
@@ -621,7 +653,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
   for (const { h } of ranked) {
     if (!h.code) continue;
     const p = await fetchOffProductByCode(h.code, "https://world.openfoodfacts.org");
-    if (!p) continue;
+    if (!p || !isUsMarketOffProduct(p)) continue;
     const ing = englishIngredients(p);
     if (!ing) continue;
     const brandStr = normalizeOffBrand(p.brands);
@@ -808,7 +840,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Private Selection",
     title: "Private Selection Angus Beef Patties",
     ingredients: "100% USDA Choice Angus Beef.",
-    imageUrl: "/swaps/beef.png",
     nutrition: { caloriesKcal100g: 254, sugarsG100g: 0, saturatedFatG100g: 7.7, sodiumMg100g: 66, fiberG100g: 0, proteinG100g: 17.2, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isOrganic: false, isWholeFood: true },
     sourceUrl: "https://www.kroger.com/p/private-selection-80-lean-20-fat-angus-beef-chuck-patties/0001111097111",
     verifiedAt: "2026-11-08",

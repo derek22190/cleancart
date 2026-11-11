@@ -163,6 +163,52 @@ final class ShareViewController: UIViewController {
         extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
 
+    private func getOrCreateExtensionDeviceCredentials() -> (deviceId: String, deviceSecret: String?) {
+        var devId = sharedDefaults.string(forKey: "heybroc_device_id") ?? ""
+        if devId.isEmpty {
+            devId = "ios-share-\(UUID().uuidString.lowercased())"
+            sharedDefaults.set(devId, forKey: "heybroc_device_id")
+        }
+        let devSecret = sharedDefaults.string(forKey: "heybroc_device_secret")
+        return (devId, devSecret)
+    }
+
+    fileprivate static func sanitizedRetailerURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var comps = URLComponents(string: trimmed) else {
+            return nil
+        }
+        if comps.path.lowercased().hasPrefix("/c/"),
+           let targetParam = comps.queryItems?.first(where: { $0.name.lowercased() == "u" })?.value,
+           !targetParam.isEmpty {
+            let decoded = targetParam.removingPercentEncoding ?? targetParam
+            if let unwrapped = URLComponents(string: decoded) {
+                comps = unwrapped
+            }
+        }
+        guard let scheme = comps.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            return nil
+        }
+        let host = (comps.host ?? "").lowercased()
+        if host == "stripe.com" || host.hasSuffix(".stripe.com") {
+            return nil
+        }
+        let blockedParams: Set<String> = [
+            "tag",
+            "linkcode",
+            "ascsubtag",
+            "camp",
+            "creative",
+            "subid1",
+            "irclickid"
+        ]
+        if let items = comps.queryItems {
+            let filtered = items.filter { !blockedParams.contains($0.name.lowercased()) }
+            comps.queryItems = filtered.isEmpty ? nil : filtered
+        }
+        return comps.url
+    }
+
     @objc private func handlePesticideToggle(_ sender: UISwitch) {
         var current = dietaryWatchlist
         if sender.isOn {
@@ -354,11 +400,27 @@ final class ShareViewController: UIViewController {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("ios-share", forHTTPHeaderField: "X-HeyBroc-Platform")
+        req.setValue("ios-share", forHTTPHeaderField: "X-Client-Platform")
+
+        let creds = getOrCreateExtensionDeviceCredentials()
+        if let secret = creds.deviceSecret, !secret.isEmpty {
+            req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
+        }
+        let preferStoreBrand = sharedDefaults.object(forKey: "heybroc_prefer_store_brand") != nil
+            ? sharedDefaults.bool(forKey: "heybroc_prefer_store_brand")
+            : sharedDefaults.bool(forKey: "prefer_store_brand")
 
         var body: [String: Any] = [
+            "surface": "extension",
+            "clientPlatform": "ios-share",
+            "deviceId": creds.deviceId,
+            "preferStoreBrand": preferStoreBrand,
             "dietaryWatchlist": dietaryWatchlist,
             "familyWatchlist": sharedDefaults.stringArray(forKey: "heybroc_family_watchlist") ?? ["seedOils", "dyes", "hfcs"]
         ]
+        if let secret = creds.deviceSecret, !secret.isEmpty {
+            body["deviceSecret"] = secret
+        }
         if !extractedTitleAndUrl.isEmpty {
             body["productTitle"] = String(extractedTitleAndUrl.prefix(480))
         }
@@ -378,6 +440,9 @@ final class ShareViewController: UIViewController {
                       let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                     self.renderError("Unexpected response from HeyBroc.")
                     return
+                }
+                if let issuedSecret = json["issuedDeviceSecret"] as? String, !issuedSecret.isEmpty {
+                    self.sharedDefaults.set(issuedSecret, forKey: "heybroc_device_secret")
                 }
                 let ok = (json["ok"] as? Bool) ?? false
                 if !ok {
@@ -522,7 +587,7 @@ final class ShareViewController: UIViewController {
             let nut = sw["nutrition"] as? [String: Any]
             let isOrg = (nut?["isOrganic"] as? Bool) ?? swTitle.lowercased().contains("organic")
             let urlStr = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
-            self.currentSwapURL = urlStr != nil ? URL(string: urlStr!) : nil
+            self.currentSwapURL = urlStr.flatMap { Self.sanitizedRetailerURL($0) }
 
             let swapCard = UIStackView()
             swapCard.axis = .vertical
@@ -630,12 +695,13 @@ final class ShareViewController: UIViewController {
     }
 
     private func presentWebModal(url: URL, title: String) {
-        let modal = ShareWebPreviewController(url: url, headerTitle: title)
+        let safe = Self.sanitizedRetailerURL(url.absoluteString) ?? url
+        let modal = ShareWebPreviewController(url: safe, headerTitle: title)
         present(modal, animated: true)
     }
 }
 
-private final class ShareWebPreviewController: UIViewController {
+private final class ShareWebPreviewController: UIViewController, WKNavigationDelegate {
     private let targetURL: URL
     private let headerTitle: String
 
@@ -678,6 +744,7 @@ private final class ShareWebPreviewController: UIViewController {
 
         let wv = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
         wv.translatesAutoresizingMaskIntoConstraints = false
+        wv.navigationDelegate = self
         wv.allowsBackForwardNavigationGestures = true
         view.addSubview(wv)
 
@@ -693,6 +760,23 @@ private final class ShareWebPreviewController: UIViewController {
         ])
 
         wv.load(URLRequest(url: targetURL))
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url {
+            let host = (url.host ?? "").lowercased()
+            if host == "stripe.com" || host.hasSuffix(".stripe.com") {
+                decisionHandler(.cancel)
+                return
+            }
+            if let cleaned = ShareViewController.sanitizedRetailerURL(url.absoluteString),
+               cleaned.absoluteString != url.absoluteString {
+                decisionHandler(.cancel)
+                webView.load(URLRequest(url: cleaned))
+                return
+            }
+        }
+        decisionHandler(.allow)
     }
 
     @objc private func tapClose() {

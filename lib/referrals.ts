@@ -16,9 +16,9 @@
  */
 import "server-only";
 import crypto from "node:crypto";
-import { getDevicePaidEntitlement } from "./entitlements";
+import { getDevicePaidEntitlement, normalizeRealDeviceId } from "./entitlements";
 import { PRICING } from "./pricing";
-import { kvGet, kvSet, kvSetNx } from "./storage";
+import { kvDel, kvGet, kvSet, kvSetNx } from "./storage";
 
 export interface DeviceEntitlement {
   deviceId: string;
@@ -34,11 +34,22 @@ export interface DeviceEntitlement {
   courtesyRefillUsedThisWeek: boolean;
 }
 
+export interface UserDeviceIndexRecord {
+  userId: string;
+  email: string;
+  linkedDevices: string[];
+  referralCode?: string;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const MAX_MEM_DEVICES = 2000;
 const ACTIVE_KV_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year for active devices
 const EPHEMERAL_KV_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days for unactivated devices
+
+export const USER_BY_ID_PREFIX = "heybroc:user:by-id:";
+export const USER_BY_DEVICE_PREFIX = "heybroc:user:by-device:";
+const REFERRAL_REWARD_LOCK_PREFIX = "heybroc:referral:reward-lock:";
 
 export const MAX_REFERRALS_PER_DEVICE = 10;
 export const MAX_BANKED_PRO_DAYS = 70;
@@ -65,19 +76,23 @@ export function verifyDeviceSecret(
 }
 
 function setMemCache(entry: DeviceEntitlement) {
+  if (!normalizeRealDeviceId(entry.deviceId)) return;
   if (devices.size >= MAX_MEM_DEVICES && !devices.has(entry.deviceId)) {
     const oldestKey = devices.keys().next().value;
     if (oldestKey) devices.delete(oldestKey);
   }
   devices.set(entry.deviceId, entry);
   if (
+    entry.referralCode &&
     codeToDevice.size >= MAX_MEM_DEVICES &&
     !codeToDevice.has(entry.referralCode)
   ) {
     const oldestCode = codeToDevice.keys().next().value;
     if (oldestCode) codeToDevice.delete(oldestCode);
   }
-  codeToDevice.set(entry.referralCode, entry.deviceId);
+  if (entry.referralCode) {
+    codeToDevice.set(entry.referralCode, entry.deviceId);
+  }
 }
 
 function isDeviceActiveForLongRetention(entry: DeviceEntitlement): boolean {
@@ -91,18 +106,41 @@ function isDeviceActiveForLongRetention(entry: DeviceEntitlement): boolean {
   );
 }
 
+export function buildTransientFreeDevice(rawDeviceId?: string): DeviceEntitlement {
+  const now = Date.now();
+  const displayId = (rawDeviceId || "anon-web").trim().slice(0, 128) || "anon-web";
+  return {
+    deviceId: displayId,
+    referralCode: codeFromDeviceId(displayId),
+    referralActivated: false,
+    firstSeenAt: now,
+    proUntil: 0,
+    referralsCompleted: 0,
+    weeklySwapsUsed: [],
+    weekResetAt: now + WEEK_MS,
+    courtesyRefillUsedThisWeek: false,
+  };
+}
+
 export async function saveDevice(entry: DeviceEntitlement): Promise<void> {
+  const normDeviceId = normalizeRealDeviceId(entry.deviceId);
+  if (!normDeviceId) {
+    return;
+  }
+  entry.deviceId = normDeviceId;
   setMemCache(entry);
   const ttl = isDeviceActiveForLongRetention(entry)
     ? ACTIVE_KV_TTL_SECONDS
     : EPHEMERAL_KV_TTL_SECONDS;
-  await kvSet(`heybroc:device:${entry.deviceId}`, entry, ttl);
+  await kvSet(`heybroc:device:${normDeviceId}`, entry, ttl);
   // Only set referral code mapping if not already owned by another device (never overwrite!)
-  await kvSetNx(
-    `heybroc:refcode:${entry.referralCode}`,
-    entry.deviceId,
-    ACTIVE_KV_TTL_SECONDS
-  );
+  if (entry.referralCode) {
+    await kvSetNx(
+      `heybroc:refcode:${entry.referralCode}`,
+      normDeviceId,
+      ACTIVE_KV_TTL_SECONDS
+    );
+  }
 }
 
 /** Generates a cryptographically random 8-character referral code (`BROC-XXXXXXXX`). */
@@ -142,7 +180,7 @@ async function allocateUniqueReferralCode(deviceId: string): Promise<string> {
       return candidate;
     }
   }
-  const fallback = `${ generateRandomReferralCode() }${REF_ALPHABET[crypto.randomInt(REF_ALPHABET.length)]}`;
+  const fallback = `${generateRandomReferralCode()}${REF_ALPHABET[crypto.randomInt(REF_ALPHABET.length)]}`;
   await kvSetNx(`heybroc:refcode:${fallback}`, deviceId, ACTIVE_KV_TTL_SECONDS);
   return fallback;
 }
@@ -154,10 +192,13 @@ export async function getDeviceIdByReferralCode(
   if (!/^BROC-[A-Z0-9]{4,10}$/.test(code)) return null;
   const stored = await kvGet<string>(`heybroc:refcode:${code}`);
   if (stored) {
-    codeToDevice.set(code, stored);
-    return stored;
+    const normStored = normalizeRealDeviceId(stored);
+    if (!normStored) return null;
+    codeToDevice.set(code, normStored);
+    return normStored;
   }
-  return codeToDevice.get(code) ?? null;
+  const mem = codeToDevice.get(code) ?? null;
+  return mem ? normalizeRealDeviceId(mem) || null : null;
 }
 
 export async function isValidReferralCode(rawCode: string): Promise<boolean> {
@@ -168,7 +209,7 @@ export async function isValidReferralCode(rawCode: string): Promise<boolean> {
 export async function getExistingDevice(
   rawDeviceId?: string
 ): Promise<DeviceEntitlement | null> {
-  const deviceId = (rawDeviceId || "").trim().slice(0, 128);
+  const deviceId = normalizeRealDeviceId(rawDeviceId);
   if (!deviceId) return null;
   const persisted = await kvGet<DeviceEntitlement>(
     `heybroc:device:${deviceId}`
@@ -187,21 +228,20 @@ export async function getOrCreateDevice(
   rawDeviceId?: string,
   deviceSecret?: string
 ): Promise<DeviceEntitlement> {
+  const deviceId = normalizeRealDeviceId(rawDeviceId);
+  if (!deviceId) {
+    return buildTransientFreeDevice(rawDeviceId);
+  }
   const now = Date.now();
-  const deviceId =
-    (rawDeviceId || "anon-web").trim().slice(0, 128) || "anon-web";
   const existing = await getExistingDevice(deviceId);
   if (existing) {
     return existing;
   }
 
   // Never allow a caller-supplied secret to claim a deviceId that already has a paid subscription record
-  const existingPaid =
-    deviceId !== "anon-web" ? await getDevicePaidEntitlement(deviceId) : null;
+  const existingPaid = await getDevicePaidEntitlement(deviceId);
   const canBindSecret =
-    !existingPaid &&
-    deviceId !== "anon-web" &&
-    Boolean(deviceSecret && deviceSecret.trim().length >= 8);
+    !existingPaid && Boolean(deviceSecret && deviceSecret.trim().length >= 8);
 
   const referralCode = await allocateUniqueReferralCode(deviceId);
   const entry: DeviceEntitlement = {
@@ -255,8 +295,8 @@ export async function ensureReferralCodeRegistered(
     return restoredOwner;
   }
 
-  const deviceId = (preferredDeviceId || "").trim().slice(0, 128);
-  if (!deviceId || deviceId === "anon-web") return null;
+  const deviceId = normalizeRealDeviceId(preferredDeviceId);
+  if (!deviceId) return null;
 
   let entry = await getExistingDevice(deviceId);
   if (!entry) {
@@ -280,6 +320,94 @@ export async function ensureReferralCodeRegistered(
 }
 
 /**
+ * Checks whether `inviterDeviceId` / `referralCode` belongs to the same user account
+ * or shares any linked device with the claimant.
+ */
+export async function isSelfReferralForAccount(params: {
+  inviterDeviceId: string;
+  referralCode?: string;
+  claimantDeviceId?: string;
+  claimantUserId?: string;
+  claimantLinkedDevices?: string[];
+}): Promise<boolean> {
+  const inviterId = normalizeRealDeviceId(params.inviterDeviceId);
+  if (!inviterId) return false;
+  const claimantDev = normalizeRealDeviceId(params.claimantDeviceId);
+  if (claimantDev && inviterId === claimantDev) return true;
+
+  const cleanCode = (params.referralCode || "").trim().toUpperCase();
+
+  let claimantUserId = (params.claimantUserId || "").trim();
+  if (!claimantUserId && claimantDev?.startsWith("user:")) {
+    claimantUserId = claimantDev.slice(5);
+  }
+  if (!claimantUserId && claimantDev) {
+    claimantUserId =
+      (await kvGet<string>(`${USER_BY_DEVICE_PREFIX}${claimantDev}`).catch(
+        () => null
+      )) || "";
+  }
+
+  const claimantDeviceSet = new Set<string>();
+  if (claimantDev) claimantDeviceSet.add(claimantDev);
+  for (const rawLinked of params.claimantLinkedDevices || []) {
+    const norm = normalizeRealDeviceId(rawLinked);
+    if (norm) claimantDeviceSet.add(norm);
+  }
+
+  if (claimantUserId) {
+    claimantDeviceSet.add(`user:${claimantUserId}`);
+    if (inviterId === `user:${claimantUserId}`) return true;
+    const claimantIndex = await kvGet<UserDeviceIndexRecord>(
+      `${USER_BY_ID_PREFIX}${claimantUserId}`
+    ).catch(() => null);
+    if (
+      cleanCode &&
+      claimantIndex?.referralCode &&
+      claimantIndex.referralCode.trim().toUpperCase() === cleanCode
+    ) {
+      return true;
+    }
+    for (const rawLinked of claimantIndex?.linkedDevices || []) {
+      const norm = normalizeRealDeviceId(rawLinked);
+      if (norm) claimantDeviceSet.add(norm);
+    }
+  }
+
+  if (claimantDeviceSet.has(inviterId)) {
+    return true;
+  }
+
+  let inviterUserId = inviterId.startsWith("user:") ? inviterId.slice(5) : "";
+  if (!inviterUserId) {
+    inviterUserId =
+      (await kvGet<string>(`${USER_BY_DEVICE_PREFIX}${inviterId}`).catch(
+        () => null
+      )) || "";
+  }
+
+  if (inviterUserId) {
+    if (claimantUserId && inviterUserId === claimantUserId) {
+      return true;
+    }
+    if (claimantDeviceSet.has(`user:${inviterUserId}`)) {
+      return true;
+    }
+    const inviterIndex = await kvGet<UserDeviceIndexRecord>(
+      `${USER_BY_ID_PREFIX}${inviterUserId}`
+    ).catch(() => null);
+    for (const rawLinked of inviterIndex?.linkedDevices || []) {
+      const norm = normalizeRealDeviceId(rawLinked);
+      if (norm && claimantDeviceSet.has(norm)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * Links a referred device to an existing inviter's referral code (`claim`), or activates
  * a previously claimed referral when triggered by an internal verified event.
  */
@@ -288,15 +416,31 @@ export async function applyOrActivateReferral(params: {
   referralCode?: string;
   activateNow?: boolean;
   deviceSecret?: string;
+  userId?: string;
+  linkedDevices?: string[];
 }): Promise<{
   ok: boolean;
   device: DeviceEntitlement;
   rewardedNow: boolean;
   message: string;
 }> {
+  const normDeviceId = normalizeRealDeviceId(params.deviceId);
+  if (!normDeviceId) {
+    return {
+      ok: false,
+      device: buildTransientFreeDevice(params.deviceId),
+      rewardedNow: false,
+      message: "Invalid device identifier for referral.",
+    };
+  }
+
   const now = Date.now();
-  const device = await getOrCreateDevice(params.deviceId, params.deviceSecret);
-  if (!params.activateNow && device.deviceSecretHash && !verifyDeviceSecret(device, params.deviceSecret)) {
+  const device = await getOrCreateDevice(normDeviceId, params.deviceSecret);
+  if (
+    !params.activateNow &&
+    device.deviceSecretHash &&
+    !verifyDeviceSecret(device, params.deviceSecret)
+  ) {
     return {
       ok: false,
       device,
@@ -343,6 +487,22 @@ export async function applyOrActivateReferral(params: {
     };
   }
 
+  const isAccountSelfRef = await isSelfReferralForAccount({
+    inviterDeviceId,
+    referralCode: inputCode,
+    claimantDeviceId: device.deviceId,
+    claimantUserId: params.userId,
+    claimantLinkedDevices: params.linkedDevices,
+  });
+  if (isAccountSelfRef) {
+    return {
+      ok: false,
+      device,
+      rewardedNow: false,
+      message: "You cannot use your own referral code.",
+    };
+  }
+
   device.referredByCode = inputCode;
 
   if (!params.activateNow) {
@@ -374,6 +534,45 @@ export async function applyOrActivateReferral(params: {
     };
   }
 
+  // Atomic idempotency lock so concurrent `checkout.session.completed` + `invoice.paid` webhooks
+  // never grant +60 days instead of +30 days
+  const deviceLockAcquired = await kvSetNx(
+    `${REFERRAL_REWARD_LOCK_PREFIX}${device.deviceId}`,
+    "1",
+    ACTIVE_KV_TTL_SECONDS
+  );
+  if (!deviceLockAcquired) {
+    return {
+      ok: false,
+      device,
+      rewardedNow: false,
+      message: "Referral bonus already activated on this device.",
+    };
+  }
+
+  const resolvedClaimantUid =
+    (params.userId || "").trim() ||
+    (device.deviceId.startsWith("user:")
+      ? device.deviceId.slice(5)
+      : (await kvGet<string>(`${USER_BY_DEVICE_PREFIX}${device.deviceId}`).catch(
+          () => null
+        )) || "");
+  if (resolvedClaimantUid && `user:${resolvedClaimantUid}` !== device.deviceId) {
+    const userLockAcquired = await kvSetNx(
+      `${REFERRAL_REWARD_LOCK_PREFIX}user:${resolvedClaimantUid}`,
+      "1",
+      ACTIVE_KV_TTL_SECONDS
+    );
+    if (!userLockAcquired) {
+      return {
+        ok: false,
+        device,
+        rewardedNow: false,
+        message: "Referral bonus already activated on this account.",
+      };
+    }
+  }
+
   const bonusMs = PRICING.referralBonusDays * DAY_MS;
   const maxProUntil = now + MAX_BANKED_PRO_DAYS * DAY_MS;
 
@@ -396,6 +595,39 @@ export async function applyOrActivateReferral(params: {
   };
 }
 
+export async function purgeUserVirtualDevice(
+  userId: string,
+  referralCode?: string
+): Promise<void> {
+  const cleanUserId = (userId || "").trim();
+  if (!cleanUserId) return;
+  const virtualId = `user:${cleanUserId}`;
+  const memEntry = devices.get(virtualId);
+  devices.delete(virtualId);
+  if (memEntry?.referralCode && codeToDevice.get(memEntry.referralCode) === virtualId) {
+    codeToDevice.delete(memEntry.referralCode);
+  }
+  const cleanRefCode = (referralCode || "").trim().toUpperCase();
+  if (cleanRefCode && codeToDevice.get(cleanRefCode) === virtualId) {
+    codeToDevice.delete(cleanRefCode);
+  }
+  await Promise.all([
+    kvDel(`heybroc:device:${virtualId}`).catch(() => {}),
+    kvDel(`device:${virtualId}`).catch(() => {}),
+    ...(cleanRefCode
+      ? [
+          kvGet<string>(`heybroc:refcode:${cleanRefCode}`)
+            .then((owner) =>
+              owner === virtualId
+                ? kvDel(`heybroc:refcode:${cleanRefCode}`).catch(() => {})
+                : undefined
+            )
+            .catch(() => {}),
+        ]
+      : []),
+  ]);
+}
+
 export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
   const { assignPaywallVariant, getPaywallConfig } = await import("./analytics");
   const pwConfig = await getPaywallConfig();
@@ -403,8 +635,9 @@ export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
   const paywallHeadline =
     variant === "B" && pwConfig.abTestEnabled ? pwConfig.variantBHeadline : pwConfig.headline;
   const base = serializeEntitlement(d, pwConfig.freeWeeklySwapsLimit, paywallHeadline, variant);
-  if (base.isProActive) return base;
-  const paid = await getDevicePaidEntitlement(d.deviceId);
+  const normDeviceId = normalizeRealDeviceId(d.deviceId);
+  if (!normDeviceId) return base;
+  const paid = await getDevicePaidEntitlement(normDeviceId);
   if (paid && paid.active) {
     const now = Date.now();
     const defaultHorizonDays =
@@ -413,9 +646,18 @@ export async function serializeEntitlementWithPaidLookup(d: DeviceEntitlement) {
         : paid.plan === "annual"
           ? 365
           : 30;
-    const paidUntil =
-      typeof paid.expiresAtMs === "number" && paid.expiresAtMs > now
+    const explicitPaidExpiryMs = Math.max(
+      typeof paid.expiresAtMs === "number" && Number.isFinite(paid.expiresAtMs)
         ? paid.expiresAtMs
+        : 0,
+      typeof paid.paidPassExpiresAtMs === "number" &&
+        Number.isFinite(paid.paidPassExpiresAtMs)
+        ? paid.paidPassExpiresAtMs
+        : 0
+    );
+    const paidUntil =
+      explicitPaidExpiryMs > now
+        ? explicitPaidExpiryMs
         : now + defaultHorizonDays * DAY_MS;
     const effectiveProUntil = Math.max(base.proUntil, paidUntil);
     const effectiveDays = Math.max(

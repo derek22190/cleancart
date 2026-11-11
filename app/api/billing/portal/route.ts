@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
-import { getAuthenticatedUser } from "@/lib/auth";
-import { resolveBillingPortalCustomer } from "@/lib/entitlements";
+import { getUserBySessionToken } from "@/lib/auth";
+import {
+  normalizeRealDeviceId,
+  resolveBillingPortalCustomer,
+} from "@/lib/entitlements";
 import { getExistingDevice, verifyDeviceSecret } from "@/lib/referrals";
-import { checkRateLimit } from "@/lib/scan";
+import { checkRateLimitAsync } from "@/lib/scan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,9 +77,40 @@ async function createPortalUrl(params: {
 
   let resolvedEmail = "";
   let resolvedDeviceId = "";
+  let hasVerifiedDeviceSecret = false;
+  let isSessionAuthenticated = false;
 
-  const candidateDeviceId = (params.deviceId || "").trim();
-  if (candidateDeviceId && candidateDeviceId !== "anon-web") {
+  const candidateDeviceId = normalizeRealDeviceId(params.deviceId);
+
+  if (params.authToken) {
+    const authUser = await getUserBySessionToken(params.authToken);
+    if (authUser) {
+      if (authUser.emailVerified === true && authUser.email) {
+        resolvedEmail = authUser.email.trim().toLowerCase();
+      }
+      const linkedNorm = (authUser.linkedDevices || [])
+        .map((d) => normalizeRealDeviceId(d))
+        .filter(Boolean);
+      if (candidateDeviceId && linkedNorm.includes(candidateDeviceId)) {
+        resolvedDeviceId = candidateDeviceId;
+      } else if (linkedNorm.length > 0) {
+        resolvedDeviceId = linkedNorm[0];
+      }
+      isSessionAuthenticated = Boolean(resolvedEmail || linkedNorm.length > 0);
+      if (!resolvedDeviceId && candidateDeviceId && params.deviceSecret) {
+        const existingDevice = await getExistingDevice(candidateDeviceId);
+        if (
+          existingDevice?.deviceSecretHash &&
+          verifyDeviceSecret(existingDevice, params.deviceSecret)
+        ) {
+          resolvedDeviceId = candidateDeviceId;
+          hasVerifiedDeviceSecret = true;
+        }
+      }
+    }
+  }
+
+  if (!isSessionAuthenticated && candidateDeviceId) {
     const existingDevice = await getExistingDevice(candidateDeviceId);
     if (
       existingDevice?.deviceSecretHash &&
@@ -84,33 +118,16 @@ async function createPortalUrl(params: {
       verifyDeviceSecret(existingDevice, params.deviceSecret)
     ) {
       resolvedDeviceId = candidateDeviceId;
-    } else if (existingDevice?.deviceSecretHash && params.deviceSecret) {
+      hasVerifiedDeviceSecret = true;
+    } else if (
+      existingDevice?.deviceSecretHash &&
+      (params.deviceSecret || !process.env.STRIPE_PORTAL_LOGIN_URL?.trim())
+    ) {
       return {
         ok: false,
         error: "Invalid device credentials for billing portal access.",
         status: 403,
       };
-    }
-  }
-
-  if (params.authToken) {
-    const authUser = await getAuthenticatedUser(params.authToken);
-    if (authUser && authUser.emailVerified === true) {
-      if (authUser.email) {
-        resolvedEmail = authUser.email.trim().toLowerCase();
-      }
-      if (!resolvedDeviceId) {
-        const reqDev =
-          candidateDeviceId && authUser.linkedDevices?.includes(candidateDeviceId)
-            ? candidateDeviceId
-            : authUser.linkedDevices?.[0] || "";
-        if (reqDev && reqDev !== "anon-web") {
-          const existingDevice = await getExistingDevice(reqDev);
-          if (existingDevice?.deviceSecretHash) {
-            resolvedDeviceId = reqDev;
-          }
-        }
-      }
     }
   }
 
@@ -134,7 +151,7 @@ async function createPortalUrl(params: {
   const resolved = await resolveBillingPortalCustomer({
     sessionId: params.sessionId,
     deviceId: resolvedDeviceId || undefined,
-    deviceSecret: params.deviceSecret,
+    deviceSecret: hasVerifiedDeviceSecret ? params.deviceSecret : undefined,
     email: resolvedEmail || undefined,
     authToken: params.authToken,
   });
@@ -185,7 +202,7 @@ async function createPortalUrl(params: {
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  if (!checkRateLimit(`billing-portal:${ip}`, 15)) {
+  if (!(await checkRateLimitAsync(`billing-portal:${ip}`, 15))) {
     return NextResponse.json(
       { ok: false, error: "Too many requests. Please try again in a minute." },
       { status: 429, headers: CORS }
@@ -202,8 +219,8 @@ export async function POST(request: Request) {
       returnUrl?: string;
     };
     const authHeader = request.headers.get("authorization") || "";
-    const authToken = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7).trim()
+    const authToken = /^Bearer\s+/i.test(authHeader)
+      ? authHeader.replace(/^Bearer\s+/i, "").trim()
       : undefined;
     const deviceSecret =
       request.headers.get("x-device-secret") || body.deviceSecret || undefined;
@@ -235,16 +252,21 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const ip = getClientIp(request);
-  if (!checkRateLimit(`billing-portal-get:${ip}`, 15)) {
+  if (!(await checkRateLimitAsync(`billing-portal-get:${ip}`, 15))) {
     return NextResponse.redirect("https://www.heybroc.com/terms#cancel", 302);
   }
 
   const { searchParams } = new URL(request.url);
+  const authHeader = request.headers.get("authorization") || "";
+  const authToken = /^Bearer\s+/i.test(authHeader)
+    ? authHeader.replace(/^Bearer\s+/i, "").trim()
+    : undefined;
   const result = await createPortalUrl({
     sessionId: searchParams.get("session_id") || searchParams.get("sessionId") || undefined,
     deviceId: searchParams.get("deviceId") || undefined,
     deviceSecret: searchParams.get("deviceSecret") || request.headers.get("x-device-secret") || undefined,
     email: searchParams.get("email") || undefined,
+    authToken,
     returnUrl: searchParams.get("returnUrl") || undefined,
   });
 

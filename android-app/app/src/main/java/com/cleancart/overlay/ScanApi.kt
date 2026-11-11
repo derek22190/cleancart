@@ -996,17 +996,55 @@ object ScanApi {
         result.put("color", nextColor)
     }
 
-    private fun normalizedCacheKey(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
+    private fun resolveSubRetailerSlug(
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ): String {
+        if (instacartRetailerSlug.isNotBlank()) return instacartRetailerSlug.trim().lowercase()
+        val bucket = storeBucket.trim().lowercase()
+        if (bucket.contains(':')) {
+            return bucket.substringAfter(':').trim()
+        }
+        val normStore = store.trim().lowercase()
+        if (bucket.isNotBlank() && bucket != normStore) {
+            return bucket
+        }
+        return ""
+    }
+
+    private fun normalizedCacheKey(
+        ctx: Context,
+        productTitle: String,
+        rawIngredients: String?,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ): String {
         val wlSig = currentWatchlistSignature(ctx)
         val normTitle = productTitle.lowercase().replace(Regex("\\s+"), " ").trim()
         val normIng = rawIngredients?.trim().orEmpty()
-        return "${store.lowercase()}|$normTitle|${normIng.hashCode()}|$wlSig"
+        val normStore = store.trim().lowercase()
+        val subSlug = resolveSubRetailerSlug(normStore, storeBucket, instacartRetailerSlug)
+        val effectiveBucket = when {
+            storeBucket.isNotBlank() -> storeBucket.trim().lowercase()
+            subSlug.isNotBlank() -> "$normStore:$subSlug"
+            else -> normStore
+        }
+        return "$normStore|$effectiveBucket|$subSlug|$normTitle|${normIng.hashCode()}|$wlSig"
     }
 
     /** Instant non-blocking lookup into the in-memory responseCache (<1ms). */
-    fun peekCachedScan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String? {
+    fun peekCachedScan(
+        ctx: Context,
+        productTitle: String,
+        rawIngredients: String?,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ): String? {
         if (productTitle.isBlank()) return null
-        val key = normalizedCacheKey(ctx, productTitle, rawIngredients, store)
+        val key = normalizedCacheKey(ctx, productTitle, rawIngredients, store, storeBucket, instacartRetailerSlug)
         synchronized(responseCache) {
             responseCache[key]?.let { cached ->
                 val isPoisoned = runCatching {
@@ -1027,18 +1065,25 @@ object ScanApi {
     }
 
     /** Fire-and-forget background pre-warm triggered on product tap or visible aisle card detection. */
-    fun prewarmScan(ctx: Context, productTitle: String, rawIngredients: String?, store: String) {
+    fun prewarmScan(
+        ctx: Context,
+        productTitle: String,
+        rawIngredients: String?,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ) {
         val clean = productTitle.trim()
         if (clean.length < 3) return
         val appCtx = ctx.applicationContext
-        val key = normalizedCacheKey(appCtx, clean, rawIngredients, store)
+        val key = normalizedCacheKey(appCtx, clean, rawIngredients, store, storeBucket, instacartRetailerSlug)
         synchronized(responseCache) {
             if (responseCache.containsKey(key)) return
         }
         if (!inFlightPrewarms.add(key)) return
         prewarmExecutor.execute {
             try {
-                scan(appCtx, clean, rawIngredients, store)
+                scan(appCtx, clean, rawIngredients, store, storeBucket, instacartRetailerSlug)
             } catch (_: Exception) {
                 // ignore background prewarm failure
             } finally {
@@ -1048,7 +1093,14 @@ object ScanApi {
     }
 
     /** Blocking call — run off the main thread. Returns the raw JSON response body. */
-    fun scan(ctx: Context, productTitle: String, rawIngredients: String?, store: String): String {
+    fun scan(
+        ctx: Context,
+        productTitle: String,
+        rawIngredients: String?,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val seedOilsOn = isSeedOilsEnabled(ctx)
         val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
@@ -1057,14 +1109,28 @@ object ScanApi {
             .toSet()
         val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
         val refCode = referredByCode(ctx)
-        val normKey = normalizedCacheKey(ctx, productTitle, rawIngredients, store)
+        val normStore = store.trim().lowercase()
+        val subSlug = resolveSubRetailerSlug(normStore, storeBucket, instacartRetailerSlug)
+        val effectiveBucket = when {
+            storeBucket.isNotBlank() -> storeBucket.trim().lowercase()
+            subSlug.isNotBlank() -> "$normStore:$subSlug"
+            else -> normStore
+        }
+        val normKey = normalizedCacheKey(ctx, productTitle, rawIngredients, store, storeBucket, instacartRetailerSlug)
         synchronized(responseCache) {
             responseCache[normKey]?.let { return it }
+        }
+        val effectiveRequestStore = when {
+            normStore == "amazon" && subSlug == "wholefoods" -> "amazon"
+            else -> store
         }
         val body = JSONObject().apply {
             put("productTitle", productTitle)
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
-            put("store", store)
+            put("store", effectiveRequestStore)
+            if (subSlug.isNotBlank() && (normStore == "instacart" || instacartRetailerSlug.isNotBlank())) {
+                put("instacartRetailerSlug", subSlug)
+            }
             put("surface", "android")
             if (isPreferStoreBrand(ctx)) {
                 put("preferStoreBrand", true)
@@ -1085,9 +1151,10 @@ object ScanApi {
             }
             put("format", "json")
         }.toString()
+        val bodyCacheKey = "$effectiveBucket|$subSlug|$body"
 
         synchronized(responseCache) {
-            responseCache[body]?.let { return it }
+            responseCache[bodyCacheKey]?.let { return it }
         }
 
         var lastErr = """{"ok":false,"error":"Unable to reach HeyBroc server"}"""
@@ -1101,7 +1168,7 @@ object ScanApi {
                         }
                         synchronized(responseCache) {
                             responseCache[normKey] = res
-                            responseCache[body] = res
+                            responseCache[bodyCacheKey] = res
                         }
                     }
                     return res

@@ -86,8 +86,11 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CART_CHECKOUT_SIGNALS = Regex(
-            """(\b(continue to checkout|proceed to checkout|go to checkout|checkout all items|review order|place order|estimated total|order summary|item subtotal|subtotal|your cart|shopping cart|skip the order min|available for all items|available for \d+ of \d+ items|same-day delivery fees|pickup fee)\b|^[^a-z0-9]*checkout(\s+all\s+items|\s*\(\d+\))?$|^cart\s*\(\d+(\s+items?)?\)$|^(personal|family)\s+.*\bcart$)""",
+            """(\b(continue to check\s*out|proceed to check\s*out|go to check\s*out|check\s*out all items|review order|place order|estimated total|order summary|item subtotal|subtotal|your cart|shopping cart|skip the order min|available for all items|available for \d+ of \d+ items|same-day delivery fees|pickup fee)\b|^[^a-z0-9]*check\s*out(\s+all\s+items|\s*\(\d+\))?$|^cart\s*\(\d+(\s+items?)?\)$|^(personal|family)\s+.*\bcart$)""",
             RegexOption.IGNORE_CASE,
+        )
+        private val AUTHORITATIVE_CART_COUNT_PATTERN = Regex(
+            """(?i)(?:^(?:your\s+|shopping\s+)?cart\s*,?\s*\(?\s*(\d{1,3})\s+items?\s*\)?(?:\s*,.*)?$|^(?:item\s+)?subtotal\s*\(\s*(\d{1,3})\s+items?\s*\)$|^check\s*out\s*\(\s*(\d{1,3})(?:\s+items?)?\s*\)$|\b(\d{1,3})\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)\b)"""
         )
         private val CART_ITEM_CONTROLS = Regex(
             """^(remove|save for later|select all|replace with best match|edit instructions)$""",
@@ -176,11 +179,11 @@ class GroceryScreenReaderService : AccessibilityService() {
                 SENSITIVE_PII_PATTERN.containsMatchIn(t)
         }
         private val NOISE = Regex(
-            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the store$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|flavor\s+name|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|view order|buy it again|hear the highlights.*|price history.*|share product.*|copy associates link.*|ways to buy.*|amazon'?s choice.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|log in|sign up|continue as guest|get started|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|sign in to clip.*|boost by kroger.*|choose backup.*|backup item.*|special requests?.*|add a special request.*|dashpass.*|substitution preferences.*|doubledash.*|express.*|temporarily unavailable|not available.*|this item is not available.*|\d+\s+items?\s+(are|is)\s+no\s+longer\s+available.*|these items have been removed.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|ready by .*|check nearby clubs|out of stock.*|in stock.*|many in stock|likely in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee(?!d\b).*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|edit instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|service fees apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|your carts|personal cart|continue shopping|restaurants|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to checkout|proceed to checkout|go to checkout|checkout|checkout all items|estimated total|item subtotal|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|purchased \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|edit instructions|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|located\s+in\s+aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|[!?]$""",
+            """^\$|^\d+(\.\d+)?\s*(ct|count|pack|oz|fl oz|lb|lbs|g|kg|ml|l|ea|gal|gallon|qt|pt|reviews?|ratings?)(\s*/\s*(ea|oz|fl oz|lb|ct))?$|^([-(]?\d+(\.\d+)?[)]?\s*(reviews?|ratings?))$|^\+?\s*add$|^([-(]?\d+(\.\d+)?[)]?|\d[\d,]*|\d+\s*/\s*\d+)$|^shop\s+[a-z0-9'&.\-\s]+$|^visit the store$|^visit the [a-z0-9'&.\-\s]+ store$|^item\s*:?\s*#?\d+$|^(flavor|flavor\s+name|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+$|^(cart\s*,?\s*\(\d+(\s+items?)?\)|in\s+\d+[km]?\+?\s*people'?s?\s*c(arts?|a.*)|\d+[km]?\+?\s*bought.*|options(\s+from.*)?|(get\s+\$?\d+(\.\d{2})?\s+)?walmart\s+cash.*|manufacturer\s+offer.*|subscribe\s+to\s+save.*|one-time\s+purchase.*|recommended\s+for\s+you.*|items\s+that\s+pair\s+well\s+together.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|trending\s+in\s+.*|\d+\s+stars?\s+and\s+above.*|based\s+on\s+customer\s+ratings.*|roll|rolls|mega\s+rolls?|double\s+rolls?|triple\s+rolls?)$|^((increase|decrease)\s+quantity.*|reserve a time.*|choose a time.*|hide details.*|show details.*|view details.*|view order|buy it again|hear the highlights.*|price history.*|share product.*|copy associates link.*|ways to buy.*|amazon'?s choice.*|don't forget.*|add to (cart|order|basket|bag|favorites|list)|remove from favorites|remove|save for later.*|saved for later.*|add item|buy now|choose options|select options|select (size|flavor|weight|count).*|sign in|log in|sign up|continue as guest|get started|search.*|opens?\s+barcode\s+scanner.*|pickup.*|curbside pickup.*|delivery.*|same-day delivery.*|shipping.*|in-club.*|coupons?|double coupons!|clipped|clip coupon.*|sign in to clip.*|boost by kroger.*|choose backup.*|backup item.*|special requests?.*|add a special request.*|dashpass.*|substitution preferences.*|doubledash.*|express.*|temporarily unavailable|not available.*|this item is not available.*|\d+\s+items?\s+(are|is)\s+no\s+longer\s+available.*|these items have been removed.*|available|available deals.*|available for \d+ of \d+ items.*|ready in \d+.*|ready by .*|check nearby clubs|out of stock.*|in stock.*|many in stock|likely in stock|low in stock|only \d+ left.*|ebt eligible|snap ebt.*|tomorrow.*|today.*|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm).*|free with w\+.*|free with walmart\+.*|free with your membership.*|free delivery as soon as.*|always free.*|return or replace.*|change|change\s+(delivery\s+|pickup\s+|shipping\s+)?address.*|choose another address.*|deliver to.*|see all|view all|sponsored|ad|advertisement|overall pick|best seller|popular pick|rollback|free shipping.*|free \d+-day returns.*|free holiday returns.*|free returns at pickup.*|100% satisfaction guarantee.*|freshness guarantee(?!d\b).*|reduced carbon impact.*|see customer images.*|from the manufacturer.*|item instructions.*|edit instructions.*|add note for shopper.*|arrives between .*|arrives by .*|sold by .*|fulfilled by .*|sold and shipped by .*|shipped by .*|report an issue with seller.*|shop confidently|your usuals,\s*on your schedule.*|save time and stay stocked.*|how it works|pro seller|gift eligible.*|pickup and delivery options.*|fees may apply.*|service fees apply.*|spend \$?\d+.*|free same-day delivery.*|created with sketch.*|select all|product information|items to add next|shop now|learn more|terms apply|subscribe.*|share|similar items.*|frequently bought.*|often bought with.*|customers also.*|you might also.*|nutrition facts|serving size.*|calories.*|about this item|product details|specifications|at a glance|description|highlights|features|label info|how do you want your items?.*|max\s+\d+\s+per\s+order.*|final\s+cost\s+by\s+weight.*|avg\s+price.*|instant\s+savings.*|ends\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d+.*|really\s+philly\s+good.*|.*\bsam'?s\s+club|your carts|personal cart|continue shopping|restaurants|grocery|household|fashion|beauty|pharmacy|electronics|auto|home|shop|my items|sparky|services|account|back|close|filter|sort by|reorder|buy again|continue to check\s*out|proceed to check\s*out|go to check\s*out|check\s*out|check\s*out all items|estimated total|item subtotal|subtotal|order summary)$|©\s*\d{4}\b|\b(bought since yesterday|try a subscription|bought \d+\+?\s*times?|purchased \d+\+?\s*times?|stay stocked|stay stocked and subscribe|last purchased|usual items in stock|replace with best match|edit instructions|add note for shopper|item may be available in your local warehouse|price may vary|max \d+ per order|final cost by weight|buy in warehouse|join prime|statement credit|amazon fresh is not available|choose a store to see|straight talk|google pixel|pixel \d+a?|iphone \d+|samsung galaxy|tracfone|boost mobile|cricket wireless|total wireless|wireless plan|prepaid phone|onepay|welcome bonus|credit card|report an issue with seller|your usuals,\s*on your schedule|save time and stay stocked|gas savings|walmart\+|walmart cash|manufacturer offer|scan barcodes?|barcode scanner|opens barcode scanner|qr code|preferred address|change delivery address|change address|is this right|aisle\s+[a-z0-9]+|located\s+in\s+aisle\s+[a-z0-9]+|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|free\s+turkey|turkey\s+earned|pickup\s+benefit|same-day\s+select|more\s+deliveries\s+for\s+less|unlimited\s+delivery|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(hr|hour|min)s?\s+or\s+less|\d{1,2}(:\d{2})?\s*(am|pm)?\s*[-–—]\s*\d{1,2}(:\d{2})?\s*(am|pm)|free with w\+|free with walmart\+)\b|&\s*more\.?$|^\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway|terrace|trail)\b|,\s*was$|[!?]$""",
             RegexOption.IGNORE_CASE,
         )
         private val FOOD_HINTS = Regex(
-            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|dinner rolls?|cinnamon rolls?|sweet rolls?|crescent rolls?|hawaiian rolls?|sausage rolls?|pizza rolls?|egg rolls?|bread rolls?|kaiser rolls?|sub rolls?|hoagie rolls?|sandwich rolls?|potato rolls?|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|toaster| glazed|powdered|my cookie dealer|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|crunchmaster|mary'?s gone|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|french toast|breakfast|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|wasabi|inglehoffer|kikkoman|beaver|wicked cutz|koops|tamari|sriracha|hoisin|teriyaki|ponzu|kimchi|miso|gochujang|harissa|chimichurri|remoulade|chutney|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|pompeian|bertolli|vinegar|turkey|butterball|jennie-?o|chicken|rotisserie|poultry|beef|angus|usda choice|usda prime|steak|ribeye|sirloin|new york strip|strip steak|roast|chuck|tenderloin|brisket|pork|bacon|crumbled bacon|bac'?n|mccormick|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets?|cutlets?|chicken strips?|beef strips?|ham|smithfield|boneless|hickory|smoked|cured|uncured|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dogs?|franks?|frankfurters?|wieners?|ball park|nathan'?s|hebrew national|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|soda pop|ice pop|pop[- ]?tarts?|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang energy|reign|rockstar|prime hydration|prime energy|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit energy|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost original|boost high protein|boost nutritional|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|carvel|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|truffles?|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|honeycrisp|gala|fuji|granny smith|pink lady|mcintosh|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|florets?|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|sweet potato|sweet potatoes|russet|yukon gold|yam|yams|mashed|idahoan|ore-ida|tater|tots|hash\s*browns?|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichokes?|beet|beets|radish|turnip|eggplant|okra|corn|peas|edamame|green beans|brussels|vegetables?|veggies?|frozen|steamfresh|birds eye|green giant|medley|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|de cecco|barilla|rao'?s|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|(?:chicken|beef|vegetable|bone|seafood|turkey|fish)\s+stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|rocher|tony'?s|chocolonely|haribo|lindt|lindor|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|freihofer'?s|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|kellogg'?s?|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|big\s+k|dashmart|wegmans|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|prego|ragu|classico|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|redhot|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|protein|collagen|creatine|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
+            """\b(milk|lactaid|fairlife|oatly|malk|califia|silk|soymilk|almondmilk|oatmilk|eggnog|egg nog|yogurt|kefir|cheese|velveeta|macaroni|mac|cheddar|mozzarella|parmesan|provolone|swiss|gouda|feta|ricotta|queso|butter|kerrygold|cream|creamer|sour cream|cottage cheese|eggs?|egg white|bread|bagel|bagels|buns|dinner rolls?|cinnamon rolls?|sweet rolls?|crescent rolls?|hawaiian rolls?|sausage rolls?|pizza rolls?|egg rolls?|bread rolls?|kaiser rolls?|sub rolls?|hoagie rolls?|sandwich rolls?|potato rolls?|tortilla|tortillas|muffin|muffins|donut|donuts|doughnut|doughnuts|bismark|bismarks|pastry|pastries|toaster| glazed|powdered|my cookie dealer|danish|croissant|croissants|fritter|eclair|strudel|turnover|cupcake|cupcakes|pie|cobbler|chips|crisps|crispy|fried|crackers|crunchmaster|mary'?s gone|wafers|pretzels|popcorn|puffs|cereal|granola|oats|oatmeal|pancake|pancakes|waffle|waffles|french toast|breakfast|syrup|honey|jam|jelly|preserves|marmalade|peanut butter|almond butter|sunflower butter|nutella|ranch|dressing|sauce|gravy|alfredo|pesto|marinara|salsa|ketchup|mustard|mayo|mayonnaise|aioli|relish|tartar|horseradish|wasabi|inglehoffer|kikkoman|beaver|wicked cutz|koops|tamari|sriracha|hoisin|teriyaki|ponzu|kimchi|miso|gochujang|harissa|chimichurri|remoulade|chutney|hummus|guacamole|tzatziki|dip|olive oil|avocado oil|canola oil|vegetable oil|coconut oil|sesame oil|pompeian|bertolli|vinegar|turkey|butterball|jennie-?o|chicken|rotisserie|poultry|beef|angus|usda choice|usda prime|steak|ribeye|sirloin|new york strip|strip steak|roast|chuck|tenderloin|brisket|pork|bacon|crumbled bacon|bac'?n|mccormick|sausage|kielbasa|bratwurst|chorizo|meatballs|meatloaf|patties|patty|fillets?|cutlets?|chicken strips?|beef strips?|ham|smithfield|boneless|hickory|smoked|cured|uncured|prosciutto|pancetta|deli|salami|pepperoni|bologna|pastrami|corned beef|hot dogs?|franks?|frankfurters?|wieners?|ball park|nathan'?s|hebrew national|jerky|salmon|tuna|shrimp|scallops|crab|lobster|cod|tilapia|halibut|mahimahi|trout|sardines|anchovies|fish|seafood|juice|tropicana|simply|minute maid|mott'?s|welch'?s|ocean spray|v8|naked|bolthouse|suja|sunnyd|sunny delight|capri sun|kool-aid|hi-c|hawaiian punch|applesauce|apple\s+sauce|pouch|pouches|lemonade|limeade|smoothie|cider|nectar|soda|cola|soda pop|ice pop|pop[- ]?tarts?|root beer|ginger ale|cream soda|sparkling|sports drink|electrolyte|electrolytes|gatorade|powerade|bodyarmor|liquid i\.?v\.?|pedialyte|electrolit|biolyte|nuun|lmnt|nooma|propel|vitaminwater|tea|matcha|chai|yerba mate|guayaki|coffee|cold brew|frappuccino|latte|mocha|nitro|espresso|starbucks|stok|la colombe|chameleon|dunkin|arizona|pure leaf|gold peak|snapple|lipton|brisk|sweet leaf|ito en|honest tea|gt'?s|health-ade|kevita|water|seltzer|club soda|tonic|fiji|evian|essentia|smartwater|life wtr|dasani|aquafina|pure life|ozarka|poland spring|deer park|zephyrhills|ice mountain|arrowhead|crystal geyser|voss|proud source|mountain valley|san pellegrino|pellegrino|perrier|topo chico|gerolsteiner|waterloo|bubly|polar|aha|zuberfizz|nixie|sparkling ice|clear american|kombucha|energy drink|pre-?workout|monster|red bull|redbull|celsius|alani|ghost|c4|cellucor|bang energy|reign|rockstar|prime hydration|prime energy|5-hour|zoa|xyience|nos|full throttle|venom|accelerator|uptime|bum energy|ryse|gorilla mode|bucked up|total war|lit energy|optimum nutrition|amino energy|gold standard|six star|prosupps|hyde|jym|transparent labs|legion|ora organic|core power|premier protein|muscle milk|orgain|owyn|fairlife nutrition|ensure|boost original|boost high protein|boost nutritional|carnations|nesquik|truemoo|yoohoo|cookie|cookies|brownie|brownies|cake|carvel|cake roll|swiss roll|pumpkin|candy|peppermint|mint|mints|chocolate|truffles?|gummies|gummy|licorice|taffy|caramel|toffee|fudge|marshmallow|marshmallows|fruit|snacks|apple|apples|honeycrisp|gala|fuji|granny smith|pink lady|mcintosh|banana|bananas|strawberry|strawberries|blueberry|blueberries|raspberry|raspberries|blackberry|blackberries|cranberry|cranberries|cherry|cherries|garcia|cherry garcia|half-baked|half baked|chunky monkey|phish food|americone|tonight dough|ben\s*&\s*jerry'?s?|talenti|haagen|breyers|blue bell|halo top|yasso|klondike|drumstick|outshine|sundae|berry|berries|avocado|avocados|spinach|broccoli|florets?|kale|salad|lettuce|romaine|arugula|tomato|tomatoes|potato|potatoes|sweet potato|sweet potatoes|russet|yukon gold|yam|yams|mashed|idahoan|ore-ida|tater|tots|hash\s*browns?|onion|onions|french'?s|garlic|carrot|carrots|cucumber|cucumbers|pepper|peppers|mushroom|mushrooms|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|ginger|celery|cabbage|cauliflower|zucchini|squash|asparagus|artichokes?|beet|beets|radish|turnip|eggplant|okra|corn|peas|edamame|green beans|brussels|vegetables?|veggies?|frozen|steamfresh|birds eye|green giant|medley|orange|oranges|mandarin|clementine|tangerine|grapefruit|grape|grapes|peach|peaches|nectarine|apricot|mango|mangoes|lemon|lemons|lime|limes|melon|watermelon|cantaloupe|honeydew|pineapple|papaya|pomegranate|fig|figs|date|dates|pear|pears|plum|plums|kiwi|coconut|beans|black beans|pinto beans|kidney beans|garbanzo|lentils|chickpeas|rice|quinoa|couscous|barley|farro|pasta|spaghetti|fettuccine|linguine|rigatoni|rotini|macaroni|penne|lasagna|ravioli|tortellini|gnocchi|de cecco|barilla|rao'?s|shells|noodles|ramen|chow mein|udon|soba|soup|chowder|stew|chili|broth|(?:chicken|beef|vegetable|bone|seafood|turkey|fish)\s+stock|bouillon|pizza|flatbread|calzone|burrito|chimichanga|quesadilla|enchilada|taco|taquito|tamale|empanada|dumpling|potsticker|gyoza|spring roll|wonton|hot pocket|hot pockets|morningstar|just bare|nuggets|tenders|fries|wings|poppers|mozzarella sticks|ice cream|gelato|sorbet|sherbet|popsicle|fudge bar|doritos|cheetos|takis|lay'?s|ruffles|pringles|fritos|tostitos|sun chips|sunchips|cape cod|kettle brand|utza?|herr'?s|wise|siete|lesser evil|popcorners|pirate'?s booty|smartfood|skinny pop|skinnypop|boomchickapop|cheez-it|goldfish|ritz|club crackers|town house|saltines|graham crackers|teddy grahams|animal crackers|knoppers|storck|merci|kinder|ferrero|rocher|tony'?s|chocolonely|haribo|lindt|lindor|ghirardelli|hershey'?s|reese'?s|m&m'?s|snickers|twix|milky way|kit kat|kitkat|butterfinger|skittles|starburst|sour patch|swedish fish|nerds|trolli|airheads|jolly rancher|life savers|werther'?s|wheat thins|triscuit|oreo|chips ahoy|nutter butter|belvita|newton|fig newtons|keebler|little debbie|freihofer'?s|hostess|entemann'?s|entenmann'?s|sara lee|cheerios|lucky charms|froot loops|cinnamon toast|frosted flakes|honey bunches|raisin bran|special k|rice krispies|cheX|kashi|cascadian farm|magic spoon|catalinacrunch|catalina crunch|nature'?s path|bob'?s red mill|quaker|kodiak|krusteaz|bisquick|birch benders|pearl milling|aunt jemima|mrs\.?\s*butterworth'?s|log cabin|kellogg'?s?|eggo|vans|van'?s|coca-cola|coke|pepsi|dr pepper|mountain dew|mtn dew|sprite|7up|starry|fanta|sunkist|crush|squirt|fresca|canada dry|schweppes|seagram'?s|vernors|a&w|mug|barq'?s|ibc|stewart'?s|jarritos|mexican coke|virgil'?s|zvia|zevia|culture pop|cove|liquid death|olipop|poppi|la croix|lacroix|spindrift|harmless harvest|vita coco|c2o|goya|specially selected|friendly farms|sundae shoppe|belmont|clancy'?s|millville|burman'?s|chef'?s cupboard|l'?oven fresh|park street deli|priano|mama cozzi|dakota'?s pride|happy farms|simply nature|livegfree|elevation|barissimo|benton'?s|choceur|moser roth|southern grove|sweet harvest|savoritz|tuscan garden|stonemill|bake shop|kirkwood|parkview|appleton farms|fremont fish|never any|earth grown|great value|marketside|freshness guaranteed|bettergoods|sam'?s choice|good\s*&\s*gather|favorite day|market pantry|kirkland|wellsley farms|berkley jensen|member'?s mark|simple truth|private selection|big\s+k|dashmart|wegmans|365|boar'?s head|oscar mayer|hillshire|hormel|jimmy dean|tyson|perdue|applegate|prego|ragu|classico|hunt'?s|heinz|hellmann'?s|best foods|sweet baby ray'?s|stubb'?s|a\.?1\.?|tabasco|cholula|frank'?s|redhot|hidden valley|primal kitchen|kraft|sargento|tillamook|philadelphia|chobani|fage|oikos|siggi'?s|yoplait|dannon|stonyfield|smucker'?s|bonne maman|jif|skippy|justin'?s|rxbar|clif|kind|larabar|nature valley|annie'?s|goodles|banza|protein|collagen|creatine|flour|sugar|salt|spice|seasoning|cocoa|baking|yeast|pickle|pickles|olive|olives|tofu|tempeh|seitan|almond|almonds|cashew|cashews|walnut|walnuts|pecan|pecans|pistachio|pistachios|peanut|peanuts|macadamia|hazelnut|trail mix|sunflower seeds|pumpkin seeds|chia|flax|hemp)\b""",
             RegexOption.IGNORE_CASE,
         )
         private val NON_FOOD_PRODUCT = Regex(
@@ -189,6 +192,8 @@ class GroceryScreenReaderService : AccessibilityService() {
         )
         private val PRICE_PATTERN = Regex("""(\$\s*\d+(\.\d{2}|\s+\d{2})?|\b\d+\s*dollars?(\s*(and\s*)?\d+\s*cents?)?\b)""", RegexOption.IGNORE_CASE)
         private val ADD_TILE_BUTTON = Regex("""^(\+?\s*add(\s+.+)?|quick add.*|add item.*|choose options.*|\+|increase quantity.*)$""", RegexOption.IGNORE_CASE)
+        private val DECREMENT_TILE_BUTTON = Regex("""^(-|−|–|decrease\s+quantity.*|decrement.*)$""", RegexOption.IGNORE_CASE)
+        private val COLLECTION_CONTAINER_CLASS = Regex("""(recyclerview|gridview|listview|adapterview|viewpager|horizontalscrollview|staggeredgrid)""", RegexOption.IGNORE_CASE)
         private val CLUB_ITEM_NUMBER = Regex("""^(item|model|sku)\s*:?\s*#?[a-z0-9\-]+(\s*[|•,/]\s*(item|model|sku)\s*:?\s*#?[a-z0-9\-]+)*$""", RegexOption.IGNORE_CASE)
         private val NON_INGREDIENT_TEXT = Regex(
             """\b(see (product )?packaging|refer to packaging|packaging for current|varies by location|select a store|nutrition facts|serving size|amount per serving|daily value|items to add next|product information|customers also|similar items|you might also|related items|sold by|fulfilled by)\b""",
@@ -242,6 +247,8 @@ class GroceryScreenReaderService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
     private val rejectedTitles = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+    @Volatile
+    private var scanGeneration: Int = 0
     private var currentPackage = ""
     private var currentStoreBucket = ""
     private var lastKey = ""
@@ -265,6 +272,54 @@ class GroceryScreenReaderService : AccessibilityService() {
     private var lastHorizontalScrollDir: Int = 0
     private var lastHorizontalScrollAtMs: Long = 0L
 
+    @Synchronized
+    private fun bumpScanGeneration(): Int {
+        val next = scanGeneration + 1
+        scanGeneration = next
+        return next
+    }
+
+    private fun isTargetGroceryWindowActive(expectedPkg: String): Boolean {
+        if (expectedPkg.isBlank() || expectedPkg !in STORE_PACKAGES) return false
+        val activeRoot = rootInActiveWindow
+        val activePkg = activeRoot?.packageName?.toString().orEmpty()
+        recycleNode(activeRoot)
+        if (activePkg == expectedPkg) return true
+        val isOverlayOrTransient = activePkg.isEmpty() ||
+            activePkg == packageName ||
+            activePkg in IGNORED_TRANSIENT_PACKAGES ||
+            activePkg.contains("inputmethod") ||
+            activePkg.contains("keyboard")
+        if (!isOverlayOrTransient) return false
+        var matchedWindow = false
+        var otherStoreWindowVisible = false
+        runCatching {
+            for (win in windows) {
+                val r = win.root ?: continue
+                val wPkg = r.packageName?.toString().orEmpty()
+                recycleNode(r)
+                if (wPkg == expectedPkg) {
+                    matchedWindow = true
+                } else if (wPkg.isNotEmpty() && wPkg != packageName && wPkg in STORE_PACKAGES) {
+                    otherStoreWindowVisible = true
+                }
+            }
+        }
+        return matchedWindow && !otherStoreWindowVisible
+    }
+
+    private fun spatialCartMatchForClick(clickRect: Rect): String? {
+        if (clickRect.top <= 0 || lastCartTitleNodes.isEmpty()) return null
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val maxCardDistPx = (340f * density).toInt()
+        return lastCartTitleNodes
+            .filter { (tn, _) ->
+                tn.top in (clickRect.top - maxCardDistPx)..(clickRect.bottom + (36f * density).toInt())
+            }
+            .minByOrNull { (tn, _) -> kotlin.math.abs(clickRect.top - tn.bottom) }
+            ?.second
+    }
+
     private val scanRunnable = Runnable {
         pendingSinceMs = 0L
         readAndScan()
@@ -280,6 +335,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     private val foregroundCheck = object : Runnable {
         override fun run() {
             if (!AccessibilityConsent.granted(this@GroceryScreenReaderService) || !isDeviceInteractiveAndUnlocked()) {
+                bumpScanGeneration()
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
@@ -295,6 +351,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (pkg == null) {
                 nullPkgCount++
                 if (overlayVisible && nullPkgCount >= 2) {
+                    bumpScanGeneration()
                     sendToOverlay(OverlayWindowService.ACTION_HIDE)
                     overlayVisible = false
                     lastKey = ""
@@ -305,6 +362,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 nullPkgCount = 0
                 val isTransient = pkg in IGNORED_TRANSIENT_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 if (overlayVisible && !isTransient && pkg !in STORE_PACKAGES && pkg != packageName) {
+                    bumpScanGeneration()
                     sendToOverlay(OverlayWindowService.ACTION_HIDE)
                     overlayVisible = false
                     lastKey = ""
@@ -321,6 +379,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
+        bumpScanGeneration()
         // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
         sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
         lastKey = ""
@@ -348,6 +407,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!AccessibilityConsent.granted(this) || !isDeviceInteractiveAndUnlocked()) {
             if (overlayVisible) {
+                bumpScanGeneration()
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
@@ -358,10 +418,13 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (pkg !in STORE_PACKAGES) return
         nullPkgCount = 0
         if (pkg != currentPackage) {
+            bumpScanGeneration()
             currentPackage = pkg
             currentStoreBucket = defaultBucketForPackage(pkg)
+            inFlightScanKey = ""
             lastKey = ""
             wasOnCartScreen = false
+            pendingAddToCartClick = false
             lastClickedProductTitle = null
             lastConfirmedPdpTitle = null
             lastRowGradedTitle = null
@@ -410,6 +473,15 @@ class GroceryScreenReaderService : AccessibilityService() {
                 return
             }
 
+            val clickRect = Rect()
+            src.getBoundsInScreen(clickRect)
+            val srcViewId = src.viewIdResourceName?.lowercase().orEmpty()
+            val screenW = resources.displayMetrics.widthPixels.coerceAtLeast(720)
+            val density = resources.displayMetrics.density.coerceAtLeast(1f)
+            val minGridCardSizePx = (110f * density).toInt()
+            val maxGridColWidthPx = (screenW * 0.56f).toInt()
+            val horizTolPx = (16f * density).toInt()
+
             val candidateClickStrings = ArrayList<String>()
             event.text?.forEach {
                 if (!isSensitiveCandidate(it.toString())) addCandidateStrings(candidateClickStrings, it)
@@ -443,19 +515,53 @@ class GroceryScreenReaderService : AccessibilityService() {
                         }
                         recycleNode(ch)
                     }
-                    // Walk up to 5 ancestor levels (and grandchildren) so tapping a product photo, '+' button, or 'Remove'
-                    // inside a nested CardView/Compose row captures that card's title without climbing into sibling rows!
+                    // Walk up to 5 ancestor levels within the SPECIFIC card/row container that owns the clicked view.
+                    // Never climb into RecyclerView/GridView/ListView containers or across sibling columns in a 2-column grid!
                     var ancestor = runCatching { src.parent }.getOrNull()
                     var depth = 0
                     while (ancestor != null && depth < 5) {
                         val curAncestor = ancestor
+                        val ancCls = curAncestor.className?.toString().orEmpty()
+                        if (COLLECTION_CONTAINER_CLASS.containsMatchIn(ancCls)) {
+                            recycleNode(curAncestor)
+                            ancestor = null
+                            break
+                        }
                         val beforeCount = candidateClickStrings.size
                         if (!isProtectedNode(curAncestor) && curAncestor.isVisibleToUser) {
                             addCandidateStrings(candidateClickStrings, curAncestor.text)
                             addCandidateStrings(candidateClickStrings, curAncestor.contentDescription)
-                            for (i in 0 until minOf(curAncestor.childCount, 12)) {
+                            val childCount = minOf(curAncestor.childCount, 12)
+                            val children = ArrayList<AccessibilityNodeInfo>(childCount)
+                            val childRects = ArrayList<Rect>(childCount)
+                            for (i in 0 until childCount) {
                                 val pch = runCatching { curAncestor.getChild(i) }.getOrNull() ?: continue
-                                if (!isProtectedNode(pch) && pch.isVisibleToUser) {
+                                val r = Rect()
+                                pch.getBoundsInScreen(r)
+                                children.add(pch)
+                                childRects.add(r)
+                            }
+                            val hasOwnedGridColumnCard = clickRect.width() > 0 && children.indices.count { idx ->
+                                val pch = children[idx]
+                                val r = childRects[idx]
+                                pch.childCount > 0 && r.width() in minGridCardSizePx..maxGridColWidthPx && r.height() >= minGridCardSizePx
+                            } >= 2 && children.indices.any { idx ->
+                                val pch = children[idx]
+                                val r = childRects[idx]
+                                pch.childCount > 0 &&
+                                    r.width() in minGridCardSizePx..maxGridColWidthPx &&
+                                    r.height() >= minGridCardSizePx &&
+                                    clickRect.centerX() in (r.left - horizTolPx)..(r.right + horizTolPx)
+                            }
+                            for (idx in children.indices) {
+                                val pch = children[idx]
+                                val r = childRects[idx]
+                                val isSiblingGridColumn = hasOwnedGridColumnCard &&
+                                    pch.childCount > 0 &&
+                                    r.width() in minGridCardSizePx..maxGridColWidthPx &&
+                                    r.height() >= minGridCardSizePx &&
+                                    clickRect.centerX() !in (r.left - horizTolPx)..(r.right + horizTolPx)
+                                if (!isSiblingGridColumn && !isProtectedNode(pch) && pch.isVisibleToUser) {
                                     addCandidateStrings(candidateClickStrings, pch.text)
                                     addCandidateStrings(candidateClickStrings, pch.contentDescription)
                                     for (j in 0 until minOf(pch.childCount, 8)) {
@@ -472,7 +578,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                         }
                         val foundCardTitleAtThisLevel = candidateClickStrings.subList(beforeCount, candidateClickStrings.size).any { raw ->
                             val c = cleanTitleCandidate(raw)
-                            isCandidateProductTitle(c) && FOOD_HINTS.containsMatchIn(c)
+                            isCandidateProductTitle(c) && (FOOD_HINTS.containsMatchIn(c) || NON_FOOD_PRODUCT.containsMatchIn(c))
                         }
                         val nextParent = runCatching { curAncestor.parent }.getOrNull()
                         recycleNode(curAncestor)
@@ -483,11 +589,10 @@ class GroceryScreenReaderService : AccessibilityService() {
                     if (ancestor != null) recycleNode(ancestor)
                 }
             }.trim()
-            val clickRect = Rect()
-            src.getBoundsInScreen(clickRect)
-            val srcViewId = src.viewIdResourceName?.lowercase().orEmpty()
             recycleNode(src)
 
+            val capturedPkg = pkg
+            val capturedBucket = currentStoreBucket.ifEmpty { defaultBucketForPackage(pkg) }
             var clickedProduct: String? = null
             var validClickedCandidates: List<String> = emptyList()
             if (Regex("""(?i)^(back|navigate up|close|dismiss|cancel|search|clear|cart|view cart)\b""").containsMatchIn(clickedText) ||
@@ -504,73 +609,63 @@ class GroceryScreenReaderService : AccessibilityService() {
                 // photo + "Bought 5+ times" banner that pushes the PDP title TextView below the fold!
                 validClickedCandidates = candidateClickStrings
                     .map { cleanTitleCandidate(it) }
-                    .filter { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) }
+                    .filter { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) && !NON_FOOD_PRODUCT.containsMatchIn(it) }
                 clickedProduct = validClickedCandidates
                     .filter { it.split(' ').size >= 3 }
                     .maxByOrNull { it.length }
                     ?: validClickedCandidates.maxByOrNull { it.length }
                 if (clickedProduct != null) {
                     lastClickedProductTitle = clickedProduct
-                    lastClickedProductPkg = pkg
+                    lastClickedProductPkg = capturedPkg
                     lastClickedProductAtMs = System.currentTimeMillis()
                     rejectedTitles.clear()
-                    val store = ScanApi.storeForPackage(pkg)
-                    ScanApi.prewarmScan(applicationContext, clickedProduct, null, store)
+                    val store = ScanApi.storeForPackage(capturedPkg)
+                    ScanApi.prewarmScan(applicationContext, clickedProduct, null, store, storeBucket = capturedBucket)
                     validClickedCandidates.distinct().take(2).forEach { cand ->
                         if (cand != clickedProduct) {
-                            ScanApi.prewarmScan(applicationContext, cand, null, store)
+                            ScanApi.prewarmScan(applicationContext, cand, null, store, storeBucket = capturedBucket)
                         }
                     }
                 }
             }
 
-            val isRemoveOrCartEditClick =
-                Regex("""(?i)\b(remove|delete|save for later|decrease quantity|remove item|undo)\b""").containsMatchIn(clickedText) ||
-                    srcViewId.contains("remove") ||
-                    srcViewId.contains("delete") ||
-                    srcViewId.contains("stepper_minus") ||
-                    srcViewId.contains("minus_button") ||
-                    srcViewId.contains("decrement")
-            if (isRemoveOrCartEditClick) {
-                val isStepperMinusAtQtyOne =
-                    (Regex("""(?i)\b(decrease\s+quantity|remove\s+item)\b""").containsMatchIn(clickedText) ||
+            val isStepperDecrementClick =
+                !clickedText.contains("undo", ignoreCase = true) && (
+                    DECREMENT_TILE_BUTTON.matches(clickedText) ||
+                        Regex("""(?i)\b(decrease\s+quantity|decrement)\b""").containsMatchIn(clickedText) ||
                         srcViewId.contains("stepper_minus") ||
                         srcViewId.contains("minus_button") ||
-                        srcViewId.contains("decrement")) &&
-                        Regex("""(?i)(?:\b(?:qty|quantity)\s*:?\s*1\b|\b1\s*(?:ct|in\s+(?:cart|bag|basket|order)|item)\b|^\s*[-–—]?\s*1\s*$)""").containsMatchIn(clickedText)
-                val isHardRemoveClick =
-                    !clickedText.contains("undo", ignoreCase = true) && (
-                        Regex("""(?i)\b(remove|delete|save for later)\b""").containsMatchIn(clickedText) ||
-                            srcViewId.contains("remove") ||
-                            srcViewId.contains("delete") ||
-                            isStepperMinusAtQtyOne
-                        )
-                if (isHardRemoveClick) {
-                    val density = resources.displayMetrics.density.coerceAtLeast(1f)
-                    val maxCardDistPx = (340f * density).toInt()
-                    val spatialMatch = if (clickRect.top > 0 && lastCartTitleNodes.isNotEmpty()) {
-                        lastCartTitleNodes
-                            .filter { (tn, _) ->
-                                tn.top in (clickRect.top - maxCardDistPx)..(clickRect.bottom + (36f * density).toInt())
-                            }
-                            .minByOrNull { (tn, _) -> kotlin.math.abs(clickRect.top - tn.bottom) }
-                            ?.second
-                    } else null
-                    val removedItemTitle = clickedProduct ?: validClickedCandidates.firstOrNull() ?: spatialMatch
-                    if (!removedItemTitle.isNullOrBlank() && AccessibilityConsent.granted(this)) {
-                        val remArr = org.json.JSONArray().put(removedItemTitle)
-                        sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
-                            putExtra(OverlayWindowService.EXTRA_CART_ARRAY, "[]")
+                        srcViewId.contains("decrement")
+                    )
+            val isExplicitRemoveClick =
+                !clickedText.contains("undo", ignoreCase = true) && (
+                    Regex("""(?i)\b(remove|delete|save for later|remove item)\b""").containsMatchIn(clickedText) ||
+                        srcViewId.contains("remove") ||
+                        srcViewId.contains("delete")
+                    )
+            if (isExplicitRemoveClick || isStepperDecrementClick || clickedText.contains("undo", ignoreCase = true)) {
+                val targetTitle = clickedProduct ?: validClickedCandidates.firstOrNull() ?: (if (wasOnCartScreen) spatialCartMatchForClick(clickRect) else null)
+                if (!targetTitle.isNullOrBlank() && AccessibilityConsent.granted(this)) {
+                    if (isExplicitRemoveClick && !isStepperDecrementClick) {
+                        val remArr = org.json.JSONArray().put(targetTitle)
+                        sendToOverlay(OverlayWindowService.ACTION_CART_REMOVE_ITEM, capturedPkg, capturedBucket) {
+                            putExtra(OverlayWindowService.EXTRA_TITLE, targetTitle)
                             putExtra(OverlayWindowService.EXTRA_REMOVED_TITLES, remArr.toString())
+                        }
+                    } else if (isStepperDecrementClick) {
+                        sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, capturedPkg, capturedBucket) {
+                            putExtra(OverlayWindowService.EXTRA_TITLE, targetTitle)
+                            putExtra(OverlayWindowService.EXTRA_CART_ARRAY, "[]")
+                            putExtra(OverlayWindowService.EXTRA_QTY_DELTA, -1)
                             putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
-                            putExtra(OverlayWindowService.EXTRA_KEEP_MODE, true)
+                            putExtra(OverlayWindowService.EXTRA_KEEP_MODE, !wasOnCartScreen)
                         }
                     }
                 }
                 lastKey = ""
                 pendingSinceMs = System.currentTimeMillis()
                 handler.removeCallbacks(scanRunnable)
-                // Give the store app ~950ms of zero accessibility IPC traffic to complete its Remove animation/network call
+                // Give the store app ~950ms of zero accessibility IPC traffic to complete its Remove/stepper animation
                 handler.postDelayed(scanRunnable, 950L)
                 return
             }
@@ -585,28 +680,39 @@ class GroceryScreenReaderService : AccessibilityService() {
                     srcViewId.contains("add_button") ||
                     srcViewId.contains("increment")
             if (isAddClick) {
-                pendingAddToCartClick = true
-                val addedTitle = clickedProduct ?: lastRowGradedTitle
+                // Only associate an "Add" / "+" click with the specific card/row container that owns that button (never lastRowGradedTitle!)
+                val addedTitle = clickedProduct ?: (if (wasOnCartScreen) spatialCartMatchForClick(clickRect) else null)
                 if (addedTitle != null) {
-                    val store = ScanApi.storeForPackage(pkg)
+                    pendingAddToCartClick = false
+                    val store = ScanApi.storeForPackage(capturedPkg)
                     val appContext = applicationContext
                     io.execute {
-                        val json = runCatching { ScanApi.scan(appContext, addedTitle, null, store) }.getOrNull()
+                        val json = runCatching {
+                            ScanApi.scan(appContext, addedTitle, null, store, storeBucket = capturedBucket)
+                        }.getOrNull()
                         if (json != null) {
                             val arr = org.json.JSONArray().put(json)
                             handler.post {
-                                if (AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
-                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                if (AccessibilityConsent.granted(this@GroceryScreenReaderService) &&
+                                    currentPackage == capturedPkg &&
+                                    currentStoreBucket == capturedBucket &&
+                                    isTargetGroceryWindowActive(capturedPkg)
+                                ) {
+                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, capturedPkg, capturedBucket) {
+                                        putExtra(OverlayWindowService.EXTRA_TITLE, addedTitle)
                                         putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
+                                        putExtra(OverlayWindowService.EXTRA_QTY_DELTA, 1)
                                         putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
-                                        putExtra(OverlayWindowService.EXTRA_KEEP_MODE, true)
+                                        putExtra(OverlayWindowService.EXTRA_KEEP_MODE, !wasOnCartScreen)
                                     }
                                 }
                             }
                         }
                     }
+                } else {
+                    pendingAddToCartClick = true
                 }
-                lastKey = "" // Force re-evaluation so the clicked product is recorded in cart automatically
+                lastKey = "" // Force re-evaluation so a confirmed Single PDP sticky-bar Add is recorded in cart
                 pendingSinceMs = System.currentTimeMillis()
                 handler.removeCallbacks(scanRunnable)
                 handler.postDelayed(scanRunnable, 240L)
@@ -678,6 +784,21 @@ class GroceryScreenReaderService : AccessibilityService() {
         try {
             val pkg = root.packageName?.toString() ?: return
             if (pkg !in STORE_PACKAGES) return
+            if (pkg != currentPackage) {
+                bumpScanGeneration()
+                currentPackage = pkg
+                currentStoreBucket = defaultBucketForPackage(pkg)
+                inFlightScanKey = ""
+                lastKey = ""
+                wasOnCartScreen = false
+                pendingAddToCartClick = false
+                lastClickedProductTitle = null
+                lastConfirmedPdpTitle = null
+                lastRowGradedTitle = null
+                lastRowLeadTitle = null
+                lastRowLeadLeftX = -1
+                rejectedTitles.clear()
+            }
 
             val rawNodes = collectTextNodes(root)
             val allNodes = stripSponsoredAdNodes(rawNodes)
@@ -724,9 +845,11 @@ class GroceryScreenReaderService : AccessibilityService() {
                 Regex("""(?i)^cart\s*,?\s*(?:\(\s*0(?:\s+items?)?\s*\)|0\s+items?\b)(?:\s*,\s*\$0\.00)?$""").matches(it.text.trim())
             }
             if (hasZeroCartBadgeInHeader) {
+                bumpScanGeneration()
                 lastCartTitleNodes = emptyList()
-                sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, pkg, bucketSig) {
                     putExtra(OverlayWindowService.EXTRA_CART_ARRAY, "[]")
+                    putExtra(OverlayWindowService.EXTRA_CART_BADGE_COUNT, 0)
                     putExtra(OverlayWindowService.EXTRA_REPLACE_CART, true)
                     putExtra(OverlayWindowService.EXTRA_KEEP_MODE, true)
                 }
@@ -738,13 +861,17 @@ class GroceryScreenReaderService : AccessibilityService() {
             val hasDefinitiveCartScreenSignal = !isMultiCartSwitcher && (hasEmptyCartScreenSignal || (hasCartCheckoutSignal && (hasCartItemControls || nodes.any {
                 val t = it.text.trim()
                 t.contains("continue to checkout", ignoreCase = true) ||
+                    t.contains("continue to check out", ignoreCase = true) ||
                     t.contains("proceed to checkout", ignoreCase = true) ||
+                    t.contains("proceed to check out", ignoreCase = true) ||
                     t.contains("go to checkout", ignoreCase = true) ||
+                    t.contains("go to check out", ignoreCase = true) ||
                     t.contains("checkout all items", ignoreCase = true) ||
+                    t.contains("check out all items", ignoreCase = true) ||
                     t.contains("estimated total", ignoreCase = true) ||
                     t.contains("item subtotal", ignoreCase = true) ||
                     t.contains("subtotal", ignoreCase = true) ||
-                    t.matches(Regex("""(?i)^[^a-z0-9]*checkout(\s*\(\d+\))?$""")) ||
+                    t.matches(Regex("""(?i)^[^a-z0-9]*check\s*out(\s*\(\d+\))?$""")) ||
                     t.matches(Regex("""(?i)^cart\s*\(\d+(\s+items?)?\)$""")) ||
                     t.matches(Regex("""(?i)^(personal|family)\s+.*\bcart$""")) ||
                     t.contains("replace with best match", ignoreCase = true) ||
@@ -795,22 +922,27 @@ class GroceryScreenReaderService : AccessibilityService() {
 
             if (isCartScreen) {
                 val isFirstCartFrame = !wasOnCartScreen
+                if (isFirstCartFrame) {
+                    bumpScanGeneration()
+                }
                 wasOnCartScreen = true
                 lastConfirmedPdpTitle = null
                 if (hasEmptyCartScreenSignal) {
                     lastCartTitleNodes = emptyList()
                     val emptyCartKey = "$pkg|$bucketSig|CART_EMPTY"
                     if (lastKey != emptyCartKey) {
+                        bumpScanGeneration()
                         lastKey = emptyCartKey
-                        sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                        sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, pkg, bucketSig) {
                             putExtra(OverlayWindowService.EXTRA_CART_ARRAY, "[]")
+                            putExtra(OverlayWindowService.EXTRA_CART_BADGE_COUNT, 0)
                             putExtra(OverlayWindowService.EXTRA_REPLACE_CART, true)
                         }
                         markVisible()
                     }
                     return
                 }
-                val prevCartSnapshot = lastCartTitleNodes.map { it.second }
+                val authoritativeCartCount = extractAuthoritativeCartCount(activeCartSectionNodes)
                 val explicitRemovedTitles = extractRemovedCartTitles(activeCartSectionNodes)
                 val visibleCartTitles = extractCartScreenTitles(nodes, explicitRemovedTitles, recordNodes = true)
                 val allCartTitles = extractCartScreenTitles(allNodes, explicitRemovedTitles, recordNodes = false)
@@ -825,30 +957,20 @@ class GroceryScreenReaderService : AccessibilityService() {
                         cartTitles.add(cand)
                     }
                 }
-                val removedSet = LinkedHashSet<String>(explicitRemovedTitles)
-                if (!isFirstCartFrame && prevCartSnapshot.isNotEmpty() && cartTitles.size < prevCartSnapshot.size) {
-                    val cartTopHeaderVisible = nodes.take(16).any {
-                        Regex("""(?i)\b(your\s+cart|shopping\s+cart|cart\s*\(\d+|item\s+subtotal|subtotal)\b""").containsMatchIn(it.text.trim())
-                    }
-                    val firstPrevStillPresent = cartTitles.any { isSameCartRowTitle(it, prevCartSnapshot.first()) }
-                    if (cartTitles.isEmpty() || cartTopHeaderVisible || firstPrevStillPresent) {
-                        for (prevTitle in prevCartSnapshot) {
-                            if (cartTitles.none { isSameCartRowTitle(it, prevTitle) }) {
-                                removedSet.add(prevTitle)
-                            }
-                        }
-                    }
-                }
-                val removedTitles = removedSet.toList()
+                // Virtualized RecyclerView carts unbind offscreen rows while scrolling; never treat scrolled-off rows as removed!
+                val removedTitles = explicitRemovedTitles.distinct()
                 val cartQuantities = extractCartQuantities(nodes, cartTitles)
                 val qtySig = cartTitles.joinToString(",") { t -> "${cartQuantities[t] ?: 1}" }
                 if (cartTitles.isNotEmpty() || removedTitles.isNotEmpty()) {
                     val wlSig = ScanApi.currentWatchlistSignature(this)
-                    val cartKey = "$pkg|$bucketSig|CART|$wlSig|first=$isFirstCartFrame|${cartTitles.joinToString("|")}|QTY:$qtySig|REM:${removedTitles.joinToString("|")}"
+                    val cartKey = "$pkg|$bucketSig|CART|$wlSig|first=$isFirstCartFrame|badge=$authoritativeCartCount|${cartTitles.joinToString("|")}|QTY:$qtySig|REM:${removedTitles.joinToString("|")}"
                     if (lastKey != cartKey) {
+                        bumpScanGeneration()
                         lastKey = cartKey
                         markVisible()
-                        val store = ScanApi.storeForPackage(pkg)
+                        val capturedPkg = pkg
+                        val capturedBucket = bucketSig
+                        val store = ScanApi.storeForPackage(capturedPkg)
                         val appContext = applicationContext
                         val removedJson = org.json.JSONArray(removedTitles).toString()
                         val quantitiesJson = org.json.JSONObject().apply {
@@ -860,17 +982,25 @@ class GroceryScreenReaderService : AccessibilityService() {
                         io.execute {
                             val arr = org.json.JSONArray()
                             for (itemTitle in cartTitles) {
-                                val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
+                                val json = runCatching {
+                                    ScanApi.scan(appContext, itemTitle, null, store, storeBucket = capturedBucket)
+                                }.getOrNull()
                                 if (json != null) {
                                     arr.put(json)
                                 }
                             }
                             handler.post {
-                                if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
-                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                                if (overlayVisible &&
+                                    AccessibilityConsent.granted(this@GroceryScreenReaderService) &&
+                                    currentPackage == capturedPkg &&
+                                    currentStoreBucket == capturedBucket &&
+                                    isTargetGroceryWindowActive(capturedPkg)
+                                ) {
+                                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, capturedPkg, capturedBucket) {
                                         putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
                                         putExtra(OverlayWindowService.EXTRA_REMOVED_TITLES, removedJson)
                                         putExtra(OverlayWindowService.EXTRA_CART_QUANTITIES, quantitiesJson)
+                                        putExtra(OverlayWindowService.EXTRA_CART_BADGE_COUNT, authoritativeCartCount)
                                         putExtra(OverlayWindowService.EXTRA_REPLACE_CART, shouldReplace)
                                     }
                                 }
@@ -880,14 +1010,16 @@ class GroceryScreenReaderService : AccessibilityService() {
                 } else {
                     val emptyCartKey = "$pkg|$bucketSig|CART_EMPTY"
                     if (lastKey != emptyCartKey) {
+                        bumpScanGeneration()
                         lastKey = emptyCartKey
-                        if (!hasCartItemControls) {
-                            sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                        if (!hasCartItemControls && authoritativeCartCount <= 0) {
+                            sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, pkg, bucketSig) {
                                 putExtra(OverlayWindowService.EXTRA_CART_ARRAY, "[]")
+                                putExtra(OverlayWindowService.EXTRA_CART_BADGE_COUNT, 0)
                                 putExtra(OverlayWindowService.EXTRA_REPLACE_CART, true)
                             }
                         } else {
-                            sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                            sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG, pkg, bucketSig)
                         }
                         markVisible()
                     }
@@ -900,27 +1032,39 @@ class GroceryScreenReaderService : AccessibilityService() {
                     t.matches(Regex("""(?i)^(?:your\s+|shopping\s+|personal\s+|family\s+)?cart(?:\s*\(\d+(?:\s+items?)?\))?$"""))
             }
             if (isConfirmedSinglePdp || hasHomeOrAisleBanners || totalTileAddCount >= 2 || (!hasCartHeaderTitle && !hasCartCheckoutSignal)) {
-                wasOnCartScreen = false
+                if (wasOnCartScreen) {
+                    wasOnCartScreen = false
+                    bumpScanGeneration()
+                }
             }
 
             // Sync any visible aisle/carousel cards that already show an "in cart" or leading "1 ct" badge into Cart Check in the background!
             val aisleInCartRe = Regex("""(?i)^(?:\d+\s+in\s+(?:cart|bag|basket|order)\s*[-–—:,]?\s*|\d+\s*ct\s+)(.+)$""")
             val aisleAddedTitles = nodes.mapNotNull { n ->
                 aisleInCartRe.find(n.text.trim())?.groupValues?.getOrNull(1)?.let { cleanTitleCandidate(it) }
-            }.filter { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) }.distinct()
+            }.filter { isCandidateProductTitle(it) && FOOD_HINTS.containsMatchIn(it) && !NON_FOOD_PRODUCT.containsMatchIn(it) }.distinct()
             if (aisleAddedTitles.isNotEmpty()) {
-                val store = ScanApi.storeForPackage(pkg)
+                val capturedPkg = pkg
+                val capturedBucket = bucketSig
+                val store = ScanApi.storeForPackage(capturedPkg)
                 val appContext = applicationContext
                 io.execute {
                     val arr = org.json.JSONArray()
                     for (itemTitle in aisleAddedTitles) {
-                        val json = runCatching { ScanApi.scan(appContext, itemTitle, null, store) }.getOrNull()
+                        val json = runCatching {
+                            ScanApi.scan(appContext, itemTitle, null, store, storeBucket = capturedBucket)
+                        }.getOrNull()
                         if (json != null) arr.put(json)
                     }
                     if (arr.length() > 0) {
                         handler.post {
-                            if (overlayVisible && AccessibilityConsent.granted(this@GroceryScreenReaderService)) {
-                                sendToOverlay(OverlayWindowService.ACTION_SYNC_CART) {
+                            if (overlayVisible &&
+                                AccessibilityConsent.granted(this@GroceryScreenReaderService) &&
+                                currentPackage == capturedPkg &&
+                                currentStoreBucket == capturedBucket &&
+                                isTargetGroceryWindowActive(capturedPkg)
+                            ) {
+                                sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, capturedPkg, capturedBucket) {
                                     putExtra(OverlayWindowService.EXTRA_CART_ARRAY, arr.toString())
                                     putExtra(OverlayWindowService.EXTRA_REPLACE_CART, false)
                                     putExtra(OverlayWindowService.EXTRA_KEEP_MODE, true)
@@ -970,7 +1114,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                         // A scan is already in flight on this PDP; don't clobber lastKey while an async ad banner settles.
                         return
                     }
-                    if (lastKey.startsWith("$pkg|") &&
+                    if (lastKey.startsWith("$pkg|$bucketSig|") &&
                         !lastKey.endsWith("|IDLE_CART_AVG") &&
                         !lastKey.endsWith("|CART_EMPTY") &&
                         !lastKey.endsWith("|PDP_SCROLL_HINT") &&
@@ -983,8 +1127,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                     }
                     val scrollHintKey = "$pkg|$bucketSig|PDP_SCROLL_HINT"
                     if (lastKey != scrollHintKey) {
+                        bumpScanGeneration()
                         lastKey = scrollHintKey
-                        sendToOverlay(OverlayWindowService.ACTION_PDP_SCROLL_HINT)
+                        sendToOverlay(OverlayWindowService.ACTION_PDP_SCROLL_HINT, pkg, bucketSig)
                         markVisible()
                     }
                     return
@@ -996,8 +1141,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                 if (shouldSuppressAutomaticPopup(allNodes, totalTileAddCount, hasCarouselPricesOrStock)) {
                     val gateKey = "$pkg|$bucketSig|ONBOARDING_AUTH_GATE"
                     if (lastKey != gateKey || !overlayVisible) {
+                        bumpScanGeneration()
                         lastKey = gateKey
-                        sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                        sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG, pkg, bucketSig)
                         markVisible()
                     }
                     return
@@ -1005,14 +1151,16 @@ class GroceryScreenReaderService : AccessibilityService() {
 
                 val idleKey = "$pkg|$bucketSig|IDLE_CART_AVG"
                 if (lastKey != idleKey || !overlayVisible) {
+                    bumpScanGeneration()
                     lastKey = idleKey
-                    sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
+                    sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG, pkg, bucketSig)
                     markVisible()
                 }
                 return
             }
 
-            val inCartOnPdp = pendingAddToCartClick || (isConfirmedSinglePdp && nodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) })
+            val addedViaStickyPdpCta = isConfirmedSinglePdp && pendingAddToCartClick
+            val inCartOnPdp = isConfirmedSinglePdp && (pendingAddToCartClick || nodes.any { IN_CART_PDP_BADGE.containsMatchIn(it.text) })
             pendingAddToCartClick = false
             val isOutOfStockOnPdp = isConfirmedSinglePdp &&
                 primaryNodes.any { PDP_OUT_OF_STOCK_SIGNAL.containsMatchIn(it.text) } &&
@@ -1026,111 +1174,162 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (key == lastKey) return
             lastKey = key
 
-            val store = ScanApi.storeForPackage(pkg)
-            val appContext = applicationContext
-            candidates.drop(1).take(2).forEach { cand ->
-                if (cand.lowercase() !in rejectedTitles) {
-                    ScanApi.prewarmScan(appContext, cand, null, store)
-                }
-            }
-
-            // 0ms Fast-Path: if tap pre-scan or aisle pre-warm already cached this exact item, skip "Scanning…" completely!
-            val instantCached = ScanApi.peekCachedScan(appContext, title, ingredients, store)
-            if (instantCached != null && instantCached.contains("\"ok\":true")) {
-                inFlightScanKey = ""
-                if (isConfirmedSinglePdp) {
-                    lastConfirmedPdpTitle = title
-                    lastConfirmedPdpPkg = pkg
-                    lastConfirmedPdpAtMs = System.currentTimeMillis()
-                } else {
-                    lastRowGradedTitle = title
-                }
-                markVisible()
-                sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
-                    putExtra(OverlayWindowService.EXTRA_JSON, instantCached)
-                    putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
-                    putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
-                    putExtra(OverlayWindowService.EXTRA_PAGE_OUT_OF_STOCK, isOutOfStockOnPdp)
-                }
-                return
-            }
-
-            inFlightScanKey = key
-            inFlightAtMs = System.currentTimeMillis()
-
-            sendToOverlay(OverlayWindowService.ACTION_LOADING) { putExtra(OverlayWindowService.EXTRA_TITLE, title) }
-            markVisible()
-            io.execute {
-                var winningTitle = title
-                var winningJson: String? = null
-                var lastErrorJson = """{"ok":false,"error":"Could not identify product"}"""
-                for (candidate in candidates) {
-                    if (candidate.lowercase() in rejectedTitles) continue
-                    val res = try {
-                        ScanApi.scan(appContext, candidate, ingredients, store)
-                    } catch (e: Exception) {
-                        """{"ok":false,"error":"HeyBroc connection error (${e.javaClass.simpleName})"}"""
-                    }
-                    lastErrorJson = res
-                    val isOk = runCatching { org.json.JSONObject(res).optBoolean("ok") }.getOrDefault(false)
-                    if (isOk) {
-                        winningTitle = candidate
-                        winningJson = res
-                        break
-                    } else if (res.contains("ignored", ignoreCase = true)) {
-                        synchronized(rejectedTitles) {
-                            if (rejectedTitles.size >= 80) {
-                                val first = rejectedTitles.iterator().next()
-                                rejectedTitles.remove(first)
-                            }
-                            rejectedTitles.add(candidate.lowercase())
-                        }
-                    }
-                }
-                val finalJson = winningJson ?: lastErrorJson
-                val succeeded = winningJson != null
-                handler.post {
-                    if (inFlightScanKey == key) {
-                        inFlightScanKey = ""
-                    }
-                    if (!overlayVisible || !AccessibilityConsent.granted(this@GroceryScreenReaderService) || currentPackage != pkg || wasOnCartScreen) {
-                        return@post
-                    }
-                    if (succeeded) {
-                        if (isConfirmedSinglePdp) {
-                            lastConfirmedPdpTitle = winningTitle
-                            lastConfirmedPdpPkg = pkg
-                            lastConfirmedPdpAtMs = System.currentTimeMillis()
-                        } else {
-                            lastRowGradedTitle = winningTitle
-                        }
-                        val finalKey = "$pkg|$bucketSig|$winningTitle|${ingredients?.hashCode() ?: 0}|$inCartOnPdp|$isOutOfStockOnPdp|$wlSig"
-                        lastKey = finalKey
-                        sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
-                            putExtra(OverlayWindowService.EXTRA_JSON, finalJson)
-                            putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
-                            putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
-                            putExtra(OverlayWindowService.EXTRA_PAGE_OUT_OF_STOCK, isOutOfStockOnPdp)
-                        }
-                    } else if (lastKey == key) {
-                        // Reset lastKey to the scroll hint / idle key so the very next scroll event re-scans immediately!
-                        if (isConfirmedSinglePdp) {
-                            lastKey = "$pkg|$bucketSig|PDP_SCROLL_HINT"
-                            sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT) {
-                                putExtra(OverlayWindowService.EXTRA_JSON, finalJson)
-                                putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
-                                putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, true)
-                                putExtra(OverlayWindowService.EXTRA_PAGE_OUT_OF_STOCK, isOutOfStockOnPdp)
-                            }
-                        } else {
-                            lastKey = "$pkg|$bucketSig|IDLE_CART_AVG"
-                            sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG)
-                        }
-                    }
-                }
-            }
+            triggerScan(
+                pkg = pkg,
+                bucketSig = bucketSig,
+                title = title,
+                candidates = candidates,
+                ingredients = ingredients,
+                inCartOnPdp = inCartOnPdp,
+                qtyDeltaOnPdp = if (addedViaStickyPdpCta) 1 else 0,
+                isConfirmedSinglePdp = isConfirmedSinglePdp,
+                isOutOfStockOnPdp = isOutOfStockOnPdp,
+                wlSig = wlSig,
+                key = key
+            )
         } finally {
             recycleNode(root)
+        }
+    }
+
+    private fun triggerScan(
+        pkg: String,
+        bucketSig: String,
+        title: String,
+        candidates: List<String>,
+        ingredients: String?,
+        inCartOnPdp: Boolean,
+        qtyDeltaOnPdp: Int,
+        isConfirmedSinglePdp: Boolean,
+        isOutOfStockOnPdp: Boolean,
+        wlSig: String,
+        key: String
+    ) {
+        val capturedPkg = pkg
+        val capturedBucket = bucketSig
+        val store = ScanApi.storeForPackage(capturedPkg)
+        val appContext = applicationContext
+        candidates.drop(1).take(2).forEach { cand ->
+            if (cand.lowercase() !in rejectedTitles) {
+                ScanApi.prewarmScan(appContext, cand, null, store, storeBucket = capturedBucket)
+            }
+        }
+
+        // 0ms Fast-Path: if tap pre-scan or aisle pre-warm already cached this exact item, skip "Scanning…" completely!
+        val instantCached = ScanApi.peekCachedScan(appContext, title, ingredients, store, storeBucket = capturedBucket)
+        if (instantCached != null && instantCached.contains("\"ok\":true")) {
+            bumpScanGeneration()
+            inFlightScanKey = ""
+            if (isConfirmedSinglePdp) {
+                lastConfirmedPdpTitle = title
+                lastConfirmedPdpPkg = capturedPkg
+                lastConfirmedPdpAtMs = System.currentTimeMillis()
+            } else {
+                lastRowGradedTitle = title
+            }
+            markVisible()
+            sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT, capturedPkg, capturedBucket) {
+                putExtra(OverlayWindowService.EXTRA_JSON, instantCached)
+                putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                if (qtyDeltaOnPdp != 0) {
+                    putExtra(OverlayWindowService.EXTRA_QTY_DELTA, qtyDeltaOnPdp)
+                }
+                putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
+                putExtra(OverlayWindowService.EXTRA_PAGE_OUT_OF_STOCK, isOutOfStockOnPdp)
+            }
+            return
+        }
+
+        val gen = bumpScanGeneration()
+        inFlightScanKey = key
+        inFlightAtMs = System.currentTimeMillis()
+
+        sendToOverlay(OverlayWindowService.ACTION_LOADING, capturedPkg, capturedBucket) {
+            putExtra(OverlayWindowService.EXTRA_TITLE, title)
+        }
+        markVisible()
+        io.execute {
+            var winningTitle = title
+            var winningJson: String? = null
+            var lastErrorJson = """{"ok":false,"error":"Could not identify product"}"""
+            for (candidate in candidates) {
+                if (gen != scanGeneration) break
+                if (candidate.lowercase() in rejectedTitles) continue
+                val res = try {
+                    ScanApi.scan(appContext, candidate, ingredients, store, storeBucket = capturedBucket)
+                } catch (e: Exception) {
+                    """{"ok":false,"error":"HeyBroc connection error (${e.javaClass.simpleName})"}"""
+                }
+                lastErrorJson = res
+                val isOk = runCatching { org.json.JSONObject(res).optBoolean("ok") }.getOrDefault(false)
+                if (isOk) {
+                    winningTitle = candidate
+                    winningJson = res
+                    break
+                } else if (res.contains("ignored", ignoreCase = true)) {
+                    synchronized(rejectedTitles) {
+                        if (rejectedTitles.size >= 80) {
+                            val first = rejectedTitles.iterator().next()
+                            rejectedTitles.remove(first)
+                        }
+                        rejectedTitles.add(candidate.lowercase())
+                    }
+                }
+            }
+            val finalJson = winningJson ?: lastErrorJson
+            val succeeded = winningJson != null
+            handler.post {
+                if (inFlightScanKey == key) {
+                    inFlightScanKey = ""
+                }
+                val isCurrentAndActive =
+                    gen == scanGeneration &&
+                        key == lastKey &&
+                        currentPackage == capturedPkg &&
+                        currentStoreBucket == capturedBucket &&
+                        isTargetGroceryWindowActive(capturedPkg)
+                if (!overlayVisible ||
+                    !AccessibilityConsent.granted(this@GroceryScreenReaderService) ||
+                    wasOnCartScreen ||
+                    !isCurrentAndActive
+                ) {
+                    return@post
+                }
+                if (succeeded) {
+                    if (isConfirmedSinglePdp) {
+                        lastConfirmedPdpTitle = winningTitle
+                        lastConfirmedPdpPkg = capturedPkg
+                        lastConfirmedPdpAtMs = System.currentTimeMillis()
+                    } else {
+                        lastRowGradedTitle = winningTitle
+                    }
+                    val finalKey = "$capturedPkg|$capturedBucket|$winningTitle|${ingredients?.hashCode() ?: 0}|$inCartOnPdp|$isOutOfStockOnPdp|$wlSig"
+                    lastKey = finalKey
+                    sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT, capturedPkg, capturedBucket) {
+                        putExtra(OverlayWindowService.EXTRA_JSON, finalJson)
+                        putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                        if (qtyDeltaOnPdp != 0) {
+                            putExtra(OverlayWindowService.EXTRA_QTY_DELTA, qtyDeltaOnPdp)
+                        }
+                        putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, isConfirmedSinglePdp)
+                        putExtra(OverlayWindowService.EXTRA_PAGE_OUT_OF_STOCK, isOutOfStockOnPdp)
+                    }
+                } else if (lastKey == key) {
+                    // Reset lastKey to the scroll hint / idle key so the very next scroll event re-scans immediately!
+                    if (isConfirmedSinglePdp) {
+                        lastKey = "$capturedPkg|$capturedBucket|PDP_SCROLL_HINT"
+                        sendToOverlay(OverlayWindowService.ACTION_SHOW_RESULT, capturedPkg, capturedBucket) {
+                            putExtra(OverlayWindowService.EXTRA_JSON, finalJson)
+                            putExtra(OverlayWindowService.EXTRA_IN_CART, inCartOnPdp)
+                            putExtra(OverlayWindowService.EXTRA_IS_SINGLE_PDP, true)
+                            putExtra(OverlayWindowService.EXTRA_PAGE_OUT_OF_STOCK, isOutOfStockOnPdp)
+                        }
+                    } else {
+                        lastKey = "$capturedPkg|$capturedBucket|IDLE_CART_AVG"
+                        sendToOverlay(OverlayWindowService.ACTION_IDLE_CART_AVG, capturedPkg, capturedBucket)
+                    }
+                }
+            }
         }
     }
 
@@ -1852,6 +2051,46 @@ class GroceryScreenReaderService : AccessibilityService() {
         return shorter.length >= 26 && longer.startsWith(shorter)
     }
 
+    private fun matchesCartRowRemoval(candidate: String, target: String): Boolean {
+        val trailingSizeRe = Regex("""(?i)(?:,\s*|\s+-\s+|\s*\()?\b\d+(?:\.\d+)?\s*(?:fl\s*oz|oz|lb|lbs|ct|count|pk|pack|gal|gallon|qt|pt|ml|l|kg|ea)\)?$""")
+        val connectors = setOf("the", "and", "with", "for", "of", "in", "a", "an")
+        fun norm(s: String): String {
+            var cur = s.trim()
+            while (true) {
+                val next = cur.replace(trailingSizeRe, " ").trim()
+                if (next == cur) break
+                cur = next
+            }
+            return cur.lowercase()
+                .replace(Regex("""[,•|\-–—.…*()/]+"""), " ")
+                .replace(Regex("""[^a-z0-9\s%]"""), "")
+                .replace(WHITESPACE, " ")
+                .trim()
+        }
+        val nc = norm(candidate)
+        val nt = norm(target)
+        if (nc.isEmpty() || nt.isEmpty()) return false
+        if (nc == nt) return true
+        val cTokens = nc.split(" ").filter { it.length >= 2 && it !in connectors }.toSet()
+        val tTokens = nt.split(" ").filter { it.length >= 2 && it !in connectors }.toSet()
+        if (cTokens.isEmpty() || tTokens.isEmpty()) return false
+        val union = cTokens.union(tTokens).size
+        if (union <= 0) return false
+        return cTokens.intersect(tTokens).size.toDouble() / union.toDouble() >= 0.80
+    }
+
+    private fun extractAuthoritativeCartCount(nodes: List<TextNode>): Int {
+        for (n in nodes.take(28)) {
+            val t = n.text.trim()
+            if (t.isEmpty() || t.length > 56) continue
+            val m = AUTHORITATIVE_CART_COUNT_PATTERN.find(t) ?: continue
+            val countStr = m.groupValues.drop(1).firstOrNull { it.isNotEmpty() } ?: continue
+            val parsed = countStr.toIntOrNull() ?: continue
+            if (parsed in 0..199) return parsed
+        }
+        return -1
+    }
+
     private fun extractCartScreenTitles(
         nodes: List<TextNode>,
         removedTitles: List<String> = emptyList(),
@@ -1864,7 +2103,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         for (n in cartNodes) {
             val c = cleanTitleCandidate(n.text)
             if (!isCandidateProductTitle(c)) continue
-            if (removedTitles.any { rem -> isSameCartRowTitle(c, rem) || c.contains(rem, ignoreCase = true) || rem.contains(c, ignoreCase = true) }) {
+            if (removedTitles.any { rem -> isSameCartRowTitle(c, rem) || matchesCartRowRemoval(c, rem) }) {
                 continue
             }
             val words = c.split(' ').filter { it.isNotBlank() }
@@ -1960,9 +2199,24 @@ class GroceryScreenReaderService : AccessibilityService() {
         else -> ScanApi.storeForPackage(pkg)
     }
 
+    private fun applyResolvedStoreBucket(nextBucket: String) {
+        if (nextBucket.isNotEmpty() && nextBucket != currentStoreBucket) {
+            val hadPrevious = currentStoreBucket.isNotEmpty()
+            currentStoreBucket = nextBucket
+            if (hadPrevious) {
+                bumpScanGeneration()
+                inFlightScanKey = ""
+                lastKey = ""
+                lastConfirmedPdpTitle = null
+                lastRowGradedTitle = null
+                lastCartTitleNodes = emptyList()
+            }
+        }
+    }
+
     private fun updateStoreBucketFromNodes(pkg: String, nodes: List<TextNode>) {
         if (pkg == "com.wholefoods.wholefoodsmarket") {
-            currentStoreBucket = "wholefoods"
+            applyResolvedStoreBucket("wholefoods")
             return
         }
         val screenH = resources.displayMetrics.heightPixels.coerceAtLeast(1200)
@@ -1973,20 +2227,20 @@ class GroceryScreenReaderService : AccessibilityService() {
             for (hn in headerNodes) {
                 val t = hn.text.trim()
                 if (Regex("""\bwhole\s*foods(?:\s+market)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)) {
-                    currentStoreBucket = "wholefoods"
+                    applyResolvedStoreBucket("wholefoods")
                     return
                 }
                 if (Regex("""\b(amazon\s+fresh|fresh\s+cart|search\s+amazon\s+fresh)\b""", RegexOption.IGNORE_CASE).containsMatchIn(t)) {
-                    currentStoreBucket = "amazon_fresh"
+                    applyResolvedStoreBucket("amazon_fresh")
                     return
                 }
                 if (Regex("""^search\s+amazon(?:\.com)?$""", RegexOption.IGNORE_CASE).matches(t)) {
-                    currentStoreBucket = "amazon"
+                    applyResolvedStoreBucket("amazon")
                     return
                 }
             }
             if (currentStoreBucket.isEmpty() || !currentStoreBucket.startsWith("amazon") && currentStoreBucket != "wholefoods") {
-                currentStoreBucket = "amazon"
+                applyResolvedStoreBucket("amazon")
             }
             return
         }
@@ -1999,7 +2253,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             else -> null
         }
         if (marketplaceBase == null) {
-            currentStoreBucket = ScanApi.storeForPackage(pkg)
+            applyResolvedStoreBucket(ScanApi.storeForPackage(pkg))
             return
         }
         if (nodes.any { it.text.trim().equals("Your carts", ignoreCase = true) }) {
@@ -2021,13 +2275,13 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (candidateText.isEmpty()) continue
             for ((pattern, slug) in MARKETPLACE_RETAILER_PATTERNS) {
                 if (slug != marketplaceBase && pattern.containsMatchIn(candidateText)) {
-                    currentStoreBucket = "$marketplaceBase:$slug"
+                    applyResolvedStoreBucket("$marketplaceBase:$slug")
                     return
                 }
             }
         }
         if (currentStoreBucket.isEmpty() || !currentStoreBucket.startsWith(marketplaceBase)) {
-            currentStoreBucket = marketplaceBase
+            applyResolvedStoreBucket(marketplaceBase)
         }
     }
 
@@ -2089,13 +2343,18 @@ class GroceryScreenReaderService : AccessibilityService() {
         handler.postDelayed(foregroundCheck, FOREGROUND_CHECK_MS)
     }
 
-    private fun sendToOverlay(action: String, extras: Intent.() -> Unit = {}) {
+    private fun sendToOverlay(
+        action: String,
+        pkgOverride: String = currentPackage,
+        bucketOverride: String = currentStoreBucket,
+        extras: Intent.() -> Unit = {}
+    ) {
         val intent = Intent(this, OverlayWindowService::class.java).setAction(action).apply {
-            if (currentPackage.isNotEmpty()) {
-                putExtra(OverlayWindowService.EXTRA_STORE_PKG, currentPackage)
+            if (pkgOverride.isNotEmpty()) {
+                putExtra(OverlayWindowService.EXTRA_STORE_PKG, pkgOverride)
             }
-            if (currentStoreBucket.isNotEmpty()) {
-                putExtra(OverlayWindowService.EXTRA_STORE_BUCKET, currentStoreBucket)
+            if (bucketOverride.isNotEmpty()) {
+                putExtra(OverlayWindowService.EXTRA_STORE_BUCKET, bucketOverride)
             }
             extras()
         }
