@@ -486,15 +486,15 @@ struct CheckFoodWithHeyBrocIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct TogglePesticideWatchIntent: AppIntent {
-    static var title: LocalizedStringResource = "Toggle HeyBroc Herbicide & Pesticide Watch"
-    static var description = IntentDescription("Turns HeyBroc's Herbicides & Pesticides Watch ON or OFF to flag non-organic Dirty-Dozen produce and conventional oats, wheat & legumes.")
+    static var title: LocalizedStringResource = "Toggle HeyBroc Herbicide & Pesticide (Glyphosate) Watch"
+    static var description = IntentDescription("Turns HeyBroc's Herbicides & Pesticides (Glyphosate) Watch ON or OFF to flag non-organic Dirty-Dozen produce and conventional oats, wheat & legumes.")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let enabled = HeyBrocSharedPrefs.togglePesticideWatch()
         let msg = enabled
-            ? "🌱 HeyBroc Herbicides & Pesticides Watch is now ON. Non-organic high-residue produce and conventional oats/wheat/legumes will be flagged with USDA Organic swaps."
-            : "🌱 HeyBroc Herbicides & Pesticides Watch is now OFF."
+            ? "🌱 HeyBroc Herbicides & Pesticides (Glyphosate) Watch is now ON. Non-organic high-residue produce and conventional oats/wheat/legumes will be flagged with USDA Organic swaps."
+            : "🌱 HeyBroc Herbicides & Pesticides (Glyphosate) Watch is now OFF."
         return .result(dialog: IntentDialog(stringLiteral: msg))
     }
 }

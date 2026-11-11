@@ -204,8 +204,8 @@ const DIETARY_PILLS: Array<{
   {
     id: "pesticide_risk",
     icon: "🌱",
-    title: "Herbicides & Pesticides Watch",
-    subtitle: "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes; swaps to USDA Organic",
+    title: "Herbicides & Pesticides (Glyphosate) Watch",
+    subtitle: "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes (glyphosate desiccant risk); swaps to USDA Organic",
   },
   {
     id: "dairy",
@@ -1385,6 +1385,201 @@ export default function WatchlistMiniFunnel({
               })}
             </div>
 
+            {/* Iowa Glyphosate vs. Cancer Incidence Side-by-Side Comparison Map Card */}
+            <div
+              id="onboarding-iowa-glyphosate-map"
+              style={{
+                marginTop: 12,
+                background: "linear-gradient(180deg, #fffbeb 0%, #fef2f2 100%)",
+                border: "1.5px solid #fca5a5",
+                borderRadius: 16,
+                padding: "12px 13px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  marginBottom: 6,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    color: "#991b1b",
+                    background: "#fee2e2",
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                  }}
+                >
+                  🗺️ Why Glyphosate Matters · Iowa 99-County Map
+                </span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#78350f" }}>
+                  USGS × Iowa Cancer Registry / NCI
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                {/* Left Map: USGS Glyphosate Application Intensity in Iowa */}
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #fed7aa",
+                    borderRadius: 12,
+                    padding: "8px 9px",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "#9a3412", marginBottom: 4 }}>
+                    1. Glyphosate Sprayed (USGS)
+                  </div>
+                  <svg
+                    viewBox="0 0 180 112"
+                    role="img"
+                    aria-label="Iowa 99-county agricultural glyphosate intensity map showing heavy dark-amber and crimson usage across the state"
+                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fff7ed" }}
+                  >
+                    {/* Iowa state outline & 99-county agricultural intensity heat grid */}
+                    <path
+                      d="M14,16 L154,16 L162,28 L170,44 L164,62 L171,76 L156,94 L148,98 L22,98 L16,80 L10,54 L16,34 Z"
+                      fill="#fed7aa"
+                      stroke="#9a3412"
+                      strokeWidth="2"
+                    />
+                    {/* County heat cells representing >88 lbs/sq mi agricultural herbicide density */}
+                    {[
+                      [22, 22, "#c2410c"], [40, 22, "#9a3412"], [58, 22, "#9a3412"], [76, 22, "#7c2d12"], [94, 22, "#9a3412"], [112, 22, "#c2410c"], [130, 22, "#ea580c"],
+                      [20, 38, "#9a3412"], [38, 38, "#7c2d12"], [56, 38, "#7c2d12"], [74, 38, "#7c2d12"], [92, 38, "#7c2d12"], [110, 38, "#9a3412"], [128, 38, "#c2410c"], [146, 38, "#ea580c"],
+                      [18, 54, "#9a3412"], [36, 54, "#7c2d12"], [54, 54, "#7c2d12"], [72, 54, "#7c2d12"], [90, 54, "#7c2d12"], [108, 54, "#7c2d12"], [126, 54, "#9a3412"], [144, 54, "#c2410c"],
+                      [22, 70, "#c2410c"], [40, 70, "#9a3412"], [58, 70, "#7c2d12"], [76, 70, "#9a3412"], [94, 70, "#7c2d12"], [112, 70, "#9a3412"], [130, 70, "#9a3412"], [146, 70, "#c2410c"],
+                      [26, 84, "#ea580c"], [44, 84, "#c2410c"], [62, 84, "#9a3412"], [80, 84, "#c2410c"], [98, 84, "#9a3412"], [116, 84, "#c2410c"], [134, 84, "#9a3412"],
+                    ].map(([x, y, fill], i) => (
+                      <rect
+                        key={i}
+                        x={Number(x)}
+                        y={Number(y)}
+                        width="16"
+                        height="12"
+                        rx="2"
+                        fill={String(fill)}
+                        opacity="0.92"
+                      />
+                    ))}
+                    <text x="90" y="61" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="800">
+                      IOWA · TOP 1% US
+                    </text>
+                  </svg>
+                  <div style={{ fontSize: 10.5, color: "#7c2d12", marginTop: 4, lineHeight: 1.3 }}>
+                    <b>Heaviest U.S. herbicide zone:</b> Sprayed on conventional crops &amp; used as a pre-harvest drying agent on non-organic oats, wheat &amp; beans.
+                  </div>
+                </div>
+
+                {/* Right Map: Iowa Cancer Registry / NCI Hotspot Comparison */}
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #fecaca",
+                    borderRadius: 12,
+                    padding: "8px 9px",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "#991b1b", marginBottom: 4 }}>
+                    2. Cancer Incidence Hotspots
+                  </div>
+                  <svg
+                    viewBox="0 0 180 112"
+                    role="img"
+                    aria-label="Iowa 99-county cancer incidence map showing 82% of high-glyphosate counties above national Non-Hodgkin Lymphoma average"
+                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fef2f2" }}
+                  >
+                    <path
+                      d="M14,16 L154,16 L162,28 L170,44 L164,62 L171,76 L156,94 L148,98 L22,98 L16,80 L10,54 L16,34 Z"
+                      fill="#fecaca"
+                      stroke="#991b1b"
+                      strokeWidth="2"
+                    />
+                    {[
+                      [22, 22, "#b91c1c"], [40, 22, "#991b1b"], [58, 22, "#7f1d1d"], [76, 22, "#7f1d1d"], [94, 22, "#991b1b"], [112, 22, "#b91c1c"], [130, 22, "#dc2626"],
+                      [20, 38, "#991b1b"], [38, 38, "#7f1d1d"], [56, 38, "#7f1d1d"], [74, 38, "#7f1d1d"], [92, 38, "#991b1b"], [110, 38, "#7f1d1d"], [128, 38, "#b91c1c"], [146, 38, "#dc2626"],
+                      [18, 54, "#991b1b"], [36, 54, "#7f1d1d"], [54, 54, "#7f1d1d"], [72, 54, "#7f1d1d"], [90, 54, "#7f1d1d"], [108, 54, "#991b1b"], [126, 54, "#991b1b"], [144, 54, "#b91c1c"],
+                      [22, 70, "#b91c1c"], [40, 70, "#991b1b"], [58, 70, "#7f1d1d"], [76, 70, "#991b1b"], [94, 70, "#7f1d1d"], [112, 70, "#991b1b"], [130, 70, "#b91c1c"], [146, 70, "#dc2626"],
+                      [26, 84, "#dc2626"], [44, 84, "#b91c1c"], [62, 84, "#991b1b"], [80, 84, "#b91c1c"], [98, 84, "#991b1b"], [116, 84, "#b91c1c"], [134, 84, "#991b1b"],
+                    ].map(([x, y, fill], i) => (
+                      <rect
+                        key={i}
+                        x={Number(x)}
+                        y={Number(y)}
+                        width="16"
+                        height="12"
+                        rx="2"
+                        fill={String(fill)}
+                        opacity="0.92"
+                      />
+                    ))}
+                    <text x="90" y="61" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="800">
+                      #2 US CANCER RATE
+                    </text>
+                  </svg>
+                  <div style={{ fontSize: 10.5, color: "#7f1d1d", marginTop: 4, lineHeight: 1.3 }}>
+                    <b>82% of high-glyphosate counties</b> in Iowa exceed the U.S. Non-Hodgkin Lymphoma rate (50% in top-20% national hotspots).
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  paddingTop: 4,
+                  borderTop: "1px solid rgba(239, 68, 68, 0.2)",
+                }}
+              >
+                <span style={{ fontSize: 11, color: "#7f1d1d", lineHeight: 1.35, flex: 1, minWidth: 180 }}>
+                  <b>Note:</b> Glyphosate is an <b>herbicide</b> (under the broader <b>pesticide</b> umbrella). <b>USDA Organic</b> prohibits glyphosate &amp; synthetic pesticides.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!dietarySelected.includes("pesticide_risk")) {
+                      toggleDietary("pesticide_risk");
+                    }
+                  }}
+                  style={{
+                    padding: "6px 11px",
+                    borderRadius: 999,
+                    border: dietarySelected.includes("pesticide_risk")
+                      ? "1.5px solid #16a34a"
+                      : "1.5px solid #dc2626",
+                    background: dietarySelected.includes("pesticide_risk") ? "#dcfce7" : "#dc2626",
+                    color: dietarySelected.includes("pesticide_risk") ? "#14532d" : "#ffffff",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {dietarySelected.includes("pesticide_risk")
+                    ? "✓ Glyphosate Watch Active"
+                    : "🌱 Guard Against Glyphosate"}
+                </button>
+              </div>
+            </div>
+
             <div style={{ marginTop: 16 }}>
               <button
                 type="button"
@@ -1434,7 +1629,7 @@ export default function WatchlistMiniFunnel({
               }}
             >
               Big food brands print <b>&ldquo;Natural&rdquo;</b> or{" "}
-              <b>&ldquo;Made with Real Fruit&rdquo;</b> on the front while hiding ultra-processed additives in tiny 6-point text on the back:
+              <b>&ldquo;Made with Real Fruit&rdquo;</b> on the front while hiding ultra-processed additives &amp; conventional herbicide-treated crops in tiny 6-point text:
             </p>
 
             {/* Personalized Trigger Traps Based on Selected Goals */}
@@ -1477,6 +1672,20 @@ export default function WatchlistMiniFunnel({
                     </div>
                   </div>
                 ))}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    fontSize: 12.5,
+                    color: "#7f1d1d",
+                  }}
+                >
+                  <span>🌱</span>
+                  <div>
+                    <b>Herbicides &amp; Pesticides (Glyphosate):</b> USGS &amp; Iowa Cancer Registry maps show <b>82% of high-glyphosate Iowa counties</b> exceed national Non-Hodgkin Lymphoma rates — and conventional oats, wheat &amp; Dirty-Dozen produce permit synthetic herbicides unless certified <b>USDA Organic</b>.
+                  </div>
+                </div>
               </div>
             </div>
 

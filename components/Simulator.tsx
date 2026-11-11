@@ -2211,7 +2211,7 @@ export default function Simulator({
             aria-checked={pesticideWatchEnabled}
             className="topbar-pill"
             onClick={() => togglePesticideWatch()}
-            title="Toggle Herbicides & Pesticides Watch (USDA Dirty-Dozen produce + conventional oats/wheat/legumes)"
+            title="Toggle Herbicides & Pesticides (Glyphosate) Watch (USDA Dirty-Dozen produce + conventional oats/wheat/legumes)"
             style={
               pesticideWatchEnabled
                 ? {
@@ -2223,7 +2223,7 @@ export default function Simulator({
                 : undefined
             }
           >
-            🌱 Pesticides: {pesticideWatchEnabled ? "ON" : "OFF"}
+            🌱 Pesticides (Glyphosate): {pesticideWatchEnabled ? "ON" : "OFF"}
           </button>
 
           <button
@@ -2948,7 +2948,7 @@ export default function Simulator({
               </span>
               <span style={{ minWidth: 0 }}>
                 <b>
-                  Herbicides &amp; Pesticides Watch{" "}
+                  Herbicides &amp; Pesticides (Glyphosate) Watch{" "}
                   <span
                     style={{
                       display: "inline-block",
@@ -2965,7 +2965,7 @@ export default function Simulator({
                   </span>
                 </b>
                 <small style={{ display: "block", marginTop: 2 }}>
-                  Flags non-organic USDA Dirty-Dozen produce (strawberries, spinach, kale, apples, grapes, berries) &amp; conventional oats, wheat &amp; legumes — and auto-recommends certified USDA Organic swaps.
+                  Flags non-organic USDA Dirty-Dozen produce (strawberries, spinach, kale, apples, grapes, berries) &amp; conventional oats, wheat &amp; legumes where herbicides/desiccants (such as glyphosate) are permitted — and auto-recommends certified USDA Organic swaps.
                 </small>
               </span>
             </span>

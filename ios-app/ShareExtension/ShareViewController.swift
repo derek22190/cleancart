@@ -75,8 +75,8 @@ final class ShareViewController: UIViewController {
         brandLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let pestLabel = UILabel()
-        pestLabel.text = "🌱 Pesticides"
-        pestLabel.font = UIFont.systemFont(ofSize: 12, weight: .bold)
+        pestLabel.text = "🌱 Pesticides (Glyphosate)"
+        pestLabel.font = UIFont.systemFont(ofSize: 11.5, weight: .bold)
         pestLabel.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
 
         pesticideSwitch.isOn = dietaryWatchlist.contains("pesticide_risk")

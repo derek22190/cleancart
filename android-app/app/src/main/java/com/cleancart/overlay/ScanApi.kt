@@ -418,8 +418,8 @@ object ScanApi {
         DietaryOption(
             id = "pesticide_risk",
             emoji = "🌱",
-            title = "Herbicides & Pesticides Watch",
-            subtitle = "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes; swaps to USDA Organic",
+            title = "Herbicides & Pesticides (Glyphosate) Watch",
+            subtitle = "Flags non-organic Dirty-Dozen produce & conventional oats/wheat/legumes (glyphosate desiccant risk); swaps to USDA Organic",
             shortBadge = "PESTICIDE"
         ),
         DietaryOption(
@@ -722,18 +722,18 @@ object ScanApi {
                     alerts.add(
                         DietaryAlert(
                             id = "pesticide_risk",
-                            label = "🌱 Herbicide & Pesticide Watch",
+                            label = "🌱 Herbicides & Pesticides (Glyphosate) Watch",
                             shortBadge = "PESTICIDE",
-                            reason = "Conventional ${produceMatch.value.lowercase()} — high-residue produce category in USDA Pesticide Data Program; choose USDA Organic (7 CFR § 205.105)"
+                            reason = "Conventional ${produceMatch.value.lowercase()} — high-residue produce category in USDA Pesticide Data Program (Dirty Dozen); choose USDA Organic (7 CFR § 205.105)"
                         )
                     )
                 } else if (grainMatch != null) {
                     alerts.add(
                         DietaryAlert(
                             id = "pesticide_risk",
-                            label = "🌱 Herbicide & Pesticide Watch",
+                            label = "🌱 Herbicides & Pesticides (Glyphosate) Watch",
                             shortBadge = "PESTICIDE",
-                            reason = "Conventional ${grainMatch.value.lowercase()} — non-organic crop permits synthetic herbicides; choose USDA Organic (7 CFR § 205.105)"
+                            reason = "Conventional ${grainMatch.value.lowercase()} — non-organic crop permits synthetic herbicides & desiccants (such as glyphosate); choose USDA Organic (7 CFR § 205.105)"
                         )
                     )
                 }

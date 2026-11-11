@@ -2622,14 +2622,17 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   );
   const alertsWhenOff = dietaryMod.evaluateDietaryAlerts([], "Fresh Strawberries, 1 lb", "Fresh strawberries.");
   const alertsWhenOn = dietaryMod.evaluateDietaryAlerts(["pesticide_risk"], "Fresh Strawberries, 1 lb", "Fresh strawberries.");
+  const watchlistFunnelTsxSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
   check(
-    "Herbicide & Pesticide Watch (pesticide_risk): flags conventional USDA PDP Dirty Dozen produce & desiccant-risk oats/wheat/chickpeas, never flags USDA Organic or trace pectin/flavors, and stays opt-in when off",
+    "Herbicide & Pesticide (Glyphosate) Watch (pesticide_risk): flags conventional USDA PDP Dirty Dozen produce & desiccant-risk oats/wheat/chickpeas with explicit Glyphosate wording, renders Iowa Glyphosate vs. Cancer Map in onboarding, never flags USDA Organic or trace pectin/flavors, and stays opt-in when off",
     Boolean(
       convStrawberryRisk !== null &&
         convStrawberryRisk.category === "high_residue_produce" &&
+        convStrawberryRisk.reason.toLowerCase().includes("glyphosate") &&
         convSpinachRisk !== null &&
         convOatsRisk !== null &&
         convOatsRisk.category === "conventional_grain_legume" &&
+        convOatsRisk.reason.toLowerCase().includes("glyphosate") &&
         convFlourRisk !== null &&
         convHummusRisk !== null &&
         orgStrawberryRisk === null &&
@@ -2638,7 +2641,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         pectinNoFalsePositive === null &&
         alertsWhenOff.length === 0 &&
         alertsWhenOn.length === 1 &&
-        alertsWhenOn[0]?.id === "pesticide_risk"
+        alertsWhenOn[0]?.id === "pesticide_risk" &&
+        alertsWhenOn[0]?.label.includes("Glyphosate") &&
+        watchlistFunnelTsxSrc.includes("Herbicides & Pesticides (Glyphosate) Watch") &&
+        watchlistFunnelTsxSrc.includes("onboarding-iowa-glyphosate-map")
     )
   );
 

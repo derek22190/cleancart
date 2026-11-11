@@ -74,11 +74,11 @@ export function detectPesticideRisk(
     return {
       crop,
       category: "high_residue_produce",
-      reason: `Conventional ${crop} — high-residue produce category in USDA Pesticide Data Program monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides`,
+      reason: `Conventional ${crop} — high-residue produce category in USDA Pesticide Data Program (Dirty Dozen) monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides & herbicides (including glyphosate)`,
     };
   }
 
-  // 2) Conventional grains & legumes where synthetic herbicides / pre-harvest desiccants are permitted in non-organic farming
+  // 2) Conventional grains & legumes where synthetic herbicides / pre-harvest desiccants (such as glyphosate) are permitted in non-organic farming
   const grainLegumeMatch = cleanCombined.match(
     /\b(rolled\s+oats?|steel[\s-]*cut\s+oats?|whole\s+grain\s+oats?|instant\s+oats?|oatmeal|oat\s+flour|oat\s+bran|oat\s*milk|granola|oats|whole\s+wheat(?:\s+flour)?|enriched\s+(?:wheat\s+)?flour|bleached\s+(?:wheat\s+)?flour|unbleached\s+(?:wheat\s+)?flour|graham\s+flour|durum\s+wheat|semolina|wheat\s+flour|chickpeas?|garbanzo\s+beans?|hummus|red\s+lentils?|green\s+lentils?|brown\s+lentils?|lentils?|pinto\s+beans?|black\s+beans?|navy\s+beans?|kidney\s+beans?)\b/i,
   );
@@ -87,7 +87,7 @@ export function detectPesticideRisk(
     return {
       crop,
       category: "conventional_grain_legume",
-      reason: `Conventional ${crop} — non-organic grain/legume farming permits synthetic herbicides; USDA Organic (7 CFR § 205.105) prohibits synthetic herbicides & pre-harvest desiccants`,
+      reason: `Conventional ${crop} — non-organic grain/legume farming permits synthetic herbicides & pre-harvest desiccants (such as glyphosate); USDA Organic (7 CFR § 205.105) prohibits glyphosate & synthetic herbicides`,
     };
   }
 
@@ -253,7 +253,7 @@ export function evaluateDietaryAlerts(
     if (pestMatch) {
       alerts.push({
         id: "pesticide_risk",
-        label: "🌱 Herbicide & Pesticide Watch",
+        label: "🌱 Herbicides & Pesticides (Glyphosate) Watch",
         shortBadge: "PESTICIDE",
         reason: pestMatch.reason,
       });

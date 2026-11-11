@@ -227,7 +227,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private func updatePesticideButtonStyle() {
         let on = HeyBrocSharedPrefs.isPesticideWatchEnabled
-        pesticideBtn.setTitle(on ? "🌱 Pesticide: ON" : "🌱 Pesticide: OFF", for: .normal)
+        pesticideBtn.setTitle(on ? "🌱 Glyphosate/Pest: ON" : "🌱 Glyphosate/Pest: OFF", for: .normal)
         if on {
             pesticideBtn.backgroundColor = UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0)
             pesticideBtn.setTitleColor(UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0), for: .normal)
