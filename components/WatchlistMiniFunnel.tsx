@@ -1385,7 +1385,7 @@ export default function WatchlistMiniFunnel({
               })}
             </div>
 
-            {/* Iowa Glyphosate vs. Cancer Incidence Side-by-Side Comparison Map Card */}
+            {/* Full USA Side-by-Side Glyphosate Usage vs. Cancer Incidence Comparison Map Card */}
             <div
               id="onboarding-iowa-glyphosate-map"
               style={{
@@ -1418,10 +1418,10 @@ export default function WatchlistMiniFunnel({
                     borderRadius: 999,
                   }}
                 >
-                  🗺️ Why Glyphosate Matters · Iowa 99-County Map
+                  🇺🇸 U.S. Glyphosate Map vs. U.S. Cancer Map
                 </span>
                 <span style={{ fontSize: 10.5, fontWeight: 700, color: "#78350f" }}>
-                  USGS × Iowa Cancer Registry / NCI
+                  USGS National Map × CDC / NCI Registry
                 </span>
               </div>
 
@@ -1433,7 +1433,7 @@ export default function WatchlistMiniFunnel({
                   marginBottom: 8,
                 }}
               >
-                {/* Left Map: USGS Glyphosate Application Intensity in Iowa */}
+                {/* Left Map: Full USA USGS Glyphosate Application Map */}
                 <div
                   style={{
                     background: "#ffffff",
@@ -1443,50 +1443,80 @@ export default function WatchlistMiniFunnel({
                   }}
                 >
                   <div style={{ fontSize: 11, fontWeight: 800, color: "#9a3412", marginBottom: 4 }}>
-                    1. Glyphosate Sprayed (USGS)
+                    1. U.S. Glyphosate Usage (USGS)
                   </div>
                   <svg
-                    viewBox="0 0 180 112"
+                    viewBox="0 0 320 195"
                     role="img"
-                    aria-label="Iowa 99-county agricultural glyphosate intensity map showing heavy dark-amber and crimson usage across the state"
-                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fff7ed" }}
+                    aria-label="United States map of agricultural glyphosate usage showing low usage in Western states and a dark crimson bullseye over Iowa and the Midwest Corn Belt"
+                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fffaf5" }}
                   >
-                    {/* Iowa state outline & 99-county agricultural intensity heat grid */}
+                    {/* Base Contiguous USA Silhouette (Low-usage West, Rockies, Southwest & New England in pale sand) */}
                     <path
-                      d="M14,16 L154,16 L162,28 L170,44 L164,62 L171,76 L156,94 L148,98 L22,98 L16,80 L10,54 L16,34 Z"
-                      fill="#fed7aa"
+                      d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
+                      fill="#fef3c7"
                       stroke="#9a3412"
+                      strokeWidth="1.8"
+                    />
+                    {/* Subtle US Regional State Grid Lines */}
+                    <g stroke="#d97706" strokeWidth="0.7" opacity="0.45" fill="none">
+                      <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
+                      <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
+                    </g>
+                    {/* Outer Plains & Mississippi River Delta Moderate/High Plume (ND, SD, NE, KS, MN, MO, AR, MS, LA, WI, MI, KY, TN) */}
+                    <path
+                      d="M124,22 L192,24 L214,44 L236,56 L238,88 L218,108 L196,148 L172,152 L166,118 L126,110 L118,68 Z"
+                      fill="#fb923c"
+                      opacity="0.72"
+                    />
+                    {/* Core Corn Belt Intense Plume (Eastern NE, Southern MN, IA, IL, IN, Western OH) */}
+                    <path
+                      d="M142,44 L198,44 L228,62 L232,88 L204,98 L188,138 L174,138 L172,98 L144,92 Z"
+                      fill="#c2410c"
+                      opacity="0.88"
+                    />
+                    {/* IOWA (#1 Glyphosate Epicenter in the USA) */}
+                    <path
+                      d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
+                      fill="#431407"
+                      stroke="#ffffff"
                       strokeWidth="2"
                     />
-                    {/* County heat cells representing >88 lbs/sq mi agricultural herbicide density */}
-                    {[
-                      [22, 22, "#c2410c"], [40, 22, "#9a3412"], [58, 22, "#9a3412"], [76, 22, "#7c2d12"], [94, 22, "#9a3412"], [112, 22, "#c2410c"], [130, 22, "#ea580c"],
-                      [20, 38, "#9a3412"], [38, 38, "#7c2d12"], [56, 38, "#7c2d12"], [74, 38, "#7c2d12"], [92, 38, "#7c2d12"], [110, 38, "#9a3412"], [128, 38, "#c2410c"], [146, 38, "#ea580c"],
-                      [18, 54, "#9a3412"], [36, 54, "#7c2d12"], [54, 54, "#7c2d12"], [72, 54, "#7c2d12"], [90, 54, "#7c2d12"], [108, 54, "#7c2d12"], [126, 54, "#9a3412"], [144, 54, "#c2410c"],
-                      [22, 70, "#c2410c"], [40, 70, "#9a3412"], [58, 70, "#7c2d12"], [76, 70, "#9a3412"], [94, 70, "#7c2d12"], [112, 70, "#9a3412"], [130, 70, "#9a3412"], [146, 70, "#c2410c"],
-                      [26, 84, "#ea580c"], [44, 84, "#c2410c"], [62, 84, "#9a3412"], [80, 84, "#c2410c"], [98, 84, "#9a3412"], [116, 84, "#c2410c"], [134, 84, "#9a3412"],
-                    ].map(([x, y, fill], i) => (
-                      <rect
-                        key={i}
-                        x={Number(x)}
-                        y={Number(y)}
-                        width="16"
-                        height="12"
-                        rx="2"
-                        fill={String(fill)}
-                        opacity="0.92"
-                      />
-                    ))}
-                    <text x="90" y="61" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="800">
-                      IOWA · TOP 1% US
+                    {/* Illinois / Indiana Neighboring High-Spray States */}
+                    <path
+                      d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
+                      fill="#7c2d12"
+                      stroke="#fed7aa"
+                      strokeWidth="1"
+                    />
+                    {/* Bullseye Target Ring Around Iowa */}
+                    <circle
+                      cx="175"
+                      cy="68"
+                      r="22"
+                      fill="none"
+                      stroke="#dc2626"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    />
+                    <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
+                      IA
+                    </text>
+                    <text x="54" y="82" textAnchor="middle" fill="#92400e" fontSize="8.5" fontWeight="700">
+                      LOW
+                    </text>
+                    {/* Callout Pill */}
+                    <rect x="64" y="6" width="192" height="20" rx="10" fill="#7c2d12" />
+                    <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
+                      🎯 IOWA &amp; CORN BELT: #1 GLYPHOSATE ZONE
                     </text>
                   </svg>
                   <div style={{ fontSize: 10.5, color: "#7c2d12", marginTop: 4, lineHeight: 1.3 }}>
-                    <b>Heaviest U.S. herbicide zone:</b> Sprayed on conventional crops &amp; used as a pre-harvest drying agent on non-organic oats, wheat &amp; beans.
+                    <b>National USGS Map:</b> Glyphosate is heavily concentrated right in <b>Iowa &amp; the Corn Belt</b> (sprayed on crops &amp; used to dry conventional oats/wheat/beans).
                   </div>
                 </div>
 
-                {/* Right Map: Iowa Cancer Registry / NCI Hotspot Comparison */}
+                {/* Right Map: Full USA Cancer Incidence Hotspot Map */}
                 <div
                   style={{
                     background: "#ffffff",
@@ -1496,44 +1526,76 @@ export default function WatchlistMiniFunnel({
                   }}
                 >
                   <div style={{ fontSize: 11, fontWeight: 800, color: "#991b1b", marginBottom: 4 }}>
-                    2. Cancer Incidence Hotspots
+                    2. U.S. Cancer Incidence (CDC/NCI)
                   </div>
                   <svg
-                    viewBox="0 0 180 112"
+                    viewBox="0 0 320 195"
                     role="img"
-                    aria-label="Iowa 99-county cancer incidence map showing 82% of high-glyphosate counties above national Non-Hodgkin Lymphoma average"
-                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fef2f2" }}
+                    aria-label="United States cancer incidence map showing matching dark crimson hotspot over Iowa (#2 highest and #1 fastest-rising cancer rate in the US)"
+                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fff5f5" }}
                   >
+                    {/* Base Contiguous USA Silhouette */}
                     <path
-                      d="M14,16 L154,16 L162,28 L170,44 L164,62 L171,76 L156,94 L148,98 L22,98 L16,80 L10,54 L16,34 Z"
-                      fill="#fecaca"
+                      d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
+                      fill="#fee2e2"
                       stroke="#991b1b"
+                      strokeWidth="1.8"
+                    />
+                    {/* Subtle US Regional State Grid Lines */}
+                    <g stroke="#ef4444" strokeWidth="0.7" opacity="0.38" fill="none">
+                      <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
+                      <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
+                    </g>
+                    {/* Elevated Midwest / Agricultural Basin Cancer Belt */}
+                    <path
+                      d="M126,24 L196,26 L220,46 L242,60 L240,94 L220,114 L198,146 L172,148 L164,114 L128,106 L122,66 Z"
+                      fill="#f87171"
+                      opacity="0.72"
+                    />
+                    {/* High Incidence Upper Midwest / Corn Belt Cluster */}
+                    <path
+                      d="M144,42 L202,42 L228,62 L230,90 L204,100 L186,132 L172,132 L170,96 L144,90 Z"
+                      fill="#dc2626"
+                      opacity="0.88"
+                    />
+                    {/* IOWA (#2 Highest & #1 Fastest-Rising Cancer Rate in the USA; 82% of High-Glyphosate Counties > US NHL Avg) */}
+                    <path
+                      d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
+                      fill="#450a0a"
+                      stroke="#ffffff"
                       strokeWidth="2"
                     />
-                    {[
-                      [22, 22, "#b91c1c"], [40, 22, "#991b1b"], [58, 22, "#7f1d1d"], [76, 22, "#7f1d1d"], [94, 22, "#991b1b"], [112, 22, "#b91c1c"], [130, 22, "#dc2626"],
-                      [20, 38, "#991b1b"], [38, 38, "#7f1d1d"], [56, 38, "#7f1d1d"], [74, 38, "#7f1d1d"], [92, 38, "#991b1b"], [110, 38, "#7f1d1d"], [128, 38, "#b91c1c"], [146, 38, "#dc2626"],
-                      [18, 54, "#991b1b"], [36, 54, "#7f1d1d"], [54, 54, "#7f1d1d"], [72, 54, "#7f1d1d"], [90, 54, "#7f1d1d"], [108, 54, "#991b1b"], [126, 54, "#991b1b"], [144, 54, "#b91c1c"],
-                      [22, 70, "#b91c1c"], [40, 70, "#991b1b"], [58, 70, "#7f1d1d"], [76, 70, "#991b1b"], [94, 70, "#7f1d1d"], [112, 70, "#991b1b"], [130, 70, "#b91c1c"], [146, 70, "#dc2626"],
-                      [26, 84, "#dc2626"], [44, 84, "#b91c1c"], [62, 84, "#991b1b"], [80, 84, "#b91c1c"], [98, 84, "#991b1b"], [116, 84, "#b91c1c"], [134, 84, "#991b1b"],
-                    ].map(([x, y, fill], i) => (
-                      <rect
-                        key={i}
-                        x={Number(x)}
-                        y={Number(y)}
-                        width="16"
-                        height="12"
-                        rx="2"
-                        fill={String(fill)}
-                        opacity="0.92"
-                      />
-                    ))}
-                    <text x="90" y="61" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="800">
-                      #2 US CANCER RATE
+                    {/* Neighboring Corn Belt States */}
+                    <path
+                      d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
+                      fill="#991b1b"
+                      stroke="#fecaca"
+                      strokeWidth="1"
+                    />
+                    {/* Bullseye Target Ring Around Iowa */}
+                    <circle
+                      cx="175"
+                      cy="68"
+                      r="22"
+                      fill="none"
+                      stroke="#fef08a"
+                      strokeWidth="2.2"
+                      strokeDasharray="4 2"
+                    />
+                    <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
+                      IA
+                    </text>
+                    <text x="54" y="82" textAnchor="middle" fill="#991b1b" fontSize="8.5" fontWeight="700">
+                      LOW
+                    </text>
+                    {/* Callout Pill */}
+                    <rect x="54" y="6" width="212" height="20" rx="10" fill="#7f1d1d" />
+                    <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
+                      🎯 IOWA: #2 US CANCER RATE (#1 RISING)
                     </text>
                   </svg>
                   <div style={{ fontSize: 10.5, color: "#7f1d1d", marginTop: 4, lineHeight: 1.3 }}>
-                    <b>82% of high-glyphosate counties</b> in Iowa exceed the U.S. Non-Hodgkin Lymphoma rate (50% in top-20% national hotspots).
+                    <b>Same Exact U.S. Bullseye:</b> Iowa has the <b>#2 highest &amp; fastest-rising cancer rate in America</b> — and <b>82%</b> of its high-glyphosate counties exceed the U.S. lymphoma average.
                   </div>
                 </div>
               </div>
@@ -1550,7 +1612,7 @@ export default function WatchlistMiniFunnel({
                 }}
               >
                 <span style={{ fontSize: 11, color: "#7f1d1d", lineHeight: 1.35, flex: 1, minWidth: 180 }}>
-                  <b>Note:</b> Glyphosate is an <b>herbicide</b> (under the broader <b>pesticide</b> umbrella). <b>USDA Organic</b> prohibits glyphosate &amp; synthetic pesticides.
+                  <b>Why this matters for your cart:</b> Crops grown in this zone go into nationwide cereals, oats, flour &amp; produce. <b>USDA Organic</b> prohibits glyphosate &amp; synthetic pesticides.
                 </span>
                 <button
                   type="button"
