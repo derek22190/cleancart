@@ -69,6 +69,17 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+  if (searchParams.get("config") === "1") {
+    const rawClientId =
+      process.env.GOOGLE_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+      process.env.GOOGLE_OAUTH_CLIENT_IDS?.split(",")[0] ||
+      "";
+    return NextResponse.json(
+      { ok: true, googleClientId: rawClientId.trim() },
+      { headers: CORS }
+    );
+  }
   const authHeader = request.headers.get("authorization") || "";
   const tokenParam =
     (authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "") ||

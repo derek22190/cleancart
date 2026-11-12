@@ -125,7 +125,7 @@ export default function ReferralLandingPage({
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/broc-mascot.jpg"
+          src="/broc-mascot.png"
           alt="HeyBroc mascot"
           style={{
             width: 88,

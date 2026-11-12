@@ -24,15 +24,12 @@ export default function TermsPage() {
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/broc-mascot.jpg"
+          src="/broc-mascot.png"
           alt="HeyBroc mascot"
           style={{
             width: 52,
             height: 52,
-            borderRadius: 14,
             objectFit: "contain",
-            background: "#fff",
-            border: "1.5px solid rgba(15, 122, 74, 0.25)",
           }}
         />
         <div>

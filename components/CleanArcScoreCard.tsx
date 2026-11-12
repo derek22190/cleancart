@@ -57,33 +57,48 @@ export default function CleanArcScoreCard({
   const isEmpty = score === null || !Number.isFinite(score);
   const safeScore = isEmpty ? 0 : Math.max(0, Math.min(100, Math.round(score)));
 
-  // Horseshoe arc geometry inside a 220 x 148 viewBox
-  // Center (110, 96), radius 74, spanning 240 degrees (from 150 deg to 390 deg)
-  const r = 74;
+  // Horseshoe arc geometry inside a 220 x 150 viewBox
+  // Center (110, 88), radius 76 -> inner diameter 140px so center text never crosses the arc
+  const r = 76;
   const fullCircle = 2 * Math.PI * r;
   const arcFraction = 240 / 360; // 240° horseshoe
   const arcLength = fullCircle * arcFraction;
   const filledLength = arcLength * (safeScore / 100);
 
-  // Gradient stops tailored to score tier while preserving the warm editorial look
+  // Traffic-light clean-food gradient stops (zero purple so text and arc never clash)
   const stops =
     safeScore >= 75
       ? [
-          { offset: "0%", color: "#f59e0b" },
-          { offset: "45%", color: "#10b981" },
+          { offset: "0%", color: "#22c55e" },
+          { offset: "55%", color: "#16a34a" },
           { offset: "100%", color: "#059669" },
         ]
       : safeScore >= 50
         ? [
-            { offset: "0%", color: "#f97316" },
+            { offset: "0%", color: "#ea580c" },
             { offset: "55%", color: "#f59e0b" },
-            { offset: "100%", color: "#8b5cf6" },
+            { offset: "100%", color: "#d97706" },
           ]
         : [
-            { offset: "0%", color: "#ef4444" },
-            { offset: "55%", color: "#f97316" },
-            { offset: "100%", color: "#a855f7" },
+            { offset: "0%", color: "#b91c1c" },
+            { offset: "55%", color: "#dc2626" },
+            { offset: "100%", color: "#ea580c" },
           ];
+
+  const ratingAccentBg = isEmpty
+    ? "#f5f5f4"
+    : safeScore >= 75
+      ? "#dcfce7"
+      : safeScore >= 50
+        ? "#fef3c7"
+        : "#fee2e2";
+  const ratingAccentText = isEmpty
+    ? "#57534e"
+    : safeScore >= 75
+      ? "#14532d"
+      : safeScore >= 50
+        ? "#78350f"
+        : "#991b1b";
 
   const resolvedHeadline =
     headline ??
@@ -167,7 +182,7 @@ export default function CleanArcScoreCard({
           style={{
             position: "relative",
             width: "100%",
-            maxWidth: compact ? 184 : 204,
+            maxWidth: compact ? 190 : 210,
             margin: "0 auto",
             display: "flex",
             flexDirection: "column",
@@ -175,7 +190,7 @@ export default function CleanArcScoreCard({
           }}
         >
           <svg
-            viewBox="0 0 220 142"
+            viewBox="0 0 220 136"
             style={{
               width: "100%",
               height: "auto",
@@ -195,28 +210,28 @@ export default function CleanArcScoreCard({
             {/* Background Track Arc */}
             <circle
               cx="110"
-              cy="94"
+              cy="88"
               r={r}
               fill="none"
               stroke="#e7e3da"
-              strokeWidth="12"
+              strokeWidth="11.5"
               strokeLinecap="round"
               strokeDasharray={`${arcLength} ${fullCircle}`}
-              transform="rotate(150 110 94)"
+              transform="rotate(150 110 88)"
             />
 
             {/* Foreground Gradient Progress Arc */}
             {!isEmpty && safeScore > 0 && (
               <circle
                 cx="110"
-                cy="94"
+                cy="88"
                 r={r}
                 fill="none"
                 stroke={`url(#${gradId})`}
-                strokeWidth="12"
+                strokeWidth="11.5"
                 strokeLinecap="round"
                 strokeDasharray={`${filledLength} ${fullCircle}`}
-                transform="rotate(150 110 94)"
+                transform="rotate(150 110 88)"
                 style={{
                   transition: "stroke-dasharray 0.55s cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
@@ -224,15 +239,16 @@ export default function CleanArcScoreCard({
             )}
           </svg>
 
-          {/* Center Score Readout Positioned Inside the Horseshoe */}
+          {/* Center Score Readout Safely Contained Inside the Inner Circle */}
           <div
             style={{
               position: "absolute",
-              top: compact ? "38%" : "39%",
+              top: "43%",
               left: "50%",
-              transform: "translate(-50%, -20%)",
+              transform: "translate(-50%, -50%)",
               textAlign: "center",
               pointerEvents: "none",
+              maxWidth: 108,
               width: "100%",
             }}
           >
@@ -243,25 +259,25 @@ export default function CleanArcScoreCard({
                 style={{
                   display: "inline-flex",
                   alignItems: "baseline",
-                  gap: 5,
+                  gap: 4,
                   justifyContent: "center",
                 }}
               >
                 <span
                   style={{
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: 800,
                     color: "#dc2626",
                     textDecoration: "line-through",
-                    opacity: 0.8,
+                    opacity: 0.85,
                   }}
                 >
                   {beforeScore}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#78716c" }}>→</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#57534e" }}>→</span>
                 <span
                   style={{
-                    fontSize: compact ? 32 : 36,
+                    fontSize: compact ? 30 : 34,
                     fontWeight: 900,
                     letterSpacing: "-0.04em",
                     lineHeight: 1,
@@ -286,14 +302,37 @@ export default function CleanArcScoreCard({
             )}
             <div
               style={{
-                fontSize: 11.5,
+                fontSize: 10,
                 fontWeight: 700,
-                color: "#78716c",
-                marginTop: 3,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "#57534e",
+                marginTop: 2,
               }}
             >
-              {scoreSublabel}
+              out of 100
             </div>
+          </div>
+
+          {/* Crisp High-Contrast Sublabel Pill Below the Open Horseshoe Gap */}
+          <div
+            style={{
+              marginTop: -12,
+              marginBottom: 4,
+              padding: "3px 10px",
+              borderRadius: 999,
+              background: ratingAccentBg,
+              color: ratingAccentText,
+              fontSize: 11.5,
+              fontWeight: 800,
+              letterSpacing: "-0.01em",
+              lineHeight: 1.25,
+              textAlign: "center",
+              boxShadow: "0 1px 2px rgba(21, 32, 27, 0.06)",
+              zIndex: 1,
+            }}
+          >
+            {scoreSublabel}
           </div>
         </div>
 

@@ -323,7 +323,7 @@ export default function WeeklyOrderAuditModal({
         <div className="modal-head">
           <div className="yuka-topbar-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
             <div>
               <span className="eyebrow eyebrow--green">80% of Family Groceries Are Repeat Staples</span>
               <h2>Audit My Weekly Order / Receipt</h2>
@@ -597,7 +597,7 @@ export default function WeeklyOrderAuditModal({
                             100,
                         )
                       : 0,
-                  color: "#a855f7",
+                  color: "#ea580c",
                   sublabel:
                     storeBrandCount > 0 ? `💚 ${storeBrandCount} Store-Brand` : "Red 40 / syrup",
                 },

@@ -235,7 +235,7 @@ export default function LabelAutoVerifierModal({
         <div className="modal-head">
           <div className="yuka-topbar-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
             <div>
               <span className="eyebrow eyebrow--green">🤖 INSTANT AI LABEL AUDITOR</span>
               <h2>Auto-Verify Label &amp; Score</h2>

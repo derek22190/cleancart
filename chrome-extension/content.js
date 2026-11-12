@@ -2199,7 +2199,7 @@
     .cc-tone-red { --tone: #dc2626; --tone-bright: #f87171; --tone-tint: #fdecec; }
     .cc-tone-gray { --tone: #64748b; --tone-bright: #94a3b8; --tone-tint: #e2e8f0; }
     .cc-pill { position: fixed; right: 0; z-index: 2147483646; transform: translateY(-50%); display: flex; align-items: center; gap: 9px; max-width: 340px; padding: 8px 13px 8px 10px; border-radius: 999px 0 0 999px; background: rgba(15,23,20,.95); color: #f8fafc; font-size: 13px; line-height: 1.2; box-shadow: 0 12px 32px -8px rgba(0,0,0,.52); cursor: grab; user-select: none; touch-action: none; }
-    .cc-pill-mascot { width: 26px; height: 26px; border-radius: 8px; object-fit: contain; background: #fff; padding: 1px; flex: none; }
+    .cc-pill-mascot { width: 26px; height: 26px; object-fit: contain; flex: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.28)); }
     .cc-mini-ring { position: relative; width: 28px; height: 28px; flex: none; }
     .cc-mini-ring svg { width: 100%; height: 100%; display: block; }
     .cc-mini-ring-track { fill: none; stroke: rgba(255,255,255,.16); stroke-width: 3.4; }
@@ -2578,23 +2578,15 @@
     const flagsHtml = isNonFood
       ? `<p class="cc-meta-line">Household / non-food item — not scored as food.</p>`
       : r.flagged.length
-        ? `<div class="cc-flags">${r.flagged
+        ? `<div class="cc-explain-list">${r.flagged
             .map(
               (f) =>
-                `<button type="button" class="cc-flag cc-risk-${esc(f.risk)} ${state.openFlag === f.name ? "is-open" : ""}" data-flag="${esc(f.name)}">${esc(f.name)} ⚠️</button>`
+                `<div class="cc-explain cc-risk-${esc(f.risk)}"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${esc(f.name)}</b><span>−${esc(f.penalty)} pts</span></div><p>${esc(f.explanation)}</p></div>`
             )
             .join("")}</div>`
         : `<p class="cc-clean">✓ 0 Watchlist Additives Found</p>`;
 
-    const explainList = !isNonFood && r.flagged.length
-      ? `<div class="cc-explain-list">${r.flagged
-          .filter((f) => !state.openFlag || state.openFlag === f.name)
-          .map(
-            (f) =>
-              `<div class="cc-explain cc-risk-${esc(f.risk)}"><b>${esc(f.name)}</b> <span>−${esc(f.penalty)} pts</span><p>${esc(f.explanation)}</p></div>`
-          )
-          .join("")}</div>`
-      : "";
+    const explainList = "";
 
     const ingHtml = d.product?.ingredients && !isNonFood
       ? `<details class="cc-ing-box"><summary>Ingredients (${d.product.ingredients.split(",").length} listed)</summary><p>${esc(d.product.ingredients)}</p></details>`

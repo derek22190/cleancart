@@ -267,7 +267,7 @@ export default function LabelScannerModal({
         <div className="modal-head">
           <div className="yuka-topbar-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
             <div>
               <span className="eyebrow eyebrow--green">Zero-Miss Fallback · Works on Every Brand</span>
               <h2>Screenshot &amp; Ingredient Label Scanner</h2>

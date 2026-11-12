@@ -410,6 +410,11 @@ async function main() {
         ok: Boolean(process.env.META_ADS_ACCESS_TOKEN?.trim() && process.env.META_AD_ACCOUNT_ID?.trim()),
         where: "https://business.facebook.com/settings/system-users -> Generate Token with ads_read, ads_management",
       },
+      {
+        name: "GOOGLE_CLIENT_ID (Web Google Account Picker)",
+        ok: Boolean(process.env.GOOGLE_CLIENT_ID?.trim() || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim()),
+        where: "https://console.cloud.google.com/apis/credentials -> Create OAuth 2.0 Web Client ID (Authorized redirect URI: https://www.heybroc.com/auth/google-callback)",
+      },
     ];
     console.log("==============================================================");
     console.log("🚀 HEYBROC STORE-PACKAGING PRODUCTION KEYS PRE-FLIGHT CHECK");

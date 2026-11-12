@@ -160,7 +160,7 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/^(?!.*\b(?:juice|cider|sauce|applesauce|pie|chips?|strudel|fritter|danish)\b).*\b(?:honeycrisp\s+apples?|gala\s+apples?|fuji\s+apples?|granny\s+smith\s+apples?|fresh\s+apples?)\b/i, "https://images.openfoodfacts.org/images/products/002/290/630/0183/front_en.3.400.jpg"],
   [/\bezekiel\b.*\bbread\b/i, "local:public/swaps/bread.jpg"],
   [/\brao'?s\b.*\b(?:marinara|tomato\s+basil|arrabbiata|vodka\s+sauce|pasta\s+sauce)\b/i, "local:public/swaps/marinara.png"],
-  [/\b(?:applegate|true\s+story)\b.*\borganic\b.*\bturkey\s+breast\b/i, "local:public/swaps/turkey.jpg"],
+  [/\b(?:applegate|true\s+story)\b.*\borganics?\b.*\bturkey\s+breast\b/i, "local:public/swaps/turkey.jpg"],
   [/\bchosen\s+foods\b.*\b(?:mayo|mayonnaise)\b/i, "local:public/swaps/mayo.png"],
   [/^(?!.*\b(?:cake|juice|soup)\b).*\b(?:baby\s+cut\s+carrots?|whole\s+carrots?|fresh\s+carrots?)\b/i, "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg"],
 ];

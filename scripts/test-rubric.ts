@@ -2746,7 +2746,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         buildIosYmlSrc.includes("com.heybroc.app.ShareExtension") &&
         buildIosYmlSrc.includes("APPLICATION_EXTENSION_API_ONLY") &&
         freshSimTsx.includes("open-ios-live-shop") &&
-        freshSimTsx.includes("pesticide-watch-switch-card") &&
+        freshSimTsx.includes("topbar-pesticide-toggle") &&
         androidScanApiKtSrc.includes('"pesticide_risk"')
     )
   );
@@ -3272,6 +3272,39 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         safariContentSrc.includes('data-act="auto-verify-label"') &&
         !safariContentSrc.includes("mailto:support@heybroc.com") &&
         androidScanApiKtSrc.includes("autoVerifyLabel")
+    )
+  );
+
+  const authModalLatestSrc = fs.readFileSync("components/AuthModal.tsx", "utf8");
+  const exposeModalLatestSrc = fs.readFileSync("components/ProductExposeModal.tsx", "utf8");
+  const applegateImgReq = new Request(
+    "http://localhost:3000/api/product-image?q=" +
+      encodeURIComponent("Applegate Organics Oven Roasted Turkey Breast"),
+  );
+  const applegateImgRes = await productImageRouteMod.GET(applegateImgReq);
+  const applegateContentType = applegateImgRes.headers.get("content-type") || "";
+  const applegateImgSource = applegateImgRes.headers.get("x-image-source") || "";
+  check(
+    "Mobile UX Polish: transparent /broc-mascot.png everywhere, zero purple arc strokes, single green share pill without guest BROC code, Applegate Organics photo match, real Google OAuth chooser & scroll-locked AuthModal",
+    Boolean(
+      freshSimTsx.includes("/broc-mascot.png") &&
+        !freshSimTsx.includes("/broc-mascot.jpg") &&
+        freshSimTsx.includes("independent-section") &&
+        freshSimTsx.includes("phone-store-search-input") &&
+        !freshSimTsx.includes("/llms.txt") &&
+        !freshSimTsx.includes("/sitemap.xml") &&
+        !cleanArcSrc.toLowerCase().includes("#a855f7") &&
+        !cleanArcSrc.toLowerCase().includes("#8b5cf6") &&
+        !freshSimTsx.toLowerCase().includes("#a855f7") &&
+        exposeModalLatestSrc.includes("expose-share-primary-btn") &&
+        !exposeModalLatestSrc.includes("expose-download-png-btn") &&
+        !exposeModalLatestSrc.includes("expose-copy-link-btn") &&
+        applegateImgRes.status === 200 &&
+        applegateContentType.includes("image/jpeg") &&
+        applegateImgSource === "HeyBroc Verified Product Photo" &&
+        authModalLatestSrc.includes("accounts.google.com/o/oauth2/v2/auth") &&
+        authModalLatestSrc.includes("select_account") &&
+        authModalLatestSrc.includes("document.body.style.overflow")
     )
   );
 

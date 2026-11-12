@@ -165,7 +165,7 @@ export default function Scorecard({
     roundRect(ctx, 84, H - 210, W - 168, 130, 28);
     ctx.fill();
 
-    const mascotEl = document.querySelector<HTMLImageElement>('img[src="/broc-mascot.jpg"]');
+    const mascotEl = document.querySelector<HTMLImageElement>('img[src="/broc-mascot.png"]');
     let textX = 120;
     if (mascotEl && mascotEl.complete && mascotEl.naturalWidth > 0) {
       ctx.save();
@@ -212,7 +212,7 @@ export default function Scorecard({
         <div className="modal-head">
           <div className="yuka-topbar-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
             <div>
               <span className="eyebrow eyebrow--green">9:16 Viral TikTok / IG Story Generator</span>
               <h2>Clean Haul Scorecard</h2>
@@ -281,7 +281,7 @@ export default function Scorecard({
             <div className="story-watermark">
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/broc-mascot.jpg" alt="Broc" className="story-watermark-mascot" />
+                <img src="/broc-mascot.png" alt="Broc" className="story-watermark-mascot" />
                 <div>
                   <strong>HeyBroc · heybroc.com</strong>
                   <span>Scan &amp; swap groceries for cleaner alternatives in 1 tap</span>

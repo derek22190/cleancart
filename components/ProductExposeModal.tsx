@@ -60,26 +60,35 @@ export default function ProductExposeModal({
   useEffect(() => {
     if (!open) return;
     setStatusNote("");
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [open, onClose]);
 
   const fullProductName = productTitle.toLowerCase().startsWith(productBrand.toLowerCase())
     ? productTitle
     : `${productBrand} ${productTitle}`.trim();
-  const activeCode = (referralCode || "HEYBROC").toUpperCase();
+  const normalizedCode = (referralCode || "").trim().toUpperCase();
+  const activeCreatorCode =
+    normalizedCode && !normalizedCode.startsWith("BROC-") && normalizedCode !== "HEYBROC"
+      ? normalizedCode
+      : "";
 
   const buildShareUrl = useCallback(() => {
     const base = typeof window !== "undefined" ? window.location.origin : "https://www.heybroc.com";
     const params = new URLSearchParams();
     params.set("share", fullProductName);
     params.set("store", store);
-    if (activeCode) params.set("ref", activeCode);
+    if (activeCreatorCode) params.set("ref", activeCreatorCode);
     return `${base}/?${params.toString()}`;
-  }, [fullProductName, store, activeCode]);
+  }, [fullProductName, store, activeCreatorCode]);
 
   const buildShareCaption = useCallback(() => {
     const dot = score.color === "green" ? "🟢" : score.color === "yellow" ? "🟡" : "🔴";
@@ -267,7 +276,7 @@ export default function ProductExposeModal({
       ctx.fillText("60% Nutritional Quality · 30% Additive Safety · 10% Organic Bonus", 102, 910);
     }
 
-    // Bottom Referral Bar
+    // Bottom Brand Bar
     ctx.fillStyle = "rgba(255,255,255,0.10)";
     roundRectPath(ctx, 64, 1130, W - 128, 136, 28);
     ctx.fill();
@@ -277,11 +286,11 @@ export default function ProductExposeModal({
     ctx.fillText("Scan any grocery free at heybroc.com", 102, 1184);
 
     ctx.fillStyle = "#86efac";
-    ctx.font = `800 27px ${font}`;
+    ctx.font = `800 26px ${font}`;
     ctx.fillText(
-      activeCode.startsWith("BROC-")
-        ? `🎁 +7 Free Pro Days Invite Code: ${activeCode}`
-        : `🎁 Free Trial Code: ${activeCode}`,
+      activeCreatorCode
+        ? `🎁 Free Trial Code: ${activeCreatorCode}`
+        : "100% Independent Clean-Label Food Grader",
       102,
       1232,
     );
@@ -295,9 +304,9 @@ export default function ProductExposeModal({
     );
 
     return canvas;
-  }, [store, score, dietaryAlerts, fullProductName, swap, swapUnlocked, activeCode]);
+  }, [store, score, dietaryAlerts, fullProductName, swap, swapUnlocked, activeCreatorCode]);
 
-  const handleDownloadPng = () => {
+  const downloadFallbackPng = () => {
     const canvas = renderExposeCanvas();
     if (!canvas) return;
     const a = document.createElement("a");
@@ -309,7 +318,6 @@ export default function ProductExposeModal({
     a.download = `heybroc-expose-${slug || "score"}-${score.score}.png`;
     a.href = canvas.toDataURL("image/png");
     a.click();
-    setStatusNote("✓ Downloaded 1080×1350 Exposé Card PNG!");
   };
 
   const handleNativeShare = async () => {
@@ -340,23 +348,19 @@ export default function ProductExposeModal({
         });
         setStatusNote("✓ Shared link!");
         return;
-      } catch {
-        /* user cancelled or file share unsupported — fall back to copy + download */
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
       }
     }
 
-    handleDownloadPng();
+    downloadFallbackPng();
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(caption).catch(() => {});
-      setStatusNote("✓ Downloaded PNG & copied iMessage/WhatsApp caption + link!");
-    }
-  };
-
-  const handleCopyTextAndLink = async () => {
-    const caption = buildShareCaption();
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(caption);
-      setStatusNote("✓ Copied Before/After summary & instant scan link to clipboard!");
+      setStatusNote("✓ Saved Score Card image & copied share link!");
+    } else {
+      setStatusNote("✓ Saved Score Card image!");
     }
   };
 
@@ -372,16 +376,16 @@ export default function ProductExposeModal({
     >
       <div
         className="modal-card"
-        style={{ maxWidth: 520, width: "94vw", maxHeight: "91vh", overflowY: "auto" }}
+        style={{ maxWidth: 480, width: "94vw", maxHeight: "calc(100dvh - 28px)", overflowY: "auto" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-head">
           <div className="yuka-topbar-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+            <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
             <div>
-              <span className="eyebrow eyebrow--green">4:5 iMessage · WhatsApp · IG · TikTok Card</span>
-              <h2>Share Before/After Score Card</h2>
+              <span className="eyebrow eyebrow--green">Before &amp; After Score Card</span>
+              <h2>Share Clean Swap</h2>
             </div>
           </div>
           <button className="close" type="button" onClick={onClose} aria-label="Close share card modal">
@@ -402,7 +406,7 @@ export default function ProductExposeModal({
           }}
         >
           <div style={{ fontSize: 11, fontWeight: 800, color: "#86efac", letterSpacing: "0.05em", marginBottom: 10 }}>
-            🥦 HEYBROC INGREDIENT EXPOSÉ · {STORE_META[store].label.toUpperCase()}
+            🥦 HEYBROC · {STORE_META[store].label.toUpperCase()}
           </div>
 
           {/* Scanned Product Box */}
@@ -505,7 +509,9 @@ export default function ProductExposeModal({
             }}
           >
             <span style={{ fontWeight: 800 }}>heybroc.com</span>
-            <span style={{ color: "#86efac", fontWeight: 800 }}>Code: {activeCode}</span>
+            <span style={{ color: "#86efac", fontWeight: 700 }}>
+              {activeCreatorCode ? `Code: ${activeCreatorCode}` : "100% Independent Score"}
+            </span>
           </div>
         </div>
 
@@ -529,37 +535,16 @@ export default function ProductExposeModal({
           </div>
         )}
 
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        <div style={{ marginTop: 12 }}>
           <button
             id="expose-share-primary-btn"
             type="button"
             className="swap-btn"
             onClick={() => void handleNativeShare()}
-            style={{ width: "100%", padding: "11px 16px", fontWeight: 800 }}
+            style={{ width: "100%", padding: "12px 16px", fontWeight: 800 }}
           >
-            📲 Share Image &amp; Link (iMessage / IG / WhatsApp)
+            📲 Share Score Card
           </button>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <button
-              id="expose-download-png-btn"
-              type="button"
-              className="trip-pill"
-              onClick={handleDownloadPng}
-              style={{ justifyContent: "center", padding: "9px 12px", fontWeight: 700 }}
-            >
-              ⬇️ Download PNG
-            </button>
-            <button
-              id="expose-copy-link-btn"
-              type="button"
-              className="trip-pill"
-              onClick={() => void handleCopyTextAndLink()}
-              style={{ justifyContent: "center", padding: "9px 12px", fontWeight: 700 }}
-            >
-              📋 Copy Text + Link
-            </button>
-          </div>
         </div>
       </div>
     </div>

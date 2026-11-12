@@ -63,13 +63,12 @@ export default function SwapsDirectoryPage() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/broc-mascot.jpg"
+            src="/broc-mascot.png"
             alt="HeyBroc"
             style={{
               width: 36,
               height: 36,
-              borderRadius: 10,
-              border: "2px solid #16a34a",
+              objectFit: "contain",
               flexShrink: 0,
             }}
           />

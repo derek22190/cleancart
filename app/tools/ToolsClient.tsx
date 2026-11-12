@@ -172,13 +172,12 @@ export default function ToolsClient() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/broc-mascot.jpg"
+            src="/broc-mascot.png"
             alt="HeyBroc"
             style={{
               width: 36,
               height: 36,
-              borderRadius: 10,
-              border: "2px solid #16a34a",
+              objectFit: "contain",
               flexShrink: 0,
             }}
           />
@@ -524,7 +523,7 @@ export default function ToolsClient() {
                     label: "Oils & Dyes",
                     valueText: `${seedOilHits.length + dyeHits.length}`,
                     fillPct: seedOilHits.length + dyeHits.length === 0 ? 100 : 20,
-                    color: seedOilHits.length + dyeHits.length === 0 ? "#10b981" : "#a855f7",
+                    color: seedOilHits.length + dyeHits.length === 0 ? "#10b981" : "#ea580c",
                   },
                 ]}
               />

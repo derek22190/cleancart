@@ -1339,9 +1339,6 @@ export default function Simulator({
     };
   }, []);
 
-  const [panel, setPanel] = useState<"none" | "watchlist">("none");
-  const [pillTheme, setPillTheme] = useState<"dark" | "green" | "score" | "white">("dark");
-  const [pillSize, setPillSize] = useState<"standard" | "compact">("standard");
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditBusy, setAuditBusy] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -1556,7 +1553,6 @@ export default function Simulator({
     [store, isIosAppClient]
   );
 
-  const [storeExpanded, setStoreExpanded] = useState(false);
   const storeRailRef = useRef<HTMLDivElement>(null);
 
   const scrollStoreRail = useCallback((dir: -1 | 1) => {
@@ -2465,26 +2461,6 @@ export default function Simulator({
     }
   };
 
-  const toggleWatch = (c: Category) => {
-    const nextVal = !watch[c];
-    setWatch((w) => {
-      const next = { ...w, [c]: nextVal };
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("heybroc_watchlist_1x", JSON.stringify(next));
-      }
-      return next;
-    });
-    if (!nextVal) {
-      setFamilyWatchlist((prev) => {
-        const nextFw = prev.filter((cat) => cat !== c);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("heybroc_family_watchlist", JSON.stringify(nextFw));
-        }
-        return nextFw;
-      });
-    }
-  };
-
   const persistOnboardingSelections = useCallback(
     (selected: Category[], extras?: OnboardingSelections) => {
       setFamilyWatchlist(selected);
@@ -2544,8 +2520,6 @@ export default function Simulator({
     return [...pinned, ...rest];
   }, [preferredStores]);
 
-  const disabledCount = ALL_CATEGORIES.filter((c) => !watch[c]).length;
-
   const isCartBubbleMode = viewMode === "search" || cartClimbFlash;
 
   const aisleItems = useMemo<Product[]>(
@@ -2565,12 +2539,12 @@ export default function Simulator({
         <div className="topbar-main">
           <div className="brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.jpg" alt="Broc mascot" className="brand-mascot" />
+            <img src="/broc-mascot.png" alt="Broc mascot" className="brand-mascot" />
             <div className="brand-copy">
               <div className="brand-title-row">
                 <h1>HeyBroc</h1>
               </div>
-              <p className="brand-tagline">Instant food grader &amp; 1-tap clean swaps</p>
+              <p className="brand-tagline">100% independent food grader &amp; 1-tap clean swaps</p>
             </div>
           </div>
 
@@ -2969,199 +2943,65 @@ export default function Simulator({
           )}
 
           <div
-            className="card"
+            className="card hero-card"
             style={adTestMode ? { display: "none" } : undefined}
           >
-            <div className="card-head">
-              <h2>Choose Your Store</h2>
-              <button
-                type="button"
-                className="store-view-toggle"
-                onClick={() => setStoreExpanded((v) => !v)}
-              >
-                {storeExpanded ? "Slide view ▴" : `All ${STORES.length} stores ▾`}
-              </button>
-            </div>
-            {storeExpanded ? (
-              <div className="store-grid-all" role="tablist" aria-label="All supported grocery stores">
-                {orderedStores.map((s) => (
-                  <button
-                    key={s}
-                    id={`store-${s}`}
-                    role="tab"
-                    aria-selected={store === s}
-                    className={`store-chip-btn ${store === s ? "is-on" : ""}`}
-                    onClick={() => switchStore(s)}
-                  >
-                    <StoreBadge store={s} />
-                    <span>{STORE_META[s].label}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="store-rail-wrap">
-                <button
-                  type="button"
-                  className="store-rail-arrow"
-                  onClick={() => scrollStoreRail(-1)}
-                  aria-label="Scroll stores left"
-                >
-                  ‹
-                </button>
-                <div className="store-rail" ref={storeRailRef} role="tablist" aria-label="Supported grocery stores">
-                  {orderedStores.map((s) => (
-                    <button
-                      key={s}
-                      id={`store-${s}`}
-                      role="tab"
-                      aria-selected={store === s}
-                      className={`store-chip-btn ${store === s ? "is-on" : ""}`}
-                      onClick={() => switchStore(s)}
-                    >
-                      <StoreBadge store={s} />
-                      <span>{STORE_META[s].label}</span>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="store-rail-arrow"
-                  onClick={() => scrollStoreRail(1)}
-                  aria-label="Scroll stores right"
-                >
-                  ›
-                </button>
-              </div>
-            )}
-            <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-              <button
-                id="toggle-prefer-store-brand"
-                type="button"
-                onClick={() => togglePreferStoreBrand()}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  border: preferStoreBrand ? "1.5px solid #0f7a4a" : "1px solid #cbd5e1",
-                  background: preferStoreBrand ? "#dcfce7" : "#f8fafc",
-                  color: preferStoreBrand ? "#14532d" : "#334155",
-                }}
-              >
-                {preferStoreBrand ? "💚 Store-Brand Budget Swaps First: ON" : "💚 Store-Brand Budget Swaps First"}
-              </button>
-              <small style={{ fontSize: 11.5, color: "#64748b" }}>
-                Prioritizes Great Value Organic, Good &amp; Gather, Kirkland, 365 &amp; Simply Nature
-              </small>
-            </div>
-          </div>
-
-          <div
-            className="card"
-            style={adTestMode ? { display: "none" } : undefined}
-          >
-            <div className="card-head">
-              <h2>Shopping View</h2>
-            </div>
-            <div className="segmented segmented--two">
-              <button
-                id="mode-product-btn"
-                type="button"
-                className={viewMode === "product" ? "is-on" : ""}
-                onClick={() => setViewMode("product")}
-              >
-                📦 Product Page ({score.score}/100)
-              </button>
-              <button
-                id="mode-search-btn"
-                type="button"
-                className={viewMode === "search" ? "is-on" : ""}
-                onClick={() => setViewMode("search")}
-              >
-                🛒 Store Aisle ({cartAvg === null ? "--" : `${animatedCartAvg}/100`})
-              </button>
-            </div>
-            <div className="bubble-trip-bar">
-              {hiddenForTrip ? (
-                <button
-                  id="restore-bubble-btn"
-                  type="button"
-                  className="trip-pill trip-pill--restore"
-                  onClick={() => setHiddenForTrip(false)}
-                >
-                  ↺ HeyBroc hidden for this trip · Tap to Restore
-                </button>
-              ) : (
-                <button
-                  id="snooze-bubble-btn"
-                  type="button"
-                  className="trip-pill"
-                  onClick={() => {
-                    setHiddenForTrip(true);
-                    setToast({
-                      title: "HeyBroc hidden for this trip",
-                      body: `Dismissed until you next open ${STORE_META[store].label}.`,
-                    });
-                  }}
-                >
-                  ✕ Hide bubble for this trip
-                </button>
-              )}
-              {cart.some((c) => c.origin === "swap") && (
-                <button type="button" className="link-btn" onClick={resetCartPresets}>
-                  Reset sample cart
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div
-            className="card"
-            style={adTestMode ? { display: "none" } : undefined}
-          >
-            <div className="card-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-              <h2>Search Any Grocery Item</h2>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button
-                  id="open-label-scanner"
-                  type="button"
-                  className="trip-pill"
-                  onClick={() => setLabelScannerOpen(true)}
-                >
-                  📸 Label / Screenshot
-                </button>
-                <button
-                  id="toggle-barcode-scanner"
-                  type="button"
-                  className="trip-pill"
-                  onClick={() => {
-                    if (barcodeScannerOpen) {
-                      stopCameraScanner();
-                      setBarcodeScannerOpen(false);
-                      setBarcodeStatus("");
-                    } else {
-                      setBarcodeScannerOpen(true);
-                      void startCameraScanner();
-                    }
-                  }}
-                >
-                  {barcodeScannerOpen ? "✕ Close Scanner" : "📷 Barcode"}
-                </button>
-              </div>
-            </div>
+            <span className="eyebrow eyebrow--green">
+              100% INDEPENDENT · ZERO BRAND INFLUENCE
+            </span>
+            <h2 className="hero-headline">
+              Know what&apos;s really hiding in your family&apos;s groceries.
+            </h2>
+            <p className="hero-subcopy">
+              HeyBroc grades any food or drink <b>0–100</b> as you shop across 12 grocery apps — flagging seed oils, synthetic dyes &amp; hidden additives with <b>1-tap Clean Swaps</b>.
+            </p>
             <form className="search" onSubmit={runLive}>
               <input
                 id="live-search-input"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search item, UPC barcode, or paste a Walmart / Target / Amazon link…"
+                placeholder="Search food, UPC barcode, or paste a store link…"
                 aria-label="Search any grocery product"
               />
               <button id="live-search-submit" type="submit" disabled={!query.trim()}>
-                {liveState === "loading" ? <span className="spinner" aria-label="Scanning" /> : "Scan"}
+                {liveState === "loading" ? <span className="spinner" aria-label="Scanning" /> : "Grade"}
               </button>
             </form>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              <button
+                id="open-label-scanner"
+                type="button"
+                className="trip-pill"
+                onClick={() => setLabelScannerOpen(true)}
+              >
+                📸 Scan Label / Screenshot
+              </button>
+              <button
+                id="toggle-barcode-scanner"
+                type="button"
+                className="trip-pill"
+                onClick={() => {
+                  if (barcodeScannerOpen) {
+                    stopCameraScanner();
+                    setBarcodeScannerOpen(false);
+                    setBarcodeStatus("");
+                  } else {
+                    setBarcodeScannerOpen(true);
+                    void startCameraScanner();
+                  }
+                }}
+              >
+                {barcodeScannerOpen ? "✕ Close Scanner" : "📷 Scan Barcode"}
+              </button>
+              <button
+                id="open-weekly-audit"
+                type="button"
+                className="trip-pill"
+                onClick={() => setWeeklyAuditOpen(true)}
+              >
+                🧾 Audit Pickup Order
+              </button>
+            </div>
             {barcodeScannerOpen && (
               <div
                 style={{
@@ -3197,7 +3037,6 @@ export default function Simulator({
                       opacity: barcodeCameraActive ? 1 : 0.35,
                     }}
                   />
-                  {/* Centered Reticle Overlay — disambiguates multi-barcode shelf frames */}
                   <div
                     aria-hidden
                     style={{
@@ -3310,8 +3149,67 @@ export default function Simulator({
             className="card"
             style={adTestMode ? { display: "none" } : undefined}
           >
+            <div className="card-head" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <h2>Choose Your Store</h2>
+              <button
+                id="toggle-prefer-store-brand"
+                type="button"
+                onClick={() => togglePreferStoreBrand()}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontSize: 11.5,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  border: preferStoreBrand ? "1.5px solid #0f7a4a" : "1px solid #cbd5e1",
+                  background: preferStoreBrand ? "#dcfce7" : "#f8fafc",
+                  color: preferStoreBrand ? "#14532d" : "#334155",
+                }}
+              >
+                {preferStoreBrand ? "💚 Store-Brand Swaps: ON" : "💚 Store-Brand Swaps"}
+              </button>
+            </div>
+            <div className="store-rail-wrap">
+              <button
+                type="button"
+                className="store-rail-arrow"
+                onClick={() => scrollStoreRail(-1)}
+                aria-label="Scroll stores left"
+              >
+                ‹
+              </button>
+              <div className="store-rail" ref={storeRailRef} role="tablist" aria-label="Supported grocery stores">
+                {orderedStores.map((s) => (
+                  <button
+                    key={s}
+                    id={`store-${s}`}
+                    role="tab"
+                    aria-selected={store === s}
+                    className={`store-chip-btn ${store === s ? "is-on" : ""}`}
+                    onClick={() => switchStore(s)}
+                  >
+                    <StoreBadge store={s} />
+                    <span>{STORE_META[s].label}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="store-rail-arrow"
+                onClick={() => scrollStoreRail(1)}
+                aria-label="Scroll stores right"
+              >
+                ›
+              </button>
+            </div>
+          </div>
+
+          <div
+            className="card"
+            style={adTestMode ? { display: "none" } : undefined}
+          >
             <div className="card-head">
-              <h2>Popular Grocery Items</h2>
+              <h2>Popular Items — Tap to Grade</h2>
               {PRESETS.length > 5 && (
                 <button
                   type="button"
@@ -3339,216 +3237,6 @@ export default function Simulator({
               })}
             </ul>
           </div>
-
-          <div
-            className="tool-row"
-            style={adTestMode ? { display: "none" } : undefined}
-          >
-            <button id="open-auditor" className="tool" onClick={openAudit}>
-              <span className="tool-icon">🛒</span>
-              <span>
-                <b>Whole-Cart Health Check</b>
-                <small>
-                  {cartAvg === null
-                    ? `${STORE_META[store].label} cart empty • Avg --`
-                    : `${dirty.length} dirty of ${cart.length} • Avg ${animatedCartAvg}/100`}
-                </small>
-              </span>
-            </button>
-            <button id="open-weekly-audit" type="button" className="tool" onClick={() => setWeeklyAuditOpen(true)}>
-              <span className="tool-icon">🧾</span>
-              <span>
-                <b>Audit Weekly Order</b>
-                <small>Paste or upload pickup order / receipt</small>
-              </span>
-            </button>
-          </div>
-
-          <button
-            id="open-watchlist"
-            type="button"
-            className={`tool ${panel === "watchlist" ? "is-on" : ""}`}
-            onClick={() => setPanel((p) => (p === "watchlist" ? "none" : "watchlist"))}
-            style={{ width: "100%", textAlign: "left", ...(adTestMode ? { display: "none" } : {}) }}
-          >
-            <span className="tool-icon">⚙︎</span>
-            <span>
-              <b>Bubble Style &amp; 9-Category Settings</b>
-              <small>{disabledCount ? `${disabledCount} categor${disabledCount === 1 ? "y" : "ies"} ignored` : "Customize floating pill theme & strictness"}</small>
-            </span>
-          </button>
-
-          <button
-            id="open-watchlist-funnel"
-            type="button"
-            className="tool"
-            onClick={() => {
-              setManualFunnelOpen(true);
-              setWatchlistFunnelStep(1);
-              setWatchlistFunnelOpen(true);
-            }}
-            style={{ width: "100%", textAlign: "left", ...(adTestMode && !freeTestCompleted ? { display: "none" } : {}) }}
-          >
-            <span className="tool-icon">🛡️</span>
-            <span>
-              <b>
-                Family Watchlist ({familyWatchlist.length} Active
-                {dietaryWatchlist.length > 0 ? ` · ${dietaryWatchlist.length} Allergy` : ""})
-              </b>
-              <small>
-                2x penalties on Seed Oils, Red 40, Sugar &amp; family allergens →
-              </small>
-            </span>
-          </button>
-
-          <button
-            id="pesticide-watch-switch-card"
-            type="button"
-            role="switch"
-            aria-checked={pesticideWatchEnabled}
-            className="tool"
-            onClick={() => togglePesticideWatch()}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              display: adTestMode && !freeTestCompleted ? "none" : "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              background: pesticideWatchEnabled ? "#f0fdf4" : undefined,
-              borderColor: pesticideWatchEnabled ? "#22c55e" : undefined,
-            }}
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <span className="tool-icon" aria-hidden>
-                🌱
-              </span>
-              <span style={{ minWidth: 0 }}>
-                <b>
-                  Pesticides (Glyphosate) Watch{" "}
-                  <span
-                    style={{
-                      display: "inline-block",
-                      marginLeft: 6,
-                      padding: "2px 7px",
-                      borderRadius: 999,
-                      fontSize: 11,
-                      fontWeight: 800,
-                      background: pesticideWatchEnabled ? "#16a34a" : "#e2e8f0",
-                      color: pesticideWatchEnabled ? "#ffffff" : "#475569",
-                    }}
-                  >
-                    {pesticideWatchEnabled ? "ON" : "OFF"}
-                  </span>
-                </b>
-                <small style={{ display: "block", marginTop: 2 }}>
-                  Flags Dirty-Dozen produce &amp; conventional oats/wheat → Organic swaps
-                </small>
-              </span>
-            </span>
-            <span
-              aria-hidden
-              style={{
-                flexShrink: 0,
-                width: 46,
-                height: 26,
-                borderRadius: 999,
-                background: pesticideWatchEnabled ? "#16a34a" : "#cbd5e1",
-                position: "relative",
-                transition: "background 0.18s ease",
-                boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.14)",
-              }}
-            >
-              <span
-                style={{
-                  position: "absolute",
-                  top: 3,
-                  left: pesticideWatchEnabled ? 23 : 3,
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  background: "#ffffff",
-                  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.25)",
-                  transition: "left 0.18s ease",
-                }}
-              />
-            </span>
-          </button>
-
-          {panel === "watchlist" && (
-            <div className="card watchlist">
-              <div className="card-head">
-                <h2>Floating Bubble Style</h2>
-              </div>
-              <div className="segmented segmented--two" style={{ marginBottom: 8 }}>
-                {(
-                  [
-                    { id: "dark", label: "⬛ Obsidian Dark" },
-                    { id: "green", label: "🥦 HeyBroc Green" },
-                    { id: "score", label: "🎨 Score Color" },
-                    { id: "white", label: "⬜ Crisp White" },
-                  ] as const
-                ).map((t) => (
-                  <button
-                    key={t.id}
-                    id={`pill-theme-${t.id}`}
-                    type="button"
-                    className={pillTheme === t.id ? "is-on" : ""}
-                    onClick={() => setPillTheme(t.id)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <div className="segmented segmented--two" style={{ marginBottom: 14 }}>
-                <button
-                  id="pill-size-standard"
-                  type="button"
-                  className={pillSize === "standard" ? "is-on" : ""}
-                  onClick={() => setPillSize("standard")}
-                >
-                  Standard Pill (35 / 100 · Poor)
-                </button>
-                <button
-                  id="pill-size-compact"
-                  type="button"
-                  className={pillSize === "compact" ? "is-on" : ""}
-                  onClick={() => setPillSize("compact")}
-                >
-                  Compact Badge (35/100)
-                </button>
-              </div>
-              <div className="card-head">
-                <h2>Chemical Watchlist</h2>
-                <button
-                  className="link-btn"
-                  onClick={() => {
-                    setWatch(DEFAULT_WATCHLIST);
-                    if (typeof window !== "undefined") {
-                      window.localStorage.setItem(
-                        "heybroc_watchlist_1x",
-                        JSON.stringify(DEFAULT_WATCHLIST)
-                      );
-                    }
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-              <ul>
-                {ALL_CATEGORIES.map((c) => (
-                  <li key={c}>
-                    <label className="switch-row" htmlFor={`watch-${c}`}>
-                      <span>{CATEGORY_LABELS[c]}</span>
-                      <input id={`watch-${c}`} type="checkbox" checked={watch[c]} onChange={() => toggleWatch(c)} />
-                      <span className="switch" aria-hidden />
-                    </label>
-                  </li>
-                ))}
-              </ul>
-              <p className="meta">Scored on our 3-pillar rubric: 60% Nutritional Quality, 30% Additive Safety &amp; 10% Organic Bonus.</p>
-            </div>
-          )}
         </section>
 
         {/* ============ PHONE ============ */}
@@ -3561,15 +3249,46 @@ export default function Simulator({
             >
               <div className="store-header">
                 <div className="store-row">
-                  <span className="store-logo"><StoreBadge store={store} inHeader />{STORE_META[store].label}</span>
+                  <button
+                    type="button"
+                    className="store-logo"
+                    onClick={() => setViewMode((m) => (m === "search" ? "product" : "search"))}
+                    title="Toggle store aisle or product view"
+                    style={{ color: "inherit" }}
+                  >
+                    <StoreBadge store={store} inHeader />
+                    {STORE_META[store].label}
+                  </button>
                   <button className="cart-btn" onClick={() => setCartOpen(true)} aria-label="Open cart">
                     <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 4h2l2.4 11.2a2 2 0 002 1.6h7.7a2 2 0 002-1.5L21 8H6.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="10" cy="20" r="1.4" fill="currentColor" /><circle cx="17" cy="20" r="1.4" fill="currentColor" /></svg>
                     <span className="cart-count">{totalCartUnits}</span>
                   </button>
                 </div>
-                <div className="store-search" aria-hidden>
-                  <span>⌕ Search {STORE_META[store].label}</span>
-                </div>
+                <form className="store-search" onSubmit={runLive}>
+                  <span aria-hidden style={{ color: "#64748b", fontSize: 14, flexShrink: 0 }}>⌕</span>
+                  <input
+                    id="phone-store-search-input"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={`Search any food at ${STORE_META[store].label}…`}
+                    aria-label={`Search ${STORE_META[store].label}`}
+                  />
+                  {query.trim() ? (
+                    <button type="submit" className="store-search-submit">
+                      {liveState === "loading" ? "…" : "Grade"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="store-search-cam"
+                      onClick={() => setLabelScannerOpen(true)}
+                      aria-label="Scan ingredient label or screenshot"
+                      title="Scan ingredient label or screenshot"
+                    >
+                      📸
+                    </button>
+                  )}
+                </form>
               </div>
 
               <div className="store-scroll" ref={scrollRef}>
@@ -3666,13 +3385,13 @@ export default function Simulator({
               {!hiddenForTrip && overlay !== "card" && (
                 <div
                   id="floating-overlay-pill"
-                  className={`pill pill--${pillTheme} tone-${
+                  className={`pill tone-${
                     isCartBubbleMode
                       ? cartAvgTone
                       : activeDietaryAlerts.length > 0
                         ? "red"
                         : score.color
-                  } ${overlay === "min" || pillSize === "compact" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
+                  } ${overlay === "min" ? "is-min" : ""} ${isCartBubbleMode ? "is-cart-avg" : ""} ${cartClimbFlash ? "is-climbing" : ""}`}
                   style={{
                     top: `${pillY}%`,
                     transform: pillDragOffset
@@ -3706,7 +3425,7 @@ export default function Simulator({
                   }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/broc-mascot.jpg" alt="" className="pill-mascot" />
+                  <img src="/broc-mascot.png" alt="" className="pill-mascot" />
                   <span
                     className="pill-dot"
                     style={
@@ -3715,7 +3434,7 @@ export default function Simulator({
                         : undefined
                     }
                   />
-                  {overlay === "min" || pillSize === "compact" ? (
+                  {overlay === "min" ? (
                     <b>
                       {isCartBubbleMode
                         ? cartAvg === null
@@ -3772,6 +3491,29 @@ export default function Simulator({
                 </div>
               )}
 
+              {hiddenForTrip && overlay !== "card" && (
+                <button
+                  id="restore-bubble-btn"
+                  type="button"
+                  onClick={() => setHiddenForTrip(false)}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    bottom: 14,
+                    zIndex: 20,
+                    padding: "6px 11px",
+                    borderRadius: 999,
+                    background: "rgba(20, 26, 23, 0.88)",
+                    color: "#ffffff",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  ↺ Show HeyBroc
+                </button>
+              )}
+
               {/* ---------- Bottom-Center Drag-to-Hide Drop Target ---------- */}
               {pillDragOffset && (
                 <div
@@ -3796,7 +3538,7 @@ export default function Simulator({
                     <div className="insights-head yuka-topbar">
                       <div className="yuka-topbar-left">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+                        <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
                         <div>
                           <span className="eyebrow">HeyBroc · Cart Avg {cartAvg === null ? "--" : `${animatedCartAvg}/100`}</span>
                           <h3>
@@ -4143,7 +3885,7 @@ export default function Simulator({
                                   color: score.flagged.some(
                                     (f) => f.category === "seedOils" || f.category === "dyes",
                                   )
-                                    ? "#a855f7"
+                                    ? "#ea580c"
                                     : "#10b981",
                                   sublabel:
                                     score.yukaBreakdown.organicScore > 0
@@ -4203,7 +3945,7 @@ export default function Simulator({
                                   </div>
                                 </div>
 
-                                {/* Each Flagged Additive Row (Always expanded with plain-English explanation visible immediately) */}
+                                {/* Each Flagged Additive Row (Single clean header + concise explanation below) */}
                                 {score.flagged.map((f: FlaggedAdditive) => {
                                   const dotTone = f.risk === "high" ? "red" : "yellow";
                                   return (
@@ -4220,7 +3962,6 @@ export default function Simulator({
                                         </div>
                                       </div>
                                       <div className={`explain risk-${f.risk}`}>
-                                        <b>{f.name}</b> <span>{RISK_LABEL[f.risk]} · −{f.penalty} pts</span>
                                         <p>{f.explanation}</p>
                                       </div>
                                     </div>
@@ -4310,9 +4051,9 @@ export default function Simulator({
                               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src="/broc-mascot.jpg"
+                                  src="/broc-mascot.png"
                                   alt="HeyBroc"
-                                  style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }}
+                                  style={{ width: 34, height: 34, objectFit: "contain" }}
                                 />
                                 <div>
                                   <div style={{ fontSize: 15, fontWeight: 800, color: "#111814" }}>
@@ -4382,7 +4123,7 @@ export default function Simulator({
                           {favOnly && favorites.length === 0 ? (
                             <div className="yuka-empty-fav">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src="/broc-mascot.jpg" alt="Broc" className="yuka-empty-mascot" />
+                              <img src="/broc-mascot.png" alt="Broc" className="yuka-empty-mascot" />
                               <span className="yuka-empty-star">★</span>
                               <h4>NO FAVORITES</h4>
                               <p>Add a favorite by tapping the ☆ star in the top corner of any product.</p>
@@ -4587,7 +4328,7 @@ export default function Simulator({
                           </form>
                           <div className="yuka-member-card">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src="/broc-mascot.jpg" alt="Broc" className="yuka-member-mascot" />
+                            <img src="/broc-mascot.png" alt="Broc" className="yuka-member-mascot" />
                             <span className="yuka-member-eyebrow">MEMBER ACCESS</span>
                             <h4>Search for any product</h4>
                             <p>Packaged food and beverage products scored on our 3-pillar rubric (60% Nutritional Quality, 30% Clean-Label Additives, 10% Organic Bonus) via Open Food Facts &amp; USDA FoodData Central.</p>
@@ -4614,7 +4355,7 @@ export default function Simulator({
                       >
                         <span className="yuka-nav-pill">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src="/broc-mascot.jpg" alt="" className="yuka-nav-mascot" />
+                          <img src="/broc-mascot.png" alt="" className="yuka-nav-mascot" />
                         </span>
                         <small>Inspect</small>
                       </button>
@@ -4674,7 +4415,7 @@ export default function Simulator({
                     <div className="insights-head">
                       <div className="yuka-topbar-left">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/broc-mascot.jpg" alt="Broc" className="yuka-topbar-mascot" />
+                        <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
                         <div>
                           <span className="eyebrow">
                             {auditOpen ? `HeyBroc · ${STORE_META[store].label} Cart Health Check` : STORE_META[store].label}
@@ -4765,7 +4506,7 @@ export default function Simulator({
                                       100,
                                   )
                                 : 0,
-                            color: "#a855f7",
+                            color: "#ea580c",
                           },
                         ]}
                         footerNote={
@@ -4966,6 +4707,44 @@ export default function Simulator({
         </section>
       </main>
 
+      {/* ============ YUKA-INSPIRED 100% INDEPENDENT SCORING PILLARS ============ */}
+      <section id="independent-section" className="independent-section" aria-label="100% Independent Scoring Project">
+        <div className="independent-card">
+          <div className="independent-head">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/broc-mascot.png" alt="HeyBroc mascot" className="independent-mascot" />
+            <span className="eyebrow eyebrow--green">TRANSPARENT &amp; UNBIASED</span>
+            <h2>A 100% Independent Scoring Project</h2>
+            <p>
+              Food scores and Clean Swap picks are computed strictly from ingredient lists and nutrition facts — never from brand sponsorships.
+            </p>
+          </div>
+          <div className="independent-grid">
+            <div className="independent-pillar">
+              <div className="independent-icon" aria-hidden>🛡️</div>
+              <h3>No Brand Influence</h3>
+              <p>
+                No food manufacturer or grocery brand can pay to raise a score, hide a flagged additive, or buy placement in Top Picks.
+              </p>
+            </div>
+            <div className="independent-pillar">
+              <div className="independent-icon" aria-hidden>🚫</div>
+              <h3>No In-App Brand Ads</h3>
+              <p>
+                Brands cannot run banner ads or sponsored product placements inside HeyBroc while you shop for your family.
+              </p>
+            </div>
+            <div className="independent-pillar">
+              <div className="independent-icon" aria-hidden>💚</div>
+              <h3>Honest Member-First Model</h3>
+              <p>
+                Supported by optional Family Pro memberships and clearly marked retail &ldquo;paid link&rdquo; store links when you choose a swap — never influencing scores.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ============ WHY HEYBROC COMPARISON SECTION ============ */}
       <section className="compare-section" aria-label="Why HeyBroc comparison">
         <div className="compare-card">
@@ -4983,7 +4762,7 @@ export default function Simulator({
               <div className="compare-cell" role="columnheader">Barcode Apps</div>
               <div className="compare-cell compare-cell--broc" role="columnheader">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/broc-mascot.jpg" alt="" className="compare-mascot" />
+                <img src="/broc-mascot.png" alt="" className="compare-mascot" />
                 <span>HeyBroc</span>
               </div>
             </div>
@@ -5197,10 +4976,6 @@ export default function Simulator({
                 <p>
                   HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
                 </p>
-                <div style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11.5 }}>
-                  <a href="/llms.txt" style={{ color: "#0f7a4a", fontWeight: 600 }}>AI &amp; LLM Index (llms.txt)</a>
-                  <a href="/sitemap.xml" style={{ color: "#0f7a4a", fontWeight: 600 }}>Sitemap</a>
-                </div>
               </div>
             </details>
           </div>
@@ -5439,7 +5214,7 @@ export default function Simulator({
         swap={swap}
         swapUnlocked={isPro || swapsUsedThisWeek < weeklySwapLimit}
         store={store}
-        referralCode={appliedCreator?.code || personalReferralCode}
+        referralCode={appliedCreator?.code || ""}
       />
 
       <LabelAutoVerifierModal

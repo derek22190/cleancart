@@ -68,9 +68,9 @@ export const metadata: Metadata = {
   },
   manifest: "/manifest.json",
   icons: {
-    icon: "/broc-mascot.jpg",
-    shortcut: "/broc-mascot.jpg",
-    apple: "/broc-mascot.jpg",
+    icon: "/broc-mascot.png",
+    shortcut: "/broc-mascot.png",
+    apple: "/broc-mascot.png",
   },
   appleWebApp: {
     capable: true,
@@ -93,7 +93,7 @@ const jsonLd = {
       "@id": "https://www.heybroc.com/#organization",
       name: "HeyBroc",
       url: "https://www.heybroc.com",
-      logo: "https://www.heybroc.com/broc-mascot.jpg",
+      logo: "https://www.heybroc.com/broc-mascot.png",
       description:
         "Independent 0–100 online food and grocery ingredient grading engine and floating grocery shopping assistant.",
     },
