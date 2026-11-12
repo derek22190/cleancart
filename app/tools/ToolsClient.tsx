@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ADDITIVE_RULES,
@@ -8,6 +8,8 @@ import {
   RISK_LABEL,
   scoreProductYuka,
   type Category,
+  type NutritionInput,
+  type ScoreResult,
 } from "@/lib/rubric";
 import CleanArcScoreCard from "@/components/CleanArcScoreCard";
 
@@ -31,38 +33,48 @@ const ADDITIVE_FILTER_CATS: Array<{ id: "all" | Category; label: string }> = [
   { id: "emulsifiers", label: "Emulsifiers" },
 ];
 
-const SAMPLE_LABELS = [
-  {
-    shortLabel: "🌮 Doritos",
-    title: "Doritos Nacho Cheese Tortilla Chips",
-    ingredients:
-      "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Artificial Color (Yellow 6, Yellow 5, Red 40), Dextrose, Natural and Artificial Flavor.",
-  },
-  {
-    shortLabel: "🥗 Ranch",
-    title: "Hidden Valley Original Ranch",
-    ingredients:
-      "Vegetable Oil (Soybean and/or Canola Oil), Water, Sugar, Salt, Buttermilk, Egg Yolk, Monosodium Glutamate, Phosphoric Acid, Xanthan Gum, Natural and Artificial Flavor, Disodium Inosinate, Disodium Guanylate, Sorbic Acid, Calcium Disodium EDTA.",
-  },
-  {
-    shortLabel: "🍓 Yogurt",
-    title: "Strawberry Lowfat Yogurt",
-    ingredients:
-      "Cultured Grade A Reduced Fat Milk, Sugar, High Fructose Corn Syrup, Modified Corn Starch, Natural Flavor, Potassium Sorbate, Red 40.",
-  },
-  {
-    shortLabel: "🥑 Clean Chips",
-    title: "Siete Grain-Free Sea Salt Tortilla Chips",
-    ingredients: "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
-  },
-];
-
 type ToolTab = "grader" | "additives" | "setup";
+
+interface LookupScanProduct {
+  title: string;
+  brand?: string;
+  imageUrl?: string;
+  ingredients: string;
+  nutrition?: NutritionInput;
+}
+
+interface LookupScanPayload {
+  ok: boolean;
+  error?: string;
+  product?: LookupScanProduct;
+}
 
 export default function ToolsClient() {
   const [activeTab, setActiveTab] = useState<ToolTab>("grader");
-  const [titleInput, setTitleInput] = useState(SAMPLE_LABELS[0].title);
-  const [ingInput, setIngInput] = useState(SAMPLE_LABELS[0].ingredients);
+  const [titleInput, setTitleInput] = useState("Lactaid Whole Milk");
+  const [ingInput, setIngInput] = useState("");
+  const [showCustomIngredients, setShowCustomIngredients] = useState(false);
+  const [lookupProduct, setLookupProduct] = useState<LookupScanProduct | null>({
+    title: "Lactaid Whole Milk (100% Lactose-Free), 64 fl oz",
+    brand: "Lactaid",
+    ingredients: "Whole Milk, Lactase Enzyme, Vitamin D3.",
+    nutrition: {
+      caloriesKcal100g: 62,
+      sugarsG100g: 5.0,
+      saturatedFatG100g: 2.0,
+      sodiumMg100g: 52,
+      fiberG100g: 0,
+      proteinG100g: 3.4,
+      fruitsVegNutsPct: 0,
+      nutriScoreGrade: "b",
+      isWholeFood: false,
+    },
+  });
+  const [lookupStatus, setLookupStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [lookupError, setLookupError] = useState("");
+  const lookupSeqRef = useRef(0);
+  const lookupAbortRef = useRef<AbortController | null>(null);
+
   const [additiveFilter, setAdditiveFilter] = useState("");
   const [additiveCategory, setAdditiveCategory] = useState<"all" | Category>("all");
   const [showAllAdditives, setShowAllAdditives] = useState(false);
@@ -92,6 +104,91 @@ export default function ToolsClient() {
     }
   }, []);
 
+  const runProductLookup = useCallback(async (rawQuery: string) => {
+    const q = rawQuery.trim();
+    lookupAbortRef.current?.abort();
+    if (!q) {
+      setLookupProduct(null);
+      setLookupStatus("idle");
+      setLookupError("");
+      return;
+    }
+
+    const seq = ++lookupSeqRef.current;
+    const controller = new AbortController();
+    lookupAbortRef.current = controller;
+    setLookupStatus("loading");
+    setLookupError("");
+
+    try {
+      const isBarcode = /^\d{8,14}$/.test(q);
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productTitle: q,
+          ...(isBarcode ? { barcode: q } : {}),
+          skipAnalytics: true,
+        }),
+        signal: controller.signal,
+      });
+      const data = (await res.json()) as LookupScanPayload;
+      if (seq !== lookupSeqRef.current || controller.signal.aborted) return;
+
+      if (!data.ok || !data.product) {
+        setLookupProduct(null);
+        setLookupStatus("error");
+        setLookupError(
+          data.error ||
+            `Could not find "${q}" in our grocery database — tap "+ Paste custom ingredients" below to grade a physical package label.`
+        );
+        return;
+      }
+
+      setLookupProduct(data.product);
+      setLookupStatus("idle");
+      setLookupError("");
+    } catch (err) {
+      if (
+        seq !== lookupSeqRef.current ||
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError")
+      ) {
+        return;
+      }
+      setLookupProduct(null);
+      setLookupStatus("error");
+      setLookupError("Network error looking up product — try again or paste ingredients below.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (ingInput.trim()) {
+      lookupAbortRef.current?.abort();
+      setLookupStatus("idle");
+      setLookupError("");
+      return;
+    }
+    const q = titleInput.trim();
+    if (!q) {
+      setLookupProduct(null);
+      setLookupStatus("idle");
+      setLookupError("");
+      return;
+    }
+    if (
+      q.toLowerCase() === "lactaid whole milk" &&
+      lookupProduct?.title.toLowerCase().includes("lactaid whole milk")
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void runProductLookup(q);
+    }, 320);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [titleInput, ingInput, runProductLookup]);
+
   const toggleFamilyCat = (cat: Category) => {
     setFamilyWatchlist((prev) => {
       const next = prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat];
@@ -106,13 +203,24 @@ export default function ToolsClient() {
 
   const shortcutEndpointUrl = "https://heybroc.com/api/scan?format=ios_text&q=";
 
-  const liveScore = useMemo(
-    () => scoreProductYuka(ingInput, {}, familyWatchlist, { productTitle: titleInput }),
-    [ingInput, titleInput, familyWatchlist]
-  );
+  const hasCustomIngredients = ingInput.trim().length > 0;
+  const activeScore: ScoreResult | null = useMemo(() => {
+    if (hasCustomIngredients) {
+      return scoreProductYuka(ingInput, {}, familyWatchlist, {
+        productTitle: titleInput.trim(),
+      });
+    }
+    if (lookupProduct) {
+      return scoreProductYuka(lookupProduct.ingredients, {}, familyWatchlist, {
+        ...lookupProduct.nutrition,
+        productTitle: `${titleInput.trim()} ${lookupProduct.title}`.trim(),
+      });
+    }
+    return null;
+  }, [hasCustomIngredients, ingInput, titleInput, lookupProduct, familyWatchlist]);
 
-  const seedOilHits = liveScore.flagged.filter((f) => f.category === "seedOils");
-  const dyeHits = liveScore.flagged.filter((f) => f.category === "dyes");
+  const seedOilHits = activeScore ? activeScore.flagged.filter((f) => f.category === "seedOils") : [];
+  const dyeHits = activeScore ? activeScore.flagged.filter((f) => f.category === "dyes") : [];
 
   const filteredRules = useMemo(() => {
     const q = additiveFilter.trim().toLowerCase();
@@ -133,11 +241,24 @@ export default function ToolsClient() {
       : filteredRules.slice(0, 8);
 
   const badgeTone =
-    liveScore.score >= 75
-      ? "#16a34a"
-      : liveScore.score >= 50
-        ? "#d97706"
-        : "#dc2626";
+    !activeScore
+      ? "#64748b"
+      : activeScore.score >= 75
+        ? "#16a34a"
+        : activeScore.score >= 50
+          ? "#d97706"
+          : "#dc2626";
+
+  const displayTitle = hasCustomIngredients
+    ? titleInput.trim() || "Custom Ingredient Label"
+    : lookupProduct?.title || titleInput.trim() || "Food Score";
+
+  const displayImageUrl = hasCustomIngredients
+    ? titleInput.trim()
+      ? `/api/product-image?q=${encodeURIComponent(titleInput.trim())}&v=4`
+      : ""
+    : lookupProduct?.imageUrl ||
+      (titleInput.trim() ? `/api/product-image?q=${encodeURIComponent(titleInput.trim())}&v=4` : "");
 
   return (
     <div
@@ -232,10 +353,10 @@ export default function ToolsClient() {
             marginBottom: 4,
           }}
         >
-          Free Ingredient Label Grader &amp; Tools
+          Free Grocery Score Checker &amp; Tools
         </h1>
         <p style={{ fontSize: 13.5, color: "#475569", lineHeight: 1.4, margin: 0 }}>
-          Paste any food label for an instant 0–100 score, search additives, or set up your phone.
+          Search any food or barcode for an instant 0–100 score, browse additives, or set up your phone.
         </p>
       </div>
 
@@ -255,7 +376,7 @@ export default function ToolsClient() {
       >
         {(
           [
-            { id: "grader" as const, label: "🧪 Label Grader" },
+            { id: "grader" as const, label: "🔍 Score Checker" },
             { id: "additives" as const, label: `📚 Additives (${ADDITIVE_RULES.length})` },
             { id: "setup" as const, label: "📲 Phone Setup" },
           ]
@@ -290,7 +411,7 @@ export default function ToolsClient() {
         })}
       </div>
 
-      {/* ==================== TAB 1: LABEL GRADER ==================== */}
+      {/* ==================== TAB 1: PRODUCT & LABEL GRADER ==================== */}
       {activeTab === "grader" && (
         <section
           id="ingredient-calculator"
@@ -302,65 +423,98 @@ export default function ToolsClient() {
             boxShadow: "0 6px 20px rgba(15,23,42,0.04)",
           }}
         >
-          {/* Compact Sample Pills */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            {SAMPLE_LABELS.map((s) => {
-              const active = titleInput === s.title;
-              return (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!hasCustomIngredients && titleInput.trim()) {
+                void runProductLookup(titleInput);
+              }
+            }}
+            style={{ display: "grid", gap: 8, marginBottom: 10 }}
+          >
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={titleInput}
+                onChange={(e) => setTitleInput(e.target.value)}
+                placeholder="Search any grocery product or barcode (e.g., Lactaid Milk, Cheerios)…"
+                aria-label="Product name or barcode"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "10px 13px",
+                  borderRadius: 11,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 14,
+                }}
+              />
+              {!hasCustomIngredients && (
                 <button
-                  key={s.shortLabel}
-                  type="button"
-                  onClick={() => {
-                    setTitleInput(s.title);
-                    setIngInput(s.ingredients);
-                  }}
+                  type="submit"
+                  disabled={!titleInput.trim() || lookupStatus === "loading"}
                   style={{
-                    padding: "6px 11px",
-                    borderRadius: 999,
-                    border: active ? "2px solid #16a34a" : "1px solid #cbd5e1",
-                    background: active ? "#ecfdf5" : "#f8fafc",
-                    color: "#0f172a",
-                    fontSize: 12,
+                    padding: "10px 16px",
+                    borderRadius: 11,
+                    border: "none",
+                    background: "#16a34a",
+                    color: "#ffffff",
                     fontWeight: 800,
-                    cursor: "pointer",
+                    fontSize: 13.5,
+                    cursor: !titleInput.trim() ? "not-allowed" : "pointer",
+                    opacity: !titleInput.trim() ? 0.55 : 1,
+                    flexShrink: 0,
                   }}
                 >
-                  {s.shortLabel}
+                  {lookupStatus === "loading" ? "Checking…" : "Score"}
                 </button>
-              );
-            })}
-          </div>
+              )}
+            </div>
 
-          <div style={{ display: "grid", gap: 9, marginBottom: 12 }}>
-            <input
-              value={titleInput}
-              onChange={(e) => setTitleInput(e.target.value)}
-              placeholder="Product name (optional — e.g., Doritos, Kids Yogurt)…"
-              aria-label="Product name"
-              style={{
-                width: "100%",
-                padding: "9px 12px",
-                borderRadius: 11,
-                border: "1px solid #cbd5e1",
-                fontSize: 13.5,
-              }}
-            />
-            <textarea
-              rows={3}
-              value={ingInput}
-              onChange={(e) => setIngInput(e.target.value)}
-              placeholder="Paste ingredient list separated by commas…"
-              aria-label="Ingredients list"
-              style={{
-                width: "100%",
-                padding: "9px 12px",
-                borderRadius: 11,
-                border: "1px solid #cbd5e1",
-                fontSize: 13.5,
-                fontFamily: "inherit",
-              }}
-            />
-          </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCustomIngredients((open) => {
+                    const next = !open;
+                    if (!next && ingInput.trim()) {
+                      setIngInput("");
+                    }
+                    return next;
+                  });
+                }}
+                style={{
+                  padding: 0,
+                  border: "none",
+                  background: "transparent",
+                  color: "#047857",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {showCustomIngredients || hasCustomIngredients
+                  ? "− Hide custom ingredient box (use product lookup)"
+                  : "+ Optional: Paste custom ingredients from a package"}
+              </button>
+            </div>
+
+            {(showCustomIngredients || hasCustomIngredients) && (
+              <textarea
+                rows={3}
+                value={ingInput}
+                onChange={(e) => setIngInput(e.target.value)}
+                placeholder="Paste ingredient list separated by commas…"
+                aria-label="Ingredients list"
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: 11,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 13.5,
+                  fontFamily: "inherit",
+                }}
+              />
+            )}
+          </form>
 
           {/* Compact 2x Watchlist Strip */}
           <div
@@ -401,181 +555,221 @@ export default function ToolsClient() {
           </div>
 
           {/* Instant Score Result Box */}
-          <div
-            style={{
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: 14,
-              padding: "14px",
-            }}
-          >
+          {activeScore ? (
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 10,
-                marginBottom: 10,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 14,
+                padding: "14px",
+                opacity: lookupStatus === "loading" && !hasCustomIngredients ? 0.68 : 1,
+                transition: "opacity 0.15s ease",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {titleInput.trim() && (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={`/api/product-image?title=${encodeURIComponent(titleInput.trim())}`}
-                    alt={titleInput.trim()}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      objectFit: "contain",
-                      borderRadius: 10,
-                      background: "#ffffff",
-                      border: "1px solid #e2e8f0",
-                      padding: 3,
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-                <div>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>
-                    {titleInput || "Custom Ingredient Label"}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                    <span
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {displayImageUrl && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={displayImageUrl}
+                      alt={displayTitle}
                       style={{
-                        width: 13,
-                        height: 13,
-                        borderRadius: "50%",
-                        background: badgeTone,
-                        display: "inline-block",
+                        width: 44,
+                        height: 44,
+                        objectFit: "contain",
+                        borderRadius: 10,
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        padding: 3,
+                        flexShrink: 0,
                       }}
                     />
-                    <strong style={{ fontSize: 24, fontWeight: 900 }}>
-                      {liveScore.score}/100
-                    </strong>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: badgeTone }}>
-                      {liveScore.score >= 75
-                        ? "Excellent"
-                        : liveScore.score >= 50
-                          ? "Mediocre"
-                          : "Poor"}
+                  )}
+                  <div>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>
+                      {displayTitle}
                     </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                      <span
+                        style={{
+                          width: 13,
+                          height: 13,
+                          borderRadius: "50%",
+                          background: badgeTone,
+                          display: "inline-block",
+                        }}
+                      />
+                      <strong style={{ fontSize: 24, fontWeight: 900 }}>
+                        {activeScore.score}/100
+                      </strong>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: badgeTone }}>
+                        {activeScore.score >= 75
+                          ? "Excellent"
+                          : activeScore.score >= 50
+                            ? "Mediocre"
+                            : "Poor"}
+                      </span>
+                    </div>
                   </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      background: seedOilHits.length === 0 ? "#dcfce7" : "#fee2e2",
+                      color: seedOilHits.length === 0 ? "#166534" : "#991b1b",
+                    }}
+                  >
+                    {seedOilHits.length === 0
+                      ? "✓ Seed-Oil Free"
+                      : `✕ ${seedOilHits.length} Seed Oil(s)`}
+                  </span>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      background: dyeHits.length === 0 ? "#dcfce7" : "#fee2e2",
+                      color: dyeHits.length === 0 ? "#166534" : "#991b1b",
+                    }}
+                  >
+                    {dyeHits.length === 0 ? "✓ Dye-Free" : `✕ ${dyeHits.length} Dye(s)`}
+                  </span>
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <span
+              {activeScore.yukaBreakdown && (
+                <CleanArcScoreCard
+                  id="tools-clean-arc-card"
+                  compact
+                  headline={displayTitle}
+                  leftStatValue={activeScore.flagged.length}
+                  leftStatLabel={activeScore.flagged.length === 1 ? "Flagged" : "Flags"}
+                  rightStatValue={seedOilHits.length + dyeHits.length}
+                  rightStatLabel="Oils & Dyes"
+                  score={activeScore.score}
+                  scoreSublabel="Clean Score"
+                  miniRings={[
+                    {
+                      label: "Nutrition",
+                      valueText: `${activeScore.yukaBreakdown.nutritionScore}/60`,
+                      fillPct: Math.round((activeScore.yukaBreakdown.nutritionScore / 60) * 100),
+                      color:
+                        activeScore.yukaBreakdown.nutritionScore >= 45
+                          ? "#10b981"
+                          : activeScore.yukaBreakdown.nutritionScore >= 28
+                            ? "#f59e0b"
+                            : "#ef4444",
+                    },
+                    {
+                      label: "Additives",
+                      valueText: `${activeScore.yukaBreakdown.additiveScore}/30`,
+                      fillPct: Math.round((activeScore.yukaBreakdown.additiveScore / 30) * 100),
+                      color: activeScore.yukaBreakdown.additiveScore >= 24 ? "#10b981" : "#ef4444",
+                    },
+                    {
+                      label: "Oils & Dyes",
+                      valueText: `${seedOilHits.length + dyeHits.length}`,
+                      fillPct: seedOilHits.length + dyeHits.length === 0 ? 100 : 20,
+                      color: seedOilHits.length + dyeHits.length === 0 ? "#10b981" : "#ea580c",
+                    },
+                  ]}
+                />
+              )}
+
+              {!hasCustomIngredients && lookupProduct?.ingredients && (
+                <p
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    fontSize: 11.5,
-                    fontWeight: 800,
-                    background: seedOilHits.length === 0 ? "#dcfce7" : "#fee2e2",
-                    color: seedOilHits.length === 0 ? "#166534" : "#991b1b",
+                    fontSize: 12,
+                    color: "#475569",
+                    margin: "0 0 10px",
+                    lineHeight: 1.45,
                   }}
                 >
-                  {seedOilHits.length === 0
-                    ? "✓ Seed-Oil Free"
-                    : `✕ ${seedOilHits.length} Seed Oil(s)`}
-                </span>
-                <span
+                  <strong style={{ color: "#0f172a" }}>Ingredients:</strong> {lookupProduct.ingredients}
+                </p>
+              )}
+
+              {activeScore.flagged.length === 0 ? (
+                <div
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    fontSize: 11.5,
+                    background: "#dcfce7",
+                    color: "#166534",
+                    padding: "9px 12px",
+                    borderRadius: 10,
                     fontWeight: 800,
-                    background: dyeHits.length === 0 ? "#dcfce7" : "#fee2e2",
-                    color: dyeHits.length === 0 ? "#166534" : "#991b1b",
+                    fontSize: 12.5,
                   }}
                 >
-                  {dyeHits.length === 0 ? "✓ Dye-Free" : `✕ ${dyeHits.length} Dye(s)`}
-                </span>
-              </div>
-            </div>
-
-            {liveScore.yukaBreakdown && (
-              <CleanArcScoreCard
-                id="tools-clean-arc-card"
-                compact
-                headline={titleInput.trim() || "Ingredient Label Score"}
-                leftStatValue={liveScore.flagged.length}
-                leftStatLabel={liveScore.flagged.length === 1 ? "Flagged" : "Flags"}
-                rightStatValue={seedOilHits.length + dyeHits.length}
-                rightStatLabel="Oils & Dyes"
-                score={liveScore.score}
-                scoreSublabel="Clean Score"
-                miniRings={[
-                  {
-                    label: "Nutrition",
-                    valueText: `${liveScore.yukaBreakdown.nutritionScore}/60`,
-                    fillPct: Math.round((liveScore.yukaBreakdown.nutritionScore / 60) * 100),
-                    color: "#f59e0b",
-                  },
-                  {
-                    label: "Additives",
-                    valueText: `${liveScore.yukaBreakdown.additiveScore}/30`,
-                    fillPct: Math.round((liveScore.yukaBreakdown.additiveScore / 30) * 100),
-                    color: liveScore.yukaBreakdown.additiveScore >= 24 ? "#10b981" : "#ef4444",
-                  },
-                  {
-                    label: "Oils & Dyes",
-                    valueText: `${seedOilHits.length + dyeHits.length}`,
-                    fillPct: seedOilHits.length + dyeHits.length === 0 ? 100 : 20,
-                    color: seedOilHits.length + dyeHits.length === 0 ? "#10b981" : "#ea580c",
-                  },
-                ]}
-              />
-            )}
-
-            {liveScore.flagged.length === 0 ? (
-              <div
-                style={{
-                  background: "#dcfce7",
-                  color: "#166534",
-                  padding: "9px 12px",
-                  borderRadius: 10,
-                  fontWeight: 800,
-                  fontSize: 12.5,
-                }}
-              >
-                ✓ Clean Label — zero watchlist additives, seed oils, or synthetic dyes.
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 6 }}>
-                {liveScore.flagged.map((f) => (
-                  <div
-                    key={f.id}
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #fecaca",
-                      borderRadius: 10,
-                      padding: "8px 11px",
-                    }}
-                  >
+                  ✓ Clean Label — zero watchlist additives, seed oils, or synthetic dyes.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {activeScore.flagged.map((f) => (
                     <div
+                      key={f.id}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        fontWeight: 800,
-                        fontSize: 12.5,
+                        background: "#ffffff",
+                        border: "1px solid #fecaca",
+                        borderRadius: 10,
+                        padding: "8px 11px",
                       }}
                     >
-                      <span>{f.name}</span>
-                      <span style={{ color: "#dc2626", flexShrink: 0 }}>
-                        {RISK_LABEL[f.risk]} (−{f.penalty})
-                      </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          fontWeight: 800,
+                          fontSize: 12.5,
+                        }}
+                      >
+                        <span>{f.name}</span>
+                        <span style={{ color: "#dc2626", flexShrink: 0 }}>
+                          {RISK_LABEL[f.risk]} (−{f.penalty})
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 11.5, color: "#475569", margin: "2px 0 0" }}>
+                        {f.explanation}
+                      </p>
                     </div>
-                    <p style={{ fontSize: 11.5, color: "#475569", margin: "2px 0 0" }}>
-                      {f.explanation}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                background: "#f8fafc",
+                border: "1px dashed #cbd5e1",
+                borderRadius: 14,
+                padding: "18px 14px",
+                textAlign: "center",
+                fontSize: 13,
+                fontWeight: 700,
+                color: lookupStatus === "error" ? "#b91c1c" : "#475569",
+              }}
+            >
+              {lookupStatus === "loading"
+                ? "Looking up verified label & nutrition…"
+                : lookupError ||
+                  "Type any grocery product name or barcode above (or paste custom ingredients) to see its 0–100 Clean Score."}
+            </div>
+          )}
 
           {/* 1-Line Bridge to Swaps Directory */}
           <div
