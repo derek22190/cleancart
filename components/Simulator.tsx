@@ -35,6 +35,7 @@ import {
 import type { PlanId } from "@/lib/pricing";
 import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
+import CancelRetentionModal from "./CancelRetentionModal";
 import CleanArcScoreCard from "./CleanArcScoreCard";
 import LabelAutoVerifierModal from "./LabelAutoVerifierModal";
 import LabelScannerModal from "./LabelScannerModal";
@@ -775,9 +776,46 @@ export default function Simulator({
   const [deviceIdState, setDeviceIdState] = useState("anon-web");
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
+  const [cancelRetentionOpen, setCancelRetentionOpen] = useState(false);
   const [topMenuOpen, setTopMenuOpen] = useState(false);
   const topMenuRef = useRef<HTMLDivElement | null>(null);
   const [isIosAppClient, setIsIosAppClient] = useState<boolean>(false);
+
+  const openStripeBillingPortalDirect = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    const devId = window.localStorage.getItem("heybroc_device_id") || deviceIdState;
+    const devSecret = window.localStorage.getItem("heybroc_device_secret") || undefined;
+    const sId = window.localStorage.getItem("heybroc_session_id") || undefined;
+    const tok = window.localStorage.getItem("heybroc_auth_token") || undefined;
+    try {
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+          ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+        },
+        body: JSON.stringify({
+          deviceId: devId,
+          deviceSecret: devSecret,
+          sessionId: sId,
+          email: authUser?.email,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        url?: string;
+        error?: string;
+      } | null;
+      if (res.ok && data?.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setAuthOpen(true);
+      }
+    } catch {
+      setAuthOpen(true);
+    }
+  }, [authUser?.email, deviceIdState]);
 
   useEffect(() => {
     if (!topMenuOpen) return;
@@ -1000,6 +1038,10 @@ export default function Simulator({
         }
         if (params.get("login") === "1") {
           setAuthOpen(true);
+        } else if (params.get("audit") === "1") {
+          setWeeklyAuditOpen(true);
+        } else if (params.get("scan") === "1") {
+          setLabelScannerOpen(true);
         } else if (params.get("upgrade") === "1") {
           if (iosApp) {
             postIosBridgeMessage("heybrocNative", { action: "managePro" });
@@ -4876,39 +4918,12 @@ export default function Simulator({
               <a href="/privacy" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Privacy</a>
               <button
                 type="button"
-                onClick={async () => {
+                onClick={() => {
                   if (isIosAppClient || detectIosAppClient()) {
                     requestProUpgrade();
                     return;
                   }
-                  const devId = window.localStorage.getItem("heybroc_device_id") || deviceIdState;
-                  const devSecret = window.localStorage.getItem("heybroc_device_secret") || undefined;
-                  const sId = window.localStorage.getItem("heybroc_session_id") || undefined;
-                  const tok = window.localStorage.getItem("heybroc_auth_token") || undefined;
-                  try {
-                    const res = await fetch("/api/billing/portal", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
-                        ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
-                      },
-                      body: JSON.stringify({
-                        deviceId: devId,
-                        deviceSecret: devSecret,
-                        sessionId: sId,
-                        email: authUser?.email,
-                      }),
-                    });
-                    const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; error?: string } | null;
-                    if (res.ok && data?.ok && data.url) {
-                      window.location.href = data.url;
-                    } else {
-                      setAuthOpen(true);
-                    }
-                  } catch {
-                    setAuthOpen(true);
-                  }
+                  setCancelRetentionOpen(true);
                 }}
                 style={{
                   background: "none",
@@ -5122,6 +5137,16 @@ export default function Simulator({
         sessionId={otoSessionId}
         deviceId={deviceIdState}
         creatorCode={appliedCreator?.code}
+      />
+
+      <CancelRetentionModal
+        open={!isIosAppClient && cancelRetentionOpen}
+        onClose={() => setCancelRetentionOpen(false)}
+        onProceedToPortal={openStripeBillingPortalDirect}
+        familyWatchlistLabels={familyWatchlist.map((c) => CATEGORY_LABELS[c] || c)}
+        dietaryWatchlistCount={dietaryWatchlist.length}
+        deviceId={deviceIdState}
+        userEmail={authUser?.email}
       />
 
       <Scorecard

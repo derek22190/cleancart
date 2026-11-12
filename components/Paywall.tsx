@@ -11,6 +11,7 @@ import {
   type PlanId,
 } from "@/lib/pricing";
 import { TERMS_VERSION } from "@/lib/terms";
+import CancelRetentionModal from "./CancelRetentionModal";
 
 export interface AppliedCreator {
   code: string;
@@ -54,6 +55,7 @@ export default function Paywall({
   const [codeError, setCodeError] = useState("");
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [portalBusy, setPortalBusy] = useState(false);
+  const [cancelRetentionOpen, setCancelRetentionOpen] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [receipt, setReceipt] = useState<{
@@ -75,6 +77,7 @@ export default function Paywall({
     if (!open) {
       setAgreedToTerms(false);
       setCodeError("");
+      setCancelRetentionOpen(false);
       return;
     }
     if (typeof window === "undefined") return;
@@ -813,7 +816,7 @@ export default function Paywall({
             id="paywall-manage-subscription"
             type="button"
             disabled={portalBusy}
-            onClick={handleOpenBillingPortal}
+            onClick={() => setCancelRetentionOpen(true)}
             style={{
               background: "transparent",
               border: "none",
@@ -858,6 +861,12 @@ export default function Paywall({
           </div>
         )}
       </div>
+      <CancelRetentionModal
+        open={cancelRetentionOpen}
+        onClose={() => setCancelRetentionOpen(false)}
+        onProceedToPortal={handleOpenBillingPortal}
+        portalBusy={portalBusy}
+      />
     </div>
   );
 }

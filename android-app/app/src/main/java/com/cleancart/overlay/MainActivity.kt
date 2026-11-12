@@ -8,6 +8,8 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -17,6 +19,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -244,11 +247,13 @@ class MainActivity : Activity() {
         }
 
         renderScreen()
+        syncDynamicHomeScreenShortcuts()
 
-        val handledShare = handleIncomingShareIntent(intent)
+        val handledShortcut = handleIncomingShortcutIntent(intent)
+        val handledShare = if (!handledShortcut) handleIncomingShareIntent(intent) else false
 
-        // Launch the 8-Step Onboarding Funnel on first open unless the user shared a product directly
-        if (savedInstanceState == null && !handledShare) {
+        // Launch the 8-Step Onboarding Funnel on first open unless the user shared a product or tapped a Home-Screen Quick Action
+        if (savedInstanceState == null && !handledShare && !handledShortcut) {
             val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             val onboardingDone = prefs.getBoolean("onboarding_funnel_done_v1", false)
             val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
@@ -271,7 +276,79 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIncomingShareIntent(intent)
+        syncDynamicHomeScreenShortcuts()
+        if (!handleIncomingShortcutIntent(intent)) {
+            handleIncomingShareIntent(intent)
+        }
+    }
+
+    private fun syncDynamicHomeScreenShortcuts() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
+        runCatching {
+            val sm = getSystemService(ShortcutManager::class.java) ?: return
+            val isPro = ScanApi.isProActive(this)
+
+            val auditIntent = Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                putExtra("heybroc_shortcut", "weekly_audit")
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val auditShortcut = ShortcutInfo.Builder(this, "heybroc_weekly_audit")
+                .setShortLabel(if (isPro) "🛒 Audit Order" else "🎁 Free Cart Audit")
+                .setLongLabel(if (isPro) "🛒 Audit Weekly Grocery Order" else "🎁 Free Weekly Receipt & Cart Audit")
+                .setIcon(Icon.createWithResource(this, android.R.drawable.ic_menu_agenda))
+                .setIntent(auditIntent)
+                .setRank(0)
+                .build()
+
+            val scanIntent = Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                putExtra("heybroc_shortcut", "quick_scan")
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val scanShortcut = ShortcutInfo.Builder(this, "heybroc_quick_scan")
+                .setShortLabel("📸 Free Scan")
+                .setLongLabel(if (isPro) "📸 Scan Barcode or Label" else "📸 Free Barcode & Label Scan")
+                .setIcon(Icon.createWithResource(this, android.R.drawable.ic_menu_camera))
+                .setIntent(scanIntent)
+                .setRank(1)
+                .build()
+
+            val watchlistIntent = Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                putExtra("heybroc_shortcut", "watchlist")
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val watchlistShortcut = ShortcutInfo.Builder(this, "heybroc_watchlist")
+                .setShortLabel("🛡️ Avoid List")
+                .setLongLabel("🛡️ My 2x Avoid & Allergy Watchlist")
+                .setIcon(Icon.createWithResource(this, android.R.drawable.ic_secure))
+                .setIntent(watchlistIntent)
+                .setRank(2)
+                .build()
+
+            sm.dynamicShortcuts = listOf(auditShortcut, scanShortcut, watchlistShortcut)
+        }
+    }
+
+    private fun handleIncomingShortcutIntent(incoming: Intent?): Boolean {
+        val target = incoming?.getStringExtra("heybroc_shortcut")?.trim().orEmpty()
+        if (target.isEmpty()) return false
+        incoming?.removeExtra("heybroc_shortcut")
+        mainHandler.postDelayed({
+            if (isDestroyed || isFinishing) return@postDelayed
+            when (target) {
+                "weekly_audit" -> showWeeklyOrderAuditDialog()
+                "quick_scan" -> showQuickScanModal()
+                "watchlist" -> {
+                    activeTab = 3
+                    expandedPrefSection = "watchlist"
+                    renderScreen()
+                    showAllergyAndDietModal()
+                }
+            }
+        }, 120L)
+        return true
     }
 
     private fun detectStoreFromSharedText(raw: String): String? {

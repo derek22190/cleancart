@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Category } from "@/lib/rubric";
+import CancelRetentionModal from "./CancelRetentionModal";
 
 export interface AuthenticatedUser {
   userId: string;
@@ -66,10 +67,66 @@ export default function AuthModal({
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [cancelRetentionOpen, setCancelRetentionOpen] = useState(false);
+
+  const openBillingPortalDirect = useCallback(async () => {
+    if (!user) return;
+    setBusy(true);
+    setError("");
+    setInfoMessage("");
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("heybroc_auth_token") || ""
+          : "";
+      const devSecret =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("heybroc_device_secret") || ""
+          : "";
+      const sessionId =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("heybroc_session_id") || ""
+          : "";
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
+        },
+        body: JSON.stringify({
+          deviceId,
+          deviceSecret: devSecret || undefined,
+          sessionId: sessionId || undefined,
+          email: user.email,
+          returnUrl:
+            typeof window !== "undefined"
+              ? window.location.origin
+              : "https://heybroc.com",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok && data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setError(
+        data?.error ||
+          "No active Stripe subscription found for this account."
+      );
+    } catch {
+      setError("Could not open Billing Portal. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }, [deviceId, user]);
 
   // Lock background page scroll while modal is open so touch-scrolling stays inside the dialog
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setCancelRetentionOpen(false);
+      return;
+    }
     const prevBodyOverflow = document.body.style.overflow;
     const prevHtmlOverscroll = document.documentElement.style.overscrollBehavior;
     document.body.style.overflow = "hidden";
@@ -641,56 +698,7 @@ export default function AuthModal({
               type="button"
               className="gococo-forgot-pill"
               disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                setError("");
-                setInfoMessage("");
-                try {
-                  const token =
-                    typeof window !== "undefined"
-                      ? window.localStorage.getItem("heybroc_auth_token") || ""
-                      : "";
-                  const devSecret =
-                    typeof window !== "undefined"
-                      ? window.localStorage.getItem("heybroc_device_secret") || ""
-                      : "";
-                  const sessionId =
-                    typeof window !== "undefined"
-                      ? window.localStorage.getItem("heybroc_session_id") || ""
-                      : "";
-                  const res = await fetch("/api/billing/portal", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                      ...(devSecret ? { "X-Device-Secret": devSecret } : {}),
-                    },
-                    body: JSON.stringify({
-                      deviceId,
-                      deviceSecret: devSecret || undefined,
-                      sessionId: sessionId || undefined,
-                      email: user.email,
-                      returnUrl:
-                        typeof window !== "undefined"
-                          ? window.location.origin
-                          : "https://heybroc.com",
-                    }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (res.ok && data?.ok && data?.url) {
-                    window.location.href = data.url;
-                    return;
-                  }
-                  setError(
-                    data?.error ||
-                      "No active Stripe subscription found for this account."
-                  );
-                } catch {
-                  setError("Could not open Billing Portal. Please try again.");
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              onClick={() => setCancelRetentionOpen(true)}
             >
               <span>Manage / Cancel subscription</span>
             </button>
@@ -946,6 +954,14 @@ export default function AuthModal({
           </form>
         )}
       </div>
+      <CancelRetentionModal
+        open={cancelRetentionOpen}
+        onClose={() => setCancelRetentionOpen(false)}
+        onProceedToPortal={openBillingPortalDirect}
+        portalBusy={busy}
+        deviceId={deviceId}
+        userEmail={user?.email}
+      />
     </div>
   );
 }

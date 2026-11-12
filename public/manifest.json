@@ -14,6 +14,47 @@
       "purpose": "any maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "🎁 Free Weekly Grocery Audit",
+      "short_name": "Cart Audit",
+      "description": "Grade your weekly grocery order or receipt in 10 seconds",
+      "url": "/?audit=1",
+      "icons": [
+        {
+          "src": "/broc-mascot.jpg",
+          "sizes": "512x512",
+          "type": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "name": "📸 Free Barcode & Label Scan",
+      "short_name": "Free Scan",
+      "description": "Instant 0–100 food score & additive check",
+      "url": "/?scan=1",
+      "icons": [
+        {
+          "src": "/broc-mascot.jpg",
+          "sizes": "512x512",
+          "type": "image/jpeg"
+        }
+      ]
+    },
+    {
+      "name": "🛡️ My 2x Avoid & Allergy List",
+      "short_name": "Watchlist",
+      "description": "Customize seed oil, synthetic dye & allergy guards",
+      "url": "/?onboarding=1",
+      "icons": [
+        {
+          "src": "/broc-mascot.jpg",
+          "sizes": "512x512",
+          "type": "image/jpeg"
+        }
+      ]
+    }
+  ],
   "share_target": {
     "action": "/",
     "method": "GET",

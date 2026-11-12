@@ -30,8 +30,83 @@ export interface EntitlementRecord {
   revokedOtoPassSessionIds?: string[];
   passRevokedAtMs?: number;
   lastChargeSucceeded?: boolean;
+  pausedUntilMs?: number;
+  lastRetentionPauseAtMs?: number;
+  lastRetentionOfferAtMs?: number;
   lastStripeEventCreated?: number;
   updatedAt: string;
+}
+
+/** 180-day cooldown between cancel-screen pauses or loyalty plan upgrades to prevent repeat gaming. */
+export const RETENTION_COOLDOWN_MS = 180 * 24 * 60 * 60 * 1000;
+
+export interface ZeroLeakageRetentionEligibility {
+  hasManagedStripeSub: boolean;
+  isTrialing: boolean;
+  hasPaidCharge: boolean;
+  isCurrentlyPaused: boolean;
+  pausedUntilMs?: number;
+  canPause30d: boolean;
+  /** Strictly true ONLY for paid Monthly subscribers (`status === "active"` && `lastChargeSucceeded === true`, $9.99 + $39.99 = $49.98 total). */
+  canLoyaltyAnnual39: boolean;
+  /** Standard $49.99/yr plan switch for trialing Monthly users ($0 discount leakage). */
+  canStandardAnnual49: boolean;
+  /** Flexible $9.99/mo plan switch for Annual subscribers or trialers. */
+  canSwitchToMonthly: boolean;
+}
+
+export function evaluateZeroLeakageRetentionEligibility(
+  record: EntitlementRecord | null | undefined,
+  nowMs: number = Date.now()
+): ZeroLeakageRetentionEligibility {
+  if (!record || !record.active) {
+    return {
+      hasManagedStripeSub: false,
+      isTrialing: false,
+      hasPaidCharge: false,
+      isCurrentlyPaused: false,
+      canPause30d: false,
+      canLoyaltyAnnual39: false,
+      canStandardAnnual49: false,
+      canSwitchToMonthly: false,
+    };
+  }
+  const hasManagedStripeSub = Boolean(
+    record.subscriptionId && record.subscriptionId.startsWith("sub_")
+  );
+  const isTrialing = record.status === "trialing";
+  const hasPaidCharge =
+    record.status === "active" && record.lastChargeSucceeded === true;
+  const isCurrentlyPaused = Boolean(
+    typeof record.pausedUntilMs === "number" && record.pausedUntilMs > nowMs
+  );
+  const pauseCooldownClear =
+    !record.lastRetentionPauseAtMs ||
+    nowMs - record.lastRetentionPauseAtMs >= RETENTION_COOLDOWN_MS;
+  const offerCooldownClear =
+    !record.lastRetentionOfferAtMs ||
+    nowMs - record.lastRetentionOfferAtMs >= RETENTION_COOLDOWN_MS;
+
+  return {
+    hasManagedStripeSub,
+    isTrialing,
+    hasPaidCharge,
+    isCurrentlyPaused,
+    ...(isCurrentlyPaused ? { pausedUntilMs: record.pausedUntilMs } : {}),
+    canPause30d:
+      hasManagedStripeSub &&
+      record.plan === "monthly" &&
+      hasPaidCharge &&
+      !isCurrentlyPaused &&
+      pauseCooldownClear,
+    canLoyaltyAnnual39:
+      record.plan === "monthly" &&
+      hasPaidCharge &&
+      offerCooldownClear,
+    canStandardAnnual49:
+      record.plan === "monthly" && (!hasPaidCharge || isTrialing),
+    canSwitchToMonthly: hasManagedStripeSub && record.plan === "annual",
+  };
 }
 
 const SESSION_KEY_PREFIX = "heybroc:entitlement:session:";
@@ -325,6 +400,36 @@ function mergePassMetadata(
             primary.lastChargeSucceeded ?? secondary.lastChargeSucceeded,
         }
       : {}),
+    ...(Math.max(primary.pausedUntilMs || 0, secondary.pausedUntilMs || 0) > 0
+      ? {
+          pausedUntilMs: Math.max(
+            primary.pausedUntilMs || 0,
+            secondary.pausedUntilMs || 0
+          ),
+        }
+      : {}),
+    ...(Math.max(
+      primary.lastRetentionPauseAtMs || 0,
+      secondary.lastRetentionPauseAtMs || 0
+    ) > 0
+      ? {
+          lastRetentionPauseAtMs: Math.max(
+            primary.lastRetentionPauseAtMs || 0,
+            secondary.lastRetentionPauseAtMs || 0
+          ),
+        }
+      : {}),
+    ...(Math.max(
+      primary.lastRetentionOfferAtMs || 0,
+      secondary.lastRetentionOfferAtMs || 0
+    ) > 0
+      ? {
+          lastRetentionOfferAtMs: Math.max(
+            primary.lastRetentionOfferAtMs || 0,
+            secondary.lastRetentionOfferAtMs || 0
+          ),
+        }
+      : {}),
   };
   if (out.paidPassExpiresAtMs === undefined) {
     delete out.paidPassExpiresAtMs;
@@ -575,6 +680,11 @@ export async function saveEntitlement(record: EntitlementRecord): Promise<void> 
     passRevokedAtMs,
     lastChargeSucceeded:
       record.lastChargeSucceeded ?? existing?.lastChargeSucceeded,
+    pausedUntilMs: record.pausedUntilMs ?? existing?.pausedUntilMs,
+    lastRetentionPauseAtMs:
+      record.lastRetentionPauseAtMs ?? existing?.lastRetentionPauseAtMs,
+    lastRetentionOfferAtMs:
+      record.lastRetentionOfferAtMs ?? existing?.lastRetentionOfferAtMs,
     lastStripeEventCreated:
       record.lastStripeEventCreated ?? existing?.lastStripeEventCreated,
     status: effectiveStatus,
@@ -696,6 +806,9 @@ export async function updateSubscriptionEntitlement(
     paidPassExpiresAtMs?: number;
     passRevokedAtMs?: number;
     lastChargeSucceeded?: boolean;
+    pausedUntilMs?: number;
+    lastRetentionPauseAtMs?: number;
+    lastRetentionOfferAtMs?: number;
     lastStripeEventCreated?: number;
   }
 ): Promise<EntitlementRecord | null> {
@@ -777,6 +890,16 @@ export async function updateSubscriptionEntitlement(
     patch.checkoutSessionId ??
     existing?.checkoutSessionId ??
     (existing?.sessionId?.startsWith("cs_") ? existing.sessionId : undefined);
+  const resolvedPausedUntilMs =
+    patch.pausedUntilMs !== undefined
+      ? patch.pausedUntilMs > 0
+        ? patch.pausedUntilMs
+        : undefined
+      : existing?.pausedUntilMs;
+  const resolvedLastPauseAtMs =
+    patch.lastRetentionPauseAtMs ?? existing?.lastRetentionPauseAtMs;
+  const resolvedLastOfferAtMs =
+    patch.lastRetentionOfferAtMs ?? existing?.lastRetentionOfferAtMs;
 
   const baseUpdated: EntitlementRecord = {
     sessionId: existing?.sessionId || resolvedCheckoutSessionId || `sub_${subscriptionId}`,
@@ -801,6 +924,13 @@ export async function updateSubscriptionEntitlement(
           lastChargeSucceeded:
             patch.lastChargeSucceeded ?? existing?.lastChargeSucceeded,
         }
+      : {}),
+    ...(resolvedPausedUntilMs ? { pausedUntilMs: resolvedPausedUntilMs } : {}),
+    ...(resolvedLastPauseAtMs
+      ? { lastRetentionPauseAtMs: resolvedLastPauseAtMs }
+      : {}),
+    ...(resolvedLastOfferAtMs
+      ? { lastRetentionOfferAtMs: resolvedLastOfferAtMs }
       : {}),
     lastStripeEventCreated:
       patch.lastStripeEventCreated ?? existing?.lastStripeEventCreated,

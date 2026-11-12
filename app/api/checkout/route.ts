@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
+  evaluateZeroLeakageRetentionEligibility,
   getDevicePaidEntitlement,
   getEmailEntitlement,
   hasPriorEntitlementHistory,
@@ -114,6 +115,9 @@ export async function POST(req: NextRequest) {
         : null;
     const previousSessionId =
       typeof body.previousSessionId === "string" ? body.previousSessionId.trim() : "";
+    const retentionSource =
+      typeof body.retentionSource === "string" ? body.retentionSource.trim() : "";
+    const isCancelRetentionFlow = retentionSource === "cancel_flow";
     const adTestMode = body.adTestMode === true;
 
     const plan: PlanId =
@@ -192,9 +196,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Gate discounted post-checkout OTO offers behind a verified prior checkout session or active Pro entitlement
+    // Gate discounted post-checkout OTO offers & cancel-retention upgrades behind a verified prior checkout session or active Pro entitlement
     let priorEntitlement: EntitlementRecord | null = null;
-    if (otoOffer !== null) {
+    if (otoOffer !== null || isCancelRetentionFlow) {
       if (previousSessionId && isValidStripeSessionIdFormat(previousSessionId)) {
         priorEntitlement = await verifyStripeCheckoutSession(
           previousSessionId,
@@ -207,6 +211,8 @@ export async function POST(req: NextRequest) {
       if (!priorEntitlement && authUser?.emailVerified && authUser.email) {
         priorEntitlement = await getEmailEntitlement(authUser.email);
       }
+    }
+    if (otoOffer !== null) {
       if (!priorEntitlement?.active && !isPreviewAllowed) {
         return NextResponse.json(
           {
@@ -232,6 +238,20 @@ export async function POST(req: NextRequest) {
           },
           { status: 400 }
         );
+      }
+      // Zero-leakage guard on Cancel Flow: NEVER offer $39.99/yr to free-trial users or accounts in 180-day cooldown
+      if (otoOffer === "oto_annual" && isCancelRetentionFlow && !isPreviewAllowed) {
+        const retentionEligibility = evaluateZeroLeakageRetentionEligibility(priorEntitlement);
+        if (!retentionEligibility.canLoyaltyAnnual39) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "The $39.99/yr loyalty lock-in is exclusively available to active paid Monthly members ($9.99 paid + $39.99 = $49.98 total).",
+            },
+            { status: 403 }
+          );
+        }
       }
     }
 
@@ -528,6 +548,9 @@ export async function POST(req: NextRequest) {
     if (otoOffer) {
       params.set("metadata[oto_offer]", otoOffer);
     }
+    if (isCancelRetentionFlow) {
+      params.set("metadata[retention_source]", "cancel_flow");
+    }
     if (previousSessionId) {
       params.set("metadata[previous_session_id]", previousSessionId);
     }
@@ -544,7 +567,10 @@ export async function POST(req: NextRequest) {
       if (otoOffer) {
         params.set("subscription_data[metadata][oto_offer]", otoOffer);
       }
-      if (otoOffer === "oto_annual" && previousSubscriptionId) {
+      if (isCancelRetentionFlow) {
+        params.set("subscription_data[metadata][retention_source]", "cancel_flow");
+      }
+      if ((otoOffer === "oto_annual" || isCancelRetentionFlow) && previousSubscriptionId) {
         params.set("metadata[previous_subscription_id]", previousSubscriptionId);
         params.set(
           "subscription_data[metadata][previous_subscription_id]",

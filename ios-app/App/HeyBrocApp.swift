@@ -103,6 +103,7 @@ final class HeyBrocPreferencesStore: ObservableObject {
     @Published var shareSheetChecked: Bool
     @Published var history: [NativeScanHistoryEntry]
     @Published var requestedNativeTab: Int?
+    @Published var requestedWebQuerySuffix: String?
     @Published var nativeProNoticeShown: Bool = false
 
     init() {
@@ -307,17 +308,148 @@ enum OfflineIngredientAnalyzer {
     }
 }
 
+// MARK: - Home-Screen Quick Actions ("Remove App" Zero-Leakage Retention Menu)
+
+enum HeyBrocShortcutManager {
+    static let shortcutNotification = Notification.Name("HeyBrocPerformQuickAction")
+    static let typeWeeklyAudit = "com.heybroc.shortcut.weeklyaudit"
+    static let typeQuickScan = "com.heybroc.shortcut.quickscan"
+    static let typeWatchlist = "com.heybroc.shortcut.watchlist"
+
+    @MainActor
+    static var pendingShortcutType: String?
+
+    @MainActor
+    static func syncShortcuts(store: HeyBrocPreferencesStore) {
+        let auditItem = UIApplicationShortcutItem(
+            type: typeWeeklyAudit,
+            localizedTitle: "🎁 Free Weekly Grocery Audit",
+            localizedSubtitle: "Grade your whole cart or receipt in 10s",
+            icon: UIApplicationShortcutIcon(systemImageName: "cart.badge.plus"),
+            userInfo: nil
+        )
+        let scanItem = UIApplicationShortcutItem(
+            type: typeQuickScan,
+            localizedTitle: "📸 Scan Barcode or Label",
+            localizedSubtitle: "Instant 0–100 score (100% free)",
+            icon: UIApplicationShortcutIcon(systemImageName: "barcode.viewfinder"),
+            userInfo: nil
+        )
+        let avoidCount = store.familyWatchlist.count + store.dietaryWatchlist.count
+        let watchlistSubtitle = avoidCount > 0
+            ? "\(avoidCount) active family & allergy guards"
+            : "Customize seed oil, dye & allergy guards"
+        let watchlistItem = UIApplicationShortcutItem(
+            type: typeWatchlist,
+            localizedTitle: "🛡️ My 2x Avoid & Allergy List",
+            localizedSubtitle: watchlistSubtitle,
+            icon: UIApplicationShortcutIcon(systemImageName: "checkmark.shield.fill"),
+            userInfo: nil
+        )
+        UIApplication.shared.shortcutItems = [auditItem, scanItem, watchlistItem]
+    }
+
+    @MainActor
+    static func route(shortcutType: String, into store: HeyBrocPreferencesStore) {
+        switch shortcutType {
+        case typeWeeklyAudit:
+            store.requestedWebQuerySuffix = "&audit=1"
+            store.requestedNativeTab = 3
+        case typeWatchlist:
+            store.requestedNativeTab = 1
+        default:
+            store.requestedNativeTab = 0
+        }
+    }
+}
+
+final class HeyBrocSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        if let item = connectionOptions.shortcutItem {
+            let type = item.type
+            Task { @MainActor in
+                HeyBrocShortcutManager.pendingShortcutType = type
+                NotificationCenter.default.post(
+                    name: HeyBrocShortcutManager.shortcutNotification,
+                    object: type
+                )
+            }
+        }
+    }
+
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        let type = shortcutItem.type
+        Task { @MainActor in
+            HeyBrocShortcutManager.pendingShortcutType = type
+            NotificationCenter.default.post(
+                name: HeyBrocShortcutManager.shortcutNotification,
+                object: type
+            )
+            completionHandler(true)
+        }
+    }
+}
+
+final class HeyBrocAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        if let item = options.shortcutItem {
+            let type = item.type
+            Task { @MainActor in
+                HeyBrocShortcutManager.pendingShortcutType = type
+            }
+        }
+        let config = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+        config.delegateClass = HeyBrocSceneDelegate.self
+        return config
+    }
+}
+
 // MARK: - App Entry Point
 
 @main
 struct HeyBrocApp: App {
+    @UIApplicationDelegateAdaptor(HeyBrocAppDelegate.self) private var appDelegate
     @StateObject private var store = HeyBrocPreferencesStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             HeyBrocRootTabView()
                 .environmentObject(store)
                 .tint(Color(red: 0.06, green: 0.48, blue: 0.29))
+                .onAppear {
+                    HeyBrocShortcutManager.syncShortcuts(store: store)
+                    if let pending = HeyBrocShortcutManager.pendingShortcutType {
+                        HeyBrocShortcutManager.pendingShortcutType = nil
+                        HeyBrocShortcutManager.route(shortcutType: pending, into: store)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: HeyBrocShortcutManager.shortcutNotification)) { note in
+                    if let type = note.object as? String {
+                        HeyBrocShortcutManager.pendingShortcutType = nil
+                        HeyBrocShortcutManager.route(shortcutType: type, into: store)
+                    }
+                }
+                .onChange(of: scenePhase) { newPhase in
+                    if newPhase == .background || newPhase == .active {
+                        HeyBrocShortcutManager.syncShortcuts(store: store)
+                    }
+                }
         }
     }
 }
@@ -1124,7 +1256,8 @@ struct HeyBrocWebViewRepresentable: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
-        if let startURL = URL(string: "https://www.heybroc.com/?platform=ios-app") {
+        let suffix = store.requestedWebQuerySuffix ?? ""
+        if let startURL = URL(string: "https://www.heybroc.com/?platform=ios-app\(suffix)") {
             webView.load(URLRequest(url: startURL))
         }
         context.coordinator.lastReloadToken = reloadToken
@@ -1132,6 +1265,15 @@ struct HeyBrocWebViewRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        if let suffix = store.requestedWebQuerySuffix, !suffix.isEmpty {
+            Task { @MainActor in
+                store.requestedWebQuerySuffix = nil
+            }
+            if let targetURL = URL(string: "https://www.heybroc.com/?platform=ios-app\(suffix)") {
+                webView.load(URLRequest(url: targetURL))
+            }
+            return
+        }
         if context.coordinator.lastReloadToken != reloadToken {
             context.coordinator.lastReloadToken = reloadToken
             if let startURL = URL(string: "https://www.heybroc.com/?platform=ios-app") {

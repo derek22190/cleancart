@@ -3353,6 +3353,265 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  {
+    const { NextRequest } = await import("next/server");
+    const checkoutRouteHandler = await import("../app/api/checkout/route");
+    const appleRetentionHandler = await import("../app/api/apple/retention/route");
+    const billingRetentionHandler = await import("../app/api/billing/retention/route");
+    const { TERMS_VERSION } = await import("../lib/pricing");
+
+    const nowT = Date.now();
+    const trialAnnualElig = entitlementsLibMod.evaluateZeroLeakageRetentionEligibility(
+      {
+        sessionId: "cs_trial_ann_1",
+        subscriptionId: "sub_trial_ann_1",
+        plan: "annual",
+        status: "trialing",
+        active: true,
+        updatedAt: new Date(nowT).toISOString(),
+      },
+      nowT
+    );
+    const unpaidMonthlyElig = entitlementsLibMod.evaluateZeroLeakageRetentionEligibility(
+      {
+        sessionId: "cs_trial_mo_1",
+        subscriptionId: "sub_trial_mo_1",
+        plan: "monthly",
+        status: "trialing",
+        active: true,
+        lastChargeSucceeded: false,
+        updatedAt: new Date(nowT).toISOString(),
+      },
+      nowT
+    );
+    const paidMonthlyElig = entitlementsLibMod.evaluateZeroLeakageRetentionEligibility(
+      {
+        sessionId: "cs_paid_mo_1",
+        subscriptionId: "sub_paid_mo_1",
+        plan: "monthly",
+        status: "active",
+        active: true,
+        lastChargeSucceeded: true,
+        updatedAt: new Date(nowT).toISOString(),
+      },
+      nowT
+    );
+    const cooldownMonthlyElig = entitlementsLibMod.evaluateZeroLeakageRetentionEligibility(
+      {
+        sessionId: "cs_paid_mo_cd",
+        subscriptionId: "sub_paid_mo_cd",
+        plan: "monthly",
+        status: "active",
+        active: true,
+        lastChargeSucceeded: true,
+        lastRetentionOfferAtMs: nowT - 86_400_000,
+        lastRetentionPauseAtMs: nowT - 86_400_000,
+        updatedAt: new Date(nowT).toISOString(),
+      },
+      nowT
+    );
+    const paidAnnualElig = entitlementsLibMod.evaluateZeroLeakageRetentionEligibility(
+      {
+        sessionId: "cs_paid_ann_1",
+        subscriptionId: "sub_paid_ann_1",
+        plan: "annual",
+        status: "active",
+        active: true,
+        lastChargeSucceeded: true,
+        updatedAt: new Date(nowT).toISOString(),
+      },
+      nowT
+    );
+
+    check(
+      "Zero-Leakage Retention Eligibility: $0 trialers never qualify for $39.99/yr or 30d pause; only paid Monthly ($9.99 + $39.99 = $49.98) qualifies with 180-day cooldown",
+      Boolean(
+        trialAnnualElig.canLoyaltyAnnual39 === false &&
+          trialAnnualElig.canPause30d === false &&
+          trialAnnualElig.canSwitchToMonthly === true &&
+          unpaidMonthlyElig.canLoyaltyAnnual39 === false &&
+          unpaidMonthlyElig.canPause30d === false &&
+          unpaidMonthlyElig.canStandardAnnual49 === true &&
+          paidMonthlyElig.canLoyaltyAnnual39 === true &&
+          paidMonthlyElig.canPause30d === true &&
+          cooldownMonthlyElig.canLoyaltyAnnual39 === false &&
+          cooldownMonthlyElig.canPause30d === false &&
+          paidAnnualElig.canLoyaltyAnnual39 === false &&
+          paidAnnualElig.canPause30d === false &&
+          paidAnnualElig.canSwitchToMonthly === true
+      )
+    );
+
+    // Seed a trialing monthly entitlement and verify POST /api/checkout blocks cancel_flow $39.99/yr with HTTP 403
+    const trialCancelSessionId = "cs_test_cancel_leak_guard_001";
+    const trialCancelDeviceId = "web-cancel-leak-guard-001";
+    await entitlementsLibMod.saveEntitlement({
+      sessionId: trialCancelSessionId,
+      checkoutSessionId: trialCancelSessionId,
+      subscriptionId: "sub_cancel_leak_guard_001",
+      deviceId: trialCancelDeviceId,
+      plan: "monthly",
+      status: "trialing",
+      active: true,
+      expiresAtMs: nowT + 5 * 86_400_000,
+      updatedAt: new Date(nowT).toISOString(),
+    });
+    const prevStripeKey = process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_SECRET_KEY = "sk_test_zero_leakage_guard";
+    let cancelGuardStatus = 0;
+    let unauthInspectHasSub = true;
+    try {
+      const leakGuardReq = new NextRequest("http://localhost:3000/api/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-forwarded-for": "127.0.0.91",
+        },
+        body: JSON.stringify({
+          plan: "annual",
+          otoOffer: "oto_annual",
+          retentionSource: "cancel_flow",
+          previousSessionId: trialCancelSessionId,
+          deviceId: trialCancelDeviceId,
+          termsAccepted: true,
+          termsVersion: TERMS_VERSION,
+        }),
+      });
+      const leakGuardRes = await checkoutRouteHandler.POST(leakGuardReq);
+      cancelGuardStatus = leakGuardRes.status;
+
+      const unauthInspectRes = await billingRetentionHandler.POST(
+        new Request("http://localhost:3000/api/billing/retention", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-forwarded-for": "127.0.0.92",
+          },
+          body: JSON.stringify({ action: "inspect", deviceId: "web-unknown-999" }),
+        })
+      );
+      const unauthInspectJson = (await unauthInspectRes.json()) as {
+        ok?: boolean;
+        hasManagedStripeSub?: boolean;
+      };
+      unauthInspectHasSub = Boolean(unauthInspectJson.hasManagedStripeSub);
+    } finally {
+      if (prevStripeKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = prevStripeKey;
+    }
+
+    // Apple Real-Time Retention Messaging Webhook checks
+    const makeTestJws = (payload: Record<string, unknown>) => {
+      const h = Buffer.from(JSON.stringify({ alg: "ES256" })).toString("base64url");
+      const p = Buffer.from(JSON.stringify(payload)).toString("base64url");
+      return `${h}.${p}.sig`;
+    };
+    await entitlementsLibMod.saveEntitlement({
+      sessionId: "rc_sess_rc_apple_trial_ann_99",
+      subscriptionId: "rc_apple_trial_ann_99",
+      plan: "annual",
+      status: "trialing",
+      active: true,
+      expiresAtMs: nowT + 6 * 86_400_000,
+      updatedAt: new Date(nowT).toISOString(),
+    });
+    await entitlementsLibMod.saveEntitlement({
+      sessionId: "rc_sess_rc_apple_paid_mo_99",
+      subscriptionId: "rc_apple_paid_mo_99",
+      plan: "monthly",
+      status: "active",
+      active: true,
+      lastChargeSucceeded: true,
+      expiresAtMs: nowT + 25 * 86_400_000,
+      updatedAt: new Date(nowT).toISOString(),
+    });
+
+    const appleUnknownRes = await appleRetentionHandler.POST(
+      new Request("http://localhost:3000/api/apple/retention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signedPayload: makeTestJws({
+            originalTransactionId: "unknown_tx_000",
+            productId: "com.heybroc.pro.annual",
+            environment: "Sandbox",
+          }),
+        }),
+      })
+    );
+    const appleUnknownJson = (await appleUnknownRes.json()) as {
+      message?: { messageIdentifier?: string };
+      alternateProduct?: unknown;
+    };
+
+    const appleTrialAnnRes = await appleRetentionHandler.POST(
+      new Request("http://localhost:3000/api/apple/retention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signedPayload: makeTestJws({
+            originalTransactionId: "apple_trial_ann_99",
+            productId: "com.heybroc.pro.annual",
+            environment: "Sandbox",
+          }),
+        }),
+      })
+    );
+    const appleTrialAnnJson = (await appleTrialAnnRes.json()) as {
+      alternateProduct?: { productId?: string };
+    };
+
+    const applePaidMoRes = await appleRetentionHandler.POST(
+      new Request("http://localhost:3000/api/apple/retention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signedPayload: makeTestJws({
+            originalTransactionId: "apple_paid_mo_99",
+            productId: "com.heybroc.pro.monthly",
+            environment: "Sandbox",
+          }),
+        }),
+      })
+    );
+    const applePaidMoJson = (await applePaidMoRes.json()) as {
+      alternateProduct?: { productId?: string };
+    };
+
+    const cancelModalSrc = fs.readFileSync("components/CancelRetentionModal.tsx", "utf8");
+    const iosAppSwiftSrc = fs.readFileSync("ios-app/App/HeyBrocApp.swift", "utf8");
+    const manifestJsonObj = JSON.parse(fs.readFileSync("public/manifest.json", "utf8")) as {
+      shortcuts?: Array<{ url?: string }>;
+    };
+    const appleDocSrc = fs.readFileSync("docs/apple-retention-messaging.md", "utf8");
+
+    check(
+      "Cancel-Flow Guard (HTTP 403), Apple Retention Webhook (<50ms JWS routing), Click-to-Cancel UI, and iOS/Android/PWA Home-Screen Quick Actions",
+      Boolean(
+        cancelGuardStatus === 403 &&
+          unauthInspectHasSub === false &&
+          Boolean(appleUnknownJson.message?.messageIdentifier) &&
+          !appleUnknownJson.alternateProduct &&
+          appleTrialAnnJson.alternateProduct?.productId === "com.heybroc.pro.monthly" &&
+          applePaidMoJson.alternateProduct?.productId === "com.heybroc.pro.annual" &&
+          cancelModalSrc.includes('id="retention-loss-summary"') &&
+          cancelModalSrc.includes('id="retention-continue-cancel-btn"') &&
+          cancelModalSrc.includes('id="retention-pause-btn"') &&
+          cancelModalSrc.includes('id="retention-switch-plan-btn"') &&
+          cancelModalSrc.includes('id="retention-arl-consent"') &&
+          iosAppSwiftSrc.includes("HeyBrocShortcutManager") &&
+          iosAppSwiftSrc.includes("UIApplicationShortcutItem") &&
+          finalMainKtSrc.includes("syncDynamicHomeScreenShortcuts") &&
+          finalMainKtSrc.includes("ShortcutManager") &&
+          Array.isArray(manifestJsonObj.shortcuts) &&
+          manifestJsonObj.shortcuts.length === 3 &&
+          manifestJsonObj.shortcuts.some((s) => s.url === "/?audit=1") &&
+          manifestJsonObj.shortcuts.some((s) => s.url === "/?scan=1") &&
+          appleDocSrc.includes("/api/apple/retention")
+      )
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

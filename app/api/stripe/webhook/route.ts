@@ -523,6 +523,10 @@ export async function POST(req: Request) {
             ...(isPaid && amountTotalCents > 0
               ? { lastChargeSucceeded: true }
               : {}),
+            ...(metadata.retention_source === "cancel_flow" &&
+            otoOffer === "oto_annual"
+              ? { lastRetentionOfferAtMs: Date.now() }
+              : {}),
             lastStripeEventCreated: eventCreated,
             updatedAt: new Date().toISOString(),
           });
@@ -546,7 +550,7 @@ export async function POST(req: Request) {
                   : PRICING.monthly,
           });
 
-          // If this is a Monthly -> VIP Annual OTO upgrade (`oto_annual`), cancel the superseded monthly subscription
+          // If this is a Monthly -> Annual upgrade (`oto_annual` or `cancel_flow`), cancel the superseded subscription
           const prevSubId = (
             metadata.previous_subscription_id ||
             metadata.replaces_subscription_id ||
@@ -554,7 +558,7 @@ export async function POST(req: Request) {
           ).trim();
           if (
             (isPaid || isTrial) &&
-            otoOffer === "oto_annual" &&
+            (otoOffer === "oto_annual" || metadata.retention_source === "cancel_flow") &&
             prevSubId &&
             prevSubId.startsWith("sub_") &&
             prevSubId !== subscriptionId
@@ -664,6 +668,17 @@ export async function POST(req: Request) {
         const customerEmail = metadata.customer_email || undefined;
         const customerId = extractStripeCustomerId(obj.customer);
         const expiresAtMs = extractSubscriptionExpiryMs(obj, status);
+        const pauseCollection = obj.pause_collection as
+          | { behavior?: string; resumes_at?: number | null }
+          | null
+          | undefined;
+        const pausedUntilMs =
+          pauseCollection === null
+            ? 0
+            : typeof pauseCollection?.resumes_at === "number" &&
+                pauseCollection.resumes_at > 0
+              ? pauseCollection.resumes_at * 1000
+              : undefined;
 
         await updateSubscriptionEntitlement(subscriptionId, {
           status,
@@ -674,6 +689,7 @@ export async function POST(req: Request) {
           deviceId,
           userId,
           expiresAtMs,
+          ...(pausedUntilMs !== undefined ? { pausedUntilMs } : {}),
           lastStripeEventCreated: eventCreated,
         });
         break;
