@@ -395,18 +395,23 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
   let bestScore = 0;
   const qToks = tokens(query);
   const firstTok = qToks[0] || "";
+  const detectedBrand = query.match(NAMED_BRAND_GUARD)?.[0]?.toLowerCase().trim() || "";
   for (const p of products) {
     if (!isUsMarketOffProduct(p)) continue;
     const ing = englishIngredients(p);
     if (!ing) continue;
+    const rawProdName = (p.product_name_en || p.product_name || "").trim();
+    if (!rawProdName) continue;
     const brandStr = normalizeOffBrand(p.brands);
-    const name = `${brandStr} ${p.product_name_en || p.product_name || ""}`.trim();
+    const name = `${brandStr} ${rawProdName}`.trim();
     if (!passesVariantGuard(query, name)) continue;
     const nutrition = extractOffNutrition(p);
     if (isDietaryOrVariantMismatch(query, name, ing, nutrition)) continue;
     const r = relevance(query, name);
     if (r < 0.45) continue;
-    const brandMatchBonus = firstTok.length >= 3 && brandStr.toLowerCase().includes(firstTok) ? 0.08 : 0;
+    const brandAnchor = detectedBrand || firstTok;
+    const brandMatchBonus =
+      brandAnchor.length >= 3 && brandStr.toLowerCase().includes(brandAnchor) ? 0.08 : 0;
     const imgBonus = bestOffImage(p) ? 0.03 : 0;
     if (r + brandMatchBonus + imgBonus > bestScore) {
       best = p;
@@ -416,6 +421,28 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
   return best;
 }
 
+const HIGH_SODIUM_CONCENTRATE_FOOD =
+  /\b(salt|bouillon|broth|stock|seasoning|spice|rub|soy\s+sauce|tamari|fish\s+sauce|worcestershire|teriyaki|hoisin|oyster\s+sauce|miso|baking\s+soda|bicarbonate|baking\s+powder|cure|brine|capers|anchov\w*|olives?|pickle\w*|kimchi|sauerkraut|jerky|paste|gravy\s+mix|soup\s+mix|dip\s+mix|taco\s+mix|ramen)\b/i;
+
+/**
+ * Guards against crowd-entered unit typos in Open Food Facts (e.g. typing 12.5g or 420mg into `sodium_100g`,
+ * yielding 12,500mg or 420,000mg per 100g on bread/tortillas/snacks). Preserves raw schema units on concentrates.
+ */
+export function sanitizeOffFoodNutrition(
+  title: string,
+  nut: NutritionInput,
+  nutriments?: Record<string, number | string | undefined>,
+): NutritionInput {
+  if (!title.trim() || HIGH_SODIUM_CONCENTRATE_FOOD.test(title)) return nut;
+  const sodMg = nut.sodiumMg100g;
+  if (sodMg === undefined || sodMg <= 4500) return nut;
+  const rawSalt = nutriments?.salt_100g;
+  const saltNum = typeof rawSalt === "number" ? rawSalt : typeof rawSalt === "string" && rawSalt.trim() ? Number(rawSalt) : NaN;
+  if (Number.isFinite(saltNum) && saltNum >= 0 && saltNum * 400 <= 4500) {
+    return { ...nut, sodiumMg100g: Math.round(saltNum * 400) };
+  }
+  return { ...nut, sodiumMg100g: undefined };
+}
 
 export function extractOffNutrition(p: OffProduct): NutritionInput {
   return inferNutritionFromText(p.product_name_en || p.product_name || "", englishIngredients(p), readOffNutrition(p));
@@ -444,6 +471,7 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
     brandStr && !rawName.toLowerCase().startsWith(brandStr.toLowerCase())
       ? `${brandStr} ${rawName}`
       : rawName;
+  const baseNut = sanitizeOffFoodNutrition(fullTitle, extractOffNutrition(p), p.nutriments);
   return {
     productTitle: fullTitle,
     brand: brandStr,
@@ -451,7 +479,7 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
     ingredients: englishIngredients(p),
     imageUrl: bestOffImage(p),
     nutrition: inferNutritionFromText(fullTitle, englishIngredients(p), {
-      ...extractOffNutrition(p),
+      ...baseNut,
       productKind: p.categories_tags?.some(t => /^en:(dietary-supplements|food-supplements)$/.test(t)) || SUPPLEMENT_FORM.test(`${fullTitle} ${fallbackTitle}`) ? "supplement" : "food",
     }),
     source: "openfoodfacts",
@@ -583,8 +611,18 @@ interface OffSearchHit {
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
   const toks = tokens(title);
   const firstTok = toks[0] || "";
+  const detectedBrandRaw = title.match(NAMED_BRAND_GUARD)?.[0]?.trim() || "";
+  const brandSlug = detectedBrandRaw
+    ? detectedBrandRaw.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+    : firstTok;
+  const remainingToks = detectedBrandRaw
+    ? tokens(title.replace(new RegExp(detectedBrandRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " "))
+    : toks.slice(1);
   const brandQuery =
-    toks.length >= 2 ? `brands_tags:${firstTok} ${toks.slice(1).join(" ")}` : title;
+    toks.length >= 2 && brandSlug
+      ? `brands_tags:${brandSlug} ${remainingToks.join(" ")}`.trim()
+      : title;
+  const brandAnchor = detectedBrandRaw ? detectedBrandRaw.toLowerCase() : firstTok;
 
   // 1. Run Open Food Facts Search-a-licious v3 (brand-tagged + full text) and vertical search concurrently
   const searchFields =
@@ -617,14 +655,16 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
         (!Array.isArray(h.states_tags) || h.states_tags.includes("en:ingredients-completed")),
     )
     .map((h) => {
+      const rawProdName = (h.product_name_en || h.product_name || "").trim();
+      if (!rawProdName) return { h, score: 0 };
       const brandStr = normalizeOffBrand(h.brands);
-      const name = `${brandStr} ${h.product_name_en || h.product_name || ""}`.trim();
+      const name = `${brandStr} ${rawProdName}`.trim();
       if (!passesVariantGuard(title, name)) return { h, score: 0 };
       const r = relevance(title, name);
       if (r < 0.5) return { h, score: 0 };
       const brandBonus =
-        firstTok.length >= 3 &&
-        (brandStr.toLowerCase().includes(firstTok) || name.toLowerCase().startsWith(firstTok))
+        brandAnchor.length >= 3 &&
+        (brandStr.toLowerCase().includes(brandAnchor) || name.toLowerCase().startsWith(brandAnchor))
           ? 0.08
           : 0;
       const hasImg = Boolean(h.image_front_url || h.image_url || h.image_front_small_url);
@@ -656,8 +696,10 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     if (!p || !isUsMarketOffProduct(p)) continue;
     const ing = englishIngredients(p);
     if (!ing) continue;
+    const rawProdName = (p.product_name_en || p.product_name || "").trim();
+    if (!rawProdName) continue;
     const brandStr = normalizeOffBrand(p.brands);
-    const name = `${brandStr} ${p.product_name_en || p.product_name || ""}`.trim();
+    const name = `${brandStr} ${rawProdName}`.trim();
     if (!passesVariantGuard(title, name)) continue;
     if (isDietaryOrVariantMismatch(title, name, ing, extractOffNutrition(p))) continue;
     if (!bestOffImage(p)) {
@@ -1915,7 +1957,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\bsiete\b.*\b(tortillas?|wraps?)\b/i,
+    match: /\bsiete\b.*\b(tortillas?|wraps?)\b|\b(tortillas?|wraps?)\b.*\bsiete\b/i,
     brand: "Siete",
     title: "Almond Flour Tortillas",
     ingredients: "Almond Flour, Tapioca Flour, Water, Xanthan Gum, Sea Salt.",
@@ -1923,6 +1965,36 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 290, sugarsG100g: 2.0, saturatedFatG100g: 1.5, sodiumMg100g: 330, fiberG100g: 5.0, proteinG100g: 9.0, fruitsVegNutsPct: 45, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://sietefoods.com/products/almond-flour-tortillas",
     verifiedAt: "2026-11-08",
+  },
+  {
+    match: /^(?!.*\b(chips?|strips?|tostadas?|shells?|corn|maiz|whole\s+wheat|spinach|herb|sun[- ]?dried|tomato|jalapeno|cheddar|habanero|chipotle|organic)\b)(?=.*\bmission\b)(?=.*\bcarb\s+balance\b)(?=.*\btortillas?\b).*/i,
+    brand: "Mission",
+    title: "Mission Carb Balance Soft Taco Flour Tortillas",
+    ingredients: "Water, Modified Wheat Starch, Wheat Flour, Vital Wheat Gluten, Wheat Gluten Isolate, Vegetable Shortening (Interesterified and Hydrogenated Soybean Oils), Salt, Calcium Propionate (to Maintain Freshness), Distilled Monoglycerides, Sodium Acid Pyrophosphate, Baking Soda, Sorbic Acid (to Maintain Freshness), Fumaric Acid, Cellulose Gum, Steviol Glycosides.",
+    imageUrl: "/swaps/tortillas.png",
+    nutrition: { caloriesKcal100g: 163, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 767, fiberG100g: 34.9, proteinG100g: 14.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic: false },
+    sourceUrl: "https://www.missionfoods.com/products/carb-balance-soft-taco-flour-tortillas/",
+    verifiedAt: "2026-11-12",
+  },
+  {
+    match: /^(?!.*\b(chips?|strips?|tostadas?|shells?|corn|maiz|carb\s+balance|zero\s+net|keto|low[- ]?carb|whole\s+wheat|gluten[- ]?free|almond|cassava|spinach|herb|sun[- ]?dried|tomato|jalapeno|cheddar|habanero|chipotle|sweet\s+hawaiian|organic|protein)\b)(?=.*\bmission\b)(?=.*\bflour\b)(?=.*\btortillas?\b).*/i,
+    brand: "Mission",
+    title: "Mission Soft Taco Flour Tortillas",
+    ingredients: "Enriched Bleached Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Vegetable Shortening (Interesterified and Hydrogenated Soybean Oils), Contains 2% or Less of: Salt, Sugar, Baking Soda, Sodium Acid Pyrophosphate, Distilled Monoglycerides, Enzymes, Fumaric Acid, and Calcium Propionate and Sorbic Acid (to Maintain Freshness).",
+    imageUrl: "/swaps/tortillas.png",
+    nutrition: { caloriesKcal100g: 286, sugarsG100g: 4.1, saturatedFatG100g: 3.1, sodiumMg100g: 857, fiberG100g: 2.0, proteinG100g: 8.2, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false, isOrganic: false },
+    sourceUrl: "https://www.missionfoods.com/products/soft-taco-flour-tortillas/",
+    verifiedAt: "2026-11-12",
+  },
+  {
+    match: /^(?!.*\b(chips?|strips?|tostadas?|shells?|flour|yellow|blue|red|carb\s+balance|zero\s+net|keto|low[- ]?carb|organic|extra\s+thin)\b)(?=.*\bmission\b)(?=.*\bcorn\b)(?=.*\btortillas?\b).*/i,
+    brand: "Mission",
+    title: "Mission White Corn Tortillas",
+    ingredients: "Corn Masa Flour, Water, Contains 2% or Less of: Cellulose Gum, Guar Gum, Amylase, and Propionic Acid, Benzoic Acid and Phosphoric Acid (to Maintain Freshness).",
+    imageUrl: "/swaps/tortillas.png",
+    nutrition: { caloriesKcal100g: 200, sugarsG100g: 4.0, saturatedFatG100g: 0, sodiumMg100g: 40, fiberG100g: 4.0, proteinG100g: 4.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: false },
+    sourceUrl: "https://www.missionfoods.com/products/white-corn-tortillas/",
+    verifiedAt: "2026-11-12",
   },
   {
     match: /\b(simple\s+mills.*crackers)\b/i,
@@ -2876,7 +2948,15 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       const fullEntryTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
         ? entry.title
         : `${entry.brand} ${entry.title}`;
-      const resolvedTitle = wordCount <= 2 ? fullEntryTitle : cleanTitle;
+      const entryTokens = tokens(fullEntryTitle);
+      const queryToks = tokens(cleanTitle);
+      const querySubsetOfEntry =
+        wordCount <= 4 &&
+        queryToks.length > 0 &&
+        queryToks.every((qt) =>
+          entryTokens.some((et) => et === qt || et === `${qt}s` || qt === `${et}s`),
+        );
+      const resolvedTitle = wordCount <= 2 || querySubsetOfEntry ? fullEntryTitle : cleanTitle;
       const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
         ? entry.imageUrl
         : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}&v=4`;
@@ -3035,7 +3115,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&

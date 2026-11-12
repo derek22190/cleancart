@@ -376,8 +376,8 @@ export default function ToolsClient() {
       >
         {(
           [
-            { id: "grader" as const, label: "🔍 Score Checker" },
-            { id: "additives" as const, label: `📚 Additives (${ADDITIVE_RULES.length})` },
+            { id: "grader" as const, label: "🔍 Score Check" },
+            { id: "additives" as const, label: "📚 Additives" },
             { id: "setup" as const, label: "📲 Phone Setup" },
           ]
         ).map((tab) => {
@@ -576,7 +576,7 @@ export default function ToolsClient() {
                   marginBottom: 10,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                   {displayImageUrl && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
@@ -594,8 +594,15 @@ export default function ToolsClient() {
                       }}
                     />
                   )}
-                  <div>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: "#64748b",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
                       {displayTitle}
                     </span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
@@ -698,6 +705,7 @@ export default function ToolsClient() {
                     color: "#475569",
                     margin: "0 0 10px",
                     lineHeight: 1.45,
+                    overflowWrap: "anywhere",
                   }}
                 >
                   <strong style={{ color: "#0f172a" }}>Ingredients:</strong> {lookupProduct.ingredients}
@@ -718,7 +726,7 @@ export default function ToolsClient() {
                   ✓ Clean Label — zero watchlist additives, seed oils, or synthetic dyes.
                 </div>
               ) : (
-                <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 6 }}>
                   {activeScore.flagged.map((f) => (
                     <div
                       key={f.id}
@@ -727,19 +735,22 @@ export default function ToolsClient() {
                         border: "1px solid #fecaca",
                         borderRadius: 10,
                         padding: "8px 11px",
+                        minWidth: 0,
                       }}
                     >
                       <div
                         style={{
                           display: "flex",
                           justifyContent: "space-between",
-                          gap: 8,
+                          alignItems: "baseline",
+                          flexWrap: "wrap",
+                          gap: "3px 8px",
                           fontWeight: 800,
                           fontSize: 12.5,
                         }}
                       >
-                        <span>{f.name}</span>
-                        <span style={{ color: "#dc2626", flexShrink: 0 }}>
+                        <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{f.name}</span>
+                        <span style={{ color: "#dc2626", flexShrink: 0, whiteSpace: "nowrap" }}>
                           {RISK_LABEL[f.risk]} (−{f.penalty})
                         </span>
                       </div>
@@ -854,7 +865,7 @@ export default function ToolsClient() {
             })}
           </div>
 
-          <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 8 }}>
             {visibleRules.map((r) => (
               <div
                 key={r.id}
@@ -863,6 +874,7 @@ export default function ToolsClient() {
                   border: "1px solid #e2e8f0",
                   borderRadius: 11,
                   padding: "10px 12px",
+                  minWidth: 0,
                 }}
               >
                 <div
@@ -874,7 +886,7 @@ export default function ToolsClient() {
                     gap: 6,
                   }}
                 >
-                  <b style={{ fontSize: 13.5, color: "#0f172a" }}>{r.name}</b>
+                  <b style={{ fontSize: 13.5, color: "#0f172a", minWidth: 0, overflowWrap: "anywhere" }}>{r.name}</b>
                   <span
                     style={{
                       fontSize: 11,

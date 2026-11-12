@@ -258,37 +258,37 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "soybeanoil", name: "Soybean Oil", risk: "high", category: "seedOils",
-    patterns: ["soy(bean|a)? oil"],
+    patterns: ["soy(bean|a)? oils?"],
     explanation: "FDA-permitted refined seed oil high in omega-6 linoleic acid; clean-label rubrics flag solvent-extracted oils studied for heat oxidation.",
   },
   {
     id: "canolaoil", name: "Canola Oil", risk: "high", category: "seedOils",
-    patterns: ["canola oil", "rapeseed oil"],
+    patterns: ["canola oils?", "rapeseed oils?"],
     explanation: "FDA-permitted refined, bleached, and deodorized seed oil; flagged by clean-label rubrics in favor of cold-pressed olive, avocado, or coconut oil.",
   },
   {
     id: "cornoil", name: "Corn Oil", risk: "high", category: "seedOils",
-    patterns: ["corn oil"],
+    patterns: ["corn oils?"],
     explanation: "FDA-permitted refined seed oil with a high (~46:1) omega-6 to omega-3 fatty acid ratio studied in dietary lipid research.",
   },
   {
     id: "cottonseedoil", name: "Cottonseed Oil", risk: "high", category: "seedOils",
-    patterns: ["cottonseed oil"],
+    patterns: ["cottonseed oils?"],
     explanation: "FDA-permitted refined oil derived from cotton seeds; high in omega-6 polyunsaturated fats that are less heat-stable than monounsaturated oils.",
   },
   {
     id: "grapeseedoil", name: "Grapeseed Oil", risk: "high", category: "seedOils",
-    patterns: ["grape ?seed oil"],
+    patterns: ["grape ?seed oils?"],
     explanation: "FDA-permitted by-product oil (~70% omega-6 linoleic acid) that is sensitive to high-heat oxidation compared with avocado or olive oil.",
   },
   {
     id: "ricebranoil", name: "Rice Bran Oil", risk: "high", category: "seedOils",
-    patterns: ["rice ?bran oil"],
+    patterns: ["rice ?bran oils?"],
     explanation: "FDA-permitted refined bran oil high in omega-6 linoleic acid; flagged on our clean-label watchlist in favor of cold-pressed oils.",
   },
   {
     id: "vegoil", name: "Vegetable Oil (Industrial Blend)", risk: "high", category: "seedOils",
-    patterns: ["(?<!brominated |hydrogenated )vegetable oils?"],
+    patterns: ["(?<!brominated |hydrogenated )vegetable (?:oils?|shortenings?)"],
     explanation: "FDA-permitted blend of refined seed oils (typically soybean, canola, or corn oil) high in omega-6 polyunsaturated fats.",
   },
 
@@ -306,12 +306,12 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "sunfloweroil", name: "Sunflower Oil", risk: "moderate", category: "seedOils",
-    patterns: ["sunflower( seed)? oil"],
+    patterns: ["sunflower( seed)? oils?"],
     explanation: "FDA-permitted seed oil containing omega-6 polyunsaturated fats; flagged as moderate concern on our clean-label watchlist compared with cold-pressed avocado, olive, or coconut oil.",
   },
   {
     id: "saffloweroil", name: "Safflower Oil", risk: "moderate", category: "seedOils",
-    patterns: ["safflower( seed)? oil"],
+    patterns: ["safflower( seed)? oils?"],
     explanation: "FDA-permitted seed oil containing omega-6 fats; flagged as moderate concern on our clean-label watchlist compared with cold-pressed olive or avocado oil.",
   },
   {

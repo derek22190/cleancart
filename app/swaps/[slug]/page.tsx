@@ -395,7 +395,7 @@ export default async function SwapReportPage({
             ✓ Zero watchlist additives, refined seed oils, or synthetic food dyes detected.
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 8, marginBottom: 14 }}>
             {result.flagged.map((f) => (
               <div
                 key={f.id}
@@ -404,21 +404,24 @@ export default async function SwapReportPage({
                   border: "1px solid #fecaca",
                   borderRadius: 11,
                   padding: "9px 12px",
+                  minWidth: 0,
                 }}
               >
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    gap: 8,
+                    alignItems: "baseline",
+                    flexWrap: "wrap",
+                    gap: "3px 8px",
                     fontWeight: 800,
                     fontSize: 13,
                   }}
                 >
-                  <span>
+                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                     {f.name} ({CATEGORY_LABELS[f.category]})
                   </span>
-                  <span style={{ color: "#dc2626", flexShrink: 0 }}>
+                  <span style={{ color: "#dc2626", flexShrink: 0, whiteSpace: "nowrap" }}>
                     {RISK_LABEL[f.risk]} · −{f.penalty}
                   </span>
                 </div>

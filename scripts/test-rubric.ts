@@ -3654,6 +3654,51 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const { sanitizeOffFoodNutrition } = await import("../lib/lookup");
+  const missionForward = await lookupIngredients({ productTitle: "Mission Flour tortillas" });
+  const missionReverse = await lookupIngredients({ productTitle: "Flour tortillas mission" });
+  const missionWatchScoreA = missionForward
+    ? scoreProductYuka(
+        missionForward.ingredients,
+        { seedOils: "2x", dyes: "2x", hfcs: "2x" },
+        [],
+        { ...missionForward.nutrition, productTitle: missionForward.productTitle },
+      )
+    : null;
+  const missionWatchScoreB = missionReverse
+    ? scoreProductYuka(
+        missionReverse.ingredients,
+        { seedOils: "2x", dyes: "2x", hfcs: "2x" },
+        [],
+        { ...missionReverse.nutrition, productTitle: missionReverse.productTitle },
+      )
+    : null;
+  const latestToolsClientSrc = fs.readFileSync("app/tools/ToolsClient.tsx", "utf8");
+  const latestSwapsSlugSrc = fs.readFileSync("app/swaps/[slug]/page.tsx", "utf8");
+  check(
+    "Word-Order Lookup Symmetry, OFF Corrupt Sodium Sanitizer & Mobile Flagged-Row Overflow Guard: 'Mission Flour tortillas' and 'Flour tortillas mission' return identical verified label & score, corrupt 12,500mg OFF tortilla sodium is dropped, bare vegetable shortening is flagged, and mobile additive badges never overflow",
+    Boolean(
+      missionForward &&
+        missionReverse &&
+        missionForward.productTitle === "Mission Soft Taco Flour Tortillas" &&
+        missionReverse.productTitle === "Mission Soft Taco Flour Tortillas" &&
+        missionWatchScoreA &&
+        missionWatchScoreB &&
+        missionWatchScoreA.score === missionWatchScoreB.score &&
+        missionWatchScoreA.flagged.some((f) => f.id === "soybeanoil") &&
+        missionWatchScoreA.flagged.some((f) => f.id === "hydrogoil") &&
+        (missionForward.nutrition?.sodiumMg100g ?? 0) < 1200 &&
+        scoreIngredients("enriched flour, water, vegetable shortening, salt").flagged.some((f) => f.id === "vegoil") &&
+        sanitizeOffFoodNutrition("Mission Flour Tortillas", { sodiumMg100g: 12500 }, { sodium_100g: 12.5 }).sodiumMg100g === undefined &&
+        sanitizeOffFoodNutrition("Mission Flour Tortillas", { sodiumMg100g: 12500 }, { sodium_100g: 12.5, salt_100g: 2.1 }).sodiumMg100g === 840 &&
+        sanitizeOffFoodNutrition("Morton Fine Sea Salt", { sodiumMg100g: 39000 }, { sodium_100g: 39 }).sodiumMg100g === 39000 &&
+        latestToolsClientSrc.includes('gridTemplateColumns: "minmax(0, 1fr)"') &&
+        latestToolsClientSrc.includes('overflowWrap: "anywhere"') &&
+        latestToolsClientSrc.includes('whiteSpace: "nowrap"') &&
+        latestSwapsSlugSrc.includes('gridTemplateColumns: "minmax(0, 1fr)"')
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
