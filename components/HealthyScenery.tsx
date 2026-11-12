@@ -551,11 +551,83 @@ export function YukaSwapShowcase() {
 
         <div className="broc-swap-footer">
           <span className="broc-swap-stores-note">
-            Works inside Walmart · Instacart · Target · Costco · Amazon Fresh · Kroger · ALDI &amp; 5 more
+            Matched 1-for-1 in the exact same grocery category — never sponsored placements.
           </span>
           <a href="/swaps" className="yuka-outline-pill-btn">
-            Browse Clean Swaps Directory →
+            Browse Clean Swaps →
           </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Clean collapsed FAQ accordions for GEO / parent clarity (one question per accordion row).
+ */
+export function HeyBrocFaqSection() {
+  return (
+    <section id="faq" className="broc-faq-section" aria-labelledby="broc-faq-heading">
+      <div className="broc-faq-inner">
+        <span className="eyebrow eyebrow--green">COMMON QUESTIONS</span>
+        <h2 id="broc-faq-heading" className="yuka-page-h2">
+          Frequently Asked Questions
+        </h2>
+        <div className="broc-faq-list">
+          <details className="broc-faq-item">
+            <summary>
+              <span>How does HeyBroc calculate its 0 to 100 food and ingredient score?</span>
+              <i aria-hidden="true">+</i>
+            </summary>
+            <p>
+              HeyBroc grades products on a deterministic 0–100 scale across three pillars:{" "}
+              <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories,
+              fiber, and protein; <b>Clean-Label Additives (30%)</b> penalizing synthetic dyes,
+              refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a{" "}
+              <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a
+              product&apos;s maximum score at 49/100.
+            </p>
+          </details>
+
+          <details className="broc-faq-item">
+            <summary>
+              <span>How does HeyBroc grade online grocery carts without scanning barcodes?</span>
+              <i aria-hidden="true">+</i>
+            </summary>
+            <p>
+              While you browse pickup or delivery apps on your phone or browser, HeyBroc&apos;s
+              Live Store Bubble reads the product page automatically, computes its 0–100 score in
+              real time, and links directly to a cleaner alternative carried by that same store —
+              plus includes a camera scanner when you shop in person.
+            </p>
+          </details>
+
+          <details className="broc-faq-item">
+            <summary>
+              <span>What ingredients, seed oils, and family allergens does HeyBroc flag?</span>
+              <i aria-hidden="true">+</i>
+            </summary>
+            <p>
+              HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower,
+              safflower), synthetic food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium
+              Dioxide), chemical preservatives and nitrites (BHA, BHT, TBHQ, Sodium Nitrite,
+              Potassium Bromate), added syrups and artificial sweeteners, conventional Dirty-Dozen
+              pesticide risk, and custom household allergy guards (dairy, gluten, peanuts/tree nuts,
+              soy, egg, and shellfish).
+            </p>
+          </details>
+
+          <details className="broc-faq-item">
+            <summary>
+              <span>Can food brands pay HeyBroc to raise a score or sponsor a Clean Swap?</span>
+              <i aria-hidden="true">+</i>
+            </summary>
+            <p>
+              Never. HeyBroc is 100% family-owned. Brands cannot pay to alter a score, hide a
+              flagged additive, or buy placement in Clean Swaps. Every grade and 1-for-1 swap is
+              computed strictly from back-of-package ingredients and nutrition facts.
+            </p>
+          </details>
         </div>
       </div>
     </section>
@@ -648,15 +720,14 @@ export function YukaSiteFooter({
                 <strong>iPhone &amp; Safari</strong>
               </div>
             </a>
-            <a href="/heybroc.apk" download="heybroc.apk" className="yuka-store-badge">
+            <a href="/tools#mobile-setup" className="yuka-store-badge">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 3v12" />
-                <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
-                <path d="M5 19.5h14" />
+                <rect x="5" y="4" width="14" height="16" rx="2.5" />
+                <path d="M9 9.5h6M9 13.5h4" />
               </svg>
               <div>
-                <small>Download for</small>
-                <strong>Android (.apk)</strong>
+                <small>Setup on</small>
+                <strong>Android &amp; Chrome</strong>
               </div>
             </a>
           </div>
@@ -691,30 +762,6 @@ export function YukaSiteFooter({
       </div>
 
       <div className="yuka-footer-disclosures">
-        <details className="yuka-disclosure-box">
-          <summary>How HeyBroc Grades Groceries &amp; Scoring FAQ</summary>
-          <div className="yuka-disclosure-body">
-            <div>
-              <strong>How does HeyBroc calculate its 0 to 100 food and ingredient score?</strong>
-              <p>
-                HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Clean-Label Additives (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
-              </p>
-            </div>
-            <div>
-              <strong>How does the Live Store Bubble work while shopping?</strong>
-              <p>
-                HeyBroc&apos;s Live Store Bubble reads product titles and ingredient lists directly inside major grocery pickup and delivery apps—surfacing instant 0–100 scores and cleaner swaps without scanning physical barcodes.
-              </p>
-            </div>
-            <div>
-              <strong>Can food brands pay to change product scores?</strong>
-              <p>
-                No. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
-              </p>
-            </div>
-          </div>
-        </details>
-
         <details className="yuka-disclosure-box">
           <summary>Scoring Methodology, Label Verification &amp; Non-Affiliation Notice</summary>
           <div className="yuka-disclosure-body">

@@ -40,6 +40,7 @@ import CleanArcScoreCard from "./CleanArcScoreCard";
 import {
   FooterKitchenScenery,
   HealthyFoodBackdrop,
+  HeyBrocFaqSection,
   PhoneStageFoodHalo,
   YukaImpactBand,
   YukaIndependentShowcase,
@@ -3185,7 +3186,7 @@ export default function Simulator({
                 Know what&apos;s hiding in your online grocery cart.
               </h2>
               <p className="hero-subcopy">
-                Automatic <b>0–100 ingredient scores</b> and <b>1-tap Clean Swaps</b> while you shop online at Walmart, Instacart, Target, Costco, Amazon Fresh &amp; 12 stores — plus a built-in camera when you shop in person.
+                Automatic <b>0–100 ingredient scores</b> and <b>1-tap Clean Swaps</b> while you order pickup or delivery — no barcode scanning required.
               </p>
               <div className="hero-cta-row">
                 <button
@@ -3207,44 +3208,6 @@ export default function Simulator({
                 >
                   Try Free Grader
                 </a>
-              </div>
-
-              <div className="hero-shopping-modes" aria-label="Supported shopping modes">
-                <button
-                  id="hero-mode-online"
-                  type="button"
-                  className="hero-mode-card hero-mode-card--online"
-                  onClick={() => {
-                    setPhoneStoreMenuOpen(true);
-                    screenRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                  }}
-                >
-                  <span className="hero-mode-icon hero-mode-icon--online" aria-hidden="true">
-                    <UiIcon name="cart" size={16} />
-                  </span>
-                  <span className="hero-mode-copy">
-                    <strong>
-                      Online Pickup &amp; Delivery
-                      <em className="hero-mode-tag">12 STORES</em>
-                    </strong>
-                    <small>Walmart · Instacart · Target · Costco · Amazon +7</small>
-                  </span>
-                </button>
-
-                <button
-                  id="hero-mode-camera"
-                  type="button"
-                  className="hero-mode-card hero-mode-card--camera"
-                  onClick={() => setLabelScannerOpen(true)}
-                >
-                  <span className="hero-mode-icon hero-mode-icon--camera" aria-hidden="true">
-                    <UiIcon name="camera" size={16} />
-                  </span>
-                  <span className="hero-mode-copy">
-                    <strong>In-Store Camera</strong>
-                    <small>Scan barcodes &amp; labels in the aisle →</small>
-                  </span>
-                </button>
               </div>
             </div>
           )}
@@ -4972,21 +4935,114 @@ export default function Simulator({
         </section>
       </main>
 
-      {/* ============ YUKA-INSPIRED 100% INDEPENDENT SCORING PILLARS ============ */}
-      <div data-anchor="independent-section">
-        <YukaIndependentShowcase />
-      </div>
+      {/* ============ 3-STEP HOW HEYBROC WORKS + SINGLE 12-STORE STRIP ============ */}
+      {!adTestMode && (
+        <section id="how-it-works" className="how-it-works-section" aria-labelledby="how-it-works-heading">
+          <div className="how-it-works-inner">
+            <span className="eyebrow eyebrow--green">HOW IT WORKS</span>
+            <h2 id="how-it-works-heading" className="yuka-page-h2">
+              Clean groceries in three effortless steps
+            </h2>
+            <p className="yuka-page-lead">
+              Built first for online pickup &amp; delivery orders — with a built-in barcode and label camera whenever you shop in person.
+            </p>
 
-      {/* ============ YUKA-INSPIRED TILTED CLEAN RECOMMENDATIONS SHOWCASE ============ */}
+            <div className="how-steps-grid">
+              <article className="how-step-card">
+                <div className="how-step-top">
+                  <span className="how-step-icon" aria-hidden="true">
+                    <UiIcon name="cart" size={18} />
+                  </span>
+                  <span className="how-step-num">STEP 01</span>
+                </div>
+                <h3>Open your grocery app</h3>
+                <p>
+                  Shop your normal pickup or delivery order. HeyBroc&apos;s live score bubble is already floating on screen — nothing to scan by hand.
+                </p>
+              </article>
+
+              <article className="how-step-card">
+                <div className="how-step-top">
+                  <span className="how-step-icon" aria-hidden="true">
+                    <UiIcon name="shield" size={18} />
+                  </span>
+                  <span className="how-step-num">STEP 02</span>
+                </div>
+                <h3>See instant 0–100 grades</h3>
+                <p>
+                  Every product gets an instant ingredient grade flagging seed oils, synthetic dyes, added syrups, and your family&apos;s allergy guards.
+                </p>
+              </article>
+
+              <article className="how-step-card">
+                <div className="how-step-top">
+                  <span className="how-step-icon" aria-hidden="true">
+                    <UiIcon name="swap" size={18} />
+                  </span>
+                  <span className="how-step-num">STEP 03</span>
+                </div>
+                <h3>Swap bad picks in 1 tap</h3>
+                <p>
+                  Tap once to replace any flagged item with a higher-scoring Clean Swap carried in that exact same grocery store.
+                </p>
+              </article>
+            </div>
+
+            <div className="hero-shopping-modes how-shopping-modes" aria-label="Supported shopping modes">
+              <button
+                id="hero-mode-online"
+                type="button"
+                className="hero-mode-card hero-mode-card--online"
+                onClick={() => {
+                  setPhoneStoreMenuOpen(true);
+                  screenRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+              >
+                <span className="hero-mode-icon hero-mode-icon--online" aria-hidden="true">
+                  <UiIcon name="cart" size={16} />
+                </span>
+                <span className="hero-mode-copy">
+                  <strong>
+                    Try Online Store Switcher
+                    <em className="hero-mode-tag">12 STORES</em>
+                  </strong>
+                  <small>Preview live floating scores in the phone above →</small>
+                </span>
+              </button>
+
+              <button
+                id="hero-mode-camera"
+                type="button"
+                className="hero-mode-card hero-mode-card--camera"
+                onClick={() => setLabelScannerOpen(true)}
+              >
+                <span className="hero-mode-icon hero-mode-icon--camera" aria-hidden="true">
+                  <UiIcon name="camera" size={16} />
+                </span>
+                <span className="hero-mode-copy">
+                  <strong>Try In-Store Label &amp; Barcode Camera</strong>
+                  <small>Snap or upload any ingredient label photo →</small>
+                </span>
+              </button>
+            </div>
+
+            <p className="how-store-strip">
+              <b>Works where you already order:</b> Walmart · Instacart · Target · Costco · Kroger · ALDI · Amazon Fresh · Sam&apos;s Club · BJ&apos;s · DoorDash · Uber Eats · Shipt
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ============ 1-TAP ONLINE CART CLEAN SWAPS BOARD ============ */}
       <YukaSwapShowcase />
 
       {/* ============ WHY HEYBROC COMPARISON SECTION ============ */}
       <section className="compare-section" aria-label="Why HeyBroc comparison">
         <div className="compare-card">
           <div className="compare-head">
-            <span className="eyebrow eyebrow--green">THE MISSING LINK IN CLEAN GROCERIES</span>
-            <h2>Why Parents Switch to HeyBroc</h2>
-            <p>Combine the effortless floating bubble of coupon apps with transparent, deterministic food &amp; ingredient grading.</p>
+            <span className="eyebrow eyebrow--green">WHY PARENTS SWITCH</span>
+            <h2>Online Cart Grading vs. Barcode Apps</h2>
+            <p>Automatic scores while you build your pickup or delivery order — no aisle-by-aisle scanning.</p>
           </div>
 
           <div className="compare-grid" role="table" aria-label="HeyBroc vs Coupon and Barcode Apps">
@@ -5005,7 +5061,7 @@ export default function Simulator({
             {/* Row 1 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Works inside Walmart, Target, Costco, Instacart, Kroger, ALDI, Amazon Fresh, Sam&apos;s Club, BJ&apos;s, DoorDash, Uber Eats &amp; Shipt</b>
+                <b>Floats inside 12 online grocery apps</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-yes">✓</span>
@@ -5024,7 +5080,7 @@ export default function Simulator({
             {/* Row 2 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Grades ingredients (0–100) without a barcode camera</b>
+                <b>Grades 0–100 without scanning barcodes</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-no">✕</span>
@@ -5036,14 +5092,14 @@ export default function Simulator({
               </div>
               <div className="compare-cell compare-cell--broc" role="cell">
                 <span className="cmp-yes cmp-yes--bright">✓</span>
-                <small><b>Reads screen automatically</b></small>
+                <small><b>Automatic</b></small>
               </div>
             </div>
 
             {/* Row 3 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>1-Tap Clean Food Swaps in your store app</b>
+                <b>1-Tap Clean Swaps in the same store</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-no">✕</span>
@@ -5055,14 +5111,14 @@ export default function Simulator({
               </div>
               <div className="compare-cell compare-cell--broc" role="cell">
                 <span className="cmp-yes cmp-yes--bright">✓</span>
-                <small><b>Instant 1-Tap Swap</b></small>
+                <small><b>1-Tap Swap</b></small>
               </div>
             </div>
 
             {/* Row 4 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Whole-Cart Health Check (Cart Avg 0–100)</b>
+                <b>Whole-Cart Health Check (0–100 Avg)</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-no">✕</span>
@@ -5081,7 +5137,15 @@ export default function Simulator({
         </div>
       </section>
 
-      {/* ============ YUKA-INSPIRED FAINT-GREEN IMPACT BAND ============ */}
+      {/* ============ 100% FAMILY OWNED PLEDGE ============ */}
+      <div data-anchor="independent-section">
+        <YukaIndependentShowcase />
+      </div>
+
+      {/* ============ CLEAN COLLAPSED FAQ ACCORDIONS ============ */}
+      <HeyBrocFaqSection />
+
+      {/* ============ FAINT-GREEN IMPACT BAND ============ */}
       <YukaImpactBand />
 
       {/* ============ CLEAN 4-COLUMN FOOTER + HEYBROC KITCHEN COUNTER UNPACKING SCENE ============ */}

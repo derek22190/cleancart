@@ -3010,7 +3010,211 @@ h1, h2, h3, h4, p { margin: 0; }
   }
   .hero-shopping-modes {
     grid-template-columns: 1fr;
-    max-width: 400px;
-    margin: 18px auto 0;
+    max-width: 440px;
+    margin: 22px auto 0;
+  }
+}
+
+/* 11. 3-Step "How It Works", Single Static Store Strip & Clean Collapsed FAQ Accordions */
+.how-it-works-section {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1120px;
+  margin: 8px auto 52px;
+  padding: 18px 28px 12px;
+}
+.how-it-works-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.how-it-works-inner > .eyebrow {
+  margin-bottom: 8px;
+}
+.how-steps-grid {
+  margin-top: 32px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  text-align: left;
+}
+.how-step-card {
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 24px 22px;
+  border: 1px solid rgba(18, 65, 38, 0.085);
+  box-shadow: 0 14px 32px -18px rgba(15, 60, 35, 0.11);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.how-step-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.how-step-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #eaf8ef;
+  color: #129452;
+  display: grid;
+  place-items: center;
+}
+.how-step-num {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  color: #15803d;
+  background: #f1fbf4;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.how-step-card h3 {
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: #1a241f;
+  line-height: 1.25;
+}
+.how-step-card p {
+  font-size: 14.5px;
+  line-height: 1.58;
+  color: #54665d;
+}
+.how-shopping-modes {
+  margin-top: 22px;
+  width: 100%;
+  max-width: 720px;
+  grid-template-columns: 1fr 1fr;
+}
+.how-store-strip {
+  margin-top: 22px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #f6fbf8;
+  border: 1px solid rgba(18, 65, 38, 0.075);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #52635a;
+  max-width: 960px;
+}
+.how-store-strip b {
+  color: #1a241f;
+  font-weight: 800;
+}
+
+.broc-faq-section {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 860px;
+  margin: 12px auto 56px;
+  padding: 0 28px;
+}
+.broc-faq-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.broc-faq-inner > .eyebrow {
+  margin-bottom: 8px;
+}
+.broc-faq-list {
+  margin-top: 22px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.broc-faq-item {
+  background: #ffffff;
+  border: 1px solid rgba(18, 65, 38, 0.09);
+  border-radius: 18px;
+  padding: 0 20px;
+  box-shadow: 0 8px 22px -18px rgba(15, 60, 35, 0.12);
+  transition: border-color 0.16s ease;
+}
+.broc-faq-item[open] {
+  border-color: rgba(24, 185, 87, 0.34);
+}
+.broc-faq-item summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 17px 0;
+  font-size: 15.5px;
+  font-weight: 750;
+  color: #1a241f;
+  cursor: pointer;
+}
+.broc-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+.broc-faq-item summary i {
+  font-style: normal;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #eff9f3;
+  color: #129452;
+  font-size: 17px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: transform 0.18s var(--ease), background 0.18s ease;
+}
+.broc-faq-item[open] summary i {
+  transform: rotate(45deg);
+  background: #18b957;
+  color: #ffffff;
+}
+.broc-faq-item p {
+  padding: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.62;
+  color: #54665d;
+}
+.broc-faq-item p b {
+  color: #1a241f;
+}
+
+@media (max-width: 860px) {
+  .how-it-works-section {
+    padding: 10px 16px 8px;
+    margin-bottom: 36px;
+  }
+  .how-steps-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin-top: 22px;
+  }
+  .how-shopping-modes {
+    grid-template-columns: 1fr;
+  }
+  .how-store-strip {
+    border-radius: 18px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+  }
+  .broc-faq-section {
+    padding: 0 16px;
+    margin-bottom: 40px;
+  }
+  .broc-faq-item {
+    padding: 0 16px;
+  }
+  .broc-faq-item summary {
+    font-size: 14.5px;
+    padding: 15px 0;
   }
 }
