@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import {
-  FooterMeadowScenery,
+  FooterKitchenScenery,
   HealthyFoodBackdrop,
   YukaSiteFooter,
 } from "@/components/HealthyScenery";
@@ -199,7 +199,7 @@ export default function IndependencePage() {
       </main>
 
       <YukaSiteFooter />
-      <FooterMeadowScenery />
+      <FooterKitchenScenery />
     </div>
   );
 }

@@ -38,7 +38,7 @@ import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import CancelRetentionModal from "./CancelRetentionModal";
 import CleanArcScoreCard from "./CleanArcScoreCard";
 import {
-  FooterMeadowScenery,
+  FooterKitchenScenery,
   HealthyFoodBackdrop,
   PhoneStageFoodHalo,
   YukaImpactBand,
@@ -4885,7 +4885,7 @@ export default function Simulator({
       {/* ============ YUKA-INSPIRED FAINT-GREEN IMPACT BAND ============ */}
       <YukaImpactBand />
 
-      {/* ============ CLEAN 4-COLUMN YUKA FOOTER + MEADOW SCENERY ============ */}
+      {/* ============ CLEAN 4-COLUMN FOOTER + HEYBROC KITCHEN COUNTER UNPACKING SCENE ============ */}
       <YukaSiteFooter
         onManageSubscription={() => {
           if (isIosAppClient || detectIosAppClient()) {
@@ -4896,7 +4896,7 @@ export default function Simulator({
         }}
       />
 
-      <FooterMeadowScenery />
+      <FooterKitchenScenery />
 
       {/* ============ PHASE 6 MODALS ============ */}
       <WatchlistMiniFunnel

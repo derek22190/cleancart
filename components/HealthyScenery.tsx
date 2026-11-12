@@ -642,23 +642,23 @@ export function YukaSiteFooter({
         </div>
 
         <div className="yuka-footer-col">
-          <h4>Project</h4>
-          <a href="/independence">Independence</a>
-          <a href="/swaps">Clean Swaps</a>
-          <a href="/creators">Creators (35%)</a>
+          <h4>Our Mission</h4>
+          <a href="/independence">100% Independence</a>
+          <a href="/swaps">Clean Swaps Directory</a>
+          <a href="/creators">Creator Partners (35%)</a>
         </div>
 
         <div className="yuka-footer-col">
-          <h4>Application</h4>
+          <h4>Grocery Tools</h4>
           <a href="/">12-Store Live Bubble</a>
           <a href="/tools">Free Label Grader</a>
-          <a href="/tools#mobile-setup">Mobile Setup</a>
+          <a href="/tools#mobile-setup">Mobile Setup Guide</a>
         </div>
 
         <div className="yuka-footer-col">
-          <h4>Useful links</h4>
-          <a href="/terms">Terms</a>
-          <a href="/privacy">Privacy</a>
+          <h4>Legal &amp; Billing</h4>
+          <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a>
           {onManageSubscription ? (
             <button type="button" onClick={onManageSubscription} className="yuka-footer-text-btn">
               Manage / Cancel subscription
@@ -708,184 +708,240 @@ export function YukaSiteFooter({
 }
 
 /**
- * Full-width storybook countryside footer scenery (cozy cottage, winding path, leafy forest trees,
- * rolling green meadows, and our giant celebratory U-eye Broc mascot on the right hill).
+ * Original HeyBroc Kitchen Counter Grocery Unpacking Scene:
+ * Soft mint subway-tile kitchen backsplash, warm butcher-block & sage cabinetry along the bottom,
+ * a kraft paper grocery bag overflowing with fresh whole foods (leafy greens, carrots, baguette, apple),
+ * glass extra-virgin olive oil & farm milk bottles, wooden cutting board with avocado & lemon,
+ * and our giant celebratory U-eye Broc mascot cheering right on the kitchen counter!
  */
-export function FooterMeadowScenery() {
+export function FooterKitchenScenery() {
   return (
-    <div id="footer-meadow-scenery" className="footer-meadow-scenery">
+    <div id="footer-kitchen-scenery" className="footer-kitchen-scenery">
       <svg
-        className="footer-meadow-svg"
-        viewBox="0 0 1440 270"
+        className="footer-kitchen-svg"
+        viewBox="0 0 1440 284"
         preserveAspectRatio="xMidYMax slice"
+        fill="none"
         aria-hidden="true"
       >
-        {/* Distant faint-green misty hills */}
-        <path
-          d="M160 270C230 175 340 128 455 152C545 170 605 110 725 108C855 106 925 168 1030 140C1135 112 1235 66 1340 126C1390 154 1422 206 1440 245V270H160Z"
-          fill="#E8F7EE"
-        />
-        <path
-          d="M0 245C110 205 245 168 380 192C515 216 640 156 790 166C940 176 1080 218 1240 186C1330 168 1395 176 1440 192V270H0V245Z"
-          fill="#D6F0E0"
-        />
+        <defs>
+          {/* Subtle Mint Kitchen Subway Tile Backsplash Pattern */}
+          <pattern id="kitchenSubwayTile" width="76" height="34" patternUnits="userSpaceOnUse">
+            <rect x="2" y="2" width="72" height="13" rx="3" stroke="#DCEFE3" strokeWidth="1.2" fill="#F8FDFA" />
+            <rect x="-36" y="19" width="72" height="13" rx="3" stroke="#DCEFE3" strokeWidth="1.2" fill="#F8FDFA" />
+            <rect x="40" y="19" width="72" height="13" rx="3" stroke="#DCEFE3" strokeWidth="1.2" fill="#F8FDFA" />
+          </pattern>
+          <linearGradient id="backsplashFade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
+            <stop offset="32%" stopColor="#FFFFFF" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#EAF7EF" stopOpacity="0" />
+          </linearGradient>
+        </defs>
 
-        {/* Back Meadow Ridge */}
-        <path
-          d="M460 270C535 206 635 178 735 182C835 186 920 222 1015 246L1040 270H460Z"
-          fill="#49B66D"
-        />
+        {/* Soft Kitchen Backsplash Zone */}
+        <rect x="0" y="34" width="1440" height="168" fill="url(#kitchenSubwayTile)" />
+        <rect x="0" y="30" width="1440" height="172" fill="url(#backsplashFade)" />
 
-        {/* Left Rolling Green Meadow */}
-        <path
-          d="M0 196C165 198 335 214 515 256L565 270H0V196Z"
-          fill="#2E9A54"
-        />
+        {/* Left Floating Wooden Kitchen Shelf with Mason Jars & Potted Basil */}
+        <g transform="translate(150, 56)">
+          {/* Shelf shadow & plank */}
+          <rect x="4" y="54" width="196" height="7" rx="3.5" fill="#DCECE2" />
+          <rect x="0" y="48" width="196" height="8" rx="4" fill="#D9A673" />
+          <rect x="24" y="56" width="8" height="10" rx="2" fill="#B98552" />
+          <rect x="164" y="56" width="8" height="10" rx="2" fill="#B98552" />
+          {/* Rolled Oats Glass Jar */}
+          <rect x="22" y="14" width="30" height="34" rx="6" fill="#FFFFFF" stroke="#B7DEC5" strokeWidth="2" />
+          <rect x="24" y="24" width="26" height="22" rx="4" fill="#F2DEC1" />
+          <rect x="25" y="9" width="24" height="6" rx="2.5" fill="#C68E59" />
+          {/* Honey / Chia Seeds Jar */}
+          <rect x="64" y="20" width="26" height="28" rx="6" fill="#FFFFFF" stroke="#B7DEC5" strokeWidth="2" />
+          <rect x="66" y="30" width="22" height="16" rx="3.5" fill="#F7C95C" />
+          <rect x="67" y="15" width="20" height="5.5" rx="2.5" fill="#C68E59" />
+          {/* Terracotta Potted Kitchen Herbs */}
+          <path d="M132 28H164L159 48H137L132 28Z" fill="#DF8A65" />
+          <rect x="129" y="24" width="38" height="5" rx="2.5" fill="#CC7652" />
+          <path d="M148 24C140 12 132 14 136 22C132 10 144 4 148 16C152 4 164 10 160 22C164 14 156 12 148 24Z" fill="#2FA85A" />
+        </g>
 
-        {/* Right Rolling Green Meadow (where giant U-eye Broc stands) */}
-        <path
-          d="M845 270C985 220 1185 188 1440 184V270H845Z"
-          fill="#35A45B"
-        />
+        {/* Sunny Kitchen Window Hint (Center-Right Wall) */}
+        <g transform="translate(868, 36)" opacity="0.72">
+          <rect x="0" y="0" width="124" height="88" rx="12" fill="#EAF8F0" stroke="#CDE8D7" strokeWidth="3" />
+          <line x1="62" y1="3" x2="62" y2="85" stroke="#CDE8D7" strokeWidth="2.5" />
+          <line x1="3" y1="44" x2="121" y2="44" stroke="#CDE8D7" strokeWidth="2.5" />
+          <circle cx="96" cy="22" r="9" fill="#FDE68A" opacity="0.85" />
+          <rect x="-6" y="86" width="136" height="6" rx="3" fill="#DCEFE3" />
+        </g>
 
-        {/* Center Foreground Hill */}
-        <path
-          d="M390 270C525 218 710 208 920 270H390Z"
-          fill="#238847"
-        />
+        {/* ============ FULL-WIDTH KITCHEN COUNTERTOP & SAGE CABINETRY ============ */}
+        {/* Countertop Top Surface */}
+        <path d="M0 194H1440V212H0V194Z" fill="#FBF8F1" />
+        {/* Warm Butcher-Block Countertop Front Edge */}
+        <rect x="0" y="210" width="1440" height="13" fill="#DDA974" />
+        <rect x="0" y="221" width="1440" height="3" fill="#C48E5A" />
 
-        {/* Winding Country Path from foreground up to the little cottage */}
-        <path
-          d="M698 184C690 196 672 204 680 216C688 228 724 240 706 270H754C768 238 718 224 708 212C700 202 708 194 710 184H698Z"
-          fill="#EFE7D5"
-        />
-        <path
-          d="M422 236C442 246 452 258 446 270H492C496 254 472 242 444 232L422 236Z"
-          fill="#EAE0CA"
-          opacity="0.9"
-        />
+        {/* Sage-Green Shaker Kitchen Cabinets Below Counter */}
+        <rect x="0" y="224" width="1440" height="60" fill="#2A8F52" />
+        {/* Subtle Shaker Cabinet Door Panels & Brass Knobs */}
+        <g opacity="0.92">
+          <rect x="76" y="233" width="220" height="44" rx="5" fill="#237E47" stroke="#3CA565" strokeWidth="1.5" />
+          <rect x="316" y="233" width="220" height="44" rx="5" fill="#237E47" stroke="#3CA565" strokeWidth="1.5" />
+          <rect x="556" y="233" width="328" height="20" rx="4" fill="#237E47" stroke="#3CA565" strokeWidth="1.5" />
+          <rect x="556" y="258" width="328" height="20" rx="4" fill="#237E47" stroke="#3CA565" strokeWidth="1.5" />
+          <rect x="904" y="233" width="220" height="44" rx="5" fill="#237E47" stroke="#3CA565" strokeWidth="1.5" />
+          <rect x="1144" y="233" width="220" height="44" rx="5" fill="#237E47" stroke="#3CA565" strokeWidth="1.5" />
+          {/* Warm Brass Drawer Pulls & Knobs */}
+          <circle cx="280" cy="248" r="3.2" fill="#F4CF7B" />
+          <circle cx="332" cy="248" r="3.2" fill="#F4CF7B" />
+          <rect x="698" y="241.5" width="44" height="3.5" rx="1.75" fill="#F4CF7B" />
+          <rect x="698" y="266.5" width="44" height="3.5" rx="1.75" fill="#F4CF7B" />
+          <circle cx="1108" cy="248" r="3.2" fill="#F4CF7B" />
+          <circle cx="1160" cy="248" r="3.2" fill="#F4CF7B" />
+        </g>
+
+        {/* ============ COUNTERTOP GROCERY UNPACKING PROPS ============ */}
+
+        {/* 1. Glass Farm Milk Bottle + Extra-Virgin Olive Oil Bottle (Left-Center) */}
+        <g transform="translate(362, 102)">
+          <ellipse cx="48" cy="101" rx="48" ry="5" fill="#D5E7DC" opacity="0.7" />
+          {/* Farm Milk Glass Bottle */}
+          <path
+            d="M16 20H32L35 36C39 42 41 49 41 58V94C41 98 38 101 34 101H14C10 101 7 98 7 94V58C7 49 9 42 13 36L16 20Z"
+            fill="#FFFFFF"
+            stroke="#AEDAC0"
+            strokeWidth="2.2"
+          />
+          <path d="M10 49H38V93C38 96 36 98 33 98H15C12 98 10 96 10 93V49Z" fill="#F6FBF8" />
+          <rect x="13" y="15" width="22" height="6" rx="3" fill="#2FA85A" />
+          <rect x="13" y="62" width="22" height="16" rx="3" fill="#E3F6EA" />
+          <circle cx="24" cy="70" r="4" fill="#2FA85A" />
+
+          {/* Dark-Green Extra-Virgin Olive Oil Bottle */}
+          <rect x="60" y="12" width="10" height="8" rx="2.5" fill="#C9925B" />
+          <path
+            d="M59 20H71L74 36C79 41 82 48 82 56V95C82 98.5 79.5 101 76 101H54C50.5 101 48 98.5 48 95V56C48 48 51 41 56 36L59 20Z"
+            fill="#4D9E56"
+          />
+          {/* Curved glass highlight */}
+          <path d="M54 46V88" stroke="#85CE8B" strokeWidth="2.5" strokeLinecap="round" opacity="0.65" />
+          {/* Clean EVOO Label */}
+          <rect x="53" y="56" width="24" height="24" rx="3.5" fill="#FBF8EE" />
+          <circle cx="65" cy="66" r="4.5" fill="#9BC53D" />
+          <path d="M65 61L68 58" stroke="#2D7D46" strokeWidth="1.6" strokeLinecap="round" />
+          <rect x="57" y="74" width="16" height="2.2" rx="1.1" fill="#2D7D46" opacity="0.55" />
+        </g>
+
+        {/* 2. Centerpiece Kraft Paper Grocery Bag Overflowing with Clean Whole Foods */}
+        <g transform="translate(526, 62)">
+          {/* Counter shadow */}
+          <ellipse cx="78" cy="142" rx="74" ry="6.5" fill="#CEE3D6" opacity="0.8" />
+
+          {/* Produce Peeking Out of the Top of the Grocery Bag */}
+          {/* Crusty Artisan Sourdough Baguette (Left) */}
+          <g transform="translate(18, 6) rotate(-14)">
+            <rect x="0" y="8" width="32" height="68" rx="15" fill="#E3A857" />
+            <path d="M8 22L22 17M8 34L22 29M8 46L22 41" stroke="#FFF3D6" strokeWidth="2.6" strokeLinecap="round" />
+          </g>
+
+          {/* Lush Leafy Kale / Romaine Greens (Center) */}
+          <path
+            d="M56 58C46 34 52 10 68 8C78 6 86 18 84 36C90 16 104 8 114 16C124 24 118 46 104 60Z"
+            fill="#289E53"
+          />
+          <path
+            d="M68 54V18M68 34L60 26M68 42L76 34M98 54L108 24M103 38L112 33"
+            stroke="#B9F0CA"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+
+          {/* Fresh Garden Carrots with Feathery Tops (Right) */}
+          <g transform="translate(102, 16) rotate(14)">
+            <path d="M14 26C8 12 4 4 10 2C14 10 16 18 16 26" stroke="#2FA85A" strokeWidth="3" strokeLinecap="round" />
+            <path d="M18 26C18 10 22 2 27 4C26 12 22 20 19 26" stroke="#228B47" strokeWidth="3" strokeLinecap="round" />
+            <path d="M6 26H26L20 68C19 72 13 72 12 68L6 26Z" fill="#F97316" />
+            <path d="M11 35H18M13 45H19" stroke="#FDBA74" strokeWidth="2" strokeLinecap="round" />
+          </g>
+
+          {/* Crisp Orchard Red Apple Peeking Over Rim */}
+          <circle cx="58" cy="54" r="15" fill="#EF4444" />
+          <path d="M58 39C59 34 63 32 66 34" stroke="#5A3E2B" strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M60 36C65 33 70 35 69 40C65 41 61 39 60 36Z" fill="#34B364" />
+
+          {/* Twisted Paper Bag Handles */}
+          <path d="M54 58V44C54 36 62 32 72 32C82 32 90 36 90 44V58" stroke="#C59663" strokeWidth="4" strokeLinecap="round" fill="none" />
+
+          {/* Kraft Paper Grocery Bag Body */}
+          <path d="M22 56H132L126 141H28L22 56Z" fill="#DFB382" />
+          {/* Side Gusset Shadow */}
+          <path d="M112 56H132L126 141H108L112 56Z" fill="#CCA06E" />
+          {/* Zig-Zag Kraft Top Edge */}
+          <path
+            d="M22 56L29 51L36 56L43 51L50 56L57 51L64 56L71 51L78 56L85 51L92 56L99 51L106 56L113 51L120 56L127 51L132 56"
+            stroke="#F2D1A8"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+          {/* Clean "100% CLEAN" Leaf Emblem on the Paper Bag */}
+          <circle cx="68" cy="99" r="20" fill="#F8E7CE" />
+          <path
+            d="M60 100L66 106L78 93"
+            stroke="#189E52"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+
+        {/* 3. Wooden Cutting Board + Sliced Avocado, Lemon & Cherry Tomatoes (Center-Right) */}
+        <g transform="translate(716, 152)">
+          <ellipse cx="78" cy="52" rx="76" ry="5" fill="#D5E7DC" opacity="0.75" />
+          {/* Cutting Board */}
+          <rect x="8" y="40" width="128" height="10" rx="5" fill="#CFA06E" />
+          <rect x="130" y="42" width="18" height="6" rx="3" fill="#B88756" />
+          {/* Halved Clean Avocado */}
+          <g transform="translate(26, 8)">
+            <path d="M18 2C8 2 2 14 2 23C2 30 9 34 18 34C27 34 34 30 34 23C34 14 28 2 18 2Z" fill="#2A7B46" />
+            <path d="M18 5C10 5 5 15 5 22.5C5 28 10.5 31 18 31C25.5 31 31 28 31 22.5C31 15 26 5 18 5Z" fill="#CBE87B" />
+            <circle cx="18" cy="21" r="6.5" fill="#8D5836" />
+            <circle cx="16" cy="19" r="2" fill="#B67E59" />
+          </g>
+          {/* Sunny Lemon Wedge */}
+          <g transform="translate(72, 18)">
+            <path d="M2 18C2 8 10 2 20 2C30 2 38 8 38 18C38 21 35 23 32 23H8C5 23 2 21 2 18Z" fill="#FACC15" />
+            <path d="M6 18C6 11 12 6 20 6C28 6 34 11 34 18H6Z" fill="#FEF08A" />
+          </g>
+          {/* Two Vine Cherry Tomatoes */}
+          <circle cx="122" cy="31" r="9.5" fill="#EF4444" />
+          <path d="M122 20L120 17M122 20L125 18" stroke="#228B47" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="140" cy="33" r="8" fill="#F87171" />
+        </g>
+
+        {/* 4. Ceramic Fruit Bowl on Far Right Behind Broc */}
+        <g transform="translate(1235, 148)">
+          <ellipse cx="42" cy="55" rx="36" ry="4.5" fill="#D5E7DC" />
+          <circle cx="30" cy="24" r="12" fill="#FB923C" />
+          <circle cx="48" cy="22" r="12" fill="#84CC16" />
+          <circle cx="60" cy="28" r="10" fill="#FACC15" />
+          <path d="M8 28H76C74 45 60 54 42 54C24 54 10 45 8 28Z" fill="#E6F6EC" stroke="#B6DEC5" strokeWidth="2" />
+        </g>
       </svg>
 
-      {/* Crisp Fixed-Proportion Scenery Props (Forest Trees + Cozy Cottage + Giant U-Eye Broc) */}
-      <div className="footer-meadow-props" aria-hidden="true">
-        <svg
-          className="footer-props-svg"
-          viewBox="0 0 1440 270"
-          preserveAspectRatio="xMidYMax slice"
-          fill="none"
-        >
-          {/* Left Orchard / Forest Tree #1 */}
-          <g transform="translate(298, 92)">
-            <ellipse cx="26" cy="126" rx="18" ry="4" fill="#1D783E" opacity="0.45" />
-            <path d="M26 72V125" stroke="#2D3A32" strokeWidth="4" strokeLinecap="round" />
-            <path
-              d="M26 10C9 10 2 34 4 62C6 84 15 96 26 96C37 96 46 84 48 62C50 34 43 10 26 10Z"
-              fill="#68C777"
-            />
-            <path
-              d="M26 24V90M26 44L14 34M26 58L38 48M26 72L15 62"
-              stroke="#E9F9EE"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </g>
-
-          {/* Left Orchard / Forest Tree #2 (Taller) */}
-          <g transform="translate(366, 74)">
-            <ellipse cx="32" cy="148" rx="22" ry="4.5" fill="#1D783E" opacity="0.45" />
-            <path d="M32 86V147" stroke="#2D3A32" strokeWidth="4.5" strokeLinecap="round" />
-            <path
-              d="M32 8C11 8 2 38 5 72C8 98 18 112 32 112C46 112 56 98 59 72C62 38 53 8 32 8Z"
-              fill="#55BA67"
-            />
-            <path
-              d="M32 24V104M32 48L17 36M32 66L47 54M32 82L18 70"
-              stroke="#E9F9EE"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-            />
-          </g>
-
-          {/* Mid-Left Meadow Tree (Visible on Mobile & Desktop) */}
-          <g transform="translate(506, 122) scale(0.84)">
-            <ellipse cx="26" cy="126" rx="18" ry="4" fill="#1D783E" opacity="0.4" />
-            <path d="M26 72V125" stroke="#2D3A32" strokeWidth="4" strokeLinecap="round" />
-            <path
-              d="M26 10C9 10 2 34 4 62C6 84 15 96 26 96C37 96 46 84 48 62C50 34 43 10 26 10Z"
-              fill="#5EC16F"
-            />
-            <path
-              d="M26 24V90M26 44L14 34M26 58L38 48M26 72L15 62"
-              stroke="#E9F9EE"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </g>
-
-          {/* Distant Woodland Sapling Left of Cottage */}
-          <g transform="translate(602, 152) scale(0.55)">
-            <path d="M24 62V96" stroke="#2D3A32" strokeWidth="4" strokeLinecap="round" />
-            <path
-              d="M24 8C10 8 4 30 6 52C8 70 15 80 24 80C33 80 40 70 42 52C44 30 38 8 24 8Z"
-              fill="#68C777"
-            />
-            <path d="M24 22V74M24 44L14 35M24 56L34 47" stroke="#E9F9EE" strokeWidth="2.2" strokeLinecap="round" />
-          </g>
-
-          {/* Cozy Little Countryside House / Cottage on the Center Hill */}
-          <g transform="translate(682, 146)">
-            <rect x="34" y="4" width="6" height="14" rx="1" fill="#8C6D58" />
-            <circle cx="38" cy="-2" r="2.5" fill="#DCEFE3" />
-            <circle cx="42" cy="-8" r="3.5" fill="#E6F6EC" />
-            <path d="M6 22L20 8L34 22V42H6V22Z" fill="#FBF7EE" />
-            <path d="M34 22H56V42H34V22Z" fill="#EFE6D5" />
-            <path d="M3 23L20 6L36 23H3Z" fill="#5A4638" />
-            <path d="M20 6H43L59 23H35L20 6Z" fill="#46352A" />
-            <rect x="16" y="29" width="7" height="13" rx="1.5" fill="#6E523F" />
-            <rect x="10" y="21" width="5" height="5" rx="1" fill="#FDE68A" />
-            <rect x="41" y="27" width="6" height="6" rx="1" fill="#FDE68A" />
-            <rect x="49" y="27" width="5" height="6" rx="1" fill="#FDE68A" />
-          </g>
-
-          {/* Distant Woodland Saplings Right of Cottage */}
-          <g transform="translate(766, 148) scale(0.58)">
-            <path d="M24 62V96" stroke="#2D3A32" strokeWidth="4" strokeLinecap="round" />
-            <path
-              d="M24 8C10 8 4 30 6 52C8 70 15 80 24 80C33 80 40 70 42 52C44 30 38 8 24 8Z"
-              fill="#68C777"
-            />
-            <path d="M24 22V74M24 44L14 35M24 56L34 47" stroke="#E9F9EE" strokeWidth="2.2" strokeLinecap="round" />
-          </g>
-
-          <g transform="translate(848, 174) scale(0.62)">
-            <path d="M24 62V98" stroke="#2D3A32" strokeWidth="4" strokeLinecap="round" />
-            <path
-              d="M24 8C10 8 4 30 6 52C8 70 15 80 24 80C33 80 40 70 42 52C44 30 38 8 24 8Z"
-              fill="#55BA67"
-            />
-            <path d="M24 22V74M24 44L14 35M24 56L34 47" stroke="#E9F9EE" strokeWidth="2.2" strokeLinecap="round" />
-          </g>
-
-          {/* Tiny Meadow Wildflowers */}
-          <circle cx="240" cy="236" r="2.5" fill="#FEF9C3" />
-          <circle cx="545" cy="248" r="2.5" fill="#FEF9C3" />
-          <circle cx="965" cy="244" r="2.5" fill="#FEF9C3" />
-          <circle cx="1290" cy="232" r="2.8" fill="#FEF9C3" />
-        </svg>
-
-        {/* Giant Celebratory U-Eye Broc Mascot standing on the right hill */}
-        <div className="meadow-broc-wrap">
-          <div className="meadow-broc-shadow" />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            id="footer-meadow-broc"
-            src="/broc-mascot-meadow.png"
-            alt="Cheerful HeyBroc broccoli mascot on a sunny green hill"
-            className="meadow-broc-mascot"
-            loading="lazy"
-          />
+      {/* Giant Celebratory U-Eye Broc Mascot Standing Proudly on the Kitchen Counter */}
+      <div className="kitchen-broc-wrap">
+        <div className="kitchen-broc-badge" aria-hidden="true">
+          ✓ 100/100 Haul!
         </div>
+        <div className="kitchen-broc-shadow" aria-hidden="true" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          id="footer-kitchen-broc"
+          src="/broc-mascot-meadow.png"
+          alt="Cheerful HeyBroc broccoli mascot celebrating a clean grocery haul on the kitchen counter"
+          className="kitchen-broc-mascot"
+          loading="lazy"
+        />
       </div>
     </div>
   );
 }
+
