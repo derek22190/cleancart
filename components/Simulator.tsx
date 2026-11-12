@@ -776,7 +776,6 @@ export default function Simulator({
   const [appliedCreator, setAppliedCreator] = useState<AppliedCreator | null>(null);
   const [scorecardOpen, setScorecardOpen] = useState(false);
   const [topMenuOpen, setTopMenuOpen] = useState(false);
-  const [showAllPresets, setShowAllPresets] = useState(false);
   const topMenuRef = useRef<HTMLDivElement | null>(null);
   const [isIosAppClient, setIsIosAppClient] = useState<boolean>(false);
 
@@ -3210,18 +3209,9 @@ export default function Simulator({
           >
             <div className="card-head">
               <h2>Popular Items — Tap to Grade</h2>
-              {PRESETS.length > 5 && (
-                <button
-                  type="button"
-                  className="store-view-toggle"
-                  onClick={() => setShowAllPresets((v) => !v)}
-                >
-                  {showAllPresets ? "Show fewer ▴" : `Show all ${PRESETS.length} ▾`}
-                </button>
-              )}
             </div>
             <ul className="preset-list">
-              {(showAllPresets ? PRESETS : PRESETS.slice(0, 5)).map((p) => {
+              {PRESETS.slice(0, 5).map((p) => {
                 const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
                 const on = active.key === p.id && viewMode === "product";
                 return (
@@ -4987,6 +4977,7 @@ export default function Simulator({
         open={watchlistFunnelOpen}
         initialStep={watchlistFunnelStep}
         isReturningUser={onboardingDoneState || manualFunnelOpen}
+        quickEditMode={manualFunnelOpen}
         initialSelected={familyWatchlist}
         initialStore={store}
         initialStores={preferredStores}

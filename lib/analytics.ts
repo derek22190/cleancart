@@ -101,12 +101,12 @@ const ALLOWED_ANALYTICS_STORES = new Set([
 export const DEFAULT_PAYWALL_CONFIG: PaywallExperimentConfig = {
   headline: "Shop clean on every aisle — without doing the homework",
   subheadline:
-    "Product health scores (0–100) are 100% free forever. Unlock unlimited 1-tap Clean Swaps and Whole-Cart Health Checks across all 12 stores.",
-  ctaLabel: "Start Free Trial — $0 Today",
+    "Product health scores (0–100) are 100% free forever. Unlock unlimited verified cleaner store links & Order Health Audits across all 12 stores.",
+  ctaLabel: "Start 7-Day Free Trial ($0 Today)",
   freeWeeklySwapsLimit: 3,
   defaultPlan: "annual",
   abTestEnabled: true,
-  variantBHeadline: "Protect your family from hidden seed oils & synthetic dyes in 1 tap",
+  variantBHeadline: "Protect your family from hidden seed oils & synthetic dyes",
   updatedAt: new Date().toISOString(),
 };
 

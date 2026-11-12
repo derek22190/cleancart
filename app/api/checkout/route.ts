@@ -179,6 +179,19 @@ export async function POST(req: NextRequest) {
     const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
     const isPreviewAllowed = !stripeKey && process.env.ALLOW_PREVIEW_CHECKOUT === "true";
 
+    // Short-circuit cleanly before hitting production KV if neither Stripe nor preview checkout is configured
+    if (!stripeKey && !isPreviewAllowed && otoOffer === null) {
+      return NextResponse.json(
+        {
+          ok: false,
+          mode: "unconfigured",
+          error:
+            "Free trials are temporarily unavailable while billing is being connected. You can scan unlimited food items for free right now!",
+        },
+        { status: 503 }
+      );
+    }
+
     // Gate discounted post-checkout OTO offers behind a verified prior checkout session or active Pro entitlement
     let priorEntitlement: EntitlementRecord | null = null;
     if (otoOffer !== null) {
@@ -326,7 +339,7 @@ export async function POST(req: NextRequest) {
           : PRICING.monthly;
 
     const consentTimestamp = new Date().toISOString();
-    // Only record auto-renewal consent on recurring subscriptions (never overwrite Step 1's ARL consent on a one-time pass)
+    // Record auto-renewal consent on recurring subscriptions (also embedded directly in Stripe Checkout metadata below)
     if (!isOneTimeOtoPass) {
       await recordSubscriptionConsent({
         deviceId,
@@ -337,7 +350,7 @@ export async function POST(req: NextRequest) {
         ip: clientIp,
         otoOffer: otoOffer || undefined,
         recurringPriceUsd,
-      });
+      }).catch(() => {});
     }
 
     const candidateCreatorCode =
@@ -348,7 +361,7 @@ export async function POST(req: NextRequest) {
 
     if (candidateCreatorCode) {
       if (isFriendCodeFormat) {
-        const inviterOwnerId = await getDeviceIdByReferralCode(candidateCreatorCode);
+        const inviterOwnerId = await getDeviceIdByReferralCode(candidateCreatorCode).catch(() => null);
         const isSelfFriendCode =
           Boolean(ownReferralCode && candidateCreatorCode === ownReferralCode) ||
           (inviterOwnerId
@@ -358,7 +371,7 @@ export async function POST(req: NextRequest) {
                 claimantDeviceId: normalizedBodyDeviceId || deviceId,
                 claimantUserId: authUser?.userId,
                 claimantLinkedDevices: authUser?.linkedDevices,
-              })
+              }).catch(() => false)
             : false);
 
         if (isSelfFriendCode) {
@@ -379,7 +392,7 @@ export async function POST(req: NextRequest) {
           if (exists) verifiedCode = candidateCreatorCode;
         }
       } else {
-        const validCreator = await getCreator(candidateCreatorCode);
+        const validCreator = await getCreator(candidateCreatorCode).catch(() => null);
         if (!validCreator || !validCreator.active) {
           if (rawCreatorCode) {
             return NextResponse.json(
@@ -410,9 +423,9 @@ export async function POST(req: NextRequest) {
       deviceReferredBy &&
       /^BROC-[A-Z0-9]{4,10}$/.test(deviceReferredBy) &&
       deviceReferredBy !== ownReferralCode &&
-      (await isValidReferralCode(deviceReferredBy))
+      (await isValidReferralCode(deviceReferredBy).catch(() => false))
     ) {
-      const refOwner = await getDeviceIdByReferralCode(deviceReferredBy);
+      const refOwner = await getDeviceIdByReferralCode(deviceReferredBy).catch(() => null);
       const selfRef = refOwner
         ? await isSelfReferralForAccount({
             inviterDeviceId: refOwner,
@@ -420,7 +433,7 @@ export async function POST(req: NextRequest) {
             claimantDeviceId: normalizedBodyDeviceId || deviceId,
             claimantUserId: authUser?.userId,
             claimantLinkedDevices: authUser?.linkedDevices,
-          })
+          }).catch(() => false)
         : false;
       if (!selfRef) {
         verifiedCode = deviceReferredBy;
@@ -458,7 +471,8 @@ export async function POST(req: NextRequest) {
         {
           ok: false,
           mode: "unconfigured",
-          error: "Stripe checkout is not configured on this server.",
+          error:
+            "Free trials are temporarily unavailable while billing is being connected. You can scan unlimited food items for free right now!",
         },
         { status: 503 }
       );
@@ -502,7 +516,7 @@ export async function POST(req: NextRequest) {
     );
     params.set(
       "line_items[0][price_data][product_data][description]",
-      "Unlimited live store overlays across 12 grocery stores & delivery apps, 1-tap clean swaps & whole-cart health checks."
+      "Unlimited live store overlays across 12 grocery stores & delivery apps, cleaner alternative store links & order health checks."
     );
     params.set("line_items[0][quantity]", "1");
     params.set("metadata[plan]", plan);
@@ -639,7 +653,7 @@ export async function POST(req: NextRequest) {
         customerId: existingCustomerId || undefined,
         otoOffer: otoOffer || undefined,
         recurringPriceUsd,
-      });
+      }).catch(() => {});
     }
 
     void import("@/lib/analytics")
@@ -667,12 +681,18 @@ export async function POST(req: NextRequest) {
       deviceId,
     });
   } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : "Checkout error";
+    const isStorageUnconfigured =
+      (err instanceof Error && err.name === "StorageConfigError") ||
+      /UPSTASH_REDIS_REST_URL|KV_REST_API_URL/i.test(rawMsg);
     return NextResponse.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : "Checkout error",
+        error: isStorageUnconfigured
+          ? "Billing database is currently being connected. Please try again shortly or continue scanning foods for free!"
+          : rawMsg,
       },
-      { status: 500 }
+      { status: isStorageUnconfigured ? 503 : 500 }
     );
   }
 }

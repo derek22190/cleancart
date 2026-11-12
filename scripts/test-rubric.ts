@@ -3308,6 +3308,51 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const finalFunnelSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+  const finalSimSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
+  const finalPaywallSrc = fs.readFileSync("components/Paywall.tsx", "utf8");
+  const finalMainKtSrc = fs.readFileSync(
+    "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+    "utf8"
+  );
+  const finalCheckoutSrc = fs.readFileSync("app/api/checkout/route.ts", "utf8");
+  const paywallConsentPos = finalPaywallSrc.indexOf('id="paywall-arl-consent"');
+  const paywallCtaPos = finalPaywallSrc.indexOf('id="paywall-cta"');
+  const paywallPromoPos = finalPaywallSrc.indexOf('id="creator-code-input"');
+  check(
+    "Onboarding & Paywall UX Polish: 12 stores, dedicated Step 5 Glyphosate Map slide, real product comparison photos, honest store-link copy, single-screen Watchlist Quick Editor, above-the-fold Trial CTA, and sanitized KV checkout error",
+    Boolean(
+      finalFunnelSrc.includes('id: "ubereats"') &&
+        finalFunnelSrc.includes('id: "doordash"') &&
+        finalFunnelSrc.includes('id: "shipt"') &&
+        finalFunnelSrc.includes('id: "bjs"') &&
+        finalFunnelSrc.includes("Glyphosate Map") &&
+        finalFunnelSrc.includes("/onboarding-poor-pick.jpg") &&
+        finalFunnelSrc.includes("/onboarding-clean-pick.jpg") &&
+        !finalFunnelSrc.includes("miniTestSamples") &&
+        finalFunnelSrc.includes('id="watchlist-quick-editor"') &&
+        finalFunnelSrc.includes("quickEditMode") &&
+        fs.existsSync("public/onboarding-poor-pick.jpg") &&
+        fs.existsSync("public/onboarding-clean-pick.jpg") &&
+        fs.existsSync("android-app/app/src/main/res/drawable-nodpi/onboarding_poor_pick.jpg") &&
+        fs.existsSync("android-app/app/src/main/res/drawable-nodpi/onboarding_clean_pick.jpg") &&
+        finalSimSrc.includes("quickEditMode={manualFunnelOpen}") &&
+        !finalSimSrc.includes("showAllPresets") &&
+        !finalSimSrc.includes("Show all {") &&
+        paywallConsentPos > 0 &&
+        paywallCtaPos > paywallConsentPos &&
+        paywallPromoPos > paywallCtaPos &&
+        !finalPaywallSrc.includes("Swap All") &&
+        finalMainKtSrc.includes("STEP 5 OF 7 · GLYPHOSATE MAP") &&
+        finalMainKtSrc.includes("STEP 6 OF 7 · WHY IT MATTERS") &&
+        finalMainKtSrc.includes("R.drawable.onboarding_poor_pick") &&
+        finalMainKtSrc.includes("R.drawable.onboarding_clean_pick") &&
+        finalMainKtSrc.includes('"ubereats"') &&
+        !finalMainKtSrc.includes("Swap-All Cart Cleaner") &&
+        finalCheckoutSrc.includes("StorageConfigError")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

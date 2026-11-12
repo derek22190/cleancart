@@ -62,7 +62,7 @@ export default function Paywall({
     creator: AppliedCreator | null;
   } | null>(null);
   const [remoteHeadline, setRemoteHeadline] = useState<string>(
-    "Scores & Ingredient Breakdowns Are Always Free. Unlock Unlimited 1-Tap Clean Swaps & Swap All.",
+    "Scores & Ingredient Breakdowns Are Always Free. Unlock Unlimited Cleaner Picks & Order Audits.",
   );
   const [remoteSubheadline, setRemoteSubheadline] = useState<string>("");
   const [remoteCtaLabel, setRemoteCtaLabel] = useState<string>("");
@@ -118,7 +118,7 @@ export default function Paywall({
       : `https://heybroc.com/r/${encodeURIComponent(personalReferralCode)}`;
 
   const handleShareWithFriend = async () => {
-    const shareText = `Check out HeyBroc — this little broccoli floats over Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart & more to grade ingredients (0–100) and swap flagged items in 1 tap. Use my invite link so we both get +7 Free Days of HeyBroc Pro: ${referralUrl}`;
+    const shareText = `Check out HeyBroc — this little broccoli floats over Walmart, Target, Costco, Sam's, BJ's, Amazon Fresh, Instacart & more to grade ingredients (0–100) and link directly to verified cleaner picks. Use my invite link so we both get +7 Free Days of HeyBroc Pro: ${referralUrl}`;
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
         await navigator.share({
@@ -305,7 +305,7 @@ export default function Paywall({
     }
     if (!agreedToTerms) {
       setCodeError(
-        "Please check the box below to agree to the Terms and automatic renewal terms before continuing."
+        "Please check the box above to agree to the Terms and automatic renewal terms before continuing."
       );
       return;
     }
@@ -404,20 +404,29 @@ export default function Paywall({
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="HeyBroc Family Pro" onClick={onClose}>
-      <div className="modal-card paywall-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <div className="yuka-topbar-left">
+      <div
+        className="modal-card paywall-modal"
+        style={{ padding: "18px 20px", maxWidth: 520 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-head" style={{ gap: 10 }}>
+          <div className="yuka-topbar-left" style={{ alignItems: "flex-start" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.png" alt="Broc" className="yuka-topbar-mascot" />
+            <img
+              src="/broc-mascot.png"
+              alt="Broc"
+              className="yuka-topbar-mascot"
+              style={{ width: 38, height: 38, flexShrink: 0 }}
+            />
             <div>
-              <span className="eyebrow eyebrow--green">
+              <span className="eyebrow eyebrow--green" style={{ fontSize: 11 }}>
                 {scanCount >= freeScanLimit
-                  ? `Free Swap Allowance Reached (${scanCount}/${freeScanLimit})`
-                  : "HeyBroc Family Pro · Unlimited Cart Swaps"}
+                  ? `Free Allowance Reached (${scanCount}/${freeScanLimit})`
+                  : "HeyBroc Family Pro"}
               </span>
-              <h2>{remoteHeadline}</h2>
+              <h2 style={{ fontSize: 18, lineHeight: 1.22, marginTop: 2 }}>{remoteHeadline}</h2>
               {remoteSubheadline && (
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#3d5949" }}>
+                <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "#3d5949" }}>
                   {remoteSubheadline}
                 </p>
               )}
@@ -426,51 +435,14 @@ export default function Paywall({
           <button className="close" onClick={onClose} aria-label="Close paywall">×</button>
         </div>
 
-        <ul className="paywall-perks">
-          <li><span>✓</span> <b>Always Free:</b> Product scores (0–100), expanded additive explanations &amp; live Cart Avg across all 12 stores</li>
-          <li><span>✓</span> <b>Pro Unlocked:</b> Unlimited 1-for-1 Clean Swaps &amp; 1-Tap Whole-Cart &ldquo;Swap All&rdquo; Makeovers</li>
-          <li><span>✓</span> <b>Pro Unlocked:</b> Custom Family Watchlists (2x penalties for seed oils, dyes, HFCS &amp; nitrites)</li>
+        <ul className="paywall-perks" style={{ margin: "10px 0 12px", gap: 5 }}>
+          <li style={{ fontSize: 12.5 }}>
+            <span>✓</span> <b>Always Free:</b> 0–100 product scores &amp; ingredient breakdowns across all 12 stores
+          </li>
+          <li style={{ fontSize: 12.5 }}>
+            <span>✓</span> <b>Pro Unlocked:</b> Unlimited verified cleaner store links, Order/Receipt Audits &amp; custom 2x Family Watchlists
+          </li>
         </ul>
-
-        {/* 3-STEP CRYSTAL-CLEAR VALUE PROP STRIP (RYAN MATHEWS TEST #3) */}
-        <div
-          id="paywall-how-it-works-strip"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
-            gap: 8,
-            marginBottom: 12,
-            padding: "10px 12px",
-            borderRadius: 12,
-            background: "#f8faf9",
-            border: "1px solid #d4dbd6",
-          }}
-        >
-          <div style={{ fontSize: 12, lineHeight: 1.35 }}>
-            <strong style={{ display: "block", color: "#0b4f30", fontSize: 12.5 }}>
-              1. Shop Normally
-            </strong>
-            <span style={{ color: "#3d5949" }}>
-              Open Walmart, Target, Costco, Instacart &amp; 8 more apps
-            </span>
-          </div>
-          <div style={{ fontSize: 12, lineHeight: 1.35 }}>
-            <strong style={{ display: "block", color: "#0b4f30", fontSize: 12.5 }}>
-              2. Instant 0–100 Score
-            </strong>
-            <span style={{ color: "#3d5949" }}>
-              Floating badge flags seed oils, Red 40, HFCS &amp; nitrites
-            </span>
-          </div>
-          <div style={{ fontSize: 12, lineHeight: 1.35 }}>
-            <strong style={{ display: "block", color: "#0b4f30", fontSize: 12.5 }}>
-              3. 1-Tap Clean Swap
-            </strong>
-            <span style={{ color: "#3d5949" }}>
-              Replace flagged items or your whole cart in 1 tap
-            </span>
-          </div>
-        </div>
 
         {/* PRIMARY PRE-SELECTED ANNUAL ANCHOR CARD */}
         <div
@@ -479,6 +451,7 @@ export default function Paywall({
           tabIndex={0}
           aria-pressed={selectedPlan === "annual"}
           className={`plan-card plan-card--annual ${selectedPlan === "annual" ? "is-selected" : ""}`}
+          style={{ padding: "12px 14px", marginBottom: 8 }}
           onClick={() => setSelectedPlan("annual")}
           onKeyDown={(e) => e.key === "Enter" && setSelectedPlan("annual")}
         >
@@ -489,28 +462,31 @@ export default function Paywall({
             </div>
             <div className="plan-copy">
               <div className="plan-title-row">
-                <strong>Annual HeyBroc Family Pro</strong>
+                <strong style={{ fontSize: 14.5 }}>Annual Family Pro</strong>
                 <span className="plan-trial-pill">
                   {trialDays}-Day Free Trial
                 </span>
               </div>
-              <div className="plan-price-hero">
-                <span className="plan-per-month">${annualPerMonth.toFixed(2)} / month</span>
-                <span className="plan-billed">
-                  <strong>${PRICING.annual.toFixed(2)} / year</strong> billed annually
+              <div className="plan-price-hero" style={{ marginTop: 3 }}>
+                <span className="plan-per-month" style={{ fontSize: 21 }}>
+                  ${annualPerMonth.toFixed(2)} / mo
+                </span>
+                <span className="plan-billed" style={{ fontSize: 12.5 }}>
+                  <strong>${PRICING.annual.toFixed(2)} / yr</strong> after trial
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* SECONDARY MONTHLY DECOY CARD */}
+        {/* SECONDARY MONTHLY CARD */}
         <div
           id="plan-monthly"
           role="button"
           tabIndex={0}
           aria-pressed={selectedPlan === "monthly"}
           className={`plan-card plan-card--decoy ${selectedPlan === "monthly" ? "is-selected" : ""}`}
+          style={{ padding: "10px 14px", marginBottom: 10 }}
           onClick={() => setSelectedPlan("monthly")}
           onKeyDown={(e) => e.key === "Enter" && setSelectedPlan("monthly")}
         >
@@ -520,129 +496,30 @@ export default function Paywall({
             </div>
             <div className="plan-copy">
               <div className="plan-title-row">
-                <strong>Monthly Plan</strong>
+                <strong style={{ fontSize: 14 }}>Monthly Plan</strong>
                 <span className="plan-no-trial">No free trial</span>
               </div>
-              <div className="plan-price-sub">
+              <div className="plan-price-sub" style={{ marginTop: 2, fontSize: 12.5 }}>
                 <strong>${PRICING.monthly.toFixed(2)} / month</strong> billed monthly (${monthlyPerYear.toFixed(2)}/yr equivalent)
               </div>
             </div>
           </div>
         </div>
 
-        {/* UNLIMITED GIVE 7 DAYS, GET 7 DAYS FRIEND REFERRAL LOOP */}
-        <div
-          className="creator-box"
-          style={{
-            background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)",
-            border: "1.5px solid #86efac",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div>
-              <strong style={{ display: "block", fontSize: 13.5, color: "#0b4f30" }}>
-                🎁 Invite Friends → Get +7 Free Pro Days Per Friend (Up to 70 Days!)
-              </strong>
-              <span style={{ fontSize: 12, color: "#3d5949" }}>
-                Every friend who installs HeyBroc and starts a trial unlocks <b>+7 Free Days of Pro</b> for both of you (up to 10 friends).
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleShareWithFriend}
-              style={{
-                background: "#0f7a4a",
-                color: "#fff",
-                border: "none",
-                borderRadius: 999,
-                padding: "9px 14px",
-                fontSize: 12.5,
-                fontWeight: 800,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {shareCopied ? "✓ Invite Link Copied!" : `Text a Friend (${personalReferralCode}) →`}
-            </button>
-          </div>
-          {courtesyRefillAvailable && PRICING.courtesyRefillSwaps > 0 && onUseCourtesyRefill && (
-            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #bbf7d0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#3d5949" }}>In the middle of checkout right now?</span>
-              <button
-                type="button"
-                onClick={onUseCourtesyRefill}
-                style={{
-                  background: "transparent",
-                  color: "#0f7a4a",
-                  border: "none",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                +{PRICING.courtesyRefillSwaps} Free Courtesy Swaps right now →
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* CREATOR / INFLUENCER PROMO CODE BOX */}
-        <div className="creator-box">
-          <label htmlFor="creator-code-input" className="creator-label">
-            {selectedPlan === "annual"
-              ? "Have a Creator or Friend Invite Code?"
-              : "Have a Creator or Friend Code? (Switch to Annual for 7-Day Free Trial)"}
-          </label>
-          <div className="creator-input-row">
-            <input
-              id="creator-code-input"
-              type="text"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-              placeholder="Enter promo or friend code (e.g. CLEANMOM)"
-            />
-            <button
-              id="apply-creator-code"
-              type="button"
-              className="creator-apply-btn"
-              disabled={codeBusy}
-              onClick={() => applyCode()}
-            >
-              {codeBusy ? "…" : "Apply"}
-            </button>
-          </div>
-          {codeError && <p className="error">{codeError}</p>}
-          {appliedCreator && (
-            <div id="creator-applied-badge" className="creator-confirm">
-              <span>
-                ✓ Code <b>{appliedCreator.code}</b> Applied:{" "}
-                {selectedPlan === "monthly"
-                  ? "Supports your creator! Switch to Annual above to unlock your 7-Day Free Trial ($0 Today)."
-                  : appliedCreator.code.startsWith("BROC-")
-                    ? "7-Day Free Trial + 7 Free Pro Days unlocked for you & your friend!"
-                    : "VIP Creator Access · 7-Day Free Pro Trial ($0 Today) Ready!"}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* EXPRESS AUTO-RENEWAL CONSENT CHECKBOX (CA ARL / FTC NEGATIVE OPTION) */}
+        {/* EXPRESS AUTO-RENEWAL CONSENT CHECKBOX (CA ARL / FTC NEGATIVE OPTION) — ABOVE THE FOLD */}
         <label
           htmlFor="paywall-arl-consent"
           style={{
             display: "flex",
             alignItems: "flex-start",
-            gap: 10,
-            margin: "12px 0 10px",
-            padding: "10px 12px",
+            gap: 9,
+            margin: "0 0 8px",
+            padding: "8px 11px",
             borderRadius: 10,
             background: agreedToTerms ? "#ecfdf5" : "#f8faf9",
             border: agreedToTerms ? "1.5px solid #0f7a4a" : "1.5px solid #cbd5e1",
-            fontSize: 12.5,
-            lineHeight: 1.45,
+            fontSize: 12,
+            lineHeight: 1.4,
             color: "#15201B",
             cursor: "pointer",
           }}
@@ -655,7 +532,7 @@ export default function Paywall({
               setAgreedToTerms(e.target.checked);
               if (e.target.checked) setCodeError("");
             }}
-            style={{ marginTop: 3, width: 16, height: 16, accentColor: "#0f7a4a", flexShrink: 0 }}
+            style={{ marginTop: 2, width: 16, height: 16, accentColor: "#0f7a4a", flexShrink: 0 }}
           />
           <span>
             I agree to the{" "}
@@ -675,17 +552,49 @@ export default function Paywall({
           </span>
         </label>
 
-        {/* PRIMARY CTA */}
+        {appliedCreator && (
+          <div id="creator-applied-badge" className="creator-confirm" style={{ marginTop: 0, marginBottom: 8, padding: "7px 10px" }}>
+            <span style={{ fontSize: 12 }}>
+              ✓ Code <b>{appliedCreator.code}</b> Applied:{" "}
+              {selectedPlan === "monthly"
+                ? "Switch to Annual above to unlock your 7-Day Free Trial ($0 Today)."
+                : appliedCreator.code.startsWith("BROC-")
+                  ? "7-Day Free Trial + 7 Free Pro Days unlocked!"
+                  : "VIP Creator Access · 7-Day Free Pro Trial ($0 Today) Ready!"}
+            </span>
+          </div>
+        )}
+
+        {codeError && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 8,
+              padding: "8px 11px",
+              borderRadius: 10,
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              fontSize: 12,
+              fontWeight: 700,
+              lineHeight: 1.4,
+            }}
+          >
+            {codeError}
+          </div>
+        )}
+
+        {/* PRIMARY CTA — IMMEDIATELY VISIBLE WITHOUT SCROLLING */}
         <button
           id="paywall-cta"
           type="button"
           className="paywall-cta-btn"
           disabled={checkoutBusy || (!agreedToTerms && !receipt)}
-          style={
-            !agreedToTerms && !receipt
-              ? { opacity: 0.6, cursor: "not-allowed" }
-              : undefined
-          }
+          style={{
+            marginTop: 0,
+            padding: "13px 16px",
+            ...(!agreedToTerms && !receipt ? { opacity: 0.65, cursor: "not-allowed" } : {}),
+          }}
           onClick={handleCheckout}
         >
           {checkoutBusy
@@ -698,50 +607,168 @@ export default function Paywall({
                   : remoteCtaLabel || `Start ${trialDays}-Day Free Trial ($0 Today)`
                 : `Subscribe Monthly ($${PRICING.monthly.toFixed(2)} Today)`}
         </button>
-        <p className="paywall-sub">
+        <p className="paywall-sub" style={{ marginTop: 6, fontSize: 11.5 }}>
           {selectedPlan === "annual"
-            ? `$0 due today, then $${PRICING.annual.toFixed(2)}/year ($${annualPerMonth.toFixed(2)}/mo) after your ${trialDays}-day trial. Cancel anytime via Billing Settings.`
-            : `Billed monthly at $${PRICING.monthly.toFixed(2)}/mo ($${monthlyPerYear.toFixed(2)}/yr). Switch to Annual to save ${annualSavingsPct}%. Cancel anytime via Billing Settings.`}
+            ? `$0 due today, then $${PRICING.annual.toFixed(2)}/year ($${annualPerMonth.toFixed(2)}/mo) after your ${trialDays}-day trial. Cancel anytime.`
+            : `Billed monthly at $${PRICING.monthly.toFixed(2)}/mo. Switch to Annual to save ${annualSavingsPct}%. Cancel anytime.`}
         </p>
 
-        {/* SKEPTIC FAQ ACCORDION (RYAN MATHEWS TEST #3: ANSWER EVERY BUYER OBJECTION) */}
+        {courtesyRefillAvailable && PRICING.courtesyRefillSwaps > 0 && onUseCourtesyRefill && (
+          <div style={{ marginTop: 6, textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={onUseCourtesyRefill}
+              style={{
+                background: "transparent",
+                color: "#0f7a4a",
+                border: "none",
+                fontSize: 12,
+                fontWeight: 800,
+                textDecoration: "underline",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              In the middle of shopping? Use +{PRICING.courtesyRefillSwaps} Free Courtesy Picks right now →
+            </button>
+          </div>
+        )}
+
+        {/* COMPACT OPTIONAL PROMO / FRIEND INVITE DRAWER */}
         <details
-          id="paywall-skeptic-faq"
           style={{
             marginTop: 10,
             background: "#f8faf9",
             border: "1px solid #d4dbd6",
             borderRadius: 12,
-            padding: "10px 14px",
+            padding: "8px 12px",
+            fontSize: 12.5,
+          }}
+        >
+          <summary style={{ fontWeight: 700, color: "#15201B", cursor: "pointer" }}>
+            Have a promo code or want +7 Free Pro Days for inviting a friend?
+          </summary>
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            <div>
+              <label htmlFor="creator-code-input" className="creator-label">
+                Creator or Friend Invite Code
+              </label>
+              <div className="creator-input-row">
+                <input
+                  id="creator-code-input"
+                  type="text"
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                  placeholder="Enter code (e.g. CLEANMOM)"
+                />
+                <button
+                  id="apply-creator-code"
+                  type="button"
+                  className="creator-apply-btn"
+                  disabled={codeBusy}
+                  onClick={() => applyCode()}
+                >
+                  {codeBusy ? "…" : "Apply"}
+                </button>
+              </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+                paddingTop: 8,
+                borderTop: "1px solid #e2e8f0",
+              }}
+            >
+              <span style={{ fontSize: 12, color: "#3d5949" }}>
+                🎁 Share your invite code for <b>+7 Free Pro Days</b> each:
+              </span>
+              <button
+                type="button"
+                onClick={handleShareWithFriend}
+                style={{
+                  background: "#0f7a4a",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 999,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {shareCopied ? "✓ Invite Link Copied!" : `Invite Friend (${personalReferralCode}) →`}
+              </button>
+            </div>
+          </div>
+        </details>
+
+        {/* COMPACT HOW IT WORKS + FAQ ACCORDION */}
+        <details
+          id="paywall-skeptic-faq"
+          style={{
+            marginTop: 8,
+            background: "#f8faf9",
+            border: "1px solid #d4dbd6",
+            borderRadius: 12,
+            padding: "8px 12px",
             fontSize: 12.5,
           }}
         >
           <summary
             style={{
-              fontWeight: 800,
+              fontWeight: 700,
               color: "#15201B",
               cursor: "pointer",
             }}
           >
-            Questions before starting your free trial? (4 quick answers)
+            How HeyBroc works &amp; common questions
           </summary>
           <div style={{ display: "grid", gap: 9, marginTop: 10, color: "#334155", lineHeight: 1.45 }}>
-            <div>
-              <strong style={{ color: "#0f172a" }}>1. How is HeyBroc different from barcode apps like Yuka?</strong>
-              <div>
-                Barcode scanners only work standing in a physical aisle scanning one box at a time. HeyBroc floats directly inside your online grocery apps (Walmart, Target, Costco, Instacart, Kroger, ALDI &amp; 6 more) and swaps flagged items in 1 tap.
+            <div
+              id="paywall-how-it-works-strip"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 10,
+                background: "#ffffff",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ fontSize: 11.5 }}>
+                <strong style={{ display: "block", color: "#0b4f30" }}>1. Shop Normally</strong>
+                <span>Browse Walmart, Target, Costco, Instacart &amp; 8 more stores</span>
+              </div>
+              <div style={{ fontSize: 11.5 }}>
+                <strong style={{ display: "block", color: "#0b4f30" }}>2. Instant 0–100 Score</strong>
+                <span>Flags seed oils, synthetic dyes, HFCS &amp; nitrites</span>
+              </div>
+              <div style={{ fontSize: 11.5 }}>
+                <strong style={{ display: "block", color: "#0b4f30" }}>3. Jump to Cleaner Pick ↗</strong>
+                <span>Opens verified cleaner alternatives directly in your store</span>
               </div>
             </div>
             <div>
-              <strong style={{ color: "#0f172a" }}>2. Do food brands pay to boost their scores or swaps?</strong>
+              <strong style={{ color: "#0f172a" }}>1. How do Cleaner Picks work?</strong>
               <div>
-                Never. HeyBroc is 100% independent and reader-supported. Every 0–100 score and Clean Swap is computed deterministically from the ingredient list and nutrition facts.
+                HeyBroc scores what you&apos;re viewing (0–100) and gives you a direct link to open a higher-scoring alternative right inside your grocery store so you can add it if you choose.
+              </div>
+            </div>
+            <div>
+              <strong style={{ color: "#0f172a" }}>2. Do food brands pay to boost their scores?</strong>
+              <div>
+                Never. HeyBroc is 100% independent. Every 0–100 score and cleaner pick is computed deterministically from the ingredient list and nutrition facts.
               </div>
             </div>
             <div>
               <strong style={{ color: "#0f172a" }}>3. Does one membership cover my phone, computer &amp; family?</strong>
               <div>
-                Yes. One Family Pro membership unlocks Web, Android Live Store Bubble, iOS Safari Extension, and Chrome Extension across your phone, computer, and household devices when signed in to your HeyBroc account.
+                Yes. One Family Pro membership unlocks Web, Android Live Store Bubble, iOS Safari Extension, and Chrome Extension across your household devices when signed in.
               </div>
             </div>
             <div>
@@ -825,7 +852,7 @@ export default function Paywall({
                 ✓ HeyBroc Family Pro Activated ({receipt.plan === "annual" ? `$${PRICING.annual.toFixed(2)}/yr Annual` : `$${PRICING.monthly.toFixed(2)}/mo Monthly`})
               </strong>
               <p>
-                Unlimited live store overlays, 1-tap clean swaps &amp; whole-cart health checks are now active on your account.
+                Unlimited live store overlays, verified cleaner store links &amp; order health audits are now active on your account.
               </p>
             </div>
           </div>
