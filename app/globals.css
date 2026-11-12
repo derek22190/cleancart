@@ -2577,4 +2577,235 @@ h1, h2, h3, h4, p { margin: 0; }
   }
 }
 
+/* 10. Clean Yuka Hero, Unified Pill Buttons & Minimal Phone Mockup */
+.layout:not(.layout--ad-test) {
+  grid-template-columns: minmax(320px, 480px) minmax(0, 1fr);
+  align-items: center;
+  gap: 56px;
+  padding: 40px 28px 64px;
+}
+.hero-clean {
+  max-width: 470px;
+  padding: 12px 0;
+}
+.hero-clean .hero-headline {
+  font-size: clamp(32px, 3.8vw, 46px);
+  font-weight: 850;
+  letter-spacing: -0.032em;
+  line-height: 1.1;
+  color: #1a241f;
+  margin: 0 0 16px;
+}
+.hero-clean .hero-subcopy {
+  font-size: clamp(16px, 1.4vw, 18.5px);
+  line-height: 1.55;
+  color: #52635a;
+  margin: 0 0 28px;
+  max-width: 430px;
+}
+.hero-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.yuka-outline-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 28px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #15803d;
+  border: 1.5px solid rgba(24, 185, 87, 0.42);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  box-shadow: 0 6px 18px -10px rgba(15, 60, 35, 0.18);
+  transition: transform 0.18s var(--ease), background 0.18s ease, border-color 0.18s ease;
+}
+.yuka-outline-pill-btn:hover {
+  background: #f2fbf5;
+  border-color: #18b957;
+  transform: translateY(-2px);
+}
+.topbar-btn--signin:not(.is-authed) {
+  background: #ffffff;
+  color: #1a241f;
+  border: 1.5px solid rgba(18, 65, 38, 0.16);
+  padding: 8px 18px;
+  font-size: 13.5px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px -6px rgba(15, 50, 30, 0.1);
+}
+.topbar-btn--signin:not(.is-authed):hover {
+  background: #f3fbf6;
+  border-color: rgba(24, 185, 87, 0.45);
+  color: #129452;
+}
+.topbar-dropdown-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.scorecard-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 
+@media (min-width: 521px) {
+  .layout:not(.layout--ad-test) .screen {
+    height: 572px;
+    min-height: 530px;
+  }
+  .layout:not(.layout--ad-test) .stage-food-halo {
+    height: 630px;
+  }
+}
+
+.phone-store-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 45;
+  width: 224px;
+  max-height: 336px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #1a241f;
+  border: 1px solid rgba(18, 65, 38, 0.12);
+  box-shadow: 0 20px 44px -12px rgba(15, 23, 42, 0.28), 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.phone-store-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a241f;
+  text-align: left;
+  transition: background 0.14s ease;
+}
+.phone-store-menu-item:hover {
+  background: #f3faf6;
+}
+.phone-store-menu-item.is-on {
+  background: #e8f8ee;
+  color: #0d7540;
+}
+
+.pdp--clean {
+  padding: 16px 18px 24px;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.pdp--clean .pdp-art {
+  aspect-ratio: 1 / 0.76;
+  background: #f6f8f6;
+}
+.pdp-swap-card {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #effaf3 0%, #e4f6eb 100%);
+  border: 1px solid rgba(24, 185, 87, 0.24);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-shadow: 0 10px 24px -14px rgba(15, 95, 50, 0.22);
+}
+.pdp-swap-card--active {
+  background: #f2fbf5;
+}
+.pdp-swap-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.pdp-swap-card-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pdp-swap-card-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #15803d;
+}
+.pdp-swap-card-score b {
+  font-weight: 850;
+  color: #0f7a43;
+  font-variant-numeric: tabular-nums;
+}
+.pdp-swap-card-score span {
+  color: #4b6356;
+  font-weight: 650;
+}
+.pdp-swap-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #1a241f;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pdp-swap-pill {
+  flex: none;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #18b957;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 8px 16px -8px rgba(24, 185, 87, 0.65);
+  transition: transform 0.16s var(--ease), background 0.16s ease;
+}
+.pdp-swap-pill:hover {
+  background: #13a04a;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 960px) {
+  .layout:not(.layout--ad-test) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    padding: 20px 16px 40px;
+  }
+  .hero-clean {
+    text-align: center;
+    margin: 0 auto;
+    padding: 4px 0;
+  }
+  .hero-clean .hero-subcopy {
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 22px;
+  }
+  .hero-cta-row {
+    justify-content: center;
+  }
+}

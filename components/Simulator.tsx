@@ -269,24 +269,191 @@ const swapResultToProduct = (sw: SwapResult, replacedItem?: Product, store: Stor
   };
 };
 
-const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accentFg: string; mark: string }> = {
-  walmart: { bg: "#0071dc", fg: "#ffffff", accent: "#0071dc", accentFg: "#fff", mark: "🏬" },
-  instacart: { bg: "#003d29", fg: "#ffffff", accent: "#0aad0a", accentFg: "#fff", mark: "🥕" },
-  target: { bg: "#cc0000", fg: "#ffffff", accent: "#cc0000", accentFg: "#fff", mark: "🎯" },
-  kroger: { bg: "#0f2d7f", fg: "#ffffff", accent: "#0f2d7f", accentFg: "#fff", mark: "🛒" },
-  aldi: { bg: "#001e78", fg: "#ffffff", accent: "#e85d00", accentFg: "#fff", mark: "🏪" },
-  doordash: { bg: "#eb1700", fg: "#ffffff", accent: "#eb1700", accentFg: "#fff", mark: "🚗" },
-  ubereats: { bg: "#06c167", fg: "#0b1410", accent: "#06c167", accentFg: "#0b1410", mark: "🛍️" },
-  amazon: { bg: "#131921", fg: "#ffffff", accent: "#568000", accentFg: "#fff", mark: "📦" },
-  sams: { bg: "#0067a0", fg: "#ffffff", accent: "#0067a0", accentFg: "#fff", mark: "💎" },
-  bjs: { bg: "#c8102e", fg: "#ffffff", accent: "#c8102e", accentFg: "#fff", mark: "🔴" },
-  costco: { bg: "#005dab", fg: "#ffffff", accent: "#e31837", accentFg: "#fff", mark: "🏷️" },
-  shipt: { bg: "#2b0c3d", fg: "#ffffff", accent: "#008248", accentFg: "#fff", mark: "⚡" },
+const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accentFg: string }> = {
+  walmart: { bg: "#0071dc", fg: "#ffffff", accent: "#0071dc", accentFg: "#fff" },
+  instacart: { bg: "#003d29", fg: "#ffffff", accent: "#0aad0a", accentFg: "#fff" },
+  target: { bg: "#cc0000", fg: "#ffffff", accent: "#cc0000", accentFg: "#fff" },
+  kroger: { bg: "#0f2d7f", fg: "#ffffff", accent: "#0f2d7f", accentFg: "#fff" },
+  aldi: { bg: "#001e78", fg: "#ffffff", accent: "#e85d00", accentFg: "#fff" },
+  doordash: { bg: "#eb1700", fg: "#ffffff", accent: "#eb1700", accentFg: "#fff" },
+  ubereats: { bg: "#06c167", fg: "#0b1410", accent: "#06c167", accentFg: "#0b1410" },
+  amazon: { bg: "#131921", fg: "#ffffff", accent: "#568000", accentFg: "#fff" },
+  sams: { bg: "#0067a0", fg: "#ffffff", accent: "#0067a0", accentFg: "#fff" },
+  bjs: { bg: "#c8102e", fg: "#ffffff", accent: "#c8102e", accentFg: "#fff" },
+  costco: { bg: "#005dab", fg: "#ffffff", accent: "#e31837", accentFg: "#fff" },
+  shipt: { bg: "#2b0c3d", fg: "#ffffff", accent: "#008248", accentFg: "#fff" },
 };
 
-/** Renders a generic store mark for the selected retailer (nominative text + generic emoji only; no third-party trademarked logos). */
-function StoreBadge({ store }: { store: Store; inHeader?: boolean }) {
-  return <span className="store-chip-mark">{STORE_THEME[store].mark}</span>;
+type UiIconName =
+  | "store"
+  | "camera"
+  | "barcode"
+  | "receipt"
+  | "shield"
+  | "leaf"
+  | "spark"
+  | "swap"
+  | "share"
+  | "clock"
+  | "list"
+  | "search"
+  | "user"
+  | "lock"
+  | "phone"
+  | "alert"
+  | "cart";
+
+function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
+  const props = {
+    viewBox: "0 0 24 24",
+    width: size,
+    height: size,
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.85,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+    style: { flexShrink: 0 },
+  };
+  switch (name) {
+    case "store":
+      return (
+        <svg {...props}>
+          <path d="M6 7h12l-1 13H7L6 7Z" />
+          <path d="M9 7a3 3 0 0 1 6 0" />
+        </svg>
+      );
+    case "camera":
+      return (
+        <svg {...props}>
+          <path d="M14.5 4h-5L7.5 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3.5L14.5 4Z" />
+          <circle cx="12" cy="13" r="3.2" />
+        </svg>
+      );
+    case "barcode":
+      return (
+        <svg {...props}>
+          <path d="M4 6v12M8 6v12M12 6v12M16 6v12M20 6v12" />
+        </svg>
+      );
+    case "receipt":
+      return (
+        <svg {...props}>
+          <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" />
+          <path d="M9 8h6M9 12h6" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...props}>
+          <path d="M12 3 5 6v6c0 5 3.4 8.3 7 9.8 3.6-1.5 7-4.8 7-9.8V6l-7-3Z" />
+          <path d="m9.5 12 1.8 1.8 3.5-3.6" />
+        </svg>
+      );
+    case "leaf":
+      return (
+        <svg {...props}>
+          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z" />
+          <path d="M2 21c0-3 1.9-5.5 4.8-6.3C9.5 14 12 13 14 11" />
+        </svg>
+      );
+    case "spark":
+      return (
+        <svg {...props}>
+          <polygon points="12 2.5 14.9 8.4 21.4 9.3 16.7 13.9 17.8 20.4 12 17.3 6.2 20.4 7.3 13.9 2.6 9.3 9.1 8.4 12 2.5" />
+        </svg>
+      );
+    case "swap":
+      return (
+        <svg {...props}>
+          <path d="M16 4l4 4-4 4" />
+          <path d="M20 8H4" />
+          <path d="M8 20l-4-4 4-4" />
+          <path d="M4 16h16" />
+        </svg>
+      );
+    case "share":
+      return (
+        <svg {...props}>
+          <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+          <polyline points="16 6 12 2 8 6" />
+          <line x1="12" y1="2" x2="12" y2="15" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="9" />
+          <polyline points="12 7 12 12 15.5 14" />
+        </svg>
+      );
+    case "list":
+      return (
+        <svg {...props}>
+          <line x1="8" y1="6" x2="20" y2="6" />
+          <line x1="8" y1="12" x2="20" y2="12" />
+          <line x1="8" y1="18" x2="20" y2="18" />
+          <circle cx="4.5" cy="6" r="1" fill="currentColor" />
+          <circle cx="4.5" cy="12" r="1" fill="currentColor" />
+          <circle cx="4.5" cy="18" r="1" fill="currentColor" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg {...props}>
+          <circle cx="11" cy="11" r="7" />
+          <line x1="20" y1="20" x2="16.2" y2="16.2" />
+        </svg>
+      );
+    case "user":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="8" r="4" />
+          <path d="M5 20a7 7 0 0 1 14 0" />
+        </svg>
+      );
+    case "lock":
+      return (
+        <svg {...props}>
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+      );
+    case "phone":
+      return (
+        <svg {...props}>
+          <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
+          <line x1="10.5" y1="18.5" x2="13.5" y2="18.5" />
+        </svg>
+      );
+    case "alert":
+      return (
+        <svg {...props}>
+          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <circle cx="12" cy="17" r="0.8" fill="currentColor" />
+        </svg>
+      );
+    case "cart":
+    default:
+      return (
+        <svg {...props}>
+          <path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2" />
+          <circle cx="10" cy="20" r="1.4" fill="currentColor" />
+          <circle cx="17" cy="20" r="1.4" fill="currentColor" />
+        </svg>
+      );
+  }
+}
+
+/** Renders a clean stroke-SVG store mark (nominative text + unified line icon; no third-party trademarked logos). */
+function StoreBadge({ inHeader }: { store: Store; inHeader?: boolean }) {
+  return (
+    <span className="store-chip-mark" style={{ display: "inline-flex", alignItems: "center" }}>
+      <UiIcon name="store" size={inHeader ? 17 : 15} />
+    </span>
+  );
 }
 
 const RISK_LABEL = { high: "High risk", moderate: "Moderate", low: "Low risk" } as const;
@@ -744,10 +911,11 @@ export default function Simulator({
 
   const [overlay, setOverlay] = useState<OverlayState>("pill");
   const [openFlag, setOpenFlag] = useState<string | null>(null);
-  const [pillY, setPillY] = useState(56);
+  const [pillY, setPillY] = useState(35);
   const [pillDragOffset, setPillDragOffset] = useState<{ x: number; y: number } | null>(null);
   const [overHideZone, setOverHideZone] = useState(false);
   const [hiddenForTrip, setHiddenForTrip] = useState(false);
+  const [phoneStoreMenuOpen, setPhoneStoreMenuOpen] = useState(false);
 
   // Dual-mode bubble state: "product" (single item score) vs "search" (idle/scrolling Cart Avg)
   const [viewMode, setViewMode] = useState<ViewMode>("product");
@@ -877,8 +1045,8 @@ export default function Simulator({
       }
       setToast({
         title: shouldEnable
-          ? "🌱 Herbicides & Pesticides Watch: ON"
-          : "🌱 Herbicides & Pesticides Watch: OFF",
+          ? "Herbicides & Pesticides Watch: ON"
+          : "Herbicides & Pesticides Watch: OFF",
         body: shouldEnable
           ? "Flagging conventional Dirty-Dozen produce & non-organic oats, wheat & legumes — and surfacing certified USDA Organic swaps."
           : "Conventional produce & grain pesticide alerts turned off.",
@@ -1061,14 +1229,7 @@ export default function Simulator({
           } else {
             setPaywallOpen(true);
           }
-        } else if (
-          params.get("onboarding") === "1" ||
-          (!onboardingDone &&
-            !sharedIncoming &&
-            !params.get("session_id") &&
-            params.get("checkout") !== "cancelled" &&
-            !isAdTestLanding)
-        ) {
+        } else if (params.get("onboarding") === "1") {
           setManualFunnelOpen(false);
           setWatchlistFunnelStep(1);
           setWatchlistFunnelOpen(true);
@@ -1164,7 +1325,7 @@ export default function Simulator({
                 }).catch(() => {});
               }
               setToast({
-                title: `🎉 Creator Code ${verifiedCreator.code} Applied`,
+                title: `Creator Code ${verifiedCreator.code} Applied`,
                 body: `${verifiedCreator.name} unlocked your VIP 7-Day Free Pro Trial ($0 Today)!`,
               });
             }
@@ -1238,7 +1399,7 @@ export default function Simulator({
               name: "Friend Referral (+7 Days Free Pro)",
             });
             setToast({
-              title: `🎁 Friend Invite Saved (${friendRefParam})`,
+              title: `Friend Invite Saved (${friendRefParam})`,
               body: refData.message || "Invite saved! Start a trial to unlock +7 Free Pro Days for both of you.",
             });
           } else {
@@ -1602,12 +1763,6 @@ export default function Simulator({
     },
     [store, isIosAppClient]
   );
-
-  const storeRailRef = useRef<HTMLDivElement>(null);
-
-  const scrollStoreRail = useCallback((dir: -1 | 1) => {
-    storeRailRef.current?.scrollBy({ left: dir * 210, behavior: "smooth" });
-  }, []);
 
   const switchStore = useCallback(
     (s: Store) => {
@@ -2598,7 +2753,6 @@ export default function Simulator({
                   <div className="brand-title-row">
                     <h1>HeyBroc</h1>
                   </div>
-                  <p className="brand-tagline">100% independent food grader &amp; 1-tap clean swaps</p>
                 </div>
               </a>
 
@@ -2612,44 +2766,21 @@ export default function Simulator({
               )}
             </div>
 
-            <div className="topbar-account" aria-label="Quick controls and account">
-              {!adTestMode && (
-                <button
-                  id="topbar-watchlist-funnel"
-                  type="button"
-                  className="topbar-btn topbar-btn--watch"
-                  onClick={() => {
-                    setManualFunnelOpen(true);
-                    setWatchlistFunnelStep(1);
-                    setWatchlistFunnelOpen(true);
-                  }}
-                  title="Personalize your family's 2x additive, allergy & glyphosate watchlist"
-                >
-                  <span className="topbar-pill-dot" aria-hidden />
-                  <span>
-                    🛡️{" "}
-                    <span className="topbar-watch-word">Watchlist </span>(
-                    {familyWatchlist.length + dietaryWatchlist.length})
-                  </span>
-                </button>
-              )}
-
-              <button
-                id="open-paywall"
-                type="button"
-                className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
-                onClick={requestProUpgrade}
-              >
-                {isPro ? "★ PRO" : "★ Pro"}
-              </button>
-
+            <div className="topbar-account" aria-label="Account and menu">
               <button
                 id="open-auth-modal"
                 type="button"
                 className={`topbar-btn topbar-btn--signin ${authUser ? "is-authed" : ""}`}
                 onClick={() => setAuthOpen(true)}
               >
-                {authUser ? `👤 ${authUser.displayName}` : "Sign in"}
+                {authUser ? (
+                  <>
+                    <UiIcon name="user" size={15} />
+                    <span>{authUser.displayName}</span>
+                  </>
+                ) : (
+                  "Sign in"
+                )}
               </button>
 
               {!adTestMode && (
@@ -2677,7 +2808,10 @@ export default function Simulator({
                           togglePesticideWatch();
                         }}
                       >
-                        <span>🌱 Glyphosate Watch</span>
+                        <span className="topbar-dropdown-label">
+                          <UiIcon name="leaf" size={15} />
+                          <span>Glyphosate Watch</span>
+                        </span>
                         <span
                           className={`topbar-dropdown-badge ${pesticideWatchEnabled ? "is-on" : ""}`}
                         >
@@ -2695,7 +2829,10 @@ export default function Simulator({
                           setLabelScannerOpen(true);
                         }}
                       >
-                        <span>📸 Scan Label / Screenshot</span>
+                        <span className="topbar-dropdown-label">
+                          <UiIcon name="camera" size={15} />
+                          <span>Scan Label / Screenshot</span>
+                        </span>
                       </button>
 
                       <button
@@ -2708,7 +2845,10 @@ export default function Simulator({
                           setWeeklyAuditOpen(true);
                         }}
                       >
-                        <span>🧾 Audit Pickup Order</span>
+                        <span className="topbar-dropdown-label">
+                          <UiIcon name="receipt" size={15} />
+                          <span>Audit Pickup Order</span>
+                        </span>
                       </button>
 
                       <div className="topbar-dropdown-sep" />
@@ -2718,7 +2858,10 @@ export default function Simulator({
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
-                        <span>🛡️ 100% Independence</span>
+                        <span className="topbar-dropdown-label">
+                          <UiIcon name="shield" size={15} />
+                          <span>Independence</span>
+                        </span>
                         <span className="topbar-dropdown-arrow">→</span>
                       </a>
 
@@ -2728,7 +2871,10 @@ export default function Simulator({
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
-                        <span>🧪 Free Label Grader</span>
+                        <span className="topbar-dropdown-label">
+                          <UiIcon name="search" size={15} />
+                          <span>Free Label Grader</span>
+                        </span>
                         <span className="topbar-dropdown-arrow">→</span>
                       </a>
 
@@ -2737,7 +2883,10 @@ export default function Simulator({
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
-                        <span>⇄ Clean Swaps Directory</span>
+                        <span className="topbar-dropdown-label">
+                          <UiIcon name="swap" size={15} />
+                          <span>Clean Swaps Directory</span>
+                        </span>
                         <span className="topbar-dropdown-arrow">→</span>
                       </a>
 
@@ -2766,7 +2915,10 @@ export default function Simulator({
                               }
                             }}
                           >
-                            <span>🛒 Live Shop Bubble</span>
+                            <span className="topbar-dropdown-label">
+                              <UiIcon name="cart" size={15} />
+                              <span>Live Shop Bubble</span>
+                            </span>
                           </button>
                           <button
                             id="open-ios-safari-setup"
@@ -2791,7 +2943,10 @@ export default function Simulator({
                               }
                             }}
                           >
-                            <span>⚡ iPhone Setup</span>
+                            <span className="topbar-dropdown-label">
+                              <UiIcon name="phone" size={15} />
+                              <span>iPhone Setup</span>
+                            </span>
                           </button>
                         </>
                       ) : (
@@ -2802,7 +2957,10 @@ export default function Simulator({
                           role="menuitem"
                           className="topbar-dropdown-item"
                         >
-                          <span>📲 Android App (.apk)</span>
+                          <span className="topbar-dropdown-label">
+                            <UiIcon name="phone" size={15} />
+                            <span>Android App (.apk)</span>
+                          </span>
                           <span className="topbar-dropdown-arrow">↓</span>
                         </a>
                       )}
@@ -3016,292 +3174,37 @@ export default function Simulator({
             </div>
           )}
 
-          <div
-            className="card hero-card"
-            style={adTestMode ? { display: "none" } : undefined}
-          >
-            <span className="eyebrow eyebrow--green">
-              100% INDEPENDENT · ZERO BRAND INFLUENCE
-            </span>
-            <h2 className="hero-headline">
-              Know what&apos;s really hiding in your family&apos;s groceries.
-            </h2>
-            <p className="hero-subcopy">
-              HeyBroc grades any food or drink <b>0–100</b> as you shop across 12 grocery apps — flagging seed oils, synthetic dyes &amp; hidden additives with <b>1-tap Clean Swaps</b>.
-            </p>
-            <form className="search" onSubmit={runLive}>
-              <input
-                id="live-search-input"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search food, UPC barcode, or paste a store link…"
-                aria-label="Search any grocery product"
-              />
-              <button id="live-search-submit" type="submit" disabled={!query.trim()}>
-                {liveState === "loading" ? <span className="spinner" aria-label="Scanning" /> : "Grade"}
-              </button>
-            </form>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-              <button
-                id="open-label-scanner"
-                type="button"
-                className="trip-pill"
-                onClick={() => setLabelScannerOpen(true)}
-              >
-                📸 Scan Label / Screenshot
-              </button>
-              <button
-                id="toggle-barcode-scanner"
-                type="button"
-                className="trip-pill"
-                onClick={() => {
-                  if (barcodeScannerOpen) {
-                    stopCameraScanner();
-                    setBarcodeScannerOpen(false);
-                    setBarcodeStatus("");
-                  } else {
-                    setBarcodeScannerOpen(true);
-                    void startCameraScanner();
-                  }
-                }}
-              >
-                {barcodeScannerOpen ? "✕ Close Scanner" : "📷 Scan Barcode"}
-              </button>
-              <button
-                id="open-weekly-audit"
-                type="button"
-                className="trip-pill"
-                onClick={() => setWeeklyAuditOpen(true)}
-              >
-                🧾 Audit Pickup Order
-              </button>
-            </div>
-            {barcodeScannerOpen && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 12,
-                  background: "#0f172a",
-                  color: "#f8fafc",
-                  border: "1px solid #1e293b",
-                }}
-              >
-                <div
-                  style={{
-                    position: "relative",
-                    width: "100%",
-                    height: 168,
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    background: "#020617",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <video
-                    ref={barcodeVideoRef}
-                    playsInline
-                    muted
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      opacity: barcodeCameraActive ? 1 : 0.35,
-                    }}
-                  />
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      left: "50%",
-                      top: "50%",
-                      width: "66%",
-                      height: "54%",
-                      transform: "translate(-50%, -50%)",
-                      border: "2px solid rgba(34, 197, 94, 0.92)",
-                      borderRadius: 10,
-                      boxShadow: "0 0 0 999px rgba(2, 6, 23, 0.48)",
-                      pointerEvents: "none",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "88%",
-                        height: 2,
-                        background: "rgba(34, 197, 94, 0.85)",
-                        boxShadow: "0 0 8px rgba(34, 197, 94, 0.9)",
-                      }}
-                    />
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
-                  <button
-                    type="button"
-                    className="trip-pill"
-                    style={{ background: "#1e293b", color: "#f8fafc", borderColor: "#334155" }}
-                    onClick={() => {
-                      if (barcodeCameraActive) stopCameraScanner();
-                      else void startCameraScanner();
-                    }}
-                  >
-                    {barcodeCameraActive ? "⏸ Pause Camera" : "▶ Start Camera"}
-                  </button>
-                  <label
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      background: "#16a34a",
-                      color: "#ffffff",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    📤 Upload Barcode Photo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={onBarcodePhotoUpload}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                </div>
-                <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#cbd5e1", lineHeight: 1.4 }}>
-                  {barcodeStatus || "Center target UPC inside the green reticle — surrounding shelf barcodes are ignored."}
-                </p>
-              </div>
-            )}
-            {liveState === "error" && (
-              <div style={{ marginTop: 6 }}>
-                <p className="error" style={{ marginBottom: 4 }}>{liveError}</p>
-                <button
-                  id="error-fallback-label-scanner"
-                  type="button"
-                  className="link-btn"
-                  onClick={() => setLabelScannerOpen(true)}
-                >
-                  📸 Brand or flavor not listed yet? Snap or paste its Ingredients label →
-                </button>
-              </div>
-            )}
-            {active.origin === "live" && active.lookup && (
-              <p className="meta">
-                {lookupSourceLabel(active.lookup)}
-                {active.lookup.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
-                {" · Verify physical label · "}
-                <button
-                  id="open-label-auto-verifier-inline"
-                  type="button"
-                  onClick={() => setLabelVerifierOpen(true)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    color: "#15803d",
-                    fontWeight: 700,
-                    fontSize: "inherit",
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                  }}
-                >
-                  Report a mistake (Auto-Verify)
-                </button>
+          {!adTestMode && (
+            <div className="hero-clean">
+              <h2 className="hero-headline">
+                Know what&apos;s really hiding in your family&apos;s groceries.
+              </h2>
+              <p className="hero-subcopy">
+                Instant 0–100 food scores and 1-tap Clean Swaps while you shop.
               </p>
-            )}
-          </div>
-
-          <div
-            className="card"
-            style={adTestMode ? { display: "none" } : undefined}
-          >
-            <div className="card-head" style={{ alignItems: "center", flexWrap: "wrap" }}>
-              <h2>Choose Your Store</h2>
-              <button
-                id="toggle-prefer-store-brand"
-                type="button"
-                onClick={() => togglePreferStoreBrand()}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  fontSize: 11.5,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  border: preferStoreBrand ? "1.5px solid #0f7a4a" : "1px solid #cbd5e1",
-                  background: preferStoreBrand ? "#dcfce7" : "#f8fafc",
-                  color: preferStoreBrand ? "#14532d" : "#334155",
-                }}
-              >
-                {preferStoreBrand ? "💚 Store-Brand Swaps: ON" : "💚 Store-Brand Swaps"}
-              </button>
-            </div>
-            <div className="store-rail-wrap">
-              <button
-                type="button"
-                className="store-rail-arrow"
-                onClick={() => scrollStoreRail(-1)}
-                aria-label="Scroll stores left"
-              >
-                ‹
-              </button>
-              <div className="store-rail" ref={storeRailRef} role="tablist" aria-label="Supported grocery stores">
-                {orderedStores.map((s) => (
-                  <button
-                    key={s}
-                    id={`store-${s}`}
-                    role="tab"
-                    aria-selected={store === s}
-                    className={`store-chip-btn ${store === s ? "is-on" : ""}`}
-                    onClick={() => switchStore(s)}
-                  >
-                    <StoreBadge store={s} />
-                    <span>{STORE_META[s].label}</span>
-                  </button>
-                ))}
+              <div className="hero-cta-row">
+                <button
+                  id="hero-get-started"
+                  type="button"
+                  className="yuka-green-pill-btn"
+                  onClick={() => {
+                    setManualFunnelOpen(false);
+                    setWatchlistFunnelStep(1);
+                    setWatchlistFunnelOpen(true);
+                  }}
+                >
+                  Get Started
+                </button>
+                <a
+                  id="hero-try-grader"
+                  href="/tools"
+                  className="yuka-outline-pill-btn"
+                >
+                  Try Free Grader
+                </a>
               </div>
-              <button
-                type="button"
-                className="store-rail-arrow"
-                onClick={() => scrollStoreRail(1)}
-                aria-label="Scroll stores right"
-              >
-                ›
-              </button>
             </div>
-          </div>
-
-          <div
-            className="card"
-            style={adTestMode ? { display: "none" } : undefined}
-          >
-            <div className="card-head">
-              <h2>Popular Items — Tap to Grade</h2>
-            </div>
-            <ul className="preset-list">
-              {PRESETS.slice(0, 5).map((p) => {
-                const s = gradeProduct(`${p.brand} ${p.title}`, p.ingredients, watch, undefined, familyWatchlist);
-                const on = active.key === p.id && viewMode === "product";
-                return (
-                  <li key={p.id}>
-                    <button id={`preset-${p.id}`} className={`preset ${on ? "is-on" : ""}`} onClick={() => showProduct(presetToProduct(p))}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.image} alt="" />
-                      <span className="preset-text"><b>{p.title}</b><small>{p.brand}</small></span>
-                      <ScoreChip score={s.score} color={s.color} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          )}
         </section>
 
         {/* ============ PHONE ============ */}
@@ -3314,24 +3217,61 @@ export default function Simulator({
               style={{ ["--store-bg" as string]: theme.bg, ["--store-fg" as string]: theme.fg, ["--store-accent" as string]: theme.accent, ["--store-accent-fg" as string]: theme.accentFg }}
             >
               <div className="store-header">
-                <div className="store-row">
+                <div className="store-row" style={{ position: "relative" }}>
                   <button
                     type="button"
                     className="store-logo"
-                    onClick={() => setViewMode((m) => (m === "search" ? "product" : "search"))}
-                    title="Toggle store aisle or product view"
+                    onClick={() => setPhoneStoreMenuOpen((v) => !v)}
+                    title="Switch store or browse aisle"
+                    aria-expanded={phoneStoreMenuOpen}
                     style={{ color: "inherit" }}
                   >
                     <StoreBadge store={store} inHeader />
-                    {STORE_META[store].label}
+                    <span>{STORE_META[store].label}</span>
+                    <span style={{ fontSize: 12, opacity: 0.78 }}>▾</span>
                   </button>
+                  {phoneStoreMenuOpen && (
+                    <div className="phone-store-menu" role="menu" aria-label="Switch grocery store">
+                      <button
+                        type="button"
+                        className="phone-store-menu-item"
+                        onClick={() => {
+                          setPhoneStoreMenuOpen(false);
+                          setViewMode((m) => (m === "search" ? "product" : "search"));
+                        }}
+                      >
+                        <UiIcon name="list" size={14} />
+                        <span>{viewMode === "search" ? "Back to Product" : "Browse Store Aisle"}</span>
+                      </button>
+                      <div className="topbar-dropdown-sep" />
+                      {orderedStores.map((s) => (
+                        <button
+                          key={s}
+                          id={`store-${s}`}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={store === s}
+                          className={`phone-store-menu-item ${store === s ? "is-on" : ""}`}
+                          onClick={() => {
+                            switchStore(s);
+                            setPhoneStoreMenuOpen(false);
+                          }}
+                        >
+                          <StoreBadge store={s} />
+                          <span>{STORE_META[s].label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <button className="cart-btn" onClick={() => setCartOpen(true)} aria-label="Open cart">
-                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 4h2l2.4 11.2a2 2 0 002 1.6h7.7a2 2 0 002-1.5L21 8H6.2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="10" cy="20" r="1.4" fill="currentColor" /><circle cx="17" cy="20" r="1.4" fill="currentColor" /></svg>
+                    <UiIcon name="cart" size={20} />
                     <span className="cart-count">{totalCartUnits}</span>
                   </button>
                 </div>
                 <form className="store-search" onSubmit={runLive}>
-                  <span aria-hidden style={{ color: "#64748b", fontSize: 14, flexShrink: 0 }}>⌕</span>
+                  <span aria-hidden style={{ color: "#64748b", display: "inline-flex", flexShrink: 0 }}>
+                    <UiIcon name="search" size={15} />
+                  </span>
                   <input
                     id="phone-store-search-input"
                     value={query}
@@ -3351,13 +3291,13 @@ export default function Simulator({
                       aria-label="Scan ingredient label or screenshot"
                       title="Scan ingredient label or screenshot"
                     >
-                      📸
+                      <UiIcon name="camera" size={15} />
                     </button>
                   )}
                 </form>
               </div>
 
-              <div className="store-scroll" ref={scrollRef}>
+              <div className="store-scroll" ref={scrollRef} onClick={() => phoneStoreMenuOpen && setPhoneStoreMenuOpen(false)}>
                 {viewMode === "search" ? (
                   <div className="aisle">
                     <div className="aisle-grid">
@@ -3375,7 +3315,6 @@ export default function Simulator({
                               </div>
                               <small className="aisle-brand">{item.brand}</small>
                               <b className="aisle-title">{item.title}</b>
-                              <span className="aisle-price">See price in store</span>
                             </button>
                             <button
                               type="button"
@@ -3396,53 +3335,86 @@ export default function Simulator({
                     </div>
                   </div>
                 ) : (
-                  <div className="pdp">
-                    <div className="pdp-art"><ProductArt product={active} onSnapLabel={() => setLabelScannerOpen(true)} /></div>
+                  <div className="pdp pdp--clean">
+                    <div className="pdp-art">
+                      <ProductArt product={active} onSnapLabel={() => setLabelScannerOpen(true)} />
+                    </div>
                     <p className="pdp-brand">{active.brand}</p>
-                    <h3 className="pdp-title">{active.title}{active.size ? `, ${active.size}` : ""}</h3>
-                    <div className="pdp-rating">★★★★☆ <span>(2,184)</span></div>
-                    <div className="pdp-price">See live price in {STORE_META[store].label}</div>
-                    <div className="pdp-cta-row">
-                      <button
-                        className="pdp-add"
-                        onClick={() => {
-                          if (cart.some((c) => c.key === active.key)) {
-                            setToast({ title: "Already in cart", body: `${active.brand} ${active.title}` });
-                          } else {
-                            commitItemToCart(active);
-                          }
-                        }}
-                      >
-                        {cart.some((c) => c.key === active.key) ? "In cart ✓" : "Add to cart"}
-                      </button>
-                      {swap ? (
+                    <h3 className="pdp-title">
+                      {active.title}
+                      {active.size ? `, ${active.size}` : ""}
+                    </h3>
+
+                    {liveState === "error" && (
+                      <div style={{ marginTop: 10 }}>
+                        <p className="error" style={{ margin: "0 0 4px" }}>{liveError}</p>
+                        <button
+                          id="error-fallback-label-scanner"
+                          type="button"
+                          className="link-btn"
+                          onClick={() => setLabelScannerOpen(true)}
+                        >
+                          Snap or paste Ingredients label →
+                        </button>
+                      </div>
+                    )}
+
+                    {swap ? (
+                      <div className="pdp-swap-card">
+                        <button
+                          type="button"
+                          className="pdp-swap-card-main"
+                          onClick={() => {
+                            setOverlay("card");
+                            setYukaTab("inspect");
+                          }}
+                        >
+                          <ProductArt
+                            product={swapResultToProduct(swap, active, store)}
+                            className="swap-art"
+                          />
+                          <div className="pdp-swap-card-copy">
+                            <span className="pdp-swap-card-score">
+                              <i className="yuka-dot tone-green" aria-hidden />
+                              <b>{swap.score}/100</b>
+                              <span>
+                                Clean Swap{swap.isPaidLink ? " · paid link" : ""}
+                              </span>
+                            </span>
+                            <strong className="pdp-swap-card-title">{swap.title}</strong>
+                          </div>
+                        </button>
                         <button
                           id="pdp-quick-swap"
                           type="button"
-                          className="pdp-swap-inline"
+                          className="pdp-swap-pill"
                           onClick={doSwap}
                         >
-                          ⚡ 1-Tap Clean Swap ({swap.score}/100){swap.isPaidLink ? " · paid link" : ""}
+                          Swap
                         </button>
-                      ) : activeRevertTarget ? (
+                      </div>
+                    ) : activeRevertTarget ? (
+                      <div className="pdp-swap-card pdp-swap-card--active">
+                        <div className="pdp-swap-card-copy">
+                          <span className="pdp-swap-card-score">
+                            <i className="yuka-dot tone-green" aria-hidden />
+                            <b>{score.score}/100</b>
+                            <span>Clean Swap Active</span>
+                          </span>
+                          <strong className="pdp-swap-card-title">
+                            Replaced {activeRevertTarget.brand} {activeRevertTarget.title}
+                          </strong>
+                        </div>
                         <button
                           id="pdp-revert-swap"
                           type="button"
                           className="trip-pill"
                           onClick={() => revertSwap(active)}
                         >
-                          ↺ Revert back to {activeRevertTarget.brand} {activeRevertTarget.title}
+                          Revert
                         </button>
-                      ) : null}
-                    </div>
-                    <div className="pdp-fulfil">
-                      <div><b>Pickup</b><span>Today</span></div>
-                      <div><b>Delivery</b><span>As soon as 1 hr</span></div>
-                      <div><b>Shipping</b><span>Not available</span></div>
-                    </div>
-                    <div className="pdp-section"><h4>About this item</h4><p>{active.description || `Popular pick in ${active.category ?? "Grocery"}. Customers frequently buy this together with other pantry staples.`}</p></div>
-                    <div className="pdp-section"><h4>Specifications</h4><p>Brand: {active.brand}<br />Category: {active.category ?? "Grocery"}</p></div>
-                    <div className="pdp-section"><h4>Ingredients</h4><p className="pdp-ingredients">{active.ingredients}</p><small className="no-scroll-note">HeyBroc already read this — no scrolling needed.</small></div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -3501,18 +3473,27 @@ export default function Simulator({
                     }
                   />
                   {overlay === "min" ? (
-                    <b>
-                      {isCartBubbleMode
-                        ? cartAvg === null
-                          ? "🛒 --"
-                          : `🛒 ${animatedCartAvg}/100`
-                        : activeDietaryAlerts.length > 0
-                          ? `⚠️ ${activeDietaryAlerts[0].shortBadge} · ${score.score}/100`
-                          : `${score.score}/100`}
+                    <b style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      {isCartBubbleMode ? (
+                        <>
+                          <UiIcon name="cart" size={13} />
+                          <span>{cartAvg === null ? "--" : `${animatedCartAvg}/100`}</span>
+                        </>
+                      ) : activeDietaryAlerts.length > 0 ? (
+                        <>
+                          <UiIcon name="alert" size={13} />
+                          <span>{activeDietaryAlerts[0].shortBadge} · {score.score}/100</span>
+                        </>
+                      ) : (
+                        `${score.score}/100`
+                      )}
                     </b>
                   ) : isCartBubbleMode ? (
                     <>
-                      <span>🛒 Cart Avg:</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        <UiIcon name="cart" size={13} />
+                        <span>Cart Avg:</span>
+                      </span>
                       <b>{cartAvg === null ? "--" : `${animatedCartAvg}/100`}</b>
                       {cartClimbFlash && <span className="climb-arrow">↑</span>}
                       <button
@@ -3529,6 +3510,9 @@ export default function Simulator({
                         <span
                           id="pill-dietary-alert"
                           style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
                             background: "#dc2626",
                             color: "#ffffff",
                             fontSize: 10.5,
@@ -3539,12 +3523,13 @@ export default function Simulator({
                             whiteSpace: "nowrap",
                           }}
                         >
-                          ⚠️ {activeDietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")}
+                          <UiIcon name="alert" size={11} />
+                          <span>{activeDietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")}</span>
                         </span>
                       )}
                       <b>{score.score}/100</b>
                       <span className="pill-sep">•</span>
-                      <span>{activeDietaryAlerts.length > 0 ? "Inspect" : "Tap to Inspect"}</span>
+                      <span>Inspect</span>
                       <button
                         className="pill-collapse"
                         aria-label="Minimize"
@@ -3633,7 +3618,7 @@ export default function Simulator({
                               aria-label="Share Before and After Score Card"
                               title="Share Before/After Score Card"
                             >
-                              📤
+                              <UiIcon name="share" size={16} />
                             </button>
                             <button
                               type="button"
@@ -3721,6 +3706,9 @@ export default function Simulator({
                               >
                                 <span
                                   style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
                                     fontSize: 10.5,
                                     fontWeight: 800,
                                     letterSpacing: "0.06em",
@@ -3728,7 +3716,8 @@ export default function Simulator({
                                     textTransform: "uppercase",
                                   }}
                                 >
-                                  ⚠️ Personal Allergy &amp; Diet Alert ({activeDietaryAlerts.length})
+                                  <UiIcon name="alert" size={13} />
+                                  <span>Personal Allergy &amp; Diet Alert ({activeDietaryAlerts.length})</span>
                                 </span>
                                 <button
                                   type="button"
@@ -3775,15 +3764,16 @@ export default function Simulator({
                                   onClick={requestProUpgrade}
                                 >
                                   <div className="swap-info-copy">
-                                    <span className="eyebrow eyebrow--green">
-                                      🔒 Clean Swap Locked · {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
+                                    <span className="eyebrow eyebrow--green" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                      <UiIcon name="lock" size={12} />
+                                      <span>Clean Swap Locked · {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}</span>
                                     </span>
                                     <b>{swap.score}/100 Clean Replacement Available</b>
                                     <span className="swap-score">All {weeklySwapLimit} free Clean Swaps used · <em>Unlock Unlimited with Pro →</em></span>
                                   </div>
                                 </button>
                                 <button id="swap-item" className="swap-btn" onClick={requestProUpgrade}>
-                                  ⚡ Unlock Pro
+                                  Unlock Pro
                                 </button>
                               </div>
                             ) : (
@@ -3803,7 +3793,9 @@ export default function Simulator({
                                       <span
                                         id="swap-store-brand-badge"
                                         style={{
-                                          display: "inline-block",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 4,
                                           alignSelf: "flex-start",
                                           background: "#15803d",
                                           color: "#ffffff",
@@ -3814,7 +3806,8 @@ export default function Simulator({
                                           marginBottom: 2,
                                         }}
                                       >
-                                        💚 Store-Brand Value Pick
+                                        <UiIcon name="leaf" size={11} />
+                                        <span>Store-Brand Value Pick</span>
                                       </span>
                                     )}
                                     <b>{swap.title}</b>
@@ -3834,7 +3827,10 @@ export default function Simulator({
                                     onClick={() => setSelectedSwapIdx(storeBrandCandidateIdx)}
                                     style={{
                                       width: "100%",
+                                      display: "inline-flex",
+                                      alignItems: "center",
                                       justifyContent: "center",
+                                      gap: 5,
                                       background: "#ecfdf5",
                                       borderColor: "#86efac",
                                       color: "#14532d",
@@ -3842,7 +3838,8 @@ export default function Simulator({
                                       fontSize: 12,
                                     }}
                                   >
-                                    💚 Prefer store brand? Switch to {swapCandidates[storeBrandCandidateIdx].title} ({swapCandidates[storeBrandCandidateIdx].score}/100)
+                                    <UiIcon name="leaf" size={13} />
+                                    <span>Prefer store brand? Switch to {swapCandidates[storeBrandCandidateIdx].title} ({swapCandidates[storeBrandCandidateIdx].score}/100)</span>
                                   </button>
                                 )}
                                 {swapCandidates.length > 1 && (
@@ -3884,7 +3881,10 @@ export default function Simulator({
                             onClick={() => setExposeCardOpen(true)}
                             style={{
                               width: "100%",
+                              display: "inline-flex",
+                              alignItems: "center",
                               justifyContent: "center",
+                              gap: 6,
                               padding: "9px 14px",
                               marginBottom: 12,
                               fontWeight: 800,
@@ -3894,7 +3894,8 @@ export default function Simulator({
                               color: "#14532d",
                             }}
                           >
-                            📤 Share Before/After Score Card (iMessage / IG / TikTok)
+                            <UiIcon name="share" size={14} />
+                            <span>Share Before/After Score Card</span>
                           </button>
 
                           {/* Curved Horseshoe Score Gauge + 3 Mini Sub-Score Rings */}
@@ -3974,7 +3975,7 @@ export default function Simulator({
                                               : "#16a34a",
                                       }}
                                     >
-                                      🩸 Sugar &amp; Carb Note: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp; 🔥{" "}
+                                      Sugar &amp; Carb Note: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp;{" "}
                                       {score.yukaBreakdown.calorieNote}
                                     </div>
                                     <p
@@ -4216,7 +4217,10 @@ export default function Simulator({
                                           <i className={`yuka-dot tone-${hs.color}`} />
                                           {hs.score < 25 ? "Bad" : hs.rating} · {hs.score}/100
                                         </span>
-                                        <small className="yuka-history-time">🕒 {timeLabel}</small>
+                                        <small className="yuka-history-time" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                          <UiIcon name="clock" size={12} />
+                                          <span>{timeLabel}</span>
+                                        </small>
                                       </div>
                                     </button>
                                   </li>
@@ -4302,7 +4306,7 @@ export default function Simulator({
                                       className="yuka-rec-swap-btn"
                                       onClick={() => swapCartItem(dirtyProd, recSwap)}
                                     >
-                                      ⚡ 1-Tap Swap{recSwap?.isPaidLink ? " · paid link" : ""}
+                                      Swap{recSwap?.isPaidLink ? " · paid link" : ""}
                                     </button>
                                   </div>
                                 </div>
@@ -4316,7 +4320,9 @@ export default function Simulator({
                       {yukaTab === "top" && (
                         <div className="yuka-top">
                           <div className="yuka-invite-card">
-                            <span className="yuka-invite-icon">👥</span>
+                            <span className="yuka-invite-icon">
+                              <UiIcon name="share" size={18} />
+                            </span>
                             <div>
                               <b>Share HeyBroc with a friend &amp; unlock all #1 Clean Picks</b>
                               <button
@@ -4334,15 +4340,15 @@ export default function Simulator({
                           <ul className="yuka-cat-list">
                             {(
                               [
-                                { cat: "Yogurt" as SwapCategory, label: "Yogurt & Dairy", icon: "🥣", bg: "#fef3c7", free: true },
-                                { cat: "Crackers" as SwapCategory, label: "Crackers & Cheddars", icon: "🧀", bg: "#ffedd5", free: true },
-                                { cat: "Dressings" as SwapCategory, label: "Ranch & Dressings", icon: "🥗", bg: "#dcfce7", free: true },
-                                { cat: "Deli Meat" as SwapCategory, label: "Deli Turkey & Meats", icon: "🥪", bg: "#fee2e2", free: true },
-                                { cat: "Butter/Dairy" as SwapCategory, label: "Grass-Fed Butter", icon: "🧈", bg: "#fef9c3", free: true },
-                                { cat: "Cereal" as SwapCategory, label: "Kids Cereals", icon: "🥣", bg: "#e0e7ff", free: false },
-                                { cat: "Chips" as SwapCategory, label: "Tortilla & Potato Chips", icon: "🌮", bg: "#fae8ff", free: false },
-                                { cat: "Bread" as SwapCategory, label: "Sprouted Breads", icon: "🍞", bg: "#f3e8ff", free: false },
-                                { cat: "Snacks" as SwapCategory, label: "Cookies & Fruit Snacks", icon: "🍪", bg: "#ffe4e6", free: false },
+                                { cat: "Yogurt" as SwapCategory, label: "Yogurt & Dairy", icon: "leaf" as UiIconName, bg: "#ecfdf5", free: true },
+                                { cat: "Crackers" as SwapCategory, label: "Crackers & Cheddars", icon: "spark" as UiIconName, bg: "#f0fdf4", free: true },
+                                { cat: "Dressings" as SwapCategory, label: "Ranch & Dressings", icon: "leaf" as UiIconName, bg: "#dcfce7", free: true },
+                                { cat: "Deli Meat" as SwapCategory, label: "Deli Turkey & Meats", icon: "shield" as UiIconName, bg: "#ecfdf5", free: true },
+                                { cat: "Butter/Dairy" as SwapCategory, label: "Grass-Fed Butter", icon: "spark" as UiIconName, bg: "#f0fdf4", free: true },
+                                { cat: "Cereal" as SwapCategory, label: "Kids Cereals", icon: "shield" as UiIconName, bg: "#f1f5f9", free: false },
+                                { cat: "Chips" as SwapCategory, label: "Tortilla & Potato Chips", icon: "leaf" as UiIconName, bg: "#f1f5f9", free: false },
+                                { cat: "Bread" as SwapCategory, label: "Sprouted Breads", icon: "leaf" as UiIconName, bg: "#f1f5f9", free: false },
+                                { cat: "Snacks" as SwapCategory, label: "Cookies & Fruit Snacks", icon: "spark" as UiIconName, bg: "#f1f5f9", free: false },
                               ]
                             ).map((row) => {
                               const locked = !row.free && !isPro;
@@ -4359,11 +4365,11 @@ export default function Simulator({
                                       }
                                     }}
                                   >
-                                    <span className="yuka-cat-tile" style={{ background: locked ? "#f1f5f9" : row.bg }}>
-                                      {row.icon}
+                                    <span className="yuka-cat-tile" style={{ background: locked ? "#f1f5f9" : row.bg, color: locked ? "#64748b" : "#15803d" }}>
+                                      <UiIcon name={row.icon} size={16} />
                                     </span>
                                     <span className="yuka-cat-label">{row.label}</span>
-                                    <span className="yuka-cat-right">{locked ? "🔒" : "›"}</span>
+                                    <span className="yuka-cat-right">{locked ? <UiIcon name="lock" size={14} /> : "›"}</span>
                                   </button>
                                 </li>
                               );
@@ -4372,7 +4378,7 @@ export default function Simulator({
                         </div>
                       )}
 
-                      {/* ==================== TAB 5: YUKA SEARCH / MEMBER ACCESS ==================== */}
+                      {/* ==================== TAB 5: YUKA SEARCH / IN-APP SETTINGS & BARCODE ==================== */}
                       {yukaTab === "search" && (
                         <div className="yuka-search-tab">
                           <form
@@ -4392,19 +4398,168 @@ export default function Simulator({
                               {liveState === "loading" ? "…" : "Scan"}
                             </button>
                           </form>
-                          <div className="yuka-member-card">
+
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                            <button
+                              id="app-watchlist-funnel"
+                              type="button"
+                              className="trip-pill"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                              onClick={() => {
+                                setManualFunnelOpen(true);
+                                setWatchlistFunnelStep(1);
+                                setWatchlistFunnelOpen(true);
+                              }}
+                            >
+                              <UiIcon name="shield" size={14} />
+                              <span>Watchlist ({familyWatchlist.length + dietaryWatchlist.length})</span>
+                            </button>
+                            <button
+                              id="toggle-prefer-store-brand"
+                              type="button"
+                              className="trip-pill"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                background: preferStoreBrand ? "#dcfce7" : undefined,
+                                color: preferStoreBrand ? "#14532d" : undefined,
+                                borderColor: preferStoreBrand ? "#86efac" : undefined,
+                              }}
+                              onClick={() => togglePreferStoreBrand()}
+                            >
+                              <UiIcon name="leaf" size={14} />
+                              <span>{preferStoreBrand ? "Store-Brand: ON" : "Store-Brand Swaps"}</span>
+                            </button>
+                            <button
+                              id="toggle-barcode-scanner"
+                              type="button"
+                              className="trip-pill"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                              onClick={() => {
+                                if (barcodeScannerOpen) {
+                                  stopCameraScanner();
+                                  setBarcodeScannerOpen(false);
+                                  setBarcodeStatus("");
+                                } else {
+                                  setBarcodeScannerOpen(true);
+                                  void startCameraScanner();
+                                }
+                              }}
+                            >
+                              <UiIcon name="barcode" size={14} />
+                              <span>{barcodeScannerOpen ? "Close Scanner" : "Scan Barcode"}</span>
+                            </button>
+                          </div>
+
+                          {barcodeScannerOpen && (
+                            <div
+                              style={{
+                                marginTop: 10,
+                                padding: 10,
+                                borderRadius: 12,
+                                background: "#0f172a",
+                                color: "#f8fafc",
+                                border: "1px solid #1e293b",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: "relative",
+                                  width: "100%",
+                                  height: 152,
+                                  borderRadius: 10,
+                                  overflow: "hidden",
+                                  background: "#020617",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <video
+                                  ref={barcodeVideoRef}
+                                  playsInline
+                                  muted
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    opacity: barcodeCameraActive ? 1 : 0.35,
+                                  }}
+                                />
+                                <div
+                                  aria-hidden
+                                  style={{
+                                    position: "absolute",
+                                    left: "50%",
+                                    top: "50%",
+                                    width: "66%",
+                                    height: "54%",
+                                    transform: "translate(-50%, -50%)",
+                                    border: "2px solid rgba(34, 197, 94, 0.92)",
+                                    borderRadius: 10,
+                                    boxShadow: "0 0 0 999px rgba(2, 6, 23, 0.48)",
+                                    pointerEvents: "none",
+                                  }}
+                                />
+                              </div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                                <button
+                                  type="button"
+                                  className="trip-pill"
+                                  style={{ background: "#1e293b", color: "#f8fafc", borderColor: "#334155" }}
+                                  onClick={() => {
+                                    if (barcodeCameraActive) stopCameraScanner();
+                                    else void startCameraScanner();
+                                  }}
+                                >
+                                  {barcodeCameraActive ? "Pause Camera" : "Start Camera"}
+                                </button>
+                                <label
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    padding: "5px 10px",
+                                    borderRadius: 999,
+                                    background: "#16a34a",
+                                    color: "#ffffff",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <UiIcon name="share" size={13} />
+                                  <span>Upload Barcode Photo</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={onBarcodePhotoUpload}
+                                    style={{ display: "none" }}
+                                  />
+                                </label>
+                              </div>
+                              <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "#cbd5e1", lineHeight: 1.4 }}>
+                                {barcodeStatus || "Center target UPC inside the green frame."}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="yuka-member-card" style={{ marginTop: 12 }}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src="/broc-mascot.png" alt="Broc" className="yuka-member-mascot" />
-                            <span className="yuka-member-eyebrow">MEMBER ACCESS</span>
-                            <h4>Search for any product</h4>
+                            <span className="yuka-member-eyebrow">{isPro ? "PRO ACTIVE" : "MEMBER ACCESS"}</span>
+                            <h4>{isPro ? "Family Pro Unlocked" : "Unlimited Clean Swaps & Pro"}</h4>
                             <p>Packaged food and beverage products scored on our 3-pillar rubric (60% Nutritional Quality, 30% Clean-Label Additives, 10% Organic Bonus) via Open Food Facts &amp; USDA FoodData Central.</p>
                             {!isPro && (
                               <button
+                                id="app-open-paywall"
                                 type="button"
                                 className="yuka-member-btn"
                                 onClick={requestProUpgrade}
                               >
-                                Become a member
+                                Unlock Family Pro
                               </button>
                             )}
                           </div>
@@ -4433,7 +4588,7 @@ export default function Simulator({
                           setYukaTab("history");
                         }}
                       >
-                        <span className="yuka-nav-pill">🕒</span>
+                        <span className="yuka-nav-pill"><UiIcon name="clock" size={17} /></span>
                         <small>Scans</small>
                       </button>
                       <button
@@ -4441,7 +4596,7 @@ export default function Simulator({
                         className={`yuka-nav-item ${yukaTab === "top" ? "is-active" : ""}`}
                         onClick={() => setYukaTab("top")}
                       >
-                        <span className="yuka-nav-pill">☰</span>
+                        <span className="yuka-nav-pill"><UiIcon name="list" size={17} /></span>
                         <small>Top Picks</small>
                       </button>
                       <button
@@ -4449,7 +4604,7 @@ export default function Simulator({
                         className={`yuka-nav-item ${yukaTab === "recs" ? "is-active" : ""}`}
                         onClick={() => setYukaTab("recs")}
                       >
-                        <span className="yuka-nav-pill">⇄</span>
+                        <span className="yuka-nav-pill"><UiIcon name="swap" size={17} /></span>
                         <small>Swaps</small>
                       </button>
                       <button
@@ -4457,7 +4612,7 @@ export default function Simulator({
                         className={`yuka-nav-item ${yukaTab === "search" ? "is-active" : ""}`}
                         onClick={() => setYukaTab("search")}
                       >
-                        <span className="yuka-nav-pill">🔍</span>
+                        <span className="yuka-nav-pill"><UiIcon name="search" size={17} /></span>
                         <small>Search</small>
                       </button>
                     </nav>
@@ -4588,7 +4743,7 @@ export default function Simulator({
                                         <b>Swap</b> to watch your Cart Avg climb!
                                       </>
                                     )
-                                  : "Every item in your cart scores 75+. Clean Cart Approved! 🎉"}
+                                  : "Every item in your cart scores 75+. Clean Cart Approved."}
                           </p>
                         }
                       />
@@ -4638,7 +4793,7 @@ export default function Simulator({
                                     {qty > 1 ? ` · Qty ${qty}` : ""}
                                     {sw
                                       ? !isPro && swapsUsedThisWeek >= weeklySwapLimit
-                                        ? ` · 🔒 ${sw.score}/100 Clean Swap available`
+                                        ? ` · ${sw.score}/100 Clean Swap available (Pro)`
                                         : ` · Tap to inspect or swap → ${sw.brand}`
                                       : " · Tap to inspect"}
                                   </small>
@@ -4749,7 +4904,8 @@ export default function Simulator({
                         className="scorecard-trigger-btn"
                         onClick={() => setScorecardOpen(true)}
                       >
-                        📱 Generate 9:16 TikTok/IG Scorecard
+                        <UiIcon name="phone" size={15} />
+                        <span>Generate 9:16 Clean Haul Scorecard</span>
                       </button>
                     )}
                     {cartOpen && <button className="link-btn center" onClick={openAudit}>Run Whole-Cart Health Check →</button>}
@@ -4806,7 +4962,7 @@ export default function Simulator({
             {/* Row 1 */}
             <div className="compare-row" role="row">
               <div className="compare-cell compare-cell--feature" role="cell">
-                <b>Floats on Walmart, Target, Kroger, Shipt, DoorDash, Instacart, ALDI &amp; more</b>
+                <b>Works inside Walmart, Target, Costco, Instacart, Kroger, ALDI, Amazon Fresh, Sam&apos;s Club, BJ&apos;s, DoorDash, Uber Eats &amp; Shipt</b>
               </div>
               <div className="compare-cell" role="cell">
                 <span className="cmp-yes">✓</span>
@@ -4962,7 +5118,7 @@ export default function Simulator({
             setIsPro(true);
           }
           setToast({
-            title: `👋 Welcome back, ${loggedInUser.displayName}!`,
+            title: `Welcome back, ${loggedInUser.displayName}!`,
             body: `Signed in with ${loggedInUser.email}. Your Family Watchlist, Clean Swaps & Pro status are synced.`,
           });
         }}

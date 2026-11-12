@@ -568,8 +568,8 @@ export function YukaImpactBand() {
           <span className="broc-impact-accent">cleaner.</span>
         </h2>
 
-        <a href="/swaps" className="yuka-green-pill-btn">
-          Browse Clean Swaps Directory
+        <a href="/tools" className="yuka-green-pill-btn">
+          Try Free Grader
         </a>
       </div>
     </section>
@@ -577,7 +577,7 @@ export function YukaImpactBand() {
 }
 
 /**
- * Clean, airy 4-column Yuka-inspired footer sitting directly above the countryside meadow scenery.
+ * Clean, airy 4-column Yuka-inspired footer sitting directly above the kitchen counter scenery.
  */
 export function YukaSiteFooter({
   onManageSubscription,
@@ -594,18 +594,25 @@ export function YukaSiteFooter({
             <span>HeyBroc</span>
           </a>
           <p className="yuka-footer-tagline">
-            100% independent food &amp; grocery ingredient grader across 12 stores.
+            Decode food labels and swap to cleaner groceries in one tap.
           </p>
           <div className="yuka-footer-badges">
             <a href="/tools#mobile-setup" className="yuka-store-badge">
-              <span></span>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+                <line x1="10" y1="18.5" x2="14" y2="18.5" />
+              </svg>
               <div>
                 <small>Setup on</small>
                 <strong>iPhone &amp; Safari</strong>
               </div>
             </a>
             <a href="/heybroc.apk" download="heybroc.apk" className="yuka-store-badge">
-              <span>▶</span>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+                <path d="M5 19.5h14" />
+              </svg>
               <div>
                 <small>Download for</small>
                 <strong>Android (.apk)</strong>
@@ -616,14 +623,14 @@ export function YukaSiteFooter({
 
         <div className="yuka-footer-col">
           <h4>Our Mission</h4>
-          <a href="/independence">100% Independence</a>
+          <a href="/independence">Independence</a>
           <a href="/swaps">Clean Swaps Directory</a>
           <a href="/creators">Creator Partners (35%)</a>
         </div>
 
         <div className="yuka-footer-col">
           <h4>Grocery Tools</h4>
-          <a href="/">12-Store Live Bubble</a>
+          <a href="/">Live Store Bubble</a>
           <a href="/tools">Free Label Grader</a>
           <a href="/tools#mobile-setup">Mobile Setup Guide</a>
         </div>
@@ -653,25 +660,25 @@ export function YukaSiteFooter({
               </p>
             </div>
             <div>
-              <strong>Which grocery stores work with the HeyBroc floating bubble?</strong>
+              <strong>How does the Live Store Bubble work while shopping?</strong>
               <p>
-                HeyBroc&apos;s Live Store Bubble works automatically across 12 major grocery stores and delivery apps: <b>Walmart, Instacart, Target, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale, Amazon Fresh, DoorDash, Uber Eats, and Shipt</b>—without needing to scan physical barcodes.
+                HeyBroc&apos;s Live Store Bubble reads product titles and ingredient lists directly inside major grocery pickup and delivery apps—surfacing instant 0–100 scores and cleaner swaps without scanning physical barcodes.
               </p>
             </div>
             <div>
-              <strong>Does HeyBroc accept payments from brands to change product scores?</strong>
+              <strong>Can food brands pay to change product scores?</strong>
               <p>
-                No. HeyBroc is 100% independent. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
+                No. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
               </p>
             </div>
           </div>
         </details>
 
         <details className="yuka-disclosure-box">
-          <summary>Independent Opinion, Label Verification, Pricing &amp; Non-Affiliation Notice</summary>
+          <summary>Scoring Methodology, Label Verification &amp; Non-Affiliation Notice</summary>
           <div className="yuka-disclosure-body">
             <p>
-              HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
+              HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is not affiliated with, endorsed by, or sponsored by any grocery retailer, delivery platform, or food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
             </p>
           </div>
         </details>
