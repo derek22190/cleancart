@@ -371,9 +371,9 @@ export default function WatchlistMiniFunnel({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        if (isReturningUser || showQuickEditor) {
+        if (isReturningUser || showQuickEditor || step === 1) {
           handleBackdropOrEscapeDismiss();
-        } else if (step > 1) {
+        } else {
           setStep((s) => (s > 1 ? ((s - 1) as FunnelStep) : 1));
         }
         return;
@@ -724,7 +724,7 @@ export default function WatchlistMiniFunnel({
       role="dialog"
       aria-modal="true"
       aria-labelledby="heybroc-onboarding-heading"
-      onClick={isReturningUser ? handleBackdropOrEscapeDismiss : undefined}
+      onClick={handleBackdropOrEscapeDismiss}
       style={{
         position: "fixed",
         inset: 0,
@@ -755,7 +755,7 @@ export default function WatchlistMiniFunnel({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header: Back Button / Step Pill + Returning-User Close Button */}
+        {/* Top Header: Back Button / Step Pill + Always-Available Close/Skip Button */}
         <div
           style={{
             display: "flex",
@@ -803,34 +803,29 @@ export default function WatchlistMiniFunnel({
                 whiteSpace: "nowrap",
               }}
             >
-              🥦 Step {step} of 7 · {STEP_TITLES[step]}
+              Step {step} of 7 · {STEP_TITLES[step]}
             </span>
           </div>
 
-          {isReturningUser && (
-            <button
-              type="button"
-              onClick={() => {
-                trackOnboardingEvent("onboarding_dismissed", { step, isReturningUser: true });
-                onClose();
-              }}
-              aria-label="Close watchlist calibration without saving"
-              style={{
-                background: "#f3f4f6",
-                border: "none",
-                borderRadius: 999,
-                padding: "5px 11px",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#4b5563",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              ✕ Close
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleBackdropOrEscapeDismiss}
+            aria-label="Close or skip onboarding"
+            style={{
+              background: "#f3f4f6",
+              border: "none",
+              borderRadius: 999,
+              padding: "5px 11px",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#4b5563",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            ✕ Close
+          </button>
         </div>
 
         {/* 7-Segment Progress Bar */}
