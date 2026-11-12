@@ -3616,7 +3616,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const independencePageSrc = fs.readFileSync("app/independence/page.tsx", "utf8");
   const latestGlobalsCssSrc = fs.readFileSync("app/globals.css", "utf8");
   check(
-    "Clean Faint-Green Canvas & Kitchen Counter Unpacking Scene: pure #ffffff canvas + faint-green accents, floating healthy food margin illustrations, tilted Poor-to-Excellent swap cards, /independence page, kitchen counter grocery unpacking footer, and giant U-eye Broc mascot",
+    "Clean Faint-Green Canvas, Mobile Halo Guard, Soft-Mint Pledge Cards & Kitchen Counter Unpacking Scene: no mobile stage halo overlap, sans-serif pledge cards, and giant U-eye Broc mascot",
     Boolean(
       fs.existsSync("public/broc-mascot-meadow.png") &&
         healthyScenerySrc.includes('id="healthy-food-backdrop"') &&
@@ -3625,6 +3625,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         healthyScenerySrc.includes('id="yuka-swap-showcase"') &&
         healthyScenerySrc.includes('id="footer-kitchen-scenery"') &&
         healthyScenerySrc.includes('id="footer-kitchen-broc"') &&
+        healthyScenerySrc.includes("Scores Can&apos;t Be Bought") &&
+        healthyScenerySrc.includes("Zero Sponsored Placements") &&
+        healthyScenerySrc.includes("Shopper-Funded Only") &&
+        !healthyScenerySrc.includes("No influence from brands") &&
+        !healthyScenerySrc.includes("Responsible financing") &&
         healthyScenerySrc.includes("Our Mission") &&
         healthyScenerySrc.includes("Grocery Tools") &&
         healthyScenerySrc.includes("/broc-mascot-meadow.png") &&
@@ -3637,7 +3642,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         finalSimSrc.includes("<FooterKitchenScenery />") &&
         independencePageSrc.includes("Our core value is independence") &&
         independencePageSrc.includes("100% INDEPENDENT") &&
+        independencePageSrc.includes("Scores Can&apos;t Be Bought") &&
+        independencePageSrc.includes("Zero Sponsored Placements") &&
+        independencePageSrc.includes("Shopper-Funded Only") &&
         independencePageSrc.includes("<FooterKitchenScenery />") &&
+        !latestGlobalsCssSrc.includes(".stage { position: static; }") &&
+        latestGlobalsCssSrc.includes(".stage { position: relative; top: auto; z-index: 1; overflow: hidden; }") &&
+        latestGlobalsCssSrc.includes(".broc-pledge-card") &&
         latestGlobalsCssSrc.includes(".kitchen-broc-mascot") &&
         latestGlobalsCssSrc.includes("height: 196px;")
     )

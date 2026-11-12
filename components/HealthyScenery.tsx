@@ -288,23 +288,23 @@ export function PhoneStageFoodHalo() {
 }
 
 /**
- * Yuka-inspired open, borderless "A 100% independent project" showcase with circular
- * mint sky badge, ribbon banner, soft organic icon blobs & handwritten script titles.
+ * Clean HeyBroc Independence Showcase with circular Broc emblem, 100% INDEPENDENT ribbon,
+ * and 3 numbered soft-mint pledge cards ("Scores Can't Be Bought", "Zero Sponsored Placements", "Shopper-Funded Only").
  */
 export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMore?: boolean }) {
   return (
     <section
       id="independent-section"
       className="yuka-indep-section"
-      aria-label="100% Independent Scoring Project"
+      aria-label="100% Independent Scoring Pledge"
     >
       <div className="yuka-indep-inner">
-        <h2 className="yuka-page-h2">A 100% independent project</h2>
+        <h2 className="yuka-page-h2">Built for shoppers, never Big Food</h2>
         <p className="yuka-page-lead">
-          HeyBroc&apos;s mission is to help families make cleaner choices in every grocery aisle — with zero influence from food manufacturers.
+          HeyBroc grades every item strictly from its ingredient list and nutrition facts — with zero food-industry money behind the curtain.
         </p>
 
-        {/* Hero Circular Sky/Mint Emblem + Broc Mascot + 100% INDEPENDENT Ribbon */}
+        {/* Hero Circular Mint Emblem + Broc Mascot + 100% INDEPENDENT Ribbon */}
         <div className="yuka-indep-badge" aria-hidden="true">
           <div className="yuka-indep-circle">
             <span className="yuka-cloud yuka-cloud--left" />
@@ -315,101 +315,80 @@ export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMor
           <div className="yuka-indep-ribbon">100% INDEPENDENT</div>
         </div>
 
-        {/* 3 Open, Borderless Pillars with Handwritten Script Titles & Hand-Drawn Underlines */}
-        <div className="yuka-pillars-grid">
-          <div className="yuka-pillar">
-            <div className="yuka-pillar-blob" aria-hidden="true">
-              <svg viewBox="0 0 88 88" width="76" height="76" fill="none">
-                <path
-                  d="M45 8C67 8 82 24 80 46C78 68 62 82 40 80C18 78 6 62 8 41C10 20 23 8 45 8Z"
-                  fill="#EAF8EF"
-                />
-                {/* Raised palm / stop hand */}
-                <path
-                  d="M33 46V27C33 25 36 25 36 27V41M39 41V23C39 21 42 21 42 23V41M45 41V25C45 23 48 23 48 25V42M51 43V30C51 28 54 28 54 30V49C54 57 48 62 41 62H39C32 62 28 57 28 50V43C28 40 31 40 32 43L33 46Z"
-                  fill="#FCD5B4"
-                  stroke="#E8A97E"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <rect x="33" y="61" width="18" height="6" rx="3" fill="#18A957" />
-              </svg>
+        {/* 3 Clean Sans-Serif Soft-Mint Pledge Cards */}
+        <div className="broc-pledge-grid">
+          {/* Card 01 */}
+          <article className="broc-pledge-card">
+            <div className="broc-pledge-top">
+              <div className="broc-pledge-icon" aria-hidden="true">
+                <svg viewBox="0 0 44 44" width="32" height="32" fill="none">
+                  <rect x="7" y="5" width="24" height="32" rx="5" fill="#EAF8EF" stroke="#159952" strokeWidth="2.2" />
+                  <line x1="12" y1="12" x2="24" y2="12" stroke="#159952" strokeWidth="2.2" strokeLinecap="round" />
+                  <line x1="12" y1="18" x2="26" y2="18" stroke="#6BC492" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="12" y1="23" x2="22" y2="23" stroke="#6BC492" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="30" cy="30" r="9" fill="#18B259" stroke="#FFFFFF" strokeWidth="2" />
+                  <path d="M26.5 30.2L29 32.7L34 27.5" stroke="#FFFFFF" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <span className="broc-pledge-tag">01 · UNBIASED MATH</span>
             </div>
-            <h3 className="yuka-hand-title">
-              No influence from brands
-              <svg className="yuka-hand-underline" viewBox="0 0 140 10" fill="none" aria-hidden="true">
-                <path d="M4 7C46 2 94 2 136 6" stroke="#22C55E" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-            </h3>
-            <p>
-              No food manufacturer or grocery brand can influence the 0–100 scores or cleaner product recommendations offered.
+            <h3 className="broc-pledge-title">Scores Can&apos;t Be Bought</h3>
+            <p className="broc-pledge-body">
+              Every 0–100 grade is computed deterministically from back-of-box ingredients and nutrition facts. Food brands cannot pay a dime to raise a score or hide an additive.
             </p>
-          </div>
+          </article>
 
-          <div className="yuka-pillar">
-            <div className="yuka-pillar-blob" aria-hidden="true">
-              <svg viewBox="0 0 88 88" width="76" height="76" fill="none">
-                <path
-                  d="M42 9C64 6 81 22 81 44C81 66 65 81 43 80C21 79 7 64 8 42C9 20 20 12 42 9Z"
-                  fill="#EAF8EF"
-                />
-                {/* Megaphone */}
-                <path
-                  d="M28 42L54 30V58L28 46V42Z"
-                  fill="#34B86A"
-                />
-                <ellipse cx="55" cy="44" rx="4.5" ry="14" fill="#FDBA8C" stroke="#1F8A4C" strokeWidth="2" />
-                <rect x="23" y="40" width="6" height="8" rx="2" fill="#D1EDE0" />
-                <path d="M31 48L34 59C34.5 61 32 62 30.5 60L27 48" fill="#15803D" />
-              </svg>
+          {/* Card 02 */}
+          <article className="broc-pledge-card">
+            <div className="broc-pledge-top">
+              <div className="broc-pledge-icon" aria-hidden="true">
+                <svg viewBox="0 0 44 44" width="32" height="32" fill="none">
+                  <rect x="6" y="9" width="26" height="22" rx="5" fill="#EAF8EF" stroke="#159952" strokeWidth="2.2" />
+                  <path d="M12 14V26M16 14V26M20 14V26M25 14V26" stroke="#159952" strokeWidth="2.1" strokeLinecap="round" />
+                  <path
+                    d="M31 20L38 23V29.5C38 34 34.8 37.4 31 39C27.2 37.4 24 34 24 29.5V23L31 20Z"
+                    fill="#18B259"
+                    stroke="#FFFFFF"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M28.2 29.5L30.2 31.5L34 27.5" stroke="#FFFFFF" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <span className="broc-pledge-tag">02 · MERIT-ONLY PICKS</span>
             </div>
-            <h3 className="yuka-hand-title">
-              No ads
-              <svg className="yuka-hand-underline" viewBox="0 0 90 10" fill="none" aria-hidden="true">
-                <path d="M4 7C32 3 60 3 86 6" stroke="#84CC16" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-            </h3>
-            <p>
-              Brands cannot pay HeyBroc to run banner ads or sponsor product placements inside the app while you shop.
+            <h3 className="broc-pledge-title">Zero Sponsored Placements</h3>
+            <p className="broc-pledge-body">
+              You will never see paid banner ads or bought shelf space inside HeyBroc. Every Clean Swap earns its spot strictly by outscoring conventional alternatives.
             </p>
-          </div>
+          </article>
 
-          <div className="yuka-pillar">
-            <div className="yuka-pillar-blob" aria-hidden="true">
-              <svg viewBox="0 0 88 88" width="76" height="76" fill="none">
-                <path
-                  d="M46 8C68 10 82 27 79 48C76 69 59 82 38 79C17 76 6 59 9 38C12 17 24 6 46 8Z"
-                  fill="#EAF8EF"
-                />
-                {/* Honest green pouch */}
-                <path
-                  d="M36 27L44 33L52 27C50 23 38 23 36 27Z"
-                  fill="#22A85A"
-                />
-                <path
-                  d="M44 33C31 35 25 45 27 56C29 64 36 67 44 67C52 67 59 64 61 56C63 45 57 35 44 33Z"
-                  fill="#188C49"
-                />
-                <path d="M37 33H51" stroke="#FDE68A" strokeWidth="2.8" strokeLinecap="round" />
-              </svg>
+          {/* Card 03 */}
+          <article className="broc-pledge-card">
+            <div className="broc-pledge-top">
+              <div className="broc-pledge-icon" aria-hidden="true">
+                <svg viewBox="0 0 44 44" width="32" height="32" fill="none">
+                  <path d="M15 18L19 9M29 18L25 9" stroke="#159952" strokeWidth="2.3" strokeLinecap="round" />
+                  <path d="M7 18H37L34 34C33.6 36 32 37 30 37H14C12 37 10.4 36 10 34L7 18Z" fill="#EAF8EF" stroke="#159952" strokeWidth="2.2" strokeLinejoin="round" />
+                  <path
+                    d="M22 30.8C22 30.8 16.5 27.2 16.5 23.8C16.5 22 17.9 20.8 19.5 20.8C20.6 20.8 21.5 21.4 22 22.2C22.5 21.4 23.4 20.8 24.5 20.8C26.1 20.8 27.5 22 27.5 23.8C27.5 27.2 22 30.8 22 30.8Z"
+                    fill="#18B259"
+                  />
+                </svg>
+              </div>
+              <span className="broc-pledge-tag">03 · ALIGNED WITH FAMILIES</span>
             </div>
-            <h3 className="yuka-hand-title">
-              Responsible financing
-              <svg className="yuka-hand-underline" viewBox="0 0 130 10" fill="none" aria-hidden="true">
-                <path d="M4 7C42 2 88 3 126 6" stroke="#F59E0B" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-            </h3>
-            <p>
-              Supported by optional Family Pro memberships and clearly marked retail store links that never affect any product score.
+            <h3 className="broc-pledge-title">Shopper-Funded Only</h3>
+            <p className="broc-pledge-body">
+              Supported by optional Family Pro memberships and clearly marked retail store links that never affect scores — and we never sell your family&apos;s scan or cart data.
             </p>
-          </div>
+          </article>
         </div>
 
         {showLearnMore && (
           <div className="yuka-indep-cta-row">
             <a href="/independence" className="yuka-green-pill-btn">
-              Learn more
+              Read Our Independence Pledge →
             </a>
           </div>
         )}
@@ -419,8 +398,7 @@ export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMor
 }
 
 /**
- * Yuka-inspired wavy faint-green "Get recommendations for healthier products" section
- * with tilted floating Poor -> Excellent white product cards & soft ground shadows.
+ * Wavy faint-green Clean Swaps showcase with tilted floating Poor -> Excellent white product cards & soft ground shadows.
  */
 export function YukaSwapShowcase() {
   return (
@@ -431,9 +409,9 @@ export function YukaSwapShowcase() {
     >
       <div className="yuka-swap-wave-box">
         <h2 className="yuka-page-h2">
-          Get recommendations
+          Instant Clean Swaps
           <br />
-          for healthier products
+          for flagged groceries
         </h2>
         <p className="yuka-page-lead">
           Whenever an everyday item flags for seed oils, synthetic dyes, or refined syrups, HeyBroc links directly to a cleaner alternative in your store.
@@ -586,13 +564,8 @@ export function YukaImpactBand() {
         <h2 className="yuka-impact-heading">
           With HeyBroc, families decode back-of-box labels in 1 second
           <br />
-          and start eating{" "}
-          <span className="yuka-impact-script">
-            healthier
-            <svg viewBox="0 0 180 12" fill="none" aria-hidden="true">
-              <path d="M3 9C58 3 122 3 177 7" stroke="#18B259" strokeWidth="3.2" strokeLinecap="round" />
-            </svg>
-          </span>
+          and fill every grocery cart{" "}
+          <span className="broc-impact-accent">cleaner.</span>
         </h2>
 
         <a href="/swaps" className="yuka-green-pill-btn">

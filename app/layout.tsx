@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Caveat, Plus_Jakarta_Sans } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const caveat = Caveat({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-hand", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.heybroc.com"),
@@ -162,7 +161,7 @@ const jsonLd = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${jakarta.variable} ${caveat.variable}`}>
+    <html lang="en" className={jakarta.variable}>
       <head>
         <meta
           name="impact-site-verification"
