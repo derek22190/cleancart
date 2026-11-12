@@ -1146,14 +1146,45 @@ export function scoreProductYuka(
   const isNonFoodItem =
     nutrition.productKind === "non-food" ||
     (!rawIngredients.trim() && !hasAnyMeasuredNutrition && !isWholeFood) ||
-    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|dishwashing|dishwasher|rinse\s+aid|shampoo|conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|fabric\s+softener|fabric\s+conditioner|dryer\s+sheets?|scent\s+booster|stain\s+remover|air\s+freshener|febreze|glade|candle|wax\s+melt|incense|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|freezer\s+bags?|ziploc|paper\s+plates?|napkins?|facial\s+tissue|kleenex|cotton\s+swabs?|q-tips?|cotton\s+balls?|tampons?|sanitary\s+pads?|pantiliners?|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|serum|cleanser|toner|micellar\s+(?:water|cleans\w*)|retinol|hyaluronic\s+acid|salicylic\s+acid|benzoyl\s+peroxide|witch\s+hazel|eye\s+cream|face\s+mask|lip\s+balm|mascara|foundation|concealer|eyeliner|nail\s+polish|acetone|perfume|cologne|shaving\s+cream|aftershave|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+treats?|cat\s+treats?|kibble|cat\s+litter|kitty\s+litter|purina|pedigree|blue\s+buffalo|fancy\s+feast|friskies|meow\s+mix|iams|greenies|milk-bone|acetaminophen|ibuprofen|naproxen|diphenhydramine|loratadine|cetirizine|fexofenadine|dextromethorphan|guaifenesin|phenylephrine|pseudoephedrine|omeprazole|famotidine|bismuth\s+subsalicylate|loperamide|polyethylene\s+glycol\s+3350|miralax|tylenol|advil|motrin|aleve|zyrtec|claritin|allegra|benadryl|nyquil|dayquil|mucinex|robitussin|pepto-bismol|neosporin|hydrocortisone|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|dimethicone|oxybenzone|avobenzone)\b/i.test(
+    /\b(body\s+wash|face\s+wash|hand\s+wash|dish\s+soap|dishwashing|dishwasher|rinse\s+aid|shampoo|(?<!dough\s+)conditioner|lotion|moisturizer|sunscreen|spf|soap|detergent|bleach|cleaner|disinfect\w*|fabric\s+softener|fabric\s+conditioner|dryer\s+sheets?|scent\s+booster|stain\s+remover|air\s+freshener|febreze|glade|candle|wax\s+melt|incense|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|freezer\s+bags?|ziploc|paper\s+plates?|napkins?|facial\s+tissue|kleenex|cotton\s+swabs?|q-tips?|cotton\s+balls?|tampons?|sanitary\s+pads?|pantiliners?|toothpaste|mouthwash|deodorant|antiperspirant|diapers?|wipes?|toilet\s+paper|paper\s+towels?|bath\s+tissue|(?<!milk\s+|whey\s+)serum|cleanser|(?:facial\s+|face\s+|skin\s+)toner|micellar\s+(?:water|cleans\w*)|retinol|hyaluronic\s+acid|salicylic\s+acid|benzoyl\s+peroxide|witch\s+hazel|eye\s+cream|face\s+mask|lip\s+balm|mascara|(?:makeup\s+|liquid\s+)foundation|concealer|eyeliner|nail\s+polish|acetone|perfume|cologne|shaving\s+cream|aftershave|dog\s+food|cat\s+food|pet\s+food|puppy\s+food|kitten\s+food|dog\s+treats?|cat\s+treats?|kibble|cat\s+litter|kitty\s+litter|purina|pedigree|blue\s+buffalo|fancy\s+feast|friskies|meow\s+mix|iams|greenies|milk-bone|acetaminophen|ibuprofen|naproxen|diphenhydramine|loratadine|cetirizine|fexofenadine|dextromethorphan|guaifenesin|phenylephrine|pseudoephedrine|omeprazole|famotidine|bismuth\s+subsalicylate|loperamide|polyethylene\s+glycol\s+3350|miralax|tylenol|advil|motrin|aleve|zyrtec|claritin|allegra|benadryl|nyquil|dayquil|mucinex|robitussin|pepto-bismol|neosporin|hydrocortisone|sodium\s+laureth\s+sulfate|cocamidopropyl\s+betaine|oxybenzone|avobenzone)\b/i.test(
       titleAndIng,
     );
 
   const est = estimateNutritionFromProduct(nutrition.productTitle, rawIngredients);
-  const kcal = hasMeasuredCalories ? nutrition.caloriesKcal100g! : (isWholeFood ? 75 : est.caloriesKcal100g);
-  const sugars = hasMeasuredSugars ? nutrition.sugarsG100g! : (isWholeFood ? 2.0 : est.sugarsG100g);
-  const satFat = hasMeasuredSatFat ? nutrition.saturatedFatG100g! : (isWholeFood ? 1.0 : est.saturatedFatG100g);
+  const isSolidProcessedFood =
+    !isBeverage && !isNonFoodItem && !isWholeFood && nutrition.productKind !== "supplement";
+  const hasDenseCaloricBase =
+    isSolidProcessedFood &&
+    /\b(wheat\s+flour|enriched\s+flour|bleached\s+flour|unbleached\s+flour|corn\s+flour|rice\s+flour|oat\s+flour|almond\s+flour|semolina|rolled\s+oats|whole\s+grain\s+oats|vegetable\s+oils?|palm\s+oil|palm\s+kernel\s+oil|soybean\s+oil|canola\s+oil|sunflower\s+oil|corn\s+oil|cottonseed\s+oil|coconut\s+oil|olive\s+oil|avocado\s+oil|peanut\s+oil|butter|shortening|lard|heavy\s+cream|cheddar|mozzarella|cream\s+cheese|parmesan|peanuts|almonds|cashews|walnuts|pecans|hazelnuts|cocoa\s+butter|chocolate\s+liquor|milk\s+chocolate)\b/i.test(
+      rawIngredients,
+    ) &&
+    !/\b(cooking\s+spray|spray|mustard|hot\s+sauce|vinegar|pickles?|broth|bouillon|seasoning|spice|tea|coffee)\b/i.test(
+      titleAndIng,
+    );
+  const hasSweetConfectioneryBase =
+    isSolidProcessedFood &&
+    hasTop3AddedSugar &&
+    !base.flagged.some((f) => f.category === "sweeteners") &&
+    /\b(cookies?|wafers?|cake|brownies?|cupcakes?|muffins?|donuts?|doughnuts?|pastries|pastry|frosting|icing|candy|chocolate|gummies|jam|jelly|preserves|marmalade|syrup|cereal|granola|ice\s+cream|hazelnut\s+spread)\b/i.test(
+      titleAndIng,
+    );
+  const hasTop3SatFatSource =
+    isSolidProcessedFood &&
+    /\b(palm\s+oil|palm\s+kernel|coconut\s+oil|butter|cocoa\s+butter|cheddar|mozzarella|cream\s+cheese|shortening|hydrogenated|lard|tallow)\b/i.test(
+      top3,
+    ) &&
+    !/\b(fat[\s-]*free|non[\s-]*fat|skim|0%\s*fat)\b/i.test(titleAndIng);
+
+  const plausibleCalories =
+    hasMeasuredCalories && !(hasDenseCaloricBase && nutrition.caloriesKcal100g! < 15);
+  const plausibleSugars =
+    hasMeasuredSugars && !(hasSweetConfectioneryBase && nutrition.sugarsG100g! < 1);
+  const plausibleSatFat =
+    hasMeasuredSatFat && !(hasTop3SatFatSource && nutrition.saturatedFatG100g! === 0);
+
+  const kcal = plausibleCalories ? nutrition.caloriesKcal100g! : (isWholeFood ? 75 : est.caloriesKcal100g);
+  const sugars = plausibleSugars ? nutrition.sugarsG100g! : (isWholeFood ? 2.0 : est.sugarsG100g);
+  const satFat = plausibleSatFat ? nutrition.saturatedFatG100g! : (isWholeFood ? 1.0 : est.saturatedFatG100g);
   const sodium = hasMeasuredSodium ? nutrition.sodiumMg100g! : (isWholeFood ? 45 : est.sodiumMg100g);
   const fiber = nutrition.fiberG100g ?? (isWholeFood ? 3.5 : est.fiberG100g);
   const protein = nutrition.proteinG100g ?? (isWholeFood ? 6.5 : est.proteinG100g);

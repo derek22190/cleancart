@@ -3724,6 +3724,167 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const {
+    canonicalizeGroceryQuery,
+    cacheKey,
+    mergeBrandAndTitle,
+    relevance,
+  } = await import("../lib/lookup");
+
+  check(
+    "Universal Brand-Order & Punctuation Canonicalization: '<Food> <Brand>' and apostrophe/hyphen shorthands share identical canonical query and cacheKey while preserving leading Diet/Mexican/GHOST modifiers",
+    Boolean(
+      cacheKey({ productTitle: "Flour tortillas mission" }) === cacheKey({ productTitle: "Mission Flour tortillas" }) &&
+        cacheKey({ productTitle: "Strawberry jam smuckers" }) === cacheKey({ productTitle: "Smucker's strawberry jam" }) &&
+        cacheKey({ productTitle: "Pizza rolls totinos" }) === cacheKey({ productTitle: "Totino's pizza rolls" }) &&
+        cacheKey({ productTitle: "Crackers cheez it" }) === cacheKey({ productTitle: "Cheez-It crackers" }) &&
+        cacheKey({ productTitle: "Classic cola coca" }) === cacheKey({ productTitle: "Coca-Cola classic" }) &&
+        canonicalizeGroceryQuery("Diet Coke") === "Diet Coke" &&
+        canonicalizeGroceryQuery("Mexican Coca-Cola") === "Mexican Coca-Cola" &&
+        canonicalizeGroceryQuery("GHOST Legend Swedish Fish Pre-Workout") === "GHOST Legend Swedish Fish Pre-Workout" &&
+        mergeBrandAndTitle("Kellogg's Eggo", "Eggo Homestyle Waffles") === "Kellogg's Eggo Homestyle Waffles"
+    )
+  );
+
+  const eggoA = await lookupIngredients({ productTitle: "Eggo waffles" });
+  const eggoB = await lookupIngredients({ productTitle: "Waffles Eggo" });
+  const phillyA = await lookupIngredients({ productTitle: "Philadelphia cream cheese" });
+  const phillyB = await lookupIngredients({ productTitle: "Cream cheese Philadelphia" });
+  const totinosOffline = await lookupIngredients({ productTitle: "Totino's pizza rolls" });
+  check(
+    "Universal Relevance, Spin-Off & Representative-Hijack Guards: Prego rejects pesto/en:pestos, Quaker oats rejects oat flour, Oscar Mayer hot dogs matches wieners, Eggo/Philadelphia resolve symmetrically without brand duplication, and Totino's never receives chicken-bacon Representative Category Formulation",
+    Boolean(
+      relevance("Prego traditional pasta sauce", "Prego Basil Pesto") === 0 &&
+        relevance("Prego traditional pasta sauce", "Prego Pasta Sauce", ["en:pestos"]) === 0 &&
+        relevance("Prego traditional pasta sauce", "Prego Traditional", ["en:pasta-sauces"]) >= 0.7 &&
+        relevance("Quaker oats", "Quaker Oat Flour") === 0 &&
+        relevance("Quaker oats", "Quaker Oats 100% Whole Grain Oats Old Fashioned") >= 0.85 &&
+        relevance("Smucker's strawberry jam", "Smucker's Peanut butter & strawberry jam sandwich soft bread") === 0 &&
+        relevance("Oscar Mayer hot dogs", "Oscar Mayer Classic Uncured Wieners") >= 0.85 &&
+        passesVariantGuard("strawberries", "Organic Strawberries") &&
+        passesVariantGuard("strawberry jam", "Seedless Strawberries Jam") &&
+        eggoA?.productTitle === "Kellogg's Eggo Homestyle Waffles" &&
+        eggoB?.productTitle === "Kellogg's Eggo Homestyle Waffles" &&
+        phillyA?.productTitle === "Philadelphia Original Cream Cheese" &&
+        phillyB?.productTitle === "Philadelphia Original Cream Cheese" &&
+        totinosOffline === null
+    )
+  );
+
+  const prevFetchForCoBrand = globalThis.fetch;
+  globalThis.fetch = async (urlInput: RequestInfo | URL) => {
+    const url = String(urlInput);
+    if (url.includes("api.nal.usda.gov")) {
+      return Response.json({
+        foods: [
+          {
+            fdcId: 999001,
+            brandName: "Herr's",
+            brandOwner: "Herr Foods Inc.",
+            description: "Potato Chips, Heinz Ketchup",
+            dataType: "Branded",
+            ingredients: "POTATOES, VEGETABLE OIL, HEINZ KETCHUP SEASONING.",
+            foodNutrients: [{ nutrientId: 1008, unitName: "KCAL", value: 536 }],
+          },
+        ],
+      });
+    }
+    if (url.includes("search.openfoodfacts.org")) {
+      return Response.json({
+        hits: [
+          {
+            code: "0051500000946",
+            brands: ["Smuckers"],
+            product_name: "Seedless Strawberry Jam",
+            countries_tags: ["en:united-states"],
+            states_tags: ["en:ingredients-completed"],
+            categories_tags: ["en:jams"],
+          },
+          {
+            code: "0051500040256",
+            brands: ["Smucker's"],
+            product_name: "Smucker's Strawberry Jam",
+            countries_tags: ["en:united-states"],
+            states_tags: ["en:ingredients-completed"],
+            categories_tags: ["en:jams"],
+          },
+        ],
+      });
+    }
+    if (url.includes("0051500000946")) {
+      return Response.json({
+        status: 1,
+        product: {
+          code: "0051500000946",
+          brands: "Smuckers",
+          product_name: "Seedless Strawberry Jam",
+          countries_tags: ["en:united-states"],
+          ingredients_text: "WATER, STRAWBERRIES, POLYDEXTROSE, FRUIT PECTIN, CITRIC ACID, SUCRALOSE, RED 40.",
+          nutriments: { "energy-kcal_100g": 59, sugars_100g: 0, sodium_100g: 0 },
+        },
+      });
+    }
+    if (url.includes("0051500040256")) {
+      return Response.json({
+        status: 1,
+        product: {
+          code: "0051500040256",
+          brands: "Smucker's",
+          product_name: "Smucker's Strawberry Jam",
+          countries_tags: ["en:united-states"],
+          ingredients_text: "STRAWBERRIES, HIGH FRUCTOSE CORN SYRUP, CORN SYRUP, SUGAR, FRUIT PECTIN, CITRIC ACID.",
+          nutriments: { "energy-kcal_100g": 250, sugars_100g: 60, sodium_100g: 0 },
+        },
+      });
+    }
+    return Response.json({ status: 0, hits: [], products: [], foods: [] });
+  };
+  const heinzCheck = await lookupIngredients({ productTitle: "Heinz ketchup" });
+  const smuckersCheck = await lookupIngredients({ productTitle: "Strawberry jam smuckers" });
+  globalThis.fetch = prevFetchForCoBrand;
+
+  const doughConditionerPizzaScore = scoreProductYuka(
+    "Enriched wheat flour (wheat flour, niacin, reduced iron), water, mozzarella cheese (part-skim milk, cheese culture, salt, enzymes), pepperoni (pork, beef, salt, sodium nitrite, bha, bht), tomato paste, soybean oil, sugar, salt, ascorbic acid (dough conditioner).",
+    {},
+    [],
+    {
+      productTitle: "DiGiorno Rising Crust Pepperoni Frozen Pizza",
+      caloriesKcal100g: 231,
+      sugarsG100g: 4.6,
+      saturatedFatG100g: 3.8,
+      sodiumMg100g: 577,
+      fiberG100g: 0.8,
+      proteinG100g: 11.5,
+      productKind: "food",
+    }
+  );
+  const corruptZeroMacroCookieScore = scoreProductYuka(
+    "WHEAT flour, sugar, vegetable oils (palm, palm kernel), cocoa, leavening, soy lecithin, salt, natural flavor.",
+    {},
+    [],
+    {
+      productTitle: "Chocolate Sandwich Cookies",
+      caloriesKcal100g: 0,
+      sugarsG100g: 0,
+      saturatedFatG100g: 0,
+      sodiumMg100g: 150,
+      productKind: "food",
+    }
+  );
+
+  check(
+    "Co-Branded Hijack, Unlabelled Sugar-Free Jam, Dough-Conditioner Non-Food & Zero-Macro Cookie Guards: Heinz rejects Herr's ketchup chips, Smucker's skips unlabelled 0g-sugar Sucralose jam, dough conditioner never zeroes pizza to N/A, and 0-kcal cookie records never score Nutri-Score A",
+    Boolean(
+      heinzCheck === null &&
+        smuckersCheck &&
+        smuckersCheck.barcode === "0051500040256" &&
+        doughConditionerPizzaScore.score > 0 &&
+        doughConditionerPizzaScore.yukaBreakdown?.nutriScoreGrade !== "N/A" &&
+        corruptZeroMacroCookieScore.score < 45 &&
+        corruptZeroMacroCookieScore.yukaBreakdown?.nutriScoreGrade !== "A"
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

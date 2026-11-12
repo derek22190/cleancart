@@ -120,9 +120,350 @@ function setCacheEntry(cache: Map<string, CacheEntry>, key: string, entry: Cache
   }
 }
 
+const CANONICAL_BRAND_PATTERNS: RegExp[] = [
+  /\bsimple\s+truth\s+organic\b/i,
+  /\bsimple\s+truth\b/i,
+  /\bprivate\s+selection\b/i,
+  /\bgood\s*(?:&|and)\s*gather\b/i,
+  /\bfavorite\s+day\b/i,
+  /\bkirkland\s+signature\b/i,
+  /\btrader\s+joe'?s\b/i,
+  /\bmember'?s\s+mark\b/i,
+  /\bgreat\s+value\b/i,
+  /\bwellsley\s+farms\b/i,
+  /\bmarketside\s+butcher\b/i,
+  /\bhidden\s+valley\b/i,
+  /\bnature\s+valley\b/i,
+  /\bnature'?s\s+own\b/i,
+  /\bdave'?s\s+killer\b/i,
+  /\boscar\s+mayer\b/i,
+  /\bpepperidge\s+farm\b/i,
+  /\bcoca[\s-]+cola\b/i,
+  /\bdr\.?\s*pepper\b/i,
+  /\b(?:mountain|mtn)\s+dew\b/i,
+  /\bred\s+bull\b/i,
+  /\bmonster(?:\s+energy)?\b/i,
+  /\balani(?:\s+nu)?\b/i,
+  /\bpremier\s+protein\b/i,
+  /\bmuscle\s+milk\b/i,
+  /\bliquid\s+death\b/i,
+  /\bplanet\s+oat\b/i,
+  /\borganic\s+valley\b/i,
+  /\bstonyfield(?:\s+organic)?\b/i,
+  /\bfrank'?s\s+redhot\b/i,
+  /\bsweet\s+baby\s+ray'?s\b/i,
+  /\bland\s+o'?\s*lakes\b/i,
+  /\bcountry\s+crock\b/i,
+  /\bblue\s+bonnet\b/i,
+  /\bbest\s+foods\b/i,
+  /\bgrey\s+poupon\b/i,
+  /\bbetty\s+crocker\b/i,
+  /\bduncan\s+hines\b/i,
+  /\bpearl\s+milling\b/i,
+  /\bmrs\.?\s*butterworth'?s?\b/i,
+  /\bpeter\s+pan\b/i,
+  /\bbonne\s+maman\b/i,
+  /\bred\s+baron\b/i,
+  /\bhealthy\s+choice\b/i,
+  /\blean\s+cuisine\b/i,
+  /\bmarie\s+callender'?s?\b/i,
+  /\bhebrew\s+national\b/i,
+  /\bball\s+park\b/i,
+  /\bjennie[- ]?o\b/i,
+  /\bjimmy\s+dean\b/i,
+  /\bhillshire\s+farm\b/i,
+  /\bcanyon\s+bakehouse\b/i,
+  /\bking'?s\s+hawaiian\b/i,
+  /\bsara\s+lee\b/i,
+  /\bmiracle\s+whip\b/i,
+  /\bwish[- ]?bone\b/i,
+  /\bnewman'?s\s+own\b/i,
+  /\blaughing\s+cow\b/i,
+  /\bchips\s+ahoy\b/i,
+  /\bnutter\s+butter\b/i,
+  /\bfig\s+newtons?\b/i,
+  /\bsour\s+patch\b/i,
+  /\bswedish\s+fish\b/i,
+  /\bcape\s+cod\b/i,
+  /\bskinny\s*pop\b/i,
+  /\blittle\s+debbie\b/i,
+  /\bpop[- ]tarts?\b/i,
+  /\bcheez[- ]its?\b/i,
+  /\bfroot\s+loops\b/i,
+  /\bfrosted\s+flakes\b/i,
+  /\blucky\s+charms\b/i,
+  /\bcinnamon\s+toast\s+crunch\b/i,
+  /\bcapri\s+sun\b/i,
+  /\bkettle\s*&\s*fire\b/i,
+  /\bjust\s+bare\b/i,
+  /\blotus\s+foods\b/i,
+  /\bprimal\s+kitchen\b/i,
+  /\bchosen\s+foods\b/i,
+  /\bboulder\s+canyon\b/i,
+  /\btony'?s\s+chocolonely\b/i,
+  /\bferrero(?:\s+rocher)?\b/i,
+  /\bhaagen[- ]dazs\b/i,
+  /\bben\s*&\s*jerry'?s?\b/i,
+  /\bore[- ]ida\b/i,
+  /\bmuir\s+glen\b/i,
+  /\bgold\s+peak\b/i,
+  /\bpure\s+leaf\b/i,
+  /\bito\s+en\b/i,
+  /\bhealth[- ]ade\b/i,
+  /\bla\s+colombe\b/i,
+  /\bcanada\s+dry\b/i,
+  /\bmug\s+root\s+beer\b/i,
+  /\btop\s+ramen\b/i,
+  /\bcup\s+noodles?\b/i,
+  /\bshin\s+ramyun\b/i,
+  /\bwheat\s+thins\b/i,
+  /\bgeneral\s+mills\b/i,
+  /\bboar'?s\s+head\b/i,
+  /\bfoster\s+farms\b/i,
+  /\bclif\s+bar\b/i,
+  /\bhalo\s+top\b/i,
+  /\bheinz\b/i,
+  /\bkraft\b/i,
+  /\boreo\b/i,
+  /\bjif\b/i,
+  /\bskippy\b/i,
+  /\bthomas'?\b/i,
+  /\beggo\b/i,
+  /\bquaker\b/i,
+  /\bbarilla\b/i,
+  /\bchobani\b/i,
+  /\bfage\b/i,
+  /\boikos\b/i,
+  /\bsiggi'?s\b/i,
+  /\bdannon\b/i,
+  /\bactivia\b/i,
+  /\btillamook\b/i,
+  /\bsargento\b/i,
+  /\bphiladelphia(?!\s+rolls?\b)\b/i,
+  /\blay'?s(?!\s+(?:flat|eggs?)\b)\b/i,
+  /\bruffles\b/i,
+  /\bpringles\b/i,
+  /\bdoritos\b/i,
+  /\bcheetos\b/i,
+  /\btostitos\b/i,
+  /\bfritos\b/i,
+  /\bgoldfish\b/i,
+  /\britz\b/i,
+  /\btriscuit\b/i,
+  /\bnutella\b/i,
+  /\bsmucker'?s\b/i,
+  /\bwelch'?s\b/i,
+  /\bmott'?s\b/i,
+  /\bprego\b/i,
+  /\bragu\b/i,
+  /\bclassico\b/i,
+  /\bbertolli\b/i,
+  /\brao'?s\b/i,
+  /\bpace\b/i,
+  /\bherdez\b/i,
+  /\bmateo'?s\b/i,
+  /\bsabra\b/i,
+  /\bcampbell'?s\b/i,
+  /\bprogresso\b/i,
+  /\bamy'?s\b/i,
+  /\btotino'?s\b/i,
+  /\bdigiorno\b/i,
+  /\btombstone\b/i,
+  /\bstouffer'?s\b/i,
+  /\bbanquet\b/i,
+  /\bkellogg'?s\b/i,
+  /\bcheerios\b/i,
+  /\bgatorade\b/i,
+  /\bpowerade\b/i,
+  /\bpedialyte\b/i,
+  /\bbodyarmor\b/i,
+  /\belectrolit\b/i,
+  /\bcoke\b/i,
+  /\bpepsi\b/i,
+  /\bsprite\b/i,
+  /\bfanta\b/i,
+  /\bsunkist\b/i,
+  /\bstarry\b/i,
+  /\bzevia\b/i,
+  /\bolipop\b/i,
+  /\bpoppi\b/i,
+  /\bcelsius\b/i,
+  /\bghost\b/i,
+  /\breign\b/i,
+  /\brockstar\b/i,
+  /\bowyn\b/i,
+  /\borgain\b/i,
+  /\bfairlife\b/i,
+  /\blactaid\b/i,
+  /\bsilk\b/i,
+  /\bcalifia\b/i,
+  /\boatly\b/i,
+  /\bmalk\b/i,
+  /\belmhurst\b/i,
+  /\bstarbucks\b/i,
+  /\bdunkin'?\b/i,
+  /\bstok\b/i,
+  /\barizona\b/i,
+  /\bgt'?s\b/i,
+  /\bkevita\b/i,
+  /\btyson\b/i,
+  /\bperdue\b/i,
+  /\bapplegate\b/i,
+  /\bhormel\b/i,
+  /\bsmithfield\b/i,
+  /\bnathan'?s\b/i,
+  /\bjohnsonville\b/i,
+  /\beckrich\b/i,
+  /\bvelveeta\b/i,
+  /\bbabybel\b/i,
+  /\bkerrygold\b/i,
+  /\bhellmann'?s\b/i,
+  /\bduke'?s\b/i,
+  /\bfrench'?s\b/i,
+  /\bkikkoman\b/i,
+  /\btabasco\b/i,
+  /\bcholula\b/i,
+  /\btapatio\b/i,
+  /\bvalentina\b/i,
+  /\bvlasic\b/i,
+  /\bpillsbury\b/i,
+  /\bkodiak\b/i,
+  /\bkrusteaz\b/i,
+  /\bbisquick\b/i,
+  /\bbreyers\b/i,
+  /\btalenti\b/i,
+  /\byasso\b/i,
+  /\boutshine\b/i,
+  /\bharibo\b/i,
+  /\bskittles\b/i,
+  /\bstarburst\b/i,
+  /\bsnickers\b/i,
+  /\btwix\b/i,
+  /\bkit\s*kat\b/i,
+  /\breese'?s\b/i,
+  /\bhershey'?s\b/i,
+  /\blindt\b/i,
+  /\blindor\b/i,
+  /\bghirardelli\b/i,
+  /\bgoodles\b/i,
+  /\bannie'?s\b/i,
+  /\bmaruchan\b/i,
+  /\bnissin\b/i,
+  /\bnongshim\b/i,
+  /\bbuldak\b/i,
+  /\bsamyang\b/i,
+  /\bindomie\b/i,
+  /\bmission(?!\s+figs?\b)\b/i,
+  /\bmartin'?s\b/i,
+  /\bezekiel\b/i,
+  /\barnold\b/i,
+  /\borowheat\b/i,
+  /\bbelvita\b/i,
+  /\bsmartfood\b/i,
+  /\bkeebler\b/i,
+];
+
+/**
+ * Normalizes punctuation/apostrophe/hyphen brand shorthands ("totinos" -> "Totino's",
+ * "pop tarts" -> "Pop-Tarts", "cola coca" -> "Coca-Cola") and canonicalizes reversed
+ * `<Food> <Brand>` queries ("Flour tortillas mission" -> "Mission Flour tortillas")
+ * so word-order permutations resolve to the exact same cache key, provider query, and score.
+ */
+export function canonicalizeGroceryQuery(raw: string): string {
+  let q = raw.replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
+  if (!q) return "";
+
+  q = q
+    .replace(/\bcola\s+coca\b/gi, "Coca-Cola")
+    .replace(/\bcoca\s+cola\b/gi, "Coca-Cola")
+    .replace(/\bpop[\s-]+tarts?\b/gi, "Pop-Tarts")
+    .replace(/\bcheez[\s-]+its?\b/gi, "Cheez-It")
+    .replace(/\bh[aä]agen[\s-]+dazs\b/gi, "Haagen-Dazs")
+    .replace(/\bore[\s-]+ida\b/gi, "Ore-Ida")
+    .replace(/\bwish[\s-]+bone\b/gi, "Wish-Bone")
+    .replace(/\bjennie[\s-]+o\b/gi, "Jennie-O")
+    .replace(/\bhealth[\s-]+ade\b/gi, "Health-Ade")
+    .replace(/\btotinos\b/gi, "Totino's")
+    .replace(/\bsmuckers\b/gi, "Smucker's")
+    .replace(/\bcampbells\b/gi, "Campbell's")
+    .replace(/\bhellmanns\b/gi, "Hellmann's")
+    .replace(/\bfrenchs\b/gi, "French's")
+    .replace(/\bhunts\b/gi, "Hunt's")
+    .replace(/\bwelchs\b/gi, "Welch's")
+    .replace(/\bmotts\b/gi, "Mott's")
+    .replace(/\braos\b/gi, "Rao's")
+    .replace(/\breeses\b/gi, "Reese's")
+    .replace(/\bhersheys\b/gi, "Hershey's")
+    .replace(/\bkelloggs\b/gi, "Kellogg's")
+    .replace(/\bstouffers\b/gi, "Stouffer's")
+    .replace(/\bannies\b/gi, "Annie's")
+    .replace(/\bamys\b/gi, "Amy's")
+    .replace(/\bdaves\s+killer\b/gi, "Dave's Killer")
+    .replace(/\bmartins\b/gi, "Martin's")
+    .replace(/\bfranks\s+red\s*hot\b/gi, "Frank's RedHot")
+    .replace(/\blays(?!\s+(?:flat|eggs?)\b)\b/gi, "Lay's");
+
+  const words = q.split(/\s+/);
+  if (
+    words.length < 2 ||
+    words.length > 7 ||
+    /[,|:]/.test(q) ||
+    /^(?:diet|mexican|white\s+monster|sugar[\s-]*free|zero\s+sugar)\b/i.test(q)
+  ) {
+    return q;
+  }
+
+  const withoutLeadingOrganic = q.replace(/^organic\s+/i, "");
+  const alreadyStartsWithBrand = CANONICAL_BRAND_PATTERNS.some((re) => {
+    const anchored = new RegExp(`^(?:${re.source})`, "i");
+    return anchored.test(q) || anchored.test(withoutLeadingOrganic);
+  });
+  if (alreadyStartsWithBrand) return q;
+
+  for (const brandRe of CANONICAL_BRAND_PATTERNS) {
+    const m = brandRe.exec(q);
+    if (m && m.index > 0) {
+      const brandText = m[0].trim();
+      const rest = `${q.slice(0, m.index)} ${q.slice(m.index + m[0].length)}`.replace(/\s+/g, " ").trim();
+      if (rest) {
+        return `${brandText} ${rest}`;
+      }
+    }
+  }
+  return q;
+}
+
+/** Joins `brand` and `title` while deduplicating overlapping sub-brand tokens (e.g. "Kellogg's Eggo" + "Eggo Homestyle Waffles"). */
+export function mergeBrandAndTitle(brand: string | undefined, title: string): string {
+  const b = (brand || "").trim();
+  const t = title.trim();
+  if (!b) return t;
+  if (!t) return b;
+  const norm = (w: string) => w.toLowerCase().replace(/['’]s\b/g, "s").replace(/[^a-z0-9]+/g, "");
+  if (norm(t).startsWith(norm(b)) || t.toLowerCase().includes(b.toLowerCase())) return t;
+  const bWords = b.split(/\s+/);
+  const tWords = t.split(/\s+/);
+  const maxOverlap = Math.min(bWords.length, tWords.length);
+  for (let k = maxOverlap; k >= 1; k--) {
+    const suffixMatchesPrefix = bWords
+      .slice(bWords.length - k)
+      .every((bw, idx) => norm(bw) === norm(tWords[idx]));
+    if (suffixMatchesPrefix) {
+      return [...bWords, ...tWords.slice(k)].join(" ");
+    }
+  }
+  return `${b} ${t}`;
+}
+
 export function cacheKey(input: LookupInput): string | null {
   if (input.barcode?.trim()) return `upc:${input.barcode.replace(/\D/g, "")}`;
-  const t = (input.productTitle || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const canonical = canonicalizeGroceryQuery(input.productTitle || "");
+  const t = canonical
+    .toLowerCase()
+    .replace(/['’]s\b/g, "s")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
   return t ? `title:${t}` : null;
 }
 
@@ -158,22 +499,77 @@ function tokens(s: string): string[] {
     .replace(/['’]s\b/g, "s")
     .replace(/['’]/g, "")
     .replace(/\bcr[eè]me\b/g, "cream")
+    .replace(/\bhot\s+dogs?\b/g, "hotdog")
+    .replace(/\bpop[\s-]+tarts?\b/g, "poptart")
+    .replace(/\bcheez[\s-]+its?\b/g, "cheezit")
+    .replace(/\bcoca[\s-]+cola\b/g, "cocacola")
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
     .filter((t) => (t.length >= 3 || SHORT_BRAND_TOKENS.has(t)) && !STOP.has(t) && !/^\d+$/.test(t));
 }
 
+const SYNONYM_GROUPS: string[][] = [
+  ["mayo", "mayonnaise"],
+  ["mac", "macaroni"],
+  ["veggie", "veggies", "vegetable", "vegetables"],
+  ["ketchup", "catsup"],
+  ["yogurt", "yoghurt"],
+  ["donut", "donuts", "doughnut", "doughnuts"],
+  ["lite", "light"],
+  ["salsa", "picante"],
+  ["cocacola", "coke"],
+  ["hotdog", "hotdogs", "wiener", "wieners", "frank", "franks", "frankfurter", "frankfurters"],
+];
+
+function tokenEquivalent(a: string, b: string): boolean {
+  if (a === b || a === `${b}s` || a === `${b}es` || b === `${a}s` || b === `${a}es`) return true;
+  if (a.endsWith("y") && a.length >= 4 && b === `${a.slice(0, -1)}ies`) return true;
+  if (b.endsWith("y") && b.length >= 4 && a === `${b.slice(0, -1)}ies`) return true;
+  for (const group of SYNONYM_GROUPS) {
+    if (group.includes(a) && group.includes(b)) return true;
+  }
+  return false;
+}
+
 const FLAVOR_TOKENS = new Set([
   "strawberry", "strawberries", "vanilla", "chocolate", "blueberry", "blueberries",
-  "raspberry", "peach", "mango", "banana", "cherry", "apple", "cinnamon", "honey",
+  "raspberry", "raspberries", "peach", "mango", "banana", "cherry", "cherries", "apple", "cinnamon", "honey",
   "caramel", "frosted", "peanut", "almond", "almondmilk", "soy", "soymilk", "oatmilk",
   "cashew", "hazelnut", "coconut", "lemon", "lime",
   "orange", "grape", "watermelon", "mint", "coffee", "mocha", "maple", "brown",
   "bbq", "barbecue", "sour", "cheddar", "nacho", "ranch", "spicy", "flamin",
-  "hot", "buffalo", "jalapeno", "garlic", "onion", "teriyaki", "salsa", "flip",
-  "marinara", "alfredo", "pesto", "vodka", "bolognese", "ketchup", "mustard",
-  "mayonnaise", "mayo", "relish", "chipotle", "habanero", "sriracha", "tartar",
+  "hot", "buffalo", "jalapeno", "garlic", "onion", "teriyaki", "flip",
+  "alfredo", "pesto", "vodka", "bolognese",
+  "chipotle", "habanero", "sriracha", "tartar",
 ]);
+
+const INCOMPATIBLE_DISH_OR_SAUCE_BASES: Array<{ token: string; allowedIfQueryHas?: string[] }> = [
+  { token: "pesto" },
+  { token: "alfredo" },
+  { token: "vodka" },
+  { token: "carbonara" },
+  { token: "clam" },
+  { token: "bolognese" },
+  { token: "enchilada" },
+  { token: "verde", allowedIfQueryHas: ["verde", "green", "tomatillo"] },
+  { token: "tartar" },
+  { token: "teriyaki" },
+  { token: "hoisin" },
+  { token: "bbq", allowedIfQueryHas: ["bbq", "barbecue"] },
+  { token: "barbecue", allowedIfQueryHas: ["bbq", "barbecue"] },
+  { token: "guacamole" },
+  { token: "hummus" },
+  { token: "ranch" },
+  { token: "caesar" },
+  { token: "mustard" },
+  { token: "mayonnaise", allowedIfQueryHas: ["mayo", "mayonnaise"] },
+  { token: "mayo", allowedIfQueryHas: ["mayo", "mayonnaise"] },
+  { token: "ketchup", allowedIfQueryHas: ["ketchup", "catsup"] },
+  { token: "relish" },
+];
+
+const INHERENTLY_ORGANIC_BRAND_RE =
+  /\b(annie'?s|amy'?s|stonyfield|organic\s+valley|simple\s+truth\s+organic|dave'?s\s+killer|lotus\s+foods|health[- ]?ade|kettle\s*&\s*fire|muir\s+glen|newman'?s\s+own|honest\s+kids|harmless\s+harvest|gt'?s|applegate\s+organics)\b/i;
 
 const PLAIN_TOKENS = new Set(["plain", "unsweetened", "unflavored"]);
 
@@ -182,39 +578,71 @@ const PLAIN_TOKENS = new Set(["plain", "unsweetened", "unflavored"]);
  * count; short queries (≤2 distinctive tokens) must match all of them.
  * Enforces leading brand token consistency, trailing product noun match, and flavor consistency.
  */
-function relevance(query: string, candidate: string): number {
-  const all = tokens(query);
+export function relevance(query: string, candidate: string, categoryTags?: string[]): number {
+  const cleanQuery = query.replace(/\bhot\s+(?:cocoa|chocolate|pockets?|fudge|cereal)\b/gi, (m) => m.replace(/^hot\s+/i, ""));
+  const cleanCandidate = candidate.replace(/\bhot\s+(?:cocoa|chocolate|pockets?|fudge|cereal)\b/gi, (m) => m.replace(/^hot\s+/i, ""));
+  const all = tokens(cleanQuery);
   const q = all.filter((t) => !GENERIC.has(t));
   const pool = q.length ? q : all;
   if (!pool.length) return 0;
-  const c = tokens(candidate);
-  const hasIn = (list: string[], t: string) =>
-    list.some(
-      (x) =>
-        x === t || x === `${t}s` || x === `${t}es` || t === `${x}s` || t === `${x}es`,
-    );
+  const c = tokens(cleanCandidate);
+  const catTokens = (categoryTags || [])
+    .filter((tag) => tag.startsWith("en:"))
+    .flatMap((tag) => tokens(tag.slice(3)));
+  const cWithCats = catTokens.length ? [...c, ...catTokens] : c;
+  const hasIn = (list: string[], t: string) => list.some((x) => tokenEquivalent(x, t));
 
   // Prevent cross-category novel spin-offs (e.g. "Oatmeal Creme Pies" matching "Oatmeal Creme Pies Cereal" or "Nutty Bars Ice Cream")
-  const FORM_FACTOR_TOKENS = ["cereal", "ice", "seasoning", "syrup", "creamer", "frosting", "powder", "supplement", "kcup", "pods"];
+  const FORM_FACTOR_TOKENS = ["cereal", "ice", "seasoning", "syrup", "creamer", "frosting", "powder", "supplement", "kcup", "pods", "milkshake", "slurpee"];
   for (const ff of FORM_FACTOR_TOKENS) {
     if (hasIn(c, ff) && !hasIn(all, ff)) {
       return 0;
     }
   }
 
+  const candLower = candidate.toLowerCase();
+  const queryLower = query.toLowerCase();
+
+  // Reject baking-flour spin-offs ("Quaker Oat Flour" for "Quaker oats") unless query asked for flour or candidate is tortillas/bread/pasta/crackers
+  if (
+    /\bflour\b/.test(candLower) &&
+    !/\bflour\b/.test(queryLower) &&
+    !/\b(tortillas?|wraps?|bread|pasta|noodles?|crackers?|pretzels?|cookies?|waffles?|muffins?|pizza)\b/.test(candLower)
+  ) {
+    return 0;
+  }
+
+  // Reject prepared sandwiches / Uncrustables ("Peanut butter & strawberry jam sandwich soft bread") when query asks for jam/butter/spread
+  if (
+    /\b(sandwich(?:es)?|uncrustables?)\b/.test(candLower) &&
+    !/\b(sandwich|uncrustable|cookies?|oreo|crackers?|ice\s+cream|bread|rolls?|buns?)\b/.test(queryLower)
+  ) {
+    return 0;
+  }
+
+  // Hard-reject incompatible sauce/condiment/dish bases in title OR category tags when unrequested (e.g. "Prego Basil Pesto" or en:pestos)
+  for (const { token, allowedIfQueryHas } of INCOMPATIBLE_DISH_OR_SAUCE_BASES) {
+    if (hasIn(cWithCats, token)) {
+      const allowed = allowedIfQueryHas || [token];
+      if (!allowed.some((a) => hasIn(all, a))) {
+        return 0;
+      }
+    }
+  }
+
   // Leading Brand / Anchor Token Guard: if the query starts with a distinctive brand/anchor token
-  // (e.g. "Rao's", "Freihofer's", "Little Debbie", "Wegmans", "Wellsley"), the candidate MUST match it!
+  // (e.g. "Rao's", "Freihofer's", "Little Debbie", "Wegmans", "Wellsley"), the candidate title MUST match it!
   if (all.length >= 2 && !GENERIC_LEADING_MODIFIERS.has(all[0])) {
     if (!hasIn(c, all[0])) {
       return 0;
     }
   }
 
-  // If the query has >= 3 tokens (e.g. "Little Debbie Nutty Bars"), the candidate MUST match at least one of the last 2 product noun tokens,
-  // never just the leading 1–2 brand tokens ("Little Debbie Pound Cake")!
+  // If the query has >= 3 tokens (e.g. "Little Debbie Nutty Bars" or "Prego traditional pasta sauce"),
+  // the candidate (or its explicit OFF aisle category tag) MUST match at least one of the last 2 product noun tokens.
   if (pool.length >= 3) {
     const tail = pool.slice(-2);
-    if (!tail.some((t) => hasIn(c, t))) {
+    if (!tail.some((t) => hasIn(cWithCats, t))) {
       return 0;
     }
   }
@@ -233,18 +661,46 @@ function relevance(query: string, candidate: string): number {
   if (c.some((t) => SPICY_TOKENS.has(t)) && !all.some((t) => SPICY_TOKENS.has(t))) {
     return 0;
   }
-  // If the query specifies a flavor (e.g. "strawberry", "honey", "marinara"), candidate must include it
+  // If the query specifies a flavor (e.g. "strawberry", "honey"), candidate title must include it
   if (queryFlavors.length > 0 && !queryFlavors.every((f) => hasIn(c, f))) {
     return 0;
   }
   // Penalize candidates that add any unrequested flavor tokens ("Honey Nut Cheerios" for "Cheerios")
+  // Exempt "frosted" on Pop-Tarts where Frosted is the standard flagship pastry
+  const effectiveUnrequestedFlavors = unrequestedFlavors.filter(
+    (f) => !(f === "frosted" && hasIn(c, "poptart")),
+  );
   const extraFlavorPenalty =
-    unrequestedFlavors.length > 0 ? Math.min(0.45, unrequestedFlavors.length * 0.22) : 0;
+    effectiveUnrequestedFlavors.length > 0 ? Math.min(0.45, effectiveUnrequestedFlavors.length * 0.22) : 0;
 
-  const ratio = pool.filter((t) => hasIn(c, t)).length / pool.length;
+  // Penalize unrequested dietary/line spin-offs so classic flagship products always beat niche variants
+  let spinoffPenalty = 0;
+  if (/\borganic\b/.test(candLower) && !/\borganic\b/.test(queryLower) && !INHERENTLY_ORGANIC_BRAND_RE.test(candidate)) {
+    spinoffPenalty += 0.24;
+  }
+  const SPINOFF_PATTERNS: Array<[RegExp, RegExp, number]> = [
+    [/\b(whole\s+grain|whole\s+wheat|multigrain|nutri[- ]?grain)\b/, /\b(whole\s+grain|whole\s+wheat|multigrain|nutri[- ]?grain|oats?|oatmeal|cheerios|wheat\s+thins|triscuit)\b/, 0.24],
+    [/\b(gluten[\s-]*free|grain[\s-]*free|cauliflower)\b/, /\b(gluten|grain|cauliflower)\b/, 0.28],
+    [/\b(sugar[\s-]*free|no\s+(?:added\s+)?sugar|sugar\s+added|less\s+sugar|reduced\s+sugar|zero\s+sugar|keto)\b/, /\b(sugar|zero|diet|keto|unsweetened)\b/, 0.28],
+    [/\b(reduced[\s-]*fat|low[\s-]*fat|fat[\s-]*free|less\s+fat|1\/3\s+less|neufchatel)\b/, /\b(reduced|low|fat|less|neufchatel|light|lite)\b/, 0.26],
+    [/\b(plant\s+protein|protein\+?|chickpea|red\s+lentil)\b/, /\b(protein|chickpea|lentil|plant)\b/, 0.25],
+    [/\b(whipped|unfrosted|flavor\s+blasted|colors|mega\s+stuf|double\s+stuf|thins|bites|poppers|crisps|scramble|snack\s+mix|trail\s+mix)\b/, /\b(whipped|unfrosted|blasted|colors|mega|double|thins|bites|poppers|crisps|scramble|mix)\b/, 0.24],
+    [/\b(cheeseburger|sausage|bacon|three\s+meat|meat\s+lovers?|supreme)\b/, /\b(cheeseburger|sausage|bacon|meat|supreme)\b/, 0.22],
+    [/\b(to\s+go|\d+\s*(?:count|ct)\b|foodservice|single\s+serve|portion)\b/, /\b(to\s+go|count|ct|cups?|pouches)\b/, 0.22],
+  ];
+  for (const [cRe, qRe, pen] of SPINOFF_PATTERNS) {
+    if (cRe.test(candLower) && !qRe.test(queryLower)) {
+      spinoffPenalty += pen;
+    }
+  }
+
+  const directMatched = pool.filter((t) => hasIn(c, t)).length;
+  const totalMatched = pool.filter((t) => hasIn(cWithCats, t)).length;
+  const usedCatFallback = totalMatched > directMatched;
+  const ratio = totalMatched / pool.length;
   if (pool.length <= 2 && ratio < 1 && ratio < 0.5) return 0;
   if (ratio < 0.55) return 0;
-  const base = pool.length <= 2 && ratio === 1 ? 1 : ratio;
+  const base = (pool.length <= 2 && ratio === 1 ? 1 : ratio) - (usedCatFallback ? 0.03 : 0);
 
   // Bigram word-order bonus (so "Nabisco Original Wheat Thins" beats "Harris Teeter Original Thin Wheats")
   let bigramBonus = 0;
@@ -257,7 +713,7 @@ function relevance(query: string, candidate: string): number {
   }
 
   const extraTokensPenalty = Math.max(0, c.length - all.length) * 0.015;
-  return Math.max(0, base + bigramBonus - extraFlavorPenalty - extraTokensPenalty);
+  return Math.max(0, base + bigramBonus - extraFlavorPenalty - spinoffPenalty - extraTokensPenalty);
 }
 
 async function getJson<T>(url: string): Promise<T | null> {
@@ -374,7 +830,7 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
 }
 
 const OCR_NUTRITION_GARBAGE =
-  /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|gredients?\b|itamin\s+[a-d]|alcium\s+\d)/i;
+  /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|\d+\s*%\s+\d+\s*%\b|(?<!\bin)gredients?\b|swingredients\b|itamin\s+[a-d]|alcium\s+\d)|(?:\b[a-z]{1,3}\s+\d+\s*%$)/i;
 
 function englishIngredients(p: OffProduct): string {
   const clean = (s: string) => s.replace(/_/g, "").replace(/\s+/g, " ").trim();
@@ -390,12 +846,52 @@ function bestOffImage(p?: OffProduct): string | undefined {
   return p.image_front_url || p.image_url || p.image_front_small_url || undefined;
 }
 
+function detectQueryBrand(query: string): string {
+  for (const re of CANONICAL_BRAND_PATTERNS) {
+    const m = re.exec(query);
+    if (m) return m[0].trim();
+  }
+  return query.match(NAMED_BRAND_GUARD)?.[0]?.trim() || "";
+}
+
+const PARENT_MANUFACTURER_UMBRELLA =
+  /\b(kelloggs?|kellanova|nabisco|mondelez|pepperidge\s+farm|general\s+mills|post\s+consumer|post\s+foods|\bpost\b|frito[\s-]*lay|pepsico|kraft\s+heinz|\bkraft\b|conagra|campbells?|smuckers?|ferrero|mars\s+wrigley|\bmars\b|nestle|danone|bimbo|coca[\s-]*cola|keurig\s+dr\s+pepper)\b/i;
+
+/**
+ * Prevents co-branded snack/flavor hijacks (e.g. "Herr's Potato Chips, Heinz Ketchup" matching "Heinz ketchup")
+ * by verifying that the provider record's actual brand owner or primary title clause matches the queried brand.
+ */
+function matchesRequestedBrand(query: string, candidateBrand: string | undefined, candidateTitle: string): boolean {
+  const detected = detectQueryBrand(query);
+  if (!detected) return true;
+  if (hasConflictingBrand(query, candidateTitle)) return false;
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/['’]s\b/g, "s")
+      .replace(/['’]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const d = norm(detected);
+  const dAlts = d === "coke" || d === "coca cola" ? ["coke", "coca cola", "cocacola"] : [d];
+  const b = norm(candidateBrand || "");
+  const primaryClause = norm(candidateTitle.split(/[,|]/)[0] || candidateTitle);
+  const matchesAny = (haystack: string) => dAlts.some((alt) => haystack.includes(alt));
+
+  if (b) {
+    if (matchesAny(b)) return true;
+    if (PARENT_MANUFACTURER_UMBRELLA.test(candidateBrand || "") && matchesAny(primaryClause)) return true;
+    return false;
+  }
+  return matchesAny(primaryClause);
+}
+
 function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | null {
   let best: OffProduct | null = null;
   let bestScore = 0;
   const qToks = tokens(query);
   const firstTok = qToks[0] || "";
-  const detectedBrand = query.match(NAMED_BRAND_GUARD)?.[0]?.toLowerCase().trim() || "";
+  const detectedBrand = detectQueryBrand(query).toLowerCase();
   for (const p of products) {
     if (!isUsMarketOffProduct(p)) continue;
     const ing = englishIngredients(p);
@@ -403,11 +899,12 @@ function pickBestOff(query: string, products: OffProduct[] = []): OffProduct | n
     const rawProdName = (p.product_name_en || p.product_name || "").trim();
     if (!rawProdName) continue;
     const brandStr = normalizeOffBrand(p.brands);
-    const name = `${brandStr} ${rawProdName}`.trim();
+    const name = mergeBrandAndTitle(brandStr.split(",")[0]?.trim(), rawProdName);
+    if (!matchesRequestedBrand(query, brandStr, name)) continue;
     if (!passesVariantGuard(query, name)) continue;
     const nutrition = extractOffNutrition(p);
     if (isDietaryOrVariantMismatch(query, name, ing, nutrition)) continue;
-    const r = relevance(query, name);
+    const r = relevance(query, name, p.categories_tags);
     if (r < 0.45) continue;
     const brandAnchor = detectedBrand || firstTok;
     const brandMatchBonus =
@@ -460,17 +957,24 @@ export async function lookupDSLD(query: string): Promise<Omit<LookupResult, "ms"
   finally { clearTimeout(timer); controller.abort(); }
 }
 
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
 function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "ms"> {
   const sourceUpdatedAt =
     typeof p.last_modified_t === "number" && p.last_modified_t > 0
       ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10)
       : null;
-  const brandStr = normalizeOffBrand(p.brands).split(",")[0]?.trim() || undefined;
-  const rawName = (p.product_name_en || p.product_name || fallbackTitle).trim();
-  const fullTitle =
-    brandStr && !rawName.toLowerCase().startsWith(brandStr.toLowerCase())
-      ? `${brandStr} ${rawName}`
-      : rawName;
+  const rawBrand = normalizeOffBrand(p.brands).split(",")[0]?.trim();
+  const brandStr = rawBrand ? decodeHtmlEntities(rawBrand) : undefined;
+  const rawName = decodeHtmlEntities((p.product_name_en || p.product_name || fallbackTitle).trim());
+  const fullTitle = mergeBrandAndTitle(brandStr, rawName);
   const baseNut = sanitizeOffFoodNutrition(fullTitle, extractOffNutrition(p), p.nutriments);
   return {
     productTitle: fullTitle,
@@ -488,7 +992,7 @@ function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "
 }
 
 const NON_FOOD_VERTICAL_QUERY =
-  /\b(shampoo|conditioner|body\s*wash|shower\s*gel|soap|hand\s*wash|lotion|moisturizer|cream|cleanser|face\s*wash|serum|toner|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|lip\s*balm|mascara|foundation|concealer|lipstick|makeup|cosmetic|perfume|cologne|body\s*spray|hair\s*spray|hair\s*gel|mousse|pomade|shaving|aftershave|diapers?|wipes?|detergent|laundry|cleaner|disinfect\w*|bleach|dish\s*soap|dishwashing|dog\s*food|cat\s*food|pet\s*food|puppy|kitten|kibble|purina|pedigree|friskies|blue\s*buffalo|fancy\s*feast|cesar|iams|rachael\s*ray\s*nutrish|cerave|cetaphil|neutrogena|aveeno|olay|dove|pantene|tresemme|herbal\s*essences|head\s*&\s*shoulders|garnier|l'?oreal|maybelline|nyx|revlon|covergirl|e\.?l\.?f\.?|old\s*spice|degree|secret|axe|native|schmidt'?s|tom'?s\s*of\s*maine|colgate|crest|sensodyne|listerine|thera\s*breath|vaseline|aquaphor|eucerin|nivea|jergens|lubriderm|gold\s*bond|coppertone|banana\s*boat|sun\s*bum|la\s*roche|vichy|ordinary|dr\s*bronner|method|mrs\.?\s*meyer'?s|seventh\s*generation|ecos)\b/i;
+  /\b(shampoo|(?<!dough\s+)conditioner|body\s*wash|shower\s*gel|soap|hand\s*wash|lotion|moisturizer|(?:face|hand|eye|night|day|shaving|diaper|foot|skin|body)\s*cream|cleanser|face\s*wash|(?<!milk\s+|whey\s+)serum|(?:face|facial|skin)\s*toner|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|lip\s*balm|mascara|(?:makeup|liquid)\s+foundation|concealer|lipstick|makeup|cosmetic|perfume|cologne|body\s*spray|hair\s*spray|hair\s*gel|hair\s*mousse|pomade|shaving|aftershave|diapers?|wipes?|detergent|laundry|cleaner|disinfect\w*|bleach|dish\s*soap|dishwashing|dog\s*food|cat\s*food|pet\s*food|puppy|kitten|kibble|purina|pedigree|friskies|blue\s*buffalo|fancy\s*feast|cesar|iams|rachael\s*ray\s*nutrish|cerave|cetaphil|neutrogena|aveeno|olay|dove\s+(?:soap|wash|shampoo|conditioner|deodorant|lotion|beauty|men)|pantene|tresemme|herbal\s*essences|head\s*&\s*shoulders|garnier|l'?oreal|maybelline|nyx|revlon|covergirl|e\.?l\.?f\.?|old\s*spice|(?:degree|secret|axe|native)\s+(?:deodorant|antiperspirant|body\s*wash|spray)|schmidt'?s|tom'?s\s*of\s*maine|colgate|crest|sensodyne|listerine|thera\s*breath|vaseline|aquaphor|eucerin|nivea|jergens|lubriderm|gold\s*bond|coppertone|banana\s*boat|sun\s*bum|la\s*roche|vichy|the\s+ordinary|dr\s*bronner|method\s+(?:soap|cleaner|wash|detergent)|mrs\.?\s*meyer'?s|seventh\s*generation|ecos)\b/i;
 
 async function fetchOffProductByCode(
   code: string,
@@ -498,13 +1002,15 @@ async function fetchOffProductByCode(
   const cached = offBarcodeCache.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.product;
 
-  let data = await getJson<{ status?: number; product?: OffProduct }>(
-    `${host}/api/v2/product/${code}?fields=${OFF_FIELDS}`,
-  );
-  if (!data?.product && host === "https://world.openfoodfacts.org") {
-    // Fallback to Open Food Facts v0 JSON product handler if v2 is rate-limited
+  let data =
+    host === "https://world.openfoodfacts.org"
+      ? await getJson<{ status?: number; product?: OffProduct }>(
+          `${host}/api/v0/product/${code}.json?fields=${OFF_FIELDS}`,
+        )
+      : null;
+  if (!data?.product) {
     data = await getJson<{ status?: number; product?: OffProduct }>(
-      `${host}/api/v0/product/${code}.json?fields=${OFF_FIELDS}`,
+      `${host}/api/v2/product/${code}?fields=${OFF_FIELDS}`,
     );
   }
   if (data?.product) {
@@ -579,18 +1085,66 @@ async function firstAvailable(candidates: Promise<ProviderResult | null>[]): Pro
   })).catch(() => null);
 }
 
-/** One shared wall-clock budget also covers multi-stage provider searches. */
+function scoreProviderCandidate(query: string, cand: ProviderResult): number {
+  const isSuppQuery = SUPPLEMENT_FORM.test(query);
+  if (cand.source === "dsld") return isSuppQuery ? 10 : 0.15;
+  if (cand.nutrition?.productKind === "non-food") return NON_FOOD_VERTICAL_QUERY.test(query) ? 5 : 0.2;
+  const wholeQuery = genericWholeFoodQuery(query);
+  const r = wholeQuery && cand.nutrition?.isWholeFood
+    ? Math.max(relevance(wholeQuery, cand.productTitle), 0.92)
+    : relevance(query, cand.productTitle);
+  const nut = cand.nutrition;
+  const hasCoreMacros =
+    nut?.caloriesKcal100g !== undefined &&
+    nut?.sugarsG100g !== undefined &&
+    nut?.sodiumMg100g !== undefined
+      ? 0.08
+      : 0;
+  const hasRealPhoto =
+    cand.source === "openfoodfacts" && cand.imageUrl?.includes("openfoodfacts.org") ? 0.04 : 0;
+  const isBulkOrSingleServe =
+    /\b(\d+\s*(?:count|ct)\b|to\s+go|foodservice|bulk|single\s+serve|portion)\b/i.test(cand.productTitle) &&
+    !/\b(\d+\s*(?:count|ct)\b|to\s+go|cups?|pouches)\b/i.test(query)
+      ? 0.25
+      : 0;
+  return r + hasCoreMacros + hasRealPhoto - isBulkOrSingleServe;
+}
+
+/** One shared wall-clock budget covers multi-stage provider searches with deterministic quality selection. */
 async function lookupProviders(input: LookupInput): Promise<ProviderResult | null> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<null>(resolve => {
     timer = setTimeout(() => { controller.abort(); resolve(null); }, TIMEOUT_MS);
   });
-  const work = providerSignal.run(controller.signal, () => {
-    const candidates = input.barcode
-      ? [offByBarcode(input.barcode), usdaSearch(input.barcode), lookupDsld(input, getJson)]
-      : [offSearch(cleanSearchQuery(input.productTitle || "") || input.productTitle || ""), usdaSearch(input.productTitle || ""), lookupDsld(input, getJson)];
-    return firstAvailable(candidates);
+  const work = providerSignal.run(controller.signal, async () => {
+    if (input.barcode) {
+      return firstAvailable([offByBarcode(input.barcode), usdaSearch(input.barcode), lookupDsld(input, getJson)]);
+    }
+    const rawTitle = input.productTitle || "";
+    const cleaned = cleanSearchQuery(rawTitle) || rawTitle;
+    const pOff = offSearch(cleaned);
+    const pUsda = usdaSearch(cleaned);
+    const pDsld = lookupDsld({ ...input, productTitle: cleaned }, getJson);
+    const all = [pOff, pUsda, pDsld];
+    const first = await firstAvailable(all);
+    if (!first) return null;
+    if (first.source === "dsld" && SUPPLEMENT_FORM.test(cleaned)) return first;
+    // Give peer provider a brief grace window so OFF vs USDA never depends on a 5ms network race
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      Promise.allSettled(all),
+      new Promise<void>(resolve => { graceTimer = setTimeout(resolve, 320); }),
+    ]);
+    clearTimeout(graceTimer);
+    const resolved: ProviderResult[] = [];
+    for (const p of all) {
+      const val = await Promise.race([p.catch(() => null), Promise.resolve(undefined)]);
+      if (val) resolved.push(val);
+    }
+    if (!resolved.length) return first;
+    resolved.sort((a, b) => scoreProviderCandidate(cleaned, b) - scoreProviderCandidate(cleaned, a));
+    return resolved[0];
   });
   try { return await Promise.race([work, deadline]); }
   finally { clearTimeout(timer); controller.abort(); }
@@ -601,6 +1155,7 @@ interface OffSearchHit {
   product_name?: string;
   product_name_en?: string;
   brands?: string | string[];
+  categories_tags?: string[];
   states_tags?: string[];
   countries_tags?: string[];
   image_front_url?: string;
@@ -608,31 +1163,71 @@ interface OffSearchHit {
   image_front_small_url?: string;
 }
 
+const BRAND_SEARCH_AISLE_NOUNS = new Set([
+  "pasta", "sauce", "sauces", "salsa", "picante", "cereal", "cereals",
+  "crackers", "cracker", "cookies", "cookie", "chips", "chip", "crisps",
+  "waffles", "waffle", "muffins", "muffin", "tortillas", "tortilla",
+  "soup", "soups", "pizza", "pizzas", "spread", "jam", "jelly", "preserves",
+  "ketchup", "catsup", "ranch", "dressing", "mayo", "mayonnaise",
+  "yogurt", "yoghurt", "cheese", "milk", "drink", "drinks", "soda", "pop",
+  "water", "bars", "bar", "snacks", "snack", "pastry", "pastries", "toaster",
+  "bread", "oats", "oatmeal", "hot", "dog", "dogs", "hotdog", "hotdogs",
+  "wiener", "wieners", "frank", "franks", "frankfurters",
+]);
+
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
   const toks = tokens(title);
   const firstTok = toks[0] || "";
-  const detectedBrandRaw = title.match(NAMED_BRAND_GUARD)?.[0]?.trim() || "";
+  const detectedBrandRaw = detectQueryBrand(title);
   const brandSlug = detectedBrandRaw
     ? detectedBrandRaw.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
     : firstTok;
-  const remainingToks = detectedBrandRaw
-    ? tokens(title.replace(new RegExp(detectedBrandRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " "))
-    : toks.slice(1);
+  const remainingWords = (detectedBrandRaw
+    ? title.replace(new RegExp(detectedBrandRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), " ")
+    : title
+  )
+    .toLowerCase()
+    .replace(/['’]s\b/g, "s")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
+
+  const brandModifiers = remainingWords.filter((w) => !BRAND_SEARCH_AISLE_NOUNS.has(w));
+  const hotDogBrandClause = /\b(hot\s*dogs?|wieners?|franks?|frankfurters?)\b/i.test(title)
+    ? `categories_tags:"en:sausages"`
+    : "";
+
+  const searchWords = title
+    .toLowerCase()
+    .replace(/['’]s\b/g, "s")
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => (w.length >= 2 || SHORT_BRAND_TOKENS.has(w)) && !STOP.has(w) && !/^\d+$/.test(w))
+    .slice(0, 5);
+
+  const usCompletedFilter = `countries_tags:"en:united-states" states_tags:"en:ingredients-completed"`;
+  const andQuery = searchWords.length
+    ? `${searchWords.join(" AND ")} AND countries_tags:"en:united-states" AND states_tags:"en:ingredients-completed"`
+    : `${title} ${usCompletedFilter}`;
   const brandQuery =
-    toks.length >= 2 && brandSlug
-      ? `brands_tags:${brandSlug} ${remainingToks.join(" ")}`.trim()
-      : title;
+    brandSlug
+      ? `brands_tags:${brandSlug} ${[...brandModifiers, hotDogBrandClause].filter(Boolean).join(" ")} ${usCompletedFilter}`.trim()
+      : `${title} ${usCompletedFilter}`;
   const brandAnchor = detectedBrandRaw ? detectedBrandRaw.toLowerCase() : firstTok;
 
-  // 1. Run Open Food Facts Search-a-licious v3 (brand-tagged + full text) and vertical search concurrently
+  // 1. Run Open Food Facts Search-a-licious v3 (US+completed AND query + US+completed brand query) and vertical search concurrently
   const searchFields =
-    "code,product_name,product_name_en,brands,states_tags,countries_tags,image_front_url,image_url,image_front_small_url";
-  const [v3Brand, v3Text, vertical] = await Promise.all([
+    "code,product_name,product_name_en,brands,categories_tags,states_tags,countries_tags,image_front_url,image_url,image_front_small_url";
+  const [v3And, v3Brand, vertical] = await Promise.all([
     getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(`${brandQuery} countries_tags:"en:united-states"`)}&page_size=12&fields=${searchFields}`,
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(andQuery)}&page_size=16&fields=${searchFields}`,
     ),
     getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(title)}&page_size=16&fields=${searchFields}`,
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=24&fields=${searchFields}`,
     ),
     openFactsVerticalSearch(title),
   ]);
@@ -640,7 +1235,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
 
   const combinedHits: OffSearchHit[] = [];
   const seenCodes = new Set<string>();
-  for (const h of [...(v3Brand?.hits || []), ...(v3Text?.hits || [])]) {
+  for (const h of [...(v3And?.hits || []), ...(v3Brand?.hits || [])]) {
     const code = (h.code || "").trim();
     if (!code || seenCodes.has(code)) continue;
     seenCodes.add(code);
@@ -658,9 +1253,10 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
       const rawProdName = (h.product_name_en || h.product_name || "").trim();
       if (!rawProdName) return { h, score: 0 };
       const brandStr = normalizeOffBrand(h.brands);
-      const name = `${brandStr} ${rawProdName}`.trim();
+      const name = mergeBrandAndTitle(brandStr.split(",")[0]?.trim(), rawProdName);
+      if (!matchesRequestedBrand(title, brandStr, name)) return { h, score: 0 };
       if (!passesVariantGuard(title, name)) return { h, score: 0 };
-      const r = relevance(title, name);
+      const r = relevance(title, name, h.categories_tags);
       if (r < 0.5) return { h, score: 0 };
       const brandBonus =
         brandAnchor.length >= 3 &&
@@ -686,29 +1282,43 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     .sort((a, b) => b.score - a.score)
     .slice(0, 4);
 
-  if (!ranked.length) return null;
-
-  // Fetch product details sequentially starting with the top-ranked US candidate so 90%+ of queries
-  // resolve in 1 request instead of firing 3 parallel requests that trigger Open Food Facts rate limits.
-  for (const { h } of ranked) {
-    if (!h.code) continue;
-    const p = await fetchOffProductByCode(h.code, "https://world.openfoodfacts.org");
-    if (!p || !isUsMarketOffProduct(p)) continue;
+  const validateFetchedProduct = (p: OffProduct | null, h?: OffSearchHit): Omit<LookupResult, "ms"> | null => {
+    if (!p || !isUsMarketOffProduct(p)) return null;
     const ing = englishIngredients(p);
-    if (!ing) continue;
+    if (!ing) return null;
     const rawProdName = (p.product_name_en || p.product_name || "").trim();
-    if (!rawProdName) continue;
+    if (!rawProdName) return null;
     const brandStr = normalizeOffBrand(p.brands);
-    const name = `${brandStr} ${rawProdName}`.trim();
-    if (!passesVariantGuard(title, name)) continue;
-    if (isDietaryOrVariantMismatch(title, name, ing, extractOffNutrition(p))) continue;
-    if (!bestOffImage(p)) {
+    const name = mergeBrandAndTitle(brandStr.split(",")[0]?.trim(), rawProdName);
+    if (!matchesRequestedBrand(title, brandStr, name)) return null;
+    if (!passesVariantGuard(title, name)) return null;
+    if (relevance(title, name, p.categories_tags) < 0.5) return null;
+    if (isDietaryOrVariantMismatch(title, name, ing, extractOffNutrition(p))) return null;
+    if (!bestOffImage(p) && h) {
       const hitImg = bestOffImage(h);
       if (hitImg) p.image_front_url = hitImg;
     }
     return offToResult(p, title);
+  };
+
+  if (ranked.length > 0 && !providerSignal.getStore()?.aborted) {
+    const fetched = await Promise.all(
+      ranked.map(({ h }) => (h.code ? fetchOffProductByCode(h.code, "https://world.openfoodfacts.org") : Promise.resolve(null))),
+    );
+    for (let i = 0; i < ranked.length; i++) {
+      const res = validateFetchedProduct(fetched[i], ranked[i].h);
+      if (res) return res;
+    }
   }
-  return null;
+
+  // Single-hop fallback to Open Food Facts US CGI search only when Search-a-licious yields no validated match
+  if (providerSignal.getStore()?.aborted) return null;
+  const cgiTerms = encodeURIComponent(title.replace(/-/g, " "));
+  const cgiRes = await getJson<{ products?: OffProduct[] }>(
+    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${cgiTerms}&search_simple=1&action=process&json=1&page_size=12&tagtype_0=countries&tag_contains_0=contains&tag_0=united-states&fields=${OFF_FIELDS}`,
+  );
+  const cgiBest = pickBestOff(title, cgiRes?.products);
+  return cgiBest ? offToResult(cgiBest, title) : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -777,7 +1387,8 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
         f.ingredients?.trim() ||
         (isTrueWholeFood ? `Whole Food: ${f.description}` : "");
       if (!ing || !isEnglishIngredientText(ing)) continue;
-      const candidateName = `${f.brandName || f.brandOwner || ""} ${f.description || ""}`.trim();
+      const candidateName = mergeBrandAndTitle(f.brandName || f.brandOwner, f.description || "");
+      if (!isBarcodeQuery && !isTrueWholeFood && !matchesRequestedBrand(query, f.brandName || f.brandOwner, candidateName)) continue;
       // Generic USDA nutrient records cannot substantiate organic certification.
       // A branded record must still match the requested certified product line.
       const variantQuery = isTrueWholeFood ? query.replace(/\borganic\s+/gi, "") : query;
@@ -823,8 +1434,8 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   const brandLabel = titleCase(best.brandName || best.brandOwner) || "USDA FoodData Central";
   const descTitle = titleCase(rawDesc) || query;
   const fullTitle =
-    brandLabel !== "USDA FoodData Central" && !descTitle.toLowerCase().startsWith(brandLabel.toLowerCase())
-      ? `${brandLabel} ${descTitle}`
+    brandLabel !== "USDA FoodData Central"
+      ? mergeBrandAndTitle(brandLabel, descTitle)
       : descTitle;
   const imageUrl = `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}`;
   return {
@@ -1177,7 +1788,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /^(?!.*\b(natural|no\s+added\s+sugar|crunchy|reduced\s+fat|honey|chocolate|whips)\b).*\bjif\b.*\bcreamy\b.*\bpeanut\s+butter\b/i,
+    match: /^(?!.*\b(natural|no\s+added\s+sugar|crunchy|extra\s+crunchy|reduced\s+fat|honey|chocolate|whips)\b).*\bjif\b.*\bpeanut\s+butter\b/i,
     brand: "Jif",
     title: "Creamy Peanut Butter",
     ingredients: "Made From Roasted Peanuts And Sugar, Contains 2% Or Less Of: Molasses, Fully Hydrogenated Vegetable Oils (Rapeseed And Soybean), Mono And Diglycerides, Salt.",
@@ -1387,7 +1998,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(hot pocket|hot pockets|lean pocket|lean pockets|pizza rolls|totino'?s|bagel bites|stouffer'?s)\b/i,
+    match: /\b(hot pocket|hot pockets|lean pocket|lean pockets)\b/i,
     brand: "Representative Category Formulation",
     title: "Frozen Stuffed Sandwich and Entree (Representative Formulation)",
     ingredients: "Enriched Flour (Wheat Flour, Malted Barley Flour, Niacin, Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Cooked White Meat Chicken, Reduced Fat Cheddar Cheese, Soybean Oil, Bacon (Cured with Water, Salt, Sugar, Smoke Flavoring, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite), 2% or Less of Modified Food Starch, Sugar, Salt, Buttermilk, Potassium Chloride, Autolyzed Yeast Extract, Disodium Phosphate, Xanthan Gum, Monosodium Glutamate, Natural Flavors.",
@@ -1507,7 +2118,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(goldfish)\b/i,
+    match: /^(?!.*\b(pretzel|graham|vanilla|s'?mores|cinnamon|parmesan|pizza|sour\s+cream|old\s+bay|spicy|frank'?s|colors|flavor\s+blasted|whole\s+grain|organic|crisps)\b).*\bgoldfish\b/i,
     brand: "Pepperidge Farm",
     title: "Goldfish Cheddar Baked Snack Crackers",
     ingredients: "Made With Smiles And Enriched Wheat Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Cheddar Cheese (Cultured Milk, Salt, Enzymes, Annatto), Vegetable Oils (Canola, Sunflower And/Or Soybean), Salt, Contains 2% Or Less Of: Yeast, Sugar, Autolyzed Yeast Extract, Paprika, Spices, Celery, Onion Powder, Monocalcium Phosphate, Baking Soda.",
@@ -2207,7 +2818,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-10",
   },
   {
-    match: /\b(eggo|kellogg'?s\s+eggo)\b/i,
+    match: /^(?!.*\b(blueberry|strawberry|chocolate|cinnamon|apple|banana|buttermilk|thick\s*(?:&|and)\s*fluffy|whole\s+wheat|nutri[- ]?grain|protein|gluten[\s-]*free|pancakes?|french\s+toast)\b).*\b(eggo|kellogg'?s\s+eggo)\b/i,
     brand: "Kellogg's Eggo",
     title: "Eggo Homestyle Waffles",
     ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola, and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Contains 2% or Less of Salt, Dextrose, Spice, Whey, Eggs, Soy Lecithin, Beta-Carotene for Color, Calcium Carbonate, Iron, Vitamin A Palmitate, Vitamin B6, Vitamin B12.",
@@ -2215,6 +2826,16 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 514, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.eggo.com/en_US/products/waffles/kellogg-s-eggo-homestyle-waffles-product.html",
     verifiedAt: "2026-11-08",
+  },
+  {
+    match: /^(?!.*\b(strawberry|strawberries|blueberry|blueberries|pineapple|peach|brown\s+sugar|cinnamon|chive|onion|garlic|herb|jalapeno|spicy|salmon|garden\s+vegetable|veggie|whipped|reduced\s+fat|less\s+fat|1\/3|neufchatel|fat\s+free|lactose\s+free|plant[\s-]*based|cheesecake)\b).*\bphiladelphia\b.*\bcream\s+cheese\b/i,
+    brand: "Philadelphia",
+    title: "Original Cream Cheese",
+    ingredients: "Pasteurized Milk and Cream, Salt, Carob Bean Gum, Cheese Culture.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Philadelphia%20Original%20Cream%20Cheese",
+    nutrition: { caloriesKcal100g: 345, sugarsG100g: 3.6, saturatedFatG100g: 21.4, sodiumMg100g: 393, fiberG100g: 0, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.kraftheinz.com/philadelphia/products/00021000612239-original-cream-cheese-brick",
+    verifiedAt: "2026-11-12",
   },
   {
     match: /\b(homestyle\s+waffles?|buttermilk\s+waffles?|blueberry\s+waffles?|thick\s*&\s*fluffy\s+waffles?)\b/i,
@@ -2548,7 +3169,7 @@ const PROCESSED_FOOD_GUARD =
   /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donuts?|doughnuts?|bismarks?|bismark|pastries|pastry|danish|fritters?|eclairs?|strudels?|turnovers?|toaster|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips?(?!\s+steak)|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?|gnocchi|pasta)\b/i;
 
 const NAMED_BRAND_GUARD =
-  /\b(silk|pedialyte|oscar\s+mayer|tyson|applegate|boar'?s\s+head|hormel|perdue|foster\s+farms|barilla|rao'?s|wonder|pepperidge|arnold|orowheat|chobani|fage|tillamook|sargento|philadelphia|haagen[- ]?dazs|häagen[- ]?dazs|ben\s*&\s*jerry|ore[- ]?ida|mccain|alexia|hunt'?s|muir\s+glen|bush'?s|goya|tostitos|pace|herdez|sabra|land\s+o'?\s*lakes|kerrygold|country\s+crock|blue\s+bonnet|hellmann'?s|best\s+foods|duke'?s|french'?s|grey\s+poupon|kikkoman|tabasco|cholula|frank'?s|pillsbury|betty\s+crocker|duncan\s+hines|kodiak|krusteaz|bisquick|aunt\s+jemima|pearl\s+milling|log\s+cabin|mrs\.?\s*butterworth|skippy|jif|peter\s+pan|welch'?s|bonne\s+maman|nissin|nongshim|buldak|samyang|progresso|totino'?s|red\s+baron|tombstone|banquet|healthy\s+choice|lean\s+cuisine|marie\s+callender|breyers|talenti|jennie[- ]?o|hillshire|jimmy\s+dean|smithfield|wright|farmland|nathan'?s|hebrew\s+national|ball\s+park|stouffer'?s|amy'?s|halo\s+top|yasso|clif\s+bar|quest|nature\s+valley|quaker|belvita|thomas'?|canyon\s+bakehouse|udi'?s|sara\s+lee|nature'?s\s+own|king'?s\s+hawaiian|mission|eggo|smucker'?s|heinz|sweet\s+baby\s+ray'?s|stubb'?s|miracle\s+whip|wish[- ]?bone|ken'?s|briannas|marzetti|prego|ragu|classico|bertolli|newman'?s\s+own|mateo'?s|tapatio|valentina|oikos|siggi'?s|dannon|activia|stonyfield|kraft|babybel|laughing\s+cow|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|mott'?s|outshine|digiorno|vlasic|mt\.?\s*olive|lay'?s|ruffles|pringles|fritos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop)\b/i;
+  /\b(silk|pedialyte|oscar\s+mayer|tyson|applegate|boar'?s\s+head|hormel|perdue|foster\s+farms|barilla|rao'?s|wonder|pepperidge|arnold|orowheat|chobani|fage|tillamook|sargento|philadelphia|haagen[- ]?dazs|häagen[- ]?dazs|ben\s*&\s*jerry|ore[- ]?ida|mccain|alexia|hunt'?s|muir\s+glen|bush'?s|goya|tostitos|pace|herdez|sabra|land\s+o'?\s*lakes|kerrygold|country\s+crock|blue\s+bonnet|hellmann'?s|best\s+foods|duke'?s|french'?s|grey\s+poupon|kikkoman|tabasco|cholula|frank'?s|pillsbury|betty\s+crocker|duncan\s+hines|kodiak|krusteaz|bisquick|aunt\s+jemima|pearl\s+milling|log\s+cabin|mrs\.?\s*butterworth|skippy|jif|peter\s+pan|welch'?s|bonne\s+maman|nissin|nongshim|buldak|samyang|progresso|campbell'?s|totino'?s|red\s+baron|tombstone|banquet|healthy\s+choice|lean\s+cuisine|marie\s+callender|breyers|talenti|jennie[- ]?o|hillshire|jimmy\s+dean|smithfield|wright|farmland|nathan'?s|hebrew\s+national|ball\s+park|stouffer'?s|amy'?s|halo\s+top|yasso|clif\s+bar|quest|nature\s+valley|quaker|belvita|thomas'?|canyon\s+bakehouse|udi'?s|sara\s+lee|nature'?s\s+own|king'?s\s+hawaiian|mission|eggo|pop[- ]?tarts?|cheez[- ]?its?|goldfish|oreo|nutella|smucker'?s|heinz|hidden\s+valley|sweet\s+baby\s+ray'?s|stubb'?s|miracle\s+whip|wish[- ]?bone|ken'?s|briannas|marzetti|prego|ragu|classico|bertolli|newman'?s\s+own|mateo'?s|tapatio|valentina|oikos|siggi'?s|dannon|activia|stonyfield|kraft|babybel|laughing\s+cow|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|mott'?s|outshine|digiorno|vlasic|mt\.?\s*olive|lay'?s|ruffles|pringles|doritos|cheetos|fritos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop|froot\s+loops|frosted\s+flakes|lucky\s+charms|cheerios|gatorade|powerade|coca[- ]?cola|pepsi|sprite|fanta|dr\.?\s*pepper)\b/i;
 
 export const CATEGORY_FALLBACK_CATALOG: Array<{
   match: RegExp;
@@ -2856,6 +3477,24 @@ function isDietaryOrVariantMismatch(
     return true;
   }
 
+  // 6b. Reverse guard: candidate is an unlabelled or explicit Sugar-Free / Artificially-Sweetened variant (e.g. OFF "Seedless Strawberry Jam" with 0g sugar + Sucralose) when query asked for a classic sugar-sweetened food
+  if (
+    !/\b(sugar[\s-]*free|sugarfree|no\s+(?:added\s+)?sugar|zero|diet|keto|light|lite|reduced\s+sugar|less\s+sugar|unsweetened|splenda|stevia)\b/.test(q) &&
+    !/\b(zevia|sparkling\s+ice|celsius|ghost|alani|reign|bang|c4|propel|premier\s+protein|owyn|quest|halo\s+top)\b/.test(q)
+  ) {
+    if (/\b(sugar[\s-]*free|sugarfree|no\s+sugar\s+added|zero\s+sugar|keto)\b/.test(t)) {
+      return true;
+    }
+    if (
+      /\b(jam|jelly|preserves|marmalade|pancake\s+syrup|maple\s+syrup|chocolate\s+syrup|cookies?|brownies?|cake|cupcakes?|frosting|icing|fudge|marshmallows?|ice\s+cream)\b/.test(q) &&
+      entryNutrition?.sugarsG100g !== undefined &&
+      entryNutrition.sugarsG100g <= 1 &&
+      /\b(sucralose|aspartame|acesulfame|saccharin|maltitol|sorbitol|erythritol|allulose|polydextrose)\b/.test(ing)
+    ) {
+      return true;
+    }
+  }
+
   // 7. Plain whole-produce or plain fresh meat/seafood query vs processed / seasoned / buttered / oil-added candidate
   if (
     !PROCESSED_FOOD_GUARD.test(q) &&
@@ -2917,9 +3556,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   // Check comprehensive Drinks & Beverages Catalog (Energy Drinks, Pre-Workouts, Sodas, Milks, Waters, Juices, Sports Drinks, Tea/Coffee)
   const drinkHit = matchDrinkCatalog(query);
   if (drinkHit && !isDietaryOrVariantMismatch(query, drinkHit.title, drinkHit.ingredients, drinkHit.nutrition)) {
-    const fullDrinkTitle = drinkHit.title.toLowerCase().startsWith(drinkHit.brand.toLowerCase())
-      ? drinkHit.title
-      : `${drinkHit.brand} ${drinkHit.title}`;
+    const fullDrinkTitle = mergeBrandAndTitle(drinkHit.brand, drinkHit.title);
     const resolvedDrinkTitle = wordCount <= 3 ? fullDrinkTitle : cleanTitle;
     return {
       sourceUrl: drinkHit.sourceUrl,
@@ -2936,6 +3573,14 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   }
 
   for (const entry of INSTANT_GROCERY_CATALOG) {
+    const isRepresentativeEntry = /representative|category\s+estimate/i.test(`${entry.brand} ${entry.title}`);
+    if (
+      isRepresentativeEntry &&
+      (NAMED_BRAND_GUARD.test(query) || detectQueryBrand(query) !== "") &&
+      !/\bjimmy\s+dean\b/i.test(query)
+    ) {
+      continue;
+    }
     if (
       hasValidCatalogProvenance(entry.sourceUrl, entry.verifiedAt) &&
       !entry.title.includes("/") &&
@@ -2945,18 +3590,18 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       !hasConflictingBrand(query, `${entry.brand} ${entry.title}`) &&
       !isDietaryOrVariantMismatch(query, entry.title, entry.ingredients, entry.nutrition)
     ) {
-      const fullEntryTitle = entry.title.toLowerCase().startsWith(entry.brand.toLowerCase())
-        ? entry.title
-        : `${entry.brand} ${entry.title}`;
+      const fullEntryTitle = mergeBrandAndTitle(entry.brand, entry.title);
       const entryTokens = tokens(fullEntryTitle);
       const queryToks = tokens(cleanTitle);
       const querySubsetOfEntry =
         wordCount <= 4 &&
         queryToks.length > 0 &&
-        queryToks.every((qt) =>
-          entryTokens.some((et) => et === qt || et === `${qt}s` || qt === `${et}s`),
-        );
-      const resolvedTitle = wordCount <= 2 || querySubsetOfEntry ? fullEntryTitle : cleanTitle;
+        queryToks.every((qt) => entryTokens.some((et) => tokenEquivalent(et, qt)));
+      const resolvedTitle = isRepresentativeEntry
+        ? fullEntryTitle
+        : wordCount <= 2 || querySubsetOfEntry
+          ? fullEntryTitle
+          : cleanTitle;
       const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
         ? entry.imageUrl
         : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}&v=4`;
@@ -2973,7 +3618,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     }
   }
   const s = query.toLowerCase();
-  if (NON_FOOD_GUARD.test(s) || NAMED_BRAND_GUARD.test(s)) {
+  if (NON_FOOD_GUARD.test(s) || NAMED_BRAND_GUARD.test(s) || detectQueryBrand(query) !== "") {
     return null;
   }
 
@@ -3083,13 +3728,13 @@ function cleanSearchQuery(title: string): string {
 export async function lookupIngredients(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
-  const title = (input.productTitle || "").trim();
+  const rawTitle = (input.productTitle || "").trim();
 
   if (
-    title &&
-    (UI_NOISE_QUERY.test(title) ||
+    rawTitle &&
+    (UI_NOISE_QUERY.test(rawTitle) ||
       /\b(toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|storage\s+bags?|freezer\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i.test(
-        title,
+        rawTitle,
       ))
   ) {
     return null;
@@ -3099,23 +3744,24 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (rawIng) {
     // If productTitle is also provided (e.g. from the mobile screen reader or browser extension),
     // verify that rawIngredients is an actual ingredient list and not an adjacent UI heading like "Items to add next".
-    if (!title || isPlausibleScreenIngredients(rawIng)) {
+    if (!rawTitle || isPlausibleScreenIngredients(rawIng)) {
       return {
-        productTitle: title || "Scanned product",
+        productTitle: rawTitle || "Scanned product",
         barcode: input.barcode,
         ingredients: rawIng,
-        nutrition: SUPPLEMENT_FORM.test(`${title} ${rawIng}`) ? { productKind: "supplement", isOrganic: false } : undefined,
+        nutrition: SUPPLEMENT_FORM.test(`${rawTitle} ${rawIng}`) ? { productKind: "supplement", isOrganic: false } : undefined,
         source: "screen",
         ms: ms(),
       };
     }
   }
 
-  const key = cacheKey(input);
+  const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
+  const key = cacheKey({ ...input, productTitle: title });
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|cinnamon\s+toast\s+crunch|lucky\s+charms|doritos|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|cinnamon\s+toast\s+crunch|lucky\s+charms|froot\s+loops|cheerios|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&
@@ -3148,7 +3794,6 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   }
 
   let found: Omit<LookupResult, "ms"> | null = null;
-  const hasDedicatedUsdaKey = Boolean((process.env.USDA_API_KEY || "").trim());
 
   found = await lookupProviders({ ...input, productTitle: title });
   if (!found && title) found = catalogFallback(title);
@@ -3168,10 +3813,11 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 export async function lookupLiveAuthoritative(input: LookupInput): Promise<LookupResult | null> {
   const t0 = performance.now();
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
-  const title = (input.productTitle || "").trim();
+  const rawTitle = (input.productTitle || "").trim();
+  const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
   const found = await lookupProviders({ ...input, productTitle: title });
   if (!found) return null;
-  const key = cacheKey(input);
+  const key = cacheKey({ ...input, productTitle: title });
   if (key) {
     const cache = await loadCache();
     setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString(), schemaVersion: 2 });

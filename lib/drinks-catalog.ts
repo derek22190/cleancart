@@ -5566,9 +5566,22 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   if (pooled && pooled.split(/[^a-z0-9]+/).some(word => word.length >= 3 && new RegExp("\\b" + word + "\\b").test(q))) return false;
   const flavors =
     q.match(
-      /\b(vanilla|chocolate|strawberry|raspberry|blueberry|blackberry|razzberry|cranberry|pomegranate|mango|peach|cherry|grape|grapefruit|pamplemousse|coconut|caramel|mocha|lemon|lime|orange|watermelon|pineapple|passionfruit|dragonfruit|guava|tangerine|hibiscus|ginger|root\s+beer|cream\s+soda|doc\s+pop|fruit\s+punch|tropical\s+punch|blue\s+razz|ice\s+pop|rocket\s+pop|bombsicle|meta\s+moon|skittles|starburst|warheads|cosmic\s+stardust|cherry\s+slush|dreamsicle|gummy\s+bear|revel\s+berry|bluephoria|enlighten\s*mint|silver\s+ice|glacier\s+freeze|power[- ]?c|xxx|super\s+berry|mixed\s+berry|blood\s+raz|tiger'?s\s+blood|blue\s+lemonade|volcano\s+burst|kool[- ]?aid|sunnyd|ring\s+pop|severed\s+lime|mango\s+chainsaw|cafe\s+latte)\b/g,
+      /\b(vanilla|chocolate|strawberry|strawberries|raspberry|raspberries|blueberry|blueberries|blackberry|blackberries|razzberry|cranberry|cranberries|pomegranate|mango|mangoes|peach|peaches|cherry|cherries|grape|grapes|grapefruit|pamplemousse|coconut|caramel|mocha|lemon|lime|orange|watermelon|pineapple|passionfruit|dragonfruit|guava|tangerine|hibiscus|ginger|root\s+beer|cream\s+soda|doc\s+pop|fruit\s+punch|tropical\s+punch|blue\s+razz|ice\s+pop|rocket\s+pop|bombsicle|meta\s+moon|skittles|starburst|warheads|cosmic\s+stardust|cherry\s+slush|dreamsicle|gummy\s+bear|revel\s+berry|bluephoria|enlighten\s*mint|silver\s+ice|glacier\s+freeze|power[- ]?c|xxx|super\s+berry|mixed\s+berry|blood\s+raz|tiger'?s\s+blood|blue\s+lemonade|volcano\s+burst|kool[- ]?aid|sunnyd|ring\s+pop|severed\s+lime|mango\s+chainsaw|cafe\s+latte)\b/g,
     ) || [];
-  if (flavors.some((flavor) => !new RegExp("\\b" + flavor + "\\b").test(t))) return false;
+  const hasFlavorStem = (text: string, flavor: string): boolean => {
+    if (new RegExp("\\b" + flavor + "s?\\b").test(text)) return true;
+    if (flavor.endsWith("y") && flavor.length > 3) {
+      return new RegExp("\\b" + flavor.slice(0, -1) + "ies\\b").test(text);
+    }
+    if (flavor.endsWith("ies") && flavor.length > 4) {
+      return new RegExp("\\b" + flavor.slice(0, -3) + "y\\b").test(text);
+    }
+    if (flavor.endsWith("es") && flavor.length > 4) {
+      return new RegExp("\\b" + flavor.slice(0, -2) + "\\b").test(text);
+    }
+    return new RegExp("\\b" + flavor + "es\\b").test(text);
+  };
+  if (flavors.some((flavor) => !hasFlavorStem(t, flavor))) return false;
   // Percent signs are not word characters: a trailing \b after '%' misses '2% Milk'.
   if (/\bmilk\b/.test(q) || /\bmilk\b/.test(t)) {
     if (/\bwhole\b/.test(q) && !/\b(whole|full[ -]*fat)\b/.test(t)) return false;
