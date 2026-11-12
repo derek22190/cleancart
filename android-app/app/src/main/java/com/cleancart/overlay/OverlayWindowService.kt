@@ -2391,19 +2391,15 @@ class OverlayWindowService : Service() {
         val provenanceLine = buildString {
             append("Source: $sourceLabel")
             if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
-            append(" · Tap to report a mistake")
+            append(" · Tap to auto-verify label")
         }
         sheet.addView(
             text(provenanceLine, 9.5f, BRAND, bold = true).apply {
                 setPadding(dp(2), dp(6), dp(2), 0)
                 setOnClickListener {
-                    runCatching {
-                        val subject = java.net.URLEncoder.encode("Ingredient label correction: $prodTitle", "UTF-8")
-                        val mailIntent = android.content.Intent(
-                            android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("mailto:support@heybroc.com?subject=$subject")
-                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(mailIntent)
+                    text = "🤖 Checking USDA & Open Food Facts…"
+                    ScanApi.autoVerifyLabel(prodTitle, ing, currentStore) { summary ->
+                        text = "✓ $summary"
                     }
                 }
             }

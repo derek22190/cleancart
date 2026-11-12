@@ -3080,3 +3080,23 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   }
   return { ...found, ms: ms() };
 }
+
+/**
+ * Forces a fresh live lookup against Open Food Facts, USDA FoodData Central, and NIH DSLD
+ * (bypassing local cache and static catalog priority) for the Auto-Label Verifier.
+ */
+export async function lookupLiveAuthoritative(input: LookupInput): Promise<LookupResult | null> {
+  const t0 = performance.now();
+  const ms = () => Math.round((performance.now() - t0) * 100) / 100;
+  const title = (input.productTitle || "").trim();
+  const found = await lookupProviders({ ...input, productTitle: title });
+  if (!found) return null;
+  const key = cacheKey(input);
+  if (key) {
+    const cache = await loadCache();
+    setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString(), schemaVersion: 2 });
+    void persistCache(cache);
+  }
+  return { ...found, ms: ms() };
+}
+

@@ -3238,6 +3238,43 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const labelReportRouteMod = await import("../app/api/label-report/route");
+  const labelRepReq = new Request("http://localhost:3000/api/label-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.88" },
+    body: JSON.stringify({
+      productTitle: "Strawberry Low Fat Yogurt",
+      brand: "Yoplait",
+      currentIngredients:
+        "Cultured Grade A Reduced Fat Milk, Sugar, Strawberries, Modified Corn Starch, High Fructose Corn Syrup, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Colored with Carmine, Natural Flavor, Pectin, Vitamin A Acetate, Vitamin D3.",
+      reportedIngredients:
+        "Cultured Pasteurized Organic Whole Milk, Organic Strawberries, Live and Active Cultures.",
+      issueType: "reformulated",
+      store: "walmart",
+    }),
+  });
+  const labelRepRes = await labelReportRouteMod.POST(labelRepReq);
+  const labelRepJson = (await labelRepRes.json()) as {
+    ok: boolean;
+    report?: { status: string; previousScore: number; verifiedScore: number };
+  };
+  const labelVerifierModalSrc = fs.readFileSync("components/LabelAutoVerifierModal.tsx", "utf8");
+  check(
+    "Automatic AI Label & Score Verifier: replaces mailto:support@heybroc.com with in-app /api/label-report auto-verifier across Web, iOS Safari & Android",
+    Boolean(
+      labelRepJson.ok &&
+        labelRepJson.report?.status === "auto_updated" &&
+        (labelRepJson.report?.verifiedScore ?? 0) > (labelRepJson.report?.previousScore ?? 100) &&
+        freshSimTsx.includes("open-label-auto-verifier") &&
+        freshSimTsx.includes("LabelAutoVerifierModal") &&
+        !freshSimTsx.includes("mailto:support@heybroc.com") &&
+        labelVerifierModalSrc.includes("run-auto-label-check-btn") &&
+        safariContentSrc.includes('data-act="auto-verify-label"') &&
+        !safariContentSrc.includes("mailto:support@heybroc.com") &&
+        androidScanApiKtSrc.includes("autoVerifyLabel")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

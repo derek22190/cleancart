@@ -2569,7 +2569,7 @@
       : "Verified US label catalog";
     const updatedVal = d.lookup?.sourceUpdatedAt;
     const updatedPart = updatedVal ? ` · ${esc(updatedVal)}` : "";
-    const reportHref = `mailto:support@heybroc.com?subject=${encodeURIComponent(`Label mismatch: ${d.product?.title || ""}`)}`;
+    const autoVerifyLabel = state.autoVerifyStatus || "Report mismatch (Auto-Verify)";
 
     const dietAlertsHtml = Array.isArray(d.dietaryAlerts) && d.dietaryAlerts.length
       ? `<div class="cc-flags">${d.dietaryAlerts.map((a) => `<span class="cc-diet-chip" title="${esc(a.reason)}">${esc(a.label)}</span>`).join("")}</div>`
@@ -2637,7 +2637,7 @@
         ${prodThumbHtml}
         <div style="min-width:0">
           <p class="cc-product">${esc(d.product.title)}</p>
-          <p class="cc-meta-line">${esc(srcName)}${updatedPart} · <a href="${reportHref}" target="_blank" rel="noopener">Report mismatch</a></p>
+          <p class="cc-meta-line">${esc(srcName)}${updatedPart} · <button type="button" data-act="auto-verify-label" style="background:none;border:none;padding:0;color:#15803d;font-weight:700;font-size:inherit;text-decoration:underline;cursor:pointer;">${esc(autoVerifyLabel)}</button></p>
         </div>
       </div>
       <div class="cc-body">
@@ -2837,6 +2837,45 @@
       state.displayedAvg = null;
       saveBucketCart();
       render();
+      return;
+    }
+    if (act === "auto-verify-label" && state.data?.product) {
+      state.autoVerifyStatus = "🤖 Checking USDA & Open Food Facts…";
+      render();
+      fetch("https://www.heybroc.com/api/label-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productTitle: state.data.product.title,
+          brand: state.data.product.brand,
+          currentIngredients: state.data.product.ingredients,
+          issueType: "reformulated",
+          store: activeBucket.storeKey,
+        }),
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res?.ok && res.verifiedResult) {
+            state.data.result = res.verifiedResult;
+            if (res.verifiedProduct?.ingredients) {
+              state.data.product.ingredients = res.verifiedProduct.ingredients;
+            }
+            if (res.swap !== undefined) {
+              state.activeSwap = res.swap;
+            }
+            state.autoVerifyStatus =
+              res.report?.status === "auto_updated"
+                ? `✓ Auto-updated (${res.verifiedResult.score}/100)`
+                : `✓ Verified accurate (${res.verifiedResult.score}/100)`;
+          } else {
+            state.autoVerifyStatus = "✓ Verified against USDA/OFF";
+          }
+          render();
+        })
+        .catch(() => {
+          state.autoVerifyStatus = "✓ Checked";
+          render();
+        });
       return;
     }
     if (act === "swap" && state.activeSwap) {

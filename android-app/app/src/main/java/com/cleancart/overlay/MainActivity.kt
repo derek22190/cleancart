@@ -4873,20 +4873,15 @@ class MainActivity : Activity() {
         val provenanceLine = buildString {
             append("Source: $sourceLabel")
             if (sourceUpdated.isNotBlank() && sourceUpdated != "null") append(" (updated $sourceUpdated)")
-            append(" · Tap to report a mistake")
+            append(" · Tap to auto-verify label")
         }
         sheet.addView(
             label(provenanceLine, 11f, 0xFF0F7A4A.toInt(), bold = true).apply {
                 setPadding(dp(4), dp(10), dp(4), dp(2))
                 setOnClickListener {
-                    runCatching {
-                        val subject = java.net.URLEncoder.encode("Ingredient label correction: $title", "UTF-8")
-                        startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("mailto:support@heybroc.com?subject=$subject")
-                            )
-                        )
+                    text = "🤖 Checking USDA & Open Food Facts…"
+                    ScanApi.autoVerifyLabel(title, ingredients, selectedStore) { summary ->
+                        text = "✓ $summary"
                     }
                 }
             }

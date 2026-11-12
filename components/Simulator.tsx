@@ -36,6 +36,7 @@ import type { PlanId } from "@/lib/pricing";
 import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import CleanArcScoreCard from "./CleanArcScoreCard";
+import LabelAutoVerifierModal from "./LabelAutoVerifierModal";
 import LabelScannerModal from "./LabelScannerModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
 import PostCheckoutOtoModal from "./PostCheckoutOtoModal";
@@ -766,6 +767,7 @@ export default function Simulator({
   const [preferredStores, setPreferredStores] = useState<Store[] | undefined>(undefined);
   const [preferStoreBrand, setPreferStoreBrand] = useState(false);
   const [labelScannerOpen, setLabelScannerOpen] = useState(false);
+  const [labelVerifierOpen, setLabelVerifierOpen] = useState(false);
   const [weeklyAuditOpen, setWeeklyAuditOpen] = useState(false);
   const [exposeCardOpen, setExposeCardOpen] = useState(false);
   const [pendingSharedQuery, setPendingSharedQuery] = useState<{ q: string; storeOverride?: Store } | null>(null);
@@ -3283,12 +3285,23 @@ export default function Simulator({
                 {lookupSourceLabel(active.lookup)}
                 {active.lookup.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                 {" · Verify physical label · "}
-                <a
-                  href={`mailto:support@heybroc.com?subject=${encodeURIComponent(`Label report: ${active.brand} ${active.title}`)}`}
-                  style={{ color: "#15803d", fontWeight: 700, textDecoration: "underline" }}
+                <button
+                  id="open-label-auto-verifier-inline"
+                  type="button"
+                  onClick={() => setLabelVerifierOpen(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "#15803d",
+                    fontWeight: 700,
+                    fontSize: "inherit",
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                  }}
                 >
-                  Report a mistake
-                </a>
+                  Report a mistake (Auto-Verify)
+                </button>
               </p>
             )}
           </div>
@@ -4252,12 +4265,23 @@ export default function Simulator({
                               {lookupSourceLabel(active.lookup)}
                               {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
                               {" · "}
-                              <a
-                                href={`mailto:support@heybroc.com?subject=${encodeURIComponent(`Label report: ${active.brand} ${active.title}`)}`}
-                                style={{ color: "#15803d", textDecoration: "underline" }}
+                              <button
+                                id="open-label-auto-verifier"
+                                type="button"
+                                onClick={() => setLabelVerifierOpen(true)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  color: "#15803d",
+                                  fontWeight: 700,
+                                  fontSize: "inherit",
+                                  textDecoration: "underline",
+                                  cursor: "pointer",
+                                }}
                               >
-                                Report a mistake
-                              </a>
+                                Report a mistake (Auto-Verify)
+                              </button>
                             </small>
                             <small style={{ display: "block", marginTop: 4, fontSize: 10.5, color: "#64748b", lineHeight: 1.4 }}>
                               Informational opinion only — not medical or regulatory advice. Most flagged ingredients are permitted or GRAS under U.S. FDA rules; scores reflect HeyBroc&apos;s independent clean-label rubric. Always verify the physical product label.
@@ -5416,6 +5440,44 @@ export default function Simulator({
         swapUnlocked={isPro || swapsUsedThisWeek < weeklySwapLimit}
         store={store}
         referralCode={appliedCreator?.code || personalReferralCode}
+      />
+
+      <LabelAutoVerifierModal
+        open={labelVerifierOpen}
+        onClose={() => setLabelVerifierOpen(false)}
+        productTitle={active.title}
+        productBrand={active.brand}
+        currentIngredients={active.ingredients}
+        currentScore={score.score}
+        store={store}
+        preferStoreBrand={preferStoreBrand}
+        watchlist={watch}
+        familyWatchlist={familyWatchlist}
+        dietaryWatchlist={dietaryWatchlist}
+        onApplyVerifiedProduct={(verified) => {
+          setActive((prev) => ({
+            ...prev,
+            ingredients: verified.ingredients || prev.ingredients,
+            nutrition: verified.nutrition ?? prev.nutrition,
+            lookup: {
+              source: "usda",
+              sourceUpdatedAt: verified.sourceUpdatedAt || new Date().toISOString().slice(0, 10),
+              ms: 12,
+            },
+          }));
+          setCartsByStore((prev) => ({
+            ...prev,
+            [store]: (prev[store] ?? []).map((item) =>
+              item.key === active.key
+                ? {
+                    ...item,
+                    ingredients: verified.ingredients || item.ingredients,
+                    nutrition: verified.nutrition ?? item.nutrition,
+                  }
+                : item
+            ),
+          }));
+        }}
       />
     </div>
   );

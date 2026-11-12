@@ -70,6 +70,18 @@ export default function AdminPage() {
   const [paywallForm, setPaywallForm] = useState<PaywallConfigState | null>(null);
   const [savingPaywall, setSavingPaywall] = useState(false);
   const [paywallSavedMsg, setPaywallSavedMsg] = useState("");
+  const [labelReports, setLabelReports] = useState<
+    Array<{
+      id: string;
+      createdAt: string;
+      productTitle: string;
+      previousScore: number;
+      verifiedScore: number;
+      status: string;
+      resolutionSource: string;
+      summary: string;
+    }>
+  >([]);
 
   useEffect(() => {
     try {
@@ -84,14 +96,26 @@ export default function AdminPage() {
 
   const loadAnalytics = useCallback(async (secret: string) => {
     try {
-      const res = await fetch("/api/analytics", {
-        headers: { Authorization: `Bearer ${secret}` },
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.ok) {
-        if (data.snapshot) setSnapshot(data.snapshot as AnalyticsSnapshotState);
-        if (data.paywall) setPaywallForm(data.paywall as PaywallConfigState);
+      const [res, repRes] = await Promise.all([
+        fetch("/api/analytics", {
+          headers: { Authorization: `Bearer ${secret}` },
+        }),
+        fetch("/api/label-report", {
+          headers: { Authorization: `Bearer ${secret}` },
+        }),
+      ]);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) {
+          if (data.snapshot) setSnapshot(data.snapshot as AnalyticsSnapshotState);
+          if (data.paywall) setPaywallForm(data.paywall as PaywallConfigState);
+        }
+      }
+      if (repRes.ok) {
+        const repData = await repRes.json();
+        if (repData?.ok && Array.isArray(repData.reports)) {
+          setLabelReports(repData.reports);
+        }
       }
     } catch {
       /* ignore */
@@ -464,6 +488,61 @@ export default function AdminPage() {
             </form>
           </div>
         )}
+
+        {/* AUTOMATIC AI LABEL VERIFIER LOG */}
+        <div className="card" style={{ padding: 24 }}>
+          <span className="eyebrow eyebrow--green">🤖 Automatic Label &amp; Score Verifier</span>
+          <h2 style={{ fontSize: 21, margin: "4px 0 6px" }}>Auto-Resolved Shopper Label Reports ({labelReports.length})</h2>
+          <p className="meta" style={{ marginBottom: 14 }}>
+            When shoppers tap &ldquo;Report a mistake (Auto-Verify)&rdquo;, HeyBroc automatically re-verifies the product against USDA FoodData Central, Open Food Facts, and package label OCR—resolving reports in real time with zero manual email triage.
+          </p>
+          {labelReports.length === 0 ? (
+            <div style={{ padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px dashed #cbd5e1", fontSize: 13, color: "#475569" }}>
+              No shopper label reports logged yet. All reports are verified automatically in-app.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {labelReports.slice(0, 12).map((rep) => (
+                <div
+                  key={rep.id}
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #e2e8f0",
+                    background: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>
+                      {rep.productTitle}{" "}
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f7a4a" }}>
+                        ({rep.previousScore}/100 → {rep.verifiedScore}/100)
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{rep.summary}</div>
+                  </div>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      background: rep.status === "auto_updated" ? "#dcfce7" : "#f1f5f9",
+                      color: rep.status === "auto_updated" ? "#166534" : "#334155",
+                    }}
+                  >
+                    {rep.status === "auto_updated" ? "✓ Auto-Updated" : "✓ Verified Accurate"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <InfluencerEngine
