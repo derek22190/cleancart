@@ -30,6 +30,8 @@ export interface WatchlistMiniFunnelProps {
   initialStep?: FunnelStep;
   isReturningUser?: boolean;
   quickEditMode?: boolean;
+  isIosApp?: boolean;
+  isAuthenticated?: boolean;
   appliedCreator?: { code: string; name: string } | null;
   onApplyAndGuest: (selected: Category[], extras?: OnboardingSelections) => void;
   onApplyAndSignIn: (selected: Category[], extras?: OnboardingSelections) => void;
@@ -272,6 +274,8 @@ export default function WatchlistMiniFunnel({
   initialStep = 1,
   isReturningUser = false,
   quickEditMode = false,
+  isIosApp = false,
+  isAuthenticated = false,
   appliedCreator,
   onApplyAndGuest,
   onApplyAndSignIn,
@@ -297,6 +301,7 @@ export default function WatchlistMiniFunnel({
   const [forceFullFunnel, setForceFullFunnel] = useState<boolean>(false);
   const wasOpenRef = useRef<boolean>(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -337,6 +342,7 @@ export default function WatchlistMiniFunnel({
   useEffect(() => {
     if (open && !showQuickEditor) {
       cardRef.current?.scrollTo({ top: 0 });
+      bodyScrollRef.current?.scrollTo({ top: 0 });
       trackOnboardingEvent("onboarding_step_viewed", {
         step,
         stepTitle: STEP_TITLES[step],
@@ -732,7 +738,7 @@ export default function WatchlistMiniFunnel({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 16,
+        padding: 10,
         background: "rgba(15, 22, 18, 0.66)",
         backdropFilter: "blur(7px)",
         WebkitBackdropFilter: "blur(7px)",
@@ -745,530 +751,531 @@ export default function WatchlistMiniFunnel({
         style={{
           width: "100%",
           maxWidth: 488,
-          maxHeight: "calc(100vh - 32px)",
-          overflowY: "auto",
+          maxHeight: "calc(100dvh - 20px)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           background: "#ffffff",
-          borderRadius: 26,
-          padding: "20px 20px 18px",
+          borderRadius: 24,
+          padding: "14px 15px 14px",
           boxShadow: "0 24px 48px rgba(0, 0, 0, 0.30)",
           outline: "none",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header: Back Button / Step Pill + Always-Available Close/Skip Button */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 6,
-            marginBottom: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
-            {step > 1 && (
-              <button
-                type="button"
-                onClick={() => setStep((s) => (s > 1 ? ((s - 1) as FunnelStep) : 1))}
-                style={{
-                  background: "#f3f4f6",
-                  border: "none",
-                  borderRadius: 999,
-                  padding: "5px 10px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#374151",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
-                }}
-              >
-                ← Back
-              </button>
-            )}
-            <span
-              style={{
-                display: "inline-block",
-                background: "#e6f5ec",
-                color: "#0b5e39",
-                fontSize: 10.5,
-                fontWeight: 800,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-                padding: "5px 10px",
-                borderRadius: 999,
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Step {step} of 7 · {STEP_TITLES[step]}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleBackdropOrEscapeDismiss}
-            aria-label="Close or skip onboarding"
+        {/* Pinned Top Header: Back Button / Step Pill + Always-Available Close/Skip Button */}
+        <div style={{ flexShrink: 0 }}>
+          <div
             style={{
-              background: "#f3f4f6",
-              border: "none",
-              borderRadius: 999,
-              padding: "5px 11px",
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#4b5563",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 6,
+              marginBottom: 7,
             }}
           >
-            ✕ Close
-          </button>
-        </div>
-
-        {/* 7-Segment Progress Bar */}
-        <div
-          role="progressbar"
-          aria-valuenow={step}
-          aria-valuemin={1}
-          aria-valuemax={7}
-          aria-label={`Onboarding step ${step} of 7: ${STEP_TITLES[step]}`}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(7, 1fr)",
-            gap: 5,
-            marginBottom: 14,
-          }}
-        >
-          {([1, 2, 3, 4, 5, 6, 7] as FunnelStep[]).map((idx) =>
-            isReturningUser ? (
-              <button
-                key={idx}
-                type="button"
-                aria-label={`Jump to Step ${idx}: ${STEP_TITLES[idx]}`}
-                onClick={() => setStep(idx)}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
+              {step > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setStep((s) => (s > 1 ? ((s - 1) as FunnelStep) : 1))}
+                  style={{
+                    background: "#f3f4f6",
+                    border: "none",
+                    borderRadius: 999,
+                    padding: "4px 9px",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color: "#374151",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  ← Back
+                </button>
+              )}
+              <span
                 style={{
-                  height: 6,
-                  padding: 0,
-                  border: "none",
-                  borderRadius: 999,
-                  background: idx <= step ? "#16a34a" : "#e5e7eb",
-                  cursor: "pointer",
-                  transition: "background 0.2s ease",
-                }}
-              />
-            ) : (
-              <div
-                key={idx}
-                style={{
-                  height: 5,
-                  borderRadius: 999,
-                  background: idx <= step ? "#16a34a" : "#e5e7eb",
-                  transition: "background 0.2s ease",
-                }}
-              />
-            )
-          )}
-        </div>
-
-        {/* ==================== STEP 1: HOUSEHOLD PROFILE (MULTI-SELECT) ==================== */}
-        {step === 1 && (
-          <>
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 22.5,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 6px",
-                lineHeight: 1.2,
-              }}
-            >
-              Who are you protecting with HeyBroc?
-            </h2>
-            <p
-              style={{
-                fontSize: 13.5,
-                color: "#4b5563",
-                margin: "0 0 14px",
-                lineHeight: 1.45,
-              }}
-            >
-              Select <b>all that apply</b> — we&apos;ll calibrate your <b>0–100 food grading</b> in 60 seconds:
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {HOUSEHOLD_OPTIONS.map((opt) => {
-                const active = households.includes(opt.id);
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleHousehold(opt.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderRadius: 16,
-                      border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
-                      background: active ? "#f0fdf4" : "#ffffff",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        background: active ? "#dcfce7" : "#f3f4f6",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 21,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {opt.icon}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <span style={{ fontSize: 14.5, fontWeight: 800, color: "#111814" }}>
-                          {opt.title}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: "2px 7px",
-                            borderRadius: 999,
-                            background: active ? "#16a34a" : "#e5e7eb",
-                            color: active ? "#ffffff" : "#4b5563",
-                          }}
-                        >
-                          {opt.badge}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.35 }}>
-                        {opt.subtitle}
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        width: 23,
-                        height: 23,
-                        borderRadius: 7,
-                        background: active ? "#16a34a" : "#ffffff",
-                        border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
-                        color: "#ffffff",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12.5,
-                        fontWeight: 800,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {active ? "✓" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isReturningUser && selected.length === 0) {
-                    setSelected([...activeHouseholdObj.recommendedCats]);
-                  }
-                  setStep(2);
-                }}
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  fontSize: 15,
+                  display: "inline-block",
+                  background: "#e6f5ec",
+                  color: "#0b5e39",
+                  fontSize: 10,
                   fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  padding: "4px 9px",
+                  borderRadius: 999,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
-                Continue →
-              </button>
+                Step {step} of 7 · {STEP_TITLES[step]}
+              </span>
             </div>
-          </>
-        )}
 
-        {/* ==================== STEP 2: 2X INGREDIENT WATCHLIST GOALS (MULTI-SELECT) ==================== */}
-        {step === 2 && (
-          <>
-            <h2
-              id="heybroc-onboarding-heading"
+            <button
+              type="button"
+              onClick={handleBackdropOrEscapeDismiss}
+              aria-label="Close or skip onboarding"
               style={{
-                fontSize: 22.5,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 6px",
-                lineHeight: 1.2,
-              }}
-            >
-              What are your clean-eating goals?
-            </h2>
-            <p
-              style={{
-                fontSize: 13.5,
+                background: "#f3f4f6",
+                border: "none",
+                borderRadius: 999,
+                padding: "4px 10px",
+                fontSize: 11.5,
+                fontWeight: 700,
                 color: "#4b5563",
-                margin: "0 0 12px",
-                lineHeight: 1.45,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
-              Select as many as you want — HeyBroc applies <b>2x strictness</b> to your choices and highlights <b>90–100/100 cleaner picks</b>:
-            </p>
+              ✕ Close
+            </button>
+          </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {WATCHLIST_PILLS.map((item) => {
-                const active = selected.includes(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggle(item.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 11,
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "10px 13px",
-                      borderRadius: 15,
-                      border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
-                      background: active ? "#f0fdf4" : "#ffffff",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <span
+          {/* 7-Segment Progress Bar */}
+          <div
+            role="progressbar"
+            aria-valuenow={step}
+            aria-valuemin={1}
+            aria-valuemax={7}
+            aria-label={`Onboarding step ${step} of 7: ${STEP_TITLES[step]}`}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              gap: 5,
+              marginBottom: 10,
+            }}
+          >
+            {([1, 2, 3, 4, 5, 6, 7] as FunnelStep[]).map((idx) =>
+              isReturningUser ? (
+                <button
+                  key={idx}
+                  type="button"
+                  aria-label={`Jump to Step ${idx}: ${STEP_TITLES[idx]}`}
+                  onClick={() => setStep(idx)}
+                  style={{
+                    height: 5,
+                    padding: 0,
+                    border: "none",
+                    borderRadius: 999,
+                    background: idx <= step ? "#16a34a" : "#e5e7eb",
+                    cursor: "pointer",
+                    transition: "background 0.2s ease",
+                  }}
+                />
+              ) : (
+                <div
+                  key={idx}
+                  style={{
+                    height: 5,
+                    borderRadius: 999,
+                    background: idx <= step ? "#16a34a" : "#e5e7eb",
+                    transition: "background 0.2s ease",
+                  }}
+                />
+              )
+            )}
+          </div>
+        </div>
+
+        {/* Middle Content Region (Fits on 1 screen on iPhone; scrollable only as ultra-small fallback) */}
+        <div
+          ref={bodyScrollRef}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {/* ==================== STEP 1: HOUSEHOLD PROFILE (COMPACT) ==================== */}
+          {step === 1 && (
+            <>
+              <h2
+                id="heybroc-onboarding-heading"
+                style={{
+                  fontSize: 19.5,
+                  fontWeight: 800,
+                  color: "#111814",
+                  margin: "0 0 4px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Who are you protecting with HeyBroc?
+              </h2>
+              <p
+                style={{
+                  fontSize: 12.5,
+                  color: "#4b5563",
+                  margin: "0 0 10px",
+                  lineHeight: 1.38,
+                }}
+              >
+                Select <b>all that apply</b> — we&apos;ll calibrate your <b>0–100 food grading</b> in 60 seconds:
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {HOUSEHOLD_OPTIONS.map((opt) => {
+                  const active = households.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggleHousehold(opt.id)}
                       style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 11,
-                        background: active ? "#dcfce7" : "#f3f4f6",
-                        display: "inline-flex",
+                        display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 19,
-                        flexShrink: 0,
+                        gap: 10,
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "9px 11px",
+                        borderRadius: 14,
+                        border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
+                        background: active ? "#f0fdf4" : "#ffffff",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
                       }}
                     >
-                      {item.icon}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 10,
+                          background: active ? "#dcfce7" : "#f3f4f6",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 18,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {opt.icon}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 800, color: "#111814" }}>
+                            {opt.title}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 9.5,
+                              fontWeight: 700,
+                              padding: "1.5px 6px",
+                              borderRadius: 999,
+                              background: active ? "#16a34a" : "#e5e7eb",
+                              color: active ? "#ffffff" : "#4b5563",
+                            }}
+                          >
+                            {opt.badge}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            color: "#6b7280",
+                            marginTop: 1,
+                            lineHeight: 1.3,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {opt.subtitle}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 6,
+                          background: active ? "#16a34a" : "#ffffff",
+                          border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
+                          color: "#ffffff",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 11.5,
+                          fontWeight: 800,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {active ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* ==================== STEP 2: 2X INGREDIENT WATCHLIST GOALS (SIDE-BY-SIDE 2-COL GRID) ==================== */}
+          {step === 2 && (
+            <>
+              <h2
+                id="heybroc-onboarding-heading"
+                style={{
+                  fontSize: 19.5,
+                  fontWeight: 800,
+                  color: "#111814",
+                  margin: "0 0 4px",
+                  lineHeight: 1.2,
+                }}
+              >
+                What are your clean-eating goals?
+              </h2>
+              <p
+                style={{
+                  fontSize: 12.5,
+                  color: "#4b5563",
+                  margin: "0 0 9px",
+                  lineHeight: 1.35,
+                }}
+              >
+                Tap any to apply <b>2x strictness</b> &amp; highlight <b>90–100/100 cleaner picks</b>:
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {WATCHLIST_PILLS.map((item, idx) => {
+                  const active = selected.includes(item.id);
+                  const isLastOdd =
+                    WATCHLIST_PILLS.length % 2 === 1 && idx === WATCHLIST_PILLS.length - 1;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggle(item.id)}
+                      style={{
+                        gridColumn: isLastOdd ? "1 / -1" : undefined,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 7,
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "7px 9px",
+                        borderRadius: 12,
+                        border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
+                        background: active ? "#f0fdf4" : "#ffffff",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        minWidth: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 8,
+                          background: active ? "#dcfce7" : "#f3f4f6",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 14.5,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {item.icon}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "#111814",
+                            lineHeight: 1.2,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {item.title}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: active ? "#15803d" : "#6b7280",
+                            fontWeight: active ? 700 : 500,
+                            marginTop: 1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {active ? "2x Penalty On" : item.subtitle}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 5,
+                          background: active ? "#16a34a" : "#ffffff",
+                          border: active ? "2px solid #16a34a" : "1.5px solid #d1d5db",
+                          color: "#ffffff",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {active ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* ==================== STEP 3: ALL 12 FAVORITE GROCERY STORES (COMPACT 3-COL GRID) ==================== */}
+          {step === 3 && (
+            <>
+              <h2
+                id="heybroc-onboarding-heading"
+                style={{
+                  fontSize: 19.5,
+                  fontWeight: 800,
+                  color: "#111814",
+                  margin: "0 0 4px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Where do you usually grocery shop?
+              </h2>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#4b5563",
+                  margin: "0 0 7px",
+                  lineHeight: 1.35,
+                }}
+              >
+                Select <b>all the stores</b> you shop at — we&apos;ll pin your favorites first:
+              </p>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 6,
+                  background: "#ecfdf5",
+                  border: "1.5px solid #86efac",
+                  borderRadius: 11,
+                  padding: "5px 9px",
+                  marginBottom: 7,
+                }}
+              >
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#14532d", lineHeight: 1.3 }}>
+                  ✓ All 12+ grocery &amp; delivery stores + 1.5M+ barcodes stay unlocked
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allChecked = STORE_CHOICES.every((s) => selectedStores.includes(s.id));
+                    if (allChecked) {
+                      setSelectedStores(normalizeChoiceStores(undefined, initialStore));
+                    } else {
+                      setSelectedStores(STORE_CHOICES.map((s) => s.id));
+                    }
+                  }}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #86efac",
+                    borderRadius: 999,
+                    padding: "2.5px 8px",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    color: "#15803d",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {STORE_CHOICES.every((s) => selectedStores.includes(s.id)) ? "Reset" : "Select all 12"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {STORE_CHOICES.map((st) => {
+                  const active = selectedStores.includes(st.id);
+                  return (
+                    <button
+                      key={st.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggleStore(st.id)}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 3,
+                        textAlign: "left",
+                        padding: "7px 8px",
+                        borderRadius: 12,
+                        border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
+                        background: active ? "#f0fdf4" : "#ffffff",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        minWidth: 0,
+                      }}
+                    >
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 7,
-                          flexWrap: "wrap",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          gap: 4,
                         }}
                       >
+                        <span style={{ fontSize: 15, lineHeight: 1 }}>{st.icon}</span>
                         <span
                           style={{
-                            fontSize: 14,
+                            width: 16,
+                            height: 16,
+                            borderRadius: 5,
+                            background: active ? "#16a34a" : "#ffffff",
+                            border: active ? "1.5px solid #16a34a" : "1.5px solid #d1d5db",
+                            color: "#ffffff",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 9.5,
                             fontWeight: 800,
-                            color: "#111814",
+                            flexShrink: 0,
                           }}
                         >
-                          {item.title}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: "2px 7px",
-                            borderRadius: 999,
-                            background: active ? "#16a34a" : "#e5e7eb",
-                            color: active ? "#ffffff" : "#4b5563",
-                          }}
-                        >
-                          {active ? "2x Penalty On" : item.badge}
+                          {active ? "✓" : ""}
                         </span>
                       </div>
                       <div
                         style={{
-                          fontSize: 11.5,
-                          color: "#6b7280",
-                          marginTop: 1,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {item.subtitle}
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        width: 23,
-                        height: 23,
-                        borderRadius: 7,
-                        background: active ? "#16a34a" : "#ffffff",
-                        border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
-                        color: "#ffffff",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12.5,
-                        fontWeight: 800,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {active ? "✓" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  fontSize: 15,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
-                }}
-              >
-                Continue ({selected.length} {selected.length === 1 ? "Goal" : "Goals"} Selected) →
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ==================== STEP 3: ALL 12 FAVORITE GROCERY STORES (MULTI-SELECT) ==================== */}
-        {step === 3 && (
-          <>
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 5px",
-                lineHeight: 1.2,
-              }}
-            >
-              Where do you usually grocery shop?
-            </h2>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#4b5563",
-                margin: "0 0 9px",
-                lineHeight: 1.4,
-              }}
-            >
-              Select <b>all the stores</b> you shop at — we&apos;ll pin your favorites first:
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                background: "#ecfdf5",
-                border: "1.5px solid #86efac",
-                borderRadius: 12,
-                padding: "7px 11px",
-                marginBottom: 9,
-              }}
-            >
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: "#14532d", lineHeight: 1.35 }}>
-                ✓ All 12+ grocery &amp; delivery stores + 1.5M+ barcodes stay unlocked
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  const allChecked = STORE_CHOICES.every((s) => selectedStores.includes(s.id));
-                  if (allChecked) {
-                    setSelectedStores(normalizeChoiceStores(undefined, initialStore));
-                  } else {
-                    setSelectedStores(STORE_CHOICES.map((s) => s.id));
-                  }
-                }}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #86efac",
-                  borderRadius: 999,
-                  padding: "3px 9px",
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: "#15803d",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
-                }}
-              >
-                {STORE_CHOICES.every((s) => selectedStores.includes(s.id)) ? "Reset" : "Select all 12"}
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 7,
-              }}
-            >
-              {STORE_CHOICES.map((st) => {
-                const active = selectedStores.includes(st.id);
-                return (
-                  <button
-                    key={st.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleStore(st.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      textAlign: "left",
-                      padding: "8px 10px",
-                      borderRadius: 13,
-                      border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
-                      background: active ? "#f0fdf4" : "#ffffff",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                      minWidth: 0,
-                    }}
-                  >
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>{st.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontSize: 12.5,
+                          fontSize: 11,
                           fontWeight: 800,
                           color: "#111814",
+                          width: "100%",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -1276,742 +1283,920 @@ export default function WatchlistMiniFunnel({
                       >
                         {st.label}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 10.5,
-                          color: "#6b7280",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {st.sub}
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        width: 19,
-                        height: 19,
-                        borderRadius: 6,
-                        background: active ? "#16a34a" : "#ffffff",
-                        border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
-                        color: "#ffffff",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {active ? "✓" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
-            <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={() => setStep(4)}
+          {/* ==================== STEP 4: ALLERGY & DIETARY GUARD (2-COL SIDE-BY-SIDE GRID) ==================== */}
+          {step === 4 && (
+            <>
+              <h2
+                id="heybroc-onboarding-heading"
                 style={{
-                  width: "100%",
-                  padding: "13px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  fontSize: 15,
+                  fontSize: 19.5,
                   fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+                  color: "#111814",
+                  margin: "0 0 4px",
+                  lineHeight: 1.2,
                 }}
               >
-                {selectedStores.length === 0
-                  ? "Continue (All 12 Stores Unlocked) →"
-                  : `Continue (${selectedStores.length} ${selectedStores.length === 1 ? "Store" : "Stores"} Selected) →`}
-              </button>
-            </div>
-          </>
-        )}
+                Any family allergies or dietary watches?
+              </h2>
+              <p
+                style={{
+                  fontSize: 12.5,
+                  color: "#4b5563",
+                  margin: "0 0 9px",
+                  lineHeight: 1.35,
+                }}
+              >
+                Optional — tap any watches below for instant <b>🛡️ Allergy, Sugar &amp; Glyphosate alerts</b>:
+              </p>
 
-        {/* ==================== STEP 4: ALLERGY & DIETARY GUARD (CLEAN MULTI-SELECT) ==================== */}
-        {step === 4 && (
-          <>
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 22.5,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 6px",
-                lineHeight: 1.2,
-              }}
-            >
-              Any family allergies or dietary watches?
-            </h2>
-            <p
-              style={{
-                fontSize: 13.5,
-                color: "#4b5563",
-                margin: "0 0 12px",
-                lineHeight: 1.45,
-              }}
-            >
-              Optional — select any watches below for instant <b>🛡️ Allergy, Sugar &amp; Glyphosate alerts</b>:
-            </p>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))",
-                gap: 7,
-              }}
-            >
-              {DIETARY_PILLS.map((item) => {
-                const active = dietarySelected.includes(item.id);
-                const isGlyphosate = item.id === "pesticide_risk";
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => toggleDietary(item.id)}
-                    style={{
-                      gridColumn: isGlyphosate ? "1 / -1" : undefined,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 9,
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "9px 11px",
-                      borderRadius: 14,
-                      border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
-                      background: active ? "#f0fdf4" : "#ffffff",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <span
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {DIETARY_PILLS.map((item) => {
+                  const active = dietarySelected.includes(item.id);
+                  const isGlyphosate = item.id === "pesticide_risk";
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggleDietary(item.id)}
                       style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: 9,
-                        background: active ? "#dcfce7" : "#f3f4f6",
-                        display: "inline-flex",
+                        gridColumn: isGlyphosate ? "1 / -1" : undefined,
+                        display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 16,
-                        flexShrink: 0,
+                        gap: 7,
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "7px 9px",
+                        borderRadius: 12,
+                        border: active ? "2px solid #16a34a" : "1.5px solid #e5e7eb",
+                        background: active ? "#f0fdf4" : "#ffffff",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                        minWidth: 0,
                       }}
                     >
-                      {item.icon}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
+                      <span
                         style={{
-                          fontSize: 12.5,
-                          fontWeight: 800,
-                          color: "#111814",
-                          whiteSpace: isGlyphosate ? "normal" : "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
+                          width: 26,
+                          height: 26,
+                          borderRadius: 8,
+                          background: active ? "#dcfce7" : "#f3f4f6",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 14.5,
+                          flexShrink: 0,
                         }}
                       >
-                        {item.title}
-                      </div>
-                      {isGlyphosate && (
+                        {item.icon}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
-                            fontSize: 11,
-                            color: "#6b7280",
-                            marginTop: 1,
+                            fontSize: 11.5,
+                            fontWeight: 800,
+                            color: "#111814",
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                           }}
                         >
-                          {item.subtitle}
+                          {item.title}
                         </div>
-                      )}
-                    </div>
-                    <span
-                      style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: 6,
-                        background: active ? "#16a34a" : "#ffffff",
-                        border: active ? "2px solid #16a34a" : "2px solid #d1d5db",
-                        color: "#ffffff",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 11.5,
-                        fontWeight: 800,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {active ? "✓" : ""}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                        {isGlyphosate && (
+                          <div
+                            style={{
+                              fontSize: 10.5,
+                              color: "#6b7280",
+                              marginTop: 1,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {item.subtitle}
+                          </div>
+                        )}
+                      </div>
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 5,
+                          background: active ? "#16a34a" : "#ffffff",
+                          border: active ? "2px solid #16a34a" : "1.5px solid #d1d5db",
+                          color: "#ffffff",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {active ? "✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
-            <div style={{ marginTop: 16 }}>
-              <button
-                type="button"
-                onClick={() => setStep(5)}
+          {/* ==================== STEP 5: DEDICATED GLYPHOSATE VS. CANCER MAP SLIDE (COMPACT) ==================== */}
+          {step === 5 && (
+            <>
+              <h2
+                id="heybroc-onboarding-heading"
                 style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  fontSize: 15,
+                  fontSize: 18.5,
                   fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+                  color: "#111814",
+                  margin: "0 0 4px",
+                  lineHeight: 1.2,
                 }}
               >
-                {dietarySelected.length > 0
-                  ? `Save ${dietarySelected.length} ${dietarySelected.length === 1 ? "Alert" : "Alerts"} & Continue →`
-                  : "No Allergies — Continue →"}
-              </button>
-            </div>
-          </>
-        )}
+                Why Families Watch Conventional Crops for Glyphosate
+              </h2>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#4b5563",
+                  margin: "0 0 8px",
+                  lineHeight: 1.35,
+                }}
+              >
+                Non-organic oats, wheat &amp; Dirty-Dozen produce allow synthetic herbicides. Compare <b>USGS Spray</b> vs. <b>CDC Cancer</b>:
+              </p>
 
-        {/* ==================== STEP 5: DEDICATED GLYPHOSATE VS. CANCER MAP SLIDE ==================== */}
-        {step === 5 && (
-          <>
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 21.5,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 5px",
-                lineHeight: 1.22,
-              }}
-            >
-              Why Families Watch Conventional Crops for Glyphosate
-            </h2>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#4b5563",
-                margin: "0 0 12px",
-                lineHeight: 1.42,
-              }}
-            >
-              Non-organic oats, wheat &amp; Dirty-Dozen produce allow synthetic herbicides. Compare the <b>USGS Spray Map</b> vs. <b>CDC Cancer Incidence</b>:
-            </p>
+              <div
+                id="onboarding-iowa-glyphosate-map"
+                style={{
+                  background: "linear-gradient(180deg, #fffbeb 0%, #fef2f2 100%)",
+                  border: "1.5px solid #fca5a5",
+                  borderRadius: 14,
+                  padding: "9px 10px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    marginBottom: 6,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                      color: "#991b1b",
+                      background: "#fee2e2",
+                      padding: "2px 7px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    🇺🇸 U.S. Glyphosate vs. Cancer Map
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#78350f" }}>
+                    USGS × CDC / NCI
+                  </span>
+                </div>
 
-            <div
-              id="onboarding-iowa-glyphosate-map"
-              style={{
-                background: "linear-gradient(180deg, #fffbeb 0%, #fef2f2 100%)",
-                border: "1.5px solid #fca5a5",
-                borderRadius: 16,
-                padding: "12px 13px",
-              }}
-            >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 7,
+                    marginBottom: 7,
+                  }}
+                >
+                  {/* Left Map: Full USA USGS Glyphosate Application Map */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #fed7aa",
+                      borderRadius: 10,
+                      padding: "6px 7px",
+                    }}
+                  >
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#9a3412", marginBottom: 3 }}>
+                      1. Glyphosate Usage (USGS)
+                    </div>
+                    <svg
+                      viewBox="0 0 320 195"
+                      role="img"
+                      aria-label="United States map of agricultural glyphosate usage showing low usage in Western states and a dark crimson bullseye over Iowa and the Midwest Corn Belt"
+                      style={{ width: "100%", maxHeight: 88, height: "auto", display: "block", borderRadius: 6, background: "#fffaf5" }}
+                    >
+                      <path
+                        d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
+                        fill="#fef3c7"
+                        stroke="#9a3412"
+                        strokeWidth="1.8"
+                      />
+                      <g stroke="#d97706" strokeWidth="0.7" opacity="0.45" fill="none">
+                        <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
+                        <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
+                      </g>
+                      <path
+                        d="M124,22 L192,24 L214,44 L236,56 L238,88 L218,108 L196,148 L172,152 L166,118 L126,110 L118,68 Z"
+                        fill="#fb923c"
+                        opacity="0.72"
+                      />
+                      <path
+                        d="M142,44 L198,44 L228,62 L232,88 L204,98 L188,138 L174,138 L172,98 L144,92 Z"
+                        fill="#c2410c"
+                        opacity="0.88"
+                      />
+                      <path
+                        d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
+                        fill="#431407"
+                        stroke="#ffffff"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
+                        fill="#7c2d12"
+                        stroke="#fed7aa"
+                        strokeWidth="1"
+                      />
+                      <circle
+                        cx="175"
+                        cy="68"
+                        r="22"
+                        fill="none"
+                        stroke="#dc2626"
+                        strokeWidth="2"
+                        strokeDasharray="4 2"
+                      />
+                      <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
+                        IA
+                      </text>
+                      <text x="54" y="82" textAnchor="middle" fill="#92400e" fontSize="8.5" fontWeight="700">
+                        LOW
+                      </text>
+                      <rect x="64" y="6" width="192" height="20" rx="10" fill="#7c2d12" />
+                      <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
+                        🎯 IOWA &amp; CORN BELT: #1 GLYPHOSATE ZONE
+                      </text>
+                    </svg>
+                    <div style={{ fontSize: 10, color: "#7c2d12", marginTop: 4, lineHeight: 1.3 }}>
+                      <b>#1 Spray Zone:</b> Concentrated in <b>Iowa &amp; Corn Belt</b> on conventional crops.
+                    </div>
+                  </div>
+
+                  {/* Right Map: Full USA Cancer Incidence Hotspot Map */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #fecaca",
+                      borderRadius: 10,
+                      padding: "6px 7px",
+                    }}
+                  >
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#991b1b", marginBottom: 3 }}>
+                      2. Cancer Incidence (CDC)
+                    </div>
+                    <svg
+                      viewBox="0 0 320 195"
+                      role="img"
+                      aria-label="United States cancer incidence map showing matching dark crimson hotspot over Iowa (#2 highest and #1 fastest-rising cancer rate in the US)"
+                      style={{ width: "100%", maxHeight: 88, height: "auto", display: "block", borderRadius: 6, background: "#fff5f5" }}
+                    >
+                      <path
+                        d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
+                        fill="#fee2e2"
+                        stroke="#991b1b"
+                        strokeWidth="1.8"
+                      />
+                      <g stroke="#ef4444" strokeWidth="0.7" opacity="0.38" fill="none">
+                        <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
+                        <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
+                      </g>
+                      <path
+                        d="M126,24 L196,26 L220,46 L242,60 L240,94 L220,114 L198,146 L172,148 L164,114 L128,106 L122,66 Z"
+                        fill="#f87171"
+                        opacity="0.72"
+                      />
+                      <path
+                        d="M144,42 L202,42 L228,62 L230,90 L204,100 L186,132 L172,132 L170,96 L144,90 Z"
+                        fill="#dc2626"
+                        opacity="0.88"
+                      />
+                      <path
+                        d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
+                        fill="#450a0a"
+                        stroke="#ffffff"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
+                        fill="#991b1b"
+                        stroke="#fecaca"
+                        strokeWidth="1"
+                      />
+                      <circle
+                        cx="175"
+                        cy="68"
+                        r="22"
+                        fill="none"
+                        stroke="#fef08a"
+                        strokeWidth="2.2"
+                        strokeDasharray="4 2"
+                      />
+                      <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
+                        IA
+                      </text>
+                      <text x="54" y="82" textAnchor="middle" fill="#991b1b" fontSize="8.5" fontWeight="700">
+                        LOW
+                      </text>
+                      <rect x="54" y="6" width="212" height="20" rx="10" fill="#7f1d1d" />
+                      <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
+                        🎯 IOWA: #2 US CANCER RATE (#1 RISING)
+                      </text>
+                    </svg>
+                    <div style={{ fontSize: 10, color: "#7f1d1d", marginTop: 4, lineHeight: 1.3 }}>
+                      <b>Same Bullseye:</b> Iowa has <b>#2 highest &amp; #1 rising cancer rate</b> in the U.S.
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    paddingTop: 6,
+                    borderTop: "1px solid rgba(239, 68, 68, 0.2)",
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: "#7f1d1d", lineHeight: 1.28, flex: 1 }}>
+                    <b>USDA Organic</b> prohibits synthetic glyphosate.
+                  </span>
+                  <button
+                    type="button"
+                    aria-pressed={dietarySelected.includes("pesticide_risk")}
+                    onClick={() => toggleDietary("pesticide_risk")}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: dietarySelected.includes("pesticide_risk")
+                        ? "1.5px solid #16a34a"
+                        : "1.5px solid #dc2626",
+                      background: dietarySelected.includes("pesticide_risk") ? "#dcfce7" : "#dc2626",
+                      color: dietarySelected.includes("pesticide_risk") ? "#14532d" : "#ffffff",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {dietarySelected.includes("pesticide_risk")
+                      ? "✓ Glyphosate Watch Active"
+                      : "🌱 Guard Glyphosate"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ==================== STEP 6: WHY IT MATTERS & HOW HEYBROC WORKS (SINGLE-SCREEN COMPACT) ==================== */}
+          {step === 6 && (
+            <>
+              {/* Compact Healthy Family Banner */}
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 6,
-                  flexWrap: "wrap",
-                  marginBottom: 8,
+                  position: "relative",
+                  borderRadius: 13,
+                  overflow: "hidden",
+                  marginBottom: 7,
+                  border: "1.5px solid #bbf7d0",
                 }}
               >
-                <span
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/onboarding-healthy-family.jpg"
+                  alt="Happy family with kids eating healthy whole foods together at the kitchen table"
                   style={{
+                    width: "100%",
+                    height: 68,
+                    objectFit: "cover",
+                    objectPosition: "center 30%",
+                    display: "block",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 8,
+                    bottom: 6,
+                    background: "rgba(20, 83, 45, 0.90)",
+                    color: "#ffffff",
                     fontSize: 10.5,
                     fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    color: "#991b1b",
-                    background: "#fee2e2",
-                    padding: "3px 8px",
+                    padding: "2px 8px",
                     borderRadius: 999,
                   }}
                 >
-                  🇺🇸 U.S. Glyphosate Map vs. U.S. Cancer Map
-                </span>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#78350f" }}>
-                  USGS National Map × CDC / NCI Registry
-                </span>
+                  💚 Protecting {householdSummaryLabel}
+                </div>
               </div>
 
+              <h2
+                id="heybroc-onboarding-heading"
+                style={{
+                  fontSize: 17.5,
+                  fontWeight: 800,
+                  color: "#111814",
+                  margin: "0 0 3px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Front Labels Say &ldquo;Natural.&rdquo; How HeyBroc Protects Your Cart in 1 Second:
+              </h2>
+              <p
+                style={{
+                  fontSize: 11.5,
+                  color: "#4b5563",
+                  margin: "0 0 7px",
+                  lineHeight: 1.32,
+                }}
+              >
+                Grades fine print (0–100) &amp; jumps straight to a cleaner pick in <b>{storeDisplayName}</b>:
+              </p>
+
+              {/* Side-by-Side Real Food Photo Comparison */}
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                  marginBottom: 10,
+                  gap: 7,
+                  marginBottom: 7,
                 }}
               >
-                {/* Left Map: Full USA USGS Glyphosate Application Map */}
                 <div
                   style={{
-                    background: "#ffffff",
-                    border: "1px solid #fed7aa",
-                    borderRadius: 12,
-                    padding: "8px 9px",
+                    background: "#fff5f5",
+                    border: "1.5px solid #fca5a5",
+                    borderRadius: 13,
+                    padding: "7px 8px",
+                    display: "flex",
+                    flexDirection: "column",
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#9a3412", marginBottom: 4 }}>
-                    1. U.S. Glyphosate Usage (USGS)
+                  <div style={{ position: "relative", marginBottom: 4 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/onboarding-poor-pick.jpg"
+                      alt="Conventional creamy ranch dressing bottle containing soybean oil"
+                      style={{
+                        width: "100%",
+                        height: 58,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        display: "block",
+                        background: "#ffffff",
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 4,
+                        left: 4,
+                        background: "#dc2626",
+                        color: "#ffffff",
+                        fontSize: 9.5,
+                        fontWeight: 800,
+                        padding: "1.5px 6px",
+                        borderRadius: 999,
+                      }}
+                    >
+                      ✕ 18/100 · Poor
+                    </span>
                   </div>
-                  <svg
-                    viewBox="0 0 320 195"
-                    role="img"
-                    aria-label="United States map of agricultural glyphosate usage showing low usage in Western states and a dark crimson bullseye over Iowa and the Midwest Corn Belt"
-                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fffaf5" }}
-                  >
-                    <path
-                      d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
-                      fill="#fef3c7"
-                      stroke="#9a3412"
-                      strokeWidth="1.8"
-                    />
-                    <g stroke="#d97706" strokeWidth="0.7" opacity="0.45" fill="none">
-                      <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
-                      <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
-                    </g>
-                    <path
-                      d="M124,22 L192,24 L214,44 L236,56 L238,88 L218,108 L196,148 L172,152 L166,118 L126,110 L118,68 Z"
-                      fill="#fb923c"
-                      opacity="0.72"
-                    />
-                    <path
-                      d="M142,44 L198,44 L228,62 L232,88 L204,98 L188,138 L174,138 L172,98 L144,92 Z"
-                      fill="#c2410c"
-                      opacity="0.88"
-                    />
-                    <path
-                      d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
-                      fill="#431407"
-                      stroke="#ffffff"
-                      strokeWidth="2"
-                    />
-                    <path
-                      d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
-                      fill="#7c2d12"
-                      stroke="#fed7aa"
-                      strokeWidth="1"
-                    />
-                    <circle
-                      cx="175"
-                      cy="68"
-                      r="22"
-                      fill="none"
-                      stroke="#dc2626"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    />
-                    <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
-                      IA
-                    </text>
-                    <text x="54" y="82" textAnchor="middle" fill="#92400e" fontSize="8.5" fontWeight="700">
-                      LOW
-                    </text>
-                    <rect x="64" y="6" width="192" height="20" rx="10" fill="#7c2d12" />
-                    <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
-                      🎯 IOWA &amp; CORN BELT: #1 GLYPHOSATE ZONE
-                    </text>
-                  </svg>
-                  <div style={{ fontSize: 10.5, color: "#7c2d12", marginTop: 5, lineHeight: 1.35 }}>
-                    <b>#1 U.S. Spray Zone:</b> Concentrated in <b>Iowa &amp; the Corn Belt</b> on conventional oats, wheat &amp; produce.
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: "#111814" }}>
+                    &ldquo;Homestyle&rdquo; Store Pick
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#991b1b", marginTop: 1, lineHeight: 1.25 }}>
+                    Soybean oil, MSG &amp; polysorbate 60.
                   </div>
                 </div>
 
-                {/* Right Map: Full USA Cancer Incidence Hotspot Map */}
                 <div
                   style={{
-                    background: "#ffffff",
-                    border: "1px solid #fecaca",
-                    borderRadius: 12,
-                    padding: "8px 9px",
+                    background: "#f0fdf4",
+                    border: "1.5px solid #86efac",
+                    borderRadius: 13,
+                    padding: "7px 8px",
+                    display: "flex",
+                    flexDirection: "column",
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#991b1b", marginBottom: 4 }}>
-                    2. U.S. Cancer Incidence (CDC/NCI)
+                  <div style={{ position: "relative", marginBottom: 4 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/onboarding-clean-pick.jpg"
+                      alt="Organic avocado oil ranch dressing bottle with fresh avocados and herbs"
+                      style={{
+                        width: "100%",
+                        height: 58,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        display: "block",
+                        background: "#ffffff",
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 4,
+                        left: 4,
+                        background: "#16a34a",
+                        color: "#ffffff",
+                        fontSize: 9.5,
+                        fontWeight: 800,
+                        padding: "1.5px 6px",
+                        borderRadius: 999,
+                      }}
+                    >
+                      ✓ 95/100 · Clean
+                    </span>
                   </div>
-                  <svg
-                    viewBox="0 0 320 195"
-                    role="img"
-                    aria-label="United States cancer incidence map showing matching dark crimson hotspot over Iowa (#2 highest and #1 fastest-rising cancer rate in the US)"
-                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 6, background: "#fff5f5" }}
-                  >
-                    <path
-                      d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
-                      fill="#fee2e2"
-                      stroke="#991b1b"
-                      strokeWidth="1.8"
-                    />
-                    <g stroke="#ef4444" strokeWidth="0.7" opacity="0.38" fill="none">
-                      <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
-                      <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
-                    </g>
-                    <path
-                      d="M126,24 L196,26 L220,46 L242,60 L240,94 L220,114 L198,146 L172,148 L164,114 L128,106 L122,66 Z"
-                      fill="#f87171"
-                      opacity="0.72"
-                    />
-                    <path
-                      d="M144,42 L202,42 L228,62 L230,90 L204,100 L186,132 L172,132 L170,96 L144,90 Z"
-                      fill="#dc2626"
-                      opacity="0.88"
-                    />
-                    <path
-                      d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
-                      fill="#450a0a"
-                      stroke="#ffffff"
-                      strokeWidth="2"
-                    />
-                    <path
-                      d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
-                      fill="#991b1b"
-                      stroke="#fecaca"
-                      strokeWidth="1"
-                    />
-                    <circle
-                      cx="175"
-                      cy="68"
-                      r="22"
-                      fill="none"
-                      stroke="#fef08a"
-                      strokeWidth="2.2"
-                      strokeDasharray="4 2"
-                    />
-                    <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
-                      IA
-                    </text>
-                    <text x="54" y="82" textAnchor="middle" fill="#991b1b" fontSize="8.5" fontWeight="700">
-                      LOW
-                    </text>
-                    <rect x="54" y="6" width="212" height="20" rx="10" fill="#7f1d1d" />
-                    <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
-                      🎯 IOWA: #2 US CANCER RATE (#1 RISING)
-                    </text>
-                  </svg>
-                  <div style={{ fontSize: 10.5, color: "#7f1d1d", marginTop: 5, lineHeight: 1.35 }}>
-                    <b>Same U.S. Bullseye:</b> Iowa has the <b>#2 highest &amp; fastest-rising cancer rate</b> (<b>82%</b> of high-spray counties exceed U.S. lymphoma avg).
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: "#111814" }}>
+                    Verified Cleaner Pick ↗
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#166534", marginTop: 1, lineHeight: 1.25 }}>
+                    Pure avocado oil in {storeDisplayName}.
                   </div>
                 </div>
               </div>
 
+              {/* Side-by-Side Single-Row Watchlist Chips (Never Stacks Vertically) */}
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  paddingTop: 6,
-                  borderTop: "1px solid rgba(239, 68, 68, 0.2)",
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${Math.max(1, Math.min(3, displayGoalItems.length))}, minmax(0, 1fr))`,
+                  gap: 5,
+                  marginBottom: 7,
                 }}
               >
-                <span style={{ fontSize: 11.5, color: "#7f1d1d", lineHeight: 1.35, flex: 1, minWidth: 180 }}>
-                  <b>USDA Organic</b> prohibits synthetic glyphosate &amp; pesticides.
-                </span>
-                <button
-                  type="button"
-                  aria-pressed={dietarySelected.includes("pesticide_risk")}
-                  onClick={() => toggleDietary("pesticide_risk")}
-                  style={{
-                    padding: "7px 12px",
-                    borderRadius: 999,
-                    border: dietarySelected.includes("pesticide_risk")
-                      ? "1.5px solid #16a34a"
-                      : "1.5px solid #dc2626",
-                    background: dietarySelected.includes("pesticide_risk") ? "#dcfce7" : "#dc2626",
-                    color: dietarySelected.includes("pesticide_risk") ? "#14532d" : "#ffffff",
-                    fontSize: 11.5,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {dietarySelected.includes("pesticide_risk")
-                    ? "✓ Glyphosate Watch Active"
-                    : "🌱 Guard Against Glyphosate"}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={() => setStep(6)}
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  fontSize: 15,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
-                }}
-              >
-                See How HeyBroc Solves This →
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ==================== STEP 6: WHY IT MATTERS & HOW HEYBROC WORKS (MERGED + REAL FOOD PHOTOS) ==================== */}
-        {step === 6 && (
-          <>
-            {/* Warm Healthy Family Hero Photo */}
-            <div
-              style={{
-                position: "relative",
-                borderRadius: 16,
-                overflow: "hidden",
-                marginBottom: 10,
-                border: "1.5px solid #bbf7d0",
-                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/onboarding-healthy-family.jpg"
-                alt="Happy family with kids eating healthy whole foods together at the kitchen table"
-                style={{
-                  width: "100%",
-                  height: 138,
-                  objectFit: "cover",
-                  display: "block",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: 10,
-                  bottom: 8,
-                  background: "rgba(20, 83, 45, 0.90)",
-                  color: "#ffffff",
-                  fontSize: 11,
-                  fontWeight: 800,
-                  padding: "3px 9px",
-                  borderRadius: 999,
-                }}
-              >
-                💚 Protecting {householdSummaryLabel}
-              </div>
-            </div>
-
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 4px",
-                lineHeight: 1.22,
-              }}
-            >
-              Front Labels Say &ldquo;Natural.&rdquo; How HeyBroc Protects Your Cart in 1 Second:
-            </h2>
-            <p
-              style={{
-                fontSize: 12.5,
-                color: "#4b5563",
-                margin: "0 0 10px",
-                lineHeight: 1.4,
-              }}
-            >
-              HeyBroc grades the fine print (0–100) and jumps straight to a verified cleaner alternative in <b>{storeDisplayName}</b>:
-            </p>
-
-            {/* Side-by-Side Real Food Photo Comparison (Honest Wording: Find Cleaner Pick in Store) */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 9,
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  background: "#fff5f5",
-                  border: "1.5px solid #fca5a5",
-                  borderRadius: 15,
-                  padding: "9px 10px",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div style={{ position: "relative", marginBottom: 6 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/onboarding-poor-pick.jpg"
-                    alt="Conventional creamy ranch dressing bottle containing soybean oil"
-                    style={{
-                      width: "100%",
-                      height: 92,
-                      objectFit: "cover",
-                      borderRadius: 10,
-                      display: "block",
-                      background: "#ffffff",
-                    }}
-                  />
+                {displayGoalItems.slice(0, 3).map((g) => (
                   <span
+                    key={g.id}
                     style={{
-                      position: "absolute",
-                      top: 6,
-                      left: 6,
-                      background: "#dc2626",
-                      color: "#ffffff",
                       fontSize: 10,
                       fontWeight: 800,
-                      padding: "2px 7px",
+                      background: "#fef2f2",
+                      color: "#991b1b",
+                      border: "1px solid #fecaca",
                       borderRadius: 999,
+                      padding: "3px 7px",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                     }}
                   >
-                    ✕ 18/100 · Poor
+                    {g.icon} No {g.title.replace(/^Industrial\s+/i, "").replace(/High-Fructose\s+/i, "")}
                   </span>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                <div
+                  style={{
+                    padding: "6px 9px",
+                    borderRadius: 10,
+                    background: "#f8fafc",
+                    border: "1.5px solid #e2e8f0",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "#111814" }}>
+                    📷 Free Barcode &amp; Search
+                  </div>
+                  <div style={{ fontSize: 10, color: "#4b5563", marginTop: 1 }}>
+                    0–100 scores on 1.5M+ foods.
+                  </div>
                 </div>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#111814" }}>
-                  &ldquo;Homestyle&rdquo; Store Pick
+
+                <div
+                  style={{
+                    padding: "6px 9px",
+                    borderRadius: 10,
+                    background: "#f0fdf4",
+                    border: "1.5px solid #bbf7d0",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "#14532d" }}>
+                    🟢 Live Store Bubble
+                  </div>
+                  <div style={{ fontSize: 10, color: "#166534", marginTop: 1 }}>
+                    Grades items &amp; finds clean picks.
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: "#991b1b", marginTop: 2, lineHeight: 1.3 }}>
-                  Flagged: Soybean oil (#1), MSG &amp; polysorbate 60.
+              </div>
+            </>
+          )}
+
+          {/* ==================== STEP 7: PERSONALIZED PLAN (CLEAN & ABOVE THE FOLD) ==================== */}
+          {step === 7 && (
+            <>
+              <div
+                style={{
+                  background: "#ecfdf5",
+                  border: "1.5px solid #6ee7b7",
+                  borderRadius: 12,
+                  padding: "6px 10px",
+                  marginBottom: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                }}
+              >
+                <span style={{ fontSize: 15 }}>✅</span>
+                <div style={{ fontSize: 11.5, color: "#065f46", lineHeight: 1.3 }}>
+                  <b>Saved:</b> {householdSummaryLabel} · <b>{storesSummaryLabel}</b> ·{" "}
+                  <b>{selected.length}</b> {selected.length === 1 ? "goal" : "goals"}
+                  {dietarySelected.length > 0
+                    ? ` · ${dietarySelected.length} ${dietarySelected.length === 1 ? "alert" : "alerts"}`
+                    : ""}
                 </div>
               </div>
 
+              {appliedCreator && (
+                <div
+                  style={{
+                    background: "#fefce8",
+                    border: "1.5px solid #fde047",
+                    borderRadius: 12,
+                    padding: "6px 10px",
+                    marginBottom: 8,
+                    fontSize: 11.5,
+                    color: "#854d0e",
+                  }}
+                >
+                  {isFriendInvite ? (
+                    <>
+                      🎁 <b>Friend Invite ({appliedCreator.code}) Applied:</b>{" "}
+                      <b>{PRICING.trialDays}-Day Free Trial</b> +{" "}
+                      <b>+{PRICING.referralBonusDays} Free Pro Days</b>!
+                    </>
+                  ) : (
+                    <>
+                      🎉 <b>Creator Code {appliedCreator.code} Applied:</b> {appliedCreator.name} unlocked your{" "}
+                      <b>VIP {PRICING.trialDays}-Day Free Pro Trial ($0 Today)!</b>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <h2
+                id="heybroc-onboarding-heading"
+                style={{
+                  fontSize: 19.5,
+                  fontWeight: 800,
+                  color: "#111814",
+                  margin: "0 0 4px",
+                  lineHeight: 1.2,
+                }}
+              >
+                Choose How You Want to Start
+              </h2>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#4b5563",
+                  margin: "0 0 8px",
+                  lineHeight: 1.35,
+                }}
+              >
+                Your Watchlist works right away with <b>no pre-signup needed</b> — try Family Pro free for{" "}
+                <b>{effectiveTrialDays} days ($0 today)</b>, or start on the Free Plan:
+              </p>
+
+              {/* Plan Comparison Card */}
               <div
                 style={{
                   background: "#f0fdf4",
-                  border: "1.5px solid #86efac",
-                  borderRadius: 15,
-                  padding: "9px 10px",
-                  display: "flex",
-                  flexDirection: "column",
+                  border: "2px solid #16a34a",
+                  borderRadius: 14,
+                  padding: "10px 12px",
                 }}
               >
-                <div style={{ position: "relative", marginBottom: 6 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/onboarding-clean-pick.jpg"
-                    alt="Organic avocado oil ranch dressing bottle with fresh avocados and herbs"
-                    style={{
-                      width: "100%",
-                      height: 92,
-                      objectFit: "cover",
-                      borderRadius: 10,
-                      display: "block",
-                      background: "#ffffff",
-                    }}
-                  />
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 6,
+                    marginBottom: 5,
+                  }}
+                >
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: "#14532d" }}>
+                    ⭐ HeyBroc Family Pro
+                  </span>
                   <span
                     style={{
-                      position: "absolute",
-                      top: 6,
-                      left: 6,
                       background: "#16a34a",
                       color: "#ffffff",
                       fontSize: 10,
                       fontWeight: 800,
-                      padding: "2px 7px",
+                      padding: "2.5px 8px",
                       borderRadius: 999,
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    ✓ 95/100 · Clean
+                    {effectiveTrialDays} DAYS FREE · $0 TODAY
                   </span>
                 </div>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#111814" }}>
-                  Verified Cleaner Pick ↗
-                </div>
-                <div style={{ fontSize: 11, color: "#166534", marginTop: 2, lineHeight: 1.3 }}>
-                  100% pure avocado oil — opens directly in {storeDisplayName}.
-                </div>
-              </div>
-            </div>
-
-            {/* Compact Watchlist Chips + 2-Feature Strip */}
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 5,
-                marginBottom: 10,
-              }}
-            >
-              {displayGoalItems.slice(0, 3).map((g) => (
-                <span
-                  key={g.id}
+                <ul
                   style={{
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    border: "1px solid #fecaca",
-                    borderRadius: 999,
-                    padding: "3px 9px",
+                    margin: "0 0 5px",
+                    paddingLeft: 17,
+                    fontSize: 11.5,
+                    color: "#166534",
+                    lineHeight: 1.42,
                   }}
                 >
-                  {g.icon} No {g.title}
-                </span>
-              ))}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-              <div
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  background: "#f8fafc",
-                  border: "1.5px solid #e2e8f0",
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#111814" }}>
-                  📷 Free Barcode &amp; Search
-                </div>
-                <div style={{ fontSize: 11, color: "#4b5563", marginTop: 1 }}>
-                  0–100 scores on 1.5M+ foods.
+                  <li>
+                    <b>Unlimited Cleaner Alternative Links ↗</b> across{" "}
+                    {selectedStores.length > 0
+                      ? `${storesSummaryLabel} & all 12 stores`
+                      : "all 12 grocery & delivery stores"}
+                  </li>
+                  <li>
+                    <b>Order &amp; Receipt Health Audits</b> + Custom 2x Family Watchlists
+                  </li>
+                  <li>
+                    <b>Unlimited Live Store Bubble</b> &amp; Cross-Device Cloud Sync
+                  </li>
+                </ul>
+                <div style={{ fontSize: 10.5, color: "#15803d", lineHeight: 1.32 }}>
+                  {isIosApp
+                    ? `$0 due today via Apple ID · Then $${annualPerMonth.toFixed(2)}/mo billed annually ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime in iPhone Settings.`
+                    : `$0 due today · Then $${annualPerMonth.toFixed(2)}/mo billed annually ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime in 1 tap.`}
                 </div>
               </div>
+            </>
+          )}
+        </div>
 
-              <div
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  background: "#f0fdf4",
-                  border: "1.5px solid #bbf7d0",
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#14532d" }}>
-                  🟢 Live Store Bubble
-                </div>
-                <div style={{ fontSize: 11, color: "#166534", marginTop: 1 }}>
-                  Grades items &amp; finds clean picks.
-                </div>
-              </div>
-            </div>
+        {/* Pinned Sticky Bottom CTA Footer (Always 100% Visible Without Scrolling) */}
+        <div
+          style={{
+            flexShrink: 0,
+            paddingTop: 10,
+            marginTop: 8,
+            borderTop: "1px solid #f1f5f9",
+            background: "#ffffff",
+          }}
+        >
+          {step === 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!isReturningUser && selected.length === 0) {
+                  setSelected([...activeHouseholdObj.recommendedCats]);
+                }
+                setStep(2);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: "#16a34a",
+                color: "#ffffff",
+                fontSize: 14.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+              }}
+            >
+              Continue →
+            </button>
+          )}
 
+          {step === 2 && (
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: "#16a34a",
+                color: "#ffffff",
+                fontSize: 14.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+              }}
+            >
+              Continue ({selected.length} {selected.length === 1 ? "Goal" : "Goals"} Selected) →
+            </button>
+          )}
+
+          {step === 3 && (
+            <button
+              type="button"
+              onClick={() => setStep(4)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: "#16a34a",
+                color: "#ffffff",
+                fontSize: 14.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+              }}
+            >
+              {selectedStores.length === 0
+                ? "Continue (All 12 Stores Unlocked) →"
+                : `Continue (${selectedStores.length} ${selectedStores.length === 1 ? "Store" : "Stores"} Selected) →`}
+            </button>
+          )}
+
+          {step === 4 && (
+            <button
+              type="button"
+              onClick={() => setStep(5)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: "#16a34a",
+                color: "#ffffff",
+                fontSize: 14.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+              }}
+            >
+              {dietarySelected.length > 0
+                ? `Save ${dietarySelected.length} ${dietarySelected.length === 1 ? "Alert" : "Alerts"} & Continue →`
+                : "No Allergies — Continue →"}
+            </button>
+          )}
+
+          {step === 5 && (
+            <button
+              type="button"
+              onClick={() => setStep(6)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: "#16a34a",
+                color: "#ffffff",
+                fontSize: 14.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
+              }}
+            >
+              See How HeyBroc Solves This →
+            </button>
+          )}
+
+          {step === 6 && (
             <button
               type="button"
               onClick={() => setStep(7)}
               style={{
                 width: "100%",
-                padding: "14px 16px",
+                padding: "12px 16px",
                 borderRadius: 999,
                 border: "none",
                 background: "#16a34a",
                 color: "#ffffff",
-                fontSize: 15,
+                fontSize: 14.5,
                 fontWeight: 800,
                 cursor: "pointer",
                 boxShadow: "0 6px 18px rgba(22, 163, 74, 0.25)",
@@ -2019,146 +2204,10 @@ export default function WatchlistMiniFunnel({
             >
               Build My Personalized Plan →
             </button>
-          </>
-        )}
+          )}
 
-        {/* ==================== STEP 7: PERSONALIZED PLAN (CLEAN & ABOVE THE FOLD) ==================== */}
-        {step === 7 && (
-          <>
-            <div
-              style={{
-                background: "#ecfdf5",
-                border: "1.5px solid #6ee7b7",
-                borderRadius: 14,
-                padding: "8px 12px",
-                marginBottom: 10,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span style={{ fontSize: 17 }}>✅</span>
-              <div style={{ fontSize: 12, color: "#065f46", lineHeight: 1.35 }}>
-                <b>Ready:</b> {householdSummaryLabel} · <b>{storesSummaryLabel}</b> ·{" "}
-                <b>{selected.length}</b> {selected.length === 1 ? "goal" : "goals"}
-                {dietarySelected.length > 0
-                  ? ` · ${dietarySelected.length} ${dietarySelected.length === 1 ? "alert" : "alerts"}`
-                  : ""}
-              </div>
-            </div>
-
-            {appliedCreator && (
-              <div
-                style={{
-                  background: "#fefce8",
-                  border: "1.5px solid #fde047",
-                  borderRadius: 14,
-                  padding: "8px 12px",
-                  marginBottom: 10,
-                  fontSize: 12,
-                  color: "#854d0e",
-                }}
-              >
-                {isFriendInvite ? (
-                  <>
-                    🎁 <b>Friend Invite ({appliedCreator.code}) Applied:</b>{" "}
-                    <b>{PRICING.trialDays}-Day Free Trial</b> +{" "}
-                    <b>+{PRICING.referralBonusDays} Free Pro Days</b> for both of you!
-                  </>
-                ) : (
-                  <>
-                    🎉 <b>Creator Code {appliedCreator.code} Applied:</b> {appliedCreator.name} unlocked your{" "}
-                    <b>VIP {PRICING.trialDays}-Day Free Pro Trial ($0 Today)!</b>
-                  </>
-                )}
-              </div>
-            )}
-
-            <h2
-              id="heybroc-onboarding-heading"
-              style={{
-                fontSize: 21.5,
-                fontWeight: 800,
-                color: "#111814",
-                margin: "0 0 5px",
-                lineHeight: 1.22,
-              }}
-            >
-              Choose How You Want to Start
-            </h2>
-            <p
-              style={{
-                fontSize: 12.5,
-                color: "#4b5563",
-                margin: "0 0 10px",
-                lineHeight: 1.4,
-              }}
-            >
-              Try Family Pro free for <b>{effectiveTrialDays} days ($0 today)</b>, or start on the Free Plan ({PRICING.freeWeeklySwaps} free cleaner store links included):
-            </p>
-
-            {/* Plan Comparison Card */}
-            <div
-              style={{
-                background: "#f0fdf4",
-                border: "2px solid #16a34a",
-                borderRadius: 16,
-                padding: "12px 14px",
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 6,
-                }}
-              >
-                <span style={{ fontSize: 14, fontWeight: 800, color: "#14532d" }}>
-                  ⭐ HeyBroc Family Pro
-                </span>
-                <span
-                  style={{
-                    background: "#16a34a",
-                    color: "#ffffff",
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    padding: "3px 9px",
-                    borderRadius: 999,
-                  }}
-                >
-                  {effectiveTrialDays} DAYS FREE · $0 TODAY
-                </span>
-              </div>
-              <ul
-                style={{
-                  margin: "0 0 6px",
-                  paddingLeft: 18,
-                  fontSize: 12.5,
-                  color: "#166534",
-                  lineHeight: 1.5,
-                }}
-              >
-                <li>
-                  <b>Unlimited Cleaner Alternative Links ↗</b> across{" "}
-                  {selectedStores.length > 0
-                    ? `${storesSummaryLabel} & all 12 stores`
-                    : "all 12 grocery & delivery stores"}
-                </li>
-                <li>
-                  <b>Order &amp; Receipt Health Audits</b> + Custom 2x Family Watchlists
-                </li>
-                <li>
-                  <b>Unlimited Live Store Bubble</b> &amp; Family Cloud Sync
-                </li>
-              </ul>
-              <div style={{ fontSize: 11, color: "#15803d" }}>
-                $0 due today · Then ${annualPerMonth.toFixed(2)}/mo billed annually (${PRICING.annual}/yr) or ${PRICING.monthly}/mo. Cancel anytime in 1 tap.
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {step === 7 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <button
                 type="button"
                 onClick={() => {
@@ -2181,12 +2230,12 @@ export default function WatchlistMiniFunnel({
                 }}
                 style={{
                   width: "100%",
-                  padding: "14px 16px",
+                  padding: "12px 16px",
                   borderRadius: 999,
                   border: "none",
                   background: "#16a34a",
                   color: "#ffffff",
-                  fontSize: 15,
+                  fontSize: 14.5,
                   fontWeight: 800,
                   cursor: "pointer",
                   boxShadow: "0 6px 18px rgba(22, 163, 74, 0.28)",
@@ -2213,12 +2262,12 @@ export default function WatchlistMiniFunnel({
                 }}
                 style={{
                   width: "100%",
-                  padding: "12px 14px",
+                  padding: "10px 14px",
                   borderRadius: 999,
                   border: "1.5px solid #d1d5db",
                   background: "#ffffff",
                   color: "#1f2937",
-                  fontSize: 13.5,
+                  fontSize: 13,
                   fontWeight: 800,
                   cursor: "pointer",
                 }}
@@ -2226,39 +2275,41 @@ export default function WatchlistMiniFunnel({
                 Continue with Free Plan ({PRICING.freeWeeklySwaps} Free Swaps Included) →
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const extras = buildExtras();
-                  trackOnboardingEvent("onboarding_completed", {
-                    exitAction: "signin",
-                    householdProfile: extras.householdProfile,
-                    householdProfiles: extras.householdProfiles,
-                    store: extras.store,
-                    stores: extras.stores,
-                    storesCount: selectedStores.length,
-                    watchlistCount: selected.length,
-                    dietaryCount: dietarySelected.length,
-                  });
-                  onApplyAndSignIn(selected, extras);
-                }}
-                style={{
-                  width: "100%",
-                  padding: "7px 12px",
-                  borderRadius: 999,
-                  border: "none",
-                  background: "transparent",
-                  color: "#0f7a4a",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Save Watchlist ({selected.length}) &amp; Sign In / Sync Free Across Devices →
-              </button>
+              {!isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const extras = buildExtras();
+                    trackOnboardingEvent("onboarding_completed", {
+                      exitAction: "signin",
+                      householdProfile: extras.householdProfile,
+                      householdProfiles: extras.householdProfiles,
+                      store: extras.store,
+                      stores: extras.stores,
+                      storesCount: selectedStores.length,
+                      watchlistCount: selected.length,
+                      dietaryCount: dietarySelected.length,
+                    });
+                    onApplyAndSignIn(selected, extras);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "5px 10px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: "transparent",
+                    color: "#0f7a4a",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  Save Watchlist &amp; Create Free Account / Sign In →
+                </button>
+              )}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

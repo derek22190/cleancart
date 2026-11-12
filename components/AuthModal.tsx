@@ -28,6 +28,8 @@ interface AuthModalProps {
   onAuthSuccess: (user: AuthenticatedUser, token: string) => void;
   onLogout: () => void;
   onDeleteAccount: () => void;
+  initialTab?: "signup" | "signin";
+  bannerMessage?: string;
 }
 
 function decodeJwtClaims(token: string): { email?: string; name?: string } {
@@ -52,8 +54,11 @@ export default function AuthModal({
   onAuthSuccess,
   onLogout,
   onDeleteAccount,
+  initialTab = "signin",
+  bannerMessage = "",
 }: AuthModalProps) {
   const [mode, setMode] = useState<"login" | "forgot">("login");
+  const [authTab, setAuthTab] = useState<"signup" | "signin">(initialTab);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [resetCode, setResetCode] = useState("");
@@ -61,13 +66,26 @@ export default function AuthModal({
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [appleBusy, setAppleBusy] = useState(false);
   const [googleClientId, setGoogleClientId] = useState<string>(
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ""
+  );
+  const [appleClientId, setAppleClientId] = useState<string>(
+    process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || ""
   );
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [cancelRetentionOpen, setCancelRetentionOpen] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMode("login");
+      setAuthTab(initialTab);
+      setError("");
+      setInfoMessage("");
+    }
+  }, [open, initialTab]);
 
   const openBillingPortalDirect = useCallback(async () => {
     if (!user) return;
@@ -143,9 +161,15 @@ export default function AuthModal({
     };
   }, [open, onClose]);
 
-  const exchangeGoogleIdToken = useCallback(
-    async (idToken: string) => {
-      setGoogleBusy(true);
+  const exchangeOAuthIdToken = useCallback(
+    async (
+      provider: "google" | "apple",
+      idToken: string,
+      overrideEmail?: string,
+      overrideName?: string
+    ) => {
+      if (provider === "google") setGoogleBusy(true);
+      if (provider === "apple") setAppleBusy(true);
       setBusy(true);
       setError("");
       setInfoMessage("");
@@ -163,10 +187,10 @@ export default function AuthModal({
           },
           body: JSON.stringify({
             action: "oauth",
-            provider: "google",
+            provider,
             idToken,
-            email: claims.email || "",
-            displayName: claims.name || undefined,
+            email: (overrideEmail || claims.email || "").trim(),
+            displayName: (overrideName || claims.name || "").trim() || undefined,
             deviceId,
             deviceSecret: devSecret || undefined,
             watchlist,
@@ -174,36 +198,116 @@ export default function AuthModal({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok || !data.user || !data.token) {
-          setError(data.error || "Could not verify Google account. Please try again.");
+          setError(
+            data.error ||
+              (provider === "apple"
+                ? "Could not verify Apple account. Please try again."
+                : "Could not verify Google account. Please try again.")
+          );
           return;
         }
         onAuthSuccess(data.user as AuthenticatedUser, data.token as string);
         onClose();
       } catch {
-        setError("Network error completing Google Sign-In. Please try again.");
+        setError(
+          provider === "apple"
+            ? "Network error completing Sign in with Apple. Please try again."
+            : "Network error completing Google Sign-In. Please try again."
+        );
       } finally {
         setGoogleBusy(false);
+        setAppleBusy(false);
         setBusy(false);
       }
     },
     [deviceId, watchlist, onAuthSuccess, onClose]
   );
 
-  // Fetch server-configured GOOGLE_CLIENT_ID and consume any pending mobile redirect token
+  const launchWebAppleOAuth = useCallback(
+    async (knownClientId?: string) => {
+      let resolvedAppleId = (knownClientId ?? appleClientId).trim();
+      if (!resolvedAppleId) {
+        const cfg = await fetch("/api/auth?config=1")
+          .then((r) => r.json())
+          .catch(() => null);
+        if (cfg?.appleClientId) {
+          resolvedAppleId = String(cfg.appleClientId).trim();
+          setAppleClientId(resolvedAppleId);
+        }
+      }
+
+      if (!resolvedAppleId) {
+        setAppleBusy(false);
+        const isIosWv =
+          typeof window !== "undefined" &&
+          Boolean(
+            (window as unknown as { webkit?: { messageHandlers?: unknown } }).webkit
+              ?.messageHandlers || /HeyBrocIOS/i.test(navigator.userAgent || "")
+          );
+        setError(
+          isIosWv
+            ? "Apple ID Face ID sign-in activates automatically once your latest TestFlight update finishes installing (or continue with Google or Email right below)."
+            : "Sign in with Apple on Web requires APPLE_SERVICE_ID in Vercel Settings (Redirect URI: https://www.heybroc.com/api/auth/apple-callback), or continue with Google or Email below."
+        );
+        return;
+      }
+
+      const nonceBytes = new Uint8Array(16);
+      window.crypto.getRandomValues(nonceBytes);
+      const nonce = Array.from(nonceBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      const state = `hba_${nonce.slice(0, 20)}`;
+      window.sessionStorage.setItem("heybroc_apple_oauth_state", state);
+
+      const redirectUri = `${window.location.origin}/api/auth/apple-callback`;
+      const authUrl = new URL("https://appleid.apple.com/auth/authorize");
+      authUrl.searchParams.set("client_id", resolvedAppleId);
+      authUrl.searchParams.set("redirect_uri", redirectUri);
+      authUrl.searchParams.set("response_type", "code id_token");
+      authUrl.searchParams.set("response_mode", "form_post");
+      authUrl.searchParams.set("scope", "name email");
+      authUrl.searchParams.set("nonce", nonce);
+      authUrl.searchParams.set("state", state);
+
+      const width = 500;
+      const height = 620;
+      const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2));
+      const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2));
+      setAppleBusy(true);
+      const popup = window.open(
+        authUrl.toString(),
+        "heybroc_apple_auth",
+        `popup=yes,width=${width},height=${height},left=${left},top=${top}`
+      );
+      if (!popup) {
+        window.location.assign(authUrl.toString());
+        return;
+      }
+      const pollClosed = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(pollClosed);
+          setAppleBusy(false);
+        }
+      }, 600);
+    },
+    [appleClientId]
+  );
+
+  // Fetch server-configured GOOGLE_CLIENT_ID / APPLE_SERVICE_ID and consume any pending mobile redirect token
   useEffect(() => {
     if (!open && typeof window !== "undefined") {
-      const pending = window.sessionStorage.getItem("heybroc_pending_google_id_token");
-      if (!pending) return;
+      const pendingG = window.sessionStorage.getItem("heybroc_pending_google_id_token");
+      const pendingA = window.sessionStorage.getItem("heybroc_pending_apple_id_token");
+      if (!pendingG && !pendingA) return;
     }
     let cancelled = false;
 
-    if (!googleClientId) {
+    if (!googleClientId || !appleClientId) {
       fetch("/api/auth?config=1")
         .then((r) => r.json())
-        .then((d: { googleClientId?: string }) => {
-          if (!cancelled && d?.googleClientId) {
-            setGoogleClientId(d.googleClientId);
-          }
+        .then((d: { googleClientId?: string; appleClientId?: string }) => {
+          if (cancelled) return;
+          if (d?.googleClientId) setGoogleClientId(d.googleClientId);
+          if (d?.appleClientId) setAppleClientId(d.appleClientId);
         })
         .catch(() => {});
     }
@@ -216,32 +320,118 @@ export default function AuthModal({
         window.sessionStorage.removeItem("heybroc_pending_google_id_token");
         window.sessionStorage.removeItem("heybroc_pending_google_state");
         if (!expectedState || !pendingState || expectedState === pendingState) {
-          void exchangeGoogleIdToken(pendingToken);
+          void exchangeOAuthIdToken("google", pendingToken);
         }
       }
+
+      const pendingAppleToken = window.sessionStorage.getItem("heybroc_pending_apple_id_token");
+      const pendingAppleState = window.sessionStorage.getItem("heybroc_pending_apple_state");
+      const pendingAppleName = window.sessionStorage.getItem("heybroc_pending_apple_name") || "";
+      const pendingAppleEmail = window.sessionStorage.getItem("heybroc_pending_apple_email") || "";
+      const expectedAppleState = window.sessionStorage.getItem("heybroc_apple_oauth_state");
+      if (pendingAppleToken) {
+        window.sessionStorage.removeItem("heybroc_pending_apple_id_token");
+        window.sessionStorage.removeItem("heybroc_pending_apple_state");
+        window.sessionStorage.removeItem("heybroc_pending_apple_name");
+        window.sessionStorage.removeItem("heybroc_pending_apple_email");
+        if (!expectedAppleState || !pendingAppleState || expectedAppleState === pendingAppleState) {
+          void exchangeOAuthIdToken(
+            "apple",
+            pendingAppleToken,
+            pendingAppleEmail,
+            pendingAppleName
+          );
+        }
+      }
+
+      // Register native iOS ASAuthorizationAppleIDProvider callback bridge
+      (
+        window as unknown as {
+          __heybrocNativeAppleAuth?: (res: {
+            idToken?: string;
+            email?: string;
+            displayName?: string;
+            canceled?: boolean;
+            fallbackWebOAuth?: boolean;
+            error?: string;
+          }) => void;
+        }
+      ).__heybrocNativeAppleAuth = (res) => {
+        if (cancelled) return;
+        if (res?.canceled) {
+          setAppleBusy(false);
+          return;
+        }
+        if (res?.fallbackWebOAuth) {
+          void launchWebAppleOAuth();
+          return;
+        }
+        if (res?.error) {
+          setAppleBusy(false);
+          setError(res.error);
+          return;
+        }
+        if (res?.idToken) {
+          void exchangeOAuthIdToken("apple", res.idToken, res.email, res.displayName);
+        } else {
+          setAppleBusy(false);
+        }
+      };
     }
 
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const payload = event.data as
-        | { type?: string; idToken?: string; state?: string; error?: string }
+        | {
+            type?: string;
+            idToken?: string;
+            state?: string;
+            displayName?: string;
+            email?: string;
+            error?: string;
+          }
         | undefined;
-      if (!payload || payload.type !== "heybroc-google-oauth") return;
-      const expectedState = window.sessionStorage.getItem("heybroc_oauth_state");
-      if (expectedState && payload.state && expectedState !== payload.state) {
-        setGoogleBusy(false);
-        setError("Google sign-in state mismatch. Please try again.");
-        return;
-      }
-      if (payload.error) {
-        setGoogleBusy(false);
-        if (payload.error !== "access_denied") {
-          setError(`Google Sign-In: ${payload.error}`);
+      if (!payload) return;
+
+      if (payload.type === "heybroc-google-oauth") {
+        const expectedState = window.sessionStorage.getItem("heybroc_oauth_state");
+        if (expectedState && payload.state && expectedState !== payload.state) {
+          setGoogleBusy(false);
+          setError("Google sign-in state mismatch. Please try again.");
+          return;
         }
-        return;
-      }
-      if (payload.idToken) {
-        void exchangeGoogleIdToken(payload.idToken);
+        if (payload.error) {
+          setGoogleBusy(false);
+          if (payload.error !== "access_denied") {
+            setError(`Google Sign-In: ${payload.error}`);
+          }
+          return;
+        }
+        if (payload.idToken) {
+          void exchangeOAuthIdToken("google", payload.idToken);
+        }
+      } else if (payload.type === "heybroc-apple-oauth") {
+        const expectedState = window.sessionStorage.getItem("heybroc_apple_oauth_state");
+        if (expectedState && payload.state && expectedState !== payload.state) {
+          setAppleBusy(false);
+          setError("Apple sign-in state mismatch. Please try again.");
+          return;
+        }
+        if (payload.error) {
+          setAppleBusy(false);
+          if (payload.error !== "user_cancelled_authorize" && payload.error !== "access_denied") {
+            setError(`Sign in with Apple: ${payload.error}`);
+          }
+          return;
+        }
+        if (payload.idToken) {
+          void exchangeOAuthIdToken(
+            "apple",
+            payload.idToken,
+            payload.email,
+            payload.displayName
+          );
+        }
       }
     };
 
@@ -250,7 +440,7 @@ export default function AuthModal({
       cancelled = true;
       window.removeEventListener("message", onMessage);
     };
-  }, [open, googleClientId, exchangeGoogleIdToken]);
+  }, [open, googleClientId, appleClientId, exchangeOAuthIdToken, launchWebAppleOAuth]);
 
   if (!open) return null;
 
@@ -321,6 +511,44 @@ export default function AuthModal({
         setGoogleBusy(false);
       }
     }, 600);
+  };
+
+  const handleAppleSignInClick = async () => {
+    setError("");
+    setInfoMessage("");
+
+    if (typeof window !== "undefined") {
+      const win = window as unknown as {
+        __HEYBROC_NATIVE_APPLE_AUTH__?: boolean;
+        webkit?: {
+          messageHandlers?: {
+            controller?: { postMessage?: (msg: unknown) => void };
+            heybrocNative?: { postMessage?: (msg: unknown) => void };
+          };
+        };
+      };
+      const controllerBridge = win.webkit?.messageHandlers?.controller;
+      const nativeBridge = win.webkit?.messageHandlers?.heybrocNative;
+      if (win.__HEYBROC_NATIVE_APPLE_AUTH__ && typeof controllerBridge?.postMessage === "function") {
+        setAppleBusy(true);
+        try {
+          controllerBridge.postMessage({ action: "apple-sign-in" });
+          return;
+        } catch {
+          setAppleBusy(false);
+        }
+      } else if (win.__HEYBROC_NATIVE_APPLE_AUTH__ && typeof nativeBridge?.postMessage === "function") {
+        setAppleBusy(true);
+        try {
+          nativeBridge.postMessage({ action: "apple-sign-in" });
+          return;
+        } catch {
+          setAppleBusy(false);
+        }
+      }
+    }
+
+    await launchWebAppleOAuth();
   };
 
   const handleVerifyEmail = async () => {
@@ -408,7 +636,12 @@ export default function AuthModal({
 
     setBusy(true);
     try {
-      const action = mode === "forgot" ? "reset_password" : "login";
+      const primaryAction =
+        mode === "forgot"
+          ? "reset_password"
+          : authTab === "signup"
+            ? "register"
+            : "login";
       const devSecret =
         typeof window !== "undefined"
           ? window.localStorage.getItem("heybroc_device_secret") || ""
@@ -436,14 +669,21 @@ export default function AuthModal({
         return { res, data };
       };
 
-      let { res, data } = await sendRequest(action);
+      let { res, data } = await sendRequest(primaryAction);
       if (
         (!res.ok || !data.ok) &&
-        action === "login" &&
+        primaryAction === "login" &&
         typeof data.error === "string" &&
         data.error.toLowerCase().includes("no account found")
       ) {
         ({ res, data } = await sendRequest("register"));
+      } else if (
+        (!res.ok || !data.ok) &&
+        primaryAction === "register" &&
+        typeof data.error === "string" &&
+        data.error.toLowerCase().includes("already")
+      ) {
+        ({ res, data } = await sendRequest("login"));
       }
 
       if (!res.ok || !data.ok || !data.user || !data.token) {
@@ -516,12 +756,19 @@ export default function AuthModal({
     }
   };
 
+  const loggedOutTitle =
+    mode === "forgot"
+      ? "Reset password"
+      : authTab === "signup"
+        ? "Create Free Account"
+        : "Sign in to HeyBroc";
+
   return (
     <div
       className="modal-backdrop gococo-auth-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={user ? "Your HeyBroc Account" : "Sign in to HeyBroc"}
+      aria-label={user ? "Your HeyBroc Account" : loggedOutTitle}
       onClick={onClose}
     >
       <div
@@ -549,16 +796,12 @@ export default function AuthModal({
               <img
                 src="/broc-mascot.png"
                 alt="HeyBroc"
-                style={{ width: 40, height: 40, objectFit: "contain", flexShrink: 0 }}
+                style={{ width: 38, height: 38, objectFit: "contain", flexShrink: 0 }}
               />
             )}
             <div>
               <h2 className="gococo-title">
-                {user
-                  ? "Account"
-                  : mode === "forgot"
-                    ? "Reset password"
-                    : "Sign in to HeyBroc"}
+                {user ? "Account" : loggedOutTitle}
               </h2>
             </div>
           </div>
@@ -748,12 +991,96 @@ export default function AuthModal({
             )}
           </div>
         ) : (
-          /* ================= STREAMLINED SIGN-IN / AUTO-CREATE VIEW ================= */
+          /* ================= CREATE ACCOUNT / SIGN IN VIEW ================= */
           <form onSubmit={handleEmailSubmit} className="gococo-form">
-            <p className="gococo-subtitle">
+            {bannerMessage && (
+              <div
+                style={{
+                  background: "#ecfdf5",
+                  border: "1.5px solid #6ee7b7",
+                  borderRadius: 12,
+                  padding: "9px 12px",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  color: "#065f46",
+                  lineHeight: 1.38,
+                }}
+              >
+                {bannerMessage}
+              </div>
+            )}
+
+            {mode !== "forgot" && (
+              <div
+                role="tablist"
+                aria-label="Choose Create Account or Sign In"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 4,
+                  padding: 4,
+                  borderRadius: 999,
+                  background: "#f1f5f9",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <button
+                  id="auth-tab-signup"
+                  type="button"
+                  role="tab"
+                  aria-selected={authTab === "signup"}
+                  onClick={() => {
+                    setAuthTab("signup");
+                    setError("");
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: authTab === "signup" ? "#ffffff" : "transparent",
+                    color: authTab === "signup" ? "#0f7a4a" : "#475569",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    boxShadow:
+                      authTab === "signup" ? "0 1px 4px rgba(15, 23, 42, 0.08)" : "none",
+                  }}
+                >
+                  Create Free Account
+                </button>
+                <button
+                  id="auth-tab-signin"
+                  type="button"
+                  role="tab"
+                  aria-selected={authTab === "signin"}
+                  onClick={() => {
+                    setAuthTab("signin");
+                    setError("");
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: authTab === "signin" ? "#ffffff" : "transparent",
+                    color: authTab === "signin" ? "#0f172a" : "#475569",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    boxShadow:
+                      authTab === "signin" ? "0 1px 4px rgba(15, 23, 42, 0.08)" : "none",
+                  }}
+                >
+                  Sign In
+                </button>
+              </div>
+            )}
+
+            <p className="gococo-subtitle" style={{ margin: "0 0 2px" }}>
               {mode === "forgot"
                 ? "Enter your email, 6-digit reset code, and a new password (8+ chars)."
-                : "Sync your Family Watchlist & Clean Swaps across devices. New emails create a free account automatically."}
+                : authTab === "signup"
+                  ? "Save your Watchlist & Clean Swaps across iPhone and Web (free — no credit card required)."
+                  : "Sign back in to restore your saved Family Watchlist, Favorites & Pro membership."}
             </p>
 
             {mode !== "forgot" && (
@@ -761,7 +1088,7 @@ export default function AuthModal({
                 <button
                   id="auth-google-btn"
                   type="button"
-                  disabled={busy || googleBusy}
+                  disabled={busy || googleBusy || appleBusy}
                   onClick={() => void handleGoogleSignInClick()}
                   style={{
                     width: "100%",
@@ -769,18 +1096,18 @@ export default function AuthModal({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 10,
-                    padding: "12px 18px",
+                    padding: "11px 18px",
                     borderRadius: 999,
                     background: "#ffffff",
                     border: "1.5px solid #cbd5e1",
                     color: "#0f172a",
                     fontWeight: 800,
                     fontSize: 15,
-                    cursor: busy || googleBusy ? "wait" : "pointer",
+                    cursor: busy || googleBusy || appleBusy ? "wait" : "pointer",
                     boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
                   }}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                  <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
                     <path
                       fill="#4285F4"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -799,6 +1126,34 @@ export default function AuthModal({
                     />
                   </svg>
                   <span>{googleBusy ? "Opening Google…" : "Continue with Google"}</span>
+                </button>
+
+                <button
+                  id="auth-apple-btn"
+                  type="button"
+                  disabled={busy || googleBusy || appleBusy}
+                  onClick={() => void handleAppleSignInClick()}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    padding: "11px 18px",
+                    borderRadius: 999,
+                    background: "#000000",
+                    border: "1.5px solid #000000",
+                    color: "#ffffff",
+                    fontWeight: 800,
+                    fontSize: 15,
+                    cursor: busy || googleBusy || appleBusy ? "wait" : "pointer",
+                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.14)",
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+                  </svg>
+                  <span>{appleBusy ? "Opening Apple ID…" : "Continue with Apple"}</span>
                 </button>
 
                 <div
@@ -861,10 +1216,16 @@ export default function AuthModal({
                 <input
                   id="auth-password-input"
                   type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
+                  autoComplete={authTab === "signup" ? "new-password" : "current-password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === "forgot" ? "New password (8+ chars)" : "Password (8+ chars)"}
+                  placeholder={
+                    mode === "forgot"
+                      ? "New password (8+ chars)"
+                      : authTab === "signup"
+                        ? "Create password (8+ chars)"
+                        : "Password (8+ chars)"
+                  }
                   aria-label="Password"
                   className="gococo-input"
                 />
@@ -880,7 +1241,7 @@ export default function AuthModal({
               </div>
             </div>
 
-            {mode === "login" && (
+            {mode === "login" && authTab === "signin" && (
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -4 }}>
                 <button
                   type="button"
@@ -912,10 +1273,14 @@ export default function AuthModal({
             >
               <span>
                 {busy
-                  ? "Signing in…"
+                  ? authTab === "signup"
+                    ? "Creating account…"
+                    : "Signing in…"
                   : mode === "forgot"
                     ? "Save new password"
-                    : "Continue"}
+                    : authTab === "signup"
+                      ? "Create Free Account"
+                      : "Sign In"}
               </span>
               <span className="gococo-submit-icon" aria-hidden="true">
                 →
@@ -929,7 +1294,7 @@ export default function AuthModal({
                 onClick={onClose}
                 className="gococo-guest-link"
               >
-                Continue as guest
+                Continue as guest (no account needed)
               </button>
 
               <div

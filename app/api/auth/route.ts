@@ -75,8 +75,17 @@ export async function GET(request: Request) {
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
       process.env.GOOGLE_OAUTH_CLIENT_IDS?.split(",")[0] ||
       "";
+    const rawAppleClientId =
+      process.env.APPLE_SERVICE_ID ||
+      process.env.APPLE_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_APPLE_CLIENT_ID ||
+      "";
     return NextResponse.json(
-      { ok: true, googleClientId: rawClientId.trim() },
+      {
+        ok: true,
+        googleClientId: rawClientId.trim(),
+        appleClientId: rawAppleClientId.split(",")[0]?.trim() || "",
+      },
       { headers: CORS }
     );
   }

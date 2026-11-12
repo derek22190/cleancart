@@ -142,12 +142,12 @@ export function normalizeRealDeviceId(raw?: string | null): string {
 }
 
 /**
- * Returns true when `subId` represents a managed recurring subscription (`sub_...` on Stripe or `rc_...` on RevenueCat).
+ * Returns true when `subId` represents a managed recurring subscription (`sub_...` on Stripe, `rc_...` on RevenueCat, or `apple_...` on StoreKit 2).
  */
 export function isManagedSubscriptionId(subId?: string | null): boolean {
   if (typeof subId !== "string") return false;
   const clean = subId.trim();
-  return clean.startsWith("sub_") || clean.startsWith("rc_");
+  return clean.startsWith("sub_") || clean.startsWith("rc_") || clean.startsWith("apple_");
 }
 
 const MAX_NEGATIVE_SESSION_CACHE = 2000;

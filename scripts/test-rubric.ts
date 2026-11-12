@@ -3885,6 +3885,52 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const authModalIosSrc = fs.readFileSync("components/AuthModal.tsx", "utf8");
+  const funnelCompactSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+  const appleVerifyRouteMod = await import("../app/api/apple/verify/route");
+  const forgedJwsRes = await appleVerifyRouteMod.POST(
+    new Request("http://localhost:3000/api/apple/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signedTransactionInfo: "eyJhbGciOiJFUzI1NiIsIng1YyI6W119.eyJidW5kbGVJZCI6ImNvbS5oZXlicm9jLmFwcCJ9.c2ln",
+        deviceId: "ios-app-rubric-test",
+      }),
+    })
+  );
+  const simPostIosFixSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
+  const vcPostIosFixSrc = fs.readFileSync("ios-app/App/ViewController.swift", "utf8");
+  const authLibPostIosFixSrc = fs.readFileSync("lib/auth.ts", "utf8");
+
+  check(
+    "iOS TestFlight Onboarding, Sign in with Apple & StoreKit 2 Suite: zero-scroll 7-step grids + pinned footer, Sign Up / Sign In tabs + Continue with Apple under Google, StoreKit 2 native sheet + Root CA G3 JWS verification, and dead-end iOS toast eliminated",
+    Boolean(
+      authModalIosSrc.includes('id="auth-apple-btn"') &&
+        authModalIosSrc.includes("Continue with Apple") &&
+        authModalIosSrc.includes('id="auth-tab-signup"') &&
+        authModalIosSrc.includes('id="auth-tab-signin"') &&
+        authModalIosSrc.includes("__heybrocNativeAppleAuth") &&
+        funnelCompactSrc.includes("calc(100dvh - 20px)") &&
+        funnelCompactSrc.includes("repeat(2, minmax(0, 1fr))") &&
+        funnelCompactSrc.includes("repeat(3, minmax(0, 1fr))") &&
+        vcPostIosFixSrc.includes("import AuthenticationServices") &&
+        vcPostIosFixSrc.includes("import StoreKit") &&
+        vcPostIosFixSrc.includes("NativeProPaywallSheetViewController") &&
+        vcPostIosFixSrc.includes("com.heybroc.pro.annual") &&
+        vcPostIosFixSrc.includes("com.heybroc.pro.monthly") &&
+        vcPostIosFixSrc.includes('"apple-sign-in"') &&
+        vcPostIosFixSrc.includes('"upgrade-pro"') &&
+        authLibPostIosFixSrc.includes('"com.heybroc.app"') &&
+        authLibPostIosFixSrc.includes("user_apple_sub:") &&
+        !simPostIosFixSrc.includes(
+          "Pro membership is managed natively in the HeyBroc iOS app — sign in to sync an existing account."
+        ) &&
+        simPostIosFixSrc.includes("__HEYBROC_NATIVE_STOREKIT__") &&
+        simPostIosFixSrc.includes("__heybrocNativeProUnlocked") &&
+        (forgedJwsRes.status === 400 || forgedJwsRes.status === 401)
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

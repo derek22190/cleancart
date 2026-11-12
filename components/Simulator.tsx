@@ -173,7 +173,7 @@ function detectIosAppClient(): boolean {
 }
 
 function postIosBridgeMessage(
-  handler: "heybrocBridge" | "heybrocNative",
+  handler: "controller" | "heybrocBridge" | "heybrocNative",
   payload: Record<string, unknown>,
 ): void {
   if (typeof window === "undefined") return;
@@ -937,6 +937,8 @@ export default function Simulator({
   const [isPro, setIsPro] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authInitialTab, setAuthInitialTab] = useState<"signup" | "signin">("signup");
+  const [authBannerMessage, setAuthBannerMessage] = useState<string>("");
   const [watchlistFunnelOpen, setWatchlistFunnelOpen] = useState(false);
   const [watchlistFunnelStep, setWatchlistFunnelStep] = useState<FunnelStep>(1);
   const [manualFunnelOpen, setManualFunnelOpen] = useState(false);
@@ -1084,15 +1086,33 @@ export default function Simulator({
       setIsIosAppClient(true);
       setIsIosApp(true);
       setPaywallOpen(false);
-      postIosBridgeMessage("heybrocNative", { action: "managePro" });
+      const hasNativeStoreKit =
+        typeof window !== "undefined" &&
+        Boolean(
+          (window as unknown as { __HEYBROC_NATIVE_STOREKIT__?: boolean })
+            .__HEYBROC_NATIVE_STOREKIT__
+        );
+      if (hasNativeStoreKit) {
+        postIosBridgeMessage("controller", { action: "upgrade-pro" });
+        postIosBridgeMessage("heybrocNative", { action: "managePro" });
+        return;
+      }
+      if (!authUser) {
+        setAuthInitialTab("signup");
+        setAuthBannerMessage(
+          "✓ Personalized Watchlist saved! Create your free account below to sync across iPhone & Web — all 0–100 scores & 3 weekly Clean Swaps are ready right now."
+        );
+        setAuthOpen(true);
+        return;
+      }
       setToast({
-        title: "HeyBroc Pro on iOS",
-        body: "Pro membership is managed natively in the HeyBroc iOS app — sign in to sync an existing account.",
+        title: "✓ Watchlist & Account Synced",
+        body: "All 0–100 food scores & Clean Swaps are active on your account. Update TestFlight to manage iOS Family Pro with Face ID.",
       });
       return;
     }
     setPaywallOpen(true);
-  }, [isIosAppClient]);
+  }, [authUser, isIosAppClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1222,11 +1242,20 @@ export default function Simulator({
           setLabelScannerOpen(true);
         } else if (params.get("upgrade") === "1") {
           if (iosApp) {
-            postIosBridgeMessage("heybrocNative", { action: "managePro" });
-            setToast({
-              title: "HeyBroc Pro on iOS",
-              body: "Pro membership is managed natively in the HeyBroc iOS app — sign in to sync an existing account.",
-            });
+            const hasNativeStoreKit = Boolean(
+              (window as unknown as { __HEYBROC_NATIVE_STOREKIT__?: boolean })
+                .__HEYBROC_NATIVE_STOREKIT__
+            );
+            if (hasNativeStoreKit) {
+              postIosBridgeMessage("controller", { action: "upgrade-pro" });
+              postIosBridgeMessage("heybrocNative", { action: "managePro" });
+            } else {
+              setAuthInitialTab("signup");
+              setAuthBannerMessage(
+                "Create your free HeyBroc account or sign in to sync across iPhone & Web."
+              );
+              setAuthOpen(true);
+            }
           } else {
             setPaywallOpen(true);
           }
@@ -2289,6 +2318,8 @@ export default function Simulator({
     if (typeof window === "undefined") return;
     const win = window as unknown as {
       __heybrocNativeBarcode?: (code: string) => void;
+      __heybrocNativeProUnlocked?: (info?: { productId?: string; restored?: boolean }) => void;
+      __heybrocOpenAuthModal?: (tab?: "signup" | "signin", banner?: string) => void;
     };
     win.__heybrocNativeBarcode = (rawCode: string) => {
       const cleaned = String(rawCode || "").trim();
@@ -2304,8 +2335,27 @@ export default function Simulator({
         openCard: true,
       });
     };
+    win.__heybrocNativeProUnlocked = (info) => {
+      setIsPro(true);
+      setPaywallOpen(false);
+      setWatchlistFunnelOpen(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("heybroc_is_pro", "1");
+      }
+      setToast({
+        title: info?.restored ? "✓ Family Pro Restored" : "🎉 Family Pro Active!",
+        body: "Unlimited Clean Swaps, Live Store Bubbles & Family Watchlists are unlocked.",
+      });
+    };
+    win.__heybrocOpenAuthModal = (tab, banner) => {
+      setAuthInitialTab(tab === "signin" ? "signin" : "signup");
+      setAuthBannerMessage(banner || "");
+      setAuthOpen(true);
+    };
     return () => {
       delete win.__heybrocNativeBarcode;
+      delete win.__heybrocNativeProUnlocked;
+      delete win.__heybrocOpenAuthModal;
     };
   }, [executeLiveLookup, stopCameraScanner]);
 
@@ -2772,7 +2822,11 @@ export default function Simulator({
                 id="open-auth-modal"
                 type="button"
                 className={`topbar-btn topbar-btn--signin ${authUser ? "is-authed" : ""}`}
-                onClick={() => setAuthOpen(true)}
+                onClick={() => {
+                  setAuthInitialTab("signup");
+                  setAuthBannerMessage("");
+                  setAuthOpen(true);
+                }}
               >
                 {authUser ? (
                   <>
@@ -2780,7 +2834,7 @@ export default function Simulator({
                     <span>{authUser.displayName}</span>
                   </>
                 ) : (
-                  "Sign in"
+                  "Sign Up / Sign In"
                 )}
               </button>
 
@@ -5167,6 +5221,8 @@ export default function Simulator({
         initialStep={watchlistFunnelStep}
         isReturningUser={onboardingDoneState || manualFunnelOpen}
         quickEditMode={manualFunnelOpen}
+        isIosApp={isIosApp || isIosAppClient}
+        isAuthenticated={Boolean(authUser)}
         initialSelected={familyWatchlist}
         initialStore={store}
         initialStores={preferredStores}
@@ -5194,6 +5250,10 @@ export default function Simulator({
         onApplyAndSignIn={(selected, extras?: OnboardingSelections) => {
           persistOnboardingSelections(selected, extras);
           setWatchlistFunnelOpen(false);
+          setAuthInitialTab("signup");
+          setAuthBannerMessage(
+            "✓ Personalized Watchlist saved! Create your free account below to sync across iPhone & Web."
+          );
           setAuthOpen(true);
         }}
         onApplyAndStartTrial={(selected, extras?: OnboardingSelections) => {
@@ -5205,10 +5265,15 @@ export default function Simulator({
 
       <AuthModal
         open={authOpen}
-        onClose={() => setAuthOpen(false)}
+        onClose={() => {
+          setAuthOpen(false);
+          setAuthBannerMessage("");
+        }}
         user={authUser}
         deviceId={deviceIdState}
         watchlist={watch}
+        initialTab={authInitialTab}
+        bannerMessage={authBannerMessage}
         onAuthSuccess={(loggedInUser, token) => {
           setAuthUser(loggedInUser);
           if (typeof window !== "undefined") {

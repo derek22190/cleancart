@@ -197,8 +197,29 @@ jobs:
           end
 
           project.save
+          FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.minimal")
+          puts "Saved fallback project.pbxproj.minimal"
+
+          # Add Sign in with Apple entitlement for ASAuthorizationAppleIDProvider (Guideline 4.8)
+          entitlements_path = 'ios-app/build/HeyBroc/HeyBroc.entitlements'
+          File.write(entitlements_path, <<~PLIST)
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>com.apple.developer.applesignin</key>
+              <array>
+                <string>Default</string>
+              </array>
+            </dict>
+            </plist>
+          PLIST
+          app_target.build_configurations.each do |cfg|
+            cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'HeyBroc.entitlements'
+          end
+          project.save
           FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.no-share")
-          puts "Saved fallback project.pbxproj.no-share"
+          puts "Saved fallback project.pbxproj.no-share (with Sign in with Apple entitlement)"
 
           # Add Native iOS Share Sheet Extension target (HeyBrocShare -> com.heybroc.app.ShareExtension)
           share_target = project.new_target(:app_extension, 'HeyBrocShare', :ios, '15.0')
@@ -290,7 +311,7 @@ jobs:
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
-            echo "::warning::App Store Connect API key could not auto-provision new com.heybroc.app.ShareExtension bundle ID; re-archiving with LiveStoreBrowser + AppIntents + SafariExtension so TestFlight upload succeeds immediately."
+            echo "::warning::App Store Connect API key could not auto-provision ShareExtension; re-archiving with Sign in with Apple + StoreKit 2 + LiveStoreBrowser."
             cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.no-share" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
             rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
             xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
@@ -302,14 +323,35 @@ jobs:
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGN_IDENTITY="" \
               archive
-            xcodebuild -exportArchive \
+            if ! xcodebuild -exportArchive \
               -archivePath "ios-app/build/HeyBroc.xcarchive" \
               -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
               -exportPath "ios-app/build/ipa" \
               -allowProvisioningUpdates \
               -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
               -authenticationKeyID "$ASC_KEY_ID" \
-              -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
+              echo "::warning::Sign in with Apple capability not yet enabled on com.heybroc.app in Apple Developer Portal; re-archiving with StoreKit 2 + Web Apple OAuth fallback so TestFlight upload succeeds immediately."
+              cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.minimal" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
+              rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
+              xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
+                -scheme "HeyBroc" \
+                -sdk iphoneos \
+                -configuration Release \
+                -archivePath "ios-app/build/HeyBroc.xcarchive" \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY="" \
+                archive
+              xcodebuild -exportArchive \
+                -archivePath "ios-app/build/HeyBroc.xcarchive" \
+                -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
+                -exportPath "ios-app/build/ipa" \
+                -allowProvisioningUpdates \
+                -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+                -authenticationKeyID "$ASC_KEY_ID" \
+                -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            fi
           fi
           xcrun altool --upload-app \
             --type ios \

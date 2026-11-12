@@ -690,13 +690,16 @@ interface JwkKey {
   [key: string]: unknown;
 }
 
+const USER_APPLE_SUB_PREFIX = "heybroc:user_apple_sub:";
+
 async function verifyOidcJwtWithJwks(params: {
   idToken: string;
   jwksUrl: string;
   allowedIssuers: string[];
   allowedAudiences: string[];
   expectedEmail: string;
-}): Promise<{ ok: boolean; email: string }> {
+  allowAppleSubFallback?: boolean;
+}): Promise<{ ok: boolean; email: string; sub?: string }> {
   try {
     if (params.allowedAudiences.length === 0) {
       return { ok: false, email: "" };
@@ -716,6 +719,7 @@ async function verifyOidcJwtWithJwks(params: {
       Buffer.from(payloadB64, "base64url").toString("utf8")
     ) as {
       iss?: string;
+      sub?: string;
       aud?: string | string[];
       exp?: number;
       email?: string;
@@ -737,16 +741,28 @@ async function verifyOidcJwtWithJwks(params: {
     if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
       return { ok: false, email: "" };
     }
-    const emailVerified =
-      payload.email_verified === true || payload.email_verified === "true";
-    if (!emailVerified || !payload.email) {
-      return { ok: false, email: "" };
-    }
-    const tokenEmail = normalizeEmail(payload.email);
-    if (
-      params.expectedEmail &&
-      normalizeEmail(params.expectedEmail) !== tokenEmail
-    ) {
+
+    const tokenSub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+    let tokenEmail = "";
+
+    if (payload.email) {
+      const emailExplicitlyUnverified =
+        payload.email_verified === false || payload.email_verified === "false";
+      const emailVerified = params.allowAppleSubFallback
+        ? !emailExplicitlyUnverified
+        : payload.email_verified === true || payload.email_verified === "true";
+      if (!emailVerified) {
+        return { ok: false, email: "" };
+      }
+      tokenEmail = normalizeEmail(payload.email);
+      if (
+        params.expectedEmail &&
+        !params.allowAppleSubFallback &&
+        normalizeEmail(params.expectedEmail) !== tokenEmail
+      ) {
+        return { ok: false, email: "" };
+      }
+    } else if (!params.allowAppleSubFallback || !tokenSub) {
       return { ok: false, email: "" };
     }
 
@@ -772,7 +788,27 @@ async function verifyOidcJwtWithJwks(params: {
     );
     if (!verified) return { ok: false, email: "" };
 
-    return { ok: true, email: tokenEmail };
+    if (!tokenEmail && params.allowAppleSubFallback && tokenSub) {
+      const mappedEmail = await kvGet<string>(
+        `${USER_APPLE_SUB_PREFIX}${tokenSub}`
+      ).catch(() => null);
+      if (mappedEmail && typeof mappedEmail === "string" && mappedEmail.includes("@")) {
+        tokenEmail = normalizeEmail(mappedEmail);
+      } else {
+        const subHash = crypto
+          .createHash("sha256")
+          .update(tokenSub)
+          .digest("hex")
+          .slice(0, 16);
+        tokenEmail = `apple.${subHash}@privaterelay.heybroc.app`;
+      }
+    }
+
+    if (params.allowAppleSubFallback && tokenSub && tokenEmail) {
+      await kvSet(`${USER_APPLE_SUB_PREFIX}${tokenSub}`, tokenEmail).catch(() => {});
+    }
+
+    return { ok: Boolean(tokenEmail), email: tokenEmail, sub: tokenSub || undefined };
   } catch {
     return { ok: false, email: "" };
   }
@@ -803,22 +839,31 @@ async function verifyGoogleIdToken(
 async function verifyAppleIdToken(
   idToken: string,
   expectedEmail: string
-): Promise<{ ok: boolean; email: string }> {
-  const allowedAudiences = (
-    process.env.APPLE_SERVICE_ID ||
-    process.env.APPLE_CLIENT_ID ||
-    process.env.APPLE_BUNDLE_ID ||
-    ""
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+): Promise<{ ok: boolean; email: string; sub?: string }> {
+  const rawConfigured = [
+    process.env.APPLE_SERVICE_ID,
+    process.env.APPLE_CLIENT_ID,
+    process.env.NEXT_PUBLIC_APPLE_CLIENT_ID,
+    process.env.APPLE_BUNDLE_ID,
+    "com.heybroc.app",
+  ]
+    .filter(Boolean)
+    .join(",");
+  const allowedAudiences = Array.from(
+    new Set(
+      rawConfigured
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    )
+  );
   return verifyOidcJwtWithJwks({
     idToken,
     jwksUrl: "https://appleid.apple.com/auth/keys",
     allowedIssuers: ["https://appleid.apple.com"],
     allowedAudiences,
     expectedEmail,
+    allowAppleSubFallback: true,
   });
 }
 
