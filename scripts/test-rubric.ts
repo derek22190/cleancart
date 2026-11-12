@@ -3640,8 +3640,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         finalSimSrc.includes("<YukaImpactBand />") &&
         finalSimSrc.includes("<YukaSiteFooter") &&
         finalSimSrc.includes("<FooterKitchenScenery />") &&
-        independencePageSrc.includes("Our core value is independence") &&
-        independencePageSrc.includes("100% INDEPENDENT") &&
+        independencePageSrc.includes("100% family-owned. Built for parents, never Big Food.") &&
+        independencePageSrc.includes("100% FAMILY OWNED") &&
         independencePageSrc.includes("Scores Can&apos;t Be Bought") &&
         independencePageSrc.includes("Zero Sponsored Placements") &&
         independencePageSrc.includes("Shopper-Funded Only") &&
@@ -3696,6 +3696,31 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         latestToolsClientSrc.includes('overflowWrap: "anywhere"') &&
         latestToolsClientSrc.includes('whiteSpace: "nowrap"') &&
         latestSwapsSlugSrc.includes('gridTemplateColumns: "minmax(0, 1fr)"')
+    )
+  );
+
+  check(
+    "Superhero Cape Mascot ('100% FAMILY OWNED'), Original Horizontal Online Cart Swap Board & Above-the-Fold Online Grocery Shopping Hero: transparent cape mascot crest, zero tilted Yuka cards, and instant Online Pickup/Delivery + In-Store Camera modes",
+    Boolean(
+      fs.existsSync("public/broc-mascot-cape.png") &&
+        healthyScenerySrc.includes("/broc-mascot-cape.png") &&
+        healthyScenerySrc.includes("100% FAMILY OWNED") &&
+        !healthyScenerySrc.includes("100% INDEPENDENT") &&
+        !healthyScenerySrc.includes("yuka-cloud") &&
+        !healthyScenerySrc.includes("yuka-tilt-card") &&
+        healthyScenerySrc.includes("broc-swap-board") &&
+        healthyScenerySrc.includes("1-TAP ONLINE CART UPGRADES") &&
+        independencePageSrc.includes("/broc-mascot-cape.png") &&
+        independencePageSrc.includes("100% FAMILY OWNED") &&
+        finalSimSrc.includes('id="hero-online-shopping-pill"') &&
+        finalSimSrc.includes("BUILT FOR ONLINE GROCERY SHOPPING") &&
+        finalSimSrc.includes("Know what&apos;s hiding in your online grocery cart.") &&
+        finalSimSrc.includes('id="hero-mode-online"') &&
+        finalSimSrc.includes('id="hero-mode-camera"') &&
+        !latestGlobalsCssSrc.includes("rotate(-3.5deg)") &&
+        latestGlobalsCssSrc.includes(".broc-family-crest") &&
+        latestGlobalsCssSrc.includes(".broc-swap-board") &&
+        latestGlobalsCssSrc.includes(".hero-shopping-modes")
     )
   );
 

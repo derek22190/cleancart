@@ -6,9 +6,9 @@ import {
 } from "@/components/HealthyScenery";
 
 export const metadata: Metadata = {
-  title: "100% Independent Food & Grocery Scoring | HeyBroc",
+  title: "100% Family Owned & Unbiased Grocery Scoring | HeyBroc",
   description:
-    "HeyBroc is a 100% independent grocery grading project. Zero brand influence, zero in-app ads, strict family data privacy, and transparent shopper-aligned funding.",
+    "HeyBroc is 100% family-owned and fiercely independent. Zero Big Food ties, zero in-app ads, strict family data privacy, and transparent shopper-aligned funding.",
   alternates: {
     canonical: "https://www.heybroc.com/independence",
   },
@@ -30,14 +30,14 @@ export default function IndependencePage() {
                   <div className="brand-title-row">
                     <h1>HeyBroc</h1>
                   </div>
-                  <p className="brand-tagline">100% independent food grader &amp; 1-tap clean swaps</p>
+                  <p className="brand-tagline">100% family-owned online grocery grader &amp; 1-tap clean swaps</p>
                 </div>
               </a>
 
               <nav className="yuka-desktop-nav" aria-label="Primary navigation">
                 <a href="/">Application</a>
                 <a href="/independence" className="is-current">
-                  Independence
+                  Family Owned
                 </a>
                 <a href="/swaps">Clean Swaps</a>
                 <a href="/tools">Free Grader</a>
@@ -46,7 +46,7 @@ export default function IndependencePage() {
 
             <div className="topbar-account">
               <a href="/" className="yuka-green-pill-btn" style={{ padding: "9px 18px", fontSize: 13.5 }}>
-                Open Scanner →
+                Shop Online Free →
               </a>
             </div>
           </div>
@@ -55,20 +55,25 @@ export default function IndependencePage() {
 
       <main className="indep-page-main">
         <div className="yuka-indep-inner">
-          <h1 className="indep-hero-title">Our core value is independence</h1>
+          <h1 className="indep-hero-title">100% family-owned. Built for parents, never Big Food.</h1>
           <p className="yuka-page-lead">
-            HeyBroc is a 100% independent project. Every 0–100 food evaluation and cleaner grocery recommendation is calculated objectively from ingredient lists and nutrition facts — no brand or manufacturer can influence them in one way or another.
+            HeyBroc is 100% family-owned and fiercely independent. Every 0–100 food evaluation and online Clean Swap is calculated objectively from ingredient lists and nutrition facts — no food brand or conglomerate can influence them in any way.
           </p>
 
-          {/* Hero Circular Sky/Mint Emblem + Broc Mascot + 100% INDEPENDENT Ribbon */}
-          <div className="yuka-indep-badge" aria-hidden="true">
-            <div className="yuka-indep-circle">
-              <span className="yuka-cloud yuka-cloud--left" />
-              <span className="yuka-cloud yuka-cloud--right" />
+          {/* Superhero Cape Broc Medallion + 100% FAMILY OWNED Ribbon */}
+          <div className="broc-family-crest" aria-hidden="true">
+            <div className="broc-family-halo">
+              <span className="broc-family-ring" />
+              <svg className="broc-family-sparkles" viewBox="0 0 180 180" fill="none">
+                <path d="M30 46L33 54L41 57L33 60L30 68L27 60L19 57L27 54L30 46Z" fill="#18B957" opacity="0.55" />
+                <path d="M150 38L152.2 44L158 46.2L152.2 48.4L150 54.4L147.8 48.4L142 46.2L147.8 44L150 38Z" fill="#F59E0B" opacity="0.7" />
+                <circle cx="148" cy="118" r="3.5" fill="#18B957" opacity="0.38" />
+                <circle cx="28" cy="114" r="3" fill="#10B981" opacity="0.35" />
+              </svg>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/broc-mascot.png" alt="" className="yuka-indep-mascot" />
+              <img src="/broc-mascot-cape.png" alt="" className="broc-family-mascot" />
             </div>
-            <div className="yuka-indep-ribbon">100% INDEPENDENT</div>
+            <div className="broc-family-ribbon">100% FAMILY OWNED</div>
           </div>
 
           {/* 3 Clean Sans-Serif Soft-Mint Pledge Cards */}

@@ -2759,7 +2759,7 @@ export default function Simulator({
               {!adTestMode && (
                 <nav className="yuka-desktop-nav" aria-label="Primary navigation">
                   <a href="/" className="is-current">Application</a>
-                  <a href="/independence">Independence</a>
+                  <a href="/independence">Family Owned</a>
                   <a href="/swaps">Clean Swaps</a>
                   <a href="/tools">Free Grader</a>
                 </nav>
@@ -2860,7 +2860,7 @@ export default function Simulator({
                       >
                         <span className="topbar-dropdown-label">
                           <UiIcon name="shield" size={15} />
-                          <span>Independence</span>
+                          <span>100% Family Owned</span>
                         </span>
                         <span className="topbar-dropdown-arrow">→</span>
                       </a>
@@ -3176,11 +3176,16 @@ export default function Simulator({
 
           {!adTestMode && (
             <div className="hero-clean">
+              <div className="hero-mode-pill" id="hero-online-shopping-pill">
+                <span className="hero-mode-pill-dot" aria-hidden="true" />
+                <UiIcon name="cart" size={14} />
+                <span>BUILT FOR ONLINE GROCERY SHOPPING</span>
+              </div>
               <h2 className="hero-headline">
-                Know what&apos;s really hiding in your family&apos;s groceries.
+                Know what&apos;s hiding in your online grocery cart.
               </h2>
               <p className="hero-subcopy">
-                Instant 0–100 food scores and 1-tap Clean Swaps while you shop.
+                Automatic <b>0–100 ingredient scores</b> and <b>1-tap Clean Swaps</b> while you shop online at Walmart, Instacart, Target, Costco, Amazon Fresh &amp; 12 stores — plus a built-in camera when you shop in person.
               </p>
               <div className="hero-cta-row">
                 <button
@@ -3193,7 +3198,7 @@ export default function Simulator({
                     setWatchlistFunnelOpen(true);
                   }}
                 >
-                  Get Started
+                  Get Started Free
                 </button>
                 <a
                   id="hero-try-grader"
@@ -3202,6 +3207,44 @@ export default function Simulator({
                 >
                   Try Free Grader
                 </a>
+              </div>
+
+              <div className="hero-shopping-modes" aria-label="Supported shopping modes">
+                <button
+                  id="hero-mode-online"
+                  type="button"
+                  className="hero-mode-card hero-mode-card--online"
+                  onClick={() => {
+                    setPhoneStoreMenuOpen(true);
+                    screenRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  }}
+                >
+                  <span className="hero-mode-icon hero-mode-icon--online" aria-hidden="true">
+                    <UiIcon name="cart" size={16} />
+                  </span>
+                  <span className="hero-mode-copy">
+                    <strong>
+                      Online Pickup &amp; Delivery
+                      <em className="hero-mode-tag">12 STORES</em>
+                    </strong>
+                    <small>Walmart · Instacart · Target · Costco · Amazon +7</small>
+                  </span>
+                </button>
+
+                <button
+                  id="hero-mode-camera"
+                  type="button"
+                  className="hero-mode-card hero-mode-card--camera"
+                  onClick={() => setLabelScannerOpen(true)}
+                >
+                  <span className="hero-mode-icon hero-mode-icon--camera" aria-hidden="true">
+                    <UiIcon name="camera" size={16} />
+                  </span>
+                  <span className="hero-mode-copy">
+                    <strong>In-Store Camera</strong>
+                    <small>Scan barcodes &amp; labels in the aisle →</small>
+                  </span>
+                </button>
               </div>
             </div>
           )}

@@ -288,7 +288,7 @@ export function PhoneStageFoodHalo() {
 }
 
 /**
- * Clean HeyBroc Independence Showcase with circular Broc emblem, 100% INDEPENDENT ribbon,
+ * Clean HeyBroc Family-Owned Showcase with Superhero Cape Broc crest, 100% FAMILY OWNED ribbon,
  * and 3 numbered soft-mint pledge cards ("Scores Can't Be Bought", "Zero Sponsored Placements", "Shopper-Funded Only").
  */
 export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMore?: boolean }) {
@@ -296,23 +296,28 @@ export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMor
     <section
       id="independent-section"
       className="yuka-indep-section"
-      aria-label="100% Independent Scoring Pledge"
+      aria-label="100% Family Owned & Unbiased Scoring Pledge"
     >
       <div className="yuka-indep-inner">
-        <h2 className="yuka-page-h2">Built for shoppers, never Big Food</h2>
+        <h2 className="yuka-page-h2">Family-owned &amp; built for parents, never Big Food</h2>
         <p className="yuka-page-lead">
-          HeyBroc grades every item strictly from its ingredient list and nutrition facts — with zero food-industry money behind the curtain.
+          HeyBroc is 100% family-owned — grading every online grocery item and in-store label strictly from its ingredient list and nutrition facts, with zero food-industry money behind the curtain.
         </p>
 
-        {/* Hero Circular Mint Emblem + Broc Mascot + 100% INDEPENDENT Ribbon */}
-        <div className="yuka-indep-badge" aria-hidden="true">
-          <div className="yuka-indep-circle">
-            <span className="yuka-cloud yuka-cloud--left" />
-            <span className="yuka-cloud yuka-cloud--right" />
+        {/* Superhero Cape Broc Medallion + 100% FAMILY OWNED Ribbon */}
+        <div className="broc-family-crest" aria-hidden="true">
+          <div className="broc-family-halo">
+            <span className="broc-family-ring" />
+            <svg className="broc-family-sparkles" viewBox="0 0 180 180" fill="none">
+              <path d="M30 46L33 54L41 57L33 60L30 68L27 60L19 57L27 54L30 46Z" fill="#18B957" opacity="0.55" />
+              <path d="M150 38L152.2 44L158 46.2L152.2 48.4L150 54.4L147.8 48.4L142 46.2L147.8 44L150 38Z" fill="#F59E0B" opacity="0.7" />
+              <circle cx="148" cy="118" r="3.5" fill="#18B957" opacity="0.38" />
+              <circle cx="28" cy="114" r="3" fill="#10B981" opacity="0.35" />
+            </svg>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.png" alt="" className="yuka-indep-mascot" />
+            <img src="/broc-mascot-cape.png" alt="" className="broc-family-mascot" />
           </div>
-          <div className="yuka-indep-ribbon">100% INDEPENDENT</div>
+          <div className="broc-family-ribbon">100% FAMILY OWNED</div>
         </div>
 
         {/* 3 Clean Sans-Serif Soft-Mint Pledge Cards */}
@@ -388,7 +393,7 @@ export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMor
         {showLearnMore && (
           <div className="yuka-indep-cta-row">
             <a href="/independence" className="yuka-green-pill-btn">
-              Read Our Independence Pledge →
+              Read Our Family-Owned Pledge →
             </a>
           </div>
         )}
@@ -398,123 +403,159 @@ export function YukaIndependentShowcase({ showLearnMore = true }: { showLearnMor
 }
 
 /**
- * Wavy faint-green Clean Swaps showcase with tilted floating Poor -> Excellent white product cards & soft ground shadows.
+ * Architectural HeyBroc Online Grocery Cart Clean Swaps Board (horizontal split Cart Upgrade rows).
  */
 export function YukaSwapShowcase() {
   return (
     <section
       id="yuka-swap-showcase"
-      className="yuka-swap-showcase"
-      aria-label="Recommendations for cleaner groceries"
+      className="broc-swap-showcase"
+      aria-label="1-tap Clean Swaps for online grocery carts"
     >
-      <div className="yuka-swap-wave-box">
-        <h2 className="yuka-page-h2">
-          Instant Clean Swaps
-          <br />
-          for flagged groceries
-        </h2>
-        <p className="yuka-page-lead">
-          Whenever an everyday item flags for seed oils, synthetic dyes, or refined syrups, HeyBroc links directly to a cleaner alternative in your store.
-        </p>
+      <div className="broc-swap-board">
+        <div className="broc-swap-header">
+          <span className="broc-swap-eyebrow">
+            <span className="broc-swap-eyebrow-dot" aria-hidden="true" />
+            1-TAP ONLINE CART UPGRADES · 12 GROCERY STORES
+          </span>
+          <h2 className="yuka-page-h2">
+            Swap flagged cart items for cleaner picks in one tap
+          </h2>
+          <p className="yuka-page-lead">
+            While you build your online pickup or delivery order, HeyBroc flags hidden seed oils, synthetic dyes, and refined syrups — and links straight to a cleaner swap at the same store.
+          </p>
+        </div>
 
-        <div className="yuka-swap-pairs">
-          {/* Pair 1: Ranch Dressing */}
-          <div className="yuka-swap-pair">
-            <div className="yuka-tilt-col">
-              <div className="yuka-tilt-card yuka-tilt-card--bad">
-                <span className="yuka-corner-badge yuka-corner-badge--bad" aria-label="Flagged product">
-                  ✕
-                </span>
+        <div className="broc-swap-list">
+          {/* Row 1: Ranch Dressing */}
+          <article className="broc-swap-row">
+            <div className="broc-swap-side broc-swap-side--flagged">
+              <div className="broc-swap-thumb-wrap">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/onboarding-poor-pick.jpg"
                   alt="Conventional Creamy Ranch Dressing"
-                  className="yuka-tilt-img"
+                  className="broc-swap-thumb"
                   loading="lazy"
                 />
-                <strong className="yuka-tilt-name">Creamy Ranch</strong>
-                <span className="yuka-tilt-rating">
-                  <i className="yuka-tilt-dot yuka-tilt-dot--bad" aria-hidden="true" />
-                  Poor · 18/100
-                </span>
               </div>
-              <div className="yuka-card-floor-shadow" aria-hidden="true" />
+              <div className="broc-swap-meta">
+                <div className="broc-swap-status-row">
+                  <span className="broc-swap-kicker broc-swap-kicker--bad">IN YOUR CART</span>
+                  <span className="broc-swap-score broc-swap-score--bad">
+                    <i aria-hidden="true" />
+                    18/100 · Poor
+                  </span>
+                </div>
+                <strong className="broc-swap-title">Conventional Creamy Ranch</strong>
+                <div className="broc-swap-tags" aria-label="Flagged ingredients">
+                  <span className="broc-swap-chip broc-swap-chip--bad">Soybean Oil</span>
+                  <span className="broc-swap-chip broc-swap-chip--bad">MSG</span>
+                  <span className="broc-swap-chip broc-swap-chip--bad">Artificial Flavor</span>
+                </div>
+              </div>
             </div>
 
-            <div className="yuka-swap-arrow" aria-hidden="true">
-              →
+            <div className="broc-swap-bridge" aria-hidden="true">
+              <span className="broc-swap-bridge-pill">⇄ 1-Tap Swap</span>
+              <span className="broc-swap-bridge-gain">+76 pts</span>
             </div>
 
-            <div className="yuka-tilt-col">
-              <div className="yuka-tilt-card yuka-tilt-card--good">
-                <span className="yuka-corner-badge yuka-corner-badge--good" aria-label="Cleaner recommendation">
-                  ✓
-                </span>
+            <div className="broc-swap-side broc-swap-side--clean">
+              <div className="broc-swap-thumb-wrap broc-swap-thumb-wrap--clean">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/onboarding-clean-pick.jpg"
                   alt="Organic Avocado Oil Ranch Dressing"
-                  className="yuka-tilt-img"
+                  className="broc-swap-thumb"
                   loading="lazy"
                 />
-                <strong className="yuka-tilt-name">Avocado Oil Ranch</strong>
-                <span className="yuka-tilt-rating">
-                  <i className="yuka-tilt-dot yuka-tilt-dot--good" aria-hidden="true" />
-                  Excellent · 94/100
-                </span>
               </div>
-              <div className="yuka-card-floor-shadow" aria-hidden="true" />
+              <div className="broc-swap-meta">
+                <div className="broc-swap-status-row">
+                  <span className="broc-swap-kicker broc-swap-kicker--good">VERIFIED CLEAN PICK</span>
+                  <span className="broc-swap-score broc-swap-score--good">
+                    <i aria-hidden="true" />
+                    94/100 · Excellent
+                  </span>
+                </div>
+                <strong className="broc-swap-title">Avocado Oil Ranch</strong>
+                <div className="broc-swap-tags" aria-label="Clean ingredient highlights">
+                  <span className="broc-swap-chip broc-swap-chip--good">✓ 100% Avocado Oil</span>
+                  <span className="broc-swap-chip broc-swap-chip--good">✓ Zero Seed Oils</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </article>
 
-          {/* Pair 2: Fruit Snacks -> Whole-Fruit Bar */}
-          <div className="yuka-swap-pair">
-            <div className="yuka-tilt-col">
-              <div className="yuka-tilt-card yuka-tilt-card--bad">
-                <span className="yuka-corner-badge yuka-corner-badge--bad" aria-label="Flagged product">
-                  ✕
-                </span>
+          {/* Row 2: Kids' Fruit Snacks -> Whole-Fruit Bar */}
+          <article className="broc-swap-row">
+            <div className="broc-swap-side broc-swap-side--flagged">
+              <div className="broc-swap-thumb-wrap">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/presets/snacks.jpg"
                   alt="Conventional Dyed Fruit Snacks"
-                  className="yuka-tilt-img"
+                  className="broc-swap-thumb"
                   loading="lazy"
                 />
-                <strong className="yuka-tilt-name">Fruit Snacks</strong>
-                <span className="yuka-tilt-rating">
-                  <i className="yuka-tilt-dot yuka-tilt-dot--orange" aria-hidden="true" />
-                  Poor · 14/100
-                </span>
               </div>
-              <div className="yuka-card-floor-shadow" aria-hidden="true" />
+              <div className="broc-swap-meta">
+                <div className="broc-swap-status-row">
+                  <span className="broc-swap-kicker broc-swap-kicker--bad">IN YOUR CART</span>
+                  <span className="broc-swap-score broc-swap-score--bad">
+                    <i aria-hidden="true" />
+                    14/100 · Poor
+                  </span>
+                </div>
+                <strong className="broc-swap-title">Conventional Fruit Snacks</strong>
+                <div className="broc-swap-tags" aria-label="Flagged ingredients">
+                  <span className="broc-swap-chip broc-swap-chip--bad">Red 40 · Blue 1</span>
+                  <span className="broc-swap-chip broc-swap-chip--bad">Corn Syrup</span>
+                </div>
+              </div>
             </div>
 
-            <div className="yuka-swap-arrow" aria-hidden="true">
-              →
+            <div className="broc-swap-bridge" aria-hidden="true">
+              <span className="broc-swap-bridge-pill">⇄ 1-Tap Swap</span>
+              <span className="broc-swap-bridge-gain">+78 pts</span>
             </div>
 
-            <div className="yuka-tilt-col">
-              <div className="yuka-tilt-card yuka-tilt-card--good">
-                <span className="yuka-corner-badge yuka-corner-badge--good" aria-label="Cleaner recommendation">
-                  ✓
-                </span>
+            <div className="broc-swap-side broc-swap-side--clean">
+              <div className="broc-swap-thumb-wrap broc-swap-thumb-wrap--clean">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/swaps/fruitbar.png"
                   alt="Whole-Fruit & Nut Snack Bar"
-                  className="yuka-tilt-img"
+                  className="broc-swap-thumb"
                   loading="lazy"
                 />
-                <strong className="yuka-tilt-name">Whole-Fruit Bar</strong>
-                <span className="yuka-tilt-rating">
-                  <i className="yuka-tilt-dot yuka-tilt-dot--good" aria-hidden="true" />
-                  Excellent · 92/100
-                </span>
               </div>
-              <div className="yuka-card-floor-shadow" aria-hidden="true" />
+              <div className="broc-swap-meta">
+                <div className="broc-swap-status-row">
+                  <span className="broc-swap-kicker broc-swap-kicker--good">VERIFIED CLEAN PICK</span>
+                  <span className="broc-swap-score broc-swap-score--good">
+                    <i aria-hidden="true" />
+                    92/100 · Excellent
+                  </span>
+                </div>
+                <strong className="broc-swap-title">Whole-Fruit &amp; Nut Bar</strong>
+                <div className="broc-swap-tags" aria-label="Clean ingredient highlights">
+                  <span className="broc-swap-chip broc-swap-chip--good">✓ 100% Real Fruit</span>
+                  <span className="broc-swap-chip broc-swap-chip--good">✓ Zero Synthetic Dyes</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </article>
+        </div>
+
+        <div className="broc-swap-footer">
+          <span className="broc-swap-stores-note">
+            Works inside Walmart · Instacart · Target · Costco · Amazon Fresh · Kroger · ALDI &amp; 5 more
+          </span>
+          <a href="/swaps" className="yuka-outline-pill-btn">
+            Browse Clean Swaps Directory →
+          </a>
         </div>
       </div>
     </section>
@@ -594,7 +635,7 @@ export function YukaSiteFooter({
             <span>HeyBroc</span>
           </a>
           <p className="yuka-footer-tagline">
-            Decode food labels and swap to cleaner groceries in one tap.
+            Score online grocery carts &amp; in-store labels — swap to cleaner picks in one tap.
           </p>
           <div className="yuka-footer-badges">
             <a href="/tools#mobile-setup" className="yuka-store-badge">
@@ -623,7 +664,7 @@ export function YukaSiteFooter({
 
         <div className="yuka-footer-col">
           <h4>Our Mission</h4>
-          <a href="/independence">Independence</a>
+          <a href="/independence">100% Family Owned</a>
           <a href="/swaps">Clean Swaps Directory</a>
           <a href="/creators">Creator Partners (35%)</a>
         </div>
