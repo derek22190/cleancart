@@ -670,6 +670,33 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        let scheme = (url.scheme ?? "").lowercased()
+        // Block retailer custom URL schemes ("Open in Walmart App" banners) so shopping stays inside HeyBroc
+        if scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" && scheme != "data" {
+            decisionHandler(.cancel)
+            return
+        }
+        let host = (url.host ?? "").lowercased()
+        if host == "itunes.apple.com" || host == "apps.apple.com" || host.hasSuffix(".app.link") {
+            decisionHandler(.cancel)
+            return
+        }
+        // Prevent iOS Universal Links from hijacking link taps out to installed Walmart / Target / Amazon native apps
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.targetFrame?.isMainFrame == true,
+           (scheme == "https" || scheme == "http") {
+            decisionHandler(.cancel)
+            webView.load(navigationAction.request)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
             webView.load(URLRequest(url: url))

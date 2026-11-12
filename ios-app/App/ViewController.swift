@@ -755,7 +755,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 }
 
-// MARK: - Complete iPhone Grocery Bubble, Share Sheet & Back-Tap Setup Sheet
+// MARK: - iPhone Online Grocery Shopping & Safari Pill Sheet
 
 private final class SafariSetupSheetViewController: UIViewController {
     private let onOpenLiveStore: (String?) -> Void
@@ -800,7 +800,7 @@ private final class SafariSetupSheetViewController: UIViewController {
         headerRow.distribution = .equalSpacing
 
         let titleLabel = UILabel()
-        titleLabel.text = "🥦 4 Ways to Shop on iPhone"
+        titleLabel.text = "🥦 Online Grocery Bubble"
         titleLabel.font = UIFont.systemFont(ofSize: 20, weight: .heavy)
         titleLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
         titleLabel.numberOfLines = 2
@@ -815,55 +815,41 @@ private final class SafariSetupSheetViewController: UIViewController {
         headerRow.addArrangedSubview(closeBtn)
         content.addArrangedSubview(headerRow)
 
-        // 1. In-App Live Store Browser (Permanent Floating Bubble — Zero Tapping!)
-        let liveCard = makeCard(borderColor: UIColor(red: 0.525, green: 0.937, blue: 0.675, alpha: 1.0), bgColor: UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0))
-        liveCard.addArrangedSubview(makeBadge("⭐ ZERO SETUP • AUTOMATIC PERMANENT BUBBLE"))
-        liveCard.addArrangedSubview(makeHeading("1. 🛒 Live Store Browser Inside HeyBroc"))
-        liveCard.addArrangedSubview(makeBody("Sign into Walmart, Instacart, Target, Amazon Fresh, Costco, Sam's Club, Kroger or ALDI once. HeyBroc's floating broccoli pill stays on screen automatically across every food item—just like Android!"))
+        // 1. Recommended: In-App Live Store Browser (Zero Setup, Never Jumps to Walmart/Target App)
+        let liveCard = makeCard(
+            borderColor: UIColor(red: 0.525, green: 0.937, blue: 0.675, alpha: 1.0),
+            bgColor: UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0)
+        )
+        liveCard.addArrangedSubview(makeBadge("⭐ EASIEST • ZERO SETTINGS NEEDED"))
+        liveCard.addArrangedSubview(makeHeading("1. 🛒 Shop Inside HeyBroc (Recommended)"))
+        liveCard.addArrangedSubview(makeBody("Tap any store below to shop right inside HeyBroc without getting bounced out to the Walmart or Target app. Your floating 0–100 broccoli pill stays on screen automatically across every food item!"))
 
-        let storesRow = UIStackView()
-        storesRow.axis = .horizontal
-        storesRow.distribution = .fillEqually
-        storesRow.spacing = 6
-        storesRow.addArrangedSubview(makeStoreBtn(title: "Walmart", storeKey: "walmart"))
-        storesRow.addArrangedSubview(makeStoreBtn(title: "Instacart", storeKey: "instacart"))
-        storesRow.addArrangedSubview(makeStoreBtn(title: "Target", storeKey: "target"))
-        storesRow.addArrangedSubview(makeStoreBtn(title: "Amazon", storeKey: "amazon"))
-        liveCard.addArrangedSubview(storesRow)
+        let storesRow1 = UIStackView()
+        storesRow1.axis = .horizontal
+        storesRow1.distribution = .fillEqually
+        storesRow1.spacing = 6
+        storesRow1.addArrangedSubview(makeStoreBtn(title: "Walmart", storeKey: "walmart"))
+        storesRow1.addArrangedSubview(makeStoreBtn(title: "Target", storeKey: "target"))
+        storesRow1.addArrangedSubview(makeStoreBtn(title: "Instacart", storeKey: "instacart"))
+        storesRow1.addArrangedSubview(makeStoreBtn(title: "Amazon", storeKey: "amazon"))
+        liveCard.addArrangedSubview(storesRow1)
+
+        let storesRow2 = UIStackView()
+        storesRow2.axis = .horizontal
+        storesRow2.distribution = .fillEqually
+        storesRow2.spacing = 6
+        storesRow2.addArrangedSubview(makeStoreBtn(title: "Costco", storeKey: "costco"))
+        storesRow2.addArrangedSubview(makeStoreBtn(title: "Kroger", storeKey: "kroger"))
+        storesRow2.addArrangedSubview(makeStoreBtn(title: "Sam's", storeKey: "samsclub"))
+        storesRow2.addArrangedSubview(makeStoreBtn(title: "ALDI", storeKey: "aldi"))
+        liveCard.addArrangedSubview(storesRow2)
         content.addArrangedSubview(liveCard)
 
-        // 2. Native Grocery Apps Share Sheet (`↑ Share -> 🥦 HeyBroc`)
-        let shareCard = makeCard()
-        shareCard.addArrangedSubview(makeBadge("INSIDE WALMART / INSTACART / TARGET APPS"))
-        shareCard.addArrangedSubview(makeHeading("2. 📤 Tap ↑ Share → 🥦 HeyBroc"))
-        shareCard.addArrangedSubview(makeBody("Shopping inside the native Walmart, Instacart, Target, Costco or Amazon app? Tap the ↑ Share icon on any food item and tap 🥦 HeyBroc for an instant slide-up 0–100 score card, 🌱 Pesticide toggle & 1-tap Clean Swap without leaving your cart."))
-        content.addArrangedSubview(shareCard)
-
-        // 3. Back Tap / Action Button Screen Scanner (Set Up Once)
-        let backTapCard = makeCard()
-        backTapCard.addArrangedSubview(makeBadge("SET UP ONCE • DOUBLE-TAP ON ANY SCREEN"))
-        backTapCard.addArrangedSubview(makeHeading("3. ⚡ Back-Tap / Action Button Scanner"))
-        backTapCard.addArrangedSubview(makeBody("1. Open Shortcuts → tap + → Add Action → search \"HeyBroc\" → pick \"Scan Grocery Screenshot with HeyBroc\" (add \"Take Screenshot\" right above it and pass Screenshot into it).\n2. Open Settings → Accessibility → Touch → Back Tap → Double Tap → choose your HeyBroc shortcut.\nAfter this 1-time setup, double-tap the back of your iPhone on any food item to see a live score banner!"))
-
-        let shortcutRow = UIStackView()
-        shortcutRow.axis = .horizontal
-        shortcutRow.distribution = .fillEqually
-        shortcutRow.spacing = 8
-
-        let openShortcutsBtn = makeActionBtn(title: "⚡ Open Shortcuts", filled: true, action: #selector(tapOpenShortcutsApp))
-        let openSettingsBtn = makeActionBtn(title: "⚙️ iPhone Settings", filled: false, action: #selector(tapOpenSettings))
-        shortcutRow.addArrangedSubview(openShortcutsBtn)
-        shortcutRow.addArrangedSubview(openSettingsBtn)
-        backTapCard.addArrangedSubview(shortcutRow)
-        content.addArrangedSubview(backTapCard)
-
-        // 4. Safari Browser Floating Extension
+        // 2. Optional: Apple Safari Browser Extension (Single All-Websites Switch)
         let safariCard = makeCard()
-        safariCard.addArrangedSubview(makeBadge("SAFARI BROWSER EXTENSION"))
-        safariCard.addArrangedSubview(makeHeading("4. 🧭 Safari Automatic Floating Pill"))
-        safariCard.addArrangedSubview(makeBody("Shopping grocery websites in Safari? Enable Settings → Apps → Safari → Extensions → HeyBroc → Allow for an automatic floating score pill."))
-        let safariSettingsBtn = makeActionBtn(title: "⚙️ Enable Safari Extension in Settings", filled: false, action: #selector(tapOpenSettings))
-        safariCard.addArrangedSubview(safariSettingsBtn)
+        safariCard.addArrangedSubview(makeBadge("OPTIONAL • FOR APPLE SAFARI BROWSER"))
+        safariCard.addArrangedSubview(makeHeading("2. 🧭 Safari Extension (1-Switch Setup)"))
+        safariCard.addArrangedSubview(makeBody("Prefer browsing inside Safari? Open the iPhone Settings app manually → Apps → Safari → Extensions → HeyBroc:\n• Turn Allow Extension ON\n• Tap All Websites → Allow (1 tap covers all grocery stores)\n\nTip: If iOS jumps from Safari into the Walmart app, long-press the store link in Safari and tap \"Open in Tab\" — or just use 🛒 Live Shop above!"))
         content.addArrangedSubview(safariCard)
 
         NSLayoutConstraint.activate([
@@ -934,25 +920,6 @@ private final class SafariSetupSheetViewController: UIViewController {
         return btn
     }
 
-    private func makeActionBtn(title: String, filled: Bool, action: Selector) -> UIButton {
-        let btn = UIButton(type: .system)
-        btn.setTitle(title, for: .normal)
-        btn.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
-        btn.layer.cornerRadius = 12
-        btn.heightAnchor.constraint(equalToConstant: 42).isActive = true
-        if filled {
-            btn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
-            btn.setTitleColor(.white, for: .normal)
-        } else {
-            btn.backgroundColor = .white
-            btn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
-            btn.layer.borderWidth = 1
-            btn.layer.borderColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0).cgColor
-        }
-        btn.addTarget(self, action: action, for: .touchUpInside)
-        return btn
-    }
-
     @objc private func tapClose() {
         dismiss(animated: true)
     }
@@ -962,16 +929,6 @@ private final class SafariSetupSheetViewController: UIViewController {
         dismiss(animated: true) { [onOpenLiveStore] in
             onOpenLiveStore(storeKey)
         }
-    }
-
-    @objc private func tapOpenShortcutsApp() {
-        if let url = URL(string: "shortcuts://") {
-            onOpenExternalURL(url)
-        }
-    }
-
-    @objc private func tapOpenSettings() {
-        onOpenSettings()
     }
 }
 

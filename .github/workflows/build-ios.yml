@@ -64,7 +64,7 @@ jobs:
           build_root = pathlib.Path("ios-app/build/HeyBroc")
           run_num = int(os.environ.get("GITHUB_RUN_NUMBER", "1") or "1")
           build_version = str(100 + run_num)
-          marketing_version = "2.1.0"
+          marketing_version = "2.2.0"
 
           # 1. Replace Apple's static Safari placeholder ViewController.swift with full HeyBroc native iOS controller
           #    and stage LiveStoreBrowserViewController.swift + HeyBrocShortcuts.swift alongside it.
@@ -112,7 +112,15 @@ jobs:
               (appicon_dir / "Contents.json").write_text(json.dumps(contents, indent=2) + "\n")
               print(f"Configured 1024x1024 AppIcon -> {appicon_dir}")
 
-          # 4. Patch host App Info.plist files (camera, photo library, export compliance, versions)
+          # 4. Stage Native iOS Share Sheet Extension (HeyBrocShare) files BEFORE patching all Info.plists
+          share_dir = build_root / "HeyBrocShare"
+          share_dir.mkdir(parents=True, exist_ok=True)
+          shutil.copy2("ios-app/ShareExtension/ShareViewController.swift", share_dir / "ShareViewController.swift")
+          shutil.copy2("ios-app/ShareExtension/Info.plist", share_dir / "Info.plist")
+          shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")
+          print(f"Staged HeyBrocShare extension sources -> {share_dir}")
+
+          # 5. Patch ALL Info.plist files (camera, photo library, export compliance, emoji-free CFBundleDisplayName, synced versions)
           cam_desc = "HeyBroc uses the camera when you choose to scan a food or cosmetic barcode or ingredient label to calculate its 0-100 health score."
           photo_desc = "HeyBroc lets you choose a barcode or ingredient label photo from your library to calculate its 0-100 health score."
 
@@ -120,21 +128,18 @@ jobs:
               with plist_path.open("rb") as f:
                   data = plistlib.load(f)
               is_extension = "NSExtension" in data
-              if not is_extension:
+              data["CFBundleDisplayName"] = "HeyBroc"
+              data["CFBundleShortVersionString"] = marketing_version
+              data["CFBundleVersion"] = build_version
+              if is_extension:
+                  data["CFBundlePackageType"] = "XPC!"
+              else:
                   data["NSCameraUsageDescription"] = cam_desc
                   data["NSPhotoLibraryUsageDescription"] = photo_desc
                   data["ITSAppUsesNonExemptEncryption"] = False
               with plist_path.open("wb") as f:
                   plistlib.dump(data, f)
               print(f"Updated Info.plist ({'extension' if is_extension else 'host app'}) -> {plist_path}")
-
-          # 5. Stage Native iOS Share Sheet Extension (HeyBrocShare) files
-          share_dir = build_root / "HeyBrocShare"
-          share_dir.mkdir(parents=True, exist_ok=True)
-          shutil.copy2("ios-app/ShareExtension/ShareViewController.swift", share_dir / "ShareViewController.swift")
-          shutil.copy2("ios-app/ShareExtension/Info.plist", share_dir / "Info.plist")
-          shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")
-          print(f"Staged HeyBrocShare extension sources -> {share_dir}")
 
           # 6. Patch project.pbxproj bundle ID, MARKETING_VERSION, CURRENT_PROJECT_VERSION & generated plist keys
           pbx_path = build_root / "HeyBroc.xcodeproj" / "project.pbxproj"
@@ -170,7 +175,7 @@ jobs:
           project = Xcodeproj::Project.open(proj_path)
           run_num = (ENV['GITHUB_RUN_NUMBER'] || '1').to_i
           build_version = (100 + run_num).to_s
-          marketing_version = '2.1.0'
+          marketing_version = '2.2.0'
 
           app_target = project.targets.find { |t| t.product_type == 'com.apple.product-type.application' }
           raise 'Host application target not found in generated Xcode project' unless app_target
@@ -235,6 +240,7 @@ jobs:
             cfg.build_settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
             cfg.build_settings['PRODUCT_MODULE_NAME'] = 'HeyBrocShare'
             cfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.heybroc.app.ShareExtension'
+            cfg.build_settings['PRODUCT_BUNDLE_PACKAGE_TYPE'] = 'XPC!'
             cfg.build_settings['INFOPLIST_FILE'] = 'HeyBrocShare/Info.plist'
             cfg.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'
             cfg.build_settings['MARKETING_VERSION'] = marketing_version

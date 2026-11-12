@@ -3901,9 +3901,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const simPostIosFixSrc = fs.readFileSync("components/Simulator.tsx", "utf8");
   const vcPostIosFixSrc = fs.readFileSync("ios-app/App/ViewController.swift", "utf8");
   const authLibPostIosFixSrc = fs.readFileSync("lib/auth.ts", "utf8");
+  const globalsCssPostIosSrc = fs.readFileSync("app/globals.css", "utf8");
+  const safariManifestSrc = fs.readFileSync("ios-app/SafariExtension/Resources/manifest.json", "utf8");
+  const shareExtPlistUpdatedSrc = fs.readFileSync("ios-app/ShareExtension/Info.plist", "utf8");
+  const liveBrowserUpdatedSrc = fs.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
 
   check(
-    "iOS TestFlight Onboarding, Sign in with Apple & StoreKit 2 Suite: zero-scroll 7-step grids + pinned footer, Sign Up / Sign In tabs + Continue with Apple under Google, StoreKit 2 native sheet + Root CA G3 JWS verification, and dead-end iOS toast eliminated",
+    "iOS TestFlight Onboarding, Sign in with Apple & StoreKit 2 Suite: zero-scroll 7-step grids + pinned footer, Sign Up / Sign In tabs + Continue with Apple under Google, StoreKit 2 native sheet + Root CA G3 JWS verification, ITMS-90695 emoji-free CFBundleDisplayName, 1-tap Safari All Websites Allow, and Universal-Link guard",
     Boolean(
       authModalIosSrc.includes('id="auth-apple-btn"') &&
         authModalIosSrc.includes("Continue with Apple") &&
@@ -3920,6 +3924,12 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         vcPostIosFixSrc.includes("com.heybroc.pro.monthly") &&
         vcPostIosFixSrc.includes('"apple-sign-in"') &&
         vcPostIosFixSrc.includes('"upgrade-pro"') &&
+        !vcPostIosFixSrc.includes("Tap ↑ Share") &&
+        !shareExtPlistUpdatedSrc.includes("🥦") &&
+        safariManifestSrc.includes('"*://*/*"') &&
+        !safariManifestSrc.includes("CleanCart PureOverlay") &&
+        !safariManifestSrc.includes("cleancart-teal.vercel.app") &&
+        liveBrowserUpdatedSrc.includes("navigationType == .linkActivated") &&
         authLibPostIosFixSrc.includes('"com.heybroc.app"') &&
         authLibPostIosFixSrc.includes("user_apple_sub:") &&
         !simPostIosFixSrc.includes(
@@ -3927,6 +3937,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         ) &&
         simPostIosFixSrc.includes("__HEYBROC_NATIVE_STOREKIT__") &&
         simPostIosFixSrc.includes("__heybrocNativeProUnlocked") &&
+        !globalsCssPostIosSrc.includes(".topbar-btn--signin { max-width: 100px; }") &&
+        globalsCssPostIosSrc.includes("max-width: none;") &&
         (forgedJwsRes.status === 400 || forgedJwsRes.status === 401)
     )
   );
