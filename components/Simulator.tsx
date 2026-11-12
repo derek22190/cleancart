@@ -37,6 +37,15 @@ import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import CancelRetentionModal from "./CancelRetentionModal";
 import CleanArcScoreCard from "./CleanArcScoreCard";
+import {
+  FooterMeadowScenery,
+  HealthyFoodBackdrop,
+  PhoneStageFoodHalo,
+  YukaImpactBand,
+  YukaIndependentShowcase,
+  YukaSiteFooter,
+  YukaSwapShowcase,
+} from "./HealthyScenery";
 import LabelAutoVerifierModal from "./LabelAutoVerifierModal";
 import LabelScannerModal from "./LabelScannerModal";
 import Paywall, { type AppliedCreator } from "./Paywall";
@@ -2576,211 +2585,235 @@ export default function Simulator({
   /* ---------------- Render ---------------- */
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="topbar-main">
-          <div className="brand">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.png" alt="Broc mascot" className="brand-mascot" />
-            <div className="brand-copy">
-              <div className="brand-title-row">
-                <h1>HeyBroc</h1>
-              </div>
-              <p className="brand-tagline">100% independent food grader &amp; 1-tap clean swaps</p>
+      {!adTestMode && <HealthyFoodBackdrop />}
+
+      <div className="topbar-shell">
+        <header className="topbar">
+          <div className="topbar-main">
+            <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+              <a href="/" className="brand">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/broc-mascot.png" alt="Broc mascot" className="brand-mascot" />
+                <div className="brand-copy">
+                  <div className="brand-title-row">
+                    <h1>HeyBroc</h1>
+                  </div>
+                  <p className="brand-tagline">100% independent food grader &amp; 1-tap clean swaps</p>
+                </div>
+              </a>
+
+              {!adTestMode && (
+                <nav className="yuka-desktop-nav" aria-label="Primary navigation">
+                  <a href="/" className="is-current">Application</a>
+                  <a href="/independence">Independence</a>
+                  <a href="/swaps">Clean Swaps</a>
+                  <a href="/tools">Free Grader</a>
+                </nav>
+              )}
             </div>
-          </div>
 
-          <div className="topbar-account" aria-label="Quick controls and account">
-            {!adTestMode && (
-              <button
-                id="topbar-watchlist-funnel"
-                type="button"
-                className="topbar-btn topbar-btn--watch"
-                onClick={() => {
-                  setManualFunnelOpen(true);
-                  setWatchlistFunnelStep(1);
-                  setWatchlistFunnelOpen(true);
-                }}
-                title="Personalize your family's 2x additive, allergy & glyphosate watchlist"
-              >
-                <span className="topbar-pill-dot" aria-hidden />
-                <span>
-                  🛡️{" "}
-                  <span className="topbar-watch-word">Watchlist </span>(
-                  {familyWatchlist.length + dietaryWatchlist.length})
-                </span>
-              </button>
-            )}
-
-            <button
-              id="open-paywall"
-              type="button"
-              className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
-              onClick={requestProUpgrade}
-            >
-              {isPro ? "★ PRO" : "★ Pro"}
-            </button>
-
-            <button
-              id="open-auth-modal"
-              type="button"
-              className={`topbar-btn topbar-btn--signin ${authUser ? "is-authed" : ""}`}
-              onClick={() => setAuthOpen(true)}
-            >
-              {authUser ? `👤 ${authUser.displayName}` : "Sign in"}
-            </button>
-
-            {!adTestMode && (
-              <div className="topbar-menu-wrap" ref={topMenuRef}>
+            <div className="topbar-account" aria-label="Quick controls and account">
+              {!adTestMode && (
                 <button
-                  id="topbar-more-menu-btn"
+                  id="topbar-watchlist-funnel"
                   type="button"
-                  aria-label="More tools and settings"
-                  aria-expanded={topMenuOpen}
-                  className={`topbar-btn topbar-btn--menu ${topMenuOpen ? "is-active" : ""}`}
-                  onClick={() => setTopMenuOpen((v) => !v)}
+                  className="topbar-btn topbar-btn--watch"
+                  onClick={() => {
+                    setManualFunnelOpen(true);
+                    setWatchlistFunnelStep(1);
+                    setWatchlistFunnelOpen(true);
+                  }}
+                  title="Personalize your family's 2x additive, allergy & glyphosate watchlist"
                 >
-                  {topMenuOpen ? "✕" : "☰"}
+                  <span className="topbar-pill-dot" aria-hidden />
+                  <span>
+                    🛡️{" "}
+                    <span className="topbar-watch-word">Watchlist </span>(
+                    {familyWatchlist.length + dietaryWatchlist.length})
+                  </span>
                 </button>
+              )}
 
-                {topMenuOpen && (
-                  <div className="topbar-dropdown" role="menu" aria-label="Quick tools">
-                    <button
-                      id="topbar-pesticide-toggle"
-                      type="button"
-                      role="menuitemcheckbox"
-                      aria-checked={pesticideWatchEnabled}
-                      className="topbar-dropdown-item"
-                      onClick={() => {
-                        togglePesticideWatch();
-                      }}
-                    >
-                      <span>🌱 Glyphosate Watch</span>
-                      <span
-                        className={`topbar-dropdown-badge ${pesticideWatchEnabled ? "is-on" : ""}`}
+              <button
+                id="open-paywall"
+                type="button"
+                className={`topbar-btn topbar-btn--pro ${isPro ? "is-pro" : ""}`}
+                onClick={requestProUpgrade}
+              >
+                {isPro ? "★ PRO" : "★ Pro"}
+              </button>
+
+              <button
+                id="open-auth-modal"
+                type="button"
+                className={`topbar-btn topbar-btn--signin ${authUser ? "is-authed" : ""}`}
+                onClick={() => setAuthOpen(true)}
+              >
+                {authUser ? `👤 ${authUser.displayName}` : "Sign in"}
+              </button>
+
+              {!adTestMode && (
+                <div className="topbar-menu-wrap" ref={topMenuRef}>
+                  <button
+                    id="topbar-more-menu-btn"
+                    type="button"
+                    aria-label="More tools and settings"
+                    aria-expanded={topMenuOpen}
+                    className={`topbar-btn topbar-btn--menu ${topMenuOpen ? "is-active" : ""}`}
+                    onClick={() => setTopMenuOpen((v) => !v)}
+                  >
+                    {topMenuOpen ? "✕" : "☰"}
+                  </button>
+
+                  {topMenuOpen && (
+                    <div className="topbar-dropdown" role="menu" aria-label="Quick tools">
+                      <button
+                        id="topbar-pesticide-toggle"
+                        type="button"
+                        role="menuitemcheckbox"
+                        aria-checked={pesticideWatchEnabled}
+                        className="topbar-dropdown-item"
+                        onClick={() => {
+                          togglePesticideWatch();
+                        }}
                       >
-                        {pesticideWatchEnabled ? "ON" : "OFF"}
-                      </span>
-                    </button>
-
-                    <button
-                      id="topbar-label-scanner"
-                      type="button"
-                      role="menuitem"
-                      className="topbar-dropdown-item"
-                      onClick={() => {
-                        setTopMenuOpen(false);
-                        setLabelScannerOpen(true);
-                      }}
-                    >
-                      <span>📸 Scan Label / Screenshot</span>
-                    </button>
-
-                    <button
-                      id="topbar-weekly-audit"
-                      type="button"
-                      role="menuitem"
-                      className="topbar-dropdown-item"
-                      onClick={() => {
-                        setTopMenuOpen(false);
-                        setWeeklyAuditOpen(true);
-                      }}
-                    >
-                      <span>🧾 Audit Pickup Order</span>
-                    </button>
-
-                    <div className="topbar-dropdown-sep" />
-
-                    <a
-                      id="open-free-tools"
-                      href="/tools"
-                      role="menuitem"
-                      className="topbar-dropdown-item"
-                    >
-                      <span>🧪 Free Label Grader</span>
-                      <span className="topbar-dropdown-arrow">→</span>
-                    </a>
-
-                    <a
-                      href="/swaps"
-                      role="menuitem"
-                      className="topbar-dropdown-item"
-                    >
-                      <span>⇄ Clean Swaps Directory</span>
-                      <span className="topbar-dropdown-arrow">→</span>
-                    </a>
-
-                    {(isIosApp || isIosAppClient) ? (
-                      <>
-                        <button
-                          id="open-ios-live-shop"
-                          type="button"
-                          role="menuitem"
-                          className="topbar-dropdown-item"
-                          onClick={() => {
-                            setTopMenuOpen(false);
-                            const iosBridge = (
-                              window as unknown as {
-                                webkit?: {
-                                  messageHandlers?: {
-                                    controller?: { postMessage?: (msg: string) => void };
-                                  };
-                                };
-                              }
-                            ).webkit?.messageHandlers?.controller;
-                            if (typeof iosBridge?.postMessage === "function") {
-                              iosBridge.postMessage("open-live-shop");
-                            } else {
-                              postIosBridgeMessage("heybrocNative", { action: "openStoreBrowser" });
-                            }
-                          }}
+                        <span>🌱 Glyphosate Watch</span>
+                        <span
+                          className={`topbar-dropdown-badge ${pesticideWatchEnabled ? "is-on" : ""}`}
                         >
-                          <span>🛒 Live Shop Bubble</span>
-                        </button>
-                        <button
-                          id="open-ios-safari-setup"
-                          type="button"
-                          role="menuitem"
-                          className="topbar-dropdown-item"
-                          onClick={() => {
-                            setTopMenuOpen(false);
-                            const iosBridge = (
-                              window as unknown as {
-                                webkit?: {
-                                  messageHandlers?: {
-                                    controller?: { postMessage?: (msg: string) => void };
-                                  };
-                                };
-                              }
-                            ).webkit?.messageHandlers?.controller;
-                            if (typeof iosBridge?.postMessage === "function") {
-                              iosBridge.postMessage("open-safari-setup");
-                            } else {
-                              window.location.href = "/tools#mobile-setup";
-                            }
-                          }}
-                        >
-                          <span>⚡ iPhone Setup</span>
-                        </button>
-                      </>
-                    ) : (
+                          {pesticideWatchEnabled ? "ON" : "OFF"}
+                        </span>
+                      </button>
+
+                      <button
+                        id="topbar-label-scanner"
+                        type="button"
+                        role="menuitem"
+                        className="topbar-dropdown-item"
+                        onClick={() => {
+                          setTopMenuOpen(false);
+                          setLabelScannerOpen(true);
+                        }}
+                      >
+                        <span>📸 Scan Label / Screenshot</span>
+                      </button>
+
+                      <button
+                        id="topbar-weekly-audit"
+                        type="button"
+                        role="menuitem"
+                        className="topbar-dropdown-item"
+                        onClick={() => {
+                          setTopMenuOpen(false);
+                          setWeeklyAuditOpen(true);
+                        }}
+                      >
+                        <span>🧾 Audit Pickup Order</span>
+                      </button>
+
+                      <div className="topbar-dropdown-sep" />
+
                       <a
-                        id="download-android-apk"
-                        href="/heybroc.apk"
-                        download="heybroc.apk"
+                        href="/independence"
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
-                        <span>📲 Android App (.apk)</span>
-                        <span className="topbar-dropdown-arrow">↓</span>
+                        <span>🛡️ 100% Independence</span>
+                        <span className="topbar-dropdown-arrow">→</span>
                       </a>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+
+                      <a
+                        id="open-free-tools"
+                        href="/tools"
+                        role="menuitem"
+                        className="topbar-dropdown-item"
+                      >
+                        <span>🧪 Free Label Grader</span>
+                        <span className="topbar-dropdown-arrow">→</span>
+                      </a>
+
+                      <a
+                        href="/swaps"
+                        role="menuitem"
+                        className="topbar-dropdown-item"
+                      >
+                        <span>⇄ Clean Swaps Directory</span>
+                        <span className="topbar-dropdown-arrow">→</span>
+                      </a>
+
+                      {(isIosApp || isIosAppClient) ? (
+                        <>
+                          <button
+                            id="open-ios-live-shop"
+                            type="button"
+                            role="menuitem"
+                            className="topbar-dropdown-item"
+                            onClick={() => {
+                              setTopMenuOpen(false);
+                              const iosBridge = (
+                                window as unknown as {
+                                  webkit?: {
+                                    messageHandlers?: {
+                                      controller?: { postMessage?: (msg: string) => void };
+                                    };
+                                  };
+                                }
+                              ).webkit?.messageHandlers?.controller;
+                              if (typeof iosBridge?.postMessage === "function") {
+                                iosBridge.postMessage("open-live-shop");
+                              } else {
+                                postIosBridgeMessage("heybrocNative", { action: "openStoreBrowser" });
+                              }
+                            }}
+                          >
+                            <span>🛒 Live Shop Bubble</span>
+                          </button>
+                          <button
+                            id="open-ios-safari-setup"
+                            type="button"
+                            role="menuitem"
+                            className="topbar-dropdown-item"
+                            onClick={() => {
+                              setTopMenuOpen(false);
+                              const iosBridge = (
+                                window as unknown as {
+                                  webkit?: {
+                                    messageHandlers?: {
+                                      controller?: { postMessage?: (msg: string) => void };
+                                    };
+                                  };
+                                }
+                              ).webkit?.messageHandlers?.controller;
+                              if (typeof iosBridge?.postMessage === "function") {
+                                iosBridge.postMessage("open-safari-setup");
+                              } else {
+                                window.location.href = "/tools#mobile-setup";
+                              }
+                            }}
+                          >
+                            <span>⚡ iPhone Setup</span>
+                          </button>
+                        </>
+                      ) : (
+                        <a
+                          id="download-android-apk"
+                          href="/heybroc.apk"
+                          download="heybroc.apk"
+                          role="menuitem"
+                          className="topbar-dropdown-item"
+                        >
+                          <span>📲 Android App (.apk)</span>
+                          <span className="topbar-dropdown-arrow">↓</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      </div>
 
       <main className={`layout ${adTestMode ? "layout--ad-test" : ""} ${adTestMode && !freeTestCompleted ? "is-ad-test-step1" : ""}`.trim()}>
         {/* ============ CONTROL PANEL ============ */}
@@ -3273,6 +3306,7 @@ export default function Simulator({
 
         {/* ============ PHONE ============ */}
         <section className="stage" aria-label="Store app preview with overlay">
+          {!adTestMode && <PhoneStageFoodHalo />}
           <div className="phone">
             <div
               className="screen"
@@ -4740,42 +4774,12 @@ export default function Simulator({
       </main>
 
       {/* ============ YUKA-INSPIRED 100% INDEPENDENT SCORING PILLARS ============ */}
-      <section id="independent-section" className="independent-section" aria-label="100% Independent Scoring Project">
-        <div className="independent-card">
-          <div className="independent-head">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/broc-mascot.png" alt="HeyBroc mascot" className="independent-mascot" />
-            <span className="eyebrow eyebrow--green">TRANSPARENT &amp; UNBIASED</span>
-            <h2>A 100% Independent Scoring Project</h2>
-            <p>
-              Food scores and Clean Swap picks are computed strictly from ingredient lists and nutrition facts — never from brand sponsorships.
-            </p>
-          </div>
-          <div className="independent-grid">
-            <div className="independent-pillar">
-              <div className="independent-icon" aria-hidden>🛡️</div>
-              <h3>No Brand Influence</h3>
-              <p>
-                No food manufacturer or grocery brand can pay to raise a score, hide a flagged additive, or buy placement in Top Picks.
-              </p>
-            </div>
-            <div className="independent-pillar">
-              <div className="independent-icon" aria-hidden>🚫</div>
-              <h3>No In-App Brand Ads</h3>
-              <p>
-                Brands cannot run banner ads or sponsored product placements inside HeyBroc while you shop for your family.
-              </p>
-            </div>
-            <div className="independent-pillar">
-              <div className="independent-icon" aria-hidden>💚</div>
-              <h3>Honest Member-First Model</h3>
-              <p>
-                Supported by optional Family Pro memberships and clearly marked retail &ldquo;paid link&rdquo; store links when you choose a swap — never influencing scores.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <div data-anchor="independent-section">
+        <YukaIndependentShowcase />
+      </div>
+
+      {/* ============ YUKA-INSPIRED TILTED CLEAN RECOMMENDATIONS SHOWCASE ============ */}
+      <YukaSwapShowcase />
 
       {/* ============ WHY HEYBROC COMPARISON SECTION ============ */}
       <section className="compare-section" aria-label="Why HeyBroc comparison">
@@ -4878,114 +4882,21 @@ export default function Simulator({
         </div>
       </section>
 
-      {/* Clean, Compact Top-Level Footer + Collapsible FAQ & Legal Notice */}
-      <footer
-        className="site-footer-wrap"
-        style={{
-          maxWidth: 1184,
-          margin: "0 auto 40px",
-          padding: "0 28px",
+      {/* ============ YUKA-INSPIRED FAINT-GREEN IMPACT BAND ============ */}
+      <YukaImpactBand />
+
+      {/* ============ CLEAN 4-COLUMN YUKA FOOTER + MEADOW SCENERY ============ */}
+      <YukaSiteFooter
+        onManageSubscription={() => {
+          if (isIosAppClient || detectIosAppClient()) {
+            requestProUpgrade();
+            return;
+          }
+          setCancelRetentionOpen(true);
         }}
-      >
-        <div
-          style={{
-            padding: "16px 18px",
-            background: "#ffffff",
-            border: "1px solid rgba(21, 32, 27, 0.09)",
-            borderRadius: 18,
-            boxShadow: "0 1px 2px rgba(21, 32, 27, 0.04)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-              fontSize: 12.5,
-              color: "#475569",
-            }}
-          >
-            <span style={{ fontWeight: 800, color: "#0f172a" }}>
-              🥦 HeyBroc Clean Scanner
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <a href="/tools" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Free Tools</a>
-              <a href="/swaps" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Clean Swaps</a>
-              <a href="/creators" style={{ color: "#0f7a4a", fontWeight: 700, textDecoration: "none" }}>Creators (35%)</a>
-              <a href="/terms" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Terms</a>
-              <a href="/privacy" style={{ color: "#475569", fontWeight: 600, textDecoration: "none" }}>Privacy</a>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isIosAppClient || detectIosAppClient()) {
-                    requestProUpgrade();
-                    return;
-                  }
-                  setCancelRetentionOpen(true);
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  color: "#475569",
-                  fontWeight: 600,
-                  fontSize: 12.5,
-                  cursor: "pointer",
-                }}
-              >
-                Manage / Cancel subscription
-              </button>
-            </div>
-          </div>
+      />
 
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px" }}>
-              <summary style={{ fontWeight: 700, fontSize: 12.5, color: "#334155", cursor: "pointer" }}>
-                How HeyBroc Grades Groceries &amp; Scoring FAQ
-              </summary>
-              <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, lineHeight: 1.5, color: "#475569" }}>
-                <div>
-                  <strong style={{ color: "#0f172a" }}>How does HeyBroc calculate its 0 to 100 food and ingredient score?</strong>
-                  <p style={{ marginTop: 2 }}>
-                    HeyBroc grades products on a deterministic 0–100 scale across three pillars: <b>Nutritional Quality (60%)</b> based on sugar, sodium, saturated fat, calories, fiber, and protein; <b>Clean-Label Additives (30%)</b> penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, and emulsifiers; and a <b>Certified Organic Bonus (10%)</b>. Any high-risk additive automatically caps a product&apos;s maximum score at 49/100.
-                  </p>
-                </div>
-                <div>
-                  <strong style={{ color: "#0f172a" }}>Which grocery stores work with the HeyBroc floating bubble?</strong>
-                  <p style={{ marginTop: 2 }}>
-                    HeyBroc&apos;s Live Store Bubble works automatically across 12 major grocery stores and delivery apps: <b>Walmart, Instacart, Target, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale, Amazon Fresh, DoorDash, Uber Eats, and Shipt</b>—without needing to scan physical barcodes.
-                  </p>
-                </div>
-                <div>
-                  <strong style={{ color: "#0f172a" }}>What ingredients and additives does HeyBroc flag?</strong>
-                  <p style={{ marginTop: 2 }}>
-                    HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), and synthetic emulsifiers or gums (Carrageenan, Polysorbate 80).
-                  </p>
-                </div>
-                <div>
-                  <strong style={{ color: "#0f172a" }}>Does HeyBroc accept payments from brands to change product scores?</strong>
-                  <p style={{ marginTop: 2 }}>
-                    No. HeyBroc is 100% independent. Brands cannot pay to alter a score or buy placement in Top Picks. Every product score and 1-for-1 Clean Swap is computed deterministically from its ingredient list and nutrition facts.
-                  </p>
-                </div>
-              </div>
-            </details>
-
-            <details style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px" }}>
-              <summary style={{ fontWeight: 700, fontSize: 12.5, color: "#64748b", cursor: "pointer" }}>
-                Independent Opinion, Label Verification, Pricing &amp; Non-Affiliation Notice
-              </summary>
-              <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.55, color: "#64748b" }}>
-                <p>
-                  HeyBroc 0–100 scores and ratings represent HeyBroc&apos;s subjective clean-label opinion for informational grocery comparison only and do not constitute medical, nutritional, or regulatory safety advice. Most flagged additives, dyes, and oils are permitted for food use or recognized as GRAS by the U.S. FDA. Ingredient lists shown in the simulator and catalog are representative estimates from public databases (Open Food Facts, USDA FoodData Central); manufacturers reformulate products frequently and retail prices vary by store and location—always verify the physical product package and live store checkout price before purchasing. When you tap a Clean Swap retail link marked &ldquo;paid link&rdquo;, HeyBroc may earn an affiliate commission at no extra cost to you. HeyBroc is an independent software application and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam&apos;s Club, BJ&apos;s Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All retailer and brand names are trademarks of their respective owners and are used strictly for nominative identification.
-                </p>
-              </div>
-            </details>
-          </div>
-        </div>
-      </footer>
+      <FooterMeadowScenery />
 
       {/* ============ PHASE 6 MODALS ============ */}
       <WatchlistMiniFunnel

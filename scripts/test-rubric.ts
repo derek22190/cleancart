@@ -3612,6 +3612,35 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  const healthyScenerySrc = fs.readFileSync("components/HealthyScenery.tsx", "utf8");
+  const independencePageSrc = fs.readFileSync("app/independence/page.tsx", "utf8");
+  const latestGlobalsCssSrc = fs.readFileSync("app/globals.css", "utf8");
+  check(
+    "Yuka-Inspired Clean Canvas & Meadow Scenery: pure #ffffff canvas + faint-green accents, floating healthy food margin illustrations, tilted Poor-to-Excellent swap cards, /independence page, countryside cottage/trees footer, and giant U-eye Broc mascot",
+    Boolean(
+      fs.existsSync("public/broc-mascot-meadow.png") &&
+        healthyScenerySrc.includes('id="healthy-food-backdrop"') &&
+        healthyScenerySrc.includes('id="stage-food-halo"') &&
+        healthyScenerySrc.includes('id="independent-section"') &&
+        healthyScenerySrc.includes('id="yuka-swap-showcase"') &&
+        healthyScenerySrc.includes('id="footer-meadow-scenery"') &&
+        healthyScenerySrc.includes('id="footer-meadow-broc"') &&
+        healthyScenerySrc.includes("/broc-mascot-meadow.png") &&
+        finalSimSrc.includes("<HealthyFoodBackdrop />") &&
+        finalSimSrc.includes("<PhoneStageFoodHalo />") &&
+        finalSimSrc.includes("<YukaIndependentShowcase />") &&
+        finalSimSrc.includes("<YukaSwapShowcase />") &&
+        finalSimSrc.includes("<YukaImpactBand />") &&
+        finalSimSrc.includes("<YukaSiteFooter") &&
+        finalSimSrc.includes("<FooterMeadowScenery />") &&
+        independencePageSrc.includes("Our core value is independence") &&
+        independencePageSrc.includes("100% INDEPENDENT") &&
+        independencePageSrc.includes("<FooterMeadowScenery />") &&
+        latestGlobalsCssSrc.includes(".meadow-broc-mascot") &&
+        latestGlobalsCssSrc.includes("height: 196px;")
+    )
+  );
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
