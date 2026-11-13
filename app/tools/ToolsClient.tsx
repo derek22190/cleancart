@@ -1038,7 +1038,7 @@ export default function ToolsClient() {
                   textTransform: "uppercase",
                 }}
               >
-                🍎 iPhone · Safari + 1-Tap Shortcut
+                🍎 iPhone · Live Shop + Share Sheet + Safari Pill
               </span>
               <h2
                 style={{
@@ -1048,10 +1048,29 @@ export default function ToolsClient() {
                   color: "#1e3a8a",
                 }}
               >
-                Scan Any iPhone Grocery App in 1 Tap
+                Shop Walmart &amp; 12 Stores Live on iPhone
               </h2>
-              <p style={{ fontSize: 12.5, color: "#1e40af", lineHeight: 1.45, margin: "0 0 8px" }}>
-                Paste this URL into Apple Shortcuts&apos; <i>Get Contents of URL → Show Result</i>:
+              <ul
+                style={{
+                  margin: "0 0 10px",
+                  paddingLeft: 18,
+                  fontSize: 12.5,
+                  color: "#1e40af",
+                  lineHeight: 1.5,
+                }}
+              >
+                <li>
+                  <b>🛒 Live Shop (Inside HeyBroc App):</b> Tap <b>🛒 Live Shop</b> on the bottom bar to browse Walmart, Instacart, Target &amp; Amazon with a permanent floating 0–100 score bubble.
+                </li>
+                <li>
+                  <b>📤 Grocery Apps:</b> Tap <b>↑ Share → 🥦 HeyBroc</b> on any food item in the Walmart, Instacart, Target, Costco, or Amazon app.
+                </li>
+                <li>
+                  <b>🧭 Safari Pill:</b> Enable <i>Settings → Apps → Safari → Extensions → HeyBroc</i> for automatic floating scores in Safari.
+                </li>
+              </ul>
+              <p style={{ fontSize: 12, color: "#1e40af", lineHeight: 1.4, margin: "0 0 6px" }}>
+                Optional Apple Shortcuts URL (<i>Get Contents of URL → Show Result</i>):
               </p>
               <code
                 style={{
@@ -1070,6 +1089,47 @@ export default function ToolsClient() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
+                id="tools-open-ios-live-shop"
+                type="button"
+                onClick={() => {
+                  if (typeof window === "undefined") return;
+                  const win = window as unknown as {
+                    webkit?: {
+                      messageHandlers?: {
+                        controller?: { postMessage?: (msg: unknown) => void };
+                        heybrocNative?: { postMessage?: (msg: unknown) => void };
+                      };
+                    };
+                  };
+                  if (typeof win.webkit?.messageHandlers?.controller?.postMessage === "function") {
+                    win.webkit.messageHandlers.controller.postMessage({
+                      action: "open-live-shop",
+                      store: "walmart",
+                    });
+                  } else if (typeof win.webkit?.messageHandlers?.heybrocNative?.postMessage === "function") {
+                    win.webkit.messageHandlers.heybrocNative.postMessage({
+                      action: "openStoreBrowser",
+                      store: "walmart",
+                    });
+                  } else {
+                    window.location.href = "/?platform=ios";
+                  }
+                }}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: "#0f7a4a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                🛒 Shop Walmart Live
+              </button>
+              <button
+                id="tools-copy-shortcut-url"
                 type="button"
                 onClick={() => {
                   if (typeof navigator !== "undefined" && navigator.clipboard) {

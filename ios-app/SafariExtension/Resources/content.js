@@ -220,9 +220,11 @@
 
     if (
       pathLower.includes("/wholefoods") ||
+      almBrandId === "vuzhifdob2xliezvb2rz" ||
       almBrandId === "vufhifdob2xliezvb2rz" ||
+      almBrandId.includes("dob2xliezvb2rz") ||
       urlFull.includes("wholefoods") ||
-      urlFull.includes("vufhifdob2xliezvb2rz") ||
+      urlFull.includes("dob2xliezvb2rz") ||
       /\bwhole\s+foods(?:\s+market)?\b/.test(domHint)
     ) {
       try { sessionStorage.setItem("heybroc_last_amazon_banner", "amazon:wholefoods"); } catch { /* ignore */ }
@@ -1060,6 +1062,10 @@
           "h1.ProductDetails-header",
           "#productTitle",
           "h1#title",
+          "#title_feature_div #title",
+          "#titleSection #title",
+          '[data-hook="product-title"]',
+          "#title",
           "#title_feature_div h1",
           'h1[itemprop="name"]',
           'h1[data-testid*="title" i]',
@@ -1087,6 +1093,22 @@
   function readIngredients(explicitScope) {
     const modalScope = explicitScope !== undefined ? explicitScope : activeDialogScope();
     const searchRoot = modalScope || document.querySelector("main") || document;
+
+    // Amazon mobile / desktop collapsed Important Information accordion (textContent works even when collapsed)
+    if (!modalScope && BASE_STORE === "amazon") {
+      const amzInfo = document.querySelector("#importantInformation_feature_div, #nic-po-expander-content");
+      if (amzInfo) {
+        const amzTxt = (amzInfo.textContent || "").replace(/\s+/g, " ");
+        const amzMatch = amzTxt.match(/\bIngredients\s*:?\s*([\s\S]{12,1800})/i);
+        if (amzMatch?.[1]) {
+          const cand = amzMatch[1]
+            .split(/\b(Allergens?|Contains\s*:|Warnings?|Directions|Nutrition\s+Facts|Distributed\s+by|Legal\s+Disclaimer|Statements\s+regarding)\b/i)[0]
+            .trim();
+          if (isValidIngredientText(cand)) return cand;
+        }
+      }
+    }
+
     const candidates = searchRoot.querySelectorAll("h2, h3, h4, dt, strong, b, span, div, p, button");
     for (const el of candidates) {
       if (isInsideExcludedSection(el, modalScope || document.body)) continue;
@@ -1145,15 +1167,22 @@
     return null;
   }
 
+  const AMAZON_NON_GROCERY_CRUMB_RE =
+    /\b(electronics|computers\s*&\s*accessories|cell\s+phones|video\s+games|books|kindle\s+store|movies\s*&\s*tv|clothing,\s*shoes|automotive|tools\s*&\s*home\s+improvement|musical\s+instruments|software)\b/i;
+
+  const AMAZON_FOOD_OR_CARE_TITLE_RE =
+    /\b(organic|ranch|dressing|mayo|mayonnaise|ketchup|mustard|sauce|salsa|chips|crackers|cookies|cereal|oatmeal|oats|granola|yogurt|milk|cream|cheese|butter|ghee|tallow|oil|bread|bagel|tortilla|pasta|noodles|rice|beans|soup|broth|coffee|tea|espresso|juice|soda|pop|sparkling|water|electrolyte|energy\s+drink|protein|bar|snack|candy|chocolate|gummies|popcorn|pretzels|jerky|nuts|almonds|peanut|butter|jam|jelly|honey|syrup|pancake|waffle|fries|pizza|nuggets|ice\s+cream|supplement|vitamin|collagen|creatine|lotion|shampoo|conditioner|body\s+wash|deodorant|toothpaste|sunscreen)\b/i;
+
   function isAmazonGroceryPage(modalScope) {
     if (HOST.includes("wholefoods")) return true;
     if (activeBucket.bucketKey === "amazon:wholefoods" || activeBucket.bucketKey === "amazon:fresh") return true;
-    const crumbText =
-      document.querySelector(
-        "#wayfinding-breadcrumbs_feature_div, #nav-subnav, #brandByline_feature_div, #bylineInfo, #almDetailPagePoi, #fresh-merchant-info, #alm-cards-link, a[href*='almBrandId']"
-      )?.textContent || "";
+    const crumbNodes = document.querySelectorAll(
+      "#wayfinding-breadcrumbs_feature_div, #breadcrumb_feature_div, [id*='breadcrumb' i], #nav-subnav, #brandByline_feature_div, #bylineInfo, #bylineInfo_feature_div, #almDetailPagePoi, #fresh-merchant-info, #alm-cards-link, a[href*='almBrandId']"
+    );
+    const crumbText = [...crumbNodes].map((n) => n.textContent || "").join(" ");
+    if (AMAZON_NON_GROCERY_CRUMB_RE.test(crumbText)) return false;
     if (
-      /\b(grocery|gourmet food|amazon fresh|whole foods|365 by whole foods|happy belly|amazon grocery|pantry|food\s*&\s*beverage|snacks|beverages)\b/i.test(
+      /\b(grocery|gourmet food|amazon fresh|whole foods|365 by whole foods|happy belly|amazon grocery|pantry|food\s*&\s*beverage|snacks|beverages|health\s*&\s*household|beauty\s*&\s*personal\s*care)\b/i.test(
         crumbText
       )
     ) {
@@ -1164,7 +1193,11 @@
     if (/\b(grocery|amazon fresh|whole foods|prime pantry)\b/i.test(searchAlias)) {
       return true;
     }
-    if (REAL_ING_HINT_RE.test(readTitle(modalScope))) return true;
+    if (document.querySelector("#nutritionFacts_feature_div, #nic-nutrition-facts, #alm-hero-banner")) {
+      return true;
+    }
+    const title = readTitle(modalScope);
+    if (REAL_ING_HINT_RE.test(title) || AMAZON_FOOD_OR_CARE_TITLE_RE.test(title)) return true;
     return Boolean(readIngredients(modalScope));
   }
 
@@ -1226,6 +1259,7 @@
       'a[href*="/ip/"]',
       'a[href*="/p/"]',
       'a[href*="/dp/"]',
+      'a[href*="/gp/aw/d/"]',
       'a[href*="/products/"]',
     ];
     let title = "";
@@ -1844,7 +1878,8 @@
 
         let chosenSwap = scanRes.swap || null;
         let swapOutOfStock = false;
-        if (candidates.length > 0 && !isNonFood && scanRes.result?.score < 75) {
+        const scanHasDietAlert = Array.isArray(scanRes.dietaryAlerts) && scanRes.dietaryAlerts.length > 0;
+        if (candidates.length > 0 && !isNonFood && (scanRes.result?.score < 75 || scanHasDietAlert)) {
           const stockRes = await resolveFirstInStockSwap(candidates, scanRes.swap, capturedBucket);
           if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) {
             return;
@@ -1940,7 +1975,8 @@
         : [];
     let chosenSwap = state.activeSwap || null;
     let swapOutOfStock = Boolean(state.allSwapsOutOfStock);
-    if (!chosenSwap && !swapOutOfStock && !isNonFood && candidates.length > 0 && resp.result?.score < 75) {
+    const respHasDietAlert = Array.isArray(resp.dietaryAlerts) && resp.dietaryAlerts.length > 0;
+    if (!chosenSwap && !swapOutOfStock && !isNonFood && candidates.length > 0 && (resp.result?.score < 75 || respHasDietAlert)) {
       const stockRes = await resolveFirstInStockSwap(candidates, resp.swap, capturedBucket);
       if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) return;
       if (isCartItemDismissed(itemKey)) return;
@@ -2464,11 +2500,12 @@
       ? state.cartItems
           .map((item, idx) => {
             const hasScore = isScoredCartItem(item);
-            const rowTone = hasScore ? toneForScore(item.score) : "gray";
+            const itemHasAlert = Array.isArray(item.dietaryAlerts) && item.dietaryAlerts.length > 0;
+            const rowTone = hasScore ? (itemHasAlert ? "red" : toneForScore(item.score)) : "gray";
             const chipLabel = item.pending ? "…" : item.isNonFood ? "N/A" : hasScore ? String(item.score) : "--";
             const thumbHtml = buildThumbMarkup("cc-row-thumb cc-cart-thumb", item.image, item.domImageUrl, true);
             const qty = clampQty(item.quantity);
-            const alertBadges = Array.isArray(item.dietaryAlerts) && item.dietaryAlerts.length
+            const alertBadges = itemHasAlert
               ? ` · ⚠️ ${item.dietaryAlerts.map((a) => esc(a.shortBadge)).join(", ")}`
               : "";
 
@@ -2477,15 +2514,15 @@
               subLine = `<small>Scoring ingredients…</small>`;
             } else if (item.isNonFood) {
               subLine = `<small>Household / non-food — excluded from Cart Avg</small>`;
-            } else if (hasScore && item.score < 75 && item.swapTitle && !item.swapOutOfStock) {
+            } else if (hasScore && (item.score < 75 || itemHasAlert) && item.swapTitle && !item.swapOutOfStock) {
               subLine = `<small class="cc-swap-line">✓ In Stock Swap: ${esc(item.swapTitle)}${item.swapScore !== null ? ` (${esc(item.swapScore)}/100)` : ""}${item.swapIsPaidLink ? " · paid link" : ""}${alertBadges}</small>`;
-            } else if (hasScore && item.score < 75 && item.swapOutOfStock) {
+            } else if (hasScore && (item.score < 75 || itemHasAlert) && item.swapOutOfStock) {
               subLine = `<small>No clean swap currently in stock at ${esc(activeBucket.label)}${alertBadges}</small>`;
             } else if (hasScore) {
               subLine = `<small>${esc(ratingLabelForScore(item.score))} pick${alertBadges}</small>`;
             }
 
-            const showSwapBtn = hasScore && item.score < 75 && item.swapTitle && !item.swapOutOfStock;
+            const showSwapBtn = hasScore && (item.score < 75 || itemHasAlert) && item.swapTitle && !item.swapOutOfStock;
 
             return `<li class="cc-audit-row">
               ${thumbHtml}
@@ -2505,7 +2542,11 @@
       : `<li class="cc-audit-row"><div class="cc-row-main"><b>Your ${esc(activeBucket.label)} cart is empty</b><small>Add groceries to your store cart or open your cart drawer to sync live.</small></div></li>`;
 
     const firstDirtyIdx = state.cartItems.findIndex(
-      (i) => isScoredCartItem(i) && i.score < 75 && i.swapTitle && !i.swapOutOfStock
+      (i) =>
+        isScoredCartItem(i) &&
+        (i.score < 75 || (Array.isArray(i.dietaryAlerts) && i.dietaryAlerts.length > 0)) &&
+        i.swapTitle &&
+        !i.swapOutOfStock
     );
     const firstDirty = firstDirtyIdx >= 0 ? state.cartItems[firstDirtyIdx] : null;
 
@@ -2571,7 +2612,8 @@
     const updatedPart = updatedVal ? ` · ${esc(updatedVal)}` : "";
     const autoVerifyLabel = state.autoVerifyStatus || "Report mismatch (Auto-Verify)";
 
-    const dietAlertsHtml = Array.isArray(d.dietaryAlerts) && d.dietaryAlerts.length
+    const hasDietAlerts = Array.isArray(d.dietaryAlerts) && d.dietaryAlerts.length > 0;
+    const dietAlertsHtml = hasDietAlerts
       ? `<div class="cc-flags">${d.dietaryAlerts.map((a) => `<span class="cc-diet-chip" title="${esc(a.reason)}">${esc(a.label)}</span>`).join("")}</div>`
       : "";
 
@@ -2594,7 +2636,7 @@
 
     let swapHtml = "";
     const activeSwap = state.activeSwap;
-    if (!isNonFood && safeScore < 75) {
+    if (!isNonFood && (safeScore < 75 || hasDietAlerts)) {
       if (state.swapStockChecking && !activeSwap) {
         swapHtml = `<div class="cc-swap cc-swap-muted"><div class="cc-swap-info"><b>Checking in-stock Clean Swaps at ${esc(activeBucket.label)}…</b><span class="cc-meta-line">Verifying live store availability</span></div></div>`;
       } else if (state.allSwapsOutOfStock) {
@@ -2680,8 +2722,9 @@
         state.data.product?.nutrition?.productKind === "non-food" ||
         r.yukaBreakdown?.nutriScoreGrade === "N/A";
       const safeScore = Math.max(0, Math.min(100, Math.round(Number(r.score ?? 0))));
-      const prodTone = isNonFood ? "gray" : toneForScore(safeScore);
-      const alertChip = Array.isArray(state.data.dietaryAlerts) && state.data.dietaryAlerts.length
+      const pillHasAlerts = Array.isArray(state.data.dietaryAlerts) && state.data.dietaryAlerts.length > 0;
+      const prodTone = isNonFood ? "gray" : pillHasAlerts ? "red" : toneForScore(safeScore);
+      const alertChip = pillHasAlerts
         ? `<span class="cc-pill-alert">⚠️ ${esc(state.data.dietaryAlerts[0].shortBadge)}</span>`
         : "";
       const cartChip = avg !== null ? `Cart: ${esc(avg)}/100 (${totalUnits})` : `${esc(activeBucket.label)} Cart: --`;
@@ -2719,9 +2762,13 @@
 
     const canShowProductTab = Boolean(state.data?.ok && state.data.result);
     const activeTab = state.auditorOpen || !canShowProductTab ? "cart" : state.drawerTab;
+    const modalHasDietAlerts =
+      canShowProductTab && Array.isArray(state.data.dietaryAlerts) && state.data.dietaryAlerts.length > 0;
     const cardToneClass =
       activeTab === "product" && canShowProductTab
-        ? `cc-tone-${toneForScore(state.data.result.score)}`
+        ? modalHasDietAlerts
+          ? "cc-tone-red"
+          : `cc-tone-${toneForScore(state.data.result.score)}`
         : avgToneClass;
 
     const tabsHtml = canShowProductTab
@@ -2834,40 +2881,47 @@
     if (act === "auto-verify-label" && state.data?.product) {
       state.autoVerifyStatus = "🤖 Checking USDA & Open Food Facts…";
       render();
-      fetch("https://www.heybroc.com/api/label-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productTitle: state.data.product.title,
-          brand: state.data.product.brand,
-          currentIngredients: state.data.product.ingredients,
-          issueType: "reformulated",
-          store: activeBucket.storeKey,
-        }),
-      })
-        .then((r) => r.json())
-        .then((res) => {
-          if (res?.ok && res.verifiedResult) {
-            state.data.result = res.verifiedResult;
-            if (res.verifiedProduct?.ingredients) {
-              state.data.product.ingredients = res.verifiedProduct.ingredients;
-            }
-            if (res.swap !== undefined) {
-              state.activeSwap = res.swap;
-            }
-            state.autoVerifyStatus =
-              res.report?.status === "auto_updated"
-                ? `✓ Auto-updated (${res.verifiedResult.score}/100)`
-                : `✓ Verified accurate (${res.verifiedResult.score}/100)`;
-          } else {
-            state.autoVerifyStatus = "✓ Verified against USDA/OFF";
+      const reportPayload = {
+        productTitle: state.data.product.title,
+        brand: state.data.product.brand,
+        currentIngredients: state.data.product.ingredients,
+        issueType: "reformulated",
+        store: activeBucket.store,
+      };
+      const applyVerifyResponse = (res) => {
+        if (res?.ok && res.verifiedResult) {
+          state.data.result = res.verifiedResult;
+          if (res.verifiedProduct?.ingredients) {
+            state.data.product.ingredients = res.verifiedProduct.ingredients;
           }
-          render();
-        })
-        .catch(() => {
-          state.autoVerifyStatus = "✓ Checked";
-          render();
-        });
+          if (res.swap !== undefined) {
+            state.activeSwap = res.swap;
+          }
+          state.autoVerifyStatus =
+            res.report?.status === "auto_updated"
+              ? `✓ Auto-updated (${res.verifiedResult.score}/100)`
+              : `✓ Verified accurate (${res.verifiedResult.score}/100)`;
+        } else {
+          state.autoVerifyStatus = "✓ Verified against USDA/OFF";
+        }
+        render();
+      };
+      try {
+        chrome.runtime.sendMessage(
+          { type: "CLEANCART_LABEL_REPORT", payload: reportPayload },
+          (res) => {
+            if (chrome.runtime?.lastError || !res) {
+              state.autoVerifyStatus = "✓ Checked";
+              render();
+              return;
+            }
+            applyVerifyResponse(res);
+          }
+        );
+      } catch {
+        state.autoVerifyStatus = "✓ Checked";
+        render();
+      }
       return;
     }
     if (act === "swap" && state.activeSwap) {
@@ -2930,7 +2984,10 @@
         ? [resp.swap]
         : [];
 
-    const willVerifyStock = Boolean(candidates.length > 0 && resp.result?.score < 75 && candidates[0]?.webUrl);
+    const hasDietAlerts = Array.isArray(resp.dietaryAlerts) && resp.dietaryAlerts.length > 0;
+    const willVerifyStock = Boolean(
+      candidates.length > 0 && (resp.result?.score < 75 || hasDietAlerts) && candidates[0]?.webUrl
+    );
     state.mode = "product";
     state.data = resp;
     state.openFlag = null;
@@ -2944,7 +3001,7 @@
       const checkForTitle = resp.product?.title;
       const bKey = resolveStoreBucket().bucketKey;
       const stockRes = await resolveFirstInStockSwap(candidates, resp.swap, bKey);
-      if (seq !== scanSeq || state.pillMode === "cart_avg") return;
+      if (seq !== scanSeq || state.mode === "cart_avg") return;
       if (state.data?.product?.title === checkForTitle && resolveStoreBucket().bucketKey === bKey) {
         state.swapStockChecking = false;
         state.activeSwap = stockRes.chosen;
@@ -3108,7 +3165,7 @@
     (e) => {
       if (host?.contains(e.target)) return;
       const a = e.target?.closest?.(
-        'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/product/"], [data-testid*="product" i] a'
+        'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/product/"], a[href*="/gp/aw/d/"], [data-testid*="product" i] a'
       );
       if (!a) return;
       const rawText = cleanProductTitleText(a.getAttribute("aria-label") || a.textContent || "");
@@ -3174,10 +3231,30 @@
     };
 
     if (document.body) {
-      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver(schedule).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
     }
-    window.addEventListener("popstate", schedule);
-    window.addEventListener("hashchange", schedule);
+    const scheduleSpaTransition = () => {
+      schedule();
+      setTimeout(schedule, 500);
+    };
+    window.addEventListener("popstate", scheduleSpaTransition);
+    window.addEventListener("hashchange", scheduleSpaTransition);
+    const origPushState = history.pushState;
+    history.pushState = function (...args) {
+      const ret = origPushState.apply(this, args);
+      scheduleSpaTransition();
+      return ret;
+    };
+    const origReplaceState = history.replaceState;
+    history.replaceState = function (...args) {
+      const ret = origReplaceState.apply(this, args);
+      scheduleSpaTransition();
+      return ret;
+    };
 
     if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {

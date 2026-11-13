@@ -46,6 +46,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var lastScannedKey: String = ""
     private var latestSummary: HeyBrocNativeScanSummary?
     private var isScanning = false
+    private var scanGeneration: Int = 0
     private var progressObservation: NSKeyValueObservation?
 
     init(initialStoreKey: String? = nil, onPreferencesUpdated: (() -> Void)? = nil) {
@@ -251,62 +252,237 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (window.__heybrocLiveObserverInstalled) return;
           window.__heybrocLiveObserverInstalled = true;
 
+          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|deals|weekly\\s+ad)$/i;
+          var EXCLUDED_CONTAINER_SEL = '[data-testid*="carousel" i], [class*="carousel" i], [aria-label*="Sponsored" i], [data-testid*="sponsored" i], [data-testid*="similar" i], [data-testid*="related" i], [data-testid*="upsell" i], [data-testid*="recommend" i], #sc-saved-cart';
+          var EXCLUDED_HEADING_RE = /\\b(customers\\s+also\\s+(?:viewed|bought|shopped|considered)|similar\\s+items?|sponsored(?:\\s+products?|\\s+items?)?|buy\\s+(?:it\\s+)?again|frequently\\s+bought\\s+together|items?\\s+to\\s+add\\s+next|recommended(?:\\s+for\\s+you)?|you\\s+may\\s+also\\s+like|related\\s+(?:products?|items?)|more\\s+to\\s+consider|saved\\s+for\\s+later)\\b/i;
+
           function clean(s) {
-            return (s || '').replace(/\\s+/g, ' ').trim();
+            return String(s || '')
+              .replace(/\\s+/g, ' ')
+              .replace(/^(?:sponsored|best\\s+seller|overall\\s+pick|popular\\s+pick|rollback)\\s*[,•|:\\-]?\\s*/i, '')
+              .replace(/\\s*\\(\\d+(?:\\.\\d+)?\\s*stars?.*$/i, '')
+              .trim();
+          }
+
+          function isVisible(el) {
+            if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+            var st = window.getComputedStyle(el);
+            if (!st || st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+            var r = el.getBoundingClientRect();
+            return r.width > 2 && r.height > 2;
+          }
+
+          function isCartUrl() {
+            return /\\/(?:cart|bag|basket|checkout|gp\\/cart|store\\/cart|shop\\/cart)(?:\\/|$)/i.test(location.pathname);
           }
 
           function looksLikeProductUrl(url) {
-            return /(\\/ip\\/|\\/dp\\/|\\/gp\\/product\\/|\\/p\\/|\\/products?\\/|\\.product\\.\\d+\\.html|item_id=|productId=)/i.test(url);
+            if (isCartUrl()) return false;
+            return /(\\/ip\\/|\\/dp\\/|\\/gp\\/product\\/|\\/gp\\/aw\\/d\\/|\\/p\\/|\\/products?\\/|\\/detail\\/ps\\/p\\/|\\/sams\\/shop\\/product\\/|\\/item\\/|\\.product\\.\\d+\\.html|[?&](?:item_id|product_id|productId)=|item-details|mod=quickView)/i.test(url);
+          }
+
+          function isCartDrawer(el) {
+            if (!el) return false;
+            var meta = (el.id || '') + ' ' + (el.className || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-testid') || '');
+            if (/\\b(cart[-_ ]?(?:drawer|modal|panel|flyout|sidebar)|shopping[-_ ]?cart|mini[-_ ]?cart|bag[-_ ]?drawer)\\b/i.test(meta)) return true;
+            var h = el.querySelector('h1, h2, h3, [role="heading"]');
+            var ht = clean(h ? h.textContent : '');
+            if (/^(?:your\\s+)?(?:shopping\\s+)?(?:cart|bag|basket|order)(?:\\s*\\(\\d+.*\\))?$/i.test(ht)) return true;
+            return false;
+          }
+
+          function isInsideExcluded(el, stopRoot) {
+            if (!el || typeof el.closest !== 'function') return false;
+            if (el.closest(EXCLUDED_CONTAINER_SEL)) return true;
+            var cur = el.parentElement;
+            while (cur && cur !== stopRoot && cur !== document.body) {
+              if (/^(SECTION|ASIDE|DIV)$/i.test(cur.tagName)) {
+                var hd = cur.querySelector(':scope > h2, :scope > h3, :scope > header h2, :scope > header h3');
+                if (hd && EXCLUDED_HEADING_RE.test(clean(hd.textContent))) return true;
+              }
+              cur = cur.parentElement;
+            }
+            return false;
+          }
+
+          function findOpenProductModal() {
+            var nodes = document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-testid*="item-details" i], [data-testid*="quick-view" i], [data-testid*="modal" i], [data-anchor-id*="ItemModal" i]');
+            var best = null;
+            var bestRank = 0;
+            for (var i = 0; i < nodes.length; i++) {
+              var d = nodes[i];
+              if (!isVisible(d) || isCartDrawer(d)) continue;
+              var r = d.getBoundingClientRect();
+              if (r.width < 260 || r.height < 220) continue;
+              var meta = (d.id || '') + ' ' + (d.className || '') + ' ' + (d.getAttribute('aria-label') || '') + ' ' + (d.getAttribute('data-testid') || '');
+              if (/\\b(cookie|consent|onetrust|gdpr|privacy|navbar|site-header|top-nav|search-dropdown|autocomplete|address-modal|store-selector|login|signin)\\b/i.test(meta)) continue;
+              var hd = d.querySelector('h1, h2, [data-testid*="product-title" i], [data-testid*="item-title" i]');
+              var ht = clean(hd ? hd.textContent : '');
+              if (!ht || ht.length < 4 || NON_TITLE_RE.test(ht)) continue;
+              var sample = (d.textContent || '').slice(0, 2500);
+              if (!/\\$\\s*\\d+|\\b(add\\s+to\\s+(?:cart|bag|basket|order)|ingredients|nutrition\\s+facts|oz|lb|fl\\s*oz|count|pack)\\b/i.test(sample)) continue;
+              var z = parseInt(window.getComputedStyle(d).zIndex, 10) || 1;
+              var rank = ((d.getAttribute('aria-modal') === 'true' || d.getAttribute('role') === 'dialog') ? 1000 : 200) + Math.min(500, z);
+              if (rank >= bestRank) {
+                bestRank = rank;
+                best = d;
+              }
+            }
+            return best;
+          }
+
+          function readHeroTitle(modalScope) {
+            var root = modalScope || document;
+            var sels = modalScope ? [
+              '[data-testid*="item-details" i] h1',
+              '[data-testid*="item-details" i] h2',
+              '[data-anchor-id*="ItemModal" i] h1',
+              '[data-anchor-id*="ItemModal" i] h2',
+              '[data-testid*="product-title" i]',
+              '[data-testid*="product-name" i]',
+              '[data-testid*="itemHeader" i]',
+              'h1',
+              'h2'
+            ] : [
+              '[data-testid="product-page-title"]',
+              'h1[data-automation-id*="product-title" i]',
+              '[data-automation-id="product-title"]',
+              'h1.ProductDetails-header',
+              '#productTitle',
+              'h1#title',
+              '#title_feature_div #title',
+              '#titleSection #title',
+              '[data-hook="product-title"]',
+              '#title',
+              'h1[itemprop="name"]',
+              'h1[data-testid*="title" i]',
+              '[data-testid*="product-title" i] h1',
+              '[data-testid*="item-details" i] h1',
+              'main h1',
+              'h1'
+            ];
+            for (var i = 0; i < sels.length; i++) {
+              var els = root.querySelectorAll(sels[i]);
+              for (var j = 0; j < els.length; j++) {
+                var el = els[j];
+                if (!isVisible(el)) continue;
+                if (isInsideExcluded(el, modalScope || document.body)) continue;
+                if (!modalScope && isCartDrawer(el.closest('[role="dialog"], aside, section'))) continue;
+                var t = clean(el.textContent);
+                if (t && t.length >= 4 && t.length <= 240 && !NON_TITLE_RE.test(t)) return t;
+              }
+            }
+            return '';
+          }
+
+          function titlesShareTokens(a, b) {
+            var tokA = clean(a).toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3; });
+            var tokB = clean(b).toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3; });
+            if (!tokA.length || !tokB.length) return false;
+            var hits = 0;
+            for (var i = 0; i < tokA.length; i++) {
+              if (tokB.indexOf(tokA[i]) !== -1) hits++;
+            }
+            return hits >= Math.min(2, tokA.length);
+          }
+
+          function readIngredientsFromScope(modalScope) {
+            var root = modalScope || document.querySelector('main') || document.body;
+            if (!root) return '';
+            var stopRe = /\\b(Allergens?|Contains\\s*:|Warnings?|Directions|Nutrition\\s+Facts|Distributed\\s+by|Legal\\s+Disclaimer)\\b/i;
+
+            // Check Amazon mobile collapsed Important Information block first if present
+            if (!modalScope) {
+              var amzInfo = document.querySelector('#importantInformation_feature_div, #nic-po-expander-content');
+              if (amzInfo) {
+                var amzTxt = (amzInfo.textContent || '').replace(/\\s+/g, ' ');
+                var amzMatch = amzTxt.match(/\\bIngredients\\s*:?\\s*([^]{12,1400})/i);
+                if (amzMatch && amzMatch[1]) {
+                  var candAmz = clean(amzMatch[1].split(stopRe)[0]);
+                  if (candAmz.length >= 12 && candAmz.indexOf(',') !== -1) return candAmz;
+                }
+              }
+            }
+
+            var labels = root.querySelectorAll('h2, h3, h4, dt, strong, b, span, div, p, button');
+            for (var i = 0; i < labels.length; i++) {
+              var el = labels[i];
+              if (isInsideExcluded(el, modalScope || document.body)) continue;
+              var own = el.childNodes.length <= 2 ? clean(el.textContent) : '';
+              if (!/^ingredients\\s*:?$/i.test(own)) continue;
+              var sib = el.nextElementSibling;
+              for (var k = 0; k < 3 && sib; k++, sib = sib.nextElementSibling) {
+                if (isInsideExcluded(sib, modalScope || document.body)) continue;
+                var stxt = clean(String(sib.textContent || '').split(stopRe)[0]);
+                if (stxt.length >= 12 && stxt.length < 2500 && !NON_TITLE_RE.test(stxt)) return stxt;
+              }
+              var ptxt = clean(String(el.parentElement ? el.parentElement.textContent : '').replace(/^ingredients\\s*:?\\s*/i, '').split(stopRe)[0]);
+              if (ptxt.length >= 12 && ptxt.length < 2500 && !NON_TITLE_RE.test(ptxt)) return ptxt;
+            }
+
+            var rawText = (root.innerText || root.textContent || '');
+            var m = rawText.match(/\\bIngredients\\s*[:\\n]\\s*([^\\n]{12,1200})/i);
+            if (m && m[1]) {
+              return clean(m[1].split(stopRe)[0]);
+            }
+            return '';
           }
 
           function extractProductData() {
             var url = location.href;
-            var title = '';
-            var ingredients = '';
-            var barcode = '';
+            var modal = findOpenProductModal();
+            var isPdp = Boolean(modal) || looksLikeProductUrl(url);
 
-            // 1. JSON-LD Product structured data (Walmart, Target, Costco, Kroger, Instacart, ALDI)
-            var scripts = document.querySelectorAll('script[type="application/ld+json"]');
-            for (var i = 0; i < scripts.length; i++) {
-              try {
-                var raw = JSON.parse(scripts[i].textContent || '{}');
-                var queue = Array.isArray(raw) ? raw.slice() : [raw];
-                while (queue.length) {
-                  var node = queue.shift();
-                  if (!node || typeof node !== 'object') continue;
-                  if (Array.isArray(node['@graph'])) queue = queue.concat(node['@graph']);
-                  var t = String(node['@type'] || '');
-                  if (/product/i.test(t) && node.name && !title) {
-                    title = clean(String(node.name));
-                    barcode = clean(String(node.gtin13 || node.gtin12 || node.gtin || node.sku || ''));
-                    if (barcode && !/^\\d{8,14}$/.test(barcode)) barcode = '';
-                  }
-                }
-              } catch (e) {}
+            if (!isPdp) {
+              window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                kind: 'browse',
+                url: url
+              });
+              return;
             }
 
-            // 2. Product H1 or og:title on product detail routes
-            if (!title && looksLikeProductUrl(url)) {
-              var h1 = document.querySelector('h1[itemprop="name"], #productTitle, [data-automation-id="product-title"], [data-test="product-title"], main h1, h1');
-              if (h1) title = clean(h1.innerText || h1.textContent);
+            var title = readHeroTitle(modal);
+            var barcode = '';
+
+            // On confirmed PDP URLs (when not inside a modal), inspect JSON-LD as fallback title or matching GTIN source
+            if (!modal && looksLikeProductUrl(url)) {
+              var scripts = document.querySelectorAll('script[type="application/ld+json"]');
+              for (var i = 0; i < scripts.length; i++) {
+                try {
+                  var raw = JSON.parse(scripts[i].textContent || '{}');
+                  var queue = Array.isArray(raw) ? raw.slice() : [raw];
+                  while (queue.length) {
+                    var node = queue.shift();
+                    if (!node || typeof node !== 'object') continue;
+                    if (Array.isArray(node['@graph'])) queue = queue.concat(node['@graph']);
+                    var t = String(node['@type'] || '');
+                    if (/product/i.test(t) && node.name) {
+                      var ldName = clean(String(node.name));
+                      var ldCode = clean(String(node.gtin13 || node.gtin12 || node.gtin || node.sku || ''));
+                      if (ldCode && !/^\\d{8,14}$/.test(ldCode)) ldCode = '';
+                      if (!title && ldName && !NON_TITLE_RE.test(ldName)) {
+                        title = ldName;
+                        barcode = ldCode;
+                      } else if (title && !barcode && ldCode && titlesShareTokens(title, ldName)) {
+                        barcode = ldCode;
+                      }
+                    }
+                  }
+                } catch (e) {}
+              }
+
               if (!title) {
                 var og = document.querySelector('meta[property="og:title"]');
                 if (og && og.content) {
-                  title = clean(og.content.replace(/\\s*[-|:]\\s*(Walmart|Target|Instacart|Amazon|Costco|Sam's Club|Kroger|ALDI).*$/i, ''));
+                  var ogClean = clean(og.content.replace(/\\s*[-|:]\\s*(Walmart|Target|Instacart|Amazon|Costco|Sam's Club|Kroger|ALDI|DoorDash|Uber Eats|Shipt).*$/i, ''));
+                  if (ogClean && !NON_TITLE_RE.test(ogClean)) title = ogClean;
                 }
               }
             }
 
-            // 3. Ingredients text block if expanded or present in DOM
-            var bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
-            if (bodyText.length > 0 && (title || looksLikeProductUrl(url))) {
-              var m = bodyText.match(/\\bIngredients\\s*[:\\n]\\s*([^\\n]{12,900})/i);
-              if (m && m[1]) {
-                ingredients = clean(m[1].split(/\\b(Allergens?|Contains\\s*:|Warnings?|Directions|Nutrition Facts|Distributed by)\\b/i)[0]);
-              }
-            }
+            var ingredients = title ? readIngredientsFromScope(modal) : '';
 
-            if (title && title.length >= 4 && !/^(walmart|target|instacart|amazon|costco|kroger|aldi|search|cart|sign in)$/i.test(title)) {
+            if (title && title.length >= 4 && !NON_TITLE_RE.test(title)) {
               window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
                 kind: 'product',
                 title: title.slice(0, 260),
@@ -323,31 +499,36 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           var timer = null;
-          function scheduleCheck() {
+          var settleTimer = null;
+          function scheduleCheck(withSettle) {
             if (timer) clearTimeout(timer);
-            timer = setTimeout(extractProductData, 550);
+            timer = setTimeout(extractProductData, 320);
+            if (withSettle) {
+              if (settleTimer) clearTimeout(settleTimer);
+              settleTimer = setTimeout(extractProductData, 1050);
+            }
           }
 
-          window.addEventListener('popstate', scheduleCheck);
-          window.addEventListener('hashchange', scheduleCheck);
+          window.addEventListener('popstate', function() { scheduleCheck(true); });
+          window.addEventListener('hashchange', function() { scheduleCheck(true); });
           var origPush = history.pushState;
           history.pushState = function() {
             var r = origPush.apply(this, arguments);
-            scheduleCheck();
+            scheduleCheck(true);
             return r;
           };
           var origReplace = history.replaceState;
           history.replaceState = function() {
             var r = origReplace.apply(this, arguments);
-            scheduleCheck();
+            scheduleCheck(true);
             return r;
           };
 
-          var obs = new MutationObserver(function() { scheduleCheck(); });
+          var obs = new MutationObserver(function() { scheduleCheck(false); });
           if (document.documentElement) {
-            obs.observe(document.documentElement, { childList: true, subtree: true });
+            obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
           }
-          scheduleCheck();
+          scheduleCheck(true);
         })();
         """
 
@@ -596,6 +777,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return
         }
         lastScannedKey = dedupeKey
+        scanGeneration += 1
+        let gen = scanGeneration
         isScanning = true
         setBubbleScanningState()
 
@@ -605,7 +788,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             barcode: barcode,
             store: activeStore.key
         ) { [weak self] result in
-            guard let self = self else { return }
+            guard let self = self, gen == self.scanGeneration else { return }
             self.isScanning = false
             switch result {
             case .success(let summary):
@@ -631,6 +814,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             },
             onTogglePesticide: { [weak self] in
                 self?.tapTogglePesticide()
+            },
+            onReturnToScanner: { [weak self] in
+                self?.dismiss(animated: true)
             }
         )
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
@@ -664,9 +850,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             lastDetectedBarcode = barcode
             runLiveScan(title: title, ingredients: ingredients, barcode: barcode)
         } else if kind == "browse" {
+            scanGeneration += 1
+            isScanning = false
             lastDetectedTitle = ""
             lastDetectedIngredients = ""
             lastDetectedBarcode = ""
+            lastScannedKey = ""
+            latestSummary = nil
+            setBubbleIdleState()
         }
     }
 
@@ -697,6 +888,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        scanGeneration += 1
+        isScanning = false
+    }
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
             webView.load(URLRequest(url: url))
@@ -713,19 +909,22 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
     private let onOpenSwapInStore: (String) -> Void
     private let onRescanScreenOCR: () -> Void
     private let onTogglePesticide: () -> Void
+    private let onReturnToScanner: () -> Void
 
     init(
         summary: HeyBrocNativeScanSummary,
         storeLabel: String,
         onOpenSwapInStore: @escaping (String) -> Void,
         onRescanScreenOCR: @escaping () -> Void,
-        onTogglePesticide: @escaping () -> Void
+        onTogglePesticide: @escaping () -> Void,
+        onReturnToScanner: @escaping () -> Void
     ) {
         self.summary = summary
         self.storeLabel = storeLabel
         self.onOpenSwapInStore = onOpenSwapInStore
         self.onRescanScreenOCR = onRescanScreenOCR
         self.onTogglePesticide = onTogglePesticide
+        self.onReturnToScanner = onReturnToScanner
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -863,6 +1062,20 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 openSwapBtn.heightAnchor.constraint(equalToConstant: 46).isActive = true
                 openSwapBtn.addTarget(self, action: #selector(tapOpenSwap), for: .touchUpInside)
                 swapCard.addArrangedSubview(openSwapBtn)
+            } else {
+                let lockedBtn = UIButton(type: .system)
+                lockedBtn.setTitle("🔒 Weekly free swaps used — Sign in / Pro in Scanner →", for: .normal)
+                lockedBtn.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .bold)
+                lockedBtn.titleLabel?.adjustsFontSizeToFitWidth = true
+                lockedBtn.titleLabel?.minimumScaleFactor = 0.8
+                lockedBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
+                lockedBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
+                lockedBtn.layer.cornerRadius = 12
+                lockedBtn.layer.borderWidth = 1
+                lockedBtn.layer.borderColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0).cgColor
+                lockedBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+                lockedBtn.addTarget(self, action: #selector(tapLockedSwap), for: .touchUpInside)
+                swapCard.addArrangedSubview(lockedBtn)
             }
 
             stack.addArrangedSubview(swapCard)
@@ -957,6 +1170,12 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         guard let url = summary.swap?.webUrl else { return }
         dismiss(animated: true) { [onOpenSwapInStore] in
             onOpenSwapInStore(url)
+        }
+    }
+
+    @objc private func tapLockedSwap() {
+        dismiss(animated: true) { [onReturnToScanner] in
+            onReturnToScanner()
         }
     }
 

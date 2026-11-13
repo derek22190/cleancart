@@ -85,6 +85,12 @@ jobs:
               shutil.copy2("ios-app/App/Main.html", mh)
               print(f"Injected interactive Main.html -> {mh}")
 
+          # 2b. Replace Apple's echo stub SafariWebExtensionHandler.swift with HeyBroc's App Group bridge
+          handler_files = list(build_root.rglob("SafariWebExtensionHandler.swift"))
+          for hf in handler_files:
+              shutil.copy2("ios-app/SafariExtension/SafariWebExtensionHandler.swift", hf)
+              print(f"Injected SafariWebExtensionHandler.swift -> {hf}")
+
           # 3. Copy Apple Privacy Manifest & crisp 1024x1024 App Icon
           shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", build_root / "PrivacyInfo.xcprivacy")
           for vc in vc_files:
@@ -120,7 +126,7 @@ jobs:
           shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")
           print(f"Staged HeyBrocShare extension sources -> {share_dir}")
 
-          # 5. Patch ALL Info.plist files (camera, photo library, export compliance, emoji-free CFBundleDisplayName, synced versions)
+          # 5. Patch ALL Info.plist files (camera, photo library, heybroc:// deep link scheme, export compliance, emoji-free CFBundleDisplayName, synced versions)
           cam_desc = "HeyBroc uses the camera when you choose to scan a food or cosmetic barcode or ingredient label to calculate its 0-100 health score."
           photo_desc = "HeyBroc lets you choose a barcode or ingredient label photo from your library to calculate its 0-100 health score."
 
@@ -137,6 +143,13 @@ jobs:
                   data["NSCameraUsageDescription"] = cam_desc
                   data["NSPhotoLibraryUsageDescription"] = photo_desc
                   data["ITSAppUsesNonExemptEncryption"] = False
+                  data["CFBundleURLTypes"] = [
+                      {
+                          "CFBundleTypeRole": "Editor",
+                          "CFBundleURLName": "com.heybroc.app",
+                          "CFBundleURLSchemes": ["heybroc"],
+                      }
+                  ]
               with plist_path.open("wb") as f:
                   plistlib.dump(data, f)
               print(f"Updated Info.plist ({'extension' if is_extension else 'host app'}) -> {plist_path}")

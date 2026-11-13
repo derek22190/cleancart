@@ -12,83 +12,170 @@ import SwiftUI
 enum HeyBrocSharedPrefs {
     static let appGroupSuite = "group.com.heybroc.app"
     private static let dietaryKey = "heybroc_dietary_watchlist"
+    private static let legacyDietaryKey = "dietary_watchlist"
     private static let familyKey = "heybroc_family_watchlist"
+    private static let legacyFamilyKey = "family_watchlist"
     private static let preferStoreBrandKey = "heybroc_prefer_store_brand"
+    private static let legacyPreferStoreBrandKey = "prefer_store_brand"
     private static let storeKey = "heybroc_active_store"
-    private static let deviceIdKey = "heybroc_ios_device_id"
+    private static let deviceIdKey = "heybroc_device_id"
+    private static let legacyDeviceIdKey = "heybroc_ios_device_id"
+    private static let deviceSecretKey = "heybroc_device_secret"
+    private static let pendingLiveShopKey = "heybroc_pending_open_live_shop"
 
     private static var groupDefaults: UserDefaults? {
         return UserDefaults(suiteName: appGroupSuite)
     }
 
     static var deviceId: String {
-        if let existing = UserDefaults.standard.string(forKey: deviceIdKey), existing.count >= 8 {
-            return existing
-        }
         if let grouped = groupDefaults?.string(forKey: deviceIdKey), grouped.count >= 8 {
-            UserDefaults.standard.set(grouped, forKey: deviceIdKey)
+            if UserDefaults.standard.string(forKey: deviceIdKey) != grouped {
+                UserDefaults.standard.set(grouped, forKey: deviceIdKey)
+            }
             return grouped
         }
-        let fresh = "ios-\(UUID().uuidString.lowercased().prefix(12))"
+        if let existing = UserDefaults.standard.string(forKey: deviceIdKey), existing.count >= 8 {
+            groupDefaults?.set(existing, forKey: deviceIdKey)
+            return existing
+        }
+        if let legacy = groupDefaults?.string(forKey: legacyDeviceIdKey) ?? UserDefaults.standard.string(forKey: legacyDeviceIdKey),
+           legacy.count >= 8 {
+            UserDefaults.standard.set(legacy, forKey: deviceIdKey)
+            groupDefaults?.set(legacy, forKey: deviceIdKey)
+            return legacy
+        }
+        let fresh = "ios-app-\(UUID().uuidString.lowercased())"
         UserDefaults.standard.set(fresh, forKey: deviceIdKey)
         groupDefaults?.set(fresh, forKey: deviceIdKey)
         return fresh
     }
 
+    static var deviceSecret: String? {
+        get {
+            if let grouped = groupDefaults?.string(forKey: deviceSecretKey), !grouped.isEmpty {
+                if UserDefaults.standard.string(forKey: deviceSecretKey) != grouped {
+                    UserDefaults.standard.set(grouped, forKey: deviceSecretKey)
+                }
+                return grouped
+            }
+            if let std = UserDefaults.standard.string(forKey: deviceSecretKey), !std.isEmpty {
+                groupDefaults?.set(std, forKey: deviceSecretKey)
+                return std
+            }
+            return nil
+        }
+        set {
+            let trimmed = (newValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return }
+            UserDefaults.standard.set(trimmed, forKey: deviceSecretKey)
+            groupDefaults?.set(trimmed, forKey: deviceSecretKey)
+        }
+    }
+
+    static var hasSavedPreferences: Bool {
+        return groupDefaults?.object(forKey: dietaryKey) != nil
+            || UserDefaults.standard.object(forKey: dietaryKey) != nil
+            || groupDefaults?.object(forKey: familyKey) != nil
+            || UserDefaults.standard.object(forKey: familyKey) != nil
+            || groupDefaults?.object(forKey: preferStoreBrandKey) != nil
+            || UserDefaults.standard.object(forKey: preferStoreBrandKey) != nil
+            || groupDefaults?.object(forKey: storeKey) != nil
+            || UserDefaults.standard.object(forKey: storeKey) != nil
+    }
+
     static var dietaryWatchlist: [String] {
         get {
+            if let grouped = groupDefaults?.stringArray(forKey: dietaryKey) {
+                return grouped
+            }
             if let arr = UserDefaults.standard.stringArray(forKey: dietaryKey) {
                 return arr
             }
-            return groupDefaults?.stringArray(forKey: dietaryKey) ?? []
+            if let legacy = groupDefaults?.stringArray(forKey: legacyDietaryKey) ?? UserDefaults.standard.stringArray(forKey: legacyDietaryKey) {
+                return legacy
+            }
+            return []
         }
         set {
             let clean = Array(Set(newValue.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty })).sorted()
             UserDefaults.standard.set(clean, forKey: dietaryKey)
+            UserDefaults.standard.set(clean, forKey: legacyDietaryKey)
             groupDefaults?.set(clean, forKey: dietaryKey)
+            groupDefaults?.set(clean, forKey: legacyDietaryKey)
         }
     }
 
     static var familyWatchlist: [String] {
         get {
-            if let arr = UserDefaults.standard.stringArray(forKey: familyKey), !arr.isEmpty {
+            if let grouped = groupDefaults?.stringArray(forKey: familyKey) {
+                return grouped
+            }
+            if let arr = UserDefaults.standard.stringArray(forKey: familyKey) {
                 return arr
             }
-            if let grouped = groupDefaults?.stringArray(forKey: familyKey), !grouped.isEmpty {
-                return grouped
+            if let legacy = groupDefaults?.stringArray(forKey: legacyFamilyKey) ?? UserDefaults.standard.stringArray(forKey: legacyFamilyKey),
+               !legacy.isEmpty {
+                return legacy
             }
             return ["seedOils", "dyes", "hfcs"]
         }
         set {
             let clean = newValue.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
             UserDefaults.standard.set(clean, forKey: familyKey)
+            UserDefaults.standard.set(clean, forKey: legacyFamilyKey)
             groupDefaults?.set(clean, forKey: familyKey)
+            groupDefaults?.set(clean, forKey: legacyFamilyKey)
         }
     }
 
     static var preferStoreBrand: Bool {
         get {
+            if groupDefaults?.object(forKey: preferStoreBrandKey) != nil {
+                return groupDefaults?.bool(forKey: preferStoreBrandKey) ?? false
+            }
             if UserDefaults.standard.object(forKey: preferStoreBrandKey) != nil {
                 return UserDefaults.standard.bool(forKey: preferStoreBrandKey)
             }
-            return groupDefaults?.bool(forKey: preferStoreBrandKey) ?? false
+            if groupDefaults?.object(forKey: legacyPreferStoreBrandKey) != nil {
+                return groupDefaults?.bool(forKey: legacyPreferStoreBrandKey) ?? false
+            }
+            return UserDefaults.standard.bool(forKey: legacyPreferStoreBrandKey)
         }
         set {
             UserDefaults.standard.set(newValue, forKey: preferStoreBrandKey)
+            UserDefaults.standard.set(newValue, forKey: legacyPreferStoreBrandKey)
             groupDefaults?.set(newValue, forKey: preferStoreBrandKey)
+            groupDefaults?.set(newValue, forKey: legacyPreferStoreBrandKey)
         }
     }
 
     static var activeStore: String {
         get {
-            return UserDefaults.standard.string(forKey: storeKey)
-                ?? groupDefaults?.string(forKey: storeKey)
+            return groupDefaults?.string(forKey: storeKey)
+                ?? UserDefaults.standard.string(forKey: storeKey)
                 ?? "walmart"
         }
         set {
             UserDefaults.standard.set(newValue, forKey: storeKey)
             groupDefaults?.set(newValue, forKey: storeKey)
         }
+    }
+
+    static var pendingOpenLiveShop: Bool {
+        get {
+            return (groupDefaults?.bool(forKey: pendingLiveShopKey) ?? false)
+                || UserDefaults.standard.bool(forKey: pendingLiveShopKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: pendingLiveShopKey)
+            groupDefaults?.set(newValue, forKey: pendingLiveShopKey)
+        }
+    }
+
+    static func consumePendingOpenLiveShop() -> Bool {
+        guard pendingOpenLiveShop else { return false }
+        pendingOpenLiveShop = false
+        return true
     }
 
     static var isPesticideWatchEnabled: Bool {
@@ -197,6 +284,9 @@ enum HeyBrocNativeScannerAPI {
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             return .failure(NSError(domain: "HeyBroc", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from HeyBroc scanner."]))
         }
+        if let issuedSecret = obj["issuedDeviceSecret"] as? String, !issuedSecret.isEmpty {
+            HeyBrocSharedPrefs.deviceSecret = issuedSecret
+        }
         let ok = (obj["ok"] as? Bool) ?? false
         if !ok {
             let msg = (obj["error"] as? String) ?? "Could not match this grocery item yet. Try capturing the product title or ingredients."
@@ -303,6 +393,9 @@ enum HeyBrocNativeScannerAPI {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("ios", forHTTPHeaderField: "X-HeyBroc-Platform")
         req.setValue("ios-app", forHTTPHeaderField: "X-Client-Platform")
+        if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
+            req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
+        }
 
         var payload: [String: Any] = [
             "store": store ?? HeyBrocSharedPrefs.activeStore,
@@ -313,6 +406,9 @@ enum HeyBrocNativeScannerAPI {
             "dietaryWatchlist": HeyBrocSharedPrefs.dietaryWatchlist,
             "preferStoreBrand": HeyBrocSharedPrefs.preferStoreBrand
         ]
+        if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
+            payload["deviceSecret"] = secret
+        }
         if !productTitle.isEmpty { payload["productTitle"] = String(productTitle.prefix(480)) }
         if !rawIngredients.isEmpty { payload["rawIngredients"] = String(rawIngredients.prefix(8000)) }
         if !rawText.isEmpty { payload["rawText"] = String(rawText.prefix(12000)) }
@@ -530,7 +626,10 @@ struct OpenLiveStoreBrowserIntent: AppIntent {
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        NotificationCenter.default.post(name: Notification.Name("HeyBrocOpenLiveShopNotification"), object: nil)
+        HeyBrocSharedPrefs.pendingOpenLiveShop = true
+        await MainActor.run {
+            NotificationCenter.default.post(name: Notification.Name("HeyBrocOpenLiveShopNotification"), object: nil)
+        }
         return .result()
     }
 }

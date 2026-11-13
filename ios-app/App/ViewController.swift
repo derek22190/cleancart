@@ -48,6 +48,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         config.userContentController.addUserScript(
             WKUserScript(source: nativeFlagsJS, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
+        config.userContentController.addUserScript(
+            WKUserScript(
+                source: buildPrefsSeedJS(dispatchEvent: false),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
         config.userContentController.add(self, name: "controller")
         config.userContentController.add(self, name: "heybrocNative")
 
@@ -94,8 +101,24 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self = self, self.presentedViewController == nil else { return }
-            self.presentLiveStoreBrowser()
+            guard let self = self else { return }
+            _ = HeyBrocSharedPrefs.consumePendingOpenLiveShop()
+            if self.presentedViewController is LiveStoreBrowserViewController { return }
+            if let presented = self.presentedViewController {
+                presented.dismiss(animated: false) {
+                    self.presentLiveStoreBrowser()
+                }
+            } else {
+                self.presentLiveStoreBrowser()
+            }
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if HeyBrocSharedPrefs.consumePendingOpenLiveShop(),
+           !(presentedViewController is LiveStoreBrowserViewController) {
+            presentLiveStoreBrowser()
         }
     }
 
@@ -299,16 +322,58 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
-    private func syncNativePrefsToWebView() {
-        guard let data = try? JSONSerialization.data(withJSONObject: HeyBrocSharedPrefs.dietaryWatchlist, options: []),
-              let jsonStr = String(data: data, encoding: .utf8) else { return }
-        let escaped = jsonStr.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
-        let js = """
-        try {
-          localStorage.setItem('heybroc_dietary_watchlist', '\(escaped)');
-          window.dispatchEvent(new Event('storage'));
-        } catch (_) {}
+    private func jsEscapeSingleQuoted(_ raw: String) -> String {
+        return raw
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "")
+    }
+
+    private func buildPrefsSeedJS(dispatchEvent: Bool, forceOverwriteWatchlist: Bool = false) -> String {
+        let dietaryData = (try? JSONSerialization.data(withJSONObject: HeyBrocSharedPrefs.dietaryWatchlist, options: [])) ?? Data("[]".utf8)
+        let familyData = (try? JSONSerialization.data(withJSONObject: HeyBrocSharedPrefs.familyWatchlist, options: [])) ?? Data("[\"seedOils\",\"dyes\",\"hfcs\"]".utf8)
+        let dietaryJSON = jsEscapeSingleQuoted(String(data: dietaryData, encoding: .utf8) ?? "[]")
+        let familyJSON = jsEscapeSingleQuoted(String(data: familyData, encoding: .utf8) ?? "[\"seedOils\",\"dyes\",\"hfcs\"]")
+        let devId = jsEscapeSingleQuoted(HeyBrocSharedPrefs.deviceId)
+        let devSec = jsEscapeSingleQuoted(HeyBrocSharedPrefs.deviceSecret ?? "")
+        let storeVal = jsEscapeSingleQuoted(HeyBrocSharedPrefs.activeStore)
+        let preferSB = HeyBrocSharedPrefs.preferStoreBrand ? "true" : "false"
+        let shouldWritePrefs = (forceOverwriteWatchlist || HeyBrocSharedPrefs.hasSavedPreferences) ? "true" : "false"
+        let fireEvt = dispatchEvent ? "true" : "false"
+
+        return """
+        (function() {
+          try {
+            if ('\(devId)'.length >= 8) {
+              localStorage.setItem('heybroc_device_id', '\(devId)');
+            }
+            if ('\(devSec)'.length > 0) {
+              localStorage.setItem('heybroc_device_secret', '\(devSec)');
+            }
+            if (\(shouldWritePrefs) || localStorage.getItem('heybroc_dietary_watchlist') === null) {
+              localStorage.setItem('heybroc_dietary_watchlist', '\(dietaryJSON)');
+            }
+            if (\(shouldWritePrefs) || localStorage.getItem('heybroc_family_watchlist') === null) {
+              localStorage.setItem('heybroc_family_watchlist', '\(familyJSON)');
+            }
+            if (\(shouldWritePrefs) || localStorage.getItem('heybroc_prefer_store_brand') === null) {
+              localStorage.setItem('heybroc_prefer_store_brand', '\(preferSB)');
+            }
+            if (\(shouldWritePrefs) || localStorage.getItem('heybroc_preferred_store') === null) {
+              localStorage.setItem('heybroc_preferred_store', '\(storeVal)');
+            }
+            if (\(fireEvt)) {
+              window.dispatchEvent(new Event('heybroc-native-prefs'));
+              window.dispatchEvent(new Event('storage'));
+            }
+          } catch (_) {}
+        })();
         """
+    }
+
+    private func syncNativePrefsToWebView(forceOverwrite: Bool = true) {
+        let js = buildPrefsSeedJS(dispatchEvent: true, forceOverwriteWatchlist: forceOverwrite)
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
@@ -316,7 +381,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let browser = LiveStoreBrowserViewController(
             initialStoreKey: initialStoreKey,
             onPreferencesUpdated: { [weak self] in
-                self?.syncNativePrefsToWebView()
+                self?.syncNativePrefsToWebView(forceOverwrite: true)
             }
         )
         browser.modalPresentationStyle = .fullScreen
@@ -397,7 +462,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let action: String
         if let str = message.body as? String {
             action = str
-        } else if let dict = message.body as? [String: Any], let cmd = dict["action"] as? String {
+        } else if let dict = message.body as? [String: Any], let cmd = (dict["action"] as? String) ?? (dict["type"] as? String) {
             action = cmd
             payloadDict = dict
         } else {
@@ -428,6 +493,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
             if let activeStore = payloadDict?["store"] as? String, !activeStore.isEmpty {
                 HeyBrocSharedPrefs.activeStore = activeStore
+            }
+            if let devSec = payloadDict?["deviceSecret"] as? String, !devSec.isEmpty {
+                HeyBrocSharedPrefs.deviceSecret = devSec
             }
         case "open-barcode-scanner":
             presentBarcodeScanner()
@@ -635,6 +703,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         hideLoadingOverlay()
+        if HeyBrocSharedPrefs.hasSavedPreferences {
+            syncNativePrefsToWebView(forceOverwrite: true)
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -668,7 +739,11 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             } else if host == "safari" {
                 presentSafariSetupSheet()
             } else if host == "liveshop" {
-                presentLiveStoreBrowser()
+                let storeKey = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                    .queryItems?
+                    .first(where: { $0.name == "store" })?
+                    .value
+                presentLiveStoreBrowser(initialStoreKey: storeKey)
             } else if host == "barcode" {
                 presentBarcodeScanner()
             } else if host == "upgrade" || host == "pro" {

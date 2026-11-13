@@ -174,7 +174,7 @@ function detectIosAppClient(): boolean {
 
 function postIosBridgeMessage(
   handler: "controller" | "heybrocBridge" | "heybrocNative",
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown> | string,
 ): void {
   if (typeof window === "undefined") return;
   try {
@@ -1059,8 +1059,41 @@ export default function Simulator({
     setSelectedSwapIdx(0);
   }, []);
 
+  const [iosPrefsHydrated, setIosPrefsHydrated] = useState(false);
+
+  const launchIosLiveShop = useCallback(
+    (targetStore?: string) => {
+      const chosenStore = targetStore || store || "walmart";
+      const win = window as unknown as {
+        webkit?: {
+          messageHandlers?: {
+            controller?: { postMessage?: (msg: unknown) => void };
+            heybrocNative?: { postMessage?: (msg: unknown) => void };
+          };
+        };
+      };
+      if (typeof win.webkit?.messageHandlers?.controller?.postMessage === "function") {
+        win.webkit.messageHandlers.controller.postMessage({
+          action: "open-live-shop",
+          store: chosenStore,
+        });
+      } else if (typeof win.webkit?.messageHandlers?.heybrocNative?.postMessage === "function") {
+        win.webkit.messageHandlers.heybrocNative.postMessage({
+          action: "openStoreBrowser",
+          store: chosenStore,
+        });
+      } else {
+        setToast({
+          title: "Open Live Shop in HeyBroc iOS App",
+          body: "Tap 🛒 Live Shop on the bottom bar of the HeyBroc iPhone app to browse Walmart, Instacart, Target & Amazon with the floating 0–100 bubble.",
+        });
+      }
+    },
+    [store],
+  );
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!iosPrefsHydrated || typeof window === "undefined") return;
     const iosBridge = (
       window as unknown as {
         webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: unknown) => void } } };
@@ -1074,12 +1107,47 @@ export default function Simulator({
           familyWatchlist,
           preferStoreBrand,
           store,
+          deviceSecret: window.localStorage.getItem("heybroc_device_secret") || undefined,
         });
       } catch {
         /* ignore bridge errors */
       }
     }
-  }, [dietaryWatchlist, familyWatchlist, preferStoreBrand, store]);
+  }, [iosPrefsHydrated, dietaryWatchlist, familyWatchlist, preferStoreBrand, store]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNativePrefsPush = () => {
+      try {
+        const rawDiet = window.localStorage.getItem("heybroc_dietary_watchlist");
+        if (rawDiet) {
+          const parsedDiet = JSON.parse(rawDiet) as unknown;
+          if (Array.isArray(parsedDiet)) {
+            setDietaryWatchlist(parsedDiet as DietaryOptionId[]);
+          }
+        }
+        const rawFam = window.localStorage.getItem("heybroc_family_watchlist");
+        if (rawFam) {
+          const parsedFam = JSON.parse(rawFam) as unknown;
+          if (Array.isArray(parsedFam)) {
+            setFamilyWatchlist(parsedFam as Category[]);
+          }
+        }
+        const rawSb = window.localStorage.getItem("heybroc_prefer_store_brand");
+        if (rawSb !== null) {
+          setPreferStoreBrand(rawSb === "1" || rawSb === "true");
+        }
+        const rawSt = (window.localStorage.getItem("heybroc_preferred_store") || "").trim();
+        if (rawSt && (STORES as readonly string[]).includes(rawSt)) {
+          setStore(rawSt as Store);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("heybroc-native-prefs", handleNativePrefsPush);
+    return () => window.removeEventListener("heybroc-native-prefs", handleNativePrefsPush);
+  }, []);
 
   const requestProUpgrade = useCallback(() => {
     if (isIosAppClient || detectIosAppClient()) {
@@ -1190,7 +1258,6 @@ export default function Simulator({
         } catch {
           /* ignore */
         }
-
         // Clear legacy unverified flag so forged localStorage cannot unlock Pro
         window.localStorage.removeItem("heybroc_pro");
         const params = new URLSearchParams(window.location.search);
@@ -1211,6 +1278,9 @@ export default function Simulator({
           urlStoreParam && (STORES as string[]).includes(urlStoreParam) ? (urlStoreParam as Store) : undefined;
         if (validUrlStore && !cancelled) {
           setStore(validUrlStore);
+        }
+        if (!cancelled) {
+          setIosPrefsHydrated(true);
         }
         const sharedParts = [
           params.get("share"),
@@ -2954,20 +3024,7 @@ export default function Simulator({
                             className="topbar-dropdown-item"
                             onClick={() => {
                               setTopMenuOpen(false);
-                              const iosBridge = (
-                                window as unknown as {
-                                  webkit?: {
-                                    messageHandlers?: {
-                                      controller?: { postMessage?: (msg: string) => void };
-                                    };
-                                  };
-                                }
-                              ).webkit?.messageHandlers?.controller;
-                              if (typeof iosBridge?.postMessage === "function") {
-                                iosBridge.postMessage("open-live-shop");
-                              } else {
-                                postIosBridgeMessage("heybrocNative", { action: "openStoreBrowser" });
-                              }
+                              launchIosLiveShop();
                             }}
                           >
                             <span className="topbar-dropdown-label">
@@ -2994,7 +3051,7 @@ export default function Simulator({
                               if (typeof iosBridge?.postMessage === "function") {
                                 iosBridge.postMessage("open-safari-setup");
                               } else {
-                                window.location.href = "/tools#mobile-setup";
+                                window.location.href = "/tools?platform=ios#mobile-setup";
                               }
                             }}
                           >
@@ -3031,6 +3088,141 @@ export default function Simulator({
       <main className={`layout ${adTestMode ? "layout--ad-test" : ""} ${adTestMode && !freeTestCompleted ? "is-ad-test-step1" : ""}`.trim()}>
         {/* ============ CONTROL PANEL ============ */}
         <section className="controls" aria-label="Store and product controls">
+          {(isIosApp || isIosAppClient) && (
+            <div
+              id="ios-live-grocery-bar"
+              className="card"
+              style={{
+                border: "2px solid #0f7a4a",
+                background: "linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)",
+                padding: 15,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                <span className="eyebrow eyebrow--green" style={{ margin: 0 }}>
+                  🛒 LIVE GROCERY BROWSER + FLOATING PILL
+                </span>
+              </div>
+              <h2 style={{ fontSize: 17, lineHeight: 1.25, margin: "0 0 5px", color: "#0b2418" }}>
+                Shop Real Stores Inside HeyBroc
+              </h2>
+              <p className="meta" style={{ fontSize: 12.5, marginBottom: 11, color: "#334155", lineHeight: 1.4 }}>
+                Open Walmart, Instacart, Target, or Amazon right inside HeyBroc — our live 0–100 bubble scores every item and unlocks Clean Swaps as you browse.
+              </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 7,
+                  marginBottom: 8,
+                }}
+              >
+                <button
+                  id="ios-shop-walmart"
+                  type="button"
+                  onClick={() => launchIosLiveShop("walmart")}
+                  style={{
+                    gridColumn: "1 / -1",
+                    padding: "11px 14px",
+                    borderRadius: 11,
+                    border: "none",
+                    background: "#0f7a4a",
+                    color: "#ffffff",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(15, 122, 74, 0.22)",
+                  }}
+                >
+                  🛒 Shop Walmart Live (with Floating Score Bubble)
+                </button>
+                <button
+                  id="ios-shop-instacart"
+                  type="button"
+                  onClick={() => launchIosLiveShop("instacart")}
+                  style={{
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#0f172a",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  🥕 Instacart Live
+                </button>
+                <button
+                  id="ios-shop-target"
+                  type="button"
+                  onClick={() => launchIosLiveShop("target")}
+                  style={{
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#0f172a",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  🎯 Target Live
+                </button>
+                <button
+                  id="ios-shop-amazon"
+                  type="button"
+                  onClick={() => launchIosLiveShop("amazon")}
+                  style={{
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#0f172a",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  📦 Amazon / WFM
+                </button>
+                <button
+                  id="ios-open-pill-setup"
+                  type="button"
+                  onClick={() => {
+                    const iosBridge = (
+                      window as unknown as {
+                        webkit?: {
+                          messageHandlers?: {
+                            controller?: { postMessage?: (msg: string) => void };
+                          };
+                        };
+                      }
+                    ).webkit?.messageHandlers?.controller;
+                    if (typeof iosBridge?.postMessage === "function") {
+                      iosBridge.postMessage("open-safari-setup");
+                    } else {
+                      window.location.href = "/tools?platform=ios#mobile-setup";
+                    }
+                  }}
+                  style={{
+                    padding: "9px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #bbf7d0",
+                    background: "#f0fdf4",
+                    color: "#14532d",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  ⚡ Safari &amp; Share Pill
+                </button>
+              </div>
+            </div>
+          )}
+
           {adTestMode && (
             <div
               id="ad-free-test-hero"

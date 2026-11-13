@@ -100,16 +100,16 @@ function inferBucketFromTabUrl(rawUrl) {
       }
       return { bucketKey: "instacart", label: "Instacart" };
     }
-    if (h.includes("wholefoods")) return { bucketKey: "wholefoods", label: "Whole Foods" };
+    if (h.includes("wholefoods")) return { bucketKey: "amazon:wholefoods", label: "Whole Foods" };
     if (h.includes("amazon")) {
       const full = `${p}${u.search}`.toLowerCase();
-      if (full.includes("wholefoods") || full.includes("vufhifdob2xliezvb2rz")) {
-        return { bucketKey: "wholefoods", label: "Whole Foods" };
+      if (full.includes("wholefoods") || full.includes("dob2xliezvb2rz")) {
+        return { bucketKey: "amazon:wholefoods", label: "Whole Foods" };
       }
       if (full.includes("amazonfresh") || full.includes("/alm/") || full.includes("almbrandid=")) {
-        return { bucketKey: "amazon_fresh", label: "Amazon Fresh" };
+        return { bucketKey: "amazon:fresh", label: "Amazon Fresh" };
       }
-      return { bucketKey: "amazon", label: "Amazon" };
+      return { bucketKey: "amazon:core", label: "Amazon" };
     }
     if (h.includes("doordash")) {
       const m = p.match(/\/(?:convenience|grocery|retail)?\/?store\/([^/?#]+)/i);

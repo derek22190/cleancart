@@ -14,6 +14,8 @@ final class ShareViewController: UIViewController {
 
     private var extractedTitleAndUrl: String = ""
     private var extractedOCRText: String = ""
+    private var inferredStore: String?
+    private var inferredInstacartRetailerSlug: String?
     private var currentSwapURL: URL?
 
     private var sharedDefaults: UserDefaults {
@@ -24,11 +26,14 @@ final class ShareViewController: UIViewController {
         get {
             return sharedDefaults.stringArray(forKey: "heybroc_dietary_watchlist")
                 ?? UserDefaults.standard.stringArray(forKey: "heybroc_dietary_watchlist")
+                ?? sharedDefaults.stringArray(forKey: "dietary_watchlist")
                 ?? []
         }
         set {
             sharedDefaults.set(newValue, forKey: "heybroc_dietary_watchlist")
+            sharedDefaults.set(newValue, forKey: "dietary_watchlist")
             UserDefaults.standard.set(newValue, forKey: "heybroc_dietary_watchlist")
+            UserDefaults.standard.set(newValue, forKey: "dietary_watchlist")
         }
     }
 
@@ -292,11 +297,13 @@ final class ShareViewController: UIViewController {
             guard let self = self else { return }
             let joinedText = collectedTexts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
             let urlStr = collectedURL?.absoluteString ?? ""
+            self.inferStoreContext(from: collectedURL, text: joinedText)
 
             if let image = collectedImage, joinedText.isEmpty && urlStr.isEmpty {
                 self.statusLabel.text = "Reading screenshot ingredients & title…"
                 self.recognizeTextFromSharedImage(image) { ocr in
                     self.extractedOCRText = ocr
+                    self.inferStoreContext(from: nil, text: ocr)
                     self.runScanRequest()
                 }
                 return
@@ -317,6 +324,47 @@ final class ShareViewController: UIViewController {
                 self.extractedTitleAndUrl = combined
                 self.runScanRequest()
             }
+        }
+    }
+
+    private func inferStoreContext(from url: URL?, text: String) {
+        if let u = url, let h = u.host?.lowercased() {
+            let p = u.path.lowercased()
+            if h.contains("walmart") { inferredStore = "walmart"; return }
+            if h.contains("target") { inferredStore = "target"; return }
+            if h.contains("wholefoods") { inferredStore = "wholefoods"; return }
+            if h.contains("amazon") || h == "a.co" || h == "amzn.to" { inferredStore = "amazon"; return }
+            if h.contains("costco") { inferredStore = "costco"; return }
+            if h.contains("kroger") { inferredStore = "kroger"; return }
+            if h.contains("aldi") { inferredStore = "aldi"; return }
+            if h.contains("samsclub") { inferredStore = "sams"; return }
+            if h.contains("bjs") { inferredStore = "bjs"; return }
+            if h.contains("doordash") { inferredStore = "doordash"; return }
+            if h.contains("ubereats") { inferredStore = "ubereats"; return }
+            if h.contains("shipt") { inferredStore = "shipt"; return }
+            if h.contains("instacart") {
+                inferredStore = "instacart"
+                if let rx = try? NSRegularExpression(pattern: #"/store/([a-z0-9_-]+)"#, options: .caseInsensitive),
+                   let m = rx.firstMatch(in: p, range: NSRange(p.startIndex..., in: p)),
+                   let r = Range(m.range(at: 1), in: p) {
+                    let slug = String(p[r])
+                    let reserved: Set<String> = ["s", "search", "cart", "checkout", "account", "hub", "items", "products", "store", "stores"]
+                    if !reserved.contains(slug) {
+                        inferredInstacartRetailerSlug = slug
+                    }
+                }
+                return
+            }
+        }
+        let lower = text.lowercased()
+        if inferredStore == nil {
+            if lower.contains("walmart.com") { inferredStore = "walmart" }
+            else if lower.contains("target.com") { inferredStore = "target" }
+            else if lower.contains("instacart.com") { inferredStore = "instacart" }
+            else if lower.contains("amazon.com") || lower.contains("a.co/") { inferredStore = "amazon" }
+            else if lower.contains("costco.com") { inferredStore = "costco" }
+            else if lower.contains("kroger.com") { inferredStore = "kroger" }
+            else if lower.contains("aldi.us") { inferredStore = "aldi" }
         }
     }
 
@@ -410,14 +458,25 @@ final class ShareViewController: UIViewController {
             ? sharedDefaults.bool(forKey: "heybroc_prefer_store_brand")
             : sharedDefaults.bool(forKey: "prefer_store_brand")
 
+        let activeStore = inferredStore
+            ?? sharedDefaults.string(forKey: "heybroc_active_store")
+            ?? "walmart"
+        let familyList = sharedDefaults.stringArray(forKey: "heybroc_family_watchlist")
+            ?? sharedDefaults.stringArray(forKey: "family_watchlist")
+            ?? ["seedOils", "dyes", "hfcs"]
+
         var body: [String: Any] = [
+            "store": activeStore,
             "surface": "extension",
             "clientPlatform": "ios-share",
             "deviceId": creds.deviceId,
             "preferStoreBrand": preferStoreBrand,
             "dietaryWatchlist": dietaryWatchlist,
-            "familyWatchlist": sharedDefaults.stringArray(forKey: "heybroc_family_watchlist") ?? ["seedOils", "dyes", "hfcs"]
+            "familyWatchlist": familyList
         ]
+        if let slug = inferredInstacartRetailerSlug, !slug.isEmpty {
+            body["instacartRetailerSlug"] = slug
+        }
         if let secret = creds.deviceSecret, !secret.isEmpty {
             body["deviceSecret"] = secret
         }
@@ -623,6 +682,13 @@ final class ShareViewController: UIViewController {
                 btn.heightAnchor.constraint(equalToConstant: 46).isActive = true
                 btn.addTarget(self, action: #selector(tapOpenSwapURL), for: .touchUpInside)
                 swapCard.addArrangedSubview(btn)
+            } else {
+                let lockedLbl = UILabel()
+                lockedLbl.text = "🔒 Weekly free swap links used — open HeyBroc to sign in or unlock Pro."
+                lockedLbl.font = UIFont.systemFont(ofSize: 12.5, weight: .bold)
+                lockedLbl.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
+                lockedLbl.numberOfLines = 0
+                swapCard.addArrangedSubview(lockedLbl)
             }
             contentStack.addArrangedSubview(swapCard)
         }

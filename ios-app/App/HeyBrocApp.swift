@@ -117,12 +117,15 @@ final class HeyBrocPreferencesStore: ObservableObject {
         }
         self.deviceId = existingDeviceId
         self.deviceSecret = store.string(forKey: "heybroc_device_secret")
-        self.dietaryWatchlist = Set(store.stringArray(forKey: "dietary_watchlist") ?? [])
-        self.familyWatchlist = Set(store.stringArray(forKey: "family_watchlist") ?? ["dyes", "seedOils", "hfcs"])
-        if store.object(forKey: "family_watchlist") == nil {
-            store.set(["dyes", "seedOils", "hfcs"], forKey: "family_watchlist")
+        self.dietaryWatchlist = Set(store.stringArray(forKey: "heybroc_dietary_watchlist") ?? store.stringArray(forKey: "dietary_watchlist") ?? [])
+        self.familyWatchlist = Set(store.stringArray(forKey: "heybroc_family_watchlist") ?? store.stringArray(forKey: "family_watchlist") ?? ["dyes", "seedOils", "hfcs"])
+        if store.object(forKey: "heybroc_family_watchlist") == nil {
+            store.set(Array(self.familyWatchlist).sorted(), forKey: "heybroc_family_watchlist")
+            store.set(Array(self.familyWatchlist).sorted(), forKey: "family_watchlist")
         }
-        self.preferStoreBrand = store.bool(forKey: "prefer_store_brand")
+        self.preferStoreBrand = store.object(forKey: "heybroc_prefer_store_brand") != nil
+            ? store.bool(forKey: "heybroc_prefer_store_brand")
+            : store.bool(forKey: "prefer_store_brand")
         self.safariExtensionChecked = store.bool(forKey: "safari_ext_checked")
         self.shareSheetChecked = store.bool(forKey: "share_sheet_checked")
 
@@ -140,7 +143,9 @@ final class HeyBrocPreferencesStore: ObservableObject {
         } else {
             dietaryWatchlist.insert(id)
         }
-        defaults.set(Array(dietaryWatchlist).sorted(), forKey: "dietary_watchlist")
+        let sorted = Array(dietaryWatchlist).sorted()
+        defaults.set(sorted, forKey: "heybroc_dietary_watchlist")
+        defaults.set(sorted, forKey: "dietary_watchlist")
     }
 
     func toggleFamily(_ id: String) {
@@ -149,11 +154,14 @@ final class HeyBrocPreferencesStore: ObservableObject {
         } else {
             familyWatchlist.insert(id)
         }
-        defaults.set(Array(familyWatchlist).sorted(), forKey: "family_watchlist")
+        let sorted = Array(familyWatchlist).sorted()
+        defaults.set(sorted, forKey: "heybroc_family_watchlist")
+        defaults.set(sorted, forKey: "family_watchlist")
     }
 
     func setPreferStoreBrand(_ enabled: Bool) {
         preferStoreBrand = enabled
+        defaults.set(enabled, forKey: "heybroc_prefer_store_brand")
         defaults.set(enabled, forKey: "prefer_store_brand")
     }
 

@@ -142,5 +142,33 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "CLEANCART_LABEL_REPORT") {
+    (async () => {
+      try {
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
+        const res = await fetch(`${apiBase}/api/label-report`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Secret": deviceSecret,
+          },
+          body: JSON.stringify({
+            ...msg.payload,
+            watchlist,
+            familyWatchlist,
+            dietaryWatchlist,
+            ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+            deviceId,
+          }),
+        });
+        const data = await res.json();
+        sendResponse(data);
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
   return false;
 });

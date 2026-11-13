@@ -19,6 +19,7 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             deviceId = "ios-safari-\(UUID().uuidString.lowercased())"
             defaults.set(deviceId, forKey: "heybroc_device_id")
         }
+        let deviceSecret = defaults.string(forKey: "heybroc_device_secret") ?? ""
 
         var action = "getSharedPreferences"
         var payloadDict: [String: Any] = [:]
@@ -35,21 +36,30 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
         if action == "setSharedPreferences" || action == "updateWatchlist" {
             if let dietary = payloadDict["dietaryWatchlist"] as? [String] {
+                defaults.set(dietary, forKey: "heybroc_dietary_watchlist")
                 defaults.set(dietary, forKey: "dietary_watchlist")
             }
             if let family = payloadDict["familyWatchlist"] as? [String] {
+                defaults.set(family, forKey: "heybroc_family_watchlist")
                 defaults.set(family, forKey: "family_watchlist")
             }
             if let preferStore = payloadDict["preferStoreBrand"] as? Bool {
+                defaults.set(preferStore, forKey: "heybroc_prefer_store_brand")
                 defaults.set(preferStore, forKey: "prefer_store_brand")
             }
         }
 
-        let dietaryWatchlist = defaults.stringArray(forKey: "dietary_watchlist") ?? []
-        let familyWatchlist = defaults.stringArray(forKey: "family_watchlist") ?? []
-        let preferStoreBrand = defaults.bool(forKey: "prefer_store_brand")
+        let dietaryWatchlist = defaults.stringArray(forKey: "heybroc_dietary_watchlist")
+            ?? defaults.stringArray(forKey: "dietary_watchlist")
+            ?? []
+        let familyWatchlist = defaults.stringArray(forKey: "heybroc_family_watchlist")
+            ?? defaults.stringArray(forKey: "family_watchlist")
+            ?? ["seedOils", "dyes", "hfcs"]
+        let preferStoreBrand = defaults.object(forKey: "heybroc_prefer_store_brand") != nil
+            ? defaults.bool(forKey: "heybroc_prefer_store_brand")
+            : defaults.bool(forKey: "prefer_store_brand")
 
-        let replyPayload: [String: Any] = [
+        var replyPayload: [String: Any] = [
             "ok": true,
             "action": action,
             "surface": "extension",
@@ -59,6 +69,9 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             "familyWatchlist": familyWatchlist,
             "preferStoreBrand": preferStoreBrand
         ]
+        if !deviceSecret.isEmpty {
+            replyPayload["deviceSecret"] = deviceSecret
+        }
 
         let response = NSExtensionItem()
         response.userInfo = [SFExtensionMessageKey: replyPayload]
