@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "HeyBroc",
   "short_name": "HeyBroc",
-  "version": "2.2.0",
+  "version": "2.1.0",
   "description": "Automatic 0-100 ingredient scores and 1-tap Clean Swaps across online grocery stores.",
   "icons": {
     "16": "broc-mascot.png",
