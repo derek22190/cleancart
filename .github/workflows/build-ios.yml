@@ -91,6 +91,33 @@ jobs:
               shutil.copy2("ios-app/SafariExtension/SafariWebExtensionHandler.swift", hf)
               print(f"Injected SafariWebExtensionHandler.swift -> {hf}")
 
+          # 2c. Wire SceneDelegate.swift to forward incoming heybroc:// URLs (e.g. from Safari Extension) to ViewController
+          scene_delegate_src = "\n".join([
+              "import UIKit",
+              "",
+              "class SceneDelegate: UIResponder, UIWindowSceneDelegate {",
+              "    var window: UIWindow?",
+              "",
+              "    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {",
+              "        guard let _ = (scene as? UIWindowScene) else { return }",
+              "        if let url = connectionOptions.urlContexts.first?.url {",
+              "            UserDefaults.standard.set(url.absoluteString, forKey: \"heybroc_pending_incoming_url\")",
+              "            NotificationCenter.default.post(name: Notification.Name(\"HeyBrocIncomingURL\"), object: url)",
+              "        }",
+              "    }",
+              "",
+              "    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {",
+              "        guard let url = URLContexts.first?.url else { return }",
+              "        UserDefaults.standard.set(url.absoluteString, forKey: \"heybroc_pending_incoming_url\")",
+              "        NotificationCenter.default.post(name: Notification.Name(\"HeyBrocIncomingURL\"), object: url)",
+              "    }",
+              "}",
+              "",
+          ])
+          for sd in build_root.rglob("SceneDelegate.swift"):
+              sd.write_text(scene_delegate_src)
+              print(f"Configured heybroc:// SceneDelegate router -> {sd}")
+
           # 3. Copy Apple Privacy Manifest & crisp 1024x1024 App Icon
           shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", build_root / "PrivacyInfo.xcprivacy")
           for vc in vc_files:
@@ -192,6 +219,7 @@ jobs:
 
           app_target = project.targets.find { |t| t.product_type == 'com.apple.product-type.application' }
           raise 'Host application target not found in generated Xcode project' unless app_target
+          safari_ext_target = project.targets.find { |t| t != app_target && t.product_type&.include?('app-extension') }
 
           vc_ref = project.files.find { |f| f.path&.end_with?('ViewController.swift') }
           raise 'ViewController.swift file reference not found' unless vc_ref
@@ -220,7 +248,7 @@ jobs:
 
           # Add Sign in with Apple entitlement for ASAuthorizationAppleIDProvider (Guideline 4.8)
           entitlements_path = 'ios-app/build/HeyBroc/HeyBroc.entitlements'
-          File.write(entitlements_path, <<~PLIST)
+          apple_signin_only_plist = <<~PLIST
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             <plist version="1.0">
@@ -232,6 +260,8 @@ jobs:
             </dict>
             </plist>
           PLIST
+          File.write(entitlements_path, apple_signin_only_plist)
+          File.write("#{entitlements_path}.no-group", apple_signin_only_plist)
           app_target.build_configurations.each do |cfg|
             cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'HeyBroc.entitlements'
           end
@@ -275,7 +305,49 @@ jobs:
           build_file.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy', 'CodeSignOnCopy'] }
 
           project.save
-          puts "Added HeyBrocShare.appex (com.heybroc.app.ShareExtension) to #{app_target.name}"
+          FileUtils.cp("#{proj_path}/project.pbxproj", "#{proj_path}/project.pbxproj.with-share-no-group")
+          puts "Added HeyBrocShare.appex and saved fallback project.pbxproj.with-share-no-group"
+
+          # Primary Tier: Shared App Group (group.com.heybroc.app) across Host App + SafariExtension + HeyBrocShare
+          ext_group_plist = <<~PLIST
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>com.apple.security.application-groups</key>
+              <array>
+                <string>group.com.heybroc.app</string>
+              </array>
+            </dict>
+            </plist>
+          PLIST
+          File.write(entitlements_path, <<~PLIST)
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>com.apple.developer.applesignin</key>
+              <array>
+                <string>Default</string>
+              </array>
+              <key>com.apple.security.application-groups</key>
+              <array>
+                <string>group.com.heybroc.app</string>
+              </array>
+            </dict>
+            </plist>
+          PLIST
+          File.write('ios-app/build/HeyBroc/Extension.entitlements', ext_group_plist)
+          if safari_ext_target
+            safari_ext_target.build_configurations.each do |cfg|
+              cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'Extension.entitlements'
+            end
+          end
+          share_target.build_configurations.each do |cfg|
+            cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'Extension.entitlements'
+          end
+          project.save
+          puts "Configured App Group (group.com.heybroc.app) entitlements across Host App, SafariExtension, and HeyBrocShare"
           RUBY
 
       - name: Build unsigned iOS Release Archive (Verification)
@@ -330,8 +402,9 @@ jobs:
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
-            echo "::warning::App Store Connect API key could not auto-provision ShareExtension; re-archiving with Sign in with Apple + StoreKit 2 + LiveStoreBrowser."
-            cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.no-share" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
+            echo "::warning::App Group group.com.heybroc.app not yet enabled on all App IDs; re-archiving with ShareExtension + Sign in with Apple + StoreKit 2 + LiveStoreBrowser."
+            cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.with-share-no-group" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
+            cp "ios-app/build/HeyBroc/HeyBroc.entitlements.no-group" "ios-app/build/HeyBroc/HeyBroc.entitlements"
             rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
             xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
               -scheme "HeyBroc" \
@@ -342,6 +415,8 @@ jobs:
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGN_IDENTITY="" \
               archive
+          fi
+          if [ ! -f "ios-app/build/ipa/HeyBroc.ipa" ]; then
             if ! xcodebuild -exportArchive \
               -archivePath "ios-app/build/HeyBroc.xcarchive" \
               -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
@@ -350,6 +425,27 @@ jobs:
               -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
               -authenticationKeyID "$ASC_KEY_ID" \
               -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
+              echo "::warning::App Store Connect API key could not auto-provision ShareExtension; re-archiving with Sign in with Apple + StoreKit 2 + LiveStoreBrowser."
+              cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.no-share" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
+              cp "ios-app/build/HeyBroc/HeyBroc.entitlements.no-group" "ios-app/build/HeyBroc/HeyBroc.entitlements"
+              rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
+              xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
+                -scheme "HeyBroc" \
+                -sdk iphoneos \
+                -configuration Release \
+                -archivePath "ios-app/build/HeyBroc.xcarchive" \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY="" \
+                archive
+              if ! xcodebuild -exportArchive \
+                -archivePath "ios-app/build/HeyBroc.xcarchive" \
+                -exportOptionsPlist "ios-app/build/ExportOptions.plist" \
+                -exportPath "ios-app/build/ipa" \
+                -allowProvisioningUpdates \
+                -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+                -authenticationKeyID "$ASC_KEY_ID" \
+                -authenticationKeyIssuerID "$ASC_ISSUER_ID"; then
               echo "::warning::Sign in with Apple capability not yet enabled on com.heybroc.app in Apple Developer Portal; re-archiving with StoreKit 2 + Web Apple OAuth fallback so TestFlight upload succeeds immediately."
               cp "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj.minimal" "ios-app/build/HeyBroc/HeyBroc.xcodeproj/project.pbxproj"
               rm -rf "ios-app/build/HeyBroc.xcarchive" "ios-app/build/ipa"
@@ -370,6 +466,7 @@ jobs:
                 -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
                 -authenticationKeyID "$ASC_KEY_ID" \
                 -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+              fi
             fi
           fi
           xcrun altool --upload-app \

@@ -19,7 +19,11 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             deviceId = "ios-safari-\(UUID().uuidString.lowercased())"
             defaults.set(deviceId, forKey: "heybroc_device_id")
         }
-        let deviceSecret = defaults.string(forKey: "heybroc_device_secret") ?? ""
+        var deviceSecret = defaults.string(forKey: "heybroc_device_secret") ?? ""
+        if deviceSecret.isEmpty {
+            deviceSecret = "sec-\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+            defaults.set(deviceSecret, forKey: "heybroc_device_secret")
+        }
 
         var action = "getSharedPreferences"
         var payloadDict: [String: Any] = [:]
@@ -47,6 +51,17 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
                 defaults.set(preferStore, forKey: "heybroc_prefer_store_brand")
                 defaults.set(preferStore, forKey: "prefer_store_brand")
             }
+            if let sec = payloadDict["deviceSecret"] as? String, !sec.isEmpty {
+                deviceSecret = sec
+                defaults.set(sec, forKey: "heybroc_device_secret")
+            }
+            if let tok = payloadDict["authToken"] as? String {
+                if tok.isEmpty {
+                    defaults.removeObject(forKey: "heybroc_auth_token")
+                } else {
+                    defaults.set(tok, forKey: "heybroc_auth_token")
+                }
+            }
         }
 
         let dietaryWatchlist = defaults.stringArray(forKey: "heybroc_dietary_watchlist")
@@ -58,6 +73,8 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let preferStoreBrand = defaults.object(forKey: "heybroc_prefer_store_brand") != nil
             ? defaults.bool(forKey: "heybroc_prefer_store_brand")
             : defaults.bool(forKey: "prefer_store_brand")
+        let authToken = defaults.string(forKey: "heybroc_auth_token") ?? ""
+        let isPro = defaults.bool(forKey: "heybroc_is_pro")
 
         var replyPayload: [String: Any] = [
             "ok": true,
@@ -65,12 +82,14 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             "surface": "extension",
             "clientPlatform": "ios-safari",
             "deviceId": deviceId,
+            "deviceSecret": deviceSecret,
             "dietaryWatchlist": dietaryWatchlist,
             "familyWatchlist": familyWatchlist,
-            "preferStoreBrand": preferStoreBrand
+            "preferStoreBrand": preferStoreBrand,
+            "isPro": isPro
         ]
-        if !deviceSecret.isEmpty {
-            replyPayload["deviceSecret"] = deviceSecret
+        if !authToken.isEmpty {
+            replyPayload["authToken"] = authToken
         }
 
         let response = NSExtensionItem()

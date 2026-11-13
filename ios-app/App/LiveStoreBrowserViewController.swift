@@ -3,8 +3,16 @@ import WebKit
 
 struct HeyBrocLiveStoreConfig {
     let key: String
+    let apiStoreKey: String
     let label: String
     let homeURL: String
+
+    init(key: String, apiStoreKey: String? = nil, label: String, homeURL: String) {
+        self.key = key
+        self.apiStoreKey = apiStoreKey ?? key
+        self.label = label
+        self.homeURL = homeURL
+    }
 }
 
 final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
@@ -14,6 +22,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         HeyBrocLiveStoreConfig(key: "instacart", label: "Instacart", homeURL: "https://www.instacart.com"),
         HeyBrocLiveStoreConfig(key: "target", label: "Target", homeURL: "https://www.target.com/c/grocery/-/N-5xt1a"),
         HeyBrocLiveStoreConfig(key: "amazon", label: "Amazon Fresh", homeURL: "https://www.amazon.com/alm/storefront?almBrandId=QW1hem9uIEZyZXNo"),
+        HeyBrocLiveStoreConfig(key: "wholefoods", apiStoreKey: "amazon", label: "Whole Foods", homeURL: "https://www.amazon.com/alm/storefront?almBrandId=VUZHIFdob2xlIEZvb2Rz"),
         HeyBrocLiveStoreConfig(key: "costco", label: "Costco", homeURL: "https://www.costco.com/grocery-household.html"),
         HeyBrocLiveStoreConfig(key: "sams", label: "Sam's Club", homeURL: "https://www.samsclub.com/b/grocery/1444"),
         HeyBrocLiveStoreConfig(key: "kroger", label: "Kroger", homeURL: "https://www.kroger.com"),
@@ -24,7 +33,26 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         HeyBrocLiveStoreConfig(key: "ubereats", label: "Uber Eats", homeURL: "https://www.ubereats.com/category/grocery")
     ]
 
+    static func normalizeStoreKey(_ raw: String?) -> String {
+        let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch s {
+        case "samsclub", "sams_club", "sam's club":
+            return "sams"
+        case "whole_foods", "wholefoodsmarket", "amazon:wholefoods":
+            return "wholefoods"
+        case "amazon_fresh", "amazon:fresh", "amazon:core":
+            return "amazon"
+        case "uber_eats", "uber-eats":
+            return "ubereats"
+        case "bjs_wholesale", "bj's":
+            return "bjs"
+        default:
+            return s
+        }
+    }
+
     private let onPreferencesUpdated: (() -> Void)?
+    private let onUpgradePro: (() -> Void)?
     private var activeStore: HeyBrocLiveStoreConfig
     private var storeWebView: WKWebView!
     private var progressView: UIProgressView!
@@ -49,10 +77,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var scanGeneration: Int = 0
     private var progressObservation: NSKeyValueObservation?
 
-    init(initialStoreKey: String? = nil, onPreferencesUpdated: (() -> Void)? = nil) {
-        let targetKey = initialStoreKey ?? HeyBrocSharedPrefs.activeStore
+    init(
+        initialStoreKey: String? = nil,
+        onPreferencesUpdated: (() -> Void)? = nil,
+        onUpgradePro: (() -> Void)? = nil
+    ) {
+        let targetKey = Self.normalizeStoreKey(initialStoreKey ?? HeyBrocSharedPrefs.activeStore)
         self.activeStore = Self.stores.first(where: { $0.key == targetKey }) ?? Self.stores[0]
         self.onPreferencesUpdated = onPreferencesUpdated
+        self.onUpgradePro = onUpgradePro
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -98,15 +131,16 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         topRow.translatesAutoresizingMaskIntoConstraints = false
         topRow.axis = .horizontal
         topRow.alignment = .center
-        topRow.spacing = 8
+        topRow.spacing = 6
 
         let closeBtn = UIButton(type: .system)
         closeBtn.setTitle("✕ Scanner", for: .normal)
-        closeBtn.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
+        closeBtn.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .heavy)
         closeBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
         closeBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
         closeBtn.layer.cornerRadius = 10
-        closeBtn.contentEdgeInsets = UIEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
+        closeBtn.contentEdgeInsets = UIEdgeInsets(top: 7, left: 9, bottom: 7, right: 9)
+        closeBtn.setContentCompressionResistancePriority(.required, for: .horizontal)
         closeBtn.addTarget(self, action: #selector(tapClose), for: .touchUpInside)
 
         let backBtn = UIButton(type: .system)
@@ -115,21 +149,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         backBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
         backBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
         backBtn.layer.cornerRadius = 10
-        backBtn.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        backBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
         backBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
         backBtn.addTarget(self, action: #selector(tapNavBack), for: .touchUpInside)
 
         let titleLbl = UILabel()
         titleLbl.text = "🥦 Live Shop"
-        titleLbl.font = UIFont.systemFont(ofSize: 15, weight: .heavy)
+        titleLbl.font = UIFont.systemFont(ofSize: 14, weight: .heavy)
         titleLbl.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
         titleLbl.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        titleLbl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let pestBtn = UIButton(type: .system)
-        pestBtn.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .heavy)
+        pestBtn.titleLabel?.font = UIFont.systemFont(ofSize: 11.5, weight: .heavy)
         pestBtn.layer.cornerRadius = 10
         pestBtn.layer.borderWidth = 1
-        pestBtn.contentEdgeInsets = UIEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
+        pestBtn.contentEdgeInsets = UIEdgeInsets(top: 7, left: 8, bottom: 7, right: 8)
+        pestBtn.setContentCompressionResistancePriority(.required, for: .horizontal)
         pestBtn.addTarget(self, action: #selector(tapTogglePesticide), for: .touchUpInside)
         self.pesticideBtn = pestBtn
 
@@ -139,7 +175,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         reloadBtn.setTitleColor(UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0), for: .normal)
         reloadBtn.backgroundColor = UIColor(red: 0.945, green: 0.961, blue: 0.976, alpha: 1.0)
         reloadBtn.layer.cornerRadius = 10
-        reloadBtn.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        reloadBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
         reloadBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
         reloadBtn.addTarget(self, action: #selector(tapReload), for: .touchUpInside)
 
@@ -228,7 +264,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private func updatePesticideButtonStyle() {
         let on = HeyBrocSharedPrefs.isPesticideWatchEnabled
-        pesticideBtn.setTitle(on ? "🌱 Glyphosate/Pest: ON" : "🌱 Glyphosate/Pest: OFF", for: .normal)
+        pesticideBtn.setTitle(on ? "🌱 Pest: ON" : "🌱 Pest: OFF", for: .normal)
         if on {
             pesticideBtn.backgroundColor = UIColor(red: 0.925, green: 0.992, blue: 0.961, alpha: 1.0)
             pesticideBtn.setTitleColor(UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0), for: .normal)
@@ -252,7 +288,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (window.__heybrocLiveObserverInstalled) return;
           window.__heybrocLiveObserverInstalled = true;
 
-          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|deals|weekly\\s+ad)$/i;
+          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|deals|weekly\\s+ad|dairy\\s*&\\s*eggs|fresh\\s+produce|fruits?\\s*&\\s*vegetables?|meat\\s*&\\s*seafood|bakery(?:\\s*&\\s*bread)?|deli|frozen(?:\\s+foods?)?|pantry|snacks|beverages|household|personal\\s+care|all\\s+products|shop\\s+all)$/i;
           var EXCLUDED_CONTAINER_SEL = '[data-testid*="carousel" i], [class*="carousel" i], [aria-label*="Sponsored" i], [data-testid*="sponsored" i], [data-testid*="similar" i], [data-testid*="related" i], [data-testid*="upsell" i], [data-testid*="recommend" i], #sc-saved-cart';
           var EXCLUDED_HEADING_RE = /\\b(customers\\s+also\\s+(?:viewed|bought|shopped|considered)|similar\\s+items?|sponsored(?:\\s+products?|\\s+items?)?|buy\\s+(?:it\\s+)?again|frequently\\s+bought\\s+together|items?\\s+to\\s+add\\s+next|recommended(?:\\s+for\\s+you)?|you\\s+may\\s+also\\s+like|related\\s+(?:products?|items?)|more\\s+to\\s+consider|saved\\s+for\\s+later)\\b/i;
 
@@ -278,7 +314,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           function looksLikeProductUrl(url) {
             if (isCartUrl()) return false;
-            return /(\\/ip\\/|\\/dp\\/|\\/gp\\/product\\/|\\/gp\\/aw\\/d\\/|\\/p\\/|\\/products?\\/|\\/detail\\/ps\\/p\\/|\\/sams\\/shop\\/product\\/|\\/item\\/|\\.product\\.\\d+\\.html|[?&](?:item_id|product_id|productId)=|item-details|mod=quickView)/i.test(url);
+            var host = (location.hostname || '').toLowerCase();
+            var path = (location.pathname || '');
+            var search = (location.search || '');
+            if (host.indexOf('wholefoods') !== -1) {
+              return /\\/product\\//i.test(path);
+            }
+            if (host.indexOf('aldi.') !== -1) {
+              return /\\/product\\//i.test(path) || /\\/detail\\/ps\\/p\\//i.test(path) || (host.indexOf('shop.') === 0 && /\\/products\\//i.test(path));
+            }
+            if (host.indexOf('instacart') !== -1 || host.indexOf('shipt') !== -1 || host.indexOf('doordash') !== -1) {
+              return /\\/(?:products?|items?)\\//i.test(path) || /[?&](?:item_id|product_id|productId)=/i.test(search) || /item-details|mod=quickView/i.test(url);
+            }
+            return /(\\/ip\\/|\\/dp\\/|\\/gp\\/product\\/|\\/gp\\/aw\\/d\\/|\\/p\\/|\\/product\\/|\\/products\\/|\\/detail\\/ps\\/p\\/|\\/sams\\/shop\\/product\\/|\\/items?\\/|\\.product\\.\\d+\\.html|[?&](?:item_id|product_id|productId)=|item-details|mod=quickView)/i.test(url);
           }
 
           function isCartDrawer(el) {
@@ -306,17 +354,27 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           function findOpenProductModal() {
-            var nodes = document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-testid*="item-details" i], [data-testid*="quick-view" i], [data-testid*="modal" i], [data-anchor-id*="ItemModal" i]');
+            var sel = '[role="dialog"], [aria-modal="true"], [data-testid*="item-details" i], [data-testid*="quick-view" i], [data-testid*="modal" i], [data-anchor-id*="ItemModal" i]';
+            var rawNodes = Array.prototype.slice.call(document.querySelectorAll(sel));
+            var topDivs = document.querySelectorAll('body > div, body > aside, body > section, #__next > div');
+            for (var t = 0; t < topDivs.length; t++) {
+              var td = topDivs[t];
+              if (rawNodes.indexOf(td) !== -1) continue;
+              var st = window.getComputedStyle(td);
+              if (st && st.position === 'fixed' && (parseInt(st.zIndex, 10) || 0) >= 40) {
+                rawNodes.push(td);
+              }
+            }
             var best = null;
             var bestRank = 0;
-            for (var i = 0; i < nodes.length; i++) {
-              var d = nodes[i];
+            for (var i = 0; i < rawNodes.length; i++) {
+              var d = rawNodes[i];
               if (!isVisible(d) || isCartDrawer(d)) continue;
               var r = d.getBoundingClientRect();
               if (r.width < 260 || r.height < 220) continue;
               var meta = (d.id || '') + ' ' + (d.className || '') + ' ' + (d.getAttribute('aria-label') || '') + ' ' + (d.getAttribute('data-testid') || '');
               if (/\\b(cookie|consent|onetrust|gdpr|privacy|navbar|site-header|top-nav|search-dropdown|autocomplete|address-modal|store-selector|login|signin)\\b/i.test(meta)) continue;
-              var hd = d.querySelector('h1, h2, [data-testid*="product-title" i], [data-testid*="item-title" i]');
+              var hd = d.querySelector('h1, h2, h3, [role="heading"], [data-testid*="product-title" i], [data-testid*="item-title" i]');
               var ht = clean(hd ? hd.textContent : '');
               if (!ht || ht.length < 4 || NON_TITLE_RE.test(ht)) continue;
               var sample = (d.textContent || '').slice(0, 2500);
@@ -336,13 +394,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var sels = modalScope ? [
               '[data-testid*="item-details" i] h1',
               '[data-testid*="item-details" i] h2',
+              '[data-testid*="item-details" i] h3',
               '[data-anchor-id*="ItemModal" i] h1',
               '[data-anchor-id*="ItemModal" i] h2',
+              '[data-anchor-id*="ItemModal" i] h3',
               '[data-testid*="product-title" i]',
               '[data-testid*="product-name" i]',
               '[data-testid*="itemHeader" i]',
               'h1',
-              'h2'
+              'h2',
+              'h3',
+              '[role="heading"]'
             ] : [
               '[data-testid="product-page-title"]',
               'h1[data-automation-id*="product-title" i]',
@@ -396,7 +458,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var amzInfo = document.querySelector('#importantInformation_feature_div, #nic-po-expander-content');
               if (amzInfo) {
                 var amzTxt = (amzInfo.textContent || '').replace(/\\s+/g, ' ');
-                var amzMatch = amzTxt.match(/\\bIngredients\\s*:?\\s*([^]{12,1400})/i);
+                var amzMatch = amzTxt.match(/\\bIngredients\\s*:?\\s*([\\s\\S]{12,1400})/i);
                 if (amzMatch && amzMatch[1]) {
                   var candAmz = clean(amzMatch[1].split(stopRe)[0]);
                   if (candAmz.length >= 12 && candAmz.indexOf(',') !== -1) return candAmz;
@@ -408,7 +470,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             for (var i = 0; i < labels.length; i++) {
               var el = labels[i];
               if (isInsideExcluded(el, modalScope || document.body)) continue;
-              var own = el.childNodes.length <= 2 ? clean(el.textContent) : '';
+              var own = el.children.length <= 2 ? clean(el.textContent) : '';
               if (!/^ingredients\\s*:?$/i.test(own)) continue;
               var sib = el.nextElementSibling;
               for (var k = 0; k < 3 && sib; k++, sib = sib.nextElementSibling) {
@@ -474,7 +536,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (!title) {
                 var og = document.querySelector('meta[property="og:title"]');
                 if (og && og.content) {
-                  var ogClean = clean(og.content.replace(/\\s*[-|:]\\s*(Walmart|Target|Instacart|Amazon|Costco|Sam's Club|Kroger|ALDI|DoorDash|Uber Eats|Shipt).*$/i, ''));
+                  var ogClean = clean(og.content.replace(/\\s*[-|:]\\s*(Walmart|Target|Instacart|Amazon|Whole Foods Market|Costco|Sam's Club|Kroger|ALDI|BJ's|DoorDash|Uber Eats|Shipt).*$/i, ''));
                   if (ogClean && !NON_TITLE_RE.test(ogClean)) title = ogClean;
                 }
               }
@@ -697,7 +759,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         guard let key = sender.accessibilityIdentifier,
               let chosen = Self.stores.first(where: { $0.key == key }) else { return }
         activeStore = chosen
-        HeyBrocSharedPrefs.activeStore = chosen.key
+        HeyBrocSharedPrefs.activeStore = chosen.apiStoreKey
         onPreferencesUpdated?()
         updateStoreChipStyles()
         lastScannedKey = ""
@@ -751,7 +813,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     }
                     return
                 }
-                HeyBrocNativeScannerAPI.scan(rawText: ocrText, store: self.activeStore.key) { [weak self] result in
+                HeyBrocNativeScannerAPI.scan(rawText: ocrText, store: self.activeStore.apiStoreKey) { [weak self] result in
                     guard let self = self else { return }
                     self.isScanning = false
                     switch result {
@@ -772,7 +834,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     private func runLiveScan(title: String, ingredients: String, barcode: String, force: Bool = false) {
-        let dedupeKey = "\(activeStore.key)|\(title.lowercased())|\(barcode)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))"
+        let dedupeKey = "\(activeStore.apiStoreKey)|\(title.lowercased())|\(barcode)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))"
         if !force && dedupeKey == lastScannedKey {
             return
         }
@@ -786,7 +848,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             productTitle: title,
             rawIngredients: ingredients,
             barcode: barcode,
-            store: activeStore.key
+            store: activeStore.apiStoreKey
         ) { [weak self] result in
             guard let self = self, gen == self.scanGeneration else { return }
             self.isScanning = false
@@ -816,7 +878,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 self?.tapTogglePesticide()
             },
             onReturnToScanner: { [weak self] in
-                self?.dismiss(animated: true)
+                if let upgrade = self?.onUpgradePro {
+                    self?.dismiss(animated: true) {
+                        upgrade()
+                    }
+                } else {
+                    self?.dismiss(animated: true)
+                }
             }
         )
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
@@ -881,6 +949,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         if navigationAction.navigationType == .linkActivated,
            navigationAction.targetFrame?.isMainFrame == true,
            (scheme == "https" || scheme == "http") {
+            if let cur = webView.url,
+               cur.scheme?.lowercased() == scheme,
+               cur.host?.lowercased() == host,
+               cur.path == url.path,
+               cur.query == url.query,
+               url.fragment != nil {
+                decisionHandler(.allow)
+                return
+            }
             decisionHandler(.cancel)
             webView.load(navigationAction.request)
             return
@@ -894,8 +971,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
-            webView.load(URLRequest(url: url))
+        if navigationAction.targetFrame == nil,
+           let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(),
+           (scheme == "http" || scheme == "https") {
+            let host = (url.host ?? "").lowercased()
+            if host != "itunes.apple.com" && host != "apps.apple.com" && !host.hasSuffix(".app.link") {
+                webView.load(URLRequest(url: url))
+            }
         }
         return nil
     }
@@ -1064,7 +1147,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 swapCard.addArrangedSubview(openSwapBtn)
             } else {
                 let lockedBtn = UIButton(type: .system)
-                lockedBtn.setTitle("🔒 Weekly free swaps used — Sign in / Pro in Scanner →", for: .normal)
+                lockedBtn.setTitle("🔒 Weekly free swaps used — Unlock Pro / Sign In →", for: .normal)
                 lockedBtn.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .bold)
                 lockedBtn.titleLabel?.adjustsFontSizeToFitWidth = true
                 lockedBtn.titleLabel?.minimumScaleFactor = 0.8

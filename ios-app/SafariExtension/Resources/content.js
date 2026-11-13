@@ -10,7 +10,7 @@
   const BASE_STORE = HOST.includes("walmart") ? "walmart"
     : HOST.includes("instacart") ? "instacart"
     : HOST.includes("target") ? "target"
-    : HOST.includes("kroger") ? "kroger"
+    : (HOST.includes("kroger") || HOST.includes("ralphs") || HOST.includes("fredmeyer") || HOST.includes("kingsoopers") || HOST.includes("frysfood") || HOST.includes("smithsfoodanddrug") || HOST.includes("harristeeter")) ? "kroger"
     : HOST.includes("aldi") ? "aldi"
     : HOST.includes("doordash") ? "doordash"
     : HOST.includes("ubereats") ? "ubereats"
@@ -48,7 +48,14 @@
     /* ignore */
   }
 
+  const isIosMobileBrowser =
+    /iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
   function buildWebActionUrl(kind) {
+    if (isIosMobileBrowser) {
+      return kind === "login" ? "heybroc://login" : "heybroc://upgrade";
+    }
     const base = (clientInfo.apiBase || DEFAULT_API).replace(/\/+$/, "");
     const params = new URLSearchParams();
     params.set(kind === "login" ? "login" : "upgrade", "1");
@@ -889,7 +896,7 @@
 
   /* ---------------- Multi-Food DOM Scoping & Carousel Exclusion ---------------- */
   const NON_TITLE_RE =
-    /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|savings|deals|weekly\s+ad|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
+    /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|savings|deals|weekly\s+ad|dairy\s*&\s*eggs|fresh\s+produce|fruits?\s*&\s*vegetables?|meat\s*&\s*seafood|bakery(?:\s*&\s*bread)?|deli|frozen(?:\s+foods?)?|pantry|snacks|beverages|household|personal\s+care|all\s+products|shop\s+all|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
 
   const NON_INGREDIENT_RE =
     /\b(items to add next|product information|similar items|customers also|you might also|related items|frequently bought together|compare with similar|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
@@ -994,7 +1001,7 @@
       if (!isElementVisible(d)) continue;
       const rect = d.getBoundingClientRect();
       // Ignore tiny headers, navbars, sticky bars, and toast notifications
-      if (rect.width < 280 || rect.height < 240) continue;
+      if (rect.width < 260 || rect.height < 220) continue;
       if (rect.bottom < 160 || rect.top > window.innerHeight - 120) continue;
       if (/^(HEADER|NAV|FOOTER)$/i.test(d.tagName)) continue;
 
@@ -1004,7 +1011,7 @@
       }
       if (isCartDrawerElement(d)) continue;
 
-      const heading = d.querySelector('h1, h2, [data-testid*="product-title" i], [data-testid*="item-title" i]');
+      const heading = d.querySelector('h1, h2, h3, [role="heading"], [data-testid*="product-title" i], [data-testid*="item-title" i]');
       const hText = (heading?.textContent || "").replace(/\s+/g, " ").trim();
       if (!hText || hText.length < 4 || NON_TITLE_RE.test(hText)) continue;
 
@@ -1046,14 +1053,18 @@
       ? [
           '[data-testid*="item-details" i] h1',
           '[data-testid*="item-details" i] h2',
+          '[data-testid*="item-details" i] h3',
           '[data-anchor-id*="ItemModal" i] h1',
           '[data-anchor-id*="ItemModal" i] h2',
+          '[data-anchor-id*="ItemModal" i] h3',
           '[data-testid*="product-title" i]',
           '[data-testid*="product-name" i]',
           '[data-testid*="itemHeader" i]',
           '[data-testid*="title" i]',
           "h1",
           "h2",
+          "h3",
+          '[role="heading"]',
         ]
       : [
           '[data-testid="product-page-title"]',
@@ -1112,7 +1123,7 @@
     const candidates = searchRoot.querySelectorAll("h2, h3, h4, dt, strong, b, span, div, p, button");
     for (const el of candidates) {
       if (isInsideExcludedSection(el, modalScope || document.body)) continue;
-      const own = (el.childNodes.length <= 2 ? el.textContent : "").trim();
+      const own = (el.children.length <= 2 ? el.textContent : "").trim();
       if (!/^ingredients\s*:?$/i.test(own)) continue;
       let sib = el.nextElementSibling;
       for (let i = 0; i < 3 && sib; i++, sib = sib.nextElementSibling) {
@@ -1210,20 +1221,22 @@
     if (isCartPageUrl()) return false;
 
     if (BASE_STORE === "walmart") return /\/ip\//.test(p);
-    if (BASE_STORE === "instacart") return /\/products?\//.test(p) || /item_id=|product_id=/i.test(s);
+    if (BASE_STORE === "instacart") return /\/(?:products?|items?)\//.test(p) || /item_id=|product_id=/i.test(s);
     if (BASE_STORE === "target") return /\/p\//.test(p);
     if (BASE_STORE === "kroger") return /\/p\//.test(p);
-    if (BASE_STORE === "aldi") return /\/products?\//.test(p) || /\/detail\/ps\/p\//.test(p);
-    if (BASE_STORE === "doordash") return /\/(products?|item)\//.test(p) || /item-details|product_id|item_id/i.test(s);
+    if (BASE_STORE === "aldi") {
+      return /\/product\//.test(p) || /\/detail\/ps\/p\//.test(p) || (HOST.startsWith("shop.") && /\/products\//.test(p));
+    }
+    if (BASE_STORE === "doordash") return /\/(products?|items?)\//.test(p) || /item-details|product_id|item_id/i.test(s);
     if (BASE_STORE === "ubereats") return /\/product\//.test(p) || /mod=quickView/i.test(s);
     if (BASE_STORE === "amazon") {
-      if (HOST.includes("wholefoods")) return /\/products?\//.test(p);
+      if (HOST.includes("wholefoods")) return /\/product\//.test(p);
       return /\/(dp|gp\/product|gp\/aw\/d)\//.test(p) && isAmazonGroceryPage(null);
     }
     if (BASE_STORE === "sams") return /\/(p|product|ip|sams\/shop\/product)\//.test(p);
     if (BASE_STORE === "bjs") return /\/product\//.test(p);
     if (BASE_STORE === "costco") return /\/p\/|\.product\./i.test(p);
-    if (BASE_STORE === "shipt") return /\/(shop\/)?products?\//.test(p) || /product_id=|item_id=/i.test(s);
+    if (BASE_STORE === "shipt") return /\/(shop\/)?(?:products?|items?)\//.test(p) || /product_id=|item_id=/i.test(s);
     return false;
   }
 
@@ -2234,7 +2247,7 @@
     .cc-tone-yellow { --tone: #ca8a04; --tone-bright: #facc15; --tone-tint: #fef7e0; }
     .cc-tone-red { --tone: #dc2626; --tone-bright: #f87171; --tone-tint: #fdecec; }
     .cc-tone-gray { --tone: #64748b; --tone-bright: #94a3b8; --tone-tint: #e2e8f0; }
-    .cc-pill { position: fixed; right: 0; z-index: 2147483646; transform: translateY(-50%); display: flex; align-items: center; gap: 9px; max-width: 340px; padding: 8px 13px 8px 10px; border-radius: 999px 0 0 999px; background: rgba(15,23,20,.95); color: #f8fafc; font-size: 13px; line-height: 1.2; box-shadow: 0 12px 32px -8px rgba(0,0,0,.52); cursor: grab; user-select: none; touch-action: none; }
+    .cc-pill { position: fixed; right: 0; z-index: 2147483646; transform: translateY(-50%); display: flex; align-items: center; gap: 9px; max-width: min(340px, calc(100vw - 16px)); padding: 8px 13px 8px 10px; border-radius: 999px 0 0 999px; background: rgba(15,23,20,.95); color: #f8fafc; font-size: 13px; line-height: 1.2; box-shadow: 0 12px 32px -8px rgba(0,0,0,.52); cursor: grab; user-select: none; touch-action: none; }
     .cc-pill-mascot { width: 26px; height: 26px; object-fit: contain; flex: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.28)); }
     .cc-mini-ring { position: relative; width: 28px; height: 28px; flex: none; }
     .cc-mini-ring svg { width: 100%; height: 100%; display: block; }
@@ -2242,8 +2255,8 @@
     .cc-mini-ring-fill { fill: none; stroke: var(--tone-bright); stroke-width: 3.4; stroke-linecap: round; }
     .cc-mini-ring-val { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; color: #fff; }
     .cc-backdrop { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: flex-end; justify-content: center; background: rgba(15,23,42,.42); }
-    .cc-card { width: min(430px, calc(100vw - 20px)); max-height: min(78vh, 560px); overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 10px; padding: 18px; border-radius: 24px; background: #fff; box-shadow: 0 24px 54px -12px rgba(15,23,42,.36); }
-    .cc-hide-drop { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483646; padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 800; background: rgba(15,23,20,.92); color: #fecaca; border: 1.5px dashed rgba(248,113,113,.75); pointer-events: none; }
+    .cc-card { width: min(430px, calc(100vw - 20px)); max-height: min(78dvh, 560px); overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 10px 10px max(12px, calc(env(safe-area-inset-bottom, 0px) + 10px)); padding: 18px; border-radius: 24px; background: #fff; box-shadow: 0 24px 54px -12px rgba(15,23,42,.36); }
+    .cc-hide-drop { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 2147483646; padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 800; background: rgba(15,23,20,.92); color: #fecaca; border: 1.5px dashed rgba(248,113,113,.75); pointer-events: none; }
     .cc-hide-drop.is-hot { background: #dc2626; color: #fff; border-style: solid; }
     .cc-thumb-empty { background: #F4F5F7 !important; border: 1px solid #E5E7EB !important; display: inline-flex !important; align-items: center; justify-content: center; color: #9CA3AF; padding: 0 !important; flex: none; }
     .cc-prod-thumb.cc-thumb-empty { width: 44px; height: 44px; border-radius: 10px; }
@@ -2376,9 +2389,24 @@
     let startPct = 50;
     let moved = false;
     let activePointerId = null;
+    let lastPointerTapAt = 0;
+
+    function openDrawerFromPill() {
+      const act = pillEl.dataset.act;
+      if (act === "open-auditor") {
+        state.auditorOpen = true;
+        state.expanded = false;
+        state.drawerTab = "cart";
+      } else {
+        state.expanded = true;
+        state.auditorOpen = false;
+        state.drawerTab = "product";
+      }
+      render();
+    }
 
     function finishDrag(cancelled) {
-      const dropHide = !cancelled && state.overHide;
+      const dropHide = !cancelled && moved && state.overHide;
       state.dragging = false;
       state.overHide = false;
       pillEl.classList.remove("is-dragging");
@@ -2393,17 +2421,8 @@
         return;
       }
       if (!cancelled && !moved) {
-        const act = pillEl.dataset.act;
-        if (act === "open-auditor") {
-          state.auditorOpen = true;
-          state.expanded = false;
-          state.drawerTab = "cart";
-        } else {
-          state.expanded = true;
-          state.auditorOpen = false;
-          state.drawerTab = "product";
-        }
-        render();
+        lastPointerTapAt = Date.now();
+        openDrawerFromPill();
       }
     }
 
@@ -2415,18 +2434,23 @@
       startX = e.clientX;
       startPct = state.y;
       moved = false;
-      state.dragging = true;
+      state.dragging = false;
       state.overHide = false;
-      pillEl.classList.add("is-dragging");
-      hideDropEl.hidden = false;
-      hideDropEl.classList.remove("is-hot");
     });
 
     pillEl.addEventListener("pointermove", (e) => {
       if (activePointerId !== e.pointerId) return;
       const dy = e.clientY - startY;
       const dx = e.clientX - startX;
-      if (Math.hypot(dx, dy) > 5) moved = true;
+      // 14px deadzone prevents natural iPhone thumb micro-roll from cancelling taps or flashing the hide dropzone
+      if (!moved && Math.hypot(dx, dy) < 14) return;
+      if (!moved) {
+        moved = true;
+        state.dragging = true;
+        pillEl.classList.add("is-dragging");
+        hideDropEl.hidden = false;
+        hideDropEl.classList.remove("is-hot");
+      }
       state.y = Math.max(8, Math.min(92, startPct + (dy / Math.max(300, window.innerHeight)) * 100));
       pillEl.style.top = `${state.y}%`;
       pillEl.style.transform = `translate(${Math.min(0, dx)}px, -50%)`;
@@ -2446,6 +2470,11 @@
     pillEl.addEventListener("pointercancel", (e) => {
       if (activePointerId !== e.pointerId) return;
       finishDrag(true);
+    });
+
+    pillEl.addEventListener("click", () => {
+      if (Date.now() - lastPointerTapAt < 450 || moved) return;
+      openDrawerFromPill();
     });
   })();
 
@@ -2839,7 +2868,12 @@
       const item = state.cartItems[idx];
       if (item) {
         if (!item.swapUrl) {
-          window.open(buildWebActionUrl("upgrade"), "_blank", "noopener");
+          const upUrl = buildWebActionUrl("upgrade");
+          if (upUrl.startsWith("heybroc://")) {
+            location.href = upUrl;
+          } else {
+            window.open(upUrl, "_blank", "noopener");
+          }
           return;
         }
         state.pendingSwap = { fromKey: item.key, toTitle: item.swapTitle };
@@ -2926,7 +2960,12 @@
     }
     if (act === "swap" && state.activeSwap) {
       if (!state.activeSwap.webUrl) {
-        window.open(buildWebActionUrl("upgrade"), "_blank", "noopener");
+        const upUrl = buildWebActionUrl("upgrade");
+        if (upUrl.startsWith("heybroc://")) {
+          location.href = upUrl;
+        } else {
+          window.open(upUrl, "_blank", "noopener");
+        }
         return;
       }
       const currentKey = state.data?.product?.title || readTitle();
@@ -3126,6 +3165,7 @@
   document.addEventListener(
     "pointerover",
     (e) => {
+      if (e.pointerType === "touch") return;
       if (isProductPage() || isCartPageUrl() || state.expanded || state.auditorOpen) return;
       if (host?.contains(e.target)) return;
       const card = e.target?.closest?.(PRODUCT_CARD_SEL);
@@ -3230,8 +3270,17 @@
       timer = setTimeout(runScheduledScan, DEBOUNCE_MS);
     };
 
-    if (document.body) {
-      new MutationObserver(schedule).observe(document.body, {
+    const obsTarget = document.documentElement || document.body;
+    if (obsTarget) {
+      new MutationObserver((mutations) => {
+        for (let i = 0; i < mutations.length; i++) {
+          const t = mutations[i].target;
+          if (!host || (t !== host && !host.contains(t))) {
+            schedule();
+            return;
+          }
+        }
+      }).observe(obsTarget, {
         childList: true,
         subtree: true,
         characterData: true,

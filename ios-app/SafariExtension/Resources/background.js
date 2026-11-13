@@ -50,10 +50,35 @@ async function readNativeAppGroupPrefs() {
 async function getSettings() {
   const [syncData, localData, { deviceId, deviceSecret }, nativePrefs] = await Promise.all([
     chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand"]),
-    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand", "heybroc_creator_code"]),
+    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand", "heybroc_creator_code", "heybroc_auth_token"]),
     getOrCreateDeviceCredentials(),
     readNativeAppGroupPrefs(),
   ]);
+  const resolvedDeviceId =
+    nativePrefs?.deviceId && String(nativePrefs.deviceId).length >= 8 ? String(nativePrefs.deviceId) : deviceId;
+  const resolvedDeviceSecret =
+    nativePrefs?.deviceSecret && String(nativePrefs.deviceSecret).length > 0
+      ? String(nativePrefs.deviceSecret)
+      : deviceSecret;
+  const resolvedAuthToken =
+    (nativePrefs?.authToken && String(nativePrefs.authToken)) || localData.heybroc_auth_token || undefined;
+
+  if (
+    resolvedDeviceId !== deviceId ||
+    resolvedDeviceSecret !== deviceSecret ||
+    (resolvedAuthToken && resolvedAuthToken !== localData.heybroc_auth_token)
+  ) {
+    try {
+      await chrome.storage.local.set({
+        heybroc_device_id: resolvedDeviceId,
+        heybroc_device_secret: resolvedDeviceSecret,
+        ...(resolvedAuthToken ? { heybroc_auth_token: resolvedAuthToken } : {}),
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
   const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
   const normalizedBase = rawBase === "https://heybroc.com" ? "https://www.heybroc.com" : rawBase;
   const resolvedDietary =
@@ -73,8 +98,9 @@ async function getSettings() {
     dietaryWatchlist: resolvedDietary,
     preferStoreBrand: resolvedPreferStoreBrand,
     creatorCode: localData.heybroc_creator_code || undefined,
-    deviceId: (nativePrefs?.deviceId && String(nativePrefs.deviceId).length >= 8) ? nativePrefs.deviceId : deviceId,
-    deviceSecret: (nativePrefs?.deviceSecret && String(nativePrefs.deviceSecret).length > 0) ? nativePrefs.deviceSecret : deviceSecret,
+    deviceId: resolvedDeviceId,
+    deviceSecret: resolvedDeviceSecret,
+    authToken: resolvedAuthToken,
   };
 }
 
@@ -94,12 +120,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_SCAN") {
     (async () => {
       try {
-        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             ...msg.payload,
@@ -107,6 +134,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             familyWatchlist,
             dietaryWatchlist,
             ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+            ...(authToken ? { authToken } : {}),
             deviceId,
             deviceSecret,
             surface: "extension",
@@ -129,12 +157,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_AUDIT") {
     (async () => {
       try {
-        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/audit`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             ...msg.payload,

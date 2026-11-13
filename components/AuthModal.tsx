@@ -1085,6 +1085,17 @@ export default function AuthModal({
 
             {mode !== "forgot" && (
               <>
+                {!(
+                  typeof window !== "undefined" &&
+                  (/HeyBrocIOS/i.test(window.navigator?.userAgent || "") ||
+                    Boolean(
+                      (
+                        window as unknown as {
+                          webkit?: { messageHandlers?: { controller?: unknown } };
+                        }
+                      ).webkit?.messageHandlers?.controller,
+                    ))
+                ) && (
                 <button
                   id="auth-google-btn"
                   type="button"
@@ -1127,6 +1138,7 @@ export default function AuthModal({
                   </svg>
                   <span>{googleBusy ? "Opening Google…" : "Continue with Google"}</span>
                 </button>
+                )}
 
                 <button
                   id="auth-apple-btn"

@@ -112,6 +112,26 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 self.presentLiveStoreBrowser()
             }
         }
+
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("HeyBrocIncomingURL"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            if let url = note.object as? URL {
+                self?.handleIncomingDeepLink(url)
+            } else {
+                self?.consumePendingIncomingDeepLink()
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.consumePendingIncomingDeepLink()
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -119,6 +139,54 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         if HeyBrocSharedPrefs.consumePendingOpenLiveShop(),
            !(presentedViewController is LiveStoreBrowserViewController) {
             presentLiveStoreBrowser()
+            return
+        }
+        consumePendingIncomingDeepLink()
+    }
+
+    private func consumePendingIncomingDeepLink() {
+        guard let raw = UserDefaults.standard.string(forKey: "heybroc_pending_incoming_url"),
+              !raw.isEmpty else { return }
+        UserDefaults.standard.removeObject(forKey: "heybroc_pending_incoming_url")
+        if let url = URL(string: raw) {
+            handleIncomingDeepLink(url)
+        }
+    }
+
+    private func handleIncomingDeepLink(_ url: URL) {
+        guard (url.scheme ?? "").lowercased() == "heybroc" else { return }
+        let host = (url.host ?? "").lowercased()
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        switch host {
+        case "upgrade", "pro":
+            presentNativeProSheet()
+        case "liveshop":
+            let storeKey = comps?.queryItems?.first(where: { $0.name == "store" })?.value
+            if let presented = presentedViewController, !(presented is LiveStoreBrowserViewController) {
+                presented.dismiss(animated: false) { [weak self] in
+                    self?.presentLiveStoreBrowser(initialStoreKey: storeKey)
+                }
+            } else if !(presentedViewController is LiveStoreBrowserViewController) {
+                presentLiveStoreBrowser(initialStoreKey: storeKey)
+            }
+        case "safari":
+            presentSafariSetupSheet()
+        case "barcode":
+            presentBarcodeScanner()
+        case "settings":
+            openSystemSettings()
+        case "login", "signin", "signup":
+            let tab = host == "signup" ? "signup" : "signin"
+            let js = "if (typeof window.__heybrocOpenAuthModal === 'function') { window.__heybrocOpenAuthModal('\(tab)'); }"
+            if let presented = presentedViewController {
+                presented.dismiss(animated: true) { [weak self] in
+                    self?.webView.evaluateJavaScript(js, completionHandler: nil)
+                }
+            } else {
+                webView.evaluateJavaScript(js, completionHandler: nil)
+            }
+        default:
+            break
         }
     }
 
@@ -339,6 +407,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let devSec = jsEscapeSingleQuoted(HeyBrocSharedPrefs.deviceSecret ?? "")
         let storeVal = jsEscapeSingleQuoted(HeyBrocSharedPrefs.activeStore)
         let preferSB = HeyBrocSharedPrefs.preferStoreBrand ? "true" : "false"
+        let isProVal = HeyBrocSharedPrefs.isPro ? "true" : "false"
         let shouldWritePrefs = (forceOverwriteWatchlist || HeyBrocSharedPrefs.hasSavedPreferences) ? "true" : "false"
         let fireEvt = dispatchEvent ? "true" : "false"
 
@@ -350,6 +419,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
             if ('\(devSec)'.length > 0) {
               localStorage.setItem('heybroc_device_secret', '\(devSec)');
+            }
+            if (\(isProVal)) {
+              localStorage.setItem('heybroc_is_pro', '1');
             }
             if (\(shouldWritePrefs) || localStorage.getItem('heybroc_dietary_watchlist') === null) {
               localStorage.setItem('heybroc_dietary_watchlist', '\(dietaryJSON)');
@@ -382,6 +454,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             initialStoreKey: initialStoreKey,
             onPreferencesUpdated: { [weak self] in
                 self?.syncNativePrefsToWebView(forceOverwrite: true)
+            },
+            onUpgradePro: { [weak self] in
+                self?.presentNativeProSheet()
             }
         )
         browser.modalPresentationStyle = .fullScreen
@@ -497,6 +572,12 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             if let devSec = payloadDict?["deviceSecret"] as? String, !devSec.isEmpty {
                 HeyBrocSharedPrefs.deviceSecret = devSec
             }
+            if let token = payloadDict?["authToken"] as? String {
+                HeyBrocSharedPrefs.authToken = token
+            }
+            if let pro = payloadDict?["isPro"] as? Bool, pro {
+                HeyBrocSharedPrefs.isPro = true
+            }
         case "open-barcode-scanner":
             presentBarcodeScanner()
         case "reload-app", "open-scanner":
@@ -609,11 +690,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         productId: String,
         restored: Bool
     ) async {
-        let contextDict: [String: String] = await MainActor.run {
-            return [:]
-        }
-        _ = contextDict
-
         var deviceId = ""
         var authToken = ""
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -634,6 +710,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 }
             }
         }
+        if deviceId.isEmpty {
+            deviceId = HeyBrocSharedPrefs.deviceId
+        }
+        if authToken.isEmpty {
+            authToken = HeyBrocSharedPrefs.authToken ?? ""
+        }
+        HeyBrocSharedPrefs.isPro = true
 
         if let verifyURL = URL(string: "https://www.heybroc.com/api/apple/verify") {
             var req = URLRequest(url: verifyURL)
@@ -668,8 +751,16 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
+    private func topMostPresenter() -> UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
+    }
+
     private func presentNativeProSheet() {
-        let presenter: UIViewController = presentedViewController ?? self
+        let presenter = topMostPresenter()
         if presenter is NativeProPaywallSheetViewController {
             return
         }
@@ -733,22 +824,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
         let scheme = (url.scheme ?? "").lowercased()
         if scheme == "heybroc" {
-            let host = (url.host ?? "").lowercased()
-            if host == "settings" {
-                openSystemSettings()
-            } else if host == "safari" {
-                presentSafariSetupSheet()
-            } else if host == "liveshop" {
-                let storeKey = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                    .queryItems?
-                    .first(where: { $0.name == "store" })?
-                    .value
-                presentLiveStoreBrowser(initialStoreKey: storeKey)
-            } else if host == "barcode" {
-                presentBarcodeScanner()
-            } else if host == "upgrade" || host == "pro" {
-                presentNativeProSheet()
-            }
+            handleIncomingDeepLink(url)
             decisionHandler(.cancel)
             return
         }
@@ -787,6 +863,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         guard navigationAction.targetFrame == nil, let url = navigationAction.request.url else {
             return nil
         }
+        if url.scheme?.lowercased() == "heybroc" {
+            handleIncomingDeepLink(url)
+            return nil
+        }
         let host = (url.host ?? "").lowercased()
         if host == "stripe.com" || host.hasSuffix(".stripe.com") {
             presentNativeProSheet()
@@ -807,16 +887,26 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let presenter = topMostPresenter()
+        guard presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil else {
+            completionHandler()
+            return
+        }
         let alert = UIAlertController(title: "HeyBroc", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
-        present(alert, animated: true)
+        presenter.present(alert, animated: true)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let presenter = topMostPresenter()
+        guard presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil else {
+            completionHandler(false)
+            return
+        }
         let alert = UIAlertController(title: "HeyBroc", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
-        present(alert, animated: true)
+        presenter.present(alert, animated: true)
     }
 
     @available(iOS 15.0, *)
@@ -913,11 +1003,21 @@ private final class SafariSetupSheetViewController: UIViewController {
         storesRow2.axis = .horizontal
         storesRow2.distribution = .fillEqually
         storesRow2.spacing = 6
+        storesRow2.addArrangedSubview(makeStoreBtn(title: "Whole Foods", storeKey: "wholefoods"))
         storesRow2.addArrangedSubview(makeStoreBtn(title: "Costco", storeKey: "costco"))
         storesRow2.addArrangedSubview(makeStoreBtn(title: "Kroger", storeKey: "kroger"))
-        storesRow2.addArrangedSubview(makeStoreBtn(title: "Sam's", storeKey: "samsclub"))
-        storesRow2.addArrangedSubview(makeStoreBtn(title: "ALDI", storeKey: "aldi"))
+        storesRow2.addArrangedSubview(makeStoreBtn(title: "Sam's", storeKey: "sams"))
         liveCard.addArrangedSubview(storesRow2)
+
+        let storesRow3 = UIStackView()
+        storesRow3.axis = .horizontal
+        storesRow3.distribution = .fillEqually
+        storesRow3.spacing = 6
+        storesRow3.addArrangedSubview(makeStoreBtn(title: "ALDI", storeKey: "aldi"))
+        storesRow3.addArrangedSubview(makeStoreBtn(title: "BJ's", storeKey: "bjs"))
+        storesRow3.addArrangedSubview(makeStoreBtn(title: "DoorDash", storeKey: "doordash"))
+        storesRow3.addArrangedSubview(makeStoreBtn(title: "Uber Eats", storeKey: "ubereats"))
+        liveCard.addArrangedSubview(storesRow3)
         content.addArrangedSubview(liveCard)
 
         // 2. Optional: Apple Safari Browser Extension (Single All-Websites Switch)

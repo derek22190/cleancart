@@ -1108,12 +1108,14 @@ export default function Simulator({
           preferStoreBrand,
           store,
           deviceSecret: window.localStorage.getItem("heybroc_device_secret") || undefined,
+          authToken: window.localStorage.getItem("heybroc_auth_token") || "",
+          isPro: Boolean(isPro),
         });
       } catch {
         /* ignore bridge errors */
       }
     }
-  }, [iosPrefsHydrated, dietaryWatchlist, familyWatchlist, preferStoreBrand, store]);
+  }, [iosPrefsHydrated, dietaryWatchlist, familyWatchlist, preferStoreBrand, store, isPro, authUser]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

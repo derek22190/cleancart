@@ -92,6 +92,8 @@ export interface ScanRequest {
   deviceSecret?: string;
   referredByCode?: string;
   preferStoreBrand?: boolean;
+  authToken?: string;
+  verifiedAccountPro?: boolean;
   format?: "json" | "ios_text";
   skipAnalytics?: boolean;
 }
@@ -132,7 +134,34 @@ export interface ScanError {
 }
 
 export function parseStore(s?: unknown): Store {
-  return typeof s === "string" && (STORES as string[]).includes(s) ? (s as Store) : "walmart";
+  if (typeof s !== "string") return "walmart";
+  const norm = s.trim().toLowerCase();
+  if ((STORES as string[]).includes(norm)) return norm as Store;
+  if (
+    norm === "wholefoods" ||
+    norm === "whole_foods" ||
+    norm === "wholefoodsmarket" ||
+    norm === "amazon_fresh" ||
+    norm === "amazon:wholefoods" ||
+    norm === "amazon:fresh" ||
+    norm === "amazon:core"
+  ) {
+    return "amazon";
+  }
+  if (norm === "samsclub" || norm === "sams_club" || norm === "sam's club") return "sams";
+  if (norm === "uber_eats" || norm === "uber-eats") return "ubereats";
+  if (norm === "bjs_wholesale" || norm === "bj's") return "bjs";
+  if (
+    norm === "ralphs" ||
+    norm === "fredmeyer" ||
+    norm === "kingsoopers" ||
+    norm === "frysfood" ||
+    norm === "smithsfoodanddrug" ||
+    norm === "harristeeter"
+  ) {
+    return "kroger";
+  }
+  return "walmart";
 }
 
 export { checkRateLimit, checkRateLimitAsync } from "./rate-limit";
@@ -144,7 +173,17 @@ export function detectStoreFromUrl(text: string): Store | undefined {
   if (host.includes("walmart") || host.includes("walmrt")) return "walmart";
   if (host.includes("instacart")) return "instacart";
   if (host.includes("target")) return "target";
-  if (host.includes("kroger")) return "kroger";
+  if (
+    host.includes("kroger") ||
+    host.includes("ralphs") ||
+    host.includes("fredmeyer") ||
+    host.includes("kingsoopers") ||
+    host.includes("frysfood") ||
+    host.includes("smithsfoodanddrug") ||
+    host.includes("harristeeter")
+  ) {
+    return "kroger";
+  }
   if (host.includes("aldi")) return "aldi";
   if (host.includes("doordash")) return "doordash";
   if (host.includes("ubereats")) return "ubereats";
@@ -713,9 +752,12 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       entitlement = undefined;
     }
   }
+  if (req.verifiedAccountPro && entitlement) {
+    entitlement = { ...entitlement, isProActive: true };
+  }
   const canAccessSwapLinks = isAnonDevice
     ? true
-    : Boolean(entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0));
+    : Boolean(req.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl

@@ -75,14 +75,16 @@ final class ShareViewController: UIViewController {
 
         let brandLabel = UILabel()
         brandLabel.text = "🥦 HeyBroc"
-        brandLabel.font = UIFont.systemFont(ofSize: 18, weight: .heavy)
+        brandLabel.font = UIFont.systemFont(ofSize: 17, weight: .heavy)
         brandLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
         brandLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        brandLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let pestLabel = UILabel()
-        pestLabel.text = "🌱 Pesticides (Glyphosate)"
+        pestLabel.text = "🌱 Pesticides"
         pestLabel.font = UIFont.systemFont(ofSize: 11.5, weight: .bold)
         pestLabel.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
+        pestLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         pesticideSwitch.isOn = dietaryWatchlist.contains("pesticide_risk")
         pesticideSwitch.onTintColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 1.0)
@@ -93,6 +95,7 @@ final class ShareViewController: UIViewController {
         doneBtn.setTitle("Done", for: .normal)
         doneBtn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .bold)
         doneBtn.setTitleColor(UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0), for: .normal)
+        doneBtn.setContentCompressionResistancePriority(.required, for: .horizontal)
         doneBtn.addTarget(self, action: #selector(closeExtension), for: .touchUpInside)
 
         headerRow.addArrangedSubview(brandLabel)
@@ -168,13 +171,17 @@ final class ShareViewController: UIViewController {
         extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
     }
 
-    private func getOrCreateExtensionDeviceCredentials() -> (deviceId: String, deviceSecret: String?) {
+    private func getOrCreateExtensionDeviceCredentials() -> (deviceId: String, deviceSecret: String) {
         var devId = sharedDefaults.string(forKey: "heybroc_device_id") ?? ""
         if devId.isEmpty {
             devId = "ios-share-\(UUID().uuidString.lowercased())"
             sharedDefaults.set(devId, forKey: "heybroc_device_id")
         }
-        let devSecret = sharedDefaults.string(forKey: "heybroc_device_secret")
+        var devSecret = sharedDefaults.string(forKey: "heybroc_device_secret") ?? ""
+        if devSecret.isEmpty {
+            devSecret = "sec-\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+            sharedDefaults.set(devSecret, forKey: "heybroc_device_secret")
+        }
         return (devId, devSecret)
     }
 
@@ -332,10 +339,13 @@ final class ShareViewController: UIViewController {
             let p = u.path.lowercased()
             if h.contains("walmart") { inferredStore = "walmart"; return }
             if h.contains("target") { inferredStore = "target"; return }
-            if h.contains("wholefoods") { inferredStore = "wholefoods"; return }
+            if h.contains("wholefoods") { inferredStore = "amazon"; return }
             if h.contains("amazon") || h == "a.co" || h == "amzn.to" { inferredStore = "amazon"; return }
             if h.contains("costco") { inferredStore = "costco"; return }
-            if h.contains("kroger") { inferredStore = "kroger"; return }
+            if h.contains("kroger") || h.contains("ralphs") || h.contains("fredmeyer") || h.contains("kingsoopers") || h.contains("frysfood") || h.contains("smithsfoodanddrug") || h.contains("harristeeter") {
+                inferredStore = "kroger"
+                return
+            }
             if h.contains("aldi") { inferredStore = "aldi"; return }
             if h.contains("samsclub") { inferredStore = "sams"; return }
             if h.contains("bjs") { inferredStore = "bjs"; return }
@@ -361,10 +371,15 @@ final class ShareViewController: UIViewController {
             if lower.contains("walmart.com") { inferredStore = "walmart" }
             else if lower.contains("target.com") { inferredStore = "target" }
             else if lower.contains("instacart.com") { inferredStore = "instacart" }
-            else if lower.contains("amazon.com") || lower.contains("a.co/") { inferredStore = "amazon" }
+            else if lower.contains("wholefoodsmarket.com") || lower.contains("amazon.com") || lower.contains("a.co/") || lower.contains("amzn.to/") { inferredStore = "amazon" }
             else if lower.contains("costco.com") { inferredStore = "costco" }
-            else if lower.contains("kroger.com") { inferredStore = "kroger" }
+            else if lower.contains("kroger.com") || lower.contains("ralphs.com") || lower.contains("fredmeyer.com") || lower.contains("kingsoopers.com") || lower.contains("frysfood.com") || lower.contains("smithsfoodanddrug.com") || lower.contains("harristeeter.com") { inferredStore = "kroger" }
             else if lower.contains("aldi.us") { inferredStore = "aldi" }
+            else if lower.contains("samsclub.com") { inferredStore = "sams" }
+            else if lower.contains("bjs.com") { inferredStore = "bjs" }
+            else if lower.contains("doordash.com") { inferredStore = "doordash" }
+            else if lower.contains("ubereats.com") { inferredStore = "ubereats" }
+            else if lower.contains("shipt.com") { inferredStore = "shipt" }
         }
     }
 
@@ -401,7 +416,7 @@ final class ShareViewController: UIViewController {
                             .replacingOccurrences(of: "&amp;", with: "&")
                             .replacingOccurrences(of: "&#39;", with: "'")
                             .replacingOccurrences(of: "&quot;", with: "\"")
-                            .replacingOccurrences(of: #"\s*[-|:]\s*(Walmart|Target|Instacart|Amazon|Costco|Sam's Club|Kroger|ALDI).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+                            .replacingOccurrences(of: #"\s*[-|:]\s*(Walmart|Target|Instacart|Amazon|Whole Foods Market|Costco|Sam's Club|Kroger|ALDI|BJ's|DoorDash|Uber Eats|Shipt).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
                             .trimmingCharacters(in: .whitespacesAndNewlines)
                         if raw.count >= 4 && !raw.lowercased().contains("robot or human") {
                             found = raw
@@ -451,16 +466,21 @@ final class ShareViewController: UIViewController {
         req.setValue("ios-share", forHTTPHeaderField: "X-Client-Platform")
 
         let creds = getOrCreateExtensionDeviceCredentials()
-        if let secret = creds.deviceSecret, !secret.isEmpty {
-            req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
+        if !creds.deviceSecret.isEmpty {
+            req.setValue(creds.deviceSecret, forHTTPHeaderField: "X-Device-Secret")
+        }
+        let sharedAuthToken = (sharedDefaults.string(forKey: "heybroc_auth_token") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sharedAuthToken.isEmpty {
+            req.setValue("Bearer \(sharedAuthToken)", forHTTPHeaderField: "Authorization")
         }
         let preferStoreBrand = sharedDefaults.object(forKey: "heybroc_prefer_store_brand") != nil
             ? sharedDefaults.bool(forKey: "heybroc_prefer_store_brand")
             : sharedDefaults.bool(forKey: "prefer_store_brand")
 
-        let activeStore = inferredStore
+        let rawActiveStore = inferredStore
             ?? sharedDefaults.string(forKey: "heybroc_active_store")
             ?? "walmart"
+        let activeStore = (rawActiveStore == "wholefoods" || rawActiveStore == "whole_foods") ? "amazon" : (rawActiveStore == "samsclub" ? "sams" : rawActiveStore)
         let familyList = sharedDefaults.stringArray(forKey: "heybroc_family_watchlist")
             ?? sharedDefaults.stringArray(forKey: "family_watchlist")
             ?? ["seedOils", "dyes", "hfcs"]
@@ -477,8 +497,11 @@ final class ShareViewController: UIViewController {
         if let slug = inferredInstacartRetailerSlug, !slug.isEmpty {
             body["instacartRetailerSlug"] = slug
         }
-        if let secret = creds.deviceSecret, !secret.isEmpty {
-            body["deviceSecret"] = secret
+        if !creds.deviceSecret.isEmpty {
+            body["deviceSecret"] = creds.deviceSecret
+        }
+        if !sharedAuthToken.isEmpty {
+            body["authToken"] = sharedAuthToken
         }
         if !extractedTitleAndUrl.isEmpty {
             body["productTitle"] = String(extractedTitleAndUrl.prefix(480))
@@ -767,7 +790,7 @@ final class ShareViewController: UIViewController {
     }
 }
 
-private final class ShareWebPreviewController: UIViewController, WKNavigationDelegate {
+private final class ShareWebPreviewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private let targetURL: URL
     private let headerTitle: String
 
@@ -811,6 +834,7 @@ private final class ShareWebPreviewController: UIViewController, WKNavigationDel
         let wv = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
         wv.translatesAutoresizingMaskIntoConstraints = false
         wv.navigationDelegate = self
+        wv.uiDelegate = self
         wv.allowsBackForwardNavigationGestures = true
         view.addSubview(wv)
 
@@ -830,8 +854,13 @@ private final class ShareWebPreviewController: UIViewController, WKNavigationDel
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if let url = navigationAction.request.url {
+            let scheme = (url.scheme ?? "").lowercased()
+            if scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" && scheme != "data" {
+                decisionHandler(.cancel)
+                return
+            }
             let host = (url.host ?? "").lowercased()
-            if host == "stripe.com" || host.hasSuffix(".stripe.com") {
+            if host == "stripe.com" || host.hasSuffix(".stripe.com") || host == "itunes.apple.com" || host == "apps.apple.com" || host.hasSuffix(".app.link") {
                 decisionHandler(.cancel)
                 return
             }
@@ -841,8 +870,38 @@ private final class ShareWebPreviewController: UIViewController, WKNavigationDel
                 webView.load(URLRequest(url: cleaned))
                 return
             }
+            if navigationAction.navigationType == .linkActivated,
+               navigationAction.targetFrame?.isMainFrame == true,
+               (scheme == "https" || scheme == "http") {
+                if let cur = webView.url,
+                   cur.scheme?.lowercased() == scheme,
+                   cur.host?.lowercased() == host,
+                   cur.path == url.path,
+                   cur.query == url.query,
+                   url.fragment != nil {
+                    decisionHandler(.allow)
+                    return
+                }
+                decisionHandler(.cancel)
+                webView.load(navigationAction.request)
+                return
+            }
         }
         decisionHandler(.allow)
+    }
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if navigationAction.targetFrame == nil,
+           let url = navigationAction.request.url,
+           let scheme = url.scheme?.lowercased(),
+           (scheme == "http" || scheme == "https") {
+            let host = (url.host ?? "").lowercased()
+            if host != "stripe.com" && !host.hasSuffix(".stripe.com") && host != "itunes.apple.com" && host != "apps.apple.com" && !host.hasSuffix(".app.link") {
+                let target = ShareViewController.sanitizedRetailerURL(url.absoluteString) ?? url
+                webView.load(URLRequest(url: target))
+            }
+        }
+        return nil
     }
 
     @objc private func tapClose() {

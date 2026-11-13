@@ -21,6 +21,8 @@ enum HeyBrocSharedPrefs {
     private static let deviceIdKey = "heybroc_device_id"
     private static let legacyDeviceIdKey = "heybroc_ios_device_id"
     private static let deviceSecretKey = "heybroc_device_secret"
+    private static let authTokenKey = "heybroc_auth_token"
+    private static let isProKey = "heybroc_is_pro"
     private static let pendingLiveShopKey = "heybroc_pending_open_live_shop"
 
     private static var groupDefaults: UserDefaults? {
@@ -28,47 +30,94 @@ enum HeyBrocSharedPrefs {
     }
 
     static var deviceId: String {
+        let resolved: String
         if let grouped = groupDefaults?.string(forKey: deviceIdKey), grouped.count >= 8 {
             if UserDefaults.standard.string(forKey: deviceIdKey) != grouped {
                 UserDefaults.standard.set(grouped, forKey: deviceIdKey)
             }
-            return grouped
-        }
-        if let existing = UserDefaults.standard.string(forKey: deviceIdKey), existing.count >= 8 {
+            resolved = grouped
+        } else if let existing = UserDefaults.standard.string(forKey: deviceIdKey), existing.count >= 8 {
             groupDefaults?.set(existing, forKey: deviceIdKey)
-            return existing
-        }
-        if let legacy = groupDefaults?.string(forKey: legacyDeviceIdKey) ?? UserDefaults.standard.string(forKey: legacyDeviceIdKey),
-           legacy.count >= 8 {
+            resolved = existing
+        } else if let legacy = groupDefaults?.string(forKey: legacyDeviceIdKey) ?? UserDefaults.standard.string(forKey: legacyDeviceIdKey),
+                  legacy.count >= 8 {
             UserDefaults.standard.set(legacy, forKey: deviceIdKey)
             groupDefaults?.set(legacy, forKey: deviceIdKey)
-            return legacy
+            resolved = legacy
+        } else {
+            let fresh = "ios-app-\(UUID().uuidString.lowercased())"
+            UserDefaults.standard.set(fresh, forKey: deviceIdKey)
+            groupDefaults?.set(fresh, forKey: deviceIdKey)
+            resolved = fresh
         }
-        let fresh = "ios-app-\(UUID().uuidString.lowercased())"
-        UserDefaults.standard.set(fresh, forKey: deviceIdKey)
-        groupDefaults?.set(fresh, forKey: deviceIdKey)
-        return fresh
+        _ = ensureDeviceSecret()
+        return resolved
+    }
+
+    @discardableResult
+    static func ensureDeviceSecret() -> String {
+        if let grouped = groupDefaults?.string(forKey: deviceSecretKey), !grouped.isEmpty {
+            if UserDefaults.standard.string(forKey: deviceSecretKey) != grouped {
+                UserDefaults.standard.set(grouped, forKey: deviceSecretKey)
+            }
+            return grouped
+        }
+        if let std = UserDefaults.standard.string(forKey: deviceSecretKey), !std.isEmpty {
+            groupDefaults?.set(std, forKey: deviceSecretKey)
+            return std
+        }
+        let generated = "sec-\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+        UserDefaults.standard.set(generated, forKey: deviceSecretKey)
+        groupDefaults?.set(generated, forKey: deviceSecretKey)
+        return generated
     }
 
     static var deviceSecret: String? {
         get {
-            if let grouped = groupDefaults?.string(forKey: deviceSecretKey), !grouped.isEmpty {
-                if UserDefaults.standard.string(forKey: deviceSecretKey) != grouped {
-                    UserDefaults.standard.set(grouped, forKey: deviceSecretKey)
-                }
-                return grouped
-            }
-            if let std = UserDefaults.standard.string(forKey: deviceSecretKey), !std.isEmpty {
-                groupDefaults?.set(std, forKey: deviceSecretKey)
-                return std
-            }
-            return nil
+            return ensureDeviceSecret()
         }
         set {
             let trimmed = (newValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return }
             UserDefaults.standard.set(trimmed, forKey: deviceSecretKey)
             groupDefaults?.set(trimmed, forKey: deviceSecretKey)
+        }
+    }
+
+    static var authToken: String? {
+        get {
+            if let grouped = groupDefaults?.string(forKey: authTokenKey), !grouped.isEmpty {
+                if UserDefaults.standard.string(forKey: authTokenKey) != grouped {
+                    UserDefaults.standard.set(grouped, forKey: authTokenKey)
+                }
+                return grouped
+            }
+            if let std = UserDefaults.standard.string(forKey: authTokenKey), !std.isEmpty {
+                groupDefaults?.set(std, forKey: authTokenKey)
+                return std
+            }
+            return nil
+        }
+        set {
+            let trimmed = (newValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                UserDefaults.standard.removeObject(forKey: authTokenKey)
+                groupDefaults?.removeObject(forKey: authTokenKey)
+            } else {
+                UserDefaults.standard.set(trimmed, forKey: authTokenKey)
+                groupDefaults?.set(trimmed, forKey: authTokenKey)
+            }
+        }
+    }
+
+    static var isPro: Bool {
+        get {
+            return (groupDefaults?.bool(forKey: isProKey) ?? false)
+                || UserDefaults.standard.bool(forKey: isProKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: isProKey)
+            groupDefaults?.set(newValue, forKey: isProKey)
         }
     }
 
@@ -81,6 +130,8 @@ enum HeyBrocSharedPrefs {
             || UserDefaults.standard.object(forKey: preferStoreBrandKey) != nil
             || groupDefaults?.object(forKey: storeKey) != nil
             || UserDefaults.standard.object(forKey: storeKey) != nil
+            || isPro
+            || authToken != nil
     }
 
     static var dietaryWatchlist: [String] {
@@ -396,6 +447,9 @@ enum HeyBrocNativeScannerAPI {
         if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
             req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
         }
+        if let token = HeyBrocSharedPrefs.authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         var payload: [String: Any] = [
             "store": store ?? HeyBrocSharedPrefs.activeStore,
@@ -408,6 +462,9 @@ enum HeyBrocNativeScannerAPI {
         ]
         if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
             payload["deviceSecret"] = secret
+        }
+        if let token = HeyBrocSharedPrefs.authToken, !token.isEmpty {
+            payload["authToken"] = token
         }
         if !productTitle.isEmpty { payload["productTitle"] = String(productTitle.prefix(480)) }
         if !rawIngredients.isEmpty { payload["rawIngredients"] = String(rawIngredients.prefix(8000)) }

@@ -240,15 +240,29 @@ async function initPopup() {
   const deviceId = localData.heybroc_device_id || "";
   const creatorCode = localData.heybroc_creator_code || "";
 
+  const isIosSafari =
+    typeof navigator !== "undefined" &&
+    (/iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
   const makeAuthHref = (flag) => {
+    if (isIosSafari) {
+      return flag === "upgrade" ? "heybroc://upgrade" : "heybroc://login";
+    }
     const p = new URLSearchParams();
     p.set(flag, "1");
     if (deviceId) p.set("deviceId", deviceId);
     if (creatorCode) p.set("code", creatorCode);
     return `${resolvedBase}/?${p.toString()}`;
   };
-  if (loginLink) loginLink.href = makeAuthHref("login");
-  if (upgradeLink) upgradeLink.href = makeAuthHref("upgrade");
+  if (loginLink) {
+    loginLink.href = makeAuthHref("login");
+    if (isIosSafari) loginLink.removeAttribute("target");
+  }
+  if (upgradeLink) {
+    upgradeLink.href = makeAuthHref("upgrade");
+    if (isIosSafari) upgradeLink.removeAttribute("target");
+  }
 
   // Query active tab first so we show the exact open store / Instacart retailer cart
   let tabState = null;
@@ -334,6 +348,15 @@ document.getElementById("save")?.addEventListener("click", async () => {
 });
 
 document.getElementById("manage-sub")?.addEventListener("click", async () => {
+  const isIosSafari =
+    typeof navigator !== "undefined" &&
+    (/iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+  if (isIosSafari) {
+    chrome.tabs.create({ url: "https://apps.apple.com/account/subscriptions" });
+    status.textContent = "✓ Opened Apple Subscriptions";
+    return;
+  }
   const checked = validateApiBase(input.value);
   const apiBase = checked.ok ? checked.url : DEFAULT_API;
   const { heybroc_device_id: deviceId, heybroc_device_secret: deviceSecret } =

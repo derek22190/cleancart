@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthenticatedUser, toPublicProfile } from "@/lib/auth";
 import { checkRateLimitAsync, inferClientPlatform, runScan, toIosText, type ScanRequest } from "@/lib/scan";
 import { ADDITIVE_RULES, CATEGORY_LABELS, RUBRIC_VERSION } from "@/lib/rubric";
 import { isAffiliateAllowedOnClient } from "@/lib/swaps";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret, X-Client-Platform, X-HeyBroc-Platform",
+  "Access-Control-Allow-Headers": "Content-Type, X-Device-Secret, X-Client-Platform, X-HeyBroc-Platform, Authorization",
 };
 
 export function OPTIONS() {
@@ -107,6 +108,22 @@ export async function POST(request: Request) {
   const headerSecret = request.headers.get("x-device-secret")?.trim();
   if (headerSecret && !body.deviceSecret) {
     body.deviceSecret = headerSecret;
+  }
+  const bearerToken =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ||
+    (typeof body.authToken === "string" ? body.authToken.trim() : "");
+  if (bearerToken) {
+    try {
+      const authedUser = await getAuthenticatedUser(bearerToken);
+      if (authedUser) {
+        const profile = await toPublicProfile(authedUser);
+        if (profile.isProActive) {
+          body.verifiedAccountPro = true;
+        }
+      }
+    } catch {
+      /* ignore invalid/expired bearer token */
+    }
   }
   const clientPlatform = inferClientPlatform({
     clientPlatform:
