@@ -65,6 +65,25 @@ export async function GET(req: Request) {
   return NextResponse.json({ ok: true, reports });
 }
 
+function coerceString(value: unknown, maxLen: number): string {
+  if (typeof value === "string") return value.trim().slice(0, maxLen);
+  if (typeof value === "number" || typeof value === "boolean") return String(value).slice(0, maxLen);
+  return "";
+}
+
+function sanitizeStringArray(value: unknown, maxItems: number, maxLen = 64): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item === "string") {
+      const s = item.trim().slice(0, maxLen);
+      if (s) out.push(s);
+      if (out.length >= maxItems) break;
+    }
+  }
+  return out;
+}
+
 export async function POST(req: Request) {
   const forwarded = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const ip = forwarded.split(",")[0].trim() || "127.0.0.1";
@@ -76,32 +95,32 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: {
-    productTitle?: string;
-    brand?: string;
-    barcode?: string;
-    currentIngredients?: string;
-    reportedIngredients?: string;
-    issueType?: string;
-    store?: Store;
-    preferStoreBrand?: boolean;
-    watchlist?: Watchlist;
-    familyWatchlist?: Category[];
-    dietaryWatchlist?: string[];
-  };
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
+  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+  }
+  const body = rawBody as Record<string, unknown>;
 
-  const productTitle = (body.productTitle || "").trim();
-  const brand = (body.brand || "").trim();
-  const barcode = (body.barcode || "").trim() || undefined;
-  const currentIngredients = (body.currentIngredients || "").trim();
-  const reportedIngredients = (body.reportedIngredients || "").trim();
-  const issueType = (body.issueType || "reformulated").trim();
-  const store: Store = body.store || "walmart";
+  const productTitle = coerceString(body.productTitle, 300);
+  const brand = coerceString(body.brand, 120);
+  const barcode = coerceString(body.barcode, 64).replace(/\D/g, "").slice(0, 14) || undefined;
+  const currentIngredients = coerceString(body.currentIngredients, 6000);
+  const reportedIngredients = coerceString(body.reportedIngredients, 6000);
+  const issueType = coerceString(body.issueType, 40) || "reformulated";
+  const storeRaw = coerceString(body.store, 32);
+  const store: Store = (storeRaw || "walmart") as Store;
+  const preferStoreBrand = Boolean(body.preferStoreBrand);
+  const watchlist: Watchlist | undefined =
+    body.watchlist && typeof body.watchlist === "object" && !Array.isArray(body.watchlist)
+      ? (body.watchlist as Watchlist)
+      : undefined;
+  const familyWatchlist = sanitizeStringArray(body.familyWatchlist, 24) as Category[];
+  const dietaryWatchlist = sanitizeStringArray(body.dietaryWatchlist, 24);
 
   if (!productTitle && !barcode && !reportedIngredients) {
     return NextResponse.json(
@@ -110,15 +129,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const fullTitle =
+  const fullTitle = (
     brand && !productTitle.toLowerCase().startsWith(brand.toLowerCase())
       ? `${brand} ${productTitle}`.trim()
-      : productTitle || "Scanned Grocery Item";
+      : productTitle || "Scanned Grocery Item"
+  ).slice(0, 300);
 
   const previousScoreObj = scoreProductYuka(
     currentIngredients || "Water",
-    body.watchlist,
-    body.familyWatchlist || [],
+    watchlist,
+    familyWatchlist,
     { productTitle: fullTitle }
   );
 
@@ -152,8 +172,8 @@ export async function POST(req: Request) {
 
   const verifiedScoreObj = scoreProductYuka(
     verifiedIngredients || currentIngredients || "Water",
-    body.watchlist,
-    body.familyWatchlist || [],
+    watchlist,
+    familyWatchlist,
     { ...resolvedNutrition, productTitle: fullTitle }
   );
 
@@ -167,10 +187,10 @@ export async function POST(req: Request) {
     productTitle: fullTitle,
     ingredients: verifiedIngredients,
     store,
-    preferStoreBrand: body.preferStoreBrand,
-    watchlist: body.watchlist,
-    familyWatchlist: body.familyWatchlist,
-    dietaryWatchlist: body.dietaryWatchlist,
+    preferStoreBrand,
+    watchlist,
+    familyWatchlist,
+    dietaryWatchlist,
   });
 
   const status: LabelAuditReportItem["status"] =

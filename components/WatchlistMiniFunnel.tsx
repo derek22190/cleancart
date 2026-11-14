@@ -1578,7 +1578,7 @@ export default function WatchlistMiniFunnel({
                     <svg
                       viewBox="0 0 320 195"
                       role="img"
-                      aria-label="United States cancer incidence map showing matching dark crimson hotspot over Iowa (#2 highest and #1 fastest-rising cancer rate in the US)"
+                      aria-label="United States cancer incidence map showing Iowa hotspot (#2 highest and #1 fastest-rising cancer rate per Iowa Cancer Registry)"
                       style={{ width: "100%", maxHeight: 88, height: "auto", display: "block", borderRadius: 6, background: "#fff5f5" }}
                     >
                       <path
@@ -1634,9 +1634,12 @@ export default function WatchlistMiniFunnel({
                       </text>
                     </svg>
                     <div style={{ fontSize: 10, color: "#7f1d1d", marginTop: 4, lineHeight: 1.3 }}>
-                      <b>Same Bullseye:</b> Iowa has <b>#2 highest &amp; #1 rising cancer rate</b> in the U.S.
+                      Iowa has <b>#2 highest &amp; #1 rising cancer rate</b> in the U.S. (Iowa Cancer Registry).
                     </div>
                   </div>
+                </div>
+                <div style={{ fontSize: 9.5, color: "#7f1d1d", marginBottom: 6, lineHeight: 1.3 }}>
+                  {"Maps show where each is reported, not that one causes the other; EPA and IARC disagree on glyphosate's cancer risk."}
                 </div>
 
                 <div

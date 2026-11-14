@@ -308,7 +308,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.monsterenergy.com/en-us/energy-drinks/monster-energy/original-green/",
     verifiedAt: "2026-11-08",
-    match: /\b(monster\s+energy|monster\s+original|green\s+monster|monster\s+lo[- ]?carb|\bmonster\b)\b/i,
+    match: /\b(monster\s+energy|monster\s+original|green\s+monster|monster\s+lo[- ]?carb|\bmonster(?!\s+(?:trail|cookies?|munch|mash|mix)\b))\b/i,
   },
   {
     id: "red-bull-sugarfree",
@@ -5389,7 +5389,7 @@ export function hasValidCatalogProvenance(sourceUrl?: string, verifiedAt?: strin
   }
 }
 
-const KNOWN_BRAND_PATTERNS: RegExp[] = [
+export const KNOWN_BRAND_PATTERNS: RegExp[] = [
   /\borganic\s+valley\b/i,
   /\bhorizon(?:\s+organic)?\b/i,
   /\bfairlife\b/i,
@@ -5404,6 +5404,8 @@ const KNOWN_BRAND_PATTERNS: RegExp[] = [
   /\bpublix\b/i,
   /\bh-?e-?b\b/i,
   /\bwegmans\b/i,
+  /\bkroger\b/i,
+  /\bnature'?s\s+promise\b/i,
   /\bmeijer\b/i,
   /\bup\s*&\s*up\b/i,
   /\bmarket\s+pantry\b/i,
@@ -5413,8 +5415,15 @@ const KNOWN_BRAND_PATTERNS: RegExp[] = [
   /\bfavorite\s+day\b/i,
   /\bkirkland(?:\s+signature)?\b/i,
   /\btrader\s+joe'?s?\b/i,
-  /\b365\s+(?:by\s+whole\s+foods|everyday\s+value|whole\s+foods|organic)\b/i,
+  /\b365(?!\s+(?:days?|ct|count|g|mg|oz|ml|cal|calories)\b)\b/i,
   /\bsignature\s+select\b/i,
+  /\bo\s+organics\b/i,
+  /\bopen\s+nature\b/i,
+  /\bsam'?s\s+choice\b/i,
+  /\bbettergoods\b/i,
+  /\bmillville\b/i,
+  /\bclancy'?s\b/i,
+  /\bspecially\s+selected\b/i,
   /\blucerne\b/i,
   /\bdarigold\b/i,
   /\bshamrock\s+farms\b/i,
@@ -5535,10 +5544,10 @@ const KNOWN_BRAND_PATTERNS: RegExp[] = [
   /\bpoppi\b/i,
   /\bbig\s+k\b/i,
   /\bred\s+bull\b/i,
-  /\bmonster\b/i,
+  /\bmonster(?!\s+(?:trail|cookies?|munch|mash|mix)\b)\b/i,
   /\bcelsius\b/i,
   /\balani(?:\s+nu)?\b/i,
-  /\bghost\b/i,
+  /\bghost(?!\s+(?:peppers?|chilis?|chiles?)\b)\b/i,
   /\breign\b/i,
   /\bbang\b/i,
   /\brockstar\b/i,
@@ -5546,6 +5555,23 @@ const KNOWN_BRAND_PATTERNS: RegExp[] = [
   /\bmuscle\s+milk\b/i,
   /\bowyn\b/i,
   /\borgain\b/i,
+  /\bgerber\b/i,
+  /\bbeech-?nut\b/i,
+  /\bearth'?s\s+best\b/i,
+  /\bhappy\s+baby\b/i,
+  /\bplum\s+organics\b/i,
+  /\bonce\s+upon\s+a\s+farm\b/i,
+  /\bbutterball\b/i,
+  /\bpanera(?:\s+bread)?\b/i,
+  /\bvelveeta\b/i,
+  /\bbreyers\b/i,
+  /\bhershey'?s\b/i,
+  /\bcampbell'?s\b/i,
+  /\boreo\b/i,
+  /\bjell-?o\b/i,
+  /\brx\s*bars?\b/i,
+  /(?<!\bvitamin\s+)(?<!\bgrade\s+)\ba(?:\.\s*|-?)1\.?(?!\s*%|\w)/i,
+  /\bm\s*&\s*m'?s?\b/i,
 ];
 
 export function hasConflictingBrand(query: string, candidateText: string): boolean {
@@ -5631,6 +5657,20 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\balmond\s*milk\b/, /\balmond\s*milk\b|\balmond\s+beverage\b|\bmilked\s+almonds\b/],
     [/\borganic\b/, /\borganic\b/],
     [/\bplant(?:[ -]*based)?\b/, /\bplant(?:[ -]*based)?\b/],
+    [
+      /\b(?:low|less|reduced)[\s-]*sodium\b|\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\bunsalted\b/,
+      /\b(?:low|less|reduced)[\s-]*sodium\b|\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\bunsalted\b/,
+    ],
+    [/\bketo\b/, /\bketo\b/],
+    [/\b(?:low|lo)[\s-]*carb\b/, /\b(?:low|lo)[\s-]*carb\b|\bketo\b/],
+    [
+      /\b(?:reduced|low|less)[\s-]*fat\b|\blowfat\b|\bfat[\s-]*free\b|\bnonfat\b/,
+      /\b(?:reduced|low|less)[\s-]*fat\b|\blowfat\b|\bfat[\s-]*free\b|\bnonfat\b|\bskim\b|(?:^|\s)[012]\s*%|\blight\b|\blite\b/,
+    ],
+    [
+      /\blite\b|\blight\b(?!\s+(?:roast\w*|tuna|brown|corn|cream|syrup)\b)/,
+      /\blight\b|\blite\b|\blyte\b/,
+    ],
   ];
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;

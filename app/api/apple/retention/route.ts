@@ -48,24 +48,57 @@ function decodeBase64UrlJson<T>(segment: string): T | null {
   }
 }
 
-function verifyJwsWithLeafCertIfPresent(
+function normalizeSha256(fingerprint: string): string {
+  return fingerprint.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+}
+
+function verifyAppleRetentionJws(
   parts: string[],
   header: AppleRetentionJwsHeader
 ): boolean {
+  const allowUnsignedDev =
+    process.env.APPLE_RETENTION_REQUIRE_X5C === "false" &&
+    process.env.NODE_ENV !== "production";
+
   if (!Array.isArray(header.x5c) || header.x5c.length === 0) {
-    return process.env.APPLE_RETENTION_REQUIRE_X5C !== "true";
+    return allowUnsignedDev;
+  }
+  if (header.alg !== "ES256" || header.x5c.length !== 3) {
+    return false;
   }
   try {
-    const leafDer = Buffer.from(header.x5c[0], "base64");
-    const leafCert = new crypto.X509Certificate(leafDer);
-    if (header.x5c.length >= 2) {
-      const intermediateCert = new crypto.X509Certificate(
-        Buffer.from(header.x5c[1], "base64")
-      );
-      if (!leafCert.verify(intermediateCert.publicKey)) {
+    const certs = header.x5c.map(
+      (b64) => new crypto.X509Certificate(Buffer.from(b64, "base64"))
+    );
+    const now = Date.now();
+    for (const cert of certs) {
+      const from = Date.parse(cert.validFrom);
+      const to = Date.parse(cert.validTo);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || now < from || now > to) {
         return false;
       }
     }
+    const [leafCert, intermediateCert, rootCert] = certs;
+    if (!leafCert.verify(intermediateCert.publicKey)) {
+      return false;
+    }
+    if (!intermediateCert.verify(rootCert.publicKey)) {
+      return false;
+    }
+    if (!rootCert.verify(rootCert.publicKey)) {
+      return false;
+    }
+    if (!rootCert.subject.includes("Apple Root CA")) {
+      return false;
+    }
+    const expectedRootSha256 = (process.env.APPLE_ROOT_CA_SHA256 || "").trim();
+    if (
+      expectedRootSha256 &&
+      normalizeSha256(rootCert.fingerprint256) !== normalizeSha256(expectedRootSha256)
+    ) {
+      return false;
+    }
+
     const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, "utf8");
     const sigNorm = parts[2].replace(/-/g, "+").replace(/_/g, "/");
     const sigBytes = Buffer.from(
@@ -120,7 +153,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!verifyJwsWithLeafCertIfPresent(parts, header)) {
+  if (!verifyAppleRetentionJws(parts, header)) {
     return NextResponse.json(
       { error: "Invalid Apple JWS signature." },
       { status: 401 }
