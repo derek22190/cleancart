@@ -751,8 +751,51 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
 const OCR_NUTRITION_GARBAGE =
   /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|\d+\s*%\s+\d+\s*%\b|(?<!\bin)gredients?\b|swingredients\b|itamin\s+[a-d]|alcium\s+\d)|(?:\b[a-z]{1,3}\s+\d+\s*%$)/i;
 
+const FOREIGN_OCR_SPILLOVER_AFTER_PERIOD =
+  /\.\s+(?:ingredientes?\b|ingr[eé]dients?\b|contiene\b|puede\s+contener\b|hecho\s+en\b|distribuido\s+por\b|conservar\b|entero\b|grano\s+entero\b|otros\s+alimentos\b|dtros\s+alimentos\b|[^.]*\b(?:alimentos|az[uú]cares|grasas|calor[ií]as|colesterol|yodeterol|queden|pueden|salud|dieta|avena|harina|leche|trigo|soja|soya|nueces|cacahuates|huevo)\b)/i;
+
+const INGREDIENT_PRESERVED_ACRONYMS = new Set([
+  "BHA", "BHT", "TBHQ", "MSG", "EDTA", "DATEM", "PGPR", "FD&C", "USDA", "FDA", "GMO", "UHT", "DNA",
+  "D2", "D3", "B1", "B2", "B3", "B5", "B6", "B12", "K1", "K2", "II", "III",
+]);
+
+export function sanitizeIngredientDisplay(raw: string): string {
+  let s = (raw || "").replace(/_/g, "").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  const foreignMatch = s.match(FOREIGN_OCR_SPILLOVER_AFTER_PERIOD);
+  if (foreignMatch && typeof foreignMatch.index === "number" && foreignMatch.index >= 8) {
+    s = s.slice(0, foreignMatch.index + 1).trim();
+  }
+  const letters = s.replace(/[^A-Za-z]/g, "");
+  if (letters.length >= 6) {
+    const upperCount = letters.replace(/[^A-Z]/g, "").length;
+    if (upperCount / letters.length > 0.78) {
+      let isListStart = true;
+      s = s.replace(/[A-Za-z0-9&'’-]+|[.,;:()[\]]/g, (tok) => {
+        if (/^[.,;:([\]]$/.test(tok)) {
+          if (tok === "." || tok === ":" || tok === ";") isListStart = true;
+          return tok;
+        }
+        if (tok === ")") return tok;
+        const upper = tok.toUpperCase();
+        if (INGREDIENT_PRESERVED_ACRONYMS.has(upper)) {
+          isListStart = false;
+          return upper;
+        }
+        const lower = tok.toLowerCase();
+        if (!isListStart && (LOWERCASE_TITLE_MINOR_WORDS.has(lower) || LOWERCASE_UNIT_TOKENS.has(lower))) {
+          return lower;
+        }
+        isListStart = false;
+        return lower.replace(/(^|[-'’])[a-z]/g, (m) => m.toUpperCase());
+      });
+    }
+  }
+  return s;
+}
+
 function englishIngredients(p: OffProduct): string {
-  const clean = (s: string) => s.replace(/_/g, "").replace(/\s+/g, " ").trim();
+  const clean = (s: string) => sanitizeIngredientDisplay(s);
   const en = clean(p.ingredients_text_en || "");
   if (en && !OCR_NUTRITION_GARBAGE.test(en) && isEnglishIngredientText(en)) return en;
   const raw = clean(p.ingredients_text || "");
@@ -960,61 +1003,109 @@ const LOWERCASE_UNIT_TOKENS = new Set([
   "pk",
 ]);
 
-const PRESERVED_UPPERCASE_ACRONYMS = new Set([
-  "USDA", "FDA", "MSG", "BBQ", "USA", "UK", "EU", "IPA", "UHT", "GMO", "NSF", "PDO", "DOP", "IGP", "PB", "RX", "A1", "V8", "C4", "7UP",
+const TITLE_PRESERVED_ACRONYMS = new Set([
+  "USDA", "FDA", "GMO", "MSG", "BBQ", "PB", "RX", "DNA", "UHT", "IPA", "NSF", "PDO", "DOP", "IGP", "USA", "UK", "EU",
+  "II", "III", "IV", "VI", "XL", "XXL", "AM", "PM", "TV", "RXBAR", "OWYN", "ALDI", "HEB",
+  "A1", "A2", "V8", "C4", "7UP", "K2", "B1", "B2", "B3", "B5", "B6", "B12", "D2", "D3",
+  "NKD", "PRO", "MAX", "GHOST", "KIND", "CELSIUS", "OLIPOP", "POPPI",
 ]);
 
-export function normalizeOffDisplayTitle(raw: string): string {
-  let s = raw.trim();
-  if (!s) return s;
+const CANONICAL_MIXED_CASE_TOKENS: Record<string, string> = {
+  mccormick: "McCormick",
+  "mcdonald's": "McDonald's",
+  mcdonalds: "McDonald's",
+  mccafe: "McCafé",
+  mccain: "McCain",
+  "mccann's": "McCann's",
+  lacroix: "LaCroix",
+  sunbutter: "SunButter",
+  "cheez-it": "Cheez-It",
+  "cheez-its": "Cheez-Its",
+  kitkat: "KitKat",
+  digiorno: "DiGiorno",
+  "non-gmo": "Non-GMO",
+  "h-e-b": "H-E-B",
+  pbfit: "PBfit",
+  oauth: "OAuth",
+  ph: "pH",
+};
 
-  // 1. Heal Shift-cap / 2nd-letter uppercase typos ("KEllogg" -> "Kellogg", "REal" -> "Real", "CRumbled" -> "Crumbled", "BAcon" -> "Bacon", "HIckory" -> "Hickory")
-  s = s.replace(/\b([A-Z])([A-Z])([a-z]{2,})\b/g, (full, a: string, b: string, rest: string) => {
-    if (full === "PBfit" || full === "OAuth") return full;
-    return `${a}${b.toLowerCase()}${rest}`;
-  });
-
-  // 2. Normalize attached or capitalized measurement units ("86.4Oz" -> "86.4 oz", "16.9Fl Oz" -> "16.9 fl oz", "3Lbs" -> "3 lbs")
-  s = s.replace(
-    /\b(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|ml|mg|mcg|g|kg|lbs?|ct|pk)\b/gi,
-    (_m, num: string, unit: string) => `${num} ${unit.toLowerCase().replace(/\.\s*/g, " ").replace(/\s+/g, " ").trim()}`,
-  );
-
-  // 3. Convert ALL-CAPS words >= 3 letters ("PURIFIED WATER" -> "purified water", "KELLOGG EGGO WAFFLES" -> "kellogg eggo waffles")
-  // while preserving legitimate acronyms ("USDA", "BBQ", "MSG", "GMO")
-  s = s.replace(/\b([A-Z]{2,}[A-Z0-9']*)\b/g, (word: string) => {
-    const bare = word.replace(/'S$/i, "");
-    if (PRESERVED_UPPERCASE_ACRONYMS.has(bare)) {
-      return word.endsWith("'S") ? `${bare}'s` : word;
-    }
-    if (!/[A-Z]{2,}/.test(bare)) return word;
-    const lower = word.toLowerCase();
-    return lower.replace(/^([^a-z]*)([a-z])/, (_m, pre: string, ch: string) => `${pre}${ch.toUpperCase()}`);
-  });
-
-  if (!/[a-z]/.test(s)) return s;
-
-  // 4. Only ignore non-letter tokens like "100%" when checking whether a title is already mixed-case
-  const letterWords = s.split(/\s+/).filter((w) => /[a-zA-Z]/.test(w));
-  const firstHasUpper = /[A-Z]/.test(letterWords[0] || "");
-  const tailHasUpper = letterWords.slice(1).some((w) => /[A-Z]/.test(w));
-  if (firstHasUpper && (letterWords.length === 1 || tailHasUpper)) {
-    return s;
+function normalizeSingleTitleSubtoken(sub: string, isFirstWord: boolean, isLastWord: boolean, prevWasNumeric: boolean): string {
+  const lower = sub.toLowerCase().replace(/’/g, "'");
+  if (!lower || !/[a-z]/i.test(sub)) return sub;
+  const canonical = CANONICAL_MIXED_CASE_TOKENS[lower];
+  if (canonical) return canonical;
+  const upper = sub.toUpperCase();
+  if (TITLE_PRESERVED_ACRONYMS.has(upper)) return upper;
+  if (LOWERCASE_UNIT_TOKENS.has(lower) && (prevWasNumeric || (!isFirstWord && lower !== "l"))) {
+    return lower;
   }
+  if (!isFirstWord && !isLastWord && LOWERCASE_TITLE_MINOR_WORDS.has(lower)) {
+    return lower;
+  }
+  // Fix Shift-hold typos ("OLd" -> "Old", "KEllogg" -> "Kellogg"), random mid-word capitals ("oatMeal" -> "Oatmeal"),
+  // shouting ALL-CAPS words ("QUAKER" -> "Quaker"), and lowercase words ("oatmeal" -> "Oatmeal")
+  if (
+    /^[A-Z]{2,}[a-z]/.test(sub) ||
+    /[a-z][A-Z]/.test(sub) ||
+    /^[A-Z]{2,}(?:['’][A-Z]+)?$/.test(sub) ||
+    /^[a-z]/.test(sub)
+  ) {
+    return lower.replace(/^[a-z]|(?<=^[a-z]['’])[a-z]/g, (ch) => ch.toUpperCase());
+  }
+  return sub;
+}
 
-  // 5. Title-Case all-lowercase titles strictly at the leading alphabetic character (never capitalizing the 2nd letter!)
+export function normalizeOffDisplayTitle(raw: string): string {
+  let collapsed = (raw || "").replace(/\s+/g, " ").trim();
+  if (!collapsed) return "";
+  // Normalize attached or capitalized measurement units ("86.4Oz" -> "86.4 oz", "16.9Fl Oz" -> "16.9 fl oz", "3Lbs" -> "3 lbs")
+  collapsed = collapsed.replace(
+    /\b(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|ml|mg|mcg|g|kg|lbs?|ct|pk)\b/gi,
+    (_m, num: string, unit: string) =>
+      `${num} ${unit.toLowerCase().replace(/\.\s*/g, " ").replace(/\s+/g, " ").trim()}`,
+  );
+  // Strip redundant trailing ", <Suffix>" when every word of <Suffix> already appears in the main title
+  // (e.g. "Quaker Oats Old Fashioned 100% Whole Grain Oats, Old Fashioned")
+  const deduped = collapsed.replace(/^(.+?),\s*([^,()]{2,42})$/, (full, prefix: string, suffix: string) => {
+    const prefixWords = new Set(prefix.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+    const suffixWords = suffix.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    return suffixWords.length > 0 && suffixWords.length <= 5 && suffixWords.every((w) => prefixWords.has(w))
+      ? prefix.trim()
+      : full;
+  });
+
+  const parts = deduped.split(/(\s+)/);
+  const wordParts = parts.filter((p) => !/^\s+$/.test(p) && p.length > 0);
+  const totalWords = wordParts.length;
   let wordIdx = 0;
-  return s
-    .split(/(\s+)/)
+  let prevWasNumeric = false;
+
+  return parts
     .map((part) => {
-      if (/^\s+$/.test(part)) return part;
+      if (/^\s+$/.test(part) || !part) return part;
       const idx = wordIdx++;
-      const clean = part.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "").toLowerCase();
-      if (!clean || /^\d/.test(clean)) return part;
-      if (LOWERCASE_UNIT_TOKENS.has(clean)) return part.toLowerCase();
-      if (idx > 0 && LOWERCASE_TITLE_MINOR_WORDS.has(clean)) return part;
-      if (/^[^a-zA-Z]*[A-Z]/.test(part)) return part;
-      return part.replace(/^([^a-zA-Z]*)([a-z])/, (_m, pre: string, ch: string) => `${pre}${ch.toUpperCase()}`);
+      const m = part.match(/^([^A-Za-z0-9]*)([A-Za-z0-9'’-]+)([^A-Za-z0-9]*)$/);
+      if (!m) {
+        prevWasNumeric = /\d/.test(part);
+        return part;
+      }
+      const [, lead, core, trail] = m;
+      const lowerCore = core.toLowerCase().replace(/’/g, "'");
+      if (CANONICAL_MIXED_CASE_TOKENS[lowerCore]) {
+        prevWasNumeric = false;
+        return `${lead}${CANONICAL_MIXED_CASE_TOKENS[lowerCore]}${trail}`;
+      }
+      const normalizedCore = core.includes("-")
+        ? core
+            .split("-")
+            .map((seg, segIdx) =>
+              normalizeSingleTitleSubtoken(seg, idx === 0 && segIdx === 0, idx === totalWords - 1, prevWasNumeric),
+            )
+            .join("-")
+        : normalizeSingleTitleSubtoken(core, idx === 0, idx === totalWords - 1, prevWasNumeric);
+      prevWasNumeric = /^\d+(?:\.\d+)?$/.test(core);
+      return `${lead}${normalizedCore}${trail}`;
     })
     .join("");
 }
@@ -1667,13 +1758,14 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     brandLabel && brandLabel !== "USDA FoodData Central" ? `&brand=${encodeURIComponent(brandLabel)}` : "";
   const usdaCodeParam = best.gtinUpc ? `&code=${encodeURIComponent(best.gtinUpc)}` : "";
   const imageUrl = `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}${usdaBrandParam}${usdaCodeParam}&v=6`;
+  const cleanUsdaIng = sanitizeIngredientDisplay(best.ingredients!.trim());
   return withSingleIngredientWholeFood({
     productTitle: fullTitle,
     brand: brandLabel,
     barcode: best.gtinUpc,
-    ingredients: best.ingredients!.trim(),
+    ingredients: cleanUsdaIng,
     imageUrl,
-    nutrition: inferNutritionFromText(rawDesc, best.ingredients!, extractUsdaNutrition(best)),
+    nutrition: inferNutritionFromText(rawDesc, cleanUsdaIng, extractUsdaNutrition(best)),
     sourceUrl: best.fdcId ? `https://fdc.nal.usda.gov/food-details/${best.fdcId}/nutrients` : undefined,
     source: "usda",
     sourceUpdatedAt: best.publishedDate ? best.publishedDate.slice(0, 10) : null,
@@ -1979,6 +2071,56 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     imageUrl: "/swaps/cereal.jpg",
     nutrition: { caloriesKcal100g: 375, sugarsG100g: 22.5, saturatedFatG100g: 0, sodiumMg100g: 375, fiberG100g: 10, proteinG100g: 7.5, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
     sourceUrl: "https://naturespath.com/products/crunchy-sunrise-cinnamon-cold-cereal-np-us",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(organic|instant|quick|1[- ]?minute|steel\s+cut|maple|brown\s+sugar|apple|cinnamon|raisin|peaches|strawberries|berries|cream|protein|fiber|grits|flour|granola|bars?|chewy|cookies?|squares|life)\b).*\bquaker\b.*\b(old\s+fashioned|rolled\s+oats)\b.*\b(oats?|oatmeal)\b/i,
+    brand: "Quaker",
+    title: "Quaker Oats Old Fashioned 100% Whole Grain Oats",
+    keywords: ["oatmeal", "rolled oats", "canister"],
+    ingredients: "Whole Grain Rolled Oats.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 2.5, saturatedFatG100g: 1.3, sodiumMg100g: 0, fiberG100g: 10.0, proteinG100g: 12.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: false },
+    sourceUrl: "https://www.quakerfoods.com/products/hot-cereals/old-fashioned-oats",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(organic|instant|old\s+fashioned|steel\s+cut|maple|brown\s+sugar|apple|cinnamon|raisin|peaches|strawberries|berries|cream|protein|fiber|grits|flour|granola|bars?|chewy|cookies?|squares|life)\b).*\bquaker\b.*\b(quick|1[- ]?minute)\b.*\b(oats?|oatmeal)\b/i,
+    brand: "Quaker",
+    title: "Quaker Quick 1-Minute 100% Whole Grain Oats",
+    keywords: ["oatmeal", "quick oats", "1 minute", "rolled oats"],
+    ingredients: "Whole Grain Rolled Oats.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 2.5, saturatedFatG100g: 1.3, sodiumMg100g: 0, fiberG100g: 10.0, proteinG100g: 12.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: false },
+    sourceUrl: "https://www.quakerfoods.com/products/hot-cereals/quick-oats",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(organic|lower\s+sugar|less\s+sugar|zero\s+sugar|protein|high\s+fiber|gluten\s+free|cup|bars?|chewy|granola|cereal\s+squares)\b)(?=.*\bquaker\b)(?=.*\binstant\s+oatmeal\b)(?=.*\bmaple\b)(?=.*\bbrown\s+sugar\b).*/i,
+    brand: "Quaker",
+    title: "Quaker Instant Oatmeal Maple & Brown Sugar",
+    keywords: ["packets", "flavored", "oats"],
+    ingredients: "Whole Grain Oats, Sugar, Salt, Natural Flavor.",
+    nutrition: { caloriesKcal100g: 372, sugarsG100g: 27.9, saturatedFatG100g: 1.2, sodiumMg100g: 605, fiberG100g: 7.0, proteinG100g: 9.3, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false, isOrganic: false },
+    sourceUrl: "https://www.quakerfoods.com/products/instant-oatmeal/maple-and-brown-sugar",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(organic|lower\s+sugar|less\s+sugar|zero\s+sugar|protein|high\s+fiber|gluten\s+free|maple|brown\s+sugar|apple|cinnamon|raisin|peaches|strawberries|berries|cream|cup|bars?|chewy|granola)\b)(?=.*\bquaker\b)(?=.*\binstant\s+oatmeal\b)(?=.*\b(original|regular)\b).*/i,
+    brand: "Quaker",
+    title: "Quaker Instant Oatmeal Original",
+    keywords: ["packets", "regular", "oats"],
+    ingredients: "Whole Grain Oats, Salt.",
+    nutrition: { caloriesKcal100g: 357, sugarsG100g: 0, saturatedFatG100g: 1.8, sodiumMg100g: 268, fiberG100g: 10.7, proteinG100g: 14.3, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: false },
+    sourceUrl: "https://www.quakerfoods.com/products/instant-oatmeal/regular",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(quick|instant|steel\s+cut|extra\s+thick|protein|gluten\s+free|maple|brown\s+sugar|apple|cinnamon|cup|flour|granola|bars?|muesli|bran)\b).*\bbob'?s\s+red\s+mill\b.*\borganic\b.*\b(old\s+fashioned|rolled\s+oats)\b/i,
+    brand: "Bob's Red Mill",
+    title: "Bob's Red Mill Organic Old Fashioned Rolled Oats",
+    keywords: ["whole grain", "oatmeal", "oats"],
+    ingredients: "Organic Whole Grain Oats.",
+    nutrition: { caloriesKcal100g: 396, sugarsG100g: 0, saturatedFatG100g: 1.0, sodiumMg100g: 0, fiberG100g: 10.4, proteinG100g: 12.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    sourceUrl: "https://www.bobsredmill.com/product/organic-old-fashioned-rolled-oats",
     verifiedAt: "2026-11-15",
   },
   {
@@ -4464,7 +4606,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
       return {
         productTitle: normalizedScreenTitle,
         barcode: input.barcode,
-        ingredients: rawIng,
+        ingredients: sanitizeIngredientDisplay(rawIng),
         imageUrl: screenImgUrl,
         nutrition: SUPPLEMENT_FORM.test(`${rawTitle} ${rawIng}`) ? { productKind: "supplement", isOrganic: false } : undefined,
         source: "screen",
@@ -4478,7 +4620,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|lucky\s+charms|froot\s+loops|cheerios|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&
@@ -4511,6 +4653,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     return {
       ...rest,
       productTitle: normalizeOffDisplayTitle(rest.productTitle),
+      ingredients: sanitizeIngredientDisplay(rest.ingredients),
       source: "cache",
       origin: source,
       ms: ms(),

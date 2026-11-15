@@ -88,7 +88,7 @@ class MainActivity : Activity() {
     private var isSearching = false
     @Volatile
     private var liveSearchSeq = 0
-    private var expandedPrefSection: String? = "bubble"
+    private var expandedPrefSection: String? = null
     private var pendingSuggestRunnable: Runnable? = null
 
     private var pendingAutoChainToA11y = false
@@ -529,7 +529,16 @@ class MainActivity : Activity() {
             else -> "Search"
         }
 
-        // Row 1: Page Title on the left + Favorites star (☆) and Menu (⋮) on the right
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
+        val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
+        val isLoggedIn = !savedEmail.isNullOrBlank()
+        val displayAccountLabel = if (isLoggedIn) {
+            "👤 ${(savedName ?: savedEmail!!.substringBefore("@")).take(10)}"
+        } else {
+            "👤 Log in"
+        }
+
         val titleRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -538,18 +547,18 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        titleRow.addView(label(titleText, 26f, 0xFF111814.toInt(), bold = true).apply {
+        titleRow.addView(label(titleText, 25f, 0xFF111814.toInt(), bold = true).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
 
         if (activeTab == 0) {
             titleRow.addView(label(
                 if (historyFavoritesOnly) "★" else "☆",
-                22f,
+                21f,
                 if (historyFavoritesOnly) 0xFFEAB308.toInt() else 0xFF374151.toInt(),
                 bold = true
             ).apply {
-                setPadding(dp(10), dp(2), dp(10), dp(2))
+                setPadding(dp(8), dp(2), dp(8), dp(2))
                 setOnClickListener {
                     historyFavoritesOnly = !historyFavoritesOnly
                     renderScreen()
@@ -557,95 +566,36 @@ class MainActivity : Activity() {
             })
         }
 
-        titleRow.addView(label("⋮", 22f, 0xFF374151.toInt(), bold = true).apply {
-            setPadding(dp(10), dp(2), dp(4), dp(2))
-            setOnClickListener {
-                showTopRightMenuDialog()
-            }
-        })
-        topBarContainer.addView(titleRow)
-
-        // Row 2: Uniform 30dp-height action pills aligned on a single horizontal baseline across all tabs
-        // Left: 🛡️ Allergies & Diabetes ▾   |   Right: 👤 Log in · ⚡ Setup / ● Live
-        val pillsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-        }
-
-        fun buildHeaderPill(
-            text: String,
-            textColor: Int,
-            bgColor: Int,
-            strokeColor: Int,
-            marginEndDp: Int = 0,
-            onClick: () -> Unit
-        ): TextView = label(text, 11.5f, textColor, bold = true).apply {
+        titleRow.addView(label(
+            displayAccountLabel,
+            12f,
+            if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
+            bold = true
+        ).apply {
             gravity = Gravity.CENTER
             includeFontPadding = false
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.END
             setPadding(dp(11), 0, dp(11), 0)
             background = GradientDrawable().apply {
-                setColor(bgColor)
-                setStroke(dp(1), strokeColor)
+                setColor(if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFF3F4F6.toInt())
+                setStroke(dp(1), if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE5E7EB.toInt())
                 cornerRadius = dp(999).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 dp(30)
-            ).apply {
-                if (marginEndDp > 0) marginEnd = dp(marginEndDp)
-            }
-            setOnClickListener { onClick() }
-        }
-
-        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
-        val hasDietaryAlerts = activeDietaryCount > 0
-        val allergyHeaderLabel = if (hasDietaryAlerts) {
-            "🛡️ Allergies ($activeDietaryCount) ▾"
-        } else {
-            "🛡️ Allergies & Diabetes ▾"
-        }
-
-        pillsRow.addView(buildHeaderPill(
-            text = allergyHeaderLabel,
-            textColor = if (hasDietaryAlerts) 0xFF991B1B.toInt() else 0xFF065F46.toInt(),
-            bgColor = if (hasDietaryAlerts) 0xFFFEF2F2.toInt() else 0xFFECFDF5.toInt(),
-            strokeColor = if (hasDietaryAlerts) 0xFFFCA5A5.toInt() else 0xFF86EFAC.toInt(),
-            marginEndDp = 6,
-            onClick = { showAllergyAndDietModal() }
-        ))
-
-        // Flexible spacer so left pill sits cleanly under the page title and right pills align with top-right icons
-        pillsRow.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
+            ).apply { marginEnd = dp(4) }
+            setOnClickListener { showGoCoCoLoginDialog() }
         })
 
-        // Account / Log in pill button
-        val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
-        val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
-        val isLoggedIn = !savedEmail.isNullOrBlank()
-        val displayAccountLabel = if (isLoggedIn) {
-            "👤 ${(savedName ?: savedEmail!!.substringBefore("@")).take(8)}"
-        } else {
-            "👤 Log in"
-        }
-
-        pillsRow.addView(buildHeaderPill(
-            text = displayAccountLabel,
-            textColor = if (isLoggedIn) 0xFF065F46.toInt() else 0xFF1F2937.toInt(),
-            bgColor = if (isLoggedIn) 0xFFECFDF5.toInt() else 0xFFEFF1F0.toInt(),
-            strokeColor = if (isLoggedIn) 0xFF86EFAC.toInt() else 0xFFE4E7E5.toInt(),
-            marginEndDp = 0,
-            onClick = { showGoCoCoLoginDialog() }
-        ))
-
-        topBarContainer.addView(pillsRow)
+        titleRow.addView(label("⋮", 22f, 0xFF374151.toInt(), bold = true).apply {
+            setPadding(dp(8), dp(2), dp(4), dp(2))
+            setOnClickListener {
+                showTopRightMenuDialog()
+            }
+        })
+        topBarContainer.addView(titleRow)
     }
 
     private fun renderBottomNav() {
@@ -1516,12 +1466,12 @@ class MainActivity : Activity() {
     private fun renderSearchAndPrefsTab() {
         val wrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(8), dp(16), dp(28))
+            setPadding(dp(16), dp(6), dp(16), dp(24))
         }
 
         val searchCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             background = GradientDrawable().apply {
                 setColor(0xFFF9FAFB.toInt())
                 cornerRadius = dp(20).toFloat()
@@ -1530,24 +1480,15 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(16) }
+            ).apply { bottomMargin = dp(12) }
         }
-        searchCard.addView(label("SEARCH GROCERY & USDA CATALOG", 11f, 0xFF2E9E5B.toInt(), bold = true).apply {
-            letterSpacing = 0.08f
-        })
-        searchCard.addView(label("Search for any product", 20f, 0xFF111814.toInt(), bold = true).apply {
-            setPadding(0, dp(4), 0, dp(2))
-        })
-        searchCard.addView(label("Start typing any food or brand — tap a live suggestion below to inspect it.", 13.5f, 0xFF4B5563.toInt()).apply {
-            setPadding(0, 0, 0, dp(12))
-        })
 
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
         val searchInput = EditText(this).apply {
-            hint = "e.g. Monster, Red Bull, Coke, C4, Milk, Water, Juice…"
+            hint = "Search any food, drink, or brand…"
             setText(lastSearchQuery)
             setSelection(lastSearchQuery.length)
             textSize = 14.5f
@@ -1559,7 +1500,7 @@ class MainActivity : Activity() {
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
                 cornerRadius = dp(999).toFloat()
-                setStroke(dp(2), 0xFF2E9E5B.toInt())
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = dp(8)
@@ -1589,7 +1530,6 @@ class MainActivity : Activity() {
         })
         searchCard.addView(inputRow)
 
-        // GPS-Style Live Autocomplete Dropdown Container right below the search input
         val suggestionsBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
@@ -1619,13 +1559,12 @@ class MainActivity : Activity() {
 
         wrap.addView(searchCard)
 
-        // Quick Tools Row: Label / Screenshot Paste Scanner + Weekly Order / Receipt Auditor
         val quickToolsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(16) }
+            ).apply { bottomMargin = dp(14) }
         }
         fun buildQuickToolCard(
             emoji: String,
@@ -1644,33 +1583,46 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 if (marginEndDp > 0) marginEnd = dp(marginEndDp)
             }
-            addView(label("$emoji  $cardTitle", 13.5f, 0xFF14532D.toInt(), bold = true))
-            addView(label(cardSub, 11.5f, 0xFF166534.toInt()).apply { setPadding(0, dp(3), 0, 0) })
+            addView(label("$emoji  $cardTitle", 14f, 0xFF14532D.toInt(), bold = true).apply {
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            addView(label(cardSub, 12f, 0xFF166534.toInt()).apply {
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(0, dp(2), 0, 0)
+            })
             setOnClickListener { onClick() }
         }
         quickToolsRow.addView(buildQuickToolCard(
             emoji = "📸",
-            cardTitle = "Paste Label",
-            cardSub = "Grade any package or screenshot ingredient list",
+            cardTitle = "Scan Label",
+            cardSub = "Check any ingredient list",
             marginEndDp = 8,
             onClick = { showLabelScannerDialog() }
         ))
         quickToolsRow.addView(buildQuickToolCard(
             emoji = "🧾",
-            cardTitle = "Audit Order",
-            cardSub = "Paste weekly receipt or pickup order for swaps",
+            cardTitle = "Audit Receipt",
+            cardSub = "Swaps for your order",
             marginEndDp = 0,
             onClick = { showWeeklyOrderAuditDialog() }
         ))
         wrap.addView(quickToolsRow)
 
-        // Feature & Preferences Accordion Card (Live Store Bubble + Food preferences)
+        val bubbleActive = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val activeDietaryCount = prefs.getStringSet("dietaryWatchlist", emptySet())?.size ?: 0
+        if (expandedPrefSection == "watchlist" || expandedPrefSection == "allergies") {
+            expandedPrefSection = "prefs"
+        }
+
         val accordionCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
                 cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), 0xFFD1D5DB.toInt())
+                setStroke(dp(1), 0xFFE5E7EB.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1678,12 +1630,15 @@ class MainActivity : Activity() {
             ).apply { bottomMargin = dp(16) }
         }
 
-        // Row 1: Live Store Bubble Setup (with custom Broc mascot icon)
         accordionCard.addView(buildYukaAccordionRow(
             key = "bubble",
             icon = "MASCOT",
             title = "Live Store Bubble",
-            subtitle = "Auto-grade foods in Walmart, Target, Kroger, Shipt, DoorDash, Costco, Sam's Club, BJ's, Amazon Fresh, Instacart, ALDI & more."
+            subtitle = if (bubbleActive) {
+                "Active · Auto-grades items in grocery apps"
+            } else {
+                "Off · Tap to enable in Walmart, Instacart & more"
+            }
         ) {
             val inner = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1698,74 +1653,68 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
         })
 
-        // Row 2: Allergies & Diabetes Alerts (Opt-in pill overlay warnings)
-        accordionCard.addView(buildYukaAccordionRow(
-            key = "allergies",
-            icon = "🛡️",
-            title = "Allergies & Diabetes Alerts",
-            subtitle = "Check Dairy, Wheat/Gluten, Sugar/Diabetes, Soy, Peanuts/Nuts, Egg, Shellfish, or High Sodium to get instant warnings right on the floating pill overlay."
-        ) {
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(16), 0, dp(16), dp(16))
-                addView(dietaryWatchlistControls())
-            }
-        })
-
-        accordionCard.addView(View(this).apply {
-            setBackgroundColor(0xFFE5E7EB.toInt())
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        })
-
-        // Row 3: Food preferences (Family Watchlist)
+        val watchlistSub = if (activeDietaryCount > 0) {
+            "$activeDietaryCount allergy alert${if (activeDietaryCount == 1) "" else "s"} active · Seed oils, dyes & additives"
+        } else {
+            "Allergens, sugar, seed oils, dyes & additives"
+        }
         accordionCard.addView(buildYukaAccordionRow(
             key = "prefs",
-            icon = "🎚️",
-            title = "Food preferences",
-            subtitle = "Detect & double-penalize seed oils, Red 40, HFCS, MSG, and synthetic preservatives."
+            icon = "🛡️",
+            title = "Watchlist & Allergy Alerts",
+            subtitle = watchlistSub
         ) {
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(16), 0, dp(16), dp(16))
+                addView(label("Allergy & Diet Warnings", 13f, 0xFF111814.toInt(), bold = true).apply {
+                    setPadding(0, 0, 0, dp(6))
+                })
+                addView(dietaryWatchlistControls())
+                addView(View(this@MainActivity).apply {
+                    setBackgroundColor(0xFFE5E7EB.toInt())
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                        topMargin = dp(14)
+                        bottomMargin = dp(12)
+                    }
+                })
+                addView(label("Ingredient Penalties", 13f, 0xFF111814.toInt(), bold = true).apply {
+                    setPadding(0, 0, 0, dp(6))
+                })
                 addView(watchlistControls())
             }
         })
 
         wrap.addView(accordionCard)
 
-        // Privacy Policy, Terms of Service, and Manage / Cancel Subscription links at bottom
-        wrap.addView(label("Manage / Cancel Subscription ↗", 13f, 0xFF0F7A4A.toInt(), bold = true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(6))
-            setOnClickListener { openManageSubscription() }
-        })
-
         wrap.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(12))
-            addView(label("Terms of Service ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+            setPadding(0, dp(4), 0, dp(8))
+            addView(label("Terms", 12f, 0xFF6B7280.toInt(), bold = true).apply {
                 setOnClickListener {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
                 }
             })
-            addView(label("   ·   ", 13f, 0xFF6B7280.toInt()))
-            addView(label("Privacy Policy & Data Disclosure ↗", 13f, 0xFF6B7280.toInt(), bold = true).apply {
+            addView(label("  ·  ", 12f, 0xFF9CA3AF.toInt()))
+            addView(label("Privacy", 12f, 0xFF6B7280.toInt(), bold = true).apply {
                 setOnClickListener {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
                 }
             })
+            addView(label("  ·  ", 12f, 0xFF9CA3AF.toInt()))
+            addView(label("Legal Notice", 12f, 0xFF6B7280.toInt(), bold = true).apply {
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Independent Opinion Notice")
+                        .setMessage(
+                            "HeyBroc 0–100 scores represent subjective clean-label opinions for informational grocery comparison only and are not medical or regulatory advice. Formulations vary by region and lot; always verify physical package labels. Retail swap links marked 'paid link' may earn an affiliate commission. HeyBroc is not affiliated with, endorsed by, or sponsored by any grocery retailer or manufacturer."
+                        )
+                        .setPositiveButton("Got It", null)
+                        .show()
+                }
+            })
         })
-
-        wrap.addView(
-            label(
-                "Independent Opinion & Non-Affiliation Notice: HeyBroc 0–100 scores represent subjective clean-label opinions for informational grocery comparison only and are not medical or regulatory advice. Formulations vary by region and lot; always verify physical package labels. Retail swap links marked 'paid link' may earn an affiliate commission. HeyBroc is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Costco, Sam's Club, BJ's, ALDI, Kroger, Amazon, Whole Foods, DoorDash, Uber Eats, Shipt, or any food/beverage manufacturer.",
-                11f,
-                0xFF6B7280.toInt()
-            ).apply {
-                setPadding(dp(18), dp(14), dp(18), dp(10))
-            }
-        )
 
         tabContentContainer.addView(wrap)
     }
@@ -2044,46 +1993,170 @@ class MainActivity : Activity() {
     }
 
     private fun showTopRightMenuDialog() {
+        var menuDialog: AlertDialog? = null
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val savedEmail = prefs.getString("auth_email", null)
-        val authOption = if (!savedEmail.isNullOrBlank()) {
-            "👤 Account & Cloud Sync ($savedEmail)"
-        } else {
-            "👤 Log in / Sign up (Email)"
+        val bubbleActive = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
+
+        val scroll = ScrollView(this)
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(24).toFloat()
+            }
         }
-        val options = arrayOf(
-            authOption,
-            "🎯 Clean-Eating Goals & Onboarding",
-            "📸 Scan / Paste Ingredient Label",
-            "🧾 Audit Weekly Order / Receipt",
-            "💳 Manage / Cancel Subscription",
-            "🛡️ Allergies & Diabetes Alerts",
-            "Manage Live Store Bubble",
-            "Food Preferences (Family Watchlist)",
-            "★ View Saved Favorites",
-            "🗑️ Clear Scan History",
-            "📄 Terms of Service",
-            "🔒 Privacy Policy & Data Disclosure"
-        )
-        AlertDialog.Builder(this)
-            .setTitle("HeyBroc Menu")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showGoCoCoLoginDialog()
-                    1 -> showOnboardingFunnelDialog()
-                    2 -> showLabelScannerDialog()
-                    3 -> showWeeklyOrderAuditDialog()
-                    4 -> openManageSubscription()
-                    5 -> showAllergyAndDietModal()
-                    6 -> { activeTab = 1; topSubTab = "Bubble"; renderScreen() }
-                    7 -> { activeTab = 3; expandedPrefSection = "prefs"; renderScreen() }
-                    8 -> { activeTab = 0; historyFavoritesOnly = true; renderScreen() }
-                    9 -> { ScanHistoryStore.clearHistory(this); renderScreen() }
-                    10 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
-                    11 -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
+        }
+        headerRow.addView(label("Settings & Account", 18.5f, 0xFF111814.toInt(), bold = true).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        headerRow.addView(label("✕", 15f, 0xFF6B7280.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            val sz = dp(32)
+            layoutParams = LinearLayout.LayoutParams(sz, sz)
+            background = GradientDrawable().apply {
+                setColor(0xFFF3F4F6.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            setOnClickListener { menuDialog?.dismiss() }
+        })
+        sheet.addView(headerRow)
+
+        fun addMenuRow(
+            icon: String,
+            rowTitle: String,
+            rowSub: String,
+            showDivider: Boolean = true,
+            onClick: () -> Unit
+        ) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(4), dp(11), dp(4), dp(11))
+                setOnClickListener {
+                    menuDialog?.dismiss()
+                    onClick()
                 }
             }
-            .show()
+            row.addView(label(icon, 16f, 0xFF14532D.toInt()).apply {
+                gravity = Gravity.CENTER
+                val badgeSz = dp(38)
+                layoutParams = LinearLayout.LayoutParams(badgeSz, badgeSz).apply {
+                    marginEnd = dp(12)
+                }
+                background = GradientDrawable().apply {
+                    setColor(0xFFF0FDF4.toInt())
+                    cornerRadius = dp(12).toFloat()
+                }
+            })
+            val textCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            textCol.addView(label(rowTitle, 14.5f, 0xFF111814.toInt(), bold = true).apply {
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            textCol.addView(label(rowSub, 12f, 0xFF6B7280.toInt()).apply {
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(0, dp(1), 0, 0)
+            })
+            row.addView(textCol)
+            row.addView(label("›", 19f, 0xFF9CA3AF.toInt(), bold = true).apply {
+                setPadding(dp(8), 0, dp(2), 0)
+            })
+            sheet.addView(row)
+            if (showDivider) {
+                sheet.addView(View(this).apply {
+                    setBackgroundColor(0xFFF3F4F6.toInt())
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                })
+            }
+        }
+
+        addMenuRow(
+            icon = "👤",
+            rowTitle = "Account & Cloud Sync",
+            rowSub = if (!savedEmail.isNullOrBlank()) savedEmail else "Log in or create free account",
+            onClick = { showGoCoCoLoginDialog() }
+        )
+        addMenuRow(
+            icon = "🛡️",
+            rowTitle = "Watchlist & Allergy Alerts",
+            rowSub = "Allergens, seed oils, dyes & additives",
+            onClick = { showAllergyAndDietModal() }
+        )
+        addMenuRow(
+            icon = "🥦",
+            rowTitle = "Live Store Bubble",
+            rowSub = if (bubbleActive) "Active in grocery apps" else "Tap to enable overlay",
+            onClick = {
+                activeTab = 1
+                topSubTab = "Bubble"
+                renderScreen()
+            }
+        )
+        addMenuRow(
+            icon = "🎯",
+            rowTitle = "Clean-Eating Goals",
+            rowSub = "Update household preferences",
+            onClick = { showOnboardingFunnelDialog() }
+        )
+        addMenuRow(
+            icon = "💳",
+            rowTitle = "Manage Subscription",
+            rowSub = "Billing, upgrade, or cancel anytime",
+            onClick = { openManageSubscription() }
+        )
+        addMenuRow(
+            icon = "🗑️",
+            rowTitle = "Clear Scan History",
+            rowSub = "Remove saved local scans",
+            showDivider = false,
+            onClick = {
+                ScanHistoryStore.clearHistory(this)
+                Toast.makeText(this, "Scan history cleared", Toast.LENGTH_SHORT).show()
+                renderScreen()
+            }
+        )
+
+        val legalRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(2))
+        }
+        legalRow.addView(label("Terms of Service", 12f, 0xFF6B7280.toInt(), bold = true).apply {
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setOnClickListener {
+                menuDialog?.dismiss()
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/terms")))
+            }
+        })
+        legalRow.addView(label("·", 12f, 0xFF9CA3AF.toInt()))
+        legalRow.addView(label("Privacy Policy", 12f, 0xFF6B7280.toInt(), bold = true).apply {
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setOnClickListener {
+                menuDialog?.dismiss()
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.heybroc.com/privacy")))
+            }
+        })
+        sheet.addView(legalRow)
+
+        scroll.addView(sheet)
+        menuDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+            dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            dlg.show()
+        }
     }
 
     private fun showOnboardingFunnelDialog() {
@@ -4630,51 +4703,81 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this)
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(16))
-            setBackgroundColor(Color.WHITE)
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(24).toFloat()
+            }
         }
 
-        box.addView(label("🧾 Audit Weekly Order / Receipt", 19f, 0xFF111814.toInt(), bold = true))
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(4) }
+        }
+        headerRow.addView(label("🧾 Receipt & Cart Audit", 18.5f, 0xFF111814.toInt(), bold = true).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        headerRow.addView(label("✕", 15f, 0xFF6B7280.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            val sz = dp(32)
+            layoutParams = LinearLayout.LayoutParams(sz, sz)
+            background = GradientDrawable().apply {
+                setColor(0xFFF3F4F6.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            setOnClickListener { dialogRef?.dismiss() }
+        })
+        box.addView(headerRow)
+
         box.addView(label(
-            "Paste your Walmart Pickup, Target Drive Up, Instacart, Amazon Fresh, or Kroger receipt / order history. HeyBroc strips receipt boilerplate, grades every item, and ranks your biggest Clean Swaps.",
+            "Paste a receipt or grocery list to score items & find Clean Swaps.",
             13f,
-            0xFF4B5563.toInt()
-        ).apply { setPadding(0, dp(4), 0, dp(10)) })
+            0xFF6B7280.toInt()
+        ).apply { setPadding(0, 0, 0, dp(12)) })
 
         val orderInput = EditText(this).apply {
-            hint = "Paste order email, receipt text, or 1 grocery item per line…\ne.g.\n2x Cheez-It Original Baked Snack Crackers\nHidden Valley Original Ranch Salad Dressing\nKellogg's Frosted Flakes Cereal"
+            hint = "Paste receipt text or 1 item per line…\ne.g. Cheez-It Original Crackers, Hidden Valley Ranch"
             setText(initialOrderText)
-            textSize = 13f
-            minLines = 5
-            maxLines = 9
+            textSize = 13.5f
+            setTextColor(0xFF111814.toInt())
+            setHintTextColor(0xFF9CA3AF.toInt())
+            minLines = 4
+            maxLines = 8
             gravity = Gravity.TOP or Gravity.START
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             background = GradientDrawable().apply {
                 setColor(0xFFF9FAFB.toInt())
-                cornerRadius = dp(12).toFloat()
-                setStroke(dp(1), 0xFF2E9E5B.toInt())
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), 0xFFD1D5DB.toInt())
             }
         }
         box.addView(orderInput)
 
         val helperRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            ).apply { topMargin = dp(10) }
         }
-        helperRow.addView(label("📋 Paste Order", 12f, 0xFF065F46.toInt(), bold = true).apply {
+        helperRow.addView(label("📋 Paste Clipboard", 12.5f, 0xFF065F46.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(10), 0, dp(10), 0)
             background = GradientDrawable().apply {
                 setColor(0xFFECFDF5.toInt())
                 setStroke(dp(1), 0xFFA7F3D0.toInt())
                 cornerRadius = dp(999).toFloat()
             }
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = dp(6)
+            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply {
+                marginEnd = dp(8)
             }
             setOnClickListener {
                 val clip = readPrimaryClipboardText()
@@ -4686,15 +4789,17 @@ class MainActivity : Activity() {
                 }
             }
         })
-        helperRow.addView(label("🧪 Sample 7-Item Order", 12f, 0xFF1F2937.toInt(), bold = true).apply {
+        helperRow.addView(label("✨ Try Sample", 12.5f, 0xFF374151.toInt(), bold = true).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(10), 0, dp(10), 0)
             background = GradientDrawable().apply {
                 setColor(0xFFF3F4F6.toInt())
-                setStroke(dp(1), 0xFFD1D5DB.toInt())
+                setStroke(dp(1), 0xFFE5E7EB.toInt())
                 cornerRadius = dp(999).toFloat()
             }
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f)
             setOnClickListener {
                 orderInput.setText(
                     "Walmart Pickup Order\n" +
@@ -4711,9 +4816,9 @@ class MainActivity : Activity() {
         box.addView(helperRow)
 
         val sbCheck = CheckBox(this).apply {
-            text = "💚 Prefer Store-Brand Budget Swaps (Great Value, Good & Gather, Kirkland, 365)"
-            textSize = 12.5f
-            setTextColor(0xFF14532D.toInt())
+            text = "Prefer store-brand swaps"
+            textSize = 13f
+            setTextColor(0xFF374151.toInt())
             isChecked = preferStoreBrand
             setOnCheckedChangeListener { _, checked ->
                 preferStoreBrand = checked
@@ -4727,10 +4832,10 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            ).apply { topMargin = dp(10) }
         }
 
-        val runBtn = label("🧾 Audit My Weekly Staples →", 14.5f, Color.WHITE, bold = true).apply {
+        val runBtn = label("Find Clean Swaps →", 14.5f, Color.WHITE, bold = true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(14), dp(13), dp(14), dp(13))
             background = GradientDrawable().apply {
@@ -4740,7 +4845,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(6) }
+            ).apply { topMargin = dp(4) }
         }
         box.addView(runBtn)
         box.addView(resultsContainer)
@@ -4748,7 +4853,7 @@ class MainActivity : Activity() {
         runBtn.setOnClickListener {
             val rawText = orderInput.text.toString().trim()
             if (rawText.length < 4) {
-                Toast.makeText(this, "Paste your order or tap Sample 7-Item Order first.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Paste a receipt or tap Try Sample first.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             hideKeyboard()
@@ -4769,7 +4874,7 @@ class MainActivity : Activity() {
                 )
                 runOnUiThread {
                     if (isDestroyed || isFinishing) return@runOnUiThread
-                    runBtn.text = "🧾 Re-Audit Order →"
+                    runBtn.text = "Find Clean Swaps →"
                     runBtn.isEnabled = true
                     resultsContainer.removeAllViews()
 
@@ -4898,10 +5003,10 @@ class MainActivity : Activity() {
         }
 
         scroll.addView(box)
-        dialogRef = AlertDialog.Builder(this)
-            .setView(scroll)
-            .setNegativeButton("Done", null)
-            .show()
+        dialogRef = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+            dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            dlg.show()
+        }
     }
 
     private fun shareProductScoreCard(item: JSONObject, storeDisplayName: String) {

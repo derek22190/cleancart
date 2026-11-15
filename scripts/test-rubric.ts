@@ -5876,7 +5876,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       ),
     );
     // --- Sam's Club & 5M-Food Systemic Regression Suite ---
-    const { relevance, normalizeOffDisplayTitle } = await import("../lib/lookup");
+    const { relevance, normalizeOffDisplayTitle, sanitizeIngredientDisplay } = await import("../lib/lookup");
     const samsBaconScan = await runScan({
       productTitle: "Member's Mark Naturally Hickory Smoked Bacon 3 lbs.",
       store: "sams",
@@ -5973,6 +5973,71 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           walmartActionBtnOcr.detectedStore === "walmart" &&
           walmartActionBtnOcr.title === "Quaker Maple & Brown Sugar Flavor Instant Oatmeal, 1.51 oz 20 Packets" &&
           walmartActionBtnOcr.candidates.some((c) => /bob's red mill.*organic old fashioned rolled oats/i.test(c))
+      ),
+    );
+
+    // --- Build 121 / Android v2.4.0 Regression Suite ---
+    const buildHeaderBarSlice = liveBrowser120.slice(
+      liveBrowser120.indexOf("private func buildHeaderBar()"),
+      liveBrowser120.indexOf("private func setupStoreWebView()"),
+    );
+    const addSubviewContainerIdx = buildHeaderBarSlice.indexOf("view.addSubview(container)");
+    const safeAreaAnchorIdx = buildHeaderBarSlice.indexOf("view.safeAreaLayoutGuide.topAnchor");
+
+    const quakerOldFashionedScan = await runScan({
+      productTitle: "Quaker Oats OLd Fashioned 100% Whole Grain Oats, Old Fashioned",
+      store: "walmart",
+    });
+    const quakerMapleScan = await runScan({
+      productTitle: "Quaker Instant Oatmeal Maple & Brown Sugar",
+      store: "walmart",
+    });
+    const bobsOrganicOatsScan = await runScan({
+      productTitle: "Bob's Red Mill Organic Old Fashioned Rolled Oats",
+      store: "walmart",
+    });
+
+    const safariContent121 = fs.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const chromeContent121 = fs.readFileSync("chrome-extension/content.js", "utf8");
+    const mainKt121 = fs.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+      "utf8",
+    );
+
+    check(
+      "Build 121 / v2.4.0 Suite: iOS LiveStoreBrowser adds header container to view BEFORE safeAreaLayoutGuide constraints, Safari/Chrome content.js match identically with mobile touch alignment & 450ms backdrop click guard, OLd/ALL-CAPS/Spanish OCR spillover normalize cleanly, Quaker/Bob's Red Mill oats resolve accurately, and Android overlay aligns to currentPillCenterY",
+      Boolean(
+        addSubviewContainerIdx > 0 &&
+          safeAreaAnchorIdx > addSubviewContainerIdx &&
+          safariContent121 === chromeContent121 &&
+          safariContent121.includes("alignMobileSearchCardToPill") &&
+          safariContent121.includes("Date.now() - modalOpenedAt < 450") &&
+          overlayKtLatest.includes("var currentPillCenterY: Int") &&
+          readerKtLatest.includes("OverlayWindowService.currentPillCenterY") &&
+          mainKt121.includes("Settings & Account") &&
+          mainKt121.includes("🧾 Receipt & Cart Audit") &&
+          normalizeOffDisplayTitle("Quaker Oats OLd Fashioned 100% Whole Grain Oats, Old Fashioned") ===
+            "Quaker Oats Old Fashioned 100% Whole Grain Oats" &&
+          normalizeOffDisplayTitle("QUAKER INSTANT OATMEAL MAPLE & BROWN SUGAR") ===
+            "Quaker Instant Oatmeal Maple & Brown Sugar" &&
+          normalizeOffDisplayTitle("McCormick Non-GMO USDA Organic RXBAR") ===
+            "McCormick Non-GMO USDA Organic RXBAR" &&
+          sanitizeIngredientDisplay(
+            "100% WHOLE GRAIN ROLLED OATS. ENTERO dtros alimentos yodeterol queden",
+          ) === "100% Whole Grain Rolled Oats." &&
+          sanitizeIngredientDisplay("SOYBEAN OIL, BHT, TBHQ, MONOSODIUM GLUTAMATE (MSG).") ===
+            "Soybean Oil, BHT, TBHQ, Monosodium Glutamate (MSG)." &&
+          quakerOldFashionedScan.ok &&
+          quakerOldFashionedScan.product?.title === "Quaker Oats Old Fashioned 100% Whole Grain Oats" &&
+          (quakerOldFashionedScan.result?.score ?? 0) >= 85 &&
+          (quakerOldFashionedScan.result?.flagged?.length ?? 1) === 0 &&
+          !/yodeterol|alimentos/i.test(quakerOldFashionedScan.product?.ingredients ?? "") &&
+          quakerMapleScan.ok &&
+          quakerMapleScan.product?.title === "Quaker Instant Oatmeal Maple & Brown Sugar" &&
+          (quakerMapleScan.result?.score ?? 100) < (quakerOldFashionedScan.result?.score ?? 0) &&
+          bobsOrganicOatsScan.ok &&
+          bobsOrganicOatsScan.product?.nutrition?.isOrganic === true &&
+          (bobsOrganicOatsScan.result?.score ?? 0) >= 90
       ),
     );
   }

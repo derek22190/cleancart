@@ -1264,6 +1264,197 @@ async function main() {
     console.log(
       `   ✓ Safari/Chrome Extension pill (${pillState.ringVal}/100) + Clean Swap drawer + thumbnails (${drawerState.prodThumbW}px / ${drawerState.swapThumbW}px) verified!`,
     );
+
+    // 4C. Verify iOS Safari Mobile Search Page (`walmart.com/search?q=oatmeal`) auto-alignment + 1-tap drawer open without backdrop flicker!
+    await storePage.navigate("https://www.walmart.com/search?q=oatmeal");
+    await storePage.eval(`
+      document.head.innerHTML = '<meta name="viewport" content="width=device-width, initial-scale=1">';
+      document.body.style.margin = "0";
+      document.body.innerHTML = \`
+        <header style="height:64px;position:sticky;top:0;background:#0071dc;color:#fff;">Walmart Search: oatmeal</header>
+        <div data-item-id="oat-1" style="height:180px;padding:16px;box-sizing:border-box;border-bottom:1px solid #eee;">
+          <a href="/ip/Quaker-Instant-Oatmeal-Maple-Brown-Sugar/10312441">
+            <span data-automation-id="product-title">Quaker Instant Oatmeal Maple &amp; Brown Sugar, 8 Packets</span>
+          </a>
+          <div>$3.48</div>
+        </div>
+        <div data-item-id="oat-2" style="height:220px;padding:16px;box-sizing:border-box;border-bottom:1px solid #eee;">
+          <a href="/ip/Quaker-Oats-Old-Fashioned/10312439">
+            <span data-automation-id="product-title">Quaker Oats OLd Fashioned 100% Whole Grain Oats, Old Fashioned</span>
+          </a>
+          <div>$3.98</div>
+        </div>
+        <div data-item-id="oat-3" style="height:220px;padding:16px;box-sizing:border-box;border-bottom:1px solid #eee;">
+          <a href="/ip/Bobs-Red-Mill-Organic-Rolled-Oats/10312499">
+            <span data-automation-id="product-title">Bob's Red Mill Organic Old Fashioned Rolled Oats, 32 oz</span>
+          </a>
+          <div>$6.98</div>
+        </div>
+      \`;
+      const origMatchMedia = window.matchMedia ? window.matchMedia.bind(window) : null;
+      window.matchMedia = function(q) {
+        if (typeof q === "string" && (q.includes("pointer: coarse") || q.includes("hover: none"))) {
+          return { matches: true, media: q, addEventListener: function(){}, removeEventListener: function(){} };
+        }
+        return origMatchMedia ? origMatchMedia(q) : { matches: false, media: q };
+      };
+      window.__heybrocApiBase = "https://www.heybroc.com";
+      window.__heybrocOverlayCssUrl = ${JSON.stringify(extOverlayCssDataUrl)};
+      window.__heybrocExtStorage = {};
+      window.chrome = {
+        storage: {
+          local: {
+            get: function(keys, cb) {
+              const out = {};
+              if (Array.isArray(keys)) {
+                keys.forEach((k) => { if (k in window.__heybrocExtStorage) out[k] = window.__heybrocExtStorage[k]; });
+              } else if (typeof keys === "string") {
+                if (keys in window.__heybrocExtStorage) out[keys] = window.__heybrocExtStorage[keys];
+              } else if (keys && typeof keys === "object") {
+                Object.keys(keys).forEach((k) => {
+                  out[k] = k in window.__heybrocExtStorage ? window.__heybrocExtStorage[k] : keys[k];
+                });
+              } else {
+                Object.assign(out, window.__heybrocExtStorage);
+              }
+              if (typeof cb === "function") setTimeout(() => cb(out), 2);
+              return Promise.resolve(out);
+            },
+            set: function(items, cb) {
+              Object.assign(window.__heybrocExtStorage, items || {});
+              if (typeof cb === "function") setTimeout(() => cb(), 2);
+              return Promise.resolve();
+            },
+            remove: function(keys, cb) {
+              (Array.isArray(keys) ? keys : [keys]).forEach((k) => delete window.__heybrocExtStorage[k]);
+              if (typeof cb === "function") setTimeout(() => cb(), 2);
+              return Promise.resolve();
+            }
+          },
+          onChanged: { addListener: function() {} }
+        },
+        runtime: {
+          onMessage: { addListener: function() {} },
+          getURL: function(asset) {
+            if (asset.includes("mascot")) return window.__heybrocApiBase + "/broc-mascot.png";
+            return window.__heybrocOverlayCssUrl;
+          },
+          sendMessage: function(msg, cb) {
+            if (!msg || typeof cb !== "function") return;
+            if (msg.type === "CLEANCART_GET_CLIENT_INFO") {
+              setTimeout(() => cb({ ok: true, apiBase: window.__heybrocApiBase, deviceId: "e2e-ios-safari-search", creatorCode: "" }), 5);
+              return;
+            }
+            if (msg.type === "CLEANCART_SCAN") {
+              fetch(window.__heybrocApiBase + "/api/scan", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(Object.assign({}, msg.payload || {}, { surface: "extension", format: "json" }))
+              })
+                .then((r) => r.json())
+                .then((data) => cb(data))
+                .catch((err) => cb({ ok: false, error: String(err) }));
+              return;
+            }
+            setTimeout(() => cb({ ok: true, inStock: true }), 5);
+          }
+        }
+      };
+    `);
+    await storePage.eval(extContentJS, false);
+
+    let mobileSearchPill: {
+      ringVal: string;
+      subText: string;
+    };
+    try {
+      mobileSearchPill = await storePage.waitFor(
+        `(() => {
+          const sr = document.getElementById("cleancart-overlay-host")?.shadowRoot;
+          const pill = sr?.querySelector(".cc-pill");
+          if (!pill || pill.hidden) return null;
+          const val = (pill.querySelector(".cc-mini-ring-val")?.textContent || "").trim();
+          if (!/^\\d+$/.test(val)) return null;
+          return {
+            ringVal: val,
+            subText: (pill.querySelector(".cc-pill-sub")?.textContent || "").trim()
+          };
+        })()`,
+        "iOS Safari mobile search auto-aligned Quaker Oats pill score",
+        10000,
+      );
+    } catch (err) {
+      const diagSearch = await storePage.eval<unknown>(`(() => {
+        const host = document.getElementById("cleancart-overlay-host");
+        const sr = host?.shadowRoot;
+        const pill = sr?.querySelector(".cc-pill");
+        const cards = [...document.querySelectorAll("[data-item-id]")].map((c) => ({
+          id: c.getAttribute("data-item-id"),
+          rect: c.getBoundingClientRect(),
+          text: (c.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 80)
+        }));
+        return {
+          href: location.href,
+          loadedFlag: window.__cleancartLoaded,
+          hasHost: Boolean(host),
+          pillHidden: pill?.hidden ?? null,
+          pillHtml: pill?.innerHTML?.slice(0, 260) || null,
+          ringVal: pill?.querySelector(".cc-mini-ring-val")?.textContent || null,
+          subText: pill?.querySelector(".cc-pill-sub")?.textContent || null,
+          innerHeight: window.innerHeight,
+          innerWidth: window.innerWidth,
+          userAgent: navigator.userAgent,
+          cards
+        };
+      })()`);
+      console.error("   [DIAGNOSTIC 4C] Mobile search state:", JSON.stringify(diagSearch, null, 2));
+      console.error("   [DIAGNOSTIC 4C] Page exceptions:", storePage.exceptions);
+      throw err;
+    }
+    assert(
+      Number(mobileSearchPill.ringVal) >= 85 &&
+        /quaker/i.test(mobileSearchPill.subText) &&
+        !mobileSearchPill.subText.includes("OLd"),
+      `Expected mobile search pill to auto-align & score Quaker Oats Old Fashioned (>=85, clean casing), got ${JSON.stringify(mobileSearchPill)}`,
+    );
+
+    // Simulate iOS Safari single-tap sequence: pointerdown -> pointerup -> 25ms delayed click on newly exposed .cc-backdrop!
+    const singleTapResult = await storePage.eval<{
+      stayedOpen: boolean;
+      cardTitle: string;
+    }>(`new Promise((resolve) => {
+      const sr = document.getElementById("cleancart-overlay-host")?.shadowRoot;
+      const pill = sr?.querySelector(".cc-pill");
+      const rect = pill.getBoundingClientRect();
+      const cx = Math.round(rect.left + rect.width / 2);
+      const cy = Math.round(rect.top + rect.height / 2);
+      pill.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, isPrimary: true, pointerId: 1, pointerType: "touch", button: 0, clientX: cx, clientY: cy }));
+      pill.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, isPrimary: true, pointerId: 1, pointerType: "touch", button: 0, clientX: cx, clientY: cy }));
+      setTimeout(() => {
+        const backdrop = sr?.querySelector(".cc-backdrop");
+        if (backdrop && !backdrop.hidden) {
+          backdrop.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: cx, clientY: cy }));
+        }
+        setTimeout(() => {
+          const card = sr?.querySelector(".cc-card");
+          const bd = sr?.querySelector(".cc-backdrop");
+          resolve({
+            stayedOpen: Boolean(bd && !bd.hidden && card),
+            cardTitle: (card?.querySelector(".cc-product")?.textContent || "").trim()
+          });
+        }, 40);
+      }, 25);
+    })`, true);
+    assert(
+      singleTapResult.stayedOpen &&
+        /quaker\s+oats\s+old\s+fashioned/i.test(singleTapResult.cardTitle) &&
+        !singleTapResult.cardTitle.includes("OLd"),
+      `Expected 1-tap on Safari pill to keep drawer open without backdrop flicker and normalize 'OLd', got ${JSON.stringify(singleTapResult)}`,
+    );
+    console.log(
+      `   ✓ iOS Safari mobile Walmart search auto-alignment (${mobileSearchPill.ringVal}/100 · "${mobileSearchPill.subText}") + 1-tap zero-flicker drawer verified!`,
+    );
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");

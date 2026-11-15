@@ -87,6 +87,8 @@ class OverlayWindowService : Service() {
         const val EXTRA_STORE_BUCKET = "store_bucket"
         const val EXTRA_KEEP_MODE = "keep_mode"
         const val EXTRA_ALL_CART_ROWS_VISIBLE = "all_cart_rows_visible"
+        @Volatile
+        var currentPillCenterY: Int = -1
 
         private const val INK = 0xFF15201B.toInt()
         private const val INK_2 = 0xFF4A5550.toInt()
@@ -147,6 +149,7 @@ class OverlayWindowService : Service() {
 
     private var isCartAvgMode = false
     private var isPdpScrollHint = false
+    private var currentIsSinglePdp = true
     private var isAuditorOpen = false
     private var openedCardFromAuditor = false
     private var isTestMode = false
@@ -164,6 +167,10 @@ class OverlayWindowService : Service() {
     private val imageExecutor = Executors.newFixedThreadPool(2)
     private val swapBitmapCache = LruCache<String, Bitmap>(24)
 
+    private fun syncPillCenterY() {
+        currentPillCenterY = pillY + dp(21)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -179,6 +186,7 @@ class OverlayWindowService : Service() {
             editor.apply()
         }
         pillY = prefs.getInt(KEY_PILL_Y, dp(220))
+        syncPillCenterY()
         loadPersistedCart(currentStoreBucket)
         displayedCartAvg = calcCartAvg()
     }
@@ -343,6 +351,7 @@ class OverlayWindowService : Service() {
                         }
                     }
                     data = incoming
+                    currentIsSinglePdp = intent.getBooleanExtra(EXTRA_IS_SINGLE_PDP, true)
                     isCartAvgMode = false
                     isPdpScrollHint = false
                     runCatching { ScanHistoryStore.recordScan(this, incoming, currentStoreKey) }
@@ -1127,6 +1136,7 @@ class OverlayWindowService : Service() {
     @SuppressLint("ClickableViewAccessibility")
     private fun showPill(loadingText: String? = null) {
         if (hiddenForCurrentScreen || !canDisplayOverlay()) return
+        syncPillCenterY()
         if (!isCartAvgMode) climbAnimator?.cancel()
         if (loadingText == null && !isCartAvgMode && !isPdpScrollHint) {
             ScanApi.applyLocalWatchlistToData(this, data)
@@ -1158,6 +1168,11 @@ class OverlayWindowService : Service() {
                 val badgeSummary = dietaryAlerts.take(2).joinToString(" + ") { it.shortBadge }
                 val extraCount = if (dietaryAlerts.size > 2) " +${dietaryAlerts.size - 2}" else ""
                 "⚠️ $badgeSummary$extraCount  •  $effectiveScore/100"
+            }
+            ok && !currentIsSinglePdp -> {
+                val prodTitle = cleanCartTitle(data?.optJSONObject("product")?.optString("title").orEmpty())
+                val shortTitle = if (prodTitle.length > 20) "${prodTitle.take(19).trimEnd()}…" else prodTitle
+                if (shortTitle.isNotBlank()) "$effectiveScore/100  •  $shortTitle" else "$effectiveScore/100  •  Tap to Inspect"
             }
             ok -> "$effectiveScore/100  •  Tap to Inspect"
             else -> data?.optString("error")?.take(48) ?: "HeyBroc"
@@ -1234,6 +1249,7 @@ class OverlayWindowService : Service() {
                         params.x = dx.coerceAtLeast(0)
                         params.y = (startY + dy).coerceIn(dp(24), (curH - dp(80)).coerceAtLeast(dp(48)))
                         pillY = params.y
+                        syncPillCenterY()
                         overHide = e.rawY > curH * 0.80f && e.rawX > curW * 0.2f && e.rawX < curW * 0.8f
                         showHideTarget(overHide)
                         updateOverlayView(v, params)
@@ -1247,9 +1263,12 @@ class OverlayWindowService : Service() {
                         removePill()
                     } else {
                         params.x = 0
+                        syncPillCenterY()
                         persistCart()
                         updateOverlayView(v, params)
-                        if (!moved) {
+                        if (moved && e.actionMasked == MotionEvent.ACTION_UP) {
+                            GroceryScreenReaderService.requestRescanForPillPosition()
+                        } else if (!moved) {
                             val currentlyOk = data?.optBoolean("ok") == true && data?.optJSONObject("result") != null
                             if (isPdpScrollHint) {
                                 Toast.makeText(

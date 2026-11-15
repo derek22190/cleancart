@@ -56,6 +56,12 @@
     /iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
+  const isTouchPrimary = () =>
+    isIosMobileBrowser ||
+    Boolean(window.matchMedia?.("(hover: none) and (pointer: coarse)")?.matches) ||
+    (Number(navigator.maxTouchPoints || 0) > 0 &&
+      Math.min(window.innerWidth || 9999, window.screen?.width || 9999) <= 920);
+
   function buildWebActionUrl(kind) {
     if (isIosMobileBrowser) {
       return kind === "login" ? "heybroc://login" : "heybroc://upgrade";
@@ -1261,6 +1267,7 @@
   /* ---------------- Multi-Product Grid Card Hover / Focus Disambiguation ---------------- */
   const PRODUCT_CARD_SEL = [
     '[data-item-id]',
+    '[data-testid*="list-view" i]',
     '[data-testid*="product-card" i]',
     '[data-testid*="item-card" i]',
     '[data-testid*="product-tile" i]',
@@ -2402,6 +2409,7 @@
   );
 
   /* ---------------- Persistent Pill Drag + PointerCancel + Escape Handling ---------------- */
+  let modalOpenedAt = 0;
   (() => {
     let startY = 0;
     let startX = 0;
@@ -2411,6 +2419,7 @@
     let lastPointerTapAt = 0;
 
     function openDrawerFromPill() {
+      modalOpenedAt = Date.now();
       const act = pillEl.dataset.act;
       if (act === "open-auditor") {
         state.auditorOpen = true;
@@ -2442,11 +2451,14 @@
       if (!cancelled && !moved) {
         lastPointerTapAt = Date.now();
         openDrawerFromPill();
+      } else if (!cancelled && moved && typeof alignMobileSearchCardToPill === "function") {
+        alignMobileSearchCardToPill(true);
       }
     }
 
     pillEl.addEventListener("pointerdown", (e) => {
       if (e.button !== undefined && e.button !== 0) return;
+      e.stopPropagation();
       activePointerId = e.pointerId;
       try { pillEl.setPointerCapture(e.pointerId); } catch { /* ignore */ }
       startY = e.clientY;
@@ -2482,6 +2494,7 @@
 
     pillEl.addEventListener("pointerup", (e) => {
       if (activePointerId !== e.pointerId) return;
+      e.stopPropagation();
       try { pillEl.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
       finishDrag(false);
     });
@@ -2491,7 +2504,9 @@
       finishDrag(true);
     });
 
-    pillEl.addEventListener("click", () => {
+    pillEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
       if (Date.now() - lastPointerTapAt < 450 || moved) return;
       openDrawerFromPill();
     });
@@ -2793,7 +2808,16 @@
       const alertChip = pillHasAlerts
         ? `<span class="cc-pill-alert">⚠️ ${esc(state.data.dietaryAlerts[0].shortBadge)}</span>`
         : "";
-      const cartChip = avg !== null ? `Cart: ${esc(avg)}/100 (${totalUnits})` : `${esc(activeBucket.label)} Cart: --`;
+      const cartChip = avg !== null ? `Cart: ${avg}/100 (${totalUnits})` : `${activeBucket.label} Cart: --`;
+      const alignedTitle =
+        !isProductPage() && (state.data?.product?.title || state.hoveredCardData?.title)
+          ? String(state.data?.product?.title || state.hoveredCardData?.title).trim()
+          : "";
+      const shortAligned = alignedTitle
+        ? alignedTitle.length > 26
+          ? `${alignedTitle.slice(0, 25).trimEnd()}…`
+          : alignedTitle
+        : "";
       updatePillElement({
         visible: true,
         tone: prodTone,
@@ -2803,7 +2827,7 @@
         primaryHtml: isNonFood
           ? `<span>Non-Food Item</span>`
           : `<b>${esc(safeScore)}/100</b><span>${esc(ratingLabelForScore(safeScore))}</span>${alertChip}`,
-        subHtml: `${esc(cartChip)} · Tap to inspect`,
+        subHtml: shortAligned ? `${esc(shortAligned)} · Tap` : `${esc(cartChip)} · Tap to inspect`,
       });
     } else {
       const hasAvg = avg !== null && avg !== undefined;
@@ -2933,6 +2957,11 @@
     }
     const act = t.dataset.act;
     if (act === "collapse" && (t === e.target || t.classList.contains("cc-close"))) {
+      if (t === e.target && !t.classList.contains("cc-close") && Date.now() - modalOpenedAt < 450) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       state.expanded = false;
       state.auditorOpen = false;
       render();
@@ -3098,6 +3127,12 @@
 
     const modalScope = activeDialogScope();
     if (!isProductPage()) {
+      // On touch-primary mobile browsers (iOS Safari, etc.), automatically align and scan the search/aisle card at the pill's Y position!
+      if (isTouchPrimary() && !isCartPageUrl() && !detectOpenCartRoot() && !state.expanded && !state.auditorOpen) {
+        if (alignMobileSearchCardToPill(false)) {
+          return;
+        }
+      }
       // On multi-product grid/search/aisle pages: keep hovered/focused card score if active, else show Cart Avg!
       if (!state.hoveredCardData && !state.expanded) {
         ++scanSeq;
@@ -3109,6 +3144,7 @@
       return;
     }
 
+    lastMobileAlignedTitle = "";
     state.hoveredCardData = null;
     const productTitle = readTitle(modalScope);
     if (!productTitle) {
@@ -3170,10 +3206,147 @@
     );
   }
 
-  // Multi-product grid/aisle hover & keyboard-focus disambiguation:
-  // Scans the exact product tile the shopper hovers or focuses without ever guessing a random banner!
+  // Multi-product grid/aisle hover, keyboard-focus & mobile pill-alignment disambiguation:
+  // Scans the exact product tile the shopper hovers, focuses, or aligns with the floating pill on mobile!
   let hoverTimer = null;
   let lastHoveredCardEl = null;
+  let lastMobileAlignedTitle = "";
+  let mobileScrollTimer = null;
+
+  function findAlignedMobileProductCard() {
+    if (!isTouchPrimary() || isProductPage() || isCartPageUrl() || detectOpenCartRoot()) return null;
+    if (BASE_STORE === "amazon") {
+      const crumbNodes = document.querySelectorAll(
+        "#wayfinding-breadcrumbs_feature_div, #breadcrumb_feature_div, [id*='breadcrumb' i]"
+      );
+      const crumbText = [...crumbNodes].map((n) => n.textContent || "").join(" ");
+      if (AMAZON_NON_GROCERY_CRUMB_RE.test(crumbText)) return null;
+    }
+
+    const seen = new Set();
+    const candidates = [];
+    for (const el of document.querySelectorAll(PRODUCT_CARD_SEL)) {
+      if (!el || host?.contains(el) || seen.has(el)) continue;
+      seen.add(el);
+      candidates.push(el);
+    }
+    const prodLinks = document.querySelectorAll(
+      'a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"]'
+    );
+    for (let i = 0; i < prodLinks.length && i < 140; i++) {
+      const a = prodLinks[i];
+      if (!a || host?.contains(a)) continue;
+      let card = a.closest(PRODUCT_CARD_SEL);
+      if (!card) {
+        let cur = a.parentElement;
+        let depth = 0;
+        while (cur && cur !== document.body && !/^(MAIN|UL|OL|SECTION)$/i.test(cur.tagName) && depth < 6) {
+          const r = cur.getBoundingClientRect();
+          if (r.height >= 64 && r.height <= 640 && r.width >= 110) {
+            card = cur;
+            break;
+          }
+          cur = cur.parentElement;
+          depth++;
+        }
+      }
+      if (card && !seen.has(card)) {
+        seen.add(card);
+        candidates.push(card);
+      }
+    }
+
+    const vh = Math.max(320, window.innerHeight || 720);
+    const pillRect = pillEl && !pillEl.hidden ? pillEl.getBoundingClientRect() : null;
+    const pillCenterY =
+      pillRect && pillRect.height > 4
+        ? (pillRect.top + pillRect.bottom) / 2
+        : (Math.max(8, Math.min(92, Number(state.y) || 50)) / 100) * vh;
+    const maxSearchGap = Math.max(320, vh * 0.65);
+    let bestCard = null;
+    let bestInfo = null;
+    let bestRank = Infinity;
+
+    for (const card of candidates) {
+      if (!isElementVisible(card)) continue;
+      if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
+      if (isCartDrawerElement(card.closest('[role="dialog"], aside, section'))) continue;
+      const cr = card.getBoundingClientRect();
+      if (cr.height < 54 || cr.height > 680 || cr.width < 100) continue;
+      if (cr.bottom < 105 || cr.top > vh - 55) continue;
+
+      const overlapDist =
+        pillCenterY < cr.top ? cr.top - pillCenterY : pillCenterY > cr.bottom ? pillCenterY - cr.bottom : 0;
+      if (overlapDist > maxSearchGap) continue;
+
+      const info = readProductCardInfo(card);
+      if (!info || !info.title) continue;
+      if (
+        BASE_STORE === "amazon" &&
+        !REAL_ING_HINT_RE.test(info.title) &&
+        !AMAZON_FOOD_OR_CARE_TITLE_RE.test(info.title) &&
+        !isAmazonGroceryPage(null)
+      ) {
+        continue;
+      }
+
+      const centerDist = Math.abs((cr.top + cr.bottom) / 2 - pillCenterY);
+      const headerPenalty = overlapDist > 0 && cr.top < 72 ? (72 - cr.top) * 0.45 : 0;
+      const rank = overlapDist + centerDist * 0.12 + headerPenalty;
+      if (rank < bestRank) {
+        bestRank = rank;
+        bestCard = card;
+        bestInfo = info;
+      }
+    }
+    return bestCard && bestInfo ? { card: bestCard, info: bestInfo } : null;
+  }
+
+  function alignMobileSearchCardToPill(forceRescan = false) {
+    const match = findAlignedMobileProductCard();
+    if (!match) {
+      lastMobileAlignedTitle = "";
+      state.hoveredCardData = null;
+      if (forceRescan && !state.expanded && !state.auditorOpen) {
+        ++scanSeq;
+        lastKey = "";
+        state.mode = "cart_avg";
+        state.lastDomProductImageUrl = null;
+        render();
+      }
+      return false;
+    }
+    if (!forceRescan && lastMobileAlignedTitle === match.info.title && state.hoveredCardData?.title === match.info.title) {
+      render();
+      return true;
+    }
+    lastMobileAlignedTitle = match.info.title;
+    triggerGridCardInspect(match.card);
+    return true;
+  }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!isTouchPrimary() || isProductPage() || isCartPageUrl() || state.expanded || state.auditorOpen || state.dragging) {
+        return;
+      }
+      clearTimeout(mobileScrollTimer);
+      mobileScrollTimer = setTimeout(() => {
+        if (!isTouchPrimary() || isProductPage() || isCartPageUrl() || state.expanded || state.auditorOpen || state.dragging) {
+          return;
+        }
+        if (!alignMobileSearchCardToPill(false)) {
+          ++scanSeq;
+          lastKey = "";
+          state.mode = "cart_avg";
+          state.lastDomProductImageUrl = null;
+          render();
+        }
+      }, 190);
+    },
+    { passive: true }
+  );
 
   function triggerGridCardInspect(cardEl) {
     if (isProductPage() || isCartPageUrl()) return;
@@ -3200,7 +3373,11 @@
         },
       },
       (resp) => {
-        if (resp?.ok) scanCache.set(cKey, resp);
+        if (resp?.ok) {
+          scanCache.set(cKey, resp);
+        } else if (lastMobileAlignedTitle === info.title) {
+          lastMobileAlignedTitle = "";
+        }
         if (
           seq !== scanSeq ||
           isProductPage() ||

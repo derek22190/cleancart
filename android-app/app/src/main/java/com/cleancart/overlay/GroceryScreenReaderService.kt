@@ -32,6 +32,14 @@ class GroceryScreenReaderService : AccessibilityService() {
             return runCatching { svc.getSystemService(WINDOW_SERVICE) as? WindowManager }.getOrNull()
         }
 
+        fun requestRescanForPillPosition() {
+            val svc = activeInstance ?: return
+            svc.handler.post {
+                svc.lastKey = ""
+                svc.readAndScan()
+            }
+        }
+
         fun requestInAppSearch(
             targetPkg: String,
             query: String,
@@ -1461,8 +1469,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         val density = dm.density.coerceAtLeast(1f)
         val screenW = dm.widthPixels.coerceAtLeast(720)
         val screenH = dm.heightPixels.coerceAtLeast(1280)
-        val edgeMarginPx = (10f * density).toInt()
+        val tightEdgePx = (3f * density).toInt()
         val minCardTextWidthPx = (54f * density).toInt()
+        val fullRowMinWidthPx = (screenW * 0.36f).toInt()
         val belowFoldThresholdY = (screenH * 0.52f).toInt()
         val rect = Rect()
 
@@ -1483,9 +1492,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                 val nodeW = rect.width()
                 val isEdgeClipped =
                     visible && (
-                        rect.left < edgeMarginPx ||
-                            rect.right > screenW - edgeMarginPx ||
-                            (nodeW in 1 until minCardTextWidthPx)
+                        (nodeW in 1 until minCardTextWidthPx) ||
+                            ((rect.left < tightEdgePx || rect.right > screenW - tightEdgePx) && nodeW < fullRowMinWidthPx)
                         )
                 val emittedForNode = HashSet<String>(6)
                 emitSplitAndCombinedNodes(out, node.text, viewId, heading, visible, emittedForNode, rect.left, rect.top, rect.right, rect.bottom, isEdgeClipped)
@@ -1953,7 +1961,9 @@ class GroceryScreenReaderService : AccessibilityService() {
             val screenW = dm.widthPixels.coerceAtLeast(720)
             val screenH = dm.heightPixels.coerceAtLeast(1200)
             val focalMaxTop = (screenH * 0.68f).toInt()
-            val edgeClipPx = (10f * density).toInt()
+            val edgeClipPx = (3f * density).toInt()
+            val fullListTitleWidthPx = (screenW * 0.36f).toInt()
+            val minHeaderSafeTop = (screenH * 0.13f).toInt()
             // Cluster cards into visual horizontal rows dynamically by vertical proximity (`rowGapPx = 115dp`)
             // instead of fixed integer division (`top / 140dp`). On 2-column grids (like Walmart "Weekly Essentials"),
             // the left card often has "Sponsored" + "Final cost by weight" above its title while the right card does not,
@@ -2006,22 +2016,19 @@ class GroceryScreenReaderService : AccessibilityService() {
                 }
                 fun isPartiallyClippedInRow(rc: CarouselCandidate): Boolean {
                     if (rc.node.isEdgeClipped) return true
-                    if (rc.node.left < edgeClipPx) return true
+                    if (rc.node.left < edgeClipPx && rc.width < fullListTitleWidthPx) return true
                     // If a card's right edge doesn't reach 34% of the screen width, it's a departing left-edge card.
                     if (rc.node.right in 1 until (screenW * 0.34f).toInt()) return true
-                    // If a card's left edge starts past 56% of the screen width, it's a 3rd-column / right-edge card off to the side.
-                    if (rc.node.left > (screenW * 0.56f).toInt()) return true
-                    if (rc.node.right > screenW - edgeClipPx) return true
+                    // If a card's left edge starts past 62% of the screen width, it's a 3rd-column / right-edge card off to the side.
+                    if (rc.node.left > (screenW * 0.62f).toInt()) return true
+                    if (rc.node.right > screenW - edgeClipPx && rc.width < fullListTitleWidthPx) return true
                     val maxW = maxWidthByBand[rc.rowBand] ?: 0
                     // When a card in a horizontal carousel slides partially off the left or right edge,
                     // Android clamps getBoundsInScreen(rect) to the viewport so its visible width shrinks
                     // compared to the full card next to it. Allow normal 2-column text width differences (>= 65% of maxW).
                     return maxW >= (64f * density).toInt() && rc.width < (maxW * 0.65f).toInt() && rc.width < (screenW * 0.32f).toInt()
                 }
-                // Always select the leftmost unclipped card (`unclipped[0]`) in the top focal visible row so the
-                // scanner stays aligned with the primary card on screen (e.g. Smithfield Ham Steak on the left of a
-                // 2-column grid, or Butterball Turkey in the left/center slot) and never jumps to bottom carousels!
-                val unclipped = rawCandidates
+                val rawUnclipped = rawCandidates
                     .filterNot { isPartiallyClippedInRow(it) }
                     .sortedWith(
                         compareBy<CarouselCandidate> { if (it.node.top in 1..focalMaxTop) 0 else 1 }
@@ -2029,19 +2036,41 @@ class GroceryScreenReaderService : AccessibilityService() {
                             .thenBy { it.node.left }
                             .thenBy { it.node.index }
                     )
+                // Ignore top-clipped rows scrolling underneath Walmart/Target's sticky search header when a full row is visible below
+                val headerSafe = rawUnclipped.filter { it.node.top >= minHeaderSafeTop }
+                val unclipped = if (headerSafe.isNotEmpty()) headerSafe else rawUnclipped
                 if (unclipped.isNotEmpty()) {
-                    val topBand = unclipped.first().rowBand
-                    val topRowCards = unclipped.filter { it.rowBand == topBand }
-                    val primaryCard = topRowCards.firstOrNull()
+                    val pillCenterY = OverlayWindowService.currentPillCenterY
+                    val targetBand = if (pillCenterY > 0) {
+                        val cardPadTop = (32f * density).toInt()
+                        val cardPadBottom = (115f * density).toInt()
+                        val distinctBands = unclipped.map { it.rowBand }.distinct()
+                        distinctBands.minByOrNull { band ->
+                            val members = unclipped.filter { it.rowBand == band }
+                            val bandTop = (members.minOf { it.node.top } - cardPadTop).coerceAtLeast(0)
+                            val bandBottom = members.maxOf { it.node.bottom.coerceAtLeast(it.node.top + (24f * density).toInt()) } + cardPadBottom
+                            val overlapDist = when {
+                                pillCenterY < bandTop -> bandTop - pillCenterY
+                                pillCenterY > bandBottom -> pillCenterY - bandBottom
+                                else -> 0
+                            }
+                            val midY = (bandTop + bandBottom) / 2
+                            overlapDist + (kotlin.math.abs(midY - pillCenterY) * 0.15f).toInt()
+                        } ?: unclipped.first().rowBand
+                    } else {
+                        unclipped.first().rowBand
+                    }
+                    val selectedRowCards = unclipped.filter { it.rowBand == targetBand }
+                    val primaryCard = selectedRowCards.firstOrNull()
                     if (primaryCard != null) {
                         lastRowLeadTitle = primaryCard.cleaned
                         lastRowLeadLeftX = primaryCard.node.left
                     }
-                    // When the primary card in the active carousel is a non-food household item (e.g. Paper Towels
+                    // When the primary card in the active row is a non-food household item (e.g. Paper Towels
                     // or Disposable Plastic Forks & Spoons in "Shop everyday essentials"), return emptyList() so
                     // readAndScan() immediately displays 🛒 Cart Avg instead of scanning a peripheral card off to the side.
                     if (primaryCard != null && !NON_FOOD_PRODUCT.containsMatchIn(primaryCard.cleaned)) {
-                        for (sc in topRowCards) {
+                        for (sc in selectedRowCards) {
                             if (!NON_FOOD_PRODUCT.containsMatchIn(sc.cleaned)) {
                                 addCandidate(sc.cleaned)
                             }

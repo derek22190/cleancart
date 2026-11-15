@@ -85,11 +85,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var lastDetectedTitle: String = ""
     private var lastDetectedIngredients: String = ""
     private var lastDetectedBarcode: String = ""
+    private var lastDetectedIsCard: Bool = false
     private var lastScannedKey: String = ""
     private var latestSummary: HeyBrocNativeScanSummary?
     private var isScanning = false
     private var scanGeneration: Int = 0
     private var progressObservation: NSKeyValueObservation?
+    private var lastSyncedBubbleY: Int = -1
 
     private static func validatedHTTPURL(_ raw: String?) -> URL? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -146,8 +148,6 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         view.backgroundColor = UIColor(red: 0.973, green: 0.980, blue: 0.988, alpha: 1.0)
 
         let header = buildHeaderBar()
-        view.addSubview(header)
-
         setupStoreWebView(below: header)
         setupFloatingBubble()
         updateStoreChipStyles()
@@ -157,11 +157,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         pendingInitialURL = Self.validatedHTTPURL(initialURLString) ?? URL(string: activeStore.homeURL)
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        syncBubbleYToWebView(triggerRescan: false)
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if !didStartInitialLoad {
             didStartInitialLoad = true
             view.layoutIfNeeded()
+            syncBubbleYToWebView(triggerRescan: false)
             if let startURL = pendingInitialURL ?? URL(string: activeStore.homeURL) {
                 pendingInitialURL = nil
                 storeWebView?.load(URLRequest(url: startURL))
@@ -295,6 +301,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         container.addSubview(prog)
         self.progressView = prog
 
+        // CRITICAL: container must be in view's hierarchy BEFORE activating constraints against view.safeAreaLayoutGuide
+        view.addSubview(container)
+
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             container.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -361,7 +370,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.allowsInlineMediaPlayback = true
-        config.defaultWebpagePreferences.preferredContentMode = .mobile
+        let pagePrefs = WKWebpagePreferences()
+        pagePrefs.preferredContentMode = .mobile
+        config.defaultWebpagePreferences = pagePrefs
 
         let detectorJS = """
         (function() {
@@ -570,16 +581,101 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return '';
           }
 
+          function findAlignedSearchCardTitle() {
+            if (isCartUrl()) return '';
+            var cardSel = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-qa*="product-card" i], [data-component-type="s-search-result"], article[class*="product" i], li[class*="product" i]';
+            var rawCards = Array.prototype.slice.call(document.querySelectorAll(cardSel));
+            if (!rawCards.length) {
+              var links = document.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"], a[href*="/product/"]');
+              for (var k = 0; k < links.length && rawCards.length < 40; k++) {
+                var anc = links[k].closest('article, li, [role="group"], div');
+                if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
+              }
+            }
+            var vh = Math.max(320, window.innerHeight || 680);
+            var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
+              ? window.__heybrocBubbleCenterY
+              : (vh * 0.38);
+            var bestTitle = '';
+            var bestDist = 999999;
+            var titleSels = [
+              '[data-automation-id="product-title"]',
+              '[data-test="product-title"]',
+              '[data-testid*="product-title" i]',
+              '[data-testid*="item-title" i]',
+              '[data-testid*="product-card-name" i]',
+              '[data-qa*="product-name" i]',
+              'h2 a span',
+              'h3 a span',
+              'h2',
+              'h3',
+              'a[href*="/ip/"]',
+              'a[href*="/p/"]',
+              'a[href*="/dp/"]',
+              'a[href*="/gp/aw/d/"]',
+              'a[href*="/products/"]',
+              'a[href*="/product/"]'
+            ];
+
+            for (var i = 0; i < rawCards.length; i++) {
+              var card = rawCards[i];
+              if (!isVisible(card)) continue;
+              if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
+              if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
+              var cr = card.getBoundingClientRect();
+              if (cr.height < 64 || cr.height > vh * 0.92 || cr.width < 120) continue;
+              if (cr.bottom < 105 || cr.top > vh - 55) continue;
+
+              var candTitle = '';
+              for (var s = 0; s < titleSels.length; s++) {
+                var tel = card.querySelector(titleSels[s]);
+                if (!tel) continue;
+                var rawT = clean(tel.getAttribute('aria-label') || tel.textContent || '');
+                if (rawT && rawT.length >= 5 && rawT.length <= 210 && !NON_TITLE_RE.test(rawT) && !/^\\$\\d/.test(rawT)) {
+                  candTitle = rawT;
+                  break;
+                }
+              }
+              if (!candTitle) continue;
+
+              var dist = 0;
+              if (targetY < cr.top) {
+                dist = cr.top - targetY;
+              } else if (targetY > cr.bottom) {
+                dist = targetY - cr.bottom;
+              } else {
+                dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
+              }
+              if (cr.top < 72) dist += 180;
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestTitle = candTitle;
+              }
+            }
+            return bestDist <= 260 ? bestTitle : '';
+          }
+
           function extractProductData() {
             var url = location.href;
             var modal = findOpenProductModal();
             var isPdp = Boolean(modal) || looksLikeProductUrl(url);
 
             if (!isPdp) {
-              window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
-                kind: 'browse',
-                url: url
-              });
+              var alignedTitle = findAlignedSearchCardTitle();
+              if (alignedTitle) {
+                window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                  kind: 'card',
+                  title: alignedTitle.slice(0, 260),
+                  ingredients: '',
+                  barcode: '',
+                  url: url
+                });
+              } else {
+                window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                  kind: 'browse',
+                  url: url
+                });
+              }
               return;
             }
 
@@ -642,15 +738,21 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           var timer = null;
           var settleTimer = null;
+          var scrollTimer = null;
           function scheduleCheck(withSettle) {
             if (timer) clearTimeout(timer);
-            timer = setTimeout(extractProductData, 320);
+            timer = setTimeout(extractProductData, 260);
             if (withSettle) {
               if (settleTimer) clearTimeout(settleTimer);
-              settleTimer = setTimeout(extractProductData, 1050);
+              settleTimer = setTimeout(extractProductData, 950);
             }
           }
+          window.__heybrocScheduleCheck = scheduleCheck;
 
+          window.addEventListener('scroll', function() {
+            if (scrollTimer) clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(extractProductData, 220);
+          }, { passive: true });
           window.addEventListener('popstate', function() { scheduleCheck(true); });
           window.addEventListener('hashchange', function() { scheduleCheck(true); });
           var origPush = history.pushState;
@@ -788,10 +890,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private func applySummaryToBubble(_ summary: HeyBrocNativeScanSummary) {
         self.latestSummary = summary
+        let shortItemTitle: String = {
+            let cleanT = summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleanT.count <= 20 { return cleanT }
+            return String(cleanT.prefix(19)).trimmingCharacters(in: .whitespaces) + "…"
+        }()
+
         if let firstAlert = summary.dietaryAlerts.first {
             floatingBubble.backgroundColor = UIColor(red: 0.863, green: 0.149, blue: 0.149, alpha: 0.96)
             bubbleBadgeLabel.text = "⚠️ \(firstAlert.shortBadge) • \(summary.score)/100"
-            bubbleSubLabel.text = summary.swap != nil ? "Tap for Organic / Clean Swap" : "Tap to inspect alert"
+            bubbleSubLabel.text = lastDetectedIsCard
+                ? "\(shortItemTitle) • Tap"
+                : (summary.swap != nil ? "Tap for Organic / Clean Swap" : "Tap to inspect alert")
             return
         }
 
@@ -804,7 +914,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
 
         bubbleBadgeLabel.text = "\(summary.score)/100 • \(summary.rating)"
-        bubbleSubLabel.text = summary.swap != nil ? "Tap for 1-Tap Clean Swap" : "Tap to inspect ingredients"
+        if lastDetectedIsCard {
+            bubbleSubLabel.text = "\(shortItemTitle) • Tap"
+        } else {
+            bubbleSubLabel.text = summary.swap != nil ? "Tap for 1-Tap Clean Swap" : "Tap to inspect ingredients"
+        }
+    }
+
+    private func syncBubbleYToWebView(triggerRescan: Bool) {
+        guard !isCleaningUp, let wv = storeWebView, wv.bounds.height > 40 else { return }
+        let frameInWv = wv.convert(floatingBubble.frame, from: view)
+        let centerY = max(60, Int(frameInWv.midY.rounded()))
+        if !triggerRescan && abs(centerY - lastSyncedBubbleY) < 6 { return }
+        lastSyncedBubbleY = centerY
+        let rescanJS = triggerRescan
+            ? "if (typeof window.__heybrocScheduleCheck === 'function') { window.__heybrocScheduleCheck(false); }"
+            : ""
+        wv.evaluateJavaScript("window.__heybrocBubbleCenterY = \(centerY); \(rescanJS)", completionHandler: nil)
     }
 
     @objc private func handleBubblePan(_ gesture: UIPanGestureRecognizer) {
@@ -825,9 +951,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 bubbleTrailingConstraint?.isActive = !snapLeft
                 bubbleLeadingConstraint?.isActive = snapLeft
             }
-            UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.5) {
+            UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.5, animations: {
                 self.view.layoutIfNeeded()
-            }
+            }, completion: { [weak self] _ in
+                self?.syncBubbleYToWebView(triggerRescan: true)
+            })
         }
     }
 
@@ -1013,8 +1141,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isCleaningUp else { return }
-            if kind == "product" {
+            if kind == "product" || kind == "card" {
                 guard !title.isEmpty else { return }
+                self.lastDetectedIsCard = (kind == "card")
                 self.lastDetectedTitle = title
                 self.lastDetectedIngredients = ingredients
                 self.lastDetectedBarcode = barcode
@@ -1022,6 +1151,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             } else if kind == "browse" {
                 self.scanGeneration += 1
                 self.isScanning = false
+                self.lastDetectedIsCard = false
                 self.lastDetectedTitle = ""
                 self.lastDetectedIngredients = ""
                 self.lastDetectedBarcode = ""
