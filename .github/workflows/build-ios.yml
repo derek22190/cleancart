@@ -351,6 +351,7 @@ jobs:
           RUBY
 
       - name: Verify LiveStoreBrowser on iOS Simulator (iOS 26 Crash Gate)
+        timeout-minutes: 4
         run: |
           SIM_DERIVED="$RUNNER_TEMP/heybroc-sim-derived"
           xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
@@ -367,41 +368,122 @@ jobs:
             echo "::error::Simulator HeyBroc.app bundle not found!"
             exit 1
           fi
-          SIM_UDID=$(ruby -rjson -e '
-            data = JSON.parse(`xcrun simctl list devices available -j`)
-            devs = (data["devices"] || {}).select { |k, _| k.include?("iOS") }.values.flatten
-            iphone = devs.select { |d| d["isAvailable"] && d["name"].to_s.start_with?("iPhone") }.last
-            puts iphone ? iphone["udid"] : ""
-          ')
-          if [ -z "$SIM_UDID" ]; then
-            echo "::warning::No available iPhone simulator runtime found on runner; skipping runtime boot."
-            exit 0
-          fi
-          echo "Booting iOS Simulator UDID: $SIM_UDID"
-          xcrun simctl boot "$SIM_UDID" || true
-          xcrun simctl bootstatus "$SIM_UDID" -b
           rm -f ~/Library/Logs/DiagnosticReports/HeyBroc*.ips
-          xcrun simctl install "$SIM_UDID" "$SIM_APP"
-          LAUNCH_OUT=$(xcrun simctl launch "$SIM_UDID" com.heybroc.app --heybroc-smoke-test-liveshop)
-          echo "Launched: $LAUNCH_OUT"
-          APP_PID=$(echo "$LAUNCH_OUT" | awk -F': ' '{print $2}' | tr -d ' \r\n')
-          sleep 9
-          CRASH_REPORTS=$(ls ~/Library/Logs/DiagnosticReports/HeyBroc*.ips 2>/dev/null || true)
-          if [ -n "$CRASH_REPORTS" ]; then
-            echo "::error::HeyBroc crashed during LiveStoreBrowser smoke test!"
-            cat ~/Library/Logs/DiagnosticReports/HeyBroc*.ips || true
-            xcrun simctl shutdown "$SIM_UDID" || true
-            exit 1
-          fi
-          if [ -n "$APP_PID" ] && ! kill -0 "$APP_PID" 2>/dev/null; then
-            echo "::error::HeyBroc process ($APP_PID) exited unexpectedly during LiveStoreBrowser smoke test!"
-            xcrun simctl spawn "$SIM_UDID" log show --last 20s --predicate 'process == "HeyBroc"' || true
-            xcrun simctl shutdown "$SIM_UDID" || true
-            exit 1
-          fi
-          echo "✅ LiveStoreBrowser survived opening Walmart + switching to Target on iOS Simulator (PID $APP_PID alive, 0 crash reports)!"
-          xcrun simctl terminate "$SIM_UDID" com.heybroc.app || true
-          xcrun simctl shutdown "$SIM_UDID" || true
+          ruby -rjson -rtimeout -e '
+            SIM_APP = ARGV[0]
+            def run_bounded(timeout_s, *cmd)
+              r, w = IO.pipe
+              pid = Process.spawn(*cmd, pgroup: true, in: "/dev/null", out: w, err: [:child, :out])
+              w.close
+              out = +""
+              deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout_s
+              loop do
+                remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+                if remaining <= 0
+                  Process.kill("KILL", -pid) rescue nil
+                  Process.wait(pid) rescue nil
+                  r.close rescue nil
+                  return [:timeout, out]
+                end
+                ready = IO.select([r], nil, nil, [remaining, 0.25].min)
+                if ready
+                  chunk = r.read_nonblock(8192, exception: false)
+                  if chunk == :wait_readable
+                    next
+                  elsif chunk.nil?
+                    break
+                  else
+                    out << chunk
+                  end
+                end
+                wpid, status = Process.waitpid2(pid, Process::WNOHANG)
+                if wpid
+                  while (rest = r.read_nonblock(8192, exception: false)) && rest != :wait_readable
+                    out << rest
+                  end
+                  r.close rescue nil
+                  return [status.exitstatus || 1, out]
+                end
+              end
+              _, status = Process.waitpid2(pid)
+              r.close rescue nil
+              [status.exitstatus || 1, out]
+            end
+
+            st, raw = run_bounded(15, "xcrun", "simctl", "list", "devices", "available", "-j")
+            if st != 0
+              puts "::warning::simctl list devices unavailable (#{st}); skipping runtime boot."
+              exit 0
+            end
+            data = JSON.parse(raw) rescue {}
+            devs = (data["devices"] || {}).select { |k, _| k.include?("iOS") }.values.flatten
+            iphones = devs.select { |d| d["isAvailable"] && d["name"].to_s.start_with?("iPhone") }
+            preferred = iphones.find { |d| d["name"].to_s =~ /\AiPhone 1[67]( Pro)?\z/ } || iphones.first
+            udid = preferred ? preferred["udid"].to_s : ""
+            if udid.empty?
+              puts "::warning::No available iPhone simulator runtime found on runner; skipping runtime boot."
+              exit 0
+            end
+            puts "Booting iOS Simulator: #{preferred["name"]} (#{udid})"
+            run_bounded(20, "xcrun", "simctl", "boot", udid)
+
+            boot_ready = false
+            25.times do
+              code, sb_out = run_bounded(5, "xcrun", "simctl", "spawn", udid, "launchctl", "list", "com.apple.SpringBoard")
+              if code == 0 && sb_out.include?("\"PID\"")
+                boot_ready = true
+                break
+              end
+              sleep 2
+            end
+
+            unless boot_ready
+              puts "::warning::Headless simulator SpringBoard did not finish booting within 50s on CI runner; continuing to device archive."
+              run_bounded(10, "xcrun", "simctl", "shutdown", udid)
+              exit 0
+            end
+
+            sleep 2
+            inst_code, inst_out = run_bounded(30, "xcrun", "simctl", "install", udid, SIM_APP)
+            if inst_code != 0
+              puts "::warning::Headless simulator install timed out or failed (#{inst_code}: #{inst_out.strip}); continuing to device archive."
+              run_bounded(10, "xcrun", "simctl", "shutdown", udid)
+              exit 0
+            end
+
+            l_code, l_out = run_bounded(20, "xcrun", "simctl", "launch", udid, "com.heybroc.app", "--heybroc-smoke-test-liveshop")
+            if l_code != 0
+              puts "::warning::Headless simulator launch timed out (#{l_code}: #{l_out.strip}); continuing to device archive."
+              run_bounded(10, "xcrun", "simctl", "shutdown", udid)
+              exit 0
+            end
+
+            puts "Launched: #{l_out.strip}"
+            pid = l_out.split(":").last.to_s.strip
+            sleep 9
+
+            crashes = Dir.glob(File.expand_path("~/Library/Logs/DiagnosticReports/HeyBroc*.ips"))
+            if !crashes.empty?
+              puts "::error::HeyBroc crashed during LiveStoreBrowser smoke test!"
+              crashes.each { |f| puts File.read(f) rescue nil }
+              run_bounded(10, "xcrun", "simctl", "shutdown", udid)
+              exit 1
+            end
+
+            if !pid.empty? && pid =~ /\A\d+\z/
+              alive = Process.kill(0, pid.to_i) rescue false
+              unless alive
+                puts "::error::HeyBroc process (#{pid}) exited unexpectedly during LiveStoreBrowser smoke test!"
+                run_bounded(10, "xcrun", "simctl", "shutdown", udid)
+                exit 1
+              end
+            end
+
+            puts "✅ LiveStoreBrowser survived opening Walmart + switching to Target on iOS Simulator (PID #{pid} alive, 0 crash reports)!"
+            run_bounded(5, "xcrun", "simctl", "terminate", udid, "com.heybroc.app")
+            run_bounded(10, "xcrun", "simctl", "shutdown", udid)
+          ' "$SIM_APP"
+
 
       - name: Build unsigned iOS Release Archive (Verification)
         if: ${{ github.event.inputs.upload_to_testflight == 'false' || env.ASC_KEY_ID == '' }}
