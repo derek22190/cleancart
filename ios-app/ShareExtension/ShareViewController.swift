@@ -383,17 +383,27 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    private func needsResidentialTitleFetch(combinedText: String, url: URL) -> Bool {
-        let stripped = combinedText
-            .replacingOccurrences(of: #"https?://\S+"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"^(?:hey,?\s*)?(?:check\s+(?:this\s+)?out|i\s+found\s+this|see\s+what\s+i\s+found).*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+    private static func stripShareBoilerplate(_ raw: String) -> String {
+        return raw
+            .replacingOccurrences(of: #"https?://\S+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(
+                of: #"(?:^|\b)(?:(?:hey|hi|yo)\s*[,!.]*\s*)?(?:take\s+a\s+look\s+at\s+this(?:\s+item)?|look\s+at\s+this\s+item|check\s+(?:this\s+)?out(?:\s+what\s+i\s+found|\s+this\s+item)?|check\s+out\s+this\s+item|i\s+found\s+this(?:\s+item)?|look\s+what\s+i\s+found|see\s+what\s+i\s+found|here'?s\s+something\s+i\s+found|thought\s+you(?:'d|\s+might)\s+like(?:\s+this)?|shared\s+(?:from|via))(?:\s+(?:at|on|from|via)\s+(?:walmart(?:\.com)?|sam'?s\s+club|target(?:\.com)?|costco(?:\.com)?|instacart|amazon(?:\.com|\s+fresh)?|aldi|kroger|whole\s+foods(?:\s+market)?|bj'?s(?:\s+wholesale)?|shipt|doordash|uber\s*eats))?\s*[:\-–—!.,]*"#,
+                with: " ",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func needsResidentialTitleFetch(combinedText: String, url: URL) -> Bool {
+        let p = url.path.lowercased()
+        let h = (url.host ?? "").lowercased()
+        let stripped = Self.stripShareBoilerplate(combinedText)
+        if p.contains("/ip/seort/") || h == "walmrt.co" || h.hasSuffix(".walmrt.co") || h == "a.co" || h == "amzn.to" || p.hasPrefix("/p/-/a-") {
+            return stripped.split(separator: " ").count < 3
+        }
         if stripped.split(separator: " ").count >= 2 {
             return false
-        }
-        let p = url.path.lowercased()
-        if p.contains("/ip/seort/") || url.host == "a.co" || url.host == "amzn.to" || p.hasPrefix("/p/-/a-") {
-            return true
         }
         return stripped.isEmpty
     }

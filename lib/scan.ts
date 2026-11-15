@@ -268,30 +268,80 @@ function decodeBasicHtmlEntities(s: string): string {
     });
 }
 
+function extractSlugFromRedirectParam(urlObj: URL): string {
+  for (const key of ["url", "u", "redirect", "target", "dest"]) {
+    const rawParam = urlObj.searchParams.get(key);
+    if (!rawParam) continue;
+    const candidates = [rawParam];
+    try {
+      candidates.push(decodeURIComponent(rawParam));
+    } catch {
+      /* ignore malformed URI */
+    }
+    if (/^[A-Za-z0-9+/=_-]{12,}$/.test(rawParam)) {
+      try {
+        const b64 = rawParam.replace(/-/g, "+").replace(/_/g, "/");
+        const decoded = Buffer.from(b64, "base64").toString("utf8");
+        if (decoded.startsWith("/") || decoded.startsWith("https://")) {
+          candidates.push(decoded);
+        }
+      } catch {
+        /* ignore non-base64 */
+      }
+    }
+    for (const c of candidates) {
+      const full = c.startsWith("/") ? `https://${urlObj.hostname}${c}` : c;
+      const slug = extractTitleSlugFromUrl(full);
+      if (slug) return slug;
+    }
+  }
+  return "";
+}
+
 async function resolveRetailerShareUrlTitle(urlStr: string): Promise<string> {
   try {
-    const parsed = new URL(urlStr);
-    if (parsed.protocol !== "https:" || !isAllowedRetailerHost(parsed.hostname)) {
+    let current = new URL(urlStr);
+    if (current.protocol !== "https:" || !isAllowedRetailerHost(current.hostname)) {
       return "";
     }
+    const directParamSlug = extractSlugFromRedirectParam(current);
+    if (directParamSlug) return directParamSlug;
+
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 2600);
+    const timer = setTimeout(() => ctrl.abort(), 2800);
     try {
-      const res = await fetch(parsed.toString(), {
-        method: "GET",
-        redirect: "follow",
-        signal: ctrl.signal,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
-          Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      });
+      let res: Response | null = null;
+      for (let hop = 0; hop < 5; hop++) {
+        res = await fetch(current.toString(), {
+          method: "GET",
+          redirect: "manual",
+          signal: ctrl.signal,
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+            Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = res.headers.get("location");
+          if (!loc) break;
+          const nextUrl = new URL(loc, current);
+          if (nextUrl.protocol !== "https:" || !isAllowedRetailerHost(nextUrl.hostname)) {
+            return "";
+          }
+          const hopSlug = extractTitleSlugFromUrl(nextUrl.toString()) || extractSlugFromRedirectParam(nextUrl);
+          if (hopSlug) return hopSlug;
+          current = nextUrl;
+          continue;
+        }
+        break;
+      }
+      if (!res) return "";
       if (res.url) {
         const finalUrl = new URL(res.url);
         if (!isAllowedRetailerHost(finalUrl.hostname)) return "";
-        const redirectedSlug = extractTitleSlugFromUrl(res.url);
+        const redirectedSlug = extractTitleSlugFromUrl(res.url) || extractSlugFromRedirectParam(finalUrl);
         if (redirectedSlug) return redirectedSlug;
       }
       const html = (await res.text()).slice(0, 64_000);
@@ -327,7 +377,33 @@ async function resolveRetailerShareUrlTitle(urlStr: string): Promise<string> {
 }
 
 const MULTI_PRODUCT_SECTION_BOUNDARY =
-  /^(?:customers\s+also\s+(?:bought|viewed|shopped|considered)|similar\s+items?|compare\s+with\s+similar\s+items?|comparison\s+chart|frequently\s+bought\s+together|sponsored(?:\s+products?|\s+items?)?|products?\s+related\s+to\s+this\s+item|related\s+(?:products?|items?)|buy\s+(?:it\s+)?again|items?\s+to\s+add\s+next|recommended\s+for\s+you|you\s+may\s+also\s+like|more\s+to\s+consider|people\s+also\s+buy|shop\s+similar)\b/i;
+  /^(?:customers\s+also\s+(?:bought|viewed|shopped|considered)|similar\s+items?|compare\s+with\s+similar\s+items?|comparison\s+chart|frequently\s+bought\s+together|sponsored\s+(?:products?|items?)|products?\s+related\s+to\s+this\s+item|related\s+(?:products?|items?)|buy\s+(?:it\s+)?again|items?\s+to\s+add\s+next|recommended\s+for\s+you|you\s+may\s+also\s+like|more\s+to\s+consider|people\s+also\s+buy|shop\s+similar)\b/i;
+
+const RETAILER_SHARE_BOILERPLATE_PHRASE_RE =
+  /(?:^|\b)(?:(?:hey|hi|yo)\s*[,!.]*\s*)?(?:take\s+a\s+look\s+at\s+this(?:\s+item)?|look\s+at\s+this\s+item|check\s+(?:this\s+)?out(?:\s+what\s+i\s+found|\s+this\s+item)?|check\s+out\s+this\s+item|i\s+found\s+this(?:\s+item)?|look\s+what\s+i\s+found|see\s+what\s+i\s+found|here'?s\s+something\s+i\s+found|thought\s+you(?:'d|\s+might)\s+like(?:\s+this)?|shared\s+(?:from|via))(?:\s+(?:at|on|from|via)\s+(?:walmart(?:\.com)?|sam'?s\s+club|target(?:\.com)?|costco(?:\.com)?|instacart|amazon(?:\.com|\s+fresh)?|aldi|kroger|whole\s+foods(?:\s+market)?|bj'?s(?:\s+wholesale)?|shipt|doordash|uber\s*eats))?\s*[:\-–—!.,]*/gi;
+
+export function stripRetailerShareBoilerplate(input: string): string {
+  return input
+    .replace(RETAILER_SHARE_BOILERPLATE_PHRASE_RE, " ")
+    .replace(/\s+(?:from|at|on|via)\s+(?:sam'?s\s+club|walmart(?:\.com)?|target(?:\.com)?|costco(?:\.com)?|instacart|amazon(?:\.com)?|aldi|kroger|whole\s+foods(?:\s+market)?|bj'?s(?:\s+wholesale)?|shipt|doordash|uber\s*eats)\s*[!.]*$/i, "")
+    .replace(/^(?:from|at|on|via)\s+(?:sam'?s\s+club|walmart(?:\.com)?|target(?:\.com)?|costco(?:\.com)?|instacart|amazon(?:\.com)?|aldi|kroger|whole\s+foods(?:\s+market)?|bj'?s(?:\s+wholesale)?|shipt|doordash|uber\s*eats)\s*[:\-–—!.]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectStoreFromOcrText(text: string): Store | undefined {
+  if (/\b(?:walmart(?:\.com|\+)?|w\+\s*free\s+(?:delivery|shipping)|great\s+value|marketside|bettergoods|sam'?s\s+choice)\b/i.test(text)) {
+    return "walmart";
+  }
+  if (/\b(?:sam'?s\s+club|member'?s\s+mark)\b/i.test(text)) return "sams";
+  if (/\b(?:costco|kirkland\s+signature)\b/i.test(text)) return "costco";
+  if (/\b(?:target\s+circle|good\s*&\s*gather|favorite\s+day|market\s+pantry)\b/i.test(text)) return "target";
+  if (/\binstacart\b/i.test(text)) return "instacart";
+  if (/\b(?:whole\s+foods\s+market|365\s+by\s+whole\s+foods)\b/i.test(text)) return "amazon";
+  if (/\b(?:kroger|simple\s+truth|private\s+selection)\b/i.test(text)) return "kroger";
+  if (/\b(?:aldi|simply\s+nature|specially\s+selected)\b/i.test(text)) return "aldi";
+  return undefined;
+}
 
 function isolateSingleIngredientsBlock(rawIng: string): string {
   if (!rawIng) return "";
@@ -348,8 +424,8 @@ export function normalizeIosShareOrOcrInput(
   rawIng: string,
   rawText = "",
 ): { title: string; candidates: string[]; extractedIngredients: string; detectedStore?: Store; sharedUrl?: string } {
-  const combinedSource = rawTitle || rawText;
-  const detectedStore = detectStoreFromUrl(combinedSource);
+  const combinedSource = [rawTitle, rawText].filter(Boolean).join("\n");
+  const detectedStore = detectStoreFromUrl(combinedSource) ?? (rawText.includes("\n") || rawTitle.includes("\n") ? detectStoreFromOcrText(combinedSource) : undefined);
   let extractedIngredients = isolateSingleIngredientsBlock(rawIng);
   const ocrCandidates: string[] = [];
 
@@ -359,7 +435,7 @@ export function normalizeIosShareOrOcrInput(
   if (multiLineBlock) {
     const allLines = multiLineBlock
       .split(/\r?\n/)
-      .map((l) => l.replace(/\s+/g, " ").trim())
+      .map((l) => stripRetailerShareBoilerplate(l.replace(/\s+/g, " ").trim()))
       .filter(Boolean);
 
     // Slice off secondary recommendation carousels / comparison charts so unrelated products never bleed in
@@ -398,26 +474,69 @@ export function normalizeIosShareOrOcrInput(
     }
 
     if (rawTitle.includes("\n") || (!rawTitle && rawText)) {
+      const SEARCH_RESULTS_HEADER_LINE =
+        /^(?:\d[\d,+kKmM]*\+?\s+results\b.*|uses\s+item\s+details\b.*|price\s+when\s+purchased\s+online.*|results\s+for\s+.+)$/i;
       const IOS_OCR_NOISE_LINE =
-        /^(?:[\d:\s]*(?:am|pm)?\s*(?:5g|lte|wi-?fi|\d{1,3}%).*|\d{1,2}:\d{2}(?:\s*(?:am|pm))?|(?:5g|lte|wi-?fi)(?:\s+\d{1,3}%)?|\d{1,3}%|[<‹«←\s]*(?:back|close|cancel|done|share)\b.*|<+|search\b.*|home|cart|account|reorder|my items|lists?|scan\s*&\s*go.*|in-?club.*|curbside.*|delivery.*|pickup.*|shipping.*|free\s+(?:shipping|delivery|pickup).*|add to (?:cart|bag|basket|list|order)|buy now|clip coupon|sponsored|best seller|overall pick|popular pick|rollback|snap ebt.*|out of stock|in stock.*|many in stock|\$?\d+(?:\.\d{2})?(?:\s*\/?\s*(?:ea|oz|fl oz|lb|ct|pkg))?(?:\s*\(.*?\))?|\d+(?:\.\d+)?\s*¢\s*\/.*|\d\.\d\s*\(?[\d,]+\)?|\([\d,]+\)|product details|specifications|about this item|description|highlights|nutrition facts|reviews|ratings.*|similar items|often bought with|customers also.*|compare with similar.*|frequently bought together.*|ingredients\s*:?.*)$/i;
+        /^(?:off|on|[\d:\s]*(?:am|pm)?\s*(?:5g|lte|wi-?fi|\d{1,3}%).*|\d{1,2}:\d{2}(?:\s*(?:am|pm))?(?:\s+(?:off|on))?|(?:5g|lte|wi-?fi)(?:\s+\d{1,3}%)?|\d{1,3}%|[<‹«←\s]*(?:back|close|cancel|done|share)\b.*|<+|search\b.*|home|cart|account|reorder|my items|lists?|scan\s*&\s*go.*|in-?club.*|curbside.*|delivery.*|pickup.*|shipping.*|(?:w\+?\s*)?free\s+(?:shipping|delivery|pickup).*|add\s+to\s+(?:cart|bag|basket|list|order)|\+?\s*add|choose\s+options|select\s+options|options(?:\s+from\s+.*)?|single|\d+\s*pack|\d+\s*ct|rollbacks?(?:\s+new\s+arrivals.*)?|new\s+arrivals.*|bought\s+\d+\+?\s*times?|\d+[kKmM+]+\s+bought\b.*|uses\s+item\s+details.*|price\s+when\s+purchased\s+online.*|\d[\d,+kKmM]*\+?\s+results\b.*|buy now|clip coupon|sponsored|best seller|overall pick|popular pick|snap ebt.*|out of stock|in stock.*|many in stock|\$?\s*\d+(?:\.\d{2})?(?:\s+\$?\d+(?:\.\d{2})?\s*\/?\s*(?:ea|oz|fl\.?\s*oz|lb|ct|pkg))?(?:\s*\/?\s*(?:ea|oz|fl\.?\s*oz|lb|ct|pkg))?(?:\s*\(.*?\))?|\d+(?:\.\d+)?\s*¢\s*\/.*|\d\.\d\s*\(?[\d,]+\)?|\(?[\d,]+\)?|\d+\s+[a-z0-9.\s]+\b(?:st|street|rd|road|dr|drive|ave|avenue|blvd|ln|lane|way|pkwy|hwy)\b.*|product details|specifications|about this item|description|highlights|nutrition facts|reviews|ratings.*|similar items|often bought with|customers also.*|compare with similar.*|frequently bought together.*|ingredients\s*:?.*)$/i;
       const KNOWN_BRAND_LINE =
-        /^(?:365 by whole foods market|whole foods market|member'?s mark|kirkland signature|great value|good\s*&\s*gather|favorite day|market pantry|up\s*&\s*up|simple truth(?:\s+organic)?|private selection|kroger|friendly farms|specially selected|simply nature|millville|clancy'?s|l'?oven fresh|park street deli|livegfree|kirkwood|appleton farms|southern grove|happy farms|season'?s choice|mama cozzi'?s|burman'?s|savoritz|boulder|wellsley farms|berkley jensen)$/i;
-      // Only consider lines at or above the first Ingredients block as candidate titles for the focal product
+        /^(?:365 by whole foods market|whole foods market|member'?s mark|kirkland signature|great value|good\s*&\s*gather|favorite day|market pantry|up\s*&\s*up|simple truth(?:\s+organic)?|private selection|kroger|friendly farms|specially selected|simply nature|millville|clancy'?s|l'?oven fresh|park street deli|livegfree|kirkwood|appleton farms|southern grove|happy farms|season'?s choice|mama cozzi'?s|burman'?s|savoritz|boulder|wellsley farms|berkley jensen|quaker|bob'?s red mill|chobani|stonyfield|fage|siggi'?s|oikos|yoplait|dannon|activia)$/i;
+      const ENDS_WITH_PACK_OR_SIZE_RE =
+        /\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|ounces?|lbs?|pounds?|g|grams?|kg|ml|l|liters?|ct|count|pk|packs?|packets?|bags?|tubs?|bottles?|cans?|boxes?|pouches?|bars?|cups?)\.?$/i;
+
       const titleSearchBound = firstIngLineIdx >= 0 ? firstIngLineIdx : scopedLines.length;
-      for (let i = 0; i < titleSearchBound; i++) {
-        const line = scopedLines[i];
-        if (IOS_OCR_NOISE_LINE.test(line) || MULTI_PRODUCT_SECTION_BOUNDARY.test(line)) continue;
-        if (KNOWN_BRAND_LINE.test(line) && i + 1 < titleSearchBound && !IOS_OCR_NOISE_LINE.test(scopedLines[i + 1])) {
-          ocrCandidates.push(`${line} ${scopedLines[i + 1]}`.trim());
-          i++;
-          continue;
-        }
-        if (line.length >= 5 && line.length <= 160 && /[a-zA-Z]{3,}/.test(line)) {
-          ocrCandidates.push(line);
+      // On search result screens (e.g. Walmart "1000+ Results / Uses item details"), skip the search bar & filter chips above the results header!
+      let titleSearchStart = 0;
+      for (let i = 0; i < Math.min(titleSearchBound, 14); i++) {
+        if (SEARCH_RESULTS_HEADER_LINE.test(scopedLines[i]) && i + 1 < titleSearchBound) {
+          titleSearchStart = i + 1;
         }
       }
-      // If multiple candidate lines appeared before an explicit Ingredients block (e.g. top promo + focal item right above Ingredients),
-      // keep the first clean product title and also include the line closest to Ingredients as fallback candidate
+
+      const collectCandidatesFromRange = (startIdx: number, endIdx: number) => {
+        let i = startIdx;
+        while (i < endIdx) {
+          const line = scopedLines[i];
+          if (IOS_OCR_NOISE_LINE.test(line) || MULTI_PRODUCT_SECTION_BOUNDARY.test(line)) {
+            i++;
+            continue;
+          }
+          // Merge wrapped multi-line mobile product card titles (e.g. "Quaker Maple & Brown" + "Sugar Flavor Instant" + "Oatmeal, 1.51 oz 20 Packets")
+          const parts: string[] = [line];
+          let j = i + 1;
+          while (
+            j < endIdx &&
+            parts.length < 4 &&
+            !ENDS_WITH_PACK_OR_SIZE_RE.test(parts[parts.length - 1]) &&
+            !IOS_OCR_NOISE_LINE.test(scopedLines[j]) &&
+            !MULTI_PRODUCT_SECTION_BOUNDARY.test(scopedLines[j])
+          ) {
+            const nextLine = scopedLines[j];
+            if (nextLine.length < 3 || nextLine.length > 90 || !/[a-zA-Z]{2,}/.test(nextLine)) break;
+            // Deduplicate standalone brand link immediately above a full brand+product title ("Chobani" + "Chobani Non-Fat Greek Yogurt")
+            if (
+              parts.length === 1 &&
+              KNOWN_BRAND_LINE.test(parts[0]) &&
+              nextLine.toLowerCase().startsWith(parts[0].toLowerCase())
+            ) {
+              parts[0] = nextLine;
+            } else {
+              parts.push(nextLine);
+            }
+            j++;
+          }
+          const merged = parts.join(" ").replace(/\s+/g, " ").trim();
+          if (merged.length >= 5 && merged.length <= 200 && /[a-zA-Z]{3,}/.test(merged)) {
+            ocrCandidates.push(merged);
+          }
+          i = j;
+        }
+      };
+
+      collectCandidatesFromRange(titleSearchStart, titleSearchBound);
+      if (ocrCandidates.length === 0 && titleSearchStart > 0) {
+        collectCandidatesFromRange(0, titleSearchStart);
+      }
+
       if (ocrCandidates.length > 0) {
         rawTitle = ocrCandidates[0];
       }
@@ -439,16 +558,12 @@ export function normalizeIosShareOrOcrInput(
   // Extract URL if present (iOS Share Sheet from Walmart, Target, Sam's Club, Costco, Amazon, Instacart, ALDI, Kroger)
   const urlMatch = combinedSource.match(/https?:\/\/[^\s"'<>]+/i);
   const sharedUrl = urlMatch?.[0] || "";
-  const withoutUrl = rawTitle
-    .replace(/https?:\/\/[^\s]+/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(
-      /^(?:(?:hey|hi|yo)\s*[,!.]*\s*)?(?:check\s+(?:this\s+)?out(?:\s+what\s+i\s+found|\s+this\s+item)?|i\s+found\s+this|look\s+what\s+i\s+found|see\s+what\s+i\s+found|thought\s+you(?:'d|\s+might)\s+like(?:\s+this)?)(?:\s+(?:at|on|from)\s+(?:walmart(?:\.com)?|sam'?s\s+club|target(?:\.com)?|costco(?:\.com)?|instacart|amazon(?:\.com|\s+fresh)?|aldi|kroger|whole\s+foods(?:\s+market)?|bj'?s(?:\s+wholesale)?|shipt|doordash|uber\s*eats))?\s*[:\-–—!.]*\s*/i,
-      "",
-    )
-    .replace(/\s+(?:from|at|on)\s+(?:sam'?s\s+club|walmart|target|costco|instacart|amazon(?:\.com)?|aldi|kroger|whole\s+foods(?:\s+market)?)\s*[!.]*$/i, "")
-    .trim();
+  const withoutUrl = stripRetailerShareBoilerplate(
+    rawTitle
+      .replace(/https?:\/\/[^\s]+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
 
   if (withoutUrl && /[a-zA-Z]{2,}\s+[a-zA-Z0-9]{2,}/.test(withoutUrl)) {
     return {
@@ -466,8 +581,13 @@ export function normalizeIosShareOrOcrInput(
     }
     return { title: "", candidates: [], extractedIngredients, detectedStore, sharedUrl };
   }
-  const finalTitle = withoutUrl || rawTitle;
-  return { title: finalTitle, candidates: ocrCandidates.length ? ocrCandidates : [finalTitle], extractedIngredients, detectedStore };
+  const finalTitle = withoutUrl || stripRetailerShareBoilerplate(rawTitle);
+  return {
+    title: finalTitle,
+    candidates: ocrCandidates.length ? ocrCandidates : finalTitle ? [finalTitle] : [],
+    extractedIngredients,
+    detectedStore,
+  };
 }
 
 export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanError> {

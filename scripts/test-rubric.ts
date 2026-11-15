@@ -5928,6 +5928,53 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           historyKtLatest.includes("fun cleanDisplayTitle")
       ),
     );
+    const { normalizeIosShareOrOcrInput } = await import("../lib/scan");
+    const walmartShareNorm = normalizeIosShareOrOcrInput(
+      "Take a look at this item from Walmart Take a look at this item https://www.walmart.com/ip/Stonyfield-Organic-Whole-Milk-Plain-Yogurt-32-oz/10535275",
+      "",
+    );
+    const walmartActionBtnOcr = normalizeIosShareOrOcrInput(
+      "",
+      "",
+      [
+        "4:12",
+        "Off",
+        "oatmeal",
+        "$4.42",
+        "Pickup or delivery? 234 Poplar Hill Rd, Bi...",
+        "Rollbacks New Arrivals Oatmeal recipes Instant oatmeal",
+        "1000+ Results Uses item details. Price when purchased online.",
+        "Bought 5 times",
+        "$6.12 $3.23/lb",
+        "Options from $6.12 - $46.51",
+        "Quaker Maple & Brown",
+        "Sugar Flavor Instant",
+        "Oatmeal, 1.51 oz 20 Packets",
+        "11,431",
+        "SNAP EBT eligible",
+        "W+ Free delivery as soon as 7pm",
+        "Add to cart",
+        "Single",
+        "2 Pack",
+        "8 Pack",
+        "Sponsored",
+        "$6.56 $3.28/lb",
+        "Bob's Red Mill Non-GMO",
+        "Organic Old Fashioned",
+        "Rolled Oats 32 oz Bag",
+      ].join("\n"),
+    );
+    check(
+      "iPhone Walmart Share boilerplate ('Take a look at this item from Walmart') strips cleanly and Action Button screenshot OCR reconstructs wrapped Walmart titles",
+      Boolean(
+        walmartShareNorm.detectedStore === "walmart" &&
+          !/take a look/i.test(walmartShareNorm.title) &&
+          /stonyfield organic whole milk plain yogurt/i.test(walmartShareNorm.title) &&
+          walmartActionBtnOcr.detectedStore === "walmart" &&
+          walmartActionBtnOcr.title === "Quaker Maple & Brown Sugar Flavor Instant Oatmeal, 1.51 oz 20 Packets" &&
+          walmartActionBtnOcr.candidates.some((c) => /bob's red mill.*organic old fashioned rolled oats/i.test(c))
+      ),
+    );
   }
 
   console.log("Checks executed:", checks);
