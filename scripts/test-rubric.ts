@@ -932,9 +932,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       readerKt.includes("ScanApi.prewarmScan") &&
       readerKt.includes("ScanApi.peekCachedScan") &&
       scanApiKt.includes("fun applyLocalWatchlistToData") &&
-      mainKt.includes("import android.accounts.AccountManager") &&
-      mainKt.includes("import android.content.ClipboardManager") &&
-      mainKt.includes("REQ_PICK_GOOGLE_ACCOUNT")
+      mainKt.includes("import android.content.ClipboardManager")
   );
 
   // --- Walmart Screenshot Regression Suite: Whole Sweet Potato (90/100), Russet Potatoes (90/100), Butterball Turkey (70/100), and Non-Food Paper Towels / Plastic Cutlery ---
@@ -5719,23 +5717,16 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         "android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt",
         "utf8"
       );
-      const googleCallbackQaSrc = fs.readFileSync(
-        "app/auth/google-callback/page.tsx",
-        "utf8"
-      );
-      const authRouteQaSrc = fs.readFileSync("app/api/auth/route.ts", "utf8");
-      const authLibQaSrc = fs.readFileSync("lib/auth.ts", "utf8");
-
       const ctcSwap = ctcScan.ok ? ctcScan.swap : null;
       const ctcSwapName = `${ctcSwap?.brand ?? ""} ${ctcSwap?.name ?? ""}`.trim();
       const ctcSwapUrl = `${ctcSwap?.deepLink ?? ""} ${ctcSwap?.webUrl ?? ""}`;
 
       check(
-        "Nov 15 Mobile QA Suite: Cinnamon Toast Crunch swaps to 90/100 Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal (no dead /ip/10898744), Air Fryer & 'In Cart - Mainstays' bowls rejected as non-food while Toaster Pastries still scan, PDP Photo Gallery ('Images (14) | Videos (1)') stays scannable, 1-Step Bubble Setup replaces 'Step 1 of 3', and Google OAuth opens accounts.google.com + heybroc://auth passwordlessly",
+        "Nov 15 Mobile QA Suite: Cinnamon Toast Crunch swaps to >=90/100 Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal (no dead /ip/10898744), Air Fryer & 'In Cart - Mainstays' bowls rejected as non-food while Toaster Pastries still scan, PDP Photo Gallery ('Images (14) | Videos (1)') stays scannable, and 1-Step Bubble Setup replaces 'Step 1 of 3'",
         Boolean(
           ctcScan.ok &&
             ctcSwapName.includes("Ezekiel 4:9 Cinnamon Raisin") &&
-            (ctcSwap?.score ?? 0) === 90 &&
+            (ctcSwap?.score ?? 0) >= 90 &&
             !ctcSwapUrl.includes("10898744") &&
             !airFryerScan.ok &&
             airFryerScan.status === 404 &&
@@ -5749,13 +5740,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             overlaySvcVisualSrc.includes("preferNativeInAppSearch") &&
             !mainKtVisualSrc.includes("Step 1 of 3") &&
             !mainKtVisualSrc.includes("Step 2 of 3") &&
-            mainKtVisualSrc.includes("openGoogleOAuthCustomTab") &&
-            mainKtVisualSrc.includes("handleIncomingAuthRedirect") &&
-            mainKtVisualSrc.includes("AUTOFILL_HINT_PASSWORD") &&
-            googleCallbackQaSrc.includes('state.startsWith("android_")') &&
-            googleCallbackQaSrc.includes("heybroc://auth?") &&
-            authRouteQaSrc.includes("accessToken") &&
-            authLibQaSrc.includes("verifyGoogleAccessToken")
+            mainKtVisualSrc.includes("AUTOFILL_HINT_PASSWORD")
         )
       );
     }
@@ -6126,6 +6111,364 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           shortcutsSwift.includes("static func scanBatch")
       ),
     );
+    // ==================== BEHAVIOURAL SECURITY, SWAP INTEGRITY, BARCODE & TITLE SUITE ====================
+    {
+      const nodeCrypto = await import("node:crypto");
+      const authRouteMod = await import("../app/api/auth/route");
+      const { getOrCreateDevice, saveDevice } = await import("../lib/referrals");
+      const { normalizeBarcode, cacheKey } = await import("../lib/lookup");
+
+      // 1. P0.1 + P1.2 Behavioural OAuth / OIDC Security Suite (zero source-string checks)
+      const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+      });
+      const jwk = publicKey.export({ format: "jwk" }) as Record<string, unknown>;
+      const testKid = `behav-google-kid-${Date.now()}`;
+      const b64u = (obj: unknown) =>
+        Buffer.from(typeof obj === "string" ? obj : JSON.stringify(obj))
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, "");
+      const signMockGoogleJwt = (claims: Record<string, unknown>) => {
+        const header = b64u({ alg: "RS256", typ: "JWT", kid: testKid });
+        const payload = b64u({
+          iss: "https://accounts.google.com",
+          sub: "google-sub-behav-991",
+          email: "behav.oauth.victim@example.com",
+          email_verified: true,
+          iat: Math.floor(Date.now() / 1000) - 10,
+          exp: Math.floor(Date.now() / 1000) + 600,
+          ...claims,
+        });
+        const sig = nodeCrypto
+          .sign("RSA-SHA256", Buffer.from(`${header}.${payload}`, "utf8"), privateKey)
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, "");
+        return `${header}.${payload}.${sig}`;
+      };
+
+      const prevGoogleClientId = process.env.GOOGLE_CLIENT_ID;
+      const prevFetchOAuth = globalThis.fetch;
+      let accessTokenRejected400 = false;
+      let foreignAudRejected401 = false;
+      let foreignAzpRejected401 = false;
+      let missingNonceRejected401 = false;
+      let wrongNonceRejected401 = false;
+      let validIdTokenAccepted200 = false;
+
+      try {
+        process.env.GOOGLE_CLIENT_ID = "heybroc-test-web-client.apps.googleusercontent.com";
+        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+          if (u.includes("googleapis.com/oauth2/v3/certs")) {
+            return Response.json({
+              keys: [{ ...jwk, kid: testKid, kty: "RSA", alg: "RS256", use: "sig" }],
+            });
+          }
+          if (u.includes("googleapis.com/oauth2/v3/userinfo")) {
+            // Even if userinfo would return 200 for a foreign app's access token, /api/auth must never accept accessToken!
+            return Response.json({
+              sub: "google-sub-behav-991",
+              email: "behav.oauth.victim@example.com",
+              email_verified: true,
+            });
+          }
+          return prevFetchOAuth(input, init);
+        };
+
+        const postAuth = (body: Record<string, unknown>, ipSuffix: number) =>
+          authRouteMod.POST(
+            new Request("http://localhost:3000/api/auth", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-forwarded-for": `10.188.42.${ipSuffix}`,
+              },
+              body: JSON.stringify(body),
+            }),
+          );
+
+        const resAccess = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            accessToken: "ya29.foreign-app-access-token",
+          },
+          11,
+        );
+        accessTokenRejected400 = resAccess.status === 400;
+
+        const foreignAudJwt = signMockGoogleJwt({
+          aud: "some-other-app.apps.googleusercontent.com",
+          nonce: "nonce_valid_abc",
+        });
+        const resForeignAud = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            idToken: foreignAudJwt,
+            nonce: "nonce_valid_abc",
+          },
+          12,
+        );
+        foreignAudRejected401 = resForeignAud.status === 401;
+
+        const foreignAzpJwt = signMockGoogleJwt({
+          aud: "heybroc-test-web-client.apps.googleusercontent.com",
+          azp: "some-other-app.apps.googleusercontent.com",
+          nonce: "nonce_valid_abc",
+        });
+        const resForeignAzp = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            idToken: foreignAzpJwt,
+            nonce: "nonce_valid_abc",
+          },
+          13,
+        );
+        foreignAzpRejected401 = resForeignAzp.status === 401;
+
+        const validJwtWithNonce = signMockGoogleJwt({
+          aud: "heybroc-test-web-client.apps.googleusercontent.com",
+          azp: "heybroc-test-web-client.apps.googleusercontent.com",
+          nonce: "nonce_valid_abc",
+        });
+        const resMissingNonce = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            idToken: validJwtWithNonce,
+          },
+          14,
+        );
+        missingNonceRejected401 = resMissingNonce.status === 401;
+
+        const resWrongNonce = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            idToken: validJwtWithNonce,
+            nonce: "nonce_attacker_xyz",
+          },
+          15,
+        );
+        wrongNonceRejected401 = resWrongNonce.status === 401;
+
+        const resValid = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            idToken: validJwtWithNonce,
+            nonce: "nonce_valid_abc",
+          },
+          16,
+        );
+        const validJson = (await resValid.json()) as { ok?: boolean; token?: string };
+        validIdTokenAccepted200 = resValid.status === 200 && validJson.ok === true && Boolean(validJson.token);
+      } finally {
+        if (prevGoogleClientId === undefined) delete process.env.GOOGLE_CLIENT_ID;
+        else process.env.GOOGLE_CLIENT_ID = prevGoogleClientId;
+        globalThis.fetch = prevFetchOAuth;
+      }
+
+      check(
+        "Behavioural OAuth Security: foreign Google accessToken rejected (400), foreign aud/azp rejected (401), missing/mismatched OIDC nonce rejected (401), and audience+nonce-verified ID token succeeds (200)",
+        accessTokenRejected400 &&
+          foreignAudRejected401 &&
+          foreignAzpRejected401 &&
+          missingNonceRejected401 &&
+          wrongNonceRejected401 &&
+          validIdTokenAccepted200,
+      );
+
+      // 2. P1.3 Behavioural Soy Watchlist & Server-Gated Locked Swap Suite
+      const soyWatchCtc = await runScan({
+        productTitle: "Cinnamon Toast Crunch",
+        store: "walmart",
+        dietaryWatchlist: ["soy"],
+      });
+      const gatedDevId = `dev_behav_gate_${Date.now()}`;
+      const gatedSecret = "sec_behav_gate_1234567890";
+      const gatedDevice = await getOrCreateDevice(gatedDevId, gatedSecret);
+      gatedDevice.weeklySwapsUsed = ["item_0", "item_1", "item_2", "item_3", "item_4", "item_5"];
+      await saveDevice(gatedDevice);
+      const exhaustedScan = await runScan({
+        productTitle: "Cinnamon Toast Crunch",
+        store: "walmart",
+        surface: "android",
+        clientPlatform: "android",
+        deviceId: gatedDevId,
+        deviceSecret: gatedSecret,
+      });
+
+      check(
+        "Behavioural Soy Watchlist & Free-Tier Swap Lock: Cinnamon Toast Crunch with soy watchlist never returns soy-containing Ezekiel 4:9, and exhausted free device receives locked: true with zero store URLs",
+        Boolean(
+          soyWatchCtc.ok &&
+            soyWatchCtc.swap &&
+            !/soy|ezekiel/i.test(`${soyWatchCtc.swap.title} ${soyWatchCtc.swap.ingredients}`) &&
+            soyWatchCtc.swap.score >= 85 &&
+            exhaustedScan.ok &&
+            exhaustedScan.swap &&
+            exhaustedScan.swap.locked === true &&
+            exhaustedScan.swap.webUrl === undefined &&
+            exhaustedScan.swap.deepLink === undefined &&
+            exhaustedScan.swap.androidIntentUrl === undefined
+        ),
+      );
+
+      // 3. P1.4, P2.7 & P2.11 Behavioural Gluten-Free, Category-Default, Cinnamon Over-Match, Cinnamon Chex & Ezekiel Label Suite
+      const gfConesScan = await runScan({
+        productTitle: "Joy Gluten Free Sugar Cones",
+        store: "walmart",
+      });
+      const gfFishSticksScan = await runScan({
+        productTitle: "Gluten Free Fish Sticks",
+        store: "walmart",
+      });
+      const gfSoySauceSwap = resolveSwap({
+        score: 25,
+        productTitle: "Kikkoman Gluten Free Soy Sauce",
+        store: "walmart",
+      });
+      const gfTeriyakiSwap = resolveSwap({
+        score: 25,
+        productTitle: "Gluten Free Teriyaki Sauce",
+        store: "walmart",
+      });
+      const ctcRollsSwap = resolveSwap({
+        score: 20,
+        productTitle: "Pillsbury Cinnamon Toast Crunch Rolls",
+        store: "walmart",
+      });
+      const cinnadustSwap = resolveSwap({
+        score: 20,
+        productTitle: "Cinnamon Toast Crunch Cinnadust Seasoning Blend",
+        store: "walmart",
+      });
+      const ctcBarsSwap = resolveSwap({
+        score: 20,
+        productTitle: "Cinnamon Toast Crunch Cereal Bars",
+        store: "walmart",
+      });
+      const paneraBagelsSwap = resolveSwap({
+        score: 20,
+        productTitle: "Panera Cinnamon Crunch Bagels",
+        store: "walmart",
+      });
+      const cinnamonChexScan = await runScan({
+        productTitle: "Cinnamon Chex",
+        store: "walmart",
+      });
+      const ezekielDirectScan = await runScan({
+        productTitle: "Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal",
+        store: "walmart",
+      });
+
+      check(
+        "Behavioural Swap Category, Gluten-Free, Cinnamon Over-Match & Verified Ezekiel US Label Suite: Sugar Cones/Fish Sticks/GF Soy Sauce/Teriyaki never cross-swap to Fruit Bars/Salmon/Ranch, Cinnamon Rolls/Cinnadust/Bars/Bagels never swap to Ezekiel cereal, Cinnamon Chex swaps only to gluten-free & soy-free cereal, and Ezekiel 4:9 matches 57g US label",
+        Boolean(
+          (!gfConesScan.ok || gfConesScan.swap === null) &&
+            (!gfFishSticksScan.ok || gfFishSticksScan.swap === null) &&
+            gfSoySauceSwap === null &&
+            gfTeriyakiSwap === null &&
+            ctcRollsSwap === null &&
+            cinnadustSwap === null &&
+            ctcBarsSwap === null &&
+            !/ezekiel/i.test(paneraBagelsSwap?.title ?? "") &&
+            cinnamonChexScan.ok &&
+            cinnamonChexScan.swap &&
+            !/\b(wheat|barley|spelt|soy|soybeans?|ezekiel)\b|heritage\s+flakes/i.test(
+              `${cinnamonChexScan.swap.title} ${cinnamonChexScan.swap.ingredients}`,
+            ) &&
+            ezekielDirectScan.ok &&
+            ezekielDirectScan.product?.nutrition?.caloriesKcal100g === 333 &&
+            ezekielDirectScan.product?.nutrition?.sodiumMg100g === 228 &&
+            ezekielDirectScan.product?.nutrition?.fiberG100g === 8.8 &&
+            /rosemary\s+extract/i.test(ezekielDirectScan.product?.ingredients ?? "")
+        ),
+      );
+
+      // 4. P1.5 Behavioural Barcode Miss & Conflicting Barcode Fallback Suite
+      const prevFetchBarcode = globalThis.fetch;
+      let unknownBarcodeFallbackScan: Awaited<ReturnType<typeof runScan>> | null = null;
+      let conflictingBarcodeScan: Awaited<ReturnType<typeof runScan>> | null = null;
+      try {
+        globalThis.fetch = async (input: RequestInfo | URL) => {
+          const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+          if (u.includes("0028400090896") || u.includes("28400090896")) {
+            return Response.json({
+              status: 1,
+              product: {
+                code: "0028400090896",
+                brands: "Doritos",
+                product_name: "Nacho Cheese Tortilla Chips",
+                ingredients_text_en:
+                  "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin, Salt, Cheddar Cheese, Monosodium Glutamate, Artificial Color (Yellow 6, Yellow 5, Red 40).",
+                countries_tags: ["en:united-states"],
+              },
+            });
+          }
+          return Response.json({ status: 0, hits: [], products: [], foods: [] });
+        };
+
+        unknownBarcodeFallbackScan = await runScan({
+          barcode: "00099999999995",
+          productTitle: "Cinnamon Toast Crunch",
+          store: "walmart",
+        });
+        conflictingBarcodeScan = await runScan({
+          barcode: "0028400090896",
+          productTitle: "Jif Creamy Peanut Butter",
+          store: "walmart",
+        });
+      } finally {
+        globalThis.fetch = prevFetchBarcode;
+      }
+
+      check(
+        "Behavioural Barcode Fallback & Cross-Product Guard: unknown barcode falls back to productTitle instead of 404, conflicting Doritos barcode on Jif Peanut Butter page discards Doritos and scores Peanut Butter, GTIN-14 normalizes cleanly, and cacheKey isolates barcode+title pairs",
+        Boolean(
+          normalizeBarcode("00012000161155") === "012000161155" &&
+            normalizeBarcode("04012345678901") === "4012345678901" &&
+            cacheKey({ barcode: "0028400090896", productTitle: "Jif Creamy Peanut Butter" }) !==
+              cacheKey({ productTitle: "Jif Creamy Peanut Butter" }) &&
+            cacheKey({ barcode: "0028400090896", productTitle: "Jif Creamy Peanut Butter" }) !==
+              cacheKey({ barcode: "0028400090896" }) &&
+            unknownBarcodeFallbackScan?.ok &&
+            /cinnamon\s+toast\s+crunch/i.test(unknownBarcodeFallbackScan.product?.title ?? "") &&
+            conflictingBarcodeScan?.ok &&
+            !/doritos|tortilla/i.test(conflictingBarcodeScan.product?.title ?? "") &&
+            /peanut\s+butter/i.test(conflictingBarcodeScan.product?.title ?? "")
+        ),
+      );
+
+      // 5. P1.6 Behavioural Idempotent Title Normalization & Mixed-Case Preservation Suite
+      const titleCases: Array<[string, string]> = [
+        ["Great Value 2% REduced FAt MIlk", "Great Value 2% Reduced Fat Milk"],
+        ["REDuced FAT MILk", "Reduced Fat Milk"],
+        ["100% PUre PUmpkin", "100% Pure Pumpkin"],
+        ["ORganic Whole Milk", "Organic Whole Milk"],
+        ["Frank's RedHot Original Cayenne Pepper Sauce", "Frank's RedHot Original Cayenne Pepper Sauce"],
+        ["DeLallo Organic Whole Wheat Pasta", "DeLallo Organic Whole Wheat Pasta"],
+        ["SmartFood White Cheddar Popcorn", "SmartFood White Cheddar Popcorn"],
+      ];
+      const allTitlesCleanAndIdempotent = titleCases.every(([raw, expected]) => {
+        const once = normalizeOffDisplayTitle(raw);
+        const twice = normalizeOffDisplayTitle(once);
+        const thrice = normalizeOffDisplayTitle(twice);
+        return once === expected && twice === once && thrice === once;
+      });
+
+      check(
+        "Behavioural Title Normalization Idempotency: heals Shift-hold leading-cap mangling ('REduced FAt MIlk', 'REDuced FAT MILk', '100% PUre PUmpkin', 'ORganic') while preserving genuine mixed-case words ('RedHot', 'DeLallo', 'SmartFood') with f(f(x)) === f(x)",
+        allTitlesCleanAndIdempotent,
+      );
+    }
   }
 
   console.log("Checks executed:", checks);

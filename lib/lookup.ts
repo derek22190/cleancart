@@ -228,8 +228,16 @@ export function mergeBrandAndTitle(brand: string | undefined, title: string): st
   return `${b} ${t}`;
 }
 
+export function normalizeBarcode(raw?: string): string {
+  const digits = (raw || "").replace(/\D/g, "");
+  if (!/^\d{8,14}$/.test(digits)) return "";
+  if (digits.length === 14 && digits.startsWith("00")) return digits.slice(2);
+  if (digits.length === 14 && digits.startsWith("0")) return digits.slice(1);
+  return digits;
+}
+
 export function cacheKey(input: LookupInput): string | null {
-  if (input.barcode?.trim()) return `upc:${input.barcode.replace(/\D/g, "")}`;
+  const normCode = normalizeBarcode(input.barcode);
   const canonical = canonicalizeGroceryQuery(input.productTitle || "");
   const t = collapseSingleLetterCompounds(canonical)
     .toLowerCase()
@@ -237,6 +245,8 @@ export function cacheKey(input: LookupInput): string | null {
     .replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+  if (normCode && t) return `upc:${normCode}|title:${t}`;
+  if (normCode) return `upc:${normCode}`;
   return t ? `title:${t}` : null;
 }
 
@@ -1037,19 +1047,20 @@ function normalizeSingleTitleSubtoken(sub: string, isFirstWord: boolean, isLastW
   if (canonical) return canonical;
   const upper = sub.toUpperCase();
   if (TITLE_PRESERVED_ACRONYMS.has(upper)) return upper;
+  if (/^[A-Z]{2,}s$/.test(sub)) return sub;
   if (LOWERCASE_UNIT_TOKENS.has(lower) && (prevWasNumeric || (!isFirstWord && lower !== "l"))) {
     return lower;
   }
   if (!isFirstWord && !isLastWord && LOWERCASE_TITLE_MINOR_WORDS.has(lower)) {
     return lower;
   }
-  // Fix Shift-hold typos ("OLd" -> "Old", "KEllogg" -> "Kellogg"), random mid-word capitals ("oatMeal" -> "Oatmeal"),
-  // shouting ALL-CAPS words ("QUAKER" -> "Quaker"), and lowercase words ("oatmeal" -> "Oatmeal")
+  // Fix Shift-hold leading-cap typos ("OLd" -> "Old", "REduced" -> "Reduced", "REDuced" -> "Reduced"),
+  // shouting ALL-CAPS words ("QUAKER" -> "Quaker"), and all-lowercase words ("oatmeal" -> "Oatmeal")
+  // while preserving genuine mixed-case brand/compound words ("RedHot", "DeLallo", "SmartFood", "CoQ10").
   if (
-    /^[A-Z]{2,}[a-z]/.test(sub) ||
-    /[a-z][A-Z]/.test(sub) ||
+    /^[A-Z]{2,}[a-z]+(?:['’][a-z]+)?$/.test(sub) ||
     /^[A-Z]{2,}(?:['’][A-Z]+)?$/.test(sub) ||
-    /^[a-z]/.test(sub)
+    /^[a-z]+(?:['’][a-z]+)?$/.test(sub)
   ) {
     return lower.replace(/^[a-z]|(?<=^[a-z]['’])[a-z]/g, (ch) => ch.toUpperCase());
   }
@@ -1223,8 +1234,8 @@ async function fetchOffProductByCode(
 }
 
 async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> | null> {
-  const code = barcode.replace(/\D/g, "");
-  if (!/^\d{8,14}$/.test(code)) return null;
+  const code = normalizeBarcode(barcode);
+  if (!code) return null;
   const codes = Array.from(
     new Set([
       code,
@@ -1308,6 +1319,26 @@ function scoreProviderCandidate(query: string, cand: ProviderResult): number {
   return r + hasCoreMacros + hasRealPhoto - isBulkOrSingleServe;
 }
 
+function doesBarcodeResultMatchTitle(queryTitle: string, found: ProviderResult): boolean {
+  const qRaw = (queryTitle || "").trim();
+  if (!qRaw || /^\d{8,14}$/.test(qRaw)) return true;
+  if (!matchesRequestedBrand(qRaw, found.brand || "", found.productTitle)) return false;
+  const brandToks = new Set(tokens(`${detectQueryBrand(qRaw)} ${found.brand || ""}`));
+  const qAll = tokens(qRaw).filter((t) => !GENERIC.has(t) && !GENERIC_LEADING_MODIFIERS.has(t));
+  const fAll = tokens(`${found.brand || ""} ${found.productTitle}`).filter(
+    (t) => !GENERIC.has(t) && !GENERIC_LEADING_MODIFIERS.has(t),
+  );
+  const qFood = qAll.filter((t) => !brandToks.has(t));
+  const fFood = fAll.filter((t) => !brandToks.has(t));
+  if (qFood.length > 0 && fFood.length > 0) {
+    return qFood.some((qt) => fFood.some((ft) => tokenEquivalent(qt, ft)));
+  }
+  if (qAll.length > 0 && fAll.length > 0) {
+    return qAll.some((qt) => fAll.some((ft) => tokenEquivalent(qt, ft)));
+  }
+  return true;
+}
+
 /** One shared wall-clock budget covers multi-stage provider searches with deterministic quality selection. */
 async function lookupProviders(input: LookupInput): Promise<ProviderResult | null> {
   const controller = new AbortController();
@@ -1316,14 +1347,24 @@ async function lookupProviders(input: LookupInput): Promise<ProviderResult | nul
     timer = setTimeout(() => { controller.abort(); resolve(null); }, TIMEOUT_MS);
   });
   const work = providerSignal.run(controller.signal, async () => {
-    if (input.barcode) {
-      return firstAvailable([offByBarcode(input.barcode), usdaSearch(input.barcode), lookupDsld(input, getJson)]);
+    const normCode = normalizeBarcode(input.barcode);
+    const rawTitle = (input.productTitle || "").trim();
+    if (normCode) {
+      const byCode = await firstAvailable([
+        offByBarcode(normCode),
+        usdaSearch(normCode),
+        lookupDsld({ ...input, barcode: normCode }, getJson),
+      ]);
+      if (byCode && (!rawTitle || doesBarcodeResultMatchTitle(rawTitle, byCode))) {
+        return byCode;
+      }
+      if (!rawTitle) return null;
     }
-    const rawTitle = input.productTitle || "";
+    if (!rawTitle) return null;
     const cleaned = cleanSearchQuery(rawTitle) || rawTitle;
     const pOff = offSearch(cleaned);
     const pUsda = usdaSearch(cleaned);
-    const pDsld = lookupDsld({ ...input, productTitle: cleaned }, getJson);
+    const pDsld = lookupDsld({ ...input, barcode: undefined, productTitle: cleaned }, getJson);
     const all = [pOff, pUsda, pDsld];
     const first = await firstAvailable(all);
     if (!first) return null;
@@ -2054,22 +2095,32 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
+    match: /\b(cinnamon\s+chex)\b/i,
+    brand: "General Mills",
+    title: "General Mills Cinnamon Chex Gluten Free Cereal",
+    ingredients: "Whole Grain Rice, Rice, Sugar, Canola and/or Sunflower Oil, Salt, Cinnamon, Molasses, Rosemary Extract. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
+    imageUrl: "/products/cereal.jpg",
+    nutrition: { caloriesKcal100g: 400, sugarsG100g: 20.0, saturatedFatG100g: 0, sodiumMg100g: 600, fiberG100g: 5.0, proteinG100g: 5.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.chex.com/products/cinnamon-chex",
+    verifiedAt: "2026-11-15",
+  },
+  {
     match: /\bezekiel\s*4:?9\b.*\bcinnamon\s+raisin\b|\bfood\s+for\s+life\b.*\bcinnamon\s+raisin\b.*\bcereal\b/i,
     brand: "Food For Life",
     title: "Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal",
-    ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon.",
+    ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon, Organic Rosemary Extract.",
     imageUrl: "/swaps/cereal.jpg",
-    nutrition: { caloriesKcal100g: 351, sugarsG100g: 14.0, saturatedFatG100g: 0, sodiumMg100g: 281, fiberG100g: 10.5, proteinG100g: 12.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
+    nutrition: { caloriesKcal100g: 333, sugarsG100g: 14.0, saturatedFatG100g: 0, sodiumMg100g: 228, fiberG100g: 8.8, proteinG100g: 12.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.foodforlife.com/product/cereals/ezekiel-49-cinnamon-raisin-sprouted-whole-grain-cereal",
     verifiedAt: "2026-11-15",
   },
   {
     match: /\bnature'?s\s+path\b.*\bsunrise\b.*\bcinnamon\b|\bsunrise\s+crunchy\s+cinnamon\b/i,
     brand: "Nature's Path",
-    title: "Nature's Path Organic Sunrise Crunchy Cinnamon Cereal",
-    ingredients: "Organic brown rice flour, organic whole grain corn meal, organic cane sugar, organic corn meal, organic yellow corn flour, organic inulin, organic quinoa, organic flax seeds, sea salt, organic buckwheat flour, organic amaranth, organic cinnamon, organic molasses, tocopherols (vitamin E).",
+    title: "Nature's Path Organic Sunrise Crunchy Cinnamon Gluten Free Cereal",
+    ingredients: "Organic brown rice flour, organic whole grain corn meal, organic cane sugar, corn meal, organic yellow corn flour, organic inulin, organic quinoa, organic flax seeds, sea salt, organic buckwheat flour, organic amaranth, organic cinnamon, organic molasses, tocopherols (vitamin E).",
     imageUrl: "/swaps/cereal.jpg",
-    nutrition: { caloriesKcal100g: 375, sugarsG100g: 22.5, saturatedFatG100g: 0, sodiumMg100g: 375, fiberG100g: 10, proteinG100g: 7.5, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 20.0, saturatedFatG100g: 0, sodiumMg100g: 375, fiberG100g: 10, proteinG100g: 7.5, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
     sourceUrl: "https://naturespath.com/products/crunchy-sunrise-cinnamon-cold-cereal-np-us",
     verifiedAt: "2026-11-15",
   },
@@ -4617,12 +4668,18 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     }
   }
 
+  const normBarcode = normalizeBarcode(input.barcode);
   const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
-  const key = cacheKey({ ...input, productTitle: title });
+  const normalizedInput: LookupInput = {
+    ...input,
+    barcode: normBarcode || undefined,
+    productTitle: title,
+  };
+  const key = cacheKey(normalizedInput);
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&
@@ -4630,7 +4687,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
       title,
     );
 
-  if (!input.barcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority)) {
+  if (!normBarcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority)) {
     const directCat =
       catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
     if (
@@ -4648,7 +4705,8 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     isFreshCacheEntry(hit) &&
     !hit.productTitle.startsWith("Conventional Grocery") &&
     (!title ||
-      (passesVariantGuard(title, hit.productTitle) &&
+      (doesBarcodeResultMatchTitle(title, hit) &&
+        passesVariantGuard(title, hit.productTitle) &&
         !isDietaryOrVariantMismatch(title, hit.productTitle, hit.ingredients, hit.nutrition)))
   ) {
     const { cachedAt: _c, source, ...rest } = hit;
@@ -4664,7 +4722,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   let found: Omit<LookupResult, "ms"> | null = null;
 
-  found = await lookupProviders({ ...input, productTitle: title });
+  found = await lookupProviders(normalizedInput);
   if (!found && title) {
     found = catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
   }
@@ -4690,14 +4748,20 @@ export async function lookupLiveAuthoritative(input: LookupInput): Promise<Looku
   const t0 = performance.now();
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
   const rawTitle = (input.productTitle || "").trim();
+  const normBarcode = normalizeBarcode(input.barcode);
   const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
-  const found = await lookupProviders({ ...input, productTitle: title });
+  const normalizedInput: LookupInput = {
+    ...input,
+    barcode: normBarcode || undefined,
+    productTitle: title,
+  };
+  const found = await lookupProviders(normalizedInput);
   if (!found) return null;
   const normalizedFound = {
     ...found,
     productTitle: normalizeOffDisplayTitle(found.productTitle),
   };
-  const key = cacheKey({ ...input, productTitle: title });
+  const key = cacheKey(normalizedInput);
   if (key) {
     const cache = await loadCache();
     setCacheEntry(cache, key, { ...normalizedFound, cachedAt: new Date().toISOString(), schemaVersion: 3 });

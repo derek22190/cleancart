@@ -24,21 +24,23 @@ export default function GoogleOAuthCallbackPage() {
         searchParams.get("error") ||
         "";
 
-      if (state.startsWith("android_")) {
+      if (/^android_[a-f0-9]{16,64}$/i.test(state)) {
         const qs = new URLSearchParams();
-        if (idToken) qs.set("id_token", idToken);
-        if (state) qs.set("state", state);
-        if (err) qs.set("error", err);
+        if (idToken && !err) qs.set("id_token", idToken);
+        qs.set("state", state);
+        if (err) qs.set("error", "cancelled");
         const query = qs.toString();
-        const customSchemeUrl = `heybroc://auth?${query}`;
-        const intentUrl = `intent://auth?${query}#Intent;scheme=heybroc;package=com.cleancart.overlay;end`;
+        const fallbackWebUrl = `${window.location.origin}/?login=1`;
+        const intentUrl =
+          `intent://auth?${query}#Intent;scheme=heybroc;package=com.cleancart.overlay;` +
+          `S.browser_fallback_url=${encodeURIComponent(fallbackWebUrl)};end`;
         setAndroidReturnHref(intentUrl);
         setStatus(
           err
             ? "Sign-in cancelled. Returning to HeyBroc…"
             : "Signed in with Google! Returning to HeyBroc…"
         );
-        window.location.replace(customSchemeUrl);
+        window.location.replace(intentUrl);
         return;
       }
 
@@ -46,9 +48,9 @@ export default function GoogleOAuthCallbackPage() {
         window.opener.postMessage(
           {
             type: "heybroc-google-oauth",
-            idToken,
+            idToken: err ? "" : idToken,
             state,
-            error: err,
+            error: err ? "cancelled" : "",
           },
           window.location.origin
         );
@@ -59,16 +61,14 @@ export default function GoogleOAuthCallbackPage() {
         return;
       }
 
-      if (idToken) {
+      if (idToken && state && !err) {
         window.sessionStorage.setItem("heybroc_pending_google_id_token", idToken);
-        if (state) {
-          window.sessionStorage.setItem("heybroc_pending_google_state", state);
-        }
+        window.sessionStorage.setItem("heybroc_pending_google_state", state);
         window.location.replace("/?login=1");
         return;
       }
 
-      setStatus(err || "No Google token returned. Redirecting back to HeyBroc…");
+      setStatus(err ? "Google sign-in was cancelled. Redirecting back to HeyBroc…" : "No Google token returned. Redirecting back to HeyBroc…");
       setTimeout(() => {
         window.location.replace("/?login=1");
       }, 1500);

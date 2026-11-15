@@ -94,10 +94,15 @@ object ScanHistoryStore {
             val unit = if (rawUnit.startsWith("fl")) "fl oz" else rawUnit
             "$num $unit"
         }
-        // Heal 2nd-letter shift-key typos ("KEllogg" -> "Kellogg", "REal" -> "Real", "CRumbled" -> "Crumbled", "BAcon" -> "Bacon", "HIckory" -> "Hickory")
-        s = s.replace(Regex("\\b([A-Z])([A-Z])([a-z]{2,})\\b")) { m ->
+        // Heal 2nd-letter shift-key typos ("OLd" -> "Old", "KEllogg" -> "Kellogg", "REal" -> "Real", "FAt" -> "Fat", "MIlk" -> "Milk")
+        s = s.replace(Regex("\\b([A-Z])([A-Z])([a-z]{1,})\\b")) { m ->
             val full = m.value
-            if (full == "PBfit") full else "${m.groupValues[1]}${m.groupValues[2].lowercase()}${m.groupValues[3]}"
+            val stem = if (m.groupValues[3] == "s") "${m.groupValues[1]}${m.groupValues[2]}" else ""
+            if (full == "PBfit" || (stem.isNotEmpty() && (stem in PRESERVED_TITLE_ACRONYMS || stem in setOf("TV", "ID", "CD", "DJ", "PJ", "PC", "UV")))) {
+                full
+            } else {
+                "${m.groupValues[1]}${m.groupValues[2].lowercase()}${m.groupValues[3]}"
+            }
         }
         // Convert ALL-CAPS words ("PURIFIED WATER" -> "Purified Water") while keeping true acronyms ("USDA", "BBQ")
         s = s.replace(Regex("\\b([A-Z]{2,}(?:['’][A-Z]+)?)\\b")) { m ->
@@ -1980,164 +1985,28 @@ object ScanHistoryStore {
         }
     }
 
-    fun upgradeSwapForStore(swap: JSONObject, prodTitle: String = "", storeKey: String = "walmart") {
+    fun upgradeSwapForStore(swap: JSONObject, @Suppress("UNUSED_PARAMETER") prodTitle: String = "", storeKey: String = "walmart") {
         val normStore = storeKey.lowercase().ifBlank { "walmart" }
-        val lowProd = prodTitle.lowercase()
-        val lowSwap = swap.optString("title").lowercase()
         val isWalmart = normStore == "walmart"
+        val latestTitle = swap.optString("title")
+        val latestBrand = swap.optString("brand")
+        swap.put("isStoreBrand", isStoreBrandForStore("$latestBrand $latestTitle", normStore))
+
+        val curLink = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
+        val isLocked = swap.optBoolean("locked", false) || curLink.isBlank()
+        if (isLocked) {
+            swap.put("locked", true)
+            swap.remove("webUrl")
+            swap.remove("deepLink")
+            swap.remove("androidIntentUrl")
+            return
+        }
+
         val targetPkg = storePackageForKey(normStore)
         if (targetPkg.isNotBlank()) {
             swap.put("androidPackage", targetPkg)
         }
-        if (Regex("""\b(american\s+(?:sliced\s+|cheese|pasteurized|singles)|kraft\s+singles|velveeta\s+slices|sargento.*\bamerican\b|borden.*\bamerican\b)\b""").containsMatchIn(lowProd) &&
-            lowSwap.contains("sharp cheddar")
-        ) {
-            swap.put("title", "Organic Valley Organic American Cheese Slices")
-            swap.put("name", "Organic American Cheese Slices")
-            swap.put("brand", "Organic Valley")
-            swap.put("size", "6 oz pack")
-            swap.put("score", 85)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Organic Valley Organic American Cheese Slices")
-            swap.put("imageUrl", productImageUrl("Organic Valley Organic American Cheese Slices"))
-            swap.put("ingredients", "Organic cultured pasteurized milk, organic cream, water, sodium citrate, salt, organic annatto (color), vegetarian enzyme.")
-            if (isWalmart) {
-                swap.put("webUrl", "https://www.walmart.com/ip/1814292019")
-                swap.put("deepLink", "https://www.walmart.com/ip/1814292019")
-            }
-        } else if (Regex("""\b(cream\s+of\s+(?:chicken|mushroom|celery)|condensed\s+.*soup)\b""").containsMatchIn(lowProd) &&
-            lowSwap.contains("lentil vegetable soup")
-        ) {
-            swap.put("title", "Pacific Foods Organic Cream of Chicken Condensed Soup")
-            swap.put("name", "Organic Cream of Chicken Condensed Soup")
-            swap.put("brand", "Pacific Foods")
-            swap.put("size", "10.5 oz can")
-            swap.put("score", 88)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Pacific Foods Organic Cream of Chicken Condensed Soup")
-            swap.put("imageUrl", productImageUrl("Pacific Foods Organic Cream of Chicken Condensed Soup"))
-            swap.put("ingredients", "Water, organic chicken, organic rice flour, organic heavy cream, organic chicken broth, organic cornstarch, sea salt, organic onion powder, organic garlic powder, organic spices.")
-            if (isWalmart) {
-                swap.put("webUrl", "https://www.walmart.com/ip/541659748")
-                swap.put("deepLink", "https://www.walmart.com/ip/541659748")
-            }
-        } else if (Regex("""\b(ground\s+beef|ground\s+chuck|beef\s+patties|burger\s+patties|\d{2}%\s*lean)\b""").containsMatchIn(lowProd) &&
-            lowSwap.contains("roast beef")
-        ) {
-            swap.put("title", "Marketside Butcher Organic Grass-Fed 93% Lean 7% Fat Ground Beef")
-            swap.put("name", "Organic Grass-Fed 93% Lean 7% Fat Ground Beef")
-            swap.put("brand", "Marketside Butcher")
-            swap.put("size", "1 lb brick")
-            swap.put("score", 100)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Organic Grass Fed Ground Beef")
-            swap.put("imageUrl", "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg")
-            swap.put("ingredients", "100% Organic Grass-Fed Beef.")
-            if (isWalmart) {
-                swap.put("webUrl", "https://www.walmart.com/ip/51259058")
-                swap.put("deepLink", "https://www.walmart.com/ip/51259058")
-            }
-        } else if (lowSwap.contains("food for life ezekiel")) {
-            swap.put("title", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
-            swap.put("name", "Organic 21 Whole Grains & Seeds Bread")
-            swap.put("brand", "Dave's Killer Bread")
-            swap.put("size", "27 oz loaf")
-            swap.put("score", 85)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread")
-            swap.put("imageUrl", productImageUrl("Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread"))
-            swap.put("ingredients", "Organic whole wheat (organic whole wheat flour, organic cracked whole wheat), water, organic 21 Whole Grains and Seeds mix (organic whole flax seeds, organic sunflower seeds, organic ground whole flax seeds, organic unhulled brown sesame seeds, organic triticale, organic pumpkin seeds, organic rolled barley, organic rolled oats, organic rolled rye, organic unhulled black sesame seeds, organic blue cornmeal, organic millet, organic rolled spelt, organic brown rice flour, organic amaranth flour, organic yellow cornmeal, organic kamut khorasan wheat, organic quinoa, organic buckwheat flour, organic sorghum flour, organic poppy seeds), organic cane sugar, organic wheat gluten, organic oat fiber, organic molasses, sea salt, yeast, organic cultured wheat flour.")
-        } else if (lowSwap.contains("malk organic unsweetened oat")) {
-            swap.put("title", "Califia Farms Organic Unsweetened Oatmilk")
-            swap.put("name", "Organic Unsweetened Oatmilk")
-            swap.put("brand", "Califia Farms")
-            swap.put("size", "48 fl oz bottle")
-            swap.put("score", 95)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Califia Farms Organic Unsweetened Oatmilk")
-            swap.put("imageUrl", productImageUrl("Califia Farms Organic Unsweetened Oatmilk"))
-            swap.put("ingredients", "Water, organic oats, sea salt.")
-        } else if (lowSwap.contains("malk organic unsweetened almond")) {
-            swap.put("title", "Califia Farms Organic Unsweetened Almondmilk")
-            swap.put("name", "Organic Unsweetened Almondmilk")
-            swap.put("brand", "Califia Farms")
-            swap.put("size", "48 fl oz bottle")
-            swap.put("score", 95)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Califia Farms Organic Unsweetened Almondmilk")
-            swap.put("imageUrl", productImageUrl("Califia Farms Organic Unsweetened Almondmilk"))
-            swap.put("ingredients", "Water, organic almonds, sea salt.")
-        } else if (lowSwap.contains("raw sharp cheddar")) {
-            swap.put("title", "Organic Valley Organic Sharp Cheddar Cheese")
-            swap.put("name", "Organic Sharp Cheddar Cheese")
-            swap.put("brand", "Organic Valley")
-            swap.put("size", "8 oz block")
-            swap.put("score", 88)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Organic Valley Organic Sharp Cheddar Cheese")
-            swap.put("imageUrl", productImageUrl("Organic Valley Organic Sharp Cheddar Cheese"))
-            swap.put("ingredients", "Organic cultured pasteurized milk, salt, vegetarian enzyme.")
-        } else if (lowSwap.contains("alec's ice cream")) {
-            swap.put("title", "Alden's Organic Vanilla Bean Ice Cream")
-            swap.put("name", "Vanilla Bean Ice Cream")
-            swap.put("brand", "Alden's Organic")
-            swap.put("size", "48 fl oz tub")
-            swap.put("score", 82)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Alden's Organic Vanilla Bean Ice Cream")
-            swap.put("imageUrl", productImageUrl("Alden's Organic Vanilla Bean Ice Cream"))
-            swap.put("ingredients", "Organic milk, organic cream, organic cane sugar, organic tapioca syrup, organic vanilla extract, organic guar gum, organic vanilla beans.")
-        } else if (lowSwap.contains("crown maple")) {
-            swap.put("title", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
-            swap.put("name", "Organic 100% Pure Grade A Amber Maple Syrup")
-            swap.put("brand", "Coombs Family Farms")
-            swap.put("size", "12 fl oz bottle")
-            swap.put("score", 88)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Coombs Family Farms Organic 100% Pure Grade A Amber Maple Syrup")
-            swap.put("imageUrl", productImageUrl("Coombs Family Farms Organic Maple Syrup"))
-            swap.put("ingredients", "100% Pure Organic Grade A Amber Rich Taste Maple Syrup.")
-        } else if (lowSwap.contains("jovial")) {
-            swap.put("title", "Barilla Organic Spaghetti Pasta")
-            swap.put("name", "Organic Spaghetti Pasta")
-            swap.put("brand", "Barilla")
-            swap.put("size", "16 oz box")
-            swap.put("score", 95)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Barilla Organic Spaghetti Pasta")
-            swap.put("imageUrl", productImageUrl("Barilla Organic Spaghetti Pasta"))
-            swap.put("ingredients", "Organic durum wheat semolina.")
-        } else if (Regex("""\b(cinnamon\s+toast\s+crunch|french\s+toast\s+crunch|cinnamon\s+(?:crunch|toasters?|squares?|oat\s+crunch|chex|life)|ctoast)\b""").containsMatchIn(lowProd) &&
-            (lowSwap.contains("heritage flakes") || lowSwap.contains("sunrise crunchy cinnamon"))
-        ) {
-            swap.put("title", "Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal")
-            swap.put("name", "Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal")
-            swap.put("brand", "Food For Life")
-            swap.put("size", "16 oz box")
-            swap.put("score", 90)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Ezekiel 4:9 Cinnamon Raisin Cereal")
-            swap.put("imageUrl", productImageUrl("Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal"))
-            swap.put("ingredients", "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon.")
-            val searchUrl = storeSearchUrl(normStore, "Ezekiel 4:9 Cinnamon Raisin Cereal")
-            swap.put("webUrl", searchUrl)
-            swap.put("deepLink", searchUrl)
-        } else if (lowSwap.contains("nooma")) {
-            swap.put("title", "Harmless Harvest Organic Coconut Water")
-            swap.put("name", "Organic Coconut Water")
-            swap.put("brand", "Harmless Harvest")
-            swap.put("size", "16 fl oz bottle")
-            swap.put("score", 94)
-            swap.put("isOrganic", true)
-            swap.put("searchQuery", "Harmless Harvest Organic Coconut Water")
-            swap.put("imageUrl", productImageUrl("Harmless Harvest Organic Coconut Water"))
-            swap.put("ingredients", "100% Organic Coconut Water.")
-        }
-        val latestTitle = swap.optString("title")
-        val latestBrand = swap.optString("brand")
-        swap.put("isStoreBrand", isStoreBrandForStore("$latestBrand $latestTitle", normStore))
         val latestQuery = swap.optString("searchQuery").ifBlank { latestTitle }
-        val curLink = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
         if (curLink.contains("/ip/10898744") && latestQuery.isNotBlank()) {
             val fixedSearchUrl = storeSearchUrl(normStore, latestQuery)
             swap.put("webUrl", fixedSearchUrl)
@@ -2225,6 +2094,9 @@ object ScanHistoryStore {
         put("isOrganic", isOrganic)
         put("why", "No seed oils, synthetic dyes, or high-risk preservatives.")
         put("searchQuery", title)
+        val initialUrl = storeSearchUrl("walmart", title)
+        put("webUrl", initialUrl)
+        put("deepLink", initialUrl)
     }
 
     private fun sampleItem(

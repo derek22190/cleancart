@@ -166,7 +166,8 @@ export default function AuthModal({
       provider: "google" | "apple",
       idToken: string,
       overrideEmail?: string,
-      overrideName?: string
+      overrideName?: string,
+      expectedNonce?: string
     ) => {
       if (provider === "google") setGoogleBusy(true);
       if (provider === "apple") setAppleBusy(true);
@@ -189,6 +190,7 @@ export default function AuthModal({
             action: "oauth",
             provider,
             idToken,
+            ...(expectedNonce ? { nonce: expectedNonce } : {}),
             email: (overrideEmail || claims.email || "").trim(),
             displayName: (overrideName || claims.name || "").trim() || undefined,
             deviceId,
@@ -316,11 +318,16 @@ export default function AuthModal({
       const pendingToken = window.sessionStorage.getItem("heybroc_pending_google_id_token");
       const pendingState = window.sessionStorage.getItem("heybroc_pending_google_state");
       const expectedState = window.sessionStorage.getItem("heybroc_oauth_state");
+      const expectedNonce = window.sessionStorage.getItem("heybroc_oauth_nonce") || undefined;
       if (pendingToken) {
         window.sessionStorage.removeItem("heybroc_pending_google_id_token");
         window.sessionStorage.removeItem("heybroc_pending_google_state");
-        if (!expectedState || !pendingState || expectedState === pendingState) {
-          void exchangeOAuthIdToken("google", pendingToken);
+        window.sessionStorage.removeItem("heybroc_oauth_state");
+        window.sessionStorage.removeItem("heybroc_oauth_nonce");
+        if (expectedState && pendingState && expectedState === pendingState && expectedNonce) {
+          void exchangeOAuthIdToken("google", pendingToken, undefined, undefined, expectedNonce);
+        } else {
+          setError("Google sign-in session expired or state mismatch. Please try again.");
         }
       }
 
@@ -334,13 +341,16 @@ export default function AuthModal({
         window.sessionStorage.removeItem("heybroc_pending_apple_state");
         window.sessionStorage.removeItem("heybroc_pending_apple_name");
         window.sessionStorage.removeItem("heybroc_pending_apple_email");
-        if (!expectedAppleState || !pendingAppleState || expectedAppleState === pendingAppleState) {
+        window.sessionStorage.removeItem("heybroc_apple_oauth_state");
+        if (expectedAppleState && pendingAppleState && expectedAppleState === pendingAppleState) {
           void exchangeOAuthIdToken(
             "apple",
             pendingAppleToken,
             pendingAppleEmail,
             pendingAppleName
           );
+        } else {
+          setError("Apple sign-in session expired or state mismatch. Please try again.");
         }
       }
 
@@ -395,24 +405,28 @@ export default function AuthModal({
 
       if (payload.type === "heybroc-google-oauth") {
         const expectedState = window.sessionStorage.getItem("heybroc_oauth_state");
-        if (expectedState && payload.state && expectedState !== payload.state) {
+        const expectedNonce = window.sessionStorage.getItem("heybroc_oauth_nonce") || undefined;
+        window.sessionStorage.removeItem("heybroc_oauth_state");
+        window.sessionStorage.removeItem("heybroc_oauth_nonce");
+        if (!expectedState || !payload.state || expectedState !== payload.state || !expectedNonce) {
           setGoogleBusy(false);
           setError("Google sign-in state mismatch. Please try again.");
           return;
         }
         if (payload.error) {
           setGoogleBusy(false);
-          if (payload.error !== "access_denied") {
-            setError(`Google Sign-In: ${payload.error}`);
+          if (payload.error !== "access_denied" && payload.error !== "cancelled") {
+            setError("Google sign-in was cancelled or couldn't complete.");
           }
           return;
         }
         if (payload.idToken) {
-          void exchangeOAuthIdToken("google", payload.idToken);
+          void exchangeOAuthIdToken("google", payload.idToken, undefined, undefined, expectedNonce);
         }
       } else if (payload.type === "heybroc-apple-oauth") {
         const expectedState = window.sessionStorage.getItem("heybroc_apple_oauth_state");
-        if (expectedState && payload.state && expectedState !== payload.state) {
+        window.sessionStorage.removeItem("heybroc_apple_oauth_state");
+        if (!expectedState || !payload.state || expectedState !== payload.state) {
           setAppleBusy(false);
           setError("Apple sign-in state mismatch. Please try again.");
           return;
@@ -420,7 +434,7 @@ export default function AuthModal({
         if (payload.error) {
           setAppleBusy(false);
           if (payload.error !== "user_cancelled_authorize" && payload.error !== "access_denied") {
-            setError(`Sign in with Apple: ${payload.error}`);
+            setError("Sign in with Apple was cancelled or couldn't complete.");
           }
           return;
         }
@@ -472,11 +486,13 @@ export default function AuthModal({
       return;
     }
 
-    const nonceBytes = new Uint8Array(16);
-    window.crypto.getRandomValues(nonceBytes);
-    const nonce = Array.from(nonceBytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    const state = `hb_${nonce.slice(0, 20)}`;
+    const randomBytes = new Uint8Array(32);
+    window.crypto.getRandomValues(randomBytes);
+    const hex = Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    const nonce = hex.slice(0, 32);
+    const state = `hb_${hex.slice(32, 64)}`;
     window.sessionStorage.setItem("heybroc_oauth_state", state);
+    window.sessionStorage.setItem("heybroc_oauth_nonce", nonce);
 
     const redirectUri = `${window.location.origin}/auth/google-callback`;
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");

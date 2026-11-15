@@ -1,7 +1,5 @@
 package com.cleancart.overlay
 
-import android.accounts.Account
-import android.accounts.AccountManager
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
@@ -24,6 +22,7 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -48,10 +47,21 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.credentials.CredentialManager
+import androidx.credentials.CredentialManagerCallback
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.SecureRandom
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 /**
@@ -72,8 +82,6 @@ class MainActivity : Activity() {
     private lateinit var floatingScanBtn: LinearLayout
 
     private val io = Executors.newSingleThreadExecutor()
-    private val REQ_PICK_GOOGLE_ACCOUNT = 9041
-    private var pendingGoogleAccountPicked: ((String) -> Unit)? = null
     private var activeAuthDialog: AlertDialog? = null
     private var activeFunnelDialog: AlertDialog? = null
     private val imgExecutor = Executors.newFixedThreadPool(4)
@@ -485,21 +493,6 @@ class MainActivity : Activity() {
             }
         }, 100L)
         return true
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_PICK_GOOGLE_ACCOUNT) {
-            val cb = pendingGoogleAccountPicked
-            pendingGoogleAccountPicked = null
-            val pickedEmail = if (resultCode == Activity.RESULT_OK && data != null) {
-                data.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME).orEmpty().trim()
-            } else {
-                ""
-            }
-            cb?.invoke(pickedEmail)
-        }
     }
 
     private fun renderScreen() {
@@ -4088,14 +4081,43 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun generateSecureHex(bytesCount: Int = 16): String {
+        val bytes = ByteArray(bytesCount)
+        SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun decodeJwtPreview(idToken: String): Pair<String, String> {
+        var claimEmail = ""
+        var claimName = ""
+        runCatching {
+            val parts = idToken.split(".")
+            if (parts.size >= 2) {
+                val decoded = String(
+                    android.util.Base64.decode(
+                        parts[1],
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                    ),
+                    Charsets.UTF_8
+                )
+                val claims = JSONObject(decoded)
+                claimEmail = claims.optString("email", "").trim().lowercase()
+                claimName = claims.optString("name", "").trim()
+            }
+        }
+        return Pair(claimEmail, claimName)
+    }
+
     private fun openGoogleOAuthCustomTab(clientId: String): Boolean {
         val cleanClientId = clientId.trim()
         if (cleanClientId.isBlank()) return false
-        val nonce = java.util.UUID.randomUUID().toString().replace("-", "")
-        val state = "android_${nonce.take(20)}"
+        val nonce = generateSecureHex(16)
+        val state = "android_${generateSecureHex(16)}"
         getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             .edit()
             .putString("pending_google_oauth_state", state)
+            .putString("pending_google_oauth_nonce", nonce)
+            .putLong("pending_google_oauth_ts", System.currentTimeMillis())
             .apply()
 
         val authUri = Uri.parse("https://accounts.google.com/o/oauth2/v2/auth").buildUpon()
@@ -4120,36 +4142,75 @@ class MainActivity : Activity() {
         }.getOrDefault(false)
     }
 
-    private fun launchSystemAccountPickerFallback(
-        onFallbackToEmail: () -> Unit,
+    private fun launchGoogleCredentialManager(
+        clientId: String,
+        onFallback: () -> Unit,
         onSuccess: (() -> Unit)?
     ) {
-        pendingGoogleAccountPicked = { pickedEmail ->
-            if (pickedEmail.isNotBlank()) {
-                Toast.makeText(this@MainActivity, "Signing in with Google…", Toast.LENGTH_SHORT).show()
-                completeGoogleAccountSignIn(
-                    pickedEmail = pickedEmail,
-                    onSuccess = onSuccess
-                )
+        val cleanClientId = clientId.trim()
+        if (cleanClientId.isBlank()) {
+            onFallback()
+            return
+        }
+        val nonce = generateSecureHex(16)
+        val googleIdOption = runCatching {
+            GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setServerClientId(cleanClientId)
+                .setNonce(nonce)
+                .build()
+        }.getOrNull()
+        if (googleIdOption == null) {
+            onFallback()
+            return
+        }
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+        val credentialManager = runCatching { CredentialManager.create(this) }.getOrNull()
+        if (credentialManager == null) {
+            onFallback()
+            return
+        }
+        val callbackExecutor = Executor { runnable -> mainHandler.post(runnable) }
+        credentialManager.getCredentialAsync(
+            this,
+            request,
+            CancellationSignal(),
+            callbackExecutor,
+            object : CredentialManagerCallback<GetCredentialResponse, GetCredentialException> {
+                override fun onResult(result: GetCredentialResponse) {
+                    if (isDestroyed || isFinishing) return
+                    val credential = result.credential
+                    val idToken = if (
+                        credential is CustomCredential &&
+                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                    ) {
+                        runCatching { GoogleIdTokenCredential.createFrom(credential.data).idToken.trim() }
+                            .getOrDefault("")
+                    } else {
+                        ""
+                    }
+                    if (idToken.isNotBlank()) {
+                        confirmAndExchangeGoogleIdToken(
+                            idToken = idToken,
+                            nonce = nonce,
+                            onSuccess = onSuccess
+                        )
+                    } else {
+                        onFallback()
+                    }
+                }
+
+                override fun onError(e: GetCredentialException) {
+                    if (isDestroyed || isFinishing) return
+                    if (e is GetCredentialCancellationException) {
+                        return
+                    }
+                    onFallback()
+                }
             }
-        }
-        val launched = runCatching {
-            @Suppress("DEPRECATION")
-            val intent = AccountManager.newChooseAccountIntent(
-                null,
-                null,
-                arrayOf("com.google"),
-                null,
-                null,
-                null,
-                null
-            )
-            startActivityForResult(intent, REQ_PICK_GOOGLE_ACCOUNT)
-            true
-        }.getOrDefault(false)
-        if (!launched) {
-            onFallbackToEmail()
-        }
+        )
     }
 
     private fun launchGoogleWebOAuthOrFallback(
@@ -4158,7 +4219,16 @@ class MainActivity : Activity() {
     ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val cachedClientId = prefs.getString("cached_google_client_id", "").orEmpty().trim()
-        if (cachedClientId.isNotBlank() && openGoogleOAuthCustomTab(cachedClientId)) {
+        if (cachedClientId.isNotBlank()) {
+            launchGoogleCredentialManager(
+                clientId = cachedClientId,
+                onFallback = {
+                    if (!openGoogleOAuthCustomTab(cachedClientId)) {
+                        onFallbackToEmail()
+                    }
+                },
+                onSuccess = onSuccess
+            )
             return
         }
 
@@ -4185,10 +4255,19 @@ class MainActivity : Activity() {
 
             mainHandler.post {
                 if (isDestroyed || isFinishing) return@post
-                if (fetchedClientId.isNotBlank() && openGoogleOAuthCustomTab(fetchedClientId)) {
+                if (fetchedClientId.isBlank()) {
+                    onFallbackToEmail()
                     return@post
                 }
-                launchSystemAccountPickerFallback(onFallbackToEmail, onSuccess)
+                launchGoogleCredentialManager(
+                    clientId = fetchedClientId,
+                    onFallback = {
+                        if (!openGoogleOAuthCustomTab(fetchedClientId)) {
+                            onFallbackToEmail()
+                        }
+                    },
+                    onSuccess = onSuccess
+                )
             }
         }
     }
@@ -4201,42 +4280,89 @@ class MainActivity : Activity() {
         incoming.data = null
 
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val expectedState = prefs.getString("pending_google_oauth_state", "").orEmpty()
-        prefs.edit().remove("pending_google_oauth_state").apply()
+        val expectedState = prefs.getString("pending_google_oauth_state", "").orEmpty().trim()
+        val expectedNonce = prefs.getString("pending_google_oauth_nonce", "").orEmpty().trim()
+        val pendingTs = prefs.getLong("pending_google_oauth_ts", 0L)
+        prefs.edit()
+            .remove("pending_google_oauth_state")
+            .remove("pending_google_oauth_nonce")
+            .remove("pending_google_oauth_ts")
+            .apply()
 
         val idToken = data.getQueryParameter("id_token").orEmpty().trim()
         val returnedState = data.getQueryParameter("state").orEmpty().trim()
         val err = data.getQueryParameter("error").orEmpty().trim()
 
-        if (expectedState.isNotBlank() && returnedState.isNotBlank() && expectedState != returnedState) {
+        val now = System.currentTimeMillis()
+        val stateValid =
+            expectedState.isNotBlank() &&
+                returnedState.isNotBlank() &&
+                expectedState == returnedState &&
+                expectedNonce.isNotBlank() &&
+                pendingTs > 0L &&
+                (now - pendingTs) in 0L..600_000L
+
+        if (!stateValid) {
             Toast.makeText(this, "Google sign-in session expired. Please try again.", Toast.LENGTH_LONG).show()
             return true
         }
         if (err.isNotBlank() || idToken.isBlank()) {
             if (err.isNotBlank() && err != "access_denied" && err != "cancelled") {
-                Toast.makeText(this, "Google Sign-In: $err", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Google sign-in could not be completed. Please try again.", Toast.LENGTH_LONG).show()
             }
             return true
         }
 
-        var claimEmail = ""
-        var claimName = ""
-        runCatching {
-            val parts = idToken.split(".")
-            if (parts.size >= 2) {
-                val decoded = String(
-                    android.util.Base64.decode(
-                        parts[1],
-                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
-                    ),
-                    Charsets.UTF_8
-                )
-                val claims = JSONObject(decoded)
-                claimEmail = claims.optString("email", "").trim().lowercase()
-                claimName = claims.optString("name", "").trim()
+        confirmAndExchangeGoogleIdToken(
+            idToken = idToken,
+            nonce = expectedNonce,
+            onSuccess = null
+        )
+        return true
+    }
+
+    private fun confirmAndExchangeGoogleIdToken(
+        idToken: String,
+        nonce: String,
+        onSuccess: (() -> Unit)?
+    ) {
+        val (claimEmail, claimName) = decodeJwtPreview(idToken)
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val existingToken = prefs.getString("auth_token", "").orEmpty().trim()
+        val existingEmail = prefs.getString("auth_email", "").orEmpty().trim().lowercase()
+
+        if ((existingToken.isNotBlank() || existingEmail.isNotBlank()) &&
+            existingEmail.isNotBlank() &&
+            (claimEmail.isBlank() || !existingEmail.equals(claimEmail, ignoreCase = true))
+        ) {
+            if (isDestroyed || isFinishing) return
+            val promptMsg = if (claimEmail.isNotBlank()) {
+                "You are currently signed in as $existingEmail. Switch this device to $claimEmail?"
+            } else {
+                "You are currently signed in as $existingEmail. Replace your signed-in account on this device?"
             }
+            AlertDialog.Builder(this)
+                .setTitle("Switch HeyBroc Account?")
+                .setMessage(promptMsg)
+                .setPositiveButton("Switch Account") { _, _ ->
+                    exchangeGoogleIdTokenOnServer(idToken, nonce, claimEmail, claimName, onSuccess)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
         }
 
+        exchangeGoogleIdTokenOnServer(idToken, nonce, claimEmail, claimName, onSuccess)
+    }
+
+    private fun exchangeGoogleIdTokenOnServer(
+        idToken: String,
+        nonce: String,
+        claimEmail: String,
+        claimName: String,
+        onSuccess: (() -> Unit)?
+    ) {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         Toast.makeText(this, "Completing Google sign-in…", Toast.LENGTH_SHORT).show()
         io.execute {
             runCatching {
@@ -4252,6 +4378,7 @@ class MainActivity : Activity() {
                         put("action", "oauth")
                         put("provider", "google")
                         put("idToken", idToken)
+                        if (nonce.isNotBlank()) put("nonce", nonce)
                         if (claimEmail.isNotBlank()) put("email", claimEmail)
                         if (claimName.isNotBlank()) put("displayName", claimName)
                         put("deviceId", ScanApi.deviceId(this@MainActivity))
@@ -4288,16 +4415,16 @@ class MainActivity : Activity() {
                     )
                     mainHandler.post {
                         if (isDestroyed || isFinishing) return@post
+                        onSuccess?.invoke()
                         activeAuthDialog?.dismiss()
                         activeFunnelDialog?.dismiss()
                         renderScreen()
                         Toast.makeText(this@MainActivity, "👋 Signed in with Google as $resolvedName!", Toast.LENGTH_LONG).show()
                     }
                 } else {
-                    val errMsg = json.optString("error", "Could not verify Google account. Please try again.")
                     mainHandler.post {
                         if (isDestroyed || isFinishing) return@post
-                        Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MainActivity, "Could not verify Google account. Please try again.", Toast.LENGTH_LONG).show()
                     }
                 }
             }.onFailure {
@@ -4306,122 +4433,6 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "Network error completing Google sign-in.", Toast.LENGTH_LONG).show()
                 }
             }
-        }
-        return true
-    }
-
-    private fun completeGoogleAccountSignIn(
-        pickedEmail: String,
-        allowRetryOnStaleToken: Boolean = true,
-        onSuccess: (() -> Unit)? = null
-    ) {
-        val cleanEmail = pickedEmail.trim().lowercase()
-        if (cleanEmail.isBlank()) return
-        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val am = AccountManager.get(this)
-        val account = Account(pickedEmail.trim(), "com.google")
-        val oauthScope = "oauth2:https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
-
-        runCatching {
-            am.getAuthToken(
-                account,
-                oauthScope,
-                null,
-                this,
-                { future ->
-                    io.execute {
-                        runCatching {
-                            val bundle = future.result
-                            val token = bundle?.getString(AccountManager.KEY_AUTHTOKEN).orEmpty().trim()
-                            if (token.isBlank()) {
-                                mainHandler.post {
-                                    if (!isDestroyed && !isFinishing) {
-                                        Toast.makeText(this@MainActivity, "Google sign-in was canceled.", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                return@runCatching
-                            }
-
-                            val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
-                                requestMethod = "POST"
-                                doOutput = true
-                                setRequestProperty("Content-Type", "application/json")
-                                connectTimeout = 7000
-                                readTimeout = 7000
-                            }
-                            val (httpCode, okHttp, json) = try {
-                                val payload = JSONObject().apply {
-                                    put("action", "oauth")
-                                    put("provider", "google")
-                                    put("email", cleanEmail)
-                                    put("displayName", cleanEmail.substringBefore("@"))
-                                    put("accessToken", token)
-                                    put("deviceId", ScanApi.deviceId(this@MainActivity))
-                                    put("deviceSecret", ScanApi.deviceSecret(this@MainActivity))
-                                }.toString()
-                                conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-                                val code = conn.responseCode
-                                val okStatus = code in 200..299
-                                val stream = if (okStatus) conn.inputStream else conn.errorStream
-                                val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                                val parsed = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
-                                Triple(code, okStatus && parsed.optBoolean("ok"), parsed)
-                            } finally {
-                                conn.disconnect()
-                            }
-
-                            if (!okHttp && allowRetryOnStaleToken && (httpCode == 401 || json.optString("error").contains("token", ignoreCase = true) || json.optString("error").contains("Google", ignoreCase = true))) {
-                                am.invalidateAuthToken("com.google", token)
-                                mainHandler.post {
-                                    if (!isDestroyed && !isFinishing) {
-                                        completeGoogleAccountSignIn(pickedEmail, allowRetryOnStaleToken = false, onSuccess = onSuccess)
-                                    }
-                                }
-                                return@runCatching
-                            }
-
-                            if (okHttp) {
-                                val tok = json.optString("token", "")
-                                val usr = json.optJSONObject("user")
-                                val fallbackName = cleanEmail.substringBefore("@")
-                                val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
-                                ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
-                                prefs.edit()
-                                    .putString("auth_email", cleanEmail)
-                                    .putString("auth_name", resolvedName)
-                                    .putString("auth_provider", "google")
-                                    .putString("auth_token", tok)
-                                    .apply()
-                                ScanApi.trackEvent(
-                                    this@MainActivity,
-                                    "auth_completed",
-                                    properties = JSONObject().put("provider", "google")
-                                )
-                                mainHandler.post {
-                                    if (isDestroyed || isFinishing) return@post
-                                    onSuccess?.invoke()
-                                    renderScreen()
-                                    Toast.makeText(this@MainActivity, "👋 Signed in with Google as $resolvedName!", Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                val errMsg = json.optString("error", "Could not complete Google sign-in. Please try again.")
-                                mainHandler.post {
-                                    if (isDestroyed || isFinishing) return@post
-                                    Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }.onFailure {
-                            mainHandler.post {
-                                if (isDestroyed || isFinishing) return@post
-                                Toast.makeText(this@MainActivity, "Google sign-in canceled or unavailable.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                },
-                mainHandler
-            )
-        }.onFailure {
-            Toast.makeText(this, "Google sign-in unavailable on this device. Please use Continue with Email.", Toast.LENGTH_LONG).show()
         }
     }
 

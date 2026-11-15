@@ -3208,17 +3208,59 @@
     }
 
     let pageBarcode = "";
-    try {
-      const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
-      for (const sc of ldScripts) {
-        const m = (sc.textContent || "").match(/"(?:gtin13|gtin12|gtin14|gtin8|gtin|upc)"\s*:\s*"(\d{8,14})"/i);
-        if (m?.[1]) {
-          pageBarcode = m[1];
-          break;
+    if (!modalScope) {
+      try {
+        const tokenizeForGtin = (s) =>
+          String(s || "")
+            .toLowerCase()
+            .replace(/['’]s\b/g, "s")
+            .replace(/['’]/g, "")
+            .replace(/[^a-z0-9]+/g, " ")
+            .split(" ")
+            .filter(
+              (w) =>
+                w.length >= 3 &&
+                !/^(the|and|with|for|from|pack|count|size|oz|fl|lb|lbs|ct|pk|organic|natural|original|classic|fresh|pure|great|value|kirkland|signature|members|mark|good|gather)$/.test(
+                  w
+                )
+            );
+        const heroToks = new Set(tokenizeForGtin(productTitle));
+        const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const sc of ldScripts) {
+          let parsed;
+          try {
+            parsed = JSON.parse(sc.textContent || "null");
+          } catch {
+            continue;
+          }
+          const queue = Array.isArray(parsed) ? parsed.slice() : [parsed];
+          while (queue.length > 0 && !pageBarcode) {
+            const node = queue.shift();
+            if (!node || typeof node !== "object") continue;
+            if (Array.isArray(node["@graph"])) {
+              queue.push(...node["@graph"]);
+            }
+            const rawType = Array.isArray(node["@type"]) ? node["@type"].join(" ") : String(node["@type"] || "");
+            if (!/\bproduct\b/i.test(rawType)) continue;
+            let rawCode = String(
+              node.gtin13 || node.gtin12 || node.gtin14 || node.gtin8 || node.gtin || node.upc || ""
+            ).replace(/\D/g, "");
+            if (!/^\d{8,14}$/.test(rawCode)) continue;
+            if (rawCode.length === 14 && rawCode.startsWith("00")) rawCode = rawCode.slice(2);
+            else if (rawCode.length === 14 && rawCode.startsWith("0")) rawCode = rawCode.slice(1);
+            const ldName = String(node.name || "").trim();
+            if (!ldName) continue;
+            const ldToks = tokenizeForGtin(ldName);
+            if (heroToks.size > 0 && ldToks.length > 0 && ldToks.some((t) => heroToks.has(t))) {
+              pageBarcode = rawCode;
+              break;
+            }
+          }
+          if (pageBarcode) break;
         }
+      } catch {
+        // ignore JSON-LD read errors
       }
-    } catch {
-      // ignore JSON-LD read errors
     }
 
     const reqBucket = activeBucket;

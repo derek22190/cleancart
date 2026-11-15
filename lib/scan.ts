@@ -419,6 +419,18 @@ function isolateSingleIngredientsBlock(rawIng: string): string {
   return cleaned.replace(/\s+/g, " ").trim();
 }
 
+const OCR_PRESERVED_2LETTER_STEMS = new Set([
+  "TV", "ID", "CD", "DJ", "PJ", "PC", "UV", "US", "UK", "EU", "UN", "GI", "OZ", "LB", "MG", "ML", "KG",
+]);
+
+function fixOcrShiftHoldTypos(s: string): string {
+  return s.replace(/\b([A-Z])([A-Z])([a-z]{1,})\b/g, (full, c1: string, c2: string, rest: string) => {
+    if (full === "PBfit") return full;
+    if (rest === "s" && OCR_PRESERVED_2LETTER_STEMS.has(`${c1}${c2}`)) return full;
+    return `${c1}${c2.toLowerCase()}${rest}`;
+  });
+}
+
 export function normalizeIosShareOrOcrInput(
   rawTitle: string,
   rawIng: string,
@@ -435,7 +447,7 @@ export function normalizeIosShareOrOcrInput(
   if (multiLineBlock) {
     const allLines = multiLineBlock
       .split(/\r?\n/)
-      .map((l) => stripRetailerShareBoilerplate(l.replace(/\s+/g, " ").trim()))
+      .map((l) => fixOcrShiftHoldTypos(stripRetailerShareBoilerplate(l.replace(/\s+/g, " ").trim())))
       .filter(Boolean);
 
     // Slice off secondary recommendation carousels / comparison charts so unrelated products never bleed in
@@ -899,6 +911,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
           webUrl: undefined,
           deepLink: undefined,
           androidIntentUrl: undefined,
+          locked: true,
         }),
   });
   const resolvedSwap: SwapResult | null = swap ? formatSwapWithAccess(swap) : null;
@@ -1033,6 +1046,7 @@ function stripGatedSwapLinks(s: SwapResult): SwapResult {
     webUrl: undefined,
     deepLink: undefined,
     androidIntentUrl: undefined,
+    locked: true,
   };
 }
 

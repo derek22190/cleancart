@@ -278,6 +278,18 @@ export async function POST(req: Request) {
     sourceUpdatedAt = new Date().toISOString().slice(0, 10);
   } else {
     // Priority 2: Automatic live re-verification against USDA FoodData Central, Open Food Facts & NIH DSLD
+    if (barcode && hasExplicitProductTitle) {
+      const barcodeOnlyHit = await lookupLiveAuthoritative({ productTitle: "", barcode });
+      if (barcodeOnlyHit?.ingredients?.trim() && isBarcodeConflictWithTitle(barcodeOnlyHit)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Barcode ${barcode} resolved to "${barcodeOnlyHit.productTitle}", which conflicts with "${fullTitle}". Please verify the package barcode.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
     const liveHit = await lookupLiveAuthoritative({
       productTitle: hasExplicitProductTitle ? fullTitle : "",
       barcode,

@@ -956,8 +956,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     var t = String(node['@type'] || '');
                     if (/product/i.test(t) && node.name) {
                       var ldName = clean(String(node.name));
-                      var ldCode = clean(String(node.gtin13 || node.gtin12 || node.gtin || node.sku || ''));
+                      var ldCode = clean(String(node.gtin13 || node.gtin12 || node.gtin14 || node.gtin8 || node.gtin || node.upc || '')).replace(/\\D/g, '');
                       if (ldCode && !/^\\d{8,14}$/.test(ldCode)) ldCode = '';
+                      if (ldCode.length === 14 && ldCode.indexOf('00') === 0) ldCode = ldCode.slice(2);
+                      else if (ldCode.length === 14 && ldCode.indexOf('0') === 0) ldCode = ldCode.slice(1);
                       if (!title && ldName && !NON_TITLE_RE.test(ldName)) {
                         title = ldName;
                         barcode = ldCode;

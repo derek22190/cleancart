@@ -2058,8 +2058,8 @@ export default function WatchlistMiniFunnel({
                   }}
                 >
                   {isIosApp
-                    ? `$0 due today via Apple ID · Then $${annualPerMonth.toFixed(2)}/mo ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime.`
-                    : `$0 due today · Then $${annualPerMonth.toFixed(2)}/mo ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime in 1 tap.`}
+                    ? `$0 due today via Apple ID · Then $${PRICING.annual}/yr billed annually ($${annualPerMonth.toFixed(2)}/mo) or $${PRICING.monthly}/mo billed monthly • Cancel anytime in iPhone Settings.`
+                    : `$0 due today · Then $${PRICING.annual}/yr billed annually ($${annualPerMonth.toFixed(2)}/mo) or $${PRICING.monthly}/mo billed monthly • Cancel anytime in 1 tap.`}
                 </div>
               </div>
             </>

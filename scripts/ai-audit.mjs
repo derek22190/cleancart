@@ -133,10 +133,17 @@ async function main() {
     if (!runCmd("npm run build", "Next.js Production Build")) {
       process.exit(1);
     }
+    const chromiumBin = process.env.CHROMIUM_BIN || "/usr/bin/chromium";
+    const fs = await import("node:fs");
+    if (fs.existsSync(chromiumBin)) {
+      if (!runCmd("npm run test:browser", "Headless Chromium E2E Suite (iPhone + Android + Extension)")) {
+        process.exit(1);
+      }
+    }
   }
 
   console.log(
-    "\n✓ [verify] All static compliance, typecheck, rubric, and build gates PASSED (100% local, zero external AI credits used)."
+    "\n✓ [verify] All static compliance, typecheck, rubric, build, and browser E2E gates PASSED (100% local, zero external AI credits used)."
   );
 }
 

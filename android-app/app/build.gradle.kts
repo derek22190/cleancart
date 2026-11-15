@@ -89,4 +89,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
-// No third-party dependencies: plain Android framework views + HttpURLConnection + org.json.
+dependencies {
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+}
+

@@ -845,25 +845,16 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        // Enforce authoritative cart badge count: prune unseen offscreen items first, then decrement over-counted units or cap tail overflow
+        // Enforce authoritative cart badge count ONLY against unseen offscreen items — never delete or decrement items visible on the current screen!
         if (!keepMode && badgeCount > 0 && totalCartUnits() > badgeCount) {
             while (totalCartUnits() > badgeCount) {
                 val unseen = tripCart.filter { it.lastSeenAtMs < now }
                 val candidate = unseen.minByOrNull { if (!it.fromCartScreen) it.lastSeenAtMs - 86_400_000L else it.lastSeenAtMs }
-                if (candidate != null) {
-                    if (candidate.quantity > 1 && totalCartUnits() - 1 >= badgeCount) {
-                        candidate.quantity -= 1
-                    } else {
-                        tripCart.remove(candidate)
-                    }
+                    ?: break
+                if (candidate.quantity > 1 && totalCartUnits() - 1 >= badgeCount) {
+                    candidate.quantity -= 1
                 } else {
-                    val overCounted = tripCart.filter { it.quantity > 1 }.maxByOrNull { it.quantity }
-                    if (overCounted != null) {
-                        overCounted.quantity -= 1
-                    } else {
-                        val tail = tripCart.lastOrNull() ?: break
-                        tripCart.remove(tail)
-                    }
+                    tripCart.remove(candidate)
                 }
             }
         }

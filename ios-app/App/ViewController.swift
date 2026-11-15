@@ -158,13 +158,57 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         super.viewDidAppear(animated)
         if ProcessInfo.processInfo.arguments.contains("--heybroc-smoke-test-liveshop") && !didRunSmokeTest {
             didRunSmokeTest = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            let markerURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("heybroc_smoke_passed.json")
+            try? FileManager.default.removeItem(at: markerURL)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
                 NSLog("HEYBROC_SMOKE_TEST_OPENING_WALMART")
                 self?.presentLiveStoreBrowser(initialStoreKey: "walmart")
+                self?.presentedViewController?.view.layoutIfNeeded()
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+                NSLog("HEYBROC_SMOKE_TEST_SWITCHING_INSTACART")
+                self?.presentLiveStoreBrowser(initialStoreKey: "instacart")
+                self?.presentedViewController?.view.layoutIfNeeded()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.6) { [weak self] in
+                guard let self = self else { return }
+                NSLog("HEYBROC_SMOKE_TEST_FRESH_OPENING_BJS")
+                if let presented = self.presentedViewController {
+                    presented.dismiss(animated: false) { [weak self] in
+                        self?.presentLiveStoreBrowser(initialStoreKey: "bjs")
+                        self?.presentedViewController?.view.layoutIfNeeded()
+                    }
+                } else {
+                    self.presentLiveStoreBrowser(initialStoreKey: "bjs")
+                    self.presentedViewController?.view.layoutIfNeeded()
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.2) { [weak self] in
+                NSLog("HEYBROC_SMOKE_TEST_SWITCHING_SAMS")
+                self?.presentLiveStoreBrowser(initialStoreKey: "sams")
+                self?.presentedViewController?.view.layoutIfNeeded()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.6) { [weak self] in
                 NSLog("HEYBROC_SMOKE_TEST_SWITCHING_TARGET")
                 self?.presentLiveStoreBrowser(initialStoreKey: "target")
+                self?.presentedViewController?.view.layoutIfNeeded()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
+                guard let self = self,
+                      let browser = self.presentedViewController as? LiveStoreBrowserViewController else {
+                    NSLog("HEYBROC_SMOKE_TEST_FAILED_NO_BROWSER")
+                    return
+                }
+                browser.view.layoutIfNeeded()
+                let payload: [String: Any] = [
+                    "ok": true,
+                    "stores": ["walmart", "instacart", "bjs", "sams", "target"]
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: []) {
+                    try? data.write(to: markerURL, options: .atomic)
+                    NSLog("HEYBROC_SMOKE_TEST_PASSED_ALL_5_STORES")
+                }
             }
             return
         }

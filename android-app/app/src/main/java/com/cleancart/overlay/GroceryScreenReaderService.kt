@@ -449,6 +449,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             inFlightScanKey = ""
             lastKey = ""
             wasOnCartScreen = false
+            lastCartAuthoritativeCount = -1
             pendingAddToCartClick = false
             lastClickedProductTitle = null
             lastConfirmedPdpTitle = null
@@ -816,6 +817,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                 inFlightScanKey = ""
                 lastKey = ""
                 wasOnCartScreen = false
+                lastCartAuthoritativeCount = -1
                 pendingAddToCartClick = false
                 lastClickedProductTitle = null
                 lastConfirmedPdpTitle = null
@@ -1098,9 +1100,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                     t.matches(Regex("""(?i)^(?:your\s+|shopping\s+|personal\s+|family\s+)?cart(?:\s*\(\d+(?:\s+items?)?\))?$"""))
             }
             if (isConfirmedSinglePdp || hasHomeOrAisleBanners || totalTileAddCount >= 2 || (!hasCartHeaderTitle && !hasCartCheckoutSignal)) {
+                lastCartAuthoritativeCount = -1
                 if (wasOnCartScreen) {
                     wasOnCartScreen = false
-                    lastCartAuthoritativeCount = -1
                     bumpScanGeneration()
                 }
             }
@@ -1171,9 +1173,17 @@ class GroceryScreenReaderService : AccessibilityService() {
                 emptyList()
             }
             val nowPdpMs = System.currentTimeMillis()
-            val galleryFallbackTitle = if (isPdpMediaGallery || hasBuyNowCta) {
-                lastConfirmedPdpTitle?.takeIf { lastConfirmedPdpPkg == pkg && nowPdpMs - lastConfirmedPdpAtMs < 300_000L }
-                    ?: lastClickedProductTitle?.takeIf { lastClickedProductPkg == pkg && nowPdpMs - lastClickedProductAtMs < 120_000L }
+            val galleryFallbackTitle = if (isPdpMediaGallery) {
+                lastConfirmedPdpTitle?.takeIf { prevTitle ->
+                    lastConfirmedPdpPkg == pkg && (
+                        nowPdpMs - lastConfirmedPdpAtMs <= 15_000L ||
+                            prevTitle.split(' ').filter { it.length >= 4 }.let { prevTokens ->
+                                prevTokens.isNotEmpty() && allNodes.any { n ->
+                                    prevTokens.count { tok -> n.text.contains(tok, ignoreCase = true) } >= minOf(2, prevTokens.size)
+                                }
+                            }
+                        )
+                } ?: lastClickedProductTitle?.takeIf { lastClickedProductPkg == pkg && nowPdpMs - lastClickedProductAtMs <= 15_000L }
             } else {
                 null
             }
@@ -2359,6 +2369,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                 bumpScanGeneration()
                 inFlightScanKey = ""
                 lastKey = ""
+                wasOnCartScreen = false
+                lastCartAuthoritativeCount = -1
                 lastConfirmedPdpTitle = null
                 lastRowGradedTitle = null
                 lastCartTitleNodes = emptyList()

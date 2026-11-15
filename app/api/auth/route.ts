@@ -145,13 +145,14 @@ export async function POST(request: Request) {
       resetCode?: string;
       verificationCode?: string;
       idToken?: string;
-      accessToken?: string;
+      nonce?: string;
       displayName?: string;
       provider?: "google" | "apple";
       deviceId?: string;
       deviceSecret?: string;
       token?: string;
       watchlist?: Record<string, boolean>;
+      [key: string]: unknown;
     };
 
     const action = body.action || "login";
@@ -213,12 +214,21 @@ export async function POST(request: Request) {
     }
 
     if (action === "oauth") {
+      if (typeof body.accessToken === "string" && body.accessToken.trim().length > 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "OAuth access tokens are not accepted; send a verified ID token.",
+          },
+          { status: 400, headers: CORS }
+        );
+      }
       const provider = body.provider === "apple" ? "apple" : "google";
       const res = await loginWithOAuth({
         provider,
         email: body.email || "",
         idToken: body.idToken,
-        accessToken: body.accessToken,
+        nonce: typeof body.nonce === "string" ? body.nonce : undefined,
         password: body.password,
         displayName: body.displayName,
         deviceId: normalizedDeviceId,
@@ -226,7 +236,7 @@ export async function POST(request: Request) {
         watchlist: body.watchlist,
       });
       return NextResponse.json(res, {
-        status: res.ok ? 200 : 400,
+        status: res.ok ? 200 : body.idToken ? 401 : 400,
         headers: CORS,
       });
     }

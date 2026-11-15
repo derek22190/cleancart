@@ -107,6 +107,8 @@ export interface SwapResult {
   isPaidLink: boolean;
   /** True when the clean swap is a budget-friendly private-label brand owned by the active store (e.g. Great Value, Good & Gather, Simply Nature, Kirkland Signature, Simple Truth Organic). */
   isStoreBrand?: boolean;
+  /** True when store swap links were withheld by server-side free-swap gating and must not be synthesized client-side. */
+  locked?: boolean;
 }
 
 export const STORE_META: Record<Store, { label: string; host: string; androidPackage: string; scheme: string }> = {
@@ -923,7 +925,8 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
 
   // --- Cereal, Oatmeal, Granola, Maple Syrup ---
   {
-    match: /\b(cinnamon\s+toast\s+crunch|french\s+toast\s+crunch|cinnamon\s+(?:crunch|toasters?|squares?|oat\s+crunch|chex|life)|ctoast)\b/i,
+    match:
+      /^(?!.*\b(rolls?|buns?|dough|biscuits?|bagels?|bars?|pastries|pastry|pop[- ]?tarts?|seasoning|cinnadust|shaker|spice|creamer|coffee|bread|loaf|cookies?|cake|muffins?|waffles?|pancakes?|syrup|frosting|icing|applesauce|oatmeal|instant\s+oats|chex)\b).*\b(cinnamon\s+toast\s+crunch|french\s+toast\s+crunch|cinnamon\s+(?:crunch|toasters?|squares?|oat\s+crunch|life)|ctoast|(?:cinnamon|frosted\s+cinnamon)\s+(?:flakes?|cereals?|o'?s|puffs?))\b/i,
     alt: {
       category: "Cereal",
       brand: "Food For Life",
@@ -933,13 +936,13 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
       size: "16 oz box",
       isOrganic: true,
       image: "/swaps/cereal.jpg",
-      ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon.",
+      ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon, Organic Rosemary Extract.",
       nutrition: {
-        caloriesKcal100g: 351,
+        caloriesKcal100g: 333,
         sugarsG100g: 14.0,
         saturatedFatG100g: 0,
-        sodiumMg100g: 281,
-        fiberG100g: 10.5,
+        sodiumMg100g: 228,
+        fiberG100g: 8.8,
         proteinG100g: 12.3,
         isOrganic: true,
       },
@@ -1007,7 +1010,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
   {
     match: /\b(ramen|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban)\b/i,
     alt: {
-      category: "Cereal",
+      category: "Bread",
       brand: "Lotus Foods",
       name: "Organic Millet & Brown Rice Ramen",
       sourceUrl: "https://www.lotusfoods.com/products/organic-millet-brown-rice-ramen-4-pack",
@@ -1351,7 +1354,8 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(sauce|soup|chowder|cat\s+food|pet\s+food)\b).*\b(salmon|tuna|cod|tilapia|halibut|haddock|fish\s+sticks?|fish\s+fillets?|battered\s+fish|breaded\s+(?:fish|shrimp)|popcorn\s+shrimp|fried\s+shrimp|crab\s+cakes?|gorton'?s|van\s+de\s+kamp'?s|mrs\.?\s*paul'?s|starkist|bumble\s+bee)\b/i,
+    match:
+      /^(?!.*\b(sauce|soup|chowder|cat\s+food|pet\s+food|sticks?|fillets?|battered|breaded|popcorn\s+shrimp|fried\s+shrimp|crab\s+cakes?|gorton'?s|van\s+de\s+kamp'?s|mrs\.?\s*paul'?s)\b).*\b(salmon|tuna|cod|tilapia|halibut|haddock|starkist|bumble\s+bee)\b/i,
     alt: {
       category: "Deli Meat",
       brand: "Wild Planet",
@@ -1427,7 +1431,7 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
     },
   },
   {
-    match: /^(?!.*\b(cinnamon\s+rolls?|honey\s+buns?|cake\s+rolls?|pumpkin\s+cake\s+rolls?|swiss\s+rolls?)\b).*\b(buns?|rolls?|king'?s\s+hawaiian|hamburger\s+buns?|hot\s+dog\s+buns?)\b/i,
+    match: /^(?!.*\b(cinnamon\b.*\brolls?|crescent\s+rolls?|sweet\s+rolls?|honey\s+buns?|cake\s+rolls?|pumpkin\s+cake\s+rolls?|swiss\s+rolls?|spring\s+rolls?|egg\s+rolls?|fruit\s+rolls?)\b).*\b(buns?|rolls?|king'?s\s+hawaiian|hamburger\s+buns?|hot\s+dog\s+buns?)\b/i,
     alt: {
       category: "Bread",
       brand: "Dave's Killer Bread",
@@ -2757,16 +2761,37 @@ export const DIRTY_FALLBACK_IMAGES: Record<SwapCategory, string> = {
 const CATEGORY_KEYWORDS: [SwapCategory, RegExp][] = [
   [
     "Yogurt",
-    /\b(yogh?urt|skyr|kefir|yoplait|dannon|fage|siggi)\b|^(?!.*\b(creamer|coffee|oat\s*milk|oatmilk|barista)\b).*\bchobani\b/i,
+    /\b(yogh?urt|skyr|kefir|yoplait|dannon|fage|siggi|oikos)\b|^(?!.*\b(creamer|coffee|oat\s*milk|oatmilk|barista)\b).*\bchobani\b/i,
   ],
-  ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat thins|graham)\b/i],
-  ["Chips", /\b(chips|crisps|tortilla chips|doritos|pringles|cheetos|cheese puffs|takis|fritos|lay's|lays|ruffles|pretzels?|popcorn)\b/i],
-  ["Cereal", /\b(cereal|flakes|granola|loops|o'?s|oreo\s+puffs?|reese'?s\s+puffs?|cocoa\s+puffs?|muesli|oatmeal|cheerios|cinnamon toast|lucky charms|frosted|raisin bran|syrup)\b/i],
-  ["Dressings", /\b(gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|caesar|aioli|ketchup|mustard|wasabi|horseradish|bbq|barbecue|sauce|salsa|marinara|hummus|guacamole|tzatziki)\b/i],
-  ["Deli Meat", /\b(turkey|ham|spam|salami|bologna|pepperoni|deli|bacon|hot ?dogs?|franks?|sausages?|kielbasa|lunch ?meat|roast beef|chicken breast|chicken patties|nuggets|tenders|beef|steak|pork|jerky)\b/i],
-  ["Butter/Dairy", /\b(butter|margarine|spread|milk|eggnog|egg nog|cheese|velveeta|cream|creamer|eggs?|ice cream|gelato|half and half|cottage cheese)\b/i],
-  ["Bread", /\b(bread|buns?|rolls?|bagels?|tortillas?|loaf|english muffins?|waffles?|pancakes?|muffins?|croissants?|pasta|noodles|macaroni|pizza|hot pockets?)\b/i],
-  ["Snacks", /\b(bars?|cookies?|wafers?|knoppers|storck|merci|kinder|snacks?|gummies|gummy|candy|fruit snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|monster|red\s*bull|celsius|pre[- ]?workout|water|tea|coffee|peanut butter|almond butter|nutella|jam|jelly|cake\s+roll)\b/i],
+  ["Crackers", /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat\s+thins|graham)\b/i],
+  [
+    "Chips",
+    /\b(chips|crisps|tortilla\s+chips|corn\s+chips|doritos|tostitos|pringles|cheetos|cheese\s+puffs|space\s+balls|pirate'?s\s+booty|takis|fritos|santitas|lay'?s|ruffles|pretzels?|rold\s+gold|snyder'?s|popcorn|smartfood|skinny\s*pop|boomchickapop|orville)\b/i,
+  ],
+  [
+    "Cereal",
+    /^(?!.*\b(rolls?|buns?|dough|biscuits?|bagels?|bars?|pastries|pastry|pop[- ]?tarts?|seasoning|cinnadust|shaker|spice|creamer|coffee|cookies?|cake|waffles?|pancakes?|peaches?|pears?|pineapple|mandarins?|oranges?|cherries|cocktail|fruit\s+cups?|heavy\s+syrup|light\s+syrup|cough)\b).*\b(cereals?|flakes|granola|loops|o'?s|oreo\s+puffs?|reese'?s\s+puffs?|cocoa\s+puffs?|muesli|oatmeal|rolled\s+oats|steel\s+cut\s+oats|instant\s+oats|quaker\s+oats|cheerios|chex|cinnamon\s+toast|french\s+toast\s+crunch|ctoast|lucky\s+charms|froot\s+loops|frosted|raisin\s+bran|syrup|mrs\.?\s*butterworth|pearl\s+milling|log\s+cabin|aunt\s+jemima)\b/i,
+  ],
+  [
+    "Bread",
+    /^(?!.*\b(cake\s+rolls?|fruit\s+rolls?|egg\s+rolls?|spring\s+rolls?|pizza\s+sauce|pasta\s+sauce|spaghetti\s+sauce|soup|chowder|broth|stock)\b).*\b(bread|buns?|rolls?|bagels?|tortillas?|wraps?|loaf|english\s+muffins?|waffles?|pancakes?|eggo|krusteaz|bisquick|muffins?|croissants?|pasta|spaghetti|penne|fettuccine|linguine|macaroni|rigatoni|rotini|mac\s*(?:&|and)\s*cheese|shells?\s*(?:&|and)\s*.*cheddar|velveeta\s+shells|noodles?|ramen|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|pizza|digiorno|red\s+baron|totino'?s|tombstone|hot\s+pockets?|flour)\b/i,
+  ],
+  [
+    "Dressings",
+    /^(?!.*\b(ramen|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|applesauce|apple\s+sauce)\b).*\b(soup|chowder|bisque|stew|chili|campbell'?s|progresso|gravy|broth|stock|bouillon|dressing|ranch|vinaigrette|mayo|mayonnaise|miracle\s+whip|hellmann'?s|best\s+foods|duke'?s|caesar|aioli|ketchup|catsup|mustard|french'?s(?!.*onions?)|grey\s+poupon|wasabi|horseradish|inglehoffer|beaver\s+brand|bbq|barbecue|sweet\s+baby\s+ray'?s|kc\s+masterpiece|bull'?s-?eye|sauce|salsa|picante|pace|herdez|marinara|alfredo|hummus|guacamole|tzatziki|sabra)\b/i,
+  ],
+  [
+    "Deli Meat",
+    /^(?!.*\b(beyond|impossible|morningstar|boca|gardenburger|veggie\s+burger|soup|broth|stock|gravy|sauce|seasoning|ramen|noodles?|cat\s+food|pet\s+food)\b).*\b(turkey|ham|spam|salami|bologna|pepperoni|deli|bacon|hot\s*dogs?|franks?|frankfurters?|wieners?|sausages?|kielbasa|bratwurst|chorizo|jimmy\s+dean|hillshire|oscar\s+mayer|lunch\s*meat|roast\s+beef|chicken\s+breast|chicken\s+patties|chicken\s+strips|nuggets?|tenders?|beef|steak|pork|jerky|salmon|tuna|cod|tilapia|halibut|haddock|fish|shrimp|crab|starkist|bumble\s+bee)\b/i,
+  ],
+  [
+    "Butter/Dairy",
+    /^(?!.*\b(peanut|almond\s+butter|cashew\s+butter|sunflower|sunbutter|hazelnut\s+spread|nutella|fruit\s+spread|strawberry\s+spread|grape\s+spread|raspberry\s+spread|apple\s+butter|pumpkin\s+butter|cookie\s+butter|biscoff|cocoa\s+butter|shea\s+butter|nutter\s+butter|butter\s+pecan.*cookies?|butter\s+cookies?|potato(?:es)?)\b).*\b(butter|buttery\s+spread|margarine|earth\s+balance|country\s+crock|miyoko|milk|(?:oat|almond|soy|coconut|cashew|rice|pea|hemp)\s*(?:milk|beverage|drink|barista)|oatmilk|almondmilk|soymilk|coconutmilk|oatly|califia|malk|ripple|westsoy|edensoy|silk|eggnog|egg\s+nog|cheese|cheddar|mozzarella|stringles|velveeta|kraft\s+singles|cream|creamer|coffee[- ]?mate|international\s+delight|nutpods|eggs?|ice\s+cream|gelato|half\s*(?:&|and)\s*half|cottage\s+cheese|core\s+power|premier\s+protein|muscle\s+milk|fairlife)\b/i,
+  ],
+  [
+    "Snacks",
+    /\b(bars?|cookies?|wafers?|cones?|knoppers|storck|merci|kinder|snacks?|gummies|gummy|candy|fruit\s+snacks|pastries|tarts?|oreos?|chocolate|brownies?|soda|cola|juice|drink|gatorade|monster|red\s*bull|celsius|pre[- ]?workout|water|tea|coffee|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+butter|sunbutter|nutella|hazelnut\s+spread|jam|jelly|preserves|marmalade|fruit\s+spread|applesauce|cake\s+roll)\b/i,
+  ],
 ];
 
 export function detectCategory(productTitle = "", _ingredients = ""): SwapCategory {
@@ -3398,7 +3423,32 @@ const SECONDARY_CLEAN_ALTERNATIVES: Array<{ match: RegExp; alts: CleanAlternativ
     ],
   },
   {
-    match: /\b(cereal|flakes|loops|puffs|cheerios|cinnamon\s+toast|lucky\s+charms|frosted|froot\s+loops|granola)\b/i,
+    match: /^(?!.*\b(rolls?|buns?|dough|biscuits?|bagels?|bars?|pastries|pastry|pop[- ]?tarts?|seasoning|cinnadust|shaker|spice|creamer|coffee|cookies?|cake|waffles?|pancakes?|oatmeal|instant\s+oats|rolled\s+oats|steel\s+cut\s+oats)\b).*\b(cinnamon\s+toast\s+crunch|french\s+toast\s+crunch|(?:cinnamon\s+(?:crunch|toasters?|squares?|oat\s+crunch|chex|life)|ctoast)(?:\s+cereal)?|chex(?:\s+cereal)?)\b/i,
+    alts: [
+      {
+        category: "Cereal",
+        brand: "Nature's Path",
+        name: "Organic Sunrise Crunchy Cinnamon Gluten Free Cereal",
+        sourceUrl: "https://naturespath.com/products/crunchy-sunrise-cinnamon-cold-cereal-np-us",
+        verifiedAt: "2026-11-15",
+        size: "10.6 oz box",
+        isOrganic: true,
+        image: "/swaps/cereal.jpg",
+        ingredients: "Organic brown rice flour, organic whole grain corn meal, organic cane sugar, corn meal, organic yellow corn flour, organic inulin, organic quinoa, organic flax seeds, sea salt, organic buckwheat flour, organic amaranth, organic cinnamon, organic molasses, tocopherols (vitamin E).",
+        nutrition: {
+          caloriesKcal100g: 375,
+          sugarsG100g: 20.0,
+          saturatedFatG100g: 0,
+          sodiumMg100g: 375,
+          fiberG100g: 10.0,
+          proteinG100g: 7.5,
+          isOrganic: true,
+        },
+      },
+    ],
+  },
+  {
+    match: /^(?!.*\b(rolls?|buns?|dough|biscuits?|bagels?|bars?|pastries|pastry|pop[- ]?tarts?|seasoning|cinnadust|shaker|spice|creamer|coffee|cookies?|cake|waffles?|pancakes?)\b).*\b(cereal|flakes|loops|puffs|cheerios|cinnamon\s+toast|lucky\s+charms|frosted|froot\s+loops|granola)\b/i,
     alts: [
       {
         category: "Cereal",
@@ -3618,10 +3668,11 @@ function evaluateCandidateForSwap(
   }
 
   // Implicit major-allergen introduction guard:
-  // Never introduce Peanuts/Tree Nuts, Shellfish/Fish, or Dairy (onto plant-based/non-dairy items)
+  // Never introduce Peanuts/Tree Nuts, Shellfish/Fish, Wheat/Gluten, Soy, or Dairy (onto plant-based/non-dairy items)
   // when absent from the scanned product.
   const sourceTitle = params.productTitle || "";
   const sourceIng = params.ingredients || "";
+  const hasSourceIng = sourceIng.trim().length > 0;
   const sourceAllergens = detectMajorAllergens(sourceTitle, sourceIng);
   const candidateAllergens = detectMajorAllergens(fullTitle, alt.ingredients);
 
@@ -3647,6 +3698,25 @@ function evaluateCandidateForSwap(
   }
   if (candidateAllergens.has("dairy") && PLANT_OR_DAIRY_FREE_SOURCE_RE.test(sourceTitle)) {
     return null;
+  }
+  if (candidateAllergens.has("wheat_gluten")) {
+    if (hasSourceIng) {
+      if (!sourceAllergens.has("wheat_gluten")) return null;
+    } else if (
+      !/\bwheat\b/i.test(sourceTitle) &&
+      /\b(gluten[\s-]*free|grain[\s-]*free|(?:rice|corn|cinnamon|honey\s+nut|peanut\s+butter|chocolate|blueberry|apple\s+cinnamon|strawberry|vanilla)\s+chex|chex\s+cereal|rice\s+krispies|crispy\s+rice|(?:fruity|cocoa)\s+pebbles|corn\s+tortillas?|tortilla\s+chips?|corn\s+chips?|potato\s+chips?|kettle\s+chips?|popcorn)\b/i.test(
+        sourceTitle
+      )
+    ) {
+      return null;
+    }
+  }
+  if (candidateAllergens.has("soy")) {
+    if (hasSourceIng) {
+      if (!sourceAllergens.has("soy")) return null;
+    } else if (/\bsoy[\s-]*free\b/i.test(sourceTitle)) {
+      return null;
+    }
   }
 
   if (params.productTitle) {
@@ -3699,8 +3769,15 @@ function evaluateCandidateForSwap(
         return false;
       }
       if (/^gluten[ -]*free$/i.test(tok)) {
-        const isGrainOrBakeryRequest =
-          /\b(bread|loaf|buns?|rolls?|bagels?|muffins?|waffles?|pancakes?|pasta|macaroni|noodles?|spaghetti|penne|crackers?|cookies?|oreos?|pretzels?|cake|brownies?|pastries|pie|crust|pizza|flour|cereal|oats?|oatmeal|granola|tortillas?|wraps?)\b/i.test(
+        if (/\bgluten[\s-]*free\b/i.test(variantTitle) && !candidateAllergens.has("wheat_gluten")) {
+          return false;
+        }
+        const isGrainBreadedOrSoySauceRequest =
+          /\b(bread|loaf|buns?|rolls?|bagels?|muffins?|waffles?|pancakes?|pasta|macaroni|noodles?|spaghetti|penne|crackers?|cookies?|oreos?|pretzels?|cones?|wafers?|biscuits?|cake|brownies?|pastries|pastry|pie|crust|pizza|flour|cereals?|chex|oats?|oatmeal|granola|tortillas?|wraps?|croutons?|stuffing|crumbs?|panko|breaded|battered|tempura|crusted|crispy|nuggets?|tenders?|strips?|sticks?|fingers?|patties|corndogs?|corn\s+dogs?|dumplings?|gyoza|potstickers?|wontons?|soy\s+sauce|tamari|teriyaki|hoisin|oyster\s+sauce|worcestershire|gravy|soup|chowder|beer|ale|lager|malt)\b/i.test(
+            requested
+          );
+        const isInherentGlutenFreeCondimentOrDairy =
+          /\b(ranch|salad\s+dressing|vinaigrette|mayo|mayonnaise|aioli|mustard|ketchup|salsa|guacamole|yogh?urt|skyr|milk|butter|cheese)\b/i.test(
             requested
           );
         const altHasZeroGlutenOrOats =
@@ -3709,7 +3786,7 @@ function evaluateCandidateForSwap(
           !/\b(oats?|oatmeal|granola|barley|malt|rye|wheat|spelt|farro|kamut|semolina|durum|triticale|flour)\b/i.test(
             alt.ingredients
           );
-        if (!isGrainOrBakeryRequest && altHasZeroGlutenOrOats) {
+        if (!isGrainBreadedOrSoySauceRequest && isInherentGlutenFreeCondimentOrDairy && altHasZeroGlutenOrOats) {
           return false;
         }
       }
@@ -3794,7 +3871,7 @@ function isPesticideWatchTriggered(
 }
 
 const SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT = new RegExp(
-  `\\b(soda|cola|pepsi|coke|sprite|mountain\\s+dew|fanta|root\\s+beer|ginger\\s+ale|energy\\s+drink|monster|red\\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|pre[- ]?workout|protein\\s+(?:shake|powder)|peanut\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|sunbutter|hazelnut|nutella|jam|jelly|preserves|chocolate|cacao|hershey'?s|reese'?s|snickers|twix|m&m'?s|kit\\s*kat|lindt|ghirardelli|cookies?|oreos?|chips\\s+ahoy|brownies?|cupcakes?|donuts?|doughnuts?|pop[- ]?tarts?|cheese|cheddar|mozzarella|parmesan|gouda|provolone|swiss|velveeta|kraft\\s+singles|american\\s+singles|cream\\s+cheese|sour\\s+cream|cottage\\s+cheese|heavy\\s+cream|whipping\\s+cream|half\\s+and\\s+half|ice\\s+cream|gelato|milk|oat\\s*milk|oatmilk|soymilk|soy\\s*milk|almond\\s*milk|almondmilk|coconutmilk|coconut\\s*milk|cashew\\s*milk|creamer|eggs?|eggnog|soup|chowder|broth|stock|gravy|ketchup|mustard|mayo|mayonnaise|aioli|salsa|marinara|pasta\\s+sauce|bbq|barbecue|guacamole|hummus|tzatziki|ramen|pasta|spaghetti|mac\\s*(?:&|and)\\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?|syrup|oatmeal|fries|tater\\s+tots?|hash\\s*browns?|mashed\\s+potato|burger|beyond|impossible|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|nectarines?|cherries|peppers?|potatoes?|celery|tomatoes?|green\\s+beans?|chickpeas?|garbanzo|lentils?|flour|${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b`,
+  `\\b(soda|cola|pepsi|coke|sprite|mountain\\s+dew|fanta|root\\s+beer|ginger\\s+ale|energy\\s+drink|monster|red\\s*bull|celsius|alani|ghost|c4|gatorade|powerade|juice|lemonade|coffee|frappuccino|tea|water|pre[- ]?workout|protein\\s+(?:shake|powder)|peanut\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|sunbutter|hazelnut|nutella|jam|jelly|preserves|chocolate(?!\\s+(?:cheerios|chex|lucky\\s+charms|frosted\\s+flakes|rice\\s+krispies|pebbles|puffs?|cereal))|cacao|hershey'?s|reese'?s(?!\\s+puffs)|snickers|twix|m&m'?s|kit\\s*kat|lindt|ghirardelli|cookies?|oreos?(?!\\s+(?:puffs?|o'?s|cereal))|chips\\s+ahoy|brownies?|cupcakes?|donuts?|doughnuts?|pop[- ]?tarts?|cones?|wafers?|cheese(?!\\s+(?:crackers?|nips|crisps|balls?|puffs?|curls?|doodles?))|cheddar(?!\\s+(?:crackers?|bunny|bunnies|crisps|chips|popcorn|goldfish|cheez))|mozzarella|parmesan|gouda|provolone|swiss|velveeta|kraft\\s+singles|american\\s+singles|cream\\s+cheese|sour\\s+cream(?!\\s+(?:&|and)\\s+(?:onion|cheddar))|cottage\\s+cheese|heavy\\s+cream|whipping\\s+cream|half\\s+and\\s+half|ice\\s+cream|gelato|milk(?!\\s+yogurt)|oat\\s*milk|oatmilk|soymilk|soy\\s*milk|almond\\s*milk|almondmilk|coconutmilk|coconut\\s*milk|cashew\\s*milk|creamer|eggs?|eggnog|soup|chowder|broth|stock|gravy|ketchup|mustard|mayo|mayonnaise|aioli|salsa|marinara|pasta\\s+sauce|soy\\s+sauce|tamari|teriyaki|hoisin|worcestershire|hot\\s+sauce|bbq(?!\\s+chips)|barbecue(?!\\s+chips)|guacamole|hummus|tzatziki|ramen|pasta|spaghetti|mac\\s*(?:&|and)\\s*cheese|macaroni|pizza|tortillas?|waffles?|pancakes?|syrup|oatmeal|fries|tater\\s+tots?|hash\\s*browns?|mashed\\s+potato|burger(?!\\s+buns?)|beyond|impossible|fish|salmon|tuna|cod|shrimp|crab|sticks?|spinach|kale|peppers?|potatoes?(?!\\s+chips?)|celery|tomatoes?|green\\s+beans?|chickpeas?|garbanzo|lentils?|flour|${PLANT_OR_DAIRY_FREE_BRAND_OR_TERM_RE})\\b`,
   "i"
 );
 
@@ -3810,39 +3887,67 @@ function isCategoryDefaultAllowed(productTitle = "", category: SwapCategory): bo
   if (/\bvegan\b/i.test(title) && category === "Dressings") {
     return false;
   }
+  if (SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT.test(title)) return false;
   if (
     category === "Yogurt" &&
-    /\b(yogh?urt|skyr|kefir)\b/i.test(title) &&
-    !/\b(pretzels?|raisins?|bites?|drops?|bars?|covered|coated)\b/i.test(title)
+    /\b(yogh?urt|skyr|kefir|yoplait|dannon|fage|siggi|oikos|chobani)\b/i.test(title) &&
+    !/\b(pretzels?|raisins?|bites?|drops?|bars?|covered|coated|creamer|coffee)\b/i.test(title)
   ) {
     return true;
   }
   if (
     category === "Cereal" &&
-    /\b(cereals?|flakes|puffs|granola|muesli|o'?s|crunch)\b/i.test(title) &&
-    !/\b(oatmeal|instant\s+oats|bars?|shakes?|powders?)\b/i.test(title)
+    /\b(cereals?|flakes|puffs?|granola|muesli|o'?s|crunch|cheerios|chex|loops)\b/i.test(title) &&
+    !/\b(oatmeal|instant\s+oats|bars?|shakes?|powders?|rolls?|buns?|dough|biscuits?|bagels?|pastries|pastry|seasoning|cinnadust|cookies?|cake)\b/i.test(title)
   ) {
     return true;
   }
   if (
     category === "Chips" &&
-    /\b(chips|crisps)\b/i.test(title) &&
-    !/\b(chocolate\s+chips?|chips\s+ahoy|cookies?)\b/i.test(title)
+    /\b(chips|crisps|doritos|tostitos|pringles|cheetos|takis|fritos|lay'?s|ruffles)\b/i.test(title) &&
+    !/\b(chocolate\s+chips?|chips\s+ahoy|cookies?|apple\s+chips?|banana\s+chips?|coconut\s+chips?)\b/i.test(title)
   ) {
     return true;
   }
-  if (category === "Crackers" && /\bcrackers?\b/i.test(title)) {
+  if (
+    category === "Crackers" &&
+    /\b(crackers?|cheez|goldfish|triscuit|saltines?|ritz|wheat\s+thins)\b/i.test(title)
+  ) {
     return true;
   }
   if (
     category === "Bread" &&
     /\b(bread|loaf|buns?|rolls?)\b/i.test(title) &&
-    !/\b(tortillas?|waffles?|pancakes?|pizza|garlic\s+bread)\b/i.test(title)
+    !/\b(tortillas?|waffles?|pancakes?|pizza|garlic\s+bread|cinnamon\b.*\brolls?|sweet\s+rolls?|crescent\s+rolls?|cake\s+rolls?|egg\s+rolls?|spring\s+rolls?|fruit\s+rolls?)\b/i.test(title)
   ) {
     return true;
   }
-  if (SUBTYPE_INCOMPATIBLE_WITH_CATEGORY_DEFAULT.test(title)) return false;
-  return true;
+  if (
+    category === "Dressings" &&
+    /\b(ranch|salad\s+dressing|dressing|vinaigrette|caesar)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (
+    category === "Deli Meat" &&
+    /\b(deli|lunch\s*meat|turkey\s+breast|sliced\s+turkey|oven\s+roasted\s+turkey|roast\s+turkey|oscar\s+mayer|hillshire)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (
+    category === "Butter/Dairy" &&
+    /\b(butter|buttery\s+spread|margarine|country\s+crock|i\s+can'?t\s+believe\s+it'?s\s+not\s+butter)\b/i.test(title)
+  ) {
+    return true;
+  }
+  if (
+    category === "Snacks" &&
+    /\b(fruit\s+snacks?|fruit\s+bars?|fruit\s+strips?|fruit\s+rolls?|fruit\s+roll[- ]?ups?|fruit\s+by\s+the\s+foot|gummies|gummy|gushers?|welch'?s\s+fruit|mott'?s\s+fruit)\b/i.test(title) &&
+    !/\b(vitamins?|supplements?|melatonin|probiotic|fiber|collagen|ashwagandha|elderberry|cbd|thc)\b/i.test(title)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
