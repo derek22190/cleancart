@@ -86,6 +86,7 @@ class OverlayWindowService : Service() {
         const val EXTRA_STORE_PKG = "store_pkg"
         const val EXTRA_STORE_BUCKET = "store_bucket"
         const val EXTRA_KEEP_MODE = "keep_mode"
+        const val EXTRA_ALL_CART_ROWS_VISIBLE = "all_cart_rows_visible"
 
         private const val INK = 0xFF15201B.toInt()
         private const val INK_2 = 0xFF4A5550.toInt()
@@ -397,6 +398,7 @@ class OverlayWindowService : Service() {
                 val targetTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
                 val badgeCount = intent.getIntExtra(EXTRA_CART_BADGE_COUNT, -1)
                 val replaceCart = intent.getBooleanExtra(EXTRA_REPLACE_CART, false)
+                val allCartRowsVisible = intent.getBooleanExtra(EXTRA_ALL_CART_ROWS_VISIBLE, false)
                 syncCartFromScreen(
                     arrRaw = arrRaw,
                     remRaw = remRaw,
@@ -405,7 +407,8 @@ class OverlayWindowService : Service() {
                     qtyRaw = qtyRaw,
                     qtyDelta = qtyDelta,
                     targetTitle = targetTitle,
-                    badgeCount = badgeCount
+                    badgeCount = badgeCount,
+                    allCartRowsVisible = allCartRowsVisible
                 )
                 if (!keepMode) {
                     isCartAvgMode = true
@@ -575,29 +578,31 @@ class OverlayWindowService : Service() {
     }
 
     private fun cleanCartTitle(raw: String): String =
-        raw.replace(Regex("^(?i)(?:\\d+\\s+)?in\\s+(?:cart|bag|basket|order)\\s*[-–—:,]\\s*"), "")
-            .replace(Regex("^(?i)conventional grocery\\s+"), "")
-            .replace(Regex("^(?i)\\d+\\s*(?:ct|count|pk|pack|ea)\\s+(?=[a-zA-Z]{2,})"), "")
-            .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
-            .replace(Regex("(?i)\\b(?:average|avg)\\s+price\\b\\s*[,•|\\-.]?"), " ")
-            .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(?:,\\s*)?was\\s+(?:price\\s*)?(?:averag[a-z]*|avg)?\\b.*$"), "")
-            .replace(Regex("(?i)\\s*,\\s*was\\b.*$"), "")
-            .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
-            .replace(Regex("\\s*\\(\\d+(?:\\.\\d+)?\\s*(?:[a-zA-Z]{0,6}\\s*)?(?:\\.\\.\\.+|…)?\\s*$"), "")
-            .replace(Regex("\\s*,\\s*\\d+\\s*(?:[a-zA-Z]{1,4}\\s*)?(?:\\.\\.\\.+|…)\\s*$"), "")
-            .replace(Regex("(?i)\\btruffl(?:\\.\\.\\.+|…)?$"), "Truffles")
-            .replace(Regex("(?i)\\bchocolat(?:\\.\\.\\.+|…)?$"), "Chocolate")
-            .replace(Regex("(?i)\\bappl(?:\\.\\.\\.+|…)?$"), "Apples")
-            .replace(Regex("(?i)\\bbisma(?:rk['’]?|r|)?(?:\\.\\.\\.+|…)?$"), "Bismark")
-            .replace(Regex("(?i)^smithfield,\\s*boneless\\s+cooked\\s+hickory\\s+smoked(?:\\.\\.\\.+|…)?$"), "Smithfield, Boneless Cooked Hickory Smoked Ham Steak")
-            .replace(Regex("(?i)\\bwing\\s+sa(?:\\.\\.\\.+|…)?$"), "Wing Sauce")
-            .replace(Regex("(?i)\\band\\s+re(?:\\.\\.\\.+|…)?$"), "and Reese's")
-            .replace(Regex("(?i)\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93% Lean/7% Fat")
-            .replace(Regex("(?i)\\b80?%\\s*lean\\s*/?\\s*20?%\\s*fat\\b"), "80% Lean/20% Fat")
-            .replace(Regex("(?i)\\b85?%\\s*lean\\s*/?\\s*15?%\\s*fat\\b"), "85% Lean/15% Fat")
-            .replace(Regex("(?i)\\b73?%\\s*lean\\s*/?\\s*27?%\\s*fat\\b"), "73% Lean/27% Fat")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        ScanHistoryStore.cleanDisplayTitle(
+            raw.replace(Regex("^(?i)(?:\\d+\\s+)?in\\s+(?:cart|bag|basket|order)\\s*[-–—:,]\\s*"), "")
+                .replace(Regex("^(?i)conventional grocery\\s+"), "")
+                .replace(Regex("^(?i)\\d+\\s*(?:ct|count|pk|pack|ea)\\s+(?=[a-zA-Z]{2,})"), "")
+                .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
+                .replace(Regex("(?i)\\b(?:average|avg)\\s+price\\b\\s*[,•|\\-.]?"), " ")
+                .replace(Regex("(?i)\\s*[,•|\\-]?\\s*(?:,\\s*)?was\\s+(?:price\\s*)?(?:averag[a-z]*|avg)?\\b.*$"), "")
+                .replace(Regex("(?i)\\s*,\\s*was\\b.*$"), "")
+                .replace(Regex("(?i)\\s*[,•|\\-]\\s*ratings?\\s*$"), "")
+                .replace(Regex("\\s*\\(\\d+(?:\\.\\d+)?\\s*(?:[a-zA-Z]{0,6}\\s*)?(?:\\.\\.\\.+|…)?\\s*$"), "")
+                .replace(Regex("\\s*,\\s*\\d+\\s*(?:[a-zA-Z]{1,4}\\s*)?(?:\\.\\.\\.+|…)\\s*$"), "")
+                .replace(Regex("(?i)\\btruffl(?:\\.\\.\\.+|…)?$"), "Truffles")
+                .replace(Regex("(?i)\\bchocolat(?:\\.\\.\\.+|…)?$"), "Chocolate")
+                .replace(Regex("(?i)\\bappl(?:\\.\\.\\.+|…)?$"), "Apples")
+                .replace(Regex("(?i)\\bbisma(?:rk['’]?|r|)?(?:\\.\\.\\.+|…)?$"), "Bismark")
+                .replace(Regex("(?i)^smithfield,\\s*boneless\\s+cooked\\s+hickory\\s+smoked(?:\\.\\.\\.+|…)?$"), "Smithfield, Boneless Cooked Hickory Smoked Ham Steak")
+                .replace(Regex("(?i)\\bwing\\s+sa(?:\\.\\.\\.+|…)?$"), "Wing Sauce")
+                .replace(Regex("(?i)\\band\\s+re(?:\\.\\.\\.+|…)?$"), "and Reese's")
+                .replace(Regex("(?i)\\b93?%\\s*lean\\s*/?\\s*7?%\\s*fat\\b"), "93% Lean/7% Fat")
+                .replace(Regex("(?i)\\b80?%\\s*lean\\s*/?\\s*20?%\\s*fat\\b"), "80% Lean/20% Fat")
+                .replace(Regex("(?i)\\b85?%\\s*lean\\s*/?\\s*15?%\\s*fat\\b"), "85% Lean/15% Fat")
+                .replace(Regex("(?i)\\b73?%\\s*lean\\s*/?\\s*27?%\\s*fat\\b"), "73% Lean/27% Fat")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        )
 
     private fun normalizeCartKey(raw: String): String =
         cleanCartTitle(raw).lowercase()
@@ -686,7 +691,8 @@ class OverlayWindowService : Service() {
         qtyRaw: String = "{}",
         qtyDelta: Int = 0,
         targetTitle: String = "",
-        badgeCount: Int = -1
+        badgeCount: Int = -1,
+        allCartRowsVisible: Boolean = false
     ) {
         val arr = runCatching { JSONArray(arrRaw) }.getOrNull() ?: return
         val remArr = runCatching { JSONArray(remRaw) }.getOrNull()
@@ -698,7 +704,7 @@ class OverlayWindowService : Service() {
             if ((arr.length() == 0 && qtyDelta == 0 && targetTitle.isBlank()) || badgeCount == 0) {
                 tripCart.clear()
             } else {
-                // Virtualized RecyclerView carts only expose 2–4 visible rows on frame 1; preserve offscreen & PDP-added items
+                // Virtualized RecyclerView carts only expose 2–4 visible rows on frame 1; preserve offscreen rows when scrolling
                 tripCart.removeAll {
                     it.isSeed ||
                         it.isNonFood ||
@@ -793,9 +799,7 @@ class OverlayWindowService : Service() {
                     existing.fromCartScreen = true
                 }
                 existing.lastSeenAtMs = now
-                if (rawTitle.length > existing.title.length && !rawTitle.endsWith("...")) {
-                    existing.title = rawTitle
-                }
+                existing.title = rawTitle
             } else {
                 if (itemMatchesDeltaTarget && qtyDelta < 0) continue
                 tripCart.add(
@@ -817,17 +821,40 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        // Enforce authoritative cart badge count: prune unseen offscreen items first, then cap any tail overflow
+        // Purge any phantom non-cart items on Cart screen entry, and purge all unseen stale items whenever the entire Cart section is visible!
+        if (!keepMode && arr.length() > 0) {
+            if (allCartRowsVisible) {
+                tripCart.removeAll { it.lastSeenAtMs < now }
+            } else if (replaceCart) {
+                tripCart.removeAll { !it.fromCartScreen && it.lastSeenAtMs < now }
+            }
+            // When the cart header says "Cart (2 items)" and there is exactly 1 unique item in the cart, sync its exact unit count
+            if (tripCart.size == 1 && badgeCount in 1..99 && qtyDelta == 0) {
+                val singleScraped = lookupScrapedQuantity(qtyObj, tripCart[0].title)
+                if (singleScraped == null || singleScraped == 1) {
+                    tripCart[0].quantity = badgeCount
+                }
+            }
+        }
+        // Enforce authoritative cart badge count: prune unseen offscreen items first, then decrement over-counted units or cap tail overflow
         if (!keepMode && badgeCount > 0 && totalCartUnits() > badgeCount) {
             while (totalCartUnits() > badgeCount) {
                 val unseen = tripCart.filter { it.lastSeenAtMs < now }
                 val candidate = unseen.minByOrNull { if (!it.fromCartScreen) it.lastSeenAtMs - 86_400_000L else it.lastSeenAtMs }
-                    ?: tripCart.lastOrNull()
-                    ?: break
-                if (candidate.quantity > 1 && totalCartUnits() - 1 >= badgeCount) {
-                    candidate.quantity -= 1
+                if (candidate != null) {
+                    if (candidate.quantity > 1 && totalCartUnits() - 1 >= badgeCount) {
+                        candidate.quantity -= 1
+                    } else {
+                        tripCart.remove(candidate)
+                    }
                 } else {
-                    tripCart.remove(candidate)
+                    val overCounted = tripCart.filter { it.quantity > 1 }.maxByOrNull { it.quantity }
+                    if (overCounted != null) {
+                        overCounted.quantity -= 1
+                    } else {
+                        val tail = tripCart.lastOrNull() ?: break
+                        tripCart.remove(tail)
+                    }
                 }
             }
         }
@@ -1406,12 +1433,13 @@ class OverlayWindowService : Service() {
         for (item in tripCart.toList()) {
             val swapObj = item.swapObj
             if (swapObj != null) upgradeCachedSwapObj(swapObj, item.title)
-            val hasCleanSwap = item.score < 75 && swapObj != null
-            val swapTitle = swapObj?.optString("title", "Clean Alternative").orEmpty()
+            val swapTitle = ScanHistoryStore.cleanDisplayTitle(swapObj?.optString("title", "Clean Alternative").orEmpty())
             val swapScore = swapObj?.optInt("score", 0) ?: 0
+            val hasCleanSwap = item.score < 75 && swapObj != null && (swapScore <= 0 || swapScore > item.score)
             val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
             val swapUnlocked = hasCleanSwap && ScanApi.isSwapUnlocked(this, item.title, swapTitle)
             val canUseSwapNow = swapUnlocked || ScanApi.canUseSwap(this)
+            val displayItemTitle = ScanHistoryStore.cleanDisplayTitle(item.title)
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -1423,8 +1451,8 @@ class OverlayWindowService : Service() {
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    addView(text(item.title, 13f, INK, bold = true).apply {
-                        maxLines = 1
+                    addView(text(displayItemTitle, 13f, INK, bold = true).apply {
+                        maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END
                     })
                     if (hasCleanSwap && swapTitle.isNotBlank()) {
@@ -1539,7 +1567,10 @@ class OverlayWindowService : Service() {
         }
 
         val foodItems = scoredFoodItems()
-        val dirtyWithSwaps = foodItems.filter { it.score < 75 && it.swapObj != null }
+        val dirtyWithSwaps = foodItems.filter {
+            val s = it.swapObj?.optInt("score", 0) ?: 0
+            it.score < 75 && it.swapObj != null && (s <= 0 || s > it.score)
+        }
         if (dirtyWithSwaps.isNotEmpty() && avg != null) {
             val unitsDenom = foodItems.sumOf { it.quantity.coerceIn(1, 99) }.coerceAtLeast(1)
             val projectedWeightedSum = foodItems.sumOf { item ->
@@ -1564,7 +1595,7 @@ class OverlayWindowService : Service() {
                 count == 1 -> {
                     val onlyItem = dirtyWithSwaps[0]
                     val swapObj = onlyItem.swapObj!!
-                    val swapTitle = swapObj.optString("title", "Clean Alternative")
+                    val swapTitle = ScanHistoryStore.cleanDisplayTitle(swapObj.optString("title", "Clean Alternative"))
                     val swapScore = swapObj.optInt("score", 0)
                     val scoreTag = if (swapScore > 0) " ($swapScore/100)" else ""
                     val unlocked = ScanApi.isSwapUnlocked(this, onlyItem.title, swapTitle)
@@ -1718,7 +1749,7 @@ class OverlayWindowService : Service() {
         for (item in sortedDirty) {
             val swapObj = item.swapObj ?: continue
             upgradeCachedSwapObj(swapObj, item.title)
-            val swapTitle = swapObj.optString("title", "Clean Alternative")
+            val swapTitle = ScanHistoryStore.cleanDisplayTitle(swapObj.optString("title", "Clean Alternative"))
             val swapScore = swapObj.optInt("score", 0)
             val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
             val swapPaid = swapObj.optBoolean("isPaidLink", false)
@@ -1758,7 +1789,7 @@ class OverlayWindowService : Service() {
                     }
                 }
 
-                addView(text("Instead of: ${item.title} (${item.score}/100)", 12f, 0xFFB91C1C.toInt(), bold = true).apply {
+                addView(text("Instead of: ${ScanHistoryStore.cleanDisplayTitle(item.title)} (${item.score}/100)", 12f, 0xFFB91C1C.toInt(), bold = true).apply {
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
                 })
@@ -1956,7 +1987,7 @@ class OverlayWindowService : Service() {
         val cAvg = calcCartAvg()
         val cartAvgBadge = if (cAvg == null) "HEYBROC · PRODUCT GRADE" else "HEYBROC · CART AVG $cAvg/100"
         val prodObj = d.optJSONObject("product")
-        val prodTitle = prodObj?.optString("title").orEmpty()
+        val prodTitle = ScanHistoryStore.cleanDisplayTitle(prodObj?.optString("title").orEmpty())
         val prodBrand = prodObj?.optString("brand").orEmpty()
         val prodDesc = prodObj?.optString("description").orEmpty()
         val prodIngredients = prodObj?.optString("ingredients").orEmpty()
@@ -2147,11 +2178,7 @@ class OverlayWindowService : Service() {
                 val nutGrade = yb.optString("nutriScoreGrade", "C")
                 val addScore = yb.optInt("additiveScore", 0)
                 val orgScore = yb.optInt("organicScore", 0)
-                val capped = yb.optBoolean("highRiskCapped", false)
-                val summaryText = buildString {
-                    append("Nutrition $nutScore/60 ($nutGrade) · Additives $addScore/30 · Organic $orgScore/10")
-                    if (capped) append(" · ⚠️ Capped ≤49")
-                }
+                val summaryText = "Nutrition $nutScore/60 ($nutGrade) · Additives $addScore/30 · Organic $orgScore/10"
                 addView(text(summaryText, 10.5f, INK_2, bold = true).apply {
                     setPadding(dp(2), dp(5), dp(2), 0)
                 })

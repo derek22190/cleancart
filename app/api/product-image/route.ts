@@ -163,18 +163,22 @@ const VERIFIED_PRODUCT_IMAGES: Array<[RegExp, string]> = [
   [/\b(?:applegate|true\s+story)\b.*\borganics?\b.*\bturkey\s+breast\b/i, "local:public/swaps/turkey.jpg"],
   [/\bchosen\s+foods\b.*\b(?:mayo|mayonnaise)\b/i, "local:public/swaps/mayo.png"],
   [/^(?!.*\b(?:cake|juice|soup)\b).*\b(?:baby\s+cut\s+carrots?|whole\s+carrots?|fresh\s+carrots?)\b/i, "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg"],
+  [/^(?!.*\b(?:breast|salad|wings?|pulled|shredded|soup|broth|nuggets?|bites?)\b).*\brotisserie\s+chicken\b/i, "https://images.openfoodfacts.org/images/products/071/928/314/5598/front_en.10.400.jpg"],
+  [/\bmember'?s\s+mark\b.*\b(?:breaded|southern\s+style|homestyle)\b.*\bchicken\b.*\bbites?\b/i, "local:public/swaps/nuggets.png"],
+  [/\bmember'?s\s+mark\b(?!.*\b(?:turkey|bits|crumbled|wrapped|dip|macaroni)\b).*\bbacon\b/i, "local:public/swaps/bacon.png"],
+  [/^(?!.*\b(?:roast\s+beef|deli|sliced|jerky|broth|soup|stew)\b).*\b(?:bottom\s+round|top\s+round|eye\s+of\s+round|chuck|rump|sirloin\s+tip)\s+roast\b/i, "local:public/swaps/beef.png"],
 ];
 
 const STOP_TOKENS = new Set([
   "the", "and", "with", "for", "oz", "fl", "lb", "lbs", "ct", "count", "pack", "pk",
   "flavored", "flavor",
   "grade", "category", "estimate", "verify", "package", "label", "rating", "ratings",
-  "sweeteners", "sweetener", "creamery", "fresh", "each", "average", "price",
+  "sweeteners", "sweetener", "creamery", "fresh", "each", "average", "price", "priced", "per", "pound",
   "snack", "size", "family", "party", "share", "fun", "giant", "king", "bag", "box",
   "pouch", "jar", "bottle", "can", "carton", "candy", "bars", "bar", "gourmet", "gift",
   "energy", "drink", "drinks", "pre", "workout", "preworkout", "fitness", "live", "fit",
-  "performance", "clean", "renewable", "original", "classic", "salad", "dressing",
-  "ready", "soda", "pop", "soft", "shake", "squeezed", "pure", "natural", "artesian",
+  "performance", "clean", "renewable", "original", "classic", "dressing",
+  "ready", "soda", "pop", "soft", "shake", "squeezed", "pure", "natural", "naturally", "artesian",
   "thirst", "quencher", "sports", "hydration", "chilled", "ultra", "filtered",
   "lactose", "free", "whole", "grains", "seeds", "simple", "plain", "low", "fat",
   "lowfat", "tangy",
@@ -200,7 +204,7 @@ function distinctiveTokens(s: string): string[] {
 }
 
 const BLOCKED_ROTATED_OFF_IMAGE_RE =
-  /\/10603499\/|\/468\/112\/060\/0422\/|\/009\/396\/600\/6469\/|\/022\/517\/201\/1436\/|\/002\/531\/700\/1106\/|\/002\/190\/811\/0110\/|\/074\/747\/900\/1199\//;
+  /\/10603499\/|\/468\/112\/060\/0422\/|\/009\/396\/600\/6469\/|\/022\/517\/201\/1436\/|\/002\/531\/700\/1106\/|\/002\/190\/811\/0110\/|\/074\/747\/900\/1199\/|\/019\/396\/833\/8879\/|\/007\/874\/226\/7043\/|\/007\/874\/200\/4709\//;
 
 function headersForLocalAsset(relPath: string, contentType: string): Record<string, string> {
   const isPlaceholder = relPath === PLACEHOLDER_SVG_REL_PATH;
@@ -360,7 +364,7 @@ async function fetchAndVerifyImageBytes(
 }
 
 const GENERIC_PACK_CATEGORY_WORDS = new Set([
-  "salad", "dressing", "dressings", "condiment", "condiments", "topping", "dip",
+  "dressing", "dressings", "condiment", "condiments", "topping", "dip",
   "baked", "snack", "snacks", "crackers", "cracker", "sandwich", "cookies", "cookie",
   "tortilla", "potato", "chips", "chip", "crisps", "cereal", "sweetened", "breakfast",
   "pasta", "macaroni", "sauce", "spread", "yogurt", "beverage", "beverages",
@@ -370,6 +374,7 @@ const GENERIC_PACK_CATEGORY_WORDS = new Set([
 
 const CONFLICTING_PRODUCT_FORM_WORDS = [
   "seasoning", "packet", "packets", "mix", "powder", "shaker",
+  "salad", "wings", "wing", "nuggets", "nugget", "tenders", "bites", "shredded", "pulled", "turkey",
   "dog", "cat", "puppy", "kitten", "shampoo", "conditioner", "lotion", "candle",
 ];
 

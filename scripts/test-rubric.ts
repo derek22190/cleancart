@@ -1801,7 +1801,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         (historyStoreKtSrc.includes("&v=6") || historyStoreKtSrc.includes("&v=4")) &&
         !mainActivityKtSrc.includes('"● Live"') &&
         mainActivityKtSrc.includes("includeWatchlist: Boolean = false") &&
-        readerKtSrc.includes("val shouldReplace = isFirstCartFrame && cartTitles.isNotEmpty()") &&
+        (readerKtSrc.includes("val shouldReplace = (isFirstCartFrame || allCartRowsVisible) && cartTitles.isNotEmpty()") ||
+          readerKtSrc.includes("val shouldReplace = isFirstCartFrame && cartTitles.isNotEmpty()")) &&
         readerKtSrc.includes("rowBand") &&
         !readerKtSrc.includes("SUPPORTED_PACKAGES") &&
         overlayKtSrc.includes("if (replaceCart) {")
@@ -5872,6 +5873,59 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           !liveBrowser120.includes("storeWebView: WKWebView!") &&
           hostVc120.includes("WeakHostScriptMessageProxy") &&
           hostVc120.includes("Other Websites")
+      ),
+    );
+    // --- Sam's Club & 5M-Food Systemic Regression Suite ---
+    const { relevance, normalizeOffDisplayTitle } = await import("../lib/lookup");
+    const samsBaconScan = await runScan({
+      productTitle: "Member's Mark Naturally Hickory Smoked Bacon 3 lbs.",
+      store: "sams",
+    });
+    const samsChickenBitesScan = await runScan({
+      productTitle: "Member's Mark Fully Cooked Lightly Breaded Chicken Breast Bites, Frozen",
+      store: "sams",
+    });
+    const samsRotisserieScan = await runScan({
+      productTitle: "Member's Mark Seasoned Rotisserie Chicken",
+      store: "sams",
+    });
+    const samsBeefRoastScan = await runScan({
+      productTitle: "Member's Mark USDA Choice Angus Beef Boneless Bottom Round Roast, priced per pound",
+      store: "sams",
+    });
+
+    const overlayKtLatest = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt", "utf8");
+    const readerKtLatest = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt", "utf8");
+    const historyKtLatest = fs.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt", "utf8");
+
+    check(
+      "Sam's Club & 5M-Food Systemic Suite: Bacon never matches Turkey Breast, Breaded Chicken Bites never match Grilled Breasts, Rotisserie Chicken never matches Chicken Salad/Shredded Breast, Angus Beef Bottom Round Roast resolves as whole beef, 2nd-letter cap typos heal, and Capped <=49 UI clutter is hidden",
+      Boolean(
+        relevance("Member's Mark Naturally Hickory Smoked Bacon 3 lbs.", "Member's Mark Hickory Smoked Turkey Breast") === 0 &&
+          relevance("Member's Mark Fully Cooked Lightly Breaded Chicken Breast Bites, Frozen", "Member's Mark Fire Grilled Chicken Breasts") === 0 &&
+          relevance("Member's Mark Seasoned Rotisserie Chicken", "Member's Mark Rotisserie Seasoned Chicken Breast") === 0 &&
+          relevance("Member's Mark Seasoned Rotisserie Chicken", "Rotisserie Chicken Salad") === 0 &&
+          normalizeOffDisplayTitle("KEllogg Eggo Waffles Homestyle 86.4Oz") === "Kellogg Eggo Waffles Homestyle 86.4 oz" &&
+          normalizeOffDisplayTitle("Member's Mark 100% REal CRumbled BAcon") === "Member's Mark 100% Real Crumbled Bacon" &&
+          normalizeOffDisplayTitle("Member's Mark HIckory Smoked Turkey Breast") === "Member's Mark Hickory Smoked Turkey Breast" &&
+          normalizeOffDisplayTitle("Member's Mark PURIFIED WATER") === "Member's Mark Purified Water" &&
+          samsBaconScan.ok &&
+          !/turkey/i.test(samsBaconScan.product?.title ?? "") &&
+          /\bbacon\b/i.test(samsBaconScan.product?.title ?? "") &&
+          samsChickenBitesScan.ok &&
+          /\bbites\b/i.test(samsChickenBitesScan.product?.title ?? "") &&
+          !/fire\s+grilled/i.test(samsChickenBitesScan.product?.title ?? "") &&
+          /\bwheat\s+flour\b/i.test(samsChickenBitesScan.product?.ingredients ?? "") &&
+          samsRotisserieScan.ok &&
+          !/breast|salad|wings/i.test(samsRotisserieScan.product?.title ?? "") &&
+          samsBeefRoastScan.ok &&
+          /\bbeef\b/i.test(samsBeefRoastScan.product?.ingredients ?? "") &&
+          (samsBeefRoastScan.result?.score ?? 0) >= 75 &&
+          !overlayKtLatest.includes("Capped ≤49") &&
+          overlayKtLatest.includes("swapScore > item.score") &&
+          readerKtLatest.includes("your recently viewed items") &&
+          !readerKtLatest.includes("\\d+\\s*ct\\s+)(.+)") &&
+          historyKtLatest.includes("fun cleanDisplayTitle")
       ),
     );
   }

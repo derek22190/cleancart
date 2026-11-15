@@ -1099,7 +1099,8 @@ object ScanApi {
         rawIngredients: String?,
         store: String,
         storeBucket: String = "",
-        instacartRetailerSlug: String = ""
+        instacartRetailerSlug: String = "",
+        barcode: String? = null
     ): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val seedOilsOn = isSeedOilsEnabled(ctx)
@@ -1116,7 +1117,9 @@ object ScanApi {
             subSlug.isNotBlank() -> "$normStore:$subSlug"
             else -> normStore
         }
-        val normKey = normalizedCacheKey(ctx, productTitle, rawIngredients, store, storeBucket, instacartRetailerSlug)
+        val explicitBarcodeDigits = barcode?.filter { it.isDigit() }?.takeIf { it.length in 8..14 }.orEmpty()
+        val cacheTitle = if (explicitBarcodeDigits.isNotEmpty()) "$productTitle|upc:$explicitBarcodeDigits" else productTitle
+        val normKey = normalizedCacheKey(ctx, cacheTitle, rawIngredients, store, storeBucket, instacartRetailerSlug)
         synchronized(responseCache) {
             responseCache[normKey]?.let { return it }
         }
@@ -1124,12 +1127,16 @@ object ScanApi {
             normStore == "amazon" && subSlug == "wholefoods" -> "amazon"
             else -> store
         }
-        val barcodeDigits = productTitle.trim().let { raw ->
-            if (Regex("""^\d[\d\s-]{6,16}\d$""").matches(raw)) {
-                val digits = raw.filter { it.isDigit() }
-                if (digits.length in 8..14) digits else ""
-            } else {
-                ""
+        val barcodeDigits = if (explicitBarcodeDigits.isNotEmpty()) {
+            explicitBarcodeDigits
+        } else {
+            productTitle.trim().let { raw ->
+                if (Regex("""^\d[\d\s-]{6,16}\d$""").matches(raw)) {
+                    val digits = raw.filter { it.isDigit() }
+                    if (digits.length in 8..14) digits else ""
+                } else {
+                    ""
+                }
             }
         }
         val body = JSONObject().apply {

@@ -84,7 +84,7 @@ let memory: Map<string, CacheEntry> | null = null;
 let loading: Promise<Map<string, CacheEntry>> | null = null;
 
 function isFreshCacheEntry(entry?: CacheEntry): entry is CacheEntry {
-  if (!entry || entry.schemaVersion !== 2 || entry.source === "catalog" || !entry.ingredients?.trim()) return false;
+  if (!entry || entry.schemaVersion !== 3 || entry.source === "catalog" || !entry.ingredients?.trim()) return false;
   if (!isEnglishIngredientText(entry.ingredients)) return false;
   const ts = Date.parse(entry.cachedAt || "");
   if (!Number.isFinite(ts)) return false;
@@ -146,6 +146,7 @@ export function canonicalizeGroceryQuery(raw: string): string {
   if (!q) return "";
 
   q = q
+    .replace(/\brotiss\.?\s+chicken\b/gi, "Rotisserie Chicken")
     .replace(/\bcola\s+coca\b/gi, "Coca-Cola")
     .replace(/\bcoca\s+cola\b/gi, "Coca-Cola")
     .replace(/\bpop[\s-]+tarts?\b/gi, "Pop-Tarts")
@@ -448,6 +449,57 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
     return 0;
   }
 
+  // Protein species & meat-identity exclusivity (blocks "Hickory Smoked Bacon" -> "Hickory Smoked Turkey Breast", etc.)
+  if (/\bturkey\b/.test(candLower) && !/\bturkey\b/.test(queryLower)) return 0;
+  if (/\bturkey\b/.test(queryLower) && /\b(chicken|beef|pork|ham|salmon|tuna)\b/.test(candLower) && !/\bturkey\b/.test(candLower)) return 0;
+  if (/\bbacon\b/.test(candLower) && !/\bbacon\b/.test(queryLower) && /\b(chicken|turkey|beef|pork|ham|sausage|steak|roast)\b/.test(queryLower)) return 0;
+  if (
+    /\bbacon\b/.test(queryLower) &&
+    !/\b(turkey|canadian|wrapped|scallops?|tenderloin|dip|mac|macaroni|cheese|bits|seasoning|dressing|ranch|soup|burger|beans)\b/.test(queryLower) &&
+    /\b(turkey|canadian|wrapped|scallops?|tenderloin|dip|mac|macaroni|cheese|seasoning|dressing|ranch|soup|burger|beans)\b/.test(candLower)
+  ) {
+    return 0;
+  }
+
+  // Poultry / meat cut, dish-form, and breaded-vs-grilled exclusivity
+  // (blocks "Lightly Breaded Chicken Breast Bites" -> "Fire Grilled Chicken Breasts", "Rotisserie Chicken" -> "Shredded Breast" / "Wings" / "Salad")
+  const BITE_NUGGET_FORM_RE = /\b(bites?|nuggets?|tenders?|strips?|poppers?|chunks?|fritters?|patties)\b/;
+  if (BITE_NUGGET_FORM_RE.test(queryLower) && /\b(chicken|turkey|fish|shrimp|cauliflower)\b/.test(queryLower) && !BITE_NUGGET_FORM_RE.test(candLower)) {
+    return 0;
+  }
+  if (BITE_NUGGET_FORM_RE.test(candLower) && !BITE_NUGGET_FORM_RE.test(queryLower) && /\b(chicken|turkey|beef|pork|rotisserie|fish|salmon)\b/.test(queryLower)) {
+    return 0;
+  }
+  if (/\bwings?\b/.test(candLower) && !/\bwings?\b/.test(queryLower)) return 0;
+  if (
+    /\bsalad\b/.test(candLower) &&
+    !/\b(salad|dressing|ranch|caesar|vinaigrette|italian|thousand\s+island|coleslaw|greens|romaine|spinach|arugula|spring\s+mix)\b/.test(queryLower)
+  ) {
+    return 0;
+  }
+  if (
+    /\brotisserie\b/.test(queryLower) &&
+    /\bchicken\b/.test(queryLower) &&
+    !/\b(breast|breasts|shredded|pulled|strips?|bites?|salad|wings?|soup|broth|seasoning)\b/.test(queryLower) &&
+    /\b(breast|breasts|shredded|pulled|salad|wings?|soup|broth|seasoning)\b/.test(candLower)
+  ) {
+    return 0;
+  }
+  if (
+    /\b(bottom\s+round|top\s+round|eye\s+of\s+round|chuck|rump|sirloin\s+tip|pork\s+loin|pork\s+shoulder)\s+roast\b/.test(queryLower) &&
+    /\b(roast\s+beef|deli|sliced|jerky|sandwich)\b/.test(candLower)
+  ) {
+    return 0;
+  }
+  if (/\b(breaded|battered|tempura)\b/.test(queryLower)) {
+    if (/\b(fire\s+grilled|grilled|rotisserie|unbreaded|naked)\b/.test(candLower)) return 0;
+    if (!/\b(breaded|battered|tempura|crispy|fried|southern|homestyle|nuggets?|tenders?|strips?|bites?|poppers?|patties|fillets?|cutlets?|sticks?|fish|popcorn)\b/.test(candLower)) {
+      return 0;
+    }
+  } else if (/\b(fire\s+grilled|grilled|rotisserie|unbreaded)\b/.test(queryLower) && !/\bcrispy\b/.test(queryLower)) {
+    if (/\b(breaded|battered|tempura)\b/.test(candLower)) return 0;
+  }
+
   // Reject baking-flour spin-offs ("Quaker Oat Flour" for "Quaker oats") unless query asked for flour or candidate is tortillas/bread/pasta/crackers
   if (
     /\bflour\b/.test(candLower) &&
@@ -479,6 +531,26 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
   // (e.g. "Rao's", "Freihofer's", "Little Debbie", "Wegmans", "Wellsley"), the candidate title MUST match it!
   if (all.length >= 2 && !GENERIC_LEADING_MODIFIERS.has(all[0])) {
     if (!hasIn(c, all[0])) {
+      return 0;
+    }
+  }
+
+  // Core Food Head-Noun Guard: when the trailing product noun is a primary meat/dairy/egg/water/bakery staple,
+  // matching an adjective like "smoked" or "hickory" alone is never sufficient — the food identity noun itself must match!
+  const CORE_HEAD_FOOD_NOUNS = new Set([
+    "bacon", "ham", "sausage", "sausages", "hotdog", "hotdogs", "jerky",
+    "turkey", "chicken", "beef", "pork", "salmon", "tuna", "shrimp", "cod", "tilapia",
+    "eggs", "egg", "milk", "butter", "yogurt", "yoghurt", "water",
+    "bread", "bagels", "bagel", "tortillas", "tortilla", "waffles", "waffle", "pancakes", "pancake",
+    "soup", "broth", "stock", "ketchup", "mustard", "mayo", "mayonnaise", "salsa",
+  ]);
+  const trailingFoodNoun = pool[pool.length - 1];
+  if (trailingFoodNoun && CORE_HEAD_FOOD_NOUNS.has(trailingFoodNoun)) {
+    const headMatched =
+      hasIn(cWithCats, trailingFoodNoun) ||
+      (trailingFoodNoun === "waffles" || trailingFoodNoun === "waffle" ? hasIn(cWithCats, "eggo") : false) ||
+      (trailingFoodNoun === "water" ? ["spring", "mineral", "seltzer", "sparkling", "purified", "artesian"].some((w) => hasIn(cWithCats, w)) : false);
+    if (!headMatched) {
       return 0;
     }
   }
@@ -888,28 +960,61 @@ const LOWERCASE_UNIT_TOKENS = new Set([
   "pk",
 ]);
 
-function normalizeOffDisplayTitle(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed || !/[a-z]/.test(trimmed)) {
-    return trimmed;
+const PRESERVED_UPPERCASE_ACRONYMS = new Set([
+  "USDA", "FDA", "MSG", "BBQ", "USA", "UK", "EU", "IPA", "UHT", "GMO", "NSF", "PDO", "DOP", "IGP", "PB", "RX", "A1", "V8", "C4", "7UP",
+]);
+
+export function normalizeOffDisplayTitle(raw: string): string {
+  let s = raw.trim();
+  if (!s) return s;
+
+  // 1. Heal Shift-cap / 2nd-letter uppercase typos ("KEllogg" -> "Kellogg", "REal" -> "Real", "CRumbled" -> "Crumbled", "BAcon" -> "Bacon", "HIckory" -> "Hickory")
+  s = s.replace(/\b([A-Z])([A-Z])([a-z]{2,})\b/g, (full, a: string, b: string, rest: string) => {
+    if (full === "PBfit" || full === "OAuth") return full;
+    return `${a}${b.toLowerCase()}${rest}`;
+  });
+
+  // 2. Normalize attached or capitalized measurement units ("86.4Oz" -> "86.4 oz", "16.9Fl Oz" -> "16.9 fl oz", "3Lbs" -> "3 lbs")
+  s = s.replace(
+    /\b(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|ml|mg|mcg|g|kg|lbs?|ct|pk)\b/gi,
+    (_m, num: string, unit: string) => `${num} ${unit.toLowerCase().replace(/\.\s*/g, " ").replace(/\s+/g, " ").trim()}`,
+  );
+
+  // 3. Convert ALL-CAPS words >= 3 letters ("PURIFIED WATER" -> "purified water", "KELLOGG EGGO WAFFLES" -> "kellogg eggo waffles")
+  // while preserving legitimate acronyms ("USDA", "BBQ", "MSG", "GMO")
+  s = s.replace(/\b([A-Z]{2,}[A-Z0-9']*)\b/g, (word: string) => {
+    const bare = word.replace(/'S$/i, "");
+    if (PRESERVED_UPPERCASE_ACRONYMS.has(bare)) {
+      return word.endsWith("'S") ? `${bare}'s` : word;
+    }
+    if (!/[A-Z]{2,}/.test(bare)) return word;
+    const lower = word.toLowerCase();
+    return lower.replace(/^([^a-z]*)([a-z])/, (_m, pre: string, ch: string) => `${pre}${ch.toUpperCase()}`);
+  });
+
+  if (!/[a-z]/.test(s)) return s;
+
+  // 4. Only ignore non-letter tokens like "100%" when checking whether a title is already mixed-case
+  const letterWords = s.split(/\s+/).filter((w) => /[a-zA-Z]/.test(w));
+  const firstHasUpper = /[A-Z]/.test(letterWords[0] || "");
+  const tailHasUpper = letterWords.slice(1).some((w) => /[A-Z]/.test(w));
+  if (firstHasUpper && (letterWords.length === 1 || tailHasUpper)) {
+    return s;
   }
-  const words = trimmed.split(/\s+/);
-  const firstHasUpper = /[A-Z]/.test(words[0] || "");
-  const tailHasUpper = words.slice(1).some((w) => /[A-Z]/.test(w));
-  if (firstHasUpper && (words.length === 1 || tailHasUpper)) {
-    return trimmed;
-  }
+
+  // 5. Title-Case all-lowercase titles strictly at the leading alphabetic character (never capitalizing the 2nd letter!)
   let wordIdx = 0;
-  return trimmed
+  return s
     .split(/(\s+)/)
     .map((part) => {
       if (/^\s+$/.test(part)) return part;
       const idx = wordIdx++;
       const clean = part.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "").toLowerCase();
-      if (!clean) return part;
-      if (LOWERCASE_UNIT_TOKENS.has(clean)) return part;
+      if (!clean || /^\d/.test(clean)) return part;
+      if (LOWERCASE_UNIT_TOKENS.has(clean)) return part.toLowerCase();
       if (idx > 0 && LOWERCASE_TITLE_MINOR_WORDS.has(clean)) return part;
-      return part.replace(/[a-z]/, (ch) => ch.toUpperCase());
+      if (/^[^a-zA-Z]*[A-Z]/.test(part)) return part;
+      return part.replace(/^([^a-zA-Z]*)([a-z])/, (_m, pre: string, ch: string) => `${pre}${ch.toUpperCase()}`);
     })
     .join("");
 }
@@ -920,11 +1025,11 @@ export function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupRe
       ? new Date(p.last_modified_t * 1000).toISOString().slice(0, 10)
       : null;
   const rawBrand = normalizeOffBrand(p.brands).split(",")[0]?.trim();
-  const brandStr = rawBrand ? decodeHtmlEntities(rawBrand) : undefined;
+  const brandStr = rawBrand ? normalizeOffDisplayTitle(decodeHtmlEntities(rawBrand)) : undefined;
   const rawName = normalizeOffDisplayTitle(
     decodeHtmlEntities((p.product_name_en || p.product_name || fallbackTitle).trim()),
   );
-  const fullTitle = mergeBrandAndTitle(brandStr, rawName);
+  const fullTitle = normalizeOffDisplayTitle(mergeBrandAndTitle(brandStr, rawName));
   const baseNut = sanitizeOffFoodNutrition(fullTitle, extractOffNutrition(p), p.nutriments);
   const inferredKind: NutritionInput["productKind"] = p.categories_tags?.some((t) => NON_FOOD_OFF_CATEGORY_TAG_RE.test(t))
     ? "non-food"
@@ -1210,23 +1315,31 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     ? `categories_tags:"en:sausages"`
     : "";
 
-  const searchWords = collapseSingleLetterCompounds(title)
+  const allSearchWords = collapseSingleLetterCompounds(title)
     .toLowerCase()
     .replace(/['’]s\b/g, "s")
     .replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .split(/\s+/)
-    .filter((w) => (w.length >= 2 || SHORT_BRAND_TOKENS.has(w)) && !STOP.has(w) && !/^\d+$/.test(w))
-    .slice(0, 5);
+    .filter((w) => (w.length >= 2 || SHORT_BRAND_TOKENS.has(w)) && !STOP.has(w) && !/^\d+$/.test(w) && !/^(?:naturally|fully|cooked|lightly|priced|per|pound|pounds)$/.test(w));
+  const searchWords =
+    allSearchWords.length <= 5
+      ? allSearchWords
+      : Array.from(new Set([...allSearchWords.slice(0, 2), ...allSearchWords.slice(-3)]));
 
   const usCompletedFilter = `countries_tags:"en:united-states" states_tags:"en:ingredients-completed"`;
   const andQuery = searchWords.length
     ? `${searchWords.join(" AND ")} AND countries_tags:"en:united-states" AND states_tags:"en:ingredients-completed"`
     : `${title} ${usCompletedFilter}`;
+  const trimmedBrandMods =
+    brandModifiers.length <= 4
+      ? brandModifiers
+      : Array.from(new Set([brandModifiers[0], ...brandModifiers.slice(-3)]));
+  const brandModAndClause = [...trimmedBrandMods, hotDogBrandClause].filter(Boolean).join(" AND ");
   const brandQuery =
     brandSlug
-      ? `${brandTagClause} ${[...brandModifiers, hotDogBrandClause].filter(Boolean).join(" ")} ${usCompletedFilter}`.trim()
+      ? `${brandTagClause}${brandModAndClause ? ` AND ${brandModAndClause}` : ""} AND countries_tags:"en:united-states" AND states_tags:"en:ingredients-completed"`
       : `${title} ${usCompletedFilter}`;
   const brandAnchor = detectedBrandRaw ? detectedBrandRaw.toLowerCase() : firstTok;
 
@@ -1336,26 +1449,34 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
 /* USDA FoodData Central (Branded + Foundation + SR Legacy + Survey)   */
 /* ------------------------------------------------------------------ */
 
+const STORE_HOUSE_WHOLE_FOOD_BRAND_RE =
+  /\b(member'?s\s+mark|kirkland(?:\s+signature)?|marketside(?:\s+butcher)?|freshness\s+guaranteed|great\s+value|sam'?s\s+choice|good\s*(?:&|and)\s*gather|favorite\s+day|market\s+pantry|simple\s+truth(?:\s+organic)?|private\s+selection|heritage\s+farm|wellsley\s+farms|berkley\s+jensen|simply\s+nature|specially\s+selected|nature'?s\s+promise|signature\s+select|o\s+organics|open\s+nature|365(?:\s+by\s+whole\s+foods(?:\s+market)?)?|whole\s+foods(?:\s+market)?|trader\s+joe'?s?)\b/gi;
+
 export function genericWholeFoodQuery(query: string): string | null {
   if (classifyWholeFood(query).isWholeFood !== true) return null;
   const text = query.toLowerCase();
   const food = text.match(/\b(apples?|almonds?|walnuts?|cashews?|chia\s+seeds?|flax\s*seeds?|pumpkin\s+seeds?|salmon|trout|cod|tuna|chicken|turkey|beef|pork|eggs?|oats?|oatmeal|quinoa|broccoli|spinach|carrots?|sweet\s+potato(?:es)?|potato(?:es)?|yams?|tomato(?:es)?|avocados?|bananas?|lentils?|chickpeas?|olive\s+oil|greek\s+yogurt)\b/)?.[0];
   if (!food) return null;
+  const beefCut = food === "beef" ? text.match(/\b(round|chuck|brisket|ribeye|sirloin|tenderloin)\b/)?.[0] : undefined;
   const species = text.match(/\b(atlantic|pacific|sockeye|pink|chinook)\b/)?.[0];
   const preparation = /\b(greek\s+yogurt)\b/.test(food) ? "plain" : /olive\s+oil|oats?|oatmeal|quinoa/.test(food) ? "" : /\b(cooked|roasted|boiled|baked)\b/.exec(text)?.[0] || "raw";
-  return [food === "oatmeal" ? "oats" : food, species, preparation].filter(Boolean).join(" ");
+  return [food === "oatmeal" ? "oats" : food, beefCut, species, preparation].filter(Boolean).join(" ");
 }
 
 export function matchesGenericWholeFood(query: string, candidate: string): boolean {
   const canonical = genericWholeFoodQuery(query);
   if (!canonical || classifyWholeFood(candidate).isWholeFood !== true) return false;
+  if (/\broasts?\b/i.test(query) && /\bsteaks?\b/i.test(candidate) && !/\broasts?\b/i.test(candidate)) return false;
+  if (/\bsteaks?\b/i.test(query) && /\broasts?\b/i.test(candidate) && !/\bsteaks?\b/i.test(candidate)) return false;
   const stem = (w: string) => w.length > 3 ? w.replace(/s$/, "") : w;
   const candidateWords = new Set(candidate.toLowerCase().split(/[^a-z]+/).filter(Boolean).map(stem));
   const identity = canonical.replace(/\b(raw|cooked|roasted|boiled|baked|plain)\b/g, "").trim().split(/\s+/);
   if (!identity.every(word => candidateWords.has(stem(word)))) return false;
 
   const queryCleaned = query
+    .replace(STORE_HOUSE_WHOLE_FOOD_BRAND_RE, " ")
     .toLowerCase()
+    .replace(/\b(?:priced|price)\s+per\s+(?:pound|lb)\b/gi, " ")
     .replace(/\b\d+(?:\.\d+)?(?:\s*[-–—x×/]\s*\d+(?:\.\d+)?)?\s*(?:%|fl\.?\s*oz|oz|ounces?|lbs?|pounds?|g|grams?|kg|ct|count|pk|packs?|pcs?|pieces?|dozens?)\b/gi, " ")
     .replace(/\b\d+(?:\.\d+)?\b/g, " ");
   const queryWords = queryCleaned.split(/[^a-z]+/).filter((w) => w.length >= 2);
@@ -1386,18 +1507,66 @@ const USDA_LUCENE_SKIP_WORDS = new Set([
   "bag", "box", "can", "jar", "bottle", "tub", "carton", "pouch", "tray", "cup", "bowl",
   "count", "ct", "oz", "fl", "lb", "lbs", "gal", "gallon", "half", "quart", "pint", "pkg",
   "assorted", "variety", "homemade", "fresh", "pure",
+  "naturally", "fully", "cooked", "lightly", "priced", "per", "pound", "pounds", "avg", "average", "price",
 ]);
 
 function buildUsdaLuceneQuery(query: string): string {
-  const words = query
+  const allWords = query
+    .replace(/['’]s\b/gi, "")
     .replace(/['’]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, " ")
     .trim()
     .split(/\s+/)
-    .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w))
-    .slice(0, 5);
+    .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
+  const words =
+    allWords.length <= 5
+      ? allWords
+      : Array.from(new Set([...allWords.slice(0, 2), ...allWords.slice(-3)]));
   if (words.length < 2) return "";
   return words.map((w) => `+${w}`).join(" ");
+}
+
+let usdaPortalUnavailableUntil = 0;
+
+async function postUsdaPortalSearch(
+  searchInput: string,
+  includeDataTypes: Record<string, boolean>,
+  pageSize: number,
+): Promise<{ foods?: UsdaFood[] } | null> {
+  if (Date.now() < usdaPortalUnavailableUntil) return null;
+  try {
+    const res = await fetch("https://fdc.nal.usda.gov/portal-data/external/search", {
+      method: "POST",
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        includeDataTypes,
+        referenceFoodsCheckBox: false,
+        generalSearchInput: searchInput,
+        requireAllWords: false,
+        pageNumber: 1,
+        pageSize,
+      }),
+      signal: providerSignal.getStore()
+        ? AbortSignal.any([providerSignal.getStore()!, AbortSignal.timeout(TIMEOUT_MS)])
+        : AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      if (res.status === 429 || res.status >= 502) {
+        usdaPortalUnavailableUntil = Date.now() + 60_000;
+      }
+      return null;
+    }
+    const type = res.headers.get("content-type") || "";
+    if (!type.includes("json")) return null;
+    return (await res.json()) as { foods?: UsdaFood[] };
+  } catch {
+    return null;
+  }
 }
 
 async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | null> {
@@ -1444,16 +1613,41 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
 
   const luceneQuery = !isBarcodeQuery ? buildUsdaLuceneQuery(query) : "";
   const wholeQuery = genericWholeFoodQuery(query);
-  const requests = [getJson<{ foods?: UsdaFood[] }>(
-    `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(luceneQuery || query)}&dataType=Branded&pageSize=18&api_key=${key}`,
-  )];
-  if (wholeQuery) requests.push(getJson<{ foods?: UsdaFood[] }>(
-    `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(wholeQuery)}&dataType=${encodeURIComponent("Foundation,SR Legacy")}&pageSize=20&api_key=${key}`,
-  ));
-  const responses = await Promise.all(requests);
-  for (const response of responses) evaluateFoods(response?.foods);
+  const searchInput = luceneQuery || query;
+
+  if (Date.now() >= usdaUnavailableUntil) {
+    const requests = [
+      getJson<{ foods?: UsdaFood[] }>(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(searchInput)}&dataType=Branded&pageSize=18&api_key=${key}`,
+      ),
+    ];
+    if (wholeQuery) {
+      requests.push(
+        getJson<{ foods?: UsdaFood[] }>(
+          `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(wholeQuery)}&dataType=${encodeURIComponent("Foundation,SR Legacy")}&pageSize=20&api_key=${key}`,
+        ),
+      );
+    }
+    const responses = await Promise.all(requests);
+    for (const response of responses) evaluateFoods(response?.foods);
+    if (responses.every((r) => r === null) && !providerSignal.getStore()?.aborted) {
+      const portalFallback = await Promise.all([
+        postUsdaPortalSearch(searchInput, { Branded: true }, 18),
+        ...(wholeQuery ? [postUsdaPortalSearch(wholeQuery, { Foundation: true, "SR Legacy": true }, 20)] : []),
+      ]);
+      for (const response of portalFallback) evaluateFoods(response?.foods);
+    }
+  } else {
+    // DEMO_KEY on api.nal.usda.gov enforces a strict 10-req/4h IP cap; use USDA's public FoodData Central search directly
+    const portalRequests = [
+      postUsdaPortalSearch(searchInput, { Branded: true }, 18),
+      ...(wholeQuery ? [postUsdaPortalSearch(wholeQuery, { Foundation: true, "SR Legacy": true }, 20)] : []),
+    ];
+    const responses = await Promise.all(portalRequests);
+    for (const response of responses) evaluateFoods(response?.foods);
+  }
+
   if (!best || bestScore < 0.55) return null;
-  const titleCase = (s = "") => s.toLowerCase().replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
   const rawDesc = (best.description || "")
     .replace(/^(.+?),\s*([^,]+)$/, (full: string, prefix: string, suffix: string) => {
       const prefixWords = new Set(prefix.toLowerCase().split(/\W+/).filter(Boolean));
@@ -1461,12 +1655,14 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
       return suffixWords.length > 0 && suffixWords.every((w) => prefixWords.has(w)) ? prefix : full;
     })
     .trim();
-  const brandLabel = titleCase(best.brandName || best.brandOwner) || "USDA FoodData Central";
-  const descTitle = titleCase(rawDesc) || query;
-  const fullTitle =
+  const rawBrandLabel = (best.brandName || best.brandOwner || "").trim();
+  const brandLabel = rawBrandLabel ? normalizeOffDisplayTitle(rawBrandLabel) : "USDA FoodData Central";
+  const descTitle = normalizeOffDisplayTitle(rawDesc) || normalizeOffDisplayTitle(query);
+  const fullTitle = normalizeOffDisplayTitle(
     brandLabel !== "USDA FoodData Central"
       ? mergeBrandAndTitle(brandLabel, descTitle)
-      : descTitle;
+      : descTitle,
+  );
   const usdaBrandParam =
     brandLabel && brandLabel !== "USDA FoodData Central" ? `&brand=${encodeURIComponent(brandLabel)}` : "";
   const usdaCodeParam = best.gtinUpc ? `&code=${encodeURIComponent(best.gtinUpc)}` : "";
@@ -1502,6 +1698,39 @@ interface CatalogEntry {
 }
 
 export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
+  {
+    match: /^(?!.*\b(?:breast|shredded|pulled|salad|wings?|bites?|nuggets?|soup|broth)\b).*\bmember'?s\s+mark\b.*\brotisserie\s+chicken\b/i,
+    brand: "Member's Mark",
+    title: "Member's Mark Seasoned Rotisserie Chicken",
+    keywords: ["members mark", "rotisserie chicken", "seasoned", "whole", "cooked"],
+    ingredients: "Whole Chicken, Water, Salt, Sodium Phosphate, Sugar, Hydrolyzed Corn Protein, Maltodextrin, Yeast Extract, Chicken Broth, Spices, Onion Powder, Garlic Powder, Natural Flavors.",
+    imageUrl: "https://images.openfoodfacts.org/images/products/071/928/314/5598/front_en.10.400.jpg",
+    nutrition: { caloriesKcal100g: 167, sugarsG100g: 0.6, saturatedFatG100g: 2.8, sodiumMg100g: 524, fiberG100g: 0, proteinG100g: 22.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.samsclub.com/ip/members-mark-seasoned-rotisserie-chicken/13820153808",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /\bmember'?s\s+mark\b.*\b(?:lightly\s+breaded|breaded)\s+chicken\s+breast\s+bites\b/i,
+    brand: "Member's Mark",
+    title: "Member's Mark Fully Cooked Lightly Breaded Chicken Breast Bites",
+    keywords: ["members mark", "fully cooked", "lightly breaded", "chicken breast bites", "frozen", "boneless"],
+    ingredients: "White Meat Chicken, Water, Wheat Flour, Contains 2% or Less of: Modified Food Starch, Salt, Sugar, Spices, Garlic Powder, Onion Powder, Yeast Extract, Leavening (Cream of Tartar, Sodium Bicarbonate), Yeast, Natural Flavor. Breading Set in Vegetable Oil.",
+    imageUrl: "/swaps/nuggets.png",
+    nutrition: { caloriesKcal100g: 226, sugarsG100g: 1.2, saturatedFatG100g: 1.8, sodiumMg100g: 571, fiberG100g: 0, proteinG100g: 20.2, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.samsclub.com/ip/members-mark-lightly-breaded-chicken-breast-bites-frozen-3-lbs/13626401534",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /^(?!.*\b(?:turkey|canadian|uncured|bits|crumbled|wrapped|dip|macaroni|thick)\b).*\bmember'?s\s+mark\b.*\bhickory\s+smoked\b.*\bbacon\b/i,
+    brand: "Member's Mark",
+    title: "Member's Mark Naturally Hickory Smoked Bacon",
+    keywords: ["members mark", "naturally", "hickory smoked", "classic cut", "bacon", "pork"],
+    ingredients: "Pork Cured With: Water, Salt, Sugar, Sodium Phosphates, Sodium Erythorbate, Sodium Nitrite.",
+    imageUrl: "/swaps/bacon.png",
+    nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 13.9, sodiumMg100g: 1722, fiberG100g: 0, proteinG100g: 33.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://fdc.nal.usda.gov/food-details/2592451/nutrients",
+    verifiedAt: "2026-11-15",
+  },
   {
     match: /\b(simple\s+truth\s+organic.*(?:greek\s+yogurt|plain\s+greek\s+yogurt)|(?:greek\s+yogurt|plain\s+greek\s+yogurt).*simple\s+truth\s+organic)\b/i,
     brand: "Simple Truth Organic",
@@ -3904,9 +4133,11 @@ export function hasWholeFoodHeadNoun(
   options?: { checkBefore?: boolean; allowMeatCuts?: boolean; mode?: "produce" | "meat" | "nuts" },
 ): boolean {
   const cleaned = rawQuery
+    .replace(STORE_HOUSE_WHOLE_FOOD_BRAND_RE, " ")
     .toLowerCase()
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, " ")
     .replace(/,\s*(?:now|was)\b.*$/i, " ")
+    .replace(/\b(?:priced|price)\s+per\s+(?:pound|lb)\b/gi, " ")
     .replace(
       /\b(?:no\s+salt\s+added|without\s+salt|salt[\s-]+free|no\s+water\s+added|without\s+added\s+water|no\s+(?:added\s+)?(?:hormones?|antibiotics?|steroids?|preservatives?|nitrates?|nitrites?)|never\s+any\s+(?:hormones?|antibiotics?))\b/gi,
       " ",
@@ -3961,13 +4192,15 @@ const NON_BRAND_CATEGORY_LABELS =
   /^(?:Representative\b|Fresh Produce$|Canned Vegetables$|100% Fruit Juice$|Grade A Dairy$|Baked Crackers$|Rotisserie Deli$|Grilled Poultry$|Breaded Poultry$|Cured Pork Bacon$|Natural Uncured$|Sweetened Dried Fruit$|Freeze-Dried$|Mediterranean Olives$|Extra Virgin Olive Oil$|USDA Organic Grass-Fed Beef$)/i;
 
 function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
-  const cleanTitle = query
-    .trim()
-    .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
-    .replace(/\s*,\s*\d+\s*\.\.\.+$/, "")
-    .replace(/,\s*(now|was)$/i, "")
-    .replace(/\s*[.,•|\-]+\s*$/, "")
-    .replace(/(^|[\s\-/(])\w/g, (c) => c.toUpperCase());
+  const cleanTitle = normalizeOffDisplayTitle(
+    query
+      .trim()
+      .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
+      .replace(/,?\s*\b(?:priced|price)\s+per\s+(?:pound|lb)\b.*$/i, "")
+      .replace(/\s*,\s*\d+\s*\.\.\.+$/, "")
+      .replace(/,\s*(now|was)$/i, "")
+      .replace(/\s*[.,•|\-]+\s*$/, ""),
+  );
   // Never infer USDA Organic certification from query text alone
   const isOrganic = false;
 
@@ -4064,35 +4297,52 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     }
   }
   const s = query.toLowerCase();
-  if (NON_FOOD_GUARD.test(s) || NAMED_BRAND_GUARD.test(s) || detectQueryBrand(query) !== "") {
+  if (NON_FOOD_GUARD.test(s)) {
+    return null;
+  }
+  const detectedBrandForFallback = detectQueryBrand(query);
+  const queryWithoutStoreHouseBrand = query.replace(STORE_HOUSE_WHOLE_FOOD_BRAND_RE, " ").trim();
+  const hasNonStoreBrand =
+    NAMED_BRAND_GUARD.test(queryWithoutStoreHouseBrand.toLowerCase()) ||
+    detectQueryBrand(queryWithoutStoreHouseBrand) !== "";
+  if (hasNonStoreBrand) {
     return null;
   }
 
-  for (const cat of CATEGORY_FALLBACK_CATALOG) {
-    if (
-      hasValidCatalogProvenance(cat.sourceUrl, cat.verifiedAt) &&
-      cat.match.test(query) &&
-      passesCategoryFallbackHeadGuard(query, cat) &&
-      (!/\borganic\b/i.test(query) || /\borganic\b/i.test(cat.brand)) &&
-      !isDietaryOrVariantMismatch(query, cat.brand, cat.ingredients, cat.nutrition) &&
-      !isDietaryOrVariantMismatch(query, `${cat.brand} ${cleanTitle}`, cat.ingredients, cat.nutrition)
-    ) {
-      return {
-        sourceUrl: cat.sourceUrl,
-        productTitle: `${cleanTitle} (Category Estimate)`,
-        brand: `${cat.brand} (Category Estimate — Verify Package Label)`,
-        description:
-          "Representative category formulation shown because an exact product/UPC label was not returned by Open Food Facts or USDA. Formulations vary by brand and batch; always verify the physical package label.",
-        ingredients: `${cat.ingredients} [Representative Category Formulation — Verify Physical Package Label]`,
-        imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
-        nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic === true },
-        source: "catalog",
-        sourceUpdatedAt: cat.verifiedAt,
-      };
+  if (!detectedBrandForFallback && !NAMED_BRAND_GUARD.test(s)) {
+    for (const cat of CATEGORY_FALLBACK_CATALOG) {
+      if (
+        hasValidCatalogProvenance(cat.sourceUrl, cat.verifiedAt) &&
+        cat.match.test(query) &&
+        passesCategoryFallbackHeadGuard(query, cat) &&
+        (!/\borganic\b/i.test(query) || /\borganic\b/i.test(cat.brand)) &&
+        !isDietaryOrVariantMismatch(query, cat.brand, cat.ingredients, cat.nutrition) &&
+        !isDietaryOrVariantMismatch(query, `${cat.brand} ${cleanTitle}`, cat.ingredients, cat.nutrition)
+      ) {
+        return {
+          sourceUrl: cat.sourceUrl,
+          productTitle: `${cleanTitle} (Category Estimate)`,
+          brand: `${cat.brand} (Category Estimate — Verify Package Label)`,
+          description:
+            "Representative category formulation shown because an exact product/UPC label was not returned by Open Food Facts or USDA. Formulations vary by brand and batch; always verify the physical package label.",
+          ingredients: `${cat.ingredients} [Representative Category Formulation — Verify Physical Package Label]`,
+          imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
+          nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic === true },
+          source: "catalog",
+          sourceUpdatedAt: cat.verifiedAt,
+        };
+      }
     }
   }
 
   if (PROCESSED_FOOD_GUARD.test(s)) {
+    return null;
+  }
+
+  // Never infer USDA Organic certification from query text alone on generic/store-branded whole foods unless the brand itself is an inherently certified organic house line
+  const storeHouseBrandLabel = detectedBrandForFallback ? normalizeOffDisplayTitle(detectedBrandForFallback) : "";
+  const storeHouseCertifiedOrganic = /\b(simple\s+truth\s+organic|o\s+organics)\b/i.test(query) && !/\bnon[-\s]*organic\b/i.test(query);
+  if (/\borganic\b/i.test(query) && !storeHouseCertifiedOrganic && detectedBrandForFallback) {
     return null;
   }
 
@@ -4103,26 +4353,39 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/169247/nutrients",
       productTitle: cleanTitle,
-      brand: "Fresh Produce",
+      brand: storeHouseBrandLabel || "Fresh Produce",
       ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
-      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic },
+      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
   }
 
-  // 2. Plain Fresh / Frozen Meat, Poultry (Whole Turkey, Chicken Breast Fillets, etc.), Seafood & Shell Eggs (unbreaded, uncured)
+  // 2. Plain Fresh / Frozen Meat, Poultry (Whole Turkey, Chicken Breast Fillets, Beef Bottom Round Roast, etc.), Seafood & Shell Eggs (unbreaded, uncured)
   const MEAT_NOUN_RE =
-    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|beef\s+(stew\s+meat|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|stew\s+beef|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
+    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|(?:bottom\s+round|top\s+round|eye\s+of\s+round|rump|chuck|sirloin\s+tip|rib)\s+roast|beef\s+(stew\s+meat|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|stew\s+beef|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
   if (MEAT_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, MEAT_NOUN_RE, { checkBefore: true, allowMeatCuts: true, mode: "meat" })) {
+    const wholeMeatIng = /\b(beef|angus|wagyu|ribeye|sirloin|tenderloin|brisket|chuck|round\s+roast|rump\s+roast|new\s+york\s+strip|t-bone|porterhouse)\b/i.test(s)
+      ? "100% Beef (Single-Ingredient Unprocessed Whole Food)."
+      : /\bchicken\b/i.test(s)
+        ? "100% Chicken (Single-Ingredient Unprocessed Whole Food)."
+        : /\bturkey\b/i.test(s)
+          ? "100% Turkey (Single-Ingredient Unprocessed Whole Food)."
+          : /\bpork\b/i.test(s)
+            ? "100% Pork (Single-Ingredient Unprocessed Whole Food)."
+            : /\blamb\b/i.test(s)
+              ? "100% Lamb (Single-Ingredient Unprocessed Whole Food)."
+              : /\beggs?\b/i.test(s)
+                ? "100% Shell Eggs (Single-Ingredient Whole Food)."
+                : "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).";
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
       productTitle: cleanTitle,
-      brand: "Fresh Meat & Eggs",
-      ingredients: "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Eggs).",
+      brand: storeHouseBrandLabel || "Fresh Meat & Eggs",
+      ingredients: wholeMeatIng,
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
-      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic },
+      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -4135,10 +4398,10 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/170567/nutrients",
       productTitle: cleanTitle,
-      brand: "Whole Nuts, Seeds & Legumes",
+      brand: storeHouseBrandLabel || "Whole Nuts, Seeds & Legumes",
       ingredients: "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
       imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
-      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic },
+      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -4152,6 +4415,8 @@ function cleanSearchQuery(title: string): string {
   return title
     .replace(/[®™©]/g, "")
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
+    .replace(/,?\s*\b(?:priced|price)\s+per\s+(?:pound|lb)\b.*$/i, "")
+    .replace(/,?\s*\b(?:final\s+cost\s+by\s+weight|avg\.?\s+price|average\s+price)\b.*$/i, "")
     .replace(/\s+for\s+(?:sandwiches|sushi|sashimi|dipping|prime\s+rib|steak|salads?|marinades?)\b.*$/i, "")
     .replace(/\s*[-–—|]\s*pack\s+of\s+\d+.*$/i, "")
     .replace(/\s*\(\d+(\.\d+)?\s*(?:oz|fl\s*oz|lb|lbs|ct|count|pk|pack|g|kg|ml)\)\s*[-–—|]?.*$/i, "")
@@ -4191,12 +4456,13 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     // If productTitle is also provided (e.g. from the mobile screen reader or browser extension),
     // verify that rawIngredients is an actual ingredient list and not an adjacent UI heading like "Items to add next".
     if (!rawTitle || isPlausibleScreenIngredients(rawIng)) {
+      const normalizedScreenTitle = rawTitle ? normalizeOffDisplayTitle(rawTitle) : "Scanned product";
       const screenImgUrl =
         rawTitle || input.barcode
-          ? `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(rawTitle)}${input.barcode ? `&code=${encodeURIComponent(input.barcode)}` : ""}&v=6`
+          ? `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(normalizedScreenTitle)}${input.barcode ? `&code=${encodeURIComponent(input.barcode)}` : ""}&v=6`
           : undefined;
       return {
-        productTitle: rawTitle || "Scanned product",
+        productTitle: normalizedScreenTitle,
         barcode: input.barcode,
         ingredients: rawIng,
         imageUrl: screenImgUrl,
@@ -4212,7 +4478,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|cinnamon\s+toast\s+crunch|lucky\s+charms|froot\s+loops|cheerios|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|lucky\s+charms|froot\s+loops|cheerios|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&
@@ -4228,7 +4494,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
       !directCat.productTitle.startsWith("Conventional Grocery") &&
       !/category estimate|representative/i.test(directCat.brand || "")
     ) {
-      return { ...directCat, ms: ms() };
+      return { ...directCat, productTitle: normalizeOffDisplayTitle(directCat.productTitle), ms: ms() };
     }
   }
 
@@ -4259,11 +4525,16 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   }
   if (!found) return null;
 
-  if (found.source !== "catalog") {
-    setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString(), schemaVersion: 2 });
+  const normalizedFound = {
+    ...found,
+    productTitle: normalizeOffDisplayTitle(found.productTitle),
+  };
+
+  if (normalizedFound.source !== "catalog") {
+    setCacheEntry(cache, key, { ...normalizedFound, cachedAt: new Date().toISOString(), schemaVersion: 3 });
     void persistCache(cache);
   }
-  return { ...found, ms: ms() };
+  return { ...normalizedFound, ms: ms() };
 }
 
 /**
@@ -4277,12 +4548,16 @@ export async function lookupLiveAuthoritative(input: LookupInput): Promise<Looku
   const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
   const found = await lookupProviders({ ...input, productTitle: title });
   if (!found) return null;
+  const normalizedFound = {
+    ...found,
+    productTitle: normalizeOffDisplayTitle(found.productTitle),
+  };
   const key = cacheKey({ ...input, productTitle: title });
   if (key) {
     const cache = await loadCache();
-    setCacheEntry(cache, key, { ...found, cachedAt: new Date().toISOString(), schemaVersion: 2 });
+    setCacheEntry(cache, key, { ...normalizedFound, cachedAt: new Date().toISOString(), schemaVersion: 3 });
     void persistCache(cache);
   }
-  return { ...found, ms: ms() };
+  return { ...normalizedFound, ms: ms() };
 }
 

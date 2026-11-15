@@ -79,10 +79,45 @@ object ScanHistoryStore {
         )
     }
 
+    private val PRESERVED_TITLE_ACRONYMS = setOf(
+        "USDA", "FDA", "MSG", "BBQ", "USA", "GMO", "IPA", "UHT", "BPA",
+        "D3", "B12", "B6", "A1", "V8", "C4", "7UP", "XL", "XXL", "II", "III", "IV"
+    )
+
+    fun cleanDisplayTitle(raw: String): String {
+        var s = raw.replace(Regex("\\s+"), " ").trim()
+        if (s.isEmpty()) return s
+        // Normalize jammed/capitalized unit suffixes (e.g. "86.4Oz" -> "86.4 oz")
+        s = s.replace(Regex("(?i)\\b(\\d+(?:\\.\\d+)?)\\s*(fl\\.?\\s*oz|oz|ml|mg|mcg|g|kg|lbs?|ct|pk)\\b")) { m ->
+            val num = m.groupValues[1]
+            val rawUnit = m.groupValues[2].lowercase().replace(Regex("\\s+"), " ")
+            val unit = if (rawUnit.startsWith("fl")) "fl oz" else rawUnit
+            "$num $unit"
+        }
+        // Heal 2nd-letter shift-key typos ("KEllogg" -> "Kellogg", "REal" -> "Real", "CRumbled" -> "Crumbled", "BAcon" -> "Bacon", "HIckory" -> "Hickory")
+        s = s.replace(Regex("\\b([A-Z])([A-Z])([a-z]{2,})\\b")) { m ->
+            val full = m.value
+            if (full == "PBfit") full else "${m.groupValues[1]}${m.groupValues[2].lowercase()}${m.groupValues[3]}"
+        }
+        // Convert ALL-CAPS words ("PURIFIED WATER" -> "Purified Water") while keeping true acronyms ("USDA", "BBQ")
+        s = s.replace(Regex("\\b([A-Z]{2,}(?:['’][A-Z]+)?)\\b")) { m ->
+            val w = m.value
+            val plain = w.replace("’", "'")
+            if (plain in PRESERVED_TITLE_ACRONYMS) {
+                w
+            } else {
+                w.take(1) + w.substring(1).lowercase()
+            }
+        }
+        return s.replace(Regex("\\s+"), " ").trim()
+    }
+
     fun extractTitle(item: JSONObject): String =
-        item.optJSONObject("product")?.optString("title").orEmpty()
-            .ifBlank { item.optString("productTitle") }
-            .trim()
+        cleanDisplayTitle(
+            item.optJSONObject("product")?.optString("title").orEmpty()
+                .ifBlank { item.optString("productTitle") }
+                .trim()
+        )
 
     fun canonicalKey(title: String): String {
         var s = title.lowercase()
