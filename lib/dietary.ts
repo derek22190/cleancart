@@ -113,17 +113,19 @@ export function evaluateDietaryAlerts(
 ): DietaryAlert[] {
   if (!Array.isArray(dietaryWatchlist) || dietaryWatchlist.length === 0) return [];
   const selected = new Set(dietaryWatchlist.map((s) => String(s).trim().toLowerCase()));
-  const text = `${productTitle} ${ingredients}`.toLowerCase();
-  const ing = ingredients.toLowerCase();
+  const ing = ingredients
+    .toLowerCase()
+    .replace(
+      /(?:[.;,(\[]|\b)(?:may\s+contain|manufactured\s+(?:in|on)|processed\s+(?:in|on)|produced\s+(?:in|on)|packaged\s+(?:in|on)|made\s+(?:in|on)\s+(?:a\s+facility|shared\s+equipment)|shared\s+equipment\s+with|facility\s+that\s+(?:also\s+)?processes)[^.;)\]]*/gi,
+      " ",
+    );
+  const text = `${productTitle.toLowerCase()} ${ing}`;
   const alerts: DietaryAlert[] = [];
 
-  if (
-    selected.has("sugar_diabetes") &&
-    !/\b(zero\s+sugar|sugar[\s-]*free|unsweetened|\bdiet\b)\b/i.test(productTitle)
-  ) {
+  if (selected.has("sugar_diabetes")) {
     const sugarsG = nutrition?.sugarsG100g ?? 0;
     const ingCleanedForSugar = ing.replace(
-      /\b(no\s+(?:added\s+)?sugars?|sugar[\s-]*free|zero\s+sugar|unsweetened|without\s+(?:added\s+)?sugar|0\s*g\s+sugar|sugar\s+snap(?:\s+peas?)?|sugar\s+kelp|sugar\s+pumpkin)\b/gi,
+      /\b(no\s+(?:added\s+)?sugars?|sugar[\s-]*free|zero\s+sugar|unsweetened|without\s+(?:added\s+)?sugar|0\s*g\s+sugar|sugar\s+alcohols?|sugar\s+snap(?:\s+peas?)?|sugar\s+kelp|sugar\s+pumpkin)\b/gi,
       " ",
     );
     const sugarMatch = ingCleanedForSugar.match(
@@ -132,7 +134,13 @@ export function evaluateDietaryAlerts(
     const refinedCarbMatch = ing.match(
       /\b(enriched\s+(?:wheat\s+)?flour|bleached\s+(?:wheat\s+)?flour|maltodextrin|modified\s+(?:corn|food)\s+starch|instant\s+mashed|white\s+rice\s+flour)\b/i,
     );
-    if (sugarsG >= 10 || sugarMatch || refinedCarbMatch) {
+    const titleClaimsSugarFreeOrUnsweetened = /\b(zero\s+sugar|sugar[\s-]*free|unsweetened|\bdiet\b)\b/i.test(
+      productTitle,
+    );
+    const triggersIntrinsicSugar =
+      sugarsG >= 10 &&
+      !(titleClaimsSugarFreeOrUnsweetened && /\bunsweetened\b/i.test(productTitle) && !sugarMatch && !refinedCarbMatch && sugarsG <= 12);
+    if (triggersIntrinsicSugar || sugarMatch || refinedCarbMatch) {
       const reasons: string[] = [];
       if (sugarsG >= 10) reasons.push(`${sugarsG}g sugar per 100g`);
       if (sugarMatch) reasons.push(`Added sweetener (${sugarMatch[0]})`);
@@ -146,13 +154,17 @@ export function evaluateDietaryAlerts(
     }
   }
 
-  if (selected.has("dairy") && !/\b(dairy[\s-]*free|non[\s-]*dairy|plant[\s-]*based|vegan)\b/i.test(productTitle)) {
-    const dairyCleaned = text.replace(
-      /\b(coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|pea\s+milk|oat\s+beverage|almond\s+beverage|soy\s+beverage|coconut\s+beverage|milked\s+oats?|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|sunflower\s+(?:seed\s+)?butter|cocoa\s+butter|shea\s+butter|apple\s+butter|cookie\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+tartar|coconut\s+cream|oat\s+creamer|almond\s+creamer|soy\s+creamer|coconut\s+creamer|plant\s+creamer|lactic\s+acid)\b/gi,
+  if (selected.has("dairy")) {
+    const titleClaimsDairyFree = /\b(dairy[\s-]*free|non[\s-]*dairy|milk[\s-]*free|plant[\s-]*based|vegan)\b/i.test(
+      productTitle,
+    );
+    const dairySource = titleClaimsDairyFree ? ing : text;
+    const dairyCleaned = dairySource.replace(
+      /\b(dairy[\s-]*free|non[\s-]*dairy|milk[\s-]*free|lactose[\s-]*free|butter[\s-]*free|whey[\s-]*free|casein[\s-]*free|no\s+(?:dairy|milk|lactose|butter|whey|casein)|plant\s+(?:milk|butter|cream\w*|cheese|yogurt)|vegan\s+(?:milk|butter|cream\w*|cheese|yogurt)|coconut\s+milk|almond\s+milk|oat\s+milk|soy\s+milk|soymilk|almondmilk|oatmilk|rice\s+milk|cashew\s+milk|hemp\s+milk|pea\s+milk|flax\s+milk|macadamia\s+milk|banana\s+milk|oat\s+beverage|almond\s+beverage|soy\s+beverage|coconut\s+beverage|milked\s+\w+|milk\s+thistle|peanut\s+butter|almond\s+butter|cashew\s+butter|hazelnut\s+butter|walnut\s+butter|pecan\s+butter|pistachio\s+butter|macadamia\s+butter|sunflower\s+(?:seed\s+)?butter|sunbutter|pumpkin\s+seed\s+butter|sesame\s+butter|cocoa\s+butter|shea\s+butter|mango\s+butter|apple\s+butter|pumpkin\s+butter|cookie\s+butter|fruit\s+butter|butter\s+beans?|butter\s+lettuce|butter\s+potato\w*|butternut(?:\s+squash)?|cream\s+of\s+(?:tartar|coconut|rice|wheat)|cream\s+soda|coconut\s+cream|oat\s+cream\w*|almond\s+cream\w*|soy\s+cream\w*|coconut\s+cream\w*|plant\s+cream\w*|lactic\s+acid|calcium\s+lactate|sodium\s+lactate|sodium\s+stearoyl\s+lactylate)\b/gi,
       " ",
     );
     const m = dairyCleaned.match(
-      /\b(buttermilk|sour\s+cream|half\s+and\s+half|milk|cream|butter|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|lactalbumin)\b/i,
+      /\b(buttermilk|sour\s+cream|half\s+and\s+half|milk|milkfat|butterfat|butteroil|cream|butter|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|lactalbumin)\b/i,
     );
     if (m) {
       alerts.push({
@@ -164,8 +176,13 @@ export function evaluateDietaryAlerts(
     }
   }
 
-  if (selected.has("wheat_gluten") && !/\b(gluten[\s-]*free|grain[\s-]*free|celiac)\b/i.test(productTitle)) {
-    const wheatCleaned = text.replace(/\b(buckwheat|wheat\s*grass|wheat[\s-]*free|gluten[\s-]*free)\b/gi, " ");
+  if (selected.has("wheat_gluten")) {
+    const titleClaimsGlutenFree = /\b(gluten[\s-]*free|grain[\s-]*free|wheat[\s-]*free|celiac)\b/i.test(productTitle);
+    const wheatSource = titleClaimsGlutenFree ? ing : text;
+    const wheatCleaned = wheatSource.replace(
+      /\b(buckwheat|wheat\s*grass|wheat[\s-]*free|gluten[\s-]*free|no\s+(?:wheat|gluten)|corn\s+gluten)\b/gi,
+      " ",
+    );
     const m = wheatCleaned.match(
       /\b(vital\s+wheat\s+gluten|graham\s+flour|enriched\s+flour|bleached\s+flour|unbleached\s+flour|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale)\b/i,
     );

@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { isAdminAuthorized } from "@/lib/admin-auth";
-import { lookupLiveAuthoritative } from "@/lib/lookup";
-import { checkRateLimit } from "@/lib/scan";
+import { passesVariantGuard } from "@/lib/drinks-catalog";
+import {
+  isDietaryOrVariantMismatch,
+  lookupLiveAuthoritative,
+  matchesRequestedBrand,
+} from "@/lib/lookup";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
 import { scoreProductYuka, type Category, type Watchlist } from "@/lib/rubric";
-import { resolveSwap, type Store } from "@/lib/swaps";
+import { resolveSwap, STORES, type Store } from "@/lib/swaps";
 import { kvGet, kvSet } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -12,12 +17,24 @@ export const dynamic = "force-dynamic";
 const REPORTS_KV_KEY = "heybroc:label_reports:v1";
 const MAX_STORED_REPORTS = 100;
 
+const ALLOWED_ISSUE_TYPES = new Set([
+  "reformulated",
+  "wrong_variant",
+  "score_question",
+  "wrong_product",
+  "missing_additive",
+  "false_positive",
+  "nutrition_mismatch",
+  "other",
+]);
+
 export interface LabelAuditReportItem {
   id: string;
   createdAt: string;
   productTitle: string;
   brand?: string;
   barcode?: string;
+  store?: Store;
   issueType: string;
   previousIngredients: string;
   verifiedIngredients: string;
@@ -25,9 +42,30 @@ export interface LabelAuditReportItem {
   verifiedScore: number;
   scoreChanged: boolean;
   ingredientsChanged: boolean;
-  resolutionSource: "package_label" | "usda" | "openfoodfacts" | "dsld" | "confirmed_current";
+  resolutionSource:
+    | "package_label"
+    | "usda"
+    | "openfoodfacts"
+    | "dsld"
+    | "confirmed_current"
+    | "unverified";
   status: "auto_updated" | "confirmed_accurate" | "flagged_for_review";
   summary: string;
+}
+
+/** Validates standard GS1 Modulo-10 check digit for GTIN-8, UPC-A (12), EAN-13 (13), and GTIN-14 (14). */
+export function isValidGtin(digits: string): boolean {
+  if (!/^(?:\d{8}|\d{12,14})$/.test(digits)) return false;
+  if (/^0+$/.test(digits)) return false;
+  let sum = 0;
+  const len = digits.length;
+  for (let i = 0; i < len - 1; i++) {
+    const d = digits.charCodeAt(i) - 48;
+    const weight = (len - 1 - i) % 2 === 1 ? 3 : 1;
+    sum += d * weight;
+  }
+  const expectedCheck = (10 - (sum % 10)) % 10;
+  return expectedCheck === digits.charCodeAt(len - 1) - 48;
 }
 
 function normalizeIngForCompare(raw: string): string {
@@ -87,7 +125,7 @@ function sanitizeStringArray(value: unknown, maxItems: number, maxLen = 64): str
 export async function POST(req: Request) {
   const forwarded = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const ip = forwarded.split(",")[0].trim() || "127.0.0.1";
-  const allowed = await checkRateLimit(`label-report:${ip}`);
+  const allowed = await checkRateLimitAsync(`label-report:${ip}`);
   if (!allowed) {
     return NextResponse.json(
       { ok: false, error: "Too many verification requests. Please wait a moment and try again." },
@@ -108,12 +146,31 @@ export async function POST(req: Request) {
 
   const productTitle = coerceString(body.productTitle, 300);
   const brand = coerceString(body.brand, 120);
-  const barcode = coerceString(body.barcode, 64).replace(/\D/g, "").slice(0, 14) || undefined;
+  const rawBarcode = coerceString(body.barcode, 64);
+  let barcode: string | undefined;
+  if (rawBarcode) {
+    const strippedBarcode = rawBarcode.replace(/[\s-]+/g, "");
+    if (!isValidGtin(strippedBarcode)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Invalid UPC/GTIN barcode. Expected an 8-, 12-, 13-, or 14-digit barcode with a valid check digit.",
+        },
+        { status: 400 }
+      );
+    }
+    barcode = strippedBarcode;
+  }
+
   const currentIngredients = coerceString(body.currentIngredients, 6000);
   const reportedIngredients = coerceString(body.reportedIngredients, 6000);
-  const issueType = coerceString(body.issueType, 40) || "reformulated";
-  const storeRaw = coerceString(body.store, 32);
-  const store: Store = (storeRaw || "walmart") as Store;
+  const issueTypeRaw = coerceString(body.issueType, 40).toLowerCase();
+  const issueType = ALLOWED_ISSUE_TYPES.has(issueTypeRaw) ? issueTypeRaw : "reformulated";
+  const storeRaw = coerceString(body.store, 32).toLowerCase();
+  const store: Store = (STORES as readonly string[]).includes(storeRaw)
+    ? (storeRaw as Store)
+    : "walmart";
   const preferStoreBrand = Boolean(body.preferStoreBrand);
   const watchlist: Watchlist | undefined =
     body.watchlist && typeof body.watchlist === "object" && !Array.isArray(body.watchlist)
@@ -129,24 +186,24 @@ export async function POST(req: Request) {
     );
   }
 
+  const hasExplicitProductTitle = Boolean(productTitle || brand);
   const fullTitle = (
     brand && !productTitle.toLowerCase().startsWith(brand.toLowerCase())
       ? `${brand} ${productTitle}`.trim()
       : productTitle || "Scanned Grocery Item"
   ).slice(0, 300);
 
-  const previousScoreObj = scoreProductYuka(
-    currentIngredients || "Water",
-    watchlist,
-    familyWatchlist,
-    { productTitle: fullTitle }
-  );
+  const previousScoreObj = currentIngredients.trim()
+    ? scoreProductYuka(currentIngredients, watchlist, familyWatchlist, { productTitle: fullTitle })
+    : null;
 
-  let verifiedIngredients = currentIngredients;
-  let resolutionSource: LabelAuditReportItem["resolutionSource"] = "confirmed_current";
+  let verifiedIngredients = "";
+  let resolutionSource: LabelAuditReportItem["resolutionSource"] = "unverified";
   let sourceUrl: string | undefined;
   let sourceUpdatedAt: string | null | undefined;
   let resolvedNutrition = undefined;
+  let resolvedProductTitle = productTitle || fullTitle;
+  let resolvedBrand = brand || undefined;
 
   // Priority 1: Shopper provided or OCR'd the physical package ingredient list
   if (reportedIngredients && reportedIngredients.length >= 6) {
@@ -156,35 +213,93 @@ export async function POST(req: Request) {
   } else {
     // Priority 2: Automatic live re-verification against USDA FoodData Central, Open Food Facts & NIH DSLD
     const liveHit = await lookupLiveAuthoritative({
-      productTitle: fullTitle,
+      productTitle: hasExplicitProductTitle ? fullTitle : "",
       barcode,
     });
     if (liveHit && liveHit.ingredients?.trim()) {
+      if (
+        barcode &&
+        hasExplicitProductTitle &&
+        (!matchesRequestedBrand(fullTitle, liveHit.brand, liveHit.productTitle) ||
+          !passesVariantGuard(fullTitle, liveHit.productTitle) ||
+          isDietaryOrVariantMismatch(
+            fullTitle,
+            liveHit.productTitle,
+            liveHit.ingredients,
+            liveHit.nutrition
+          ))
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Barcode ${barcode} resolved to "${liveHit.productTitle}", which conflicts with "${fullTitle}". Please verify the package barcode.`,
+          },
+          { status: 409 }
+        );
+      }
       verifiedIngredients = liveHit.ingredients.trim();
       resolvedNutrition = liveHit.nutrition;
       sourceUrl = liveHit.sourceUrl;
       sourceUpdatedAt = liveHit.sourceUpdatedAt || new Date().toISOString().slice(0, 10);
+      resolvedProductTitle = liveHit.productTitle || resolvedProductTitle;
+      resolvedBrand = liveHit.brand || resolvedBrand;
       if (liveHit.source === "usda") resolutionSource = "usda";
       else if (liveHit.source === "dsld") resolutionSource = "dsld";
       else resolutionSource = "openfoodfacts";
     }
   }
 
+  const hasAuthoritativeEvidence = Boolean(verifiedIngredients.trim());
+
+  if (!hasAuthoritativeEvidence) {
+    const fallbackScore = previousScoreObj?.score ?? 0;
+    const summary =
+      "Queued for label review: live USDA FoodData Central and Open Food Facts records did not return a verified ingredient panel for this item yet. Snap or paste the package ingredients to score immediately.";
+    const reportItem: LabelAuditReportItem = {
+      id: `rep-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      productTitle: fullTitle,
+      brand: brand || undefined,
+      barcode,
+      store,
+      issueType,
+      previousIngredients: currentIngredients,
+      verifiedIngredients: "",
+      previousScore: fallbackScore,
+      verifiedScore: fallbackScore,
+      scoreChanged: false,
+      ingredientsChanged: false,
+      resolutionSource: "unverified",
+      status: "flagged_for_review",
+      summary,
+    };
+    await appendLabelReport(reportItem);
+    return NextResponse.json({
+      ok: true,
+      resolutionSource: "unverified",
+      report: reportItem,
+      verifiedProduct: null,
+      previousResult: previousScoreObj,
+      verifiedResult: null,
+      swap: null,
+    });
+  }
+
   const verifiedScoreObj = scoreProductYuka(
-    verifiedIngredients || currentIngredients || "Water",
+    verifiedIngredients,
     watchlist,
     familyWatchlist,
-    { ...resolvedNutrition, productTitle: fullTitle }
+    { ...resolvedNutrition, productTitle: resolvedProductTitle }
   );
 
   const ingredientsChanged =
-    Boolean(verifiedIngredients) &&
     normalizeIngForCompare(verifiedIngredients) !== normalizeIngForCompare(currentIngredients);
-  const scoreChanged = verifiedScoreObj.score !== previousScoreObj.score;
+  const previousScoreVal = previousScoreObj ? previousScoreObj.score : verifiedScoreObj.score;
+  const scoreChanged = previousScoreObj !== null && verifiedScoreObj.score !== previousScoreObj.score;
 
   const swap = resolveSwap({
     score: verifiedScoreObj.score,
-    productTitle: fullTitle,
+    productTitle: resolvedProductTitle,
     ingredients: verifiedIngredients,
     store,
     preferStoreBrand,
@@ -209,13 +324,13 @@ export async function POST(req: Request) {
           ? "Open Food Facts"
           : resolutionSource === "dsld"
             ? "NIH Supplement Database"
-            : "our deterministic 3-pillar rubric";
+            : "live nutrition data";
 
   const summary =
     status === "auto_updated"
       ? `Auto-updated from ${sourcePretty}: score ${
           scoreChanged
-            ? `adjusted from ${previousScoreObj.score}/100 → ${verifiedScoreObj.score}/100`
+            ? `adjusted from ${previousScoreVal}/100 → ${verifiedScoreObj.score}/100`
             : `confirmed at ${verifiedScoreObj.score}/100`
         } (${verifiedScoreObj.flagged.length} additive flag${verifiedScoreObj.flagged.length === 1 ? "" : "s"}).`
       : `Cross-checked against ${sourcePretty}: current ingredient breakdown and ${verifiedScoreObj.score}/100 score (${verifiedScoreObj.flagged.length} flag${verifiedScoreObj.flagged.length === 1 ? "" : "s"}) are verified accurate.`;
@@ -223,13 +338,14 @@ export async function POST(req: Request) {
   const reportItem: LabelAuditReportItem = {
     id: `rep-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     createdAt: new Date().toISOString(),
-    productTitle: fullTitle,
-    brand: brand || undefined,
+    productTitle: resolvedProductTitle,
+    brand: resolvedBrand,
     barcode,
+    store,
     issueType,
     previousIngredients: currentIngredients,
     verifiedIngredients,
-    previousScore: previousScoreObj.score,
+    previousScore: previousScoreVal,
     verifiedScore: verifiedScoreObj.score,
     scoreChanged,
     ingredientsChanged,
@@ -242,17 +358,18 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
+    resolutionSource,
     report: reportItem,
     verifiedProduct: {
-      title: productTitle || fullTitle,
-      brand: brand || "Verified Label",
+      title: resolvedProductTitle,
+      brand: resolvedBrand || "Verified Label",
       barcode,
       ingredients: verifiedIngredients,
       nutrition: resolvedNutrition,
       sourceUrl,
       sourceUpdatedAt,
     },
-    previousResult: previousScoreObj,
+    previousResult: previousScoreObj ?? verifiedScoreObj,
     verifiedResult: verifiedScoreObj,
     swap,
   });

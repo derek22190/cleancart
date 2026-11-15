@@ -30,12 +30,9 @@ export interface OffNutritionRecord {
 }
 
 /** OFF's *_100g fields are per 100g/100ml; sodium and salt are grams. */
-function boundKcal(raw: number | undefined, convertedFromKj = false): number | undefined {
+function boundKcal(raw: number | undefined): number | undefined {
   if (raw === undefined) return undefined;
-  if (convertedFromKj) return raw <= 905 ? raw : undefined;
-  if (raw <= 905) return raw;
-  const converted = raw / 4.184;
-  return converted <= 905 ? converted : undefined;
+  return raw <= 905 ? raw : undefined;
 }
 
 function boundPct100g(raw: number | undefined): number | undefined {
@@ -53,8 +50,9 @@ export function extractOffNutrition(p: OffNutritionRecord): NutritionInput {
   const sodium = nutrientNumber(n.sodium_100g);
   const salt = nutrientNumber(n.salt_100g);
   const grade = p.nutriscore_grade?.toLowerCase();
-  const caloriesKcal100g =
-    kcal !== undefined ? boundKcal(kcal, false) : boundKcal(kj === undefined ? undefined : kj / 4.184, true);
+  const directKcal = boundKcal(kcal);
+  const kjConverted = kj !== undefined ? boundKcal(kj / 4.184) : undefined;
+  const caloriesKcal100g = directKcal !== undefined ? directKcal : kjConverted;
   const sodiumMg100g = boundSodiumMg100g(
     sodium !== undefined ? sodium * 1000 : salt !== undefined ? salt * 400 : undefined,
   );
@@ -106,15 +104,24 @@ export function extractUsdaNutrition(f: UsdaFood): NutritionInput {
   const find = (ids: number[], numbers: string[], name: RegExp, target: "g" | "mg" | "kcal") => {
     const candidates = rows.filter(n => n.value !== undefined && (ids.includes(n.id!) || numbers.includes(n.number) || name.test(n.name)));
     const direct = candidates.find(n => n.unit === target);
-    if (direct) return target === "kcal" ? boundKcal(direct.value, false) : direct.value;
+    if (direct) {
+      if (target !== "kcal") return direct.value;
+      const boundedDirect = boundKcal(direct.value);
+      if (boundedDirect !== undefined) return boundedDirect;
+    }
     for (const n of candidates) {
-      if (target === "kcal" && n.unit === "kj") return boundKcal(n.value! / 4.184, true);
+      if (target === "kcal" && n.unit === "kj") {
+        const boundedKj = boundKcal(n.value! / 4.184);
+        if (boundedKj !== undefined) return boundedKj;
+      }
       if (target === "g" && n.unit === "mg") return n.value! / 1000;
       if (target === "mg" && n.unit === "g") return n.value! * 1000;
       if (!n.unit && (ids.includes(n.id!) || numbers.includes(n.number))) {
         if (target === "kcal") {
           const fromKj = n.id === 1062 || n.number === "268";
-          return boundKcal(fromKj ? n.value! / 4.184 : n.value!, fromKj);
+          const boundedUnitless = boundKcal(fromKj ? n.value! / 4.184 : n.value!);
+          if (boundedUnitless !== undefined) return boundedUnitless;
+          continue;
         }
         return n.value;
       }

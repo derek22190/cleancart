@@ -659,7 +659,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     category: "Energy Drinks",
     description:
       "High-sugar original energy drink (160mg caffeine, 63g sugar per 16 oz can) containing sugar, glucose, caramel color, sodium benzoate, potassium sorbate, and artificial flavors.",
-    keywords: ["rockstar", "rockstar energy", "rockstar punched", "rockstar original", "energy drink"],
+    keywords: ["rockstar", "rockstar energy", "rockstar original", "energy drink"],
     ingredients:
       "Carbonated Water, Sugar, Glucose, Citric Acid, Taurine, Natural and Artificial Flavors, Sodium Citrate, Caffeine, Caramel Color, Benzoic Acid, Sorbic Acid, L-Carnitine, Inositol, Niacinamide, Calcium Pantothenate, Milk Thistle Extract, Ginkgo Biloba Leaf Extract, Guarana Seed Extract, Panax Ginseng Root Extract, Riboflavin, Pyridoxine Hydrochloride, Cyanocobalamin.",
     nutrition: {
@@ -5389,199 +5389,19 @@ export function hasValidCatalogProvenance(sourceUrl?: string, verifiedAt?: strin
   }
 }
 
-export const KNOWN_BRAND_PATTERNS: RegExp[] = [
-  /\borganic\s+valley\b/i,
-  /\bhorizon(?:\s+organic)?\b/i,
-  /\bfairlife\b/i,
-  /\blactaid\b/i,
-  /\btru\s*moo\b/i,
-  /\bnesquik\b/i,
-  /\bgreat\s+value\b/i,
-  /\bmember'?s\s+mark\b/i,
-  /\bwellsley\s+farms\b/i,
-  /\bsimply\s+nature\b/i,
-  /\baldi\b/i,
-  /\bpublix\b/i,
-  /\bh-?e-?b\b/i,
-  /\bwegmans\b/i,
-  /\bkroger\b/i,
-  /\bnature'?s\s+promise\b/i,
-  /\bmeijer\b/i,
-  /\bup\s*&\s*up\b/i,
-  /\bmarket\s+pantry\b/i,
-  /\bsimple\s+truth\b/i,
-  /\bprivate\s+selection\b/i,
-  /\bgood\s*(?:&|and)\s*gather\b/i,
-  /\bfavorite\s+day\b/i,
-  /\bkirkland(?:\s+signature)?\b/i,
-  /\btrader\s+joe'?s?\b/i,
-  /\b365(?!\s+(?:days?|ct|count|g|mg|oz|ml|cal|calories)\b)\b/i,
-  /\bsignature\s+select\b/i,
-  /\bo\s+organics\b/i,
-  /\bopen\s+nature\b/i,
-  /\bsam'?s\s+choice\b/i,
-  /\bbettergoods\b/i,
-  /\bmillville\b/i,
-  /\bclancy'?s\b/i,
-  /\bspecially\s+selected\b/i,
-  /\blucerne\b/i,
-  /\bdarigold\b/i,
-  /\bshamrock\s+farms\b/i,
-  /\bstonyfield\b/i,
-  /\bmaple\s+hill\b/i,
-  /\bstraus\b/i,
-  /\boatly\b/i,
-  /\bplanet\s+oat\b/i,
-  /\bchobani\b/i,
-  /\bcalifia(?:\s+farms)?\b/i,
-  /\bmalk\b/i,
-  /\belmhurst\b/i,
-  /\bthree\s+trees\b/i,
-  /\bsilk\b/i,
-  /\balmond\s+breeze\b/i,
-  /\bwest\s*soy\b/i,
-  /\beden\s*soy\b/i,
-  /\bpacific\s+foods\b/i,
-  /\bso\s+delicious\b/i,
-  /\bripple\b/i,
-  /\bnutpods\b/i,
-  /\bevian\b/i,
-  /\bfiji\b/i,
-  /\bdasani\b/i,
-  /\baquafina\b/i,
-  /\bpure\s+life\b/i,
-  /\bnestl[eé]\b/i,
-  /\bniagara\b/i,
-  /\bsmart\s*water\b/i,
-  /\bessentia\b/i,
-  /\bcore\s+hydration\b/i,
-  /\bpoland\s+spring\b/i,
-  /\bdeer\s+park\b/i,
-  /\bice\s+mountain\b/i,
-  /\bozarka\b/i,
-  /\bzephyrhills\b/i,
-  /\bcrystal\s+geyser\b/i,
-  /\bmountain\s+valley\b/i,
-  /\bacqua\s+panna\b/i,
-  /\bwaiakea\b/i,
-  /\bperrier\b/i,
-  /\btopo\s+chico\b/i,
-  /\b(?:san\s+)?pellegrino\b/i,
-  /\bsaratoga\b/i,
-  /\bgerolsteiner\b/i,
-  /\bliquid\s+death\b/i,
-  /\bspindrift\b/i,
-  /\bwaterloo\b/i,
-  /\bbubly\b/i,
-  /\bla\s*croix\b/i,
-  /\bpolar\b/i,
-  /\bnixie\b/i,
-  /\bsparkling\s+ice\b/i,
-  /\bvitamin\s*water\b/i,
-  /\bpropel\b/i,
-  /\buncle\s+matt'?s?\b/i,
-  /\bsimply\s+(?:orange|lemonade|limeade|apple|peach|watermelon|grapefruit)\b/i,
-  /\bminute\s+maid\b/i,
-  /\btropicana\b/i,
-  /\bflorida'?s\s+natural\b/i,
-  /\bnatalie'?s\b/i,
-  /\bmartinelli'?s?\b/i,
-  /\bmott'?s?\b/i,
-  /\bpom\s+wonderful\b/i,
-  /\bwelch'?s?\b/i,
-  /\bocean\s+spray\b/i,
-  /\bhonest\s+kids\b/i,
-  /\bcapri\s*sun\b/i,
-  /\bhi[- ]?c\b/i,
-  /\bsunny\s*d\b/i,
-  /\bhawaiian\s+punch\b/i,
-  /\bkool[- ]?aid\b/i,
-  /\bbolthouse(?:\s+farms)?\b/i,
-  /\bnaked\s+juice\b/i,
-  /\bsuja\b/i,
-  /\bharmless\s+harvest\b/i,
-  /\bvita\s+coco\b/i,
-  /\bgatorade\b/i,
-  /\bpowerade\b/i,
-  /\bbody\s*armor\b/i,
-  /\bliquid\s+i\.?v\.?\b/i,
-  /\bpedialyte\b/i,
-  /\belectrolit\b/i,
-  /\bnuun\b/i,
-  /\blmnt\b/i,
-  /\bnooma\b/i,
-  /\bla\s+colombe\b/i,
-  /\bdunkin'?\b/i,
-  /\bstarbucks\b/i,
-  /\bstok\b/i,
-  /\barizona\b/i,
-  /\bgold\s+peak\b/i,
-  /\bpure\s+leaf\b/i,
-  /\bjust\s+ice\s+tea\b/i,
-  /\bito\s+en\b/i,
-  /\bgt'?s\b/i,
-  /\bhealth[- ]?ade\b/i,
-  /\bbrew\s+dr\b/i,
-  /\bkevita\b/i,
-  /\b(?:coca[\s-]*cola|coke)\b/i,
-  /\bpepsi\b/i,
-  /\bdr\.?\s*pepper\b/i,
-  /\b(?:mountain|mtn)\s+dew\b/i,
-  /\bsprite\b/i,
-  /\b7\s*up\b/i,
-  /\bstarry\b/i,
-  /\bfanta\b/i,
-  /\bsunkist\b/i,
-  /\bcrush\b/i,
-  /\bjarritos\b/i,
-  /\ba\s*&\s*w\b/i,
-  /\bbarq'?s\b/i,
-  /\bmug\s+root\s+beer\b/i,
-  /\bschweppes\b/i,
-  /\bcanada\s+dry\b/i,
-  /\bzevia\b/i,
-  /\bolipop\b/i,
-  /\bpoppi\b/i,
-  /\bbig\s+k\b/i,
-  /\bred\s+bull\b/i,
-  /\bmonster(?!\s+(?:trail|cookies?|munch|mash|mix)\b)\b/i,
-  /\bcelsius\b/i,
-  /\balani(?:\s+nu)?\b/i,
-  /\bghost(?!\s+(?:peppers?|chilis?|chiles?)\b)\b/i,
-  /\breign\b/i,
-  /\bbang\b/i,
-  /\brockstar\b/i,
-  /\bpremier\s+protein\b/i,
-  /\bmuscle\s+milk\b/i,
-  /\bowyn\b/i,
-  /\borgain\b/i,
-  /\bgerber\b/i,
-  /\bbeech-?nut\b/i,
-  /\bearth'?s\s+best\b/i,
-  /\bhappy\s+baby\b/i,
-  /\bplum\s+organics\b/i,
-  /\bonce\s+upon\s+a\s+farm\b/i,
-  /\bbutterball\b/i,
-  /\bpanera(?:\s+bread)?\b/i,
-  /\bvelveeta\b/i,
-  /\bbreyers\b/i,
-  /\bhershey'?s\b/i,
-  /\bcampbell'?s\b/i,
-  /\boreo\b/i,
-  /\bjell-?o\b/i,
-  /\brx\s*bars?\b/i,
-  /(?<!\bvitamin\s+)(?<!\bgrade\s+)\ba(?:\.\s*|-?)1\.?(?!\s*%|\w)/i,
-  /\bm\s*&\s*m'?s?\b/i,
-];
+import {
+  SHARED_BRAND_PATTERNS,
+  hasConflictingBrand as sharedHasConflictingBrand,
+} from "./brands";
+
+export const KNOWN_BRAND_PATTERNS: RegExp[] = SHARED_BRAND_PATTERNS;
 
 export function hasConflictingBrand(query: string, candidateText: string): boolean {
-  for (const brandRe of KNOWN_BRAND_PATTERNS) {
-    if (brandRe.test(query) && !brandRe.test(candidateText)) {
-      return true;
-    }
-  }
-  return false;
+  return sharedHasConflictingBrand(query, candidateText);
 }
+
+const SAFE_NON_VARIANT_LIGHT_RE =
+  /\b(?:chunk\s+)?light\s+tuna\b|\blight\s+(?:roast\w*|brown(?:\s+sugar)?|corn(?:\s+syrup)?|amber|red\s+kidney|pink|olive\s+oil)\b|\blight\s+cream(?!\s+cheese)\b|\blightly\b/gi;
 
 export function passesVariantGuard(query: string, candidateTitle: string, options?: { allowCleanerSwap?: boolean }): boolean {
   const q = query.toLowerCase();
@@ -5618,6 +5438,37 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     if (/\bwhole\b/.test(q) && (/(?:^|\s)[012]\s*%/.test(t) || /\b(skim|nonfat|fat[ -]*free|reduced[ -]*fat|low[ -]*fat)\b/.test(t))) return false;
     if (/\b(skim|nonfat|fat[ -]*free)\b/.test(q) && !/\b(skim|nonfat|fat[ -]*free)\b/.test(t)) return false;
   }
+
+  // FDA 21 CFR 101.61 Sodium Claim Tiers (distinct forward & reverse when !allowCleanerSwap)
+  const UNSALTED_RE = /\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\bunsalted\b|\bwithout\s+salt\b/;
+  const LOW_SODIUM_RE = /\b(?:very\s+)?low[\s-]*sodium\b/;
+  const REDUCED_SODIUM_RE = /\b(?:reduced|less|lower)[\s-]*sodium\b|\b\d+\s*%\s*less\s+sodium\b/;
+  const LIGHTLY_SALTED_RE = /\blightly\s+salted\b|\bhint\s+of\s+salt\b/;
+  const EXPLICIT_SALTED_RE = /(?<!\blightly\s+)\bsalted\b/;
+
+  if (UNSALTED_RE.test(q) && !UNSALTED_RE.test(t)) return false;
+  if (LOW_SODIUM_RE.test(q) && !LOW_SODIUM_RE.test(t)) return false;
+  if (REDUCED_SODIUM_RE.test(q) && !REDUCED_SODIUM_RE.test(t)) return false;
+  if (LIGHTLY_SALTED_RE.test(q) && !LIGHTLY_SALTED_RE.test(t)) return false;
+  if (EXPLICIT_SALTED_RE.test(q) && UNSALTED_RE.test(t)) return false;
+
+  // FDA 21 CFR 101.62 Fat Claim Tiers (fat-free vs low-fat vs reduced-fat vs light)
+  const FAT_FREE_RE = /\bfat[\s-]*free\b|\bnon[\s-]*fat\b|\bskim\b|(?:^|\s)0\s*%(?!\s*(?:juice|trans))/;
+  const LOW_FAT_RE = /\blow[\s-]*fat\b|(?:^|\s)1\s*%(?!\s*(?:juice|trans))/;
+  const REDUCED_FAT_RE =
+    /\b(?:reduced|less|lower)[\s-]*fat\b|(?:^|\s)2\s*%(?!\s*(?:juice|trans))|\b1\/3\s+less(?:\s+fat)?\b|\bneufch[aâ]tel\b/;
+
+  if (FAT_FREE_RE.test(q) && !FAT_FREE_RE.test(t)) return false;
+  if (LOW_FAT_RE.test(q) && !LOW_FAT_RE.test(t)) return false;
+  if (REDUCED_FAT_RE.test(q) && !REDUCED_FAT_RE.test(t)) return false;
+
+  const qLight = q.replace(SAFE_NON_VARIANT_LIGHT_RE, " ");
+  const tLight = t.replace(SAFE_NON_VARIANT_LIGHT_RE, " ");
+  const LIGHT_VARIANT_RE = /\b(?:light|lite|lyte)\b/;
+  if (LIGHT_VARIANT_RE.test(qLight) && !LIGHT_VARIANT_RE.test(tLight)) return false;
+  if (/\bin\s+(?:extra\s+)?light\s+syrup\b/.test(q) && /\bin\s+heavy\s+syrup\b/.test(t)) return false;
+  if (/\bin\s+heavy\s+syrup\b/.test(q) && /\bin\s+(?:extra\s+)?light\s+syrup\b/.test(t)) return false;
+
   const variantTokens: [RegExp, RegExp][] = [
     [/\bplain\b/, /\bplain\b/],
     [/\bunflavored\b/, /\bunflavored\b/],
@@ -5657,20 +5508,11 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\balmond\s*milk\b/, /\balmond\s*milk\b|\balmond\s+beverage\b|\bmilked\s+almonds\b/],
     [/\borganic\b/, /\borganic\b/],
     [/\bplant(?:[ -]*based)?\b/, /\bplant(?:[ -]*based)?\b/],
-    [
-      /\b(?:low|less|reduced)[\s-]*sodium\b|\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\bunsalted\b/,
-      /\b(?:low|less|reduced)[\s-]*sodium\b|\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\bunsalted\b/,
-    ],
     [/\bketo\b/, /\bketo\b/],
     [/\b(?:low|lo)[\s-]*carb\b/, /\b(?:low|lo)[\s-]*carb\b|\bketo\b/],
-    [
-      /\b(?:reduced|low|less)[\s-]*fat\b|\blowfat\b|\bfat[\s-]*free\b|\bnonfat\b/,
-      /\b(?:reduced|low|less)[\s-]*fat\b|\blowfat\b|\bfat[\s-]*free\b|\bnonfat\b|\bskim\b|(?:^|\s)[012]\s*%|\blight\b|\blite\b/,
-    ],
-    [
-      /\blite\b|\blight\b(?!\s+(?:roast\w*|tuna|brown|corn|cream|syrup)\b)/,
-      /\blight\b|\blite\b|\blyte\b/,
-    ],
+    [/\bcondensed\b/, /\bcondensed\b/],
+    [/\bhomestyle\b/, /\bhomestyle\b/],
+    [/\bchunky\b(?!\s+monkey\b)/, /\bchunky\b|\bcrunchy\b/],
   ];
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;
@@ -5689,12 +5531,28 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bdoubleshot\s+energy\b/, /\benergy\b/],
     [/\bmatcha\s+green\s+tea\s+latte\b|\bmilk\s+tea\b/, /\bmilk\s+tea\b|\blatte\b/],
     [/\bliquid\s+death\s+mountain\s+water\b/, /\bmountain\s+water\b|\bstill\s+water\b/],
-    [/\bno\s+salt(?:\s+added)?\b|\bsalt[\s-]*free\b|\blow\s+sodium\b/, /\bno\s+salt\b|\bsalt[\s-]*free\b|\bunsalted\b|\blow\s+sodium\b/],
   ];
   for (const [tRe, qRe] of reverseStrict) {
     if (tRe.test(t) && !qRe.test(q)) return false;
   }
   if (!options?.allowCleanerSwap) {
+    if (UNSALTED_RE.test(t) && !UNSALTED_RE.test(q)) return false;
+    if (LOW_SODIUM_RE.test(t) && !LOW_SODIUM_RE.test(q)) return false;
+    if (REDUCED_SODIUM_RE.test(t) && !REDUCED_SODIUM_RE.test(q)) return false;
+    if (LIGHTLY_SALTED_RE.test(t) && !LIGHTLY_SALTED_RE.test(q)) return false;
+    if (FAT_FREE_RE.test(t) && !FAT_FREE_RE.test(q)) return false;
+    if (LOW_FAT_RE.test(t) && !LOW_FAT_RE.test(q)) return false;
+    if (REDUCED_FAT_RE.test(t) && !/\bfairlife\b/.test(t) && !REDUCED_FAT_RE.test(q)) return false;
+    if (LIGHT_VARIANT_RE.test(tLight) && !LIGHT_VARIANT_RE.test(qLight)) return false;
+    if (
+      /\bhomestyle\b/.test(t) &&
+      /\bsoup\b/.test(t) &&
+      !/representative/i.test(t) &&
+      !/\bhomestyle\b/.test(q)
+    ) {
+      return false;
+    }
+    if (/\bchunky\b(?!\s+monkey\b)/.test(t) && !/\bchunky\b/.test(q)) return false;
     if (
       /\bunsweetened\b/.test(t) &&
       !/\b(unsweetened|0g\s+sugar|no\s+sugar|sugar[\s-]*free|zero)\b/.test(q) &&
@@ -5756,7 +5614,7 @@ export function matchDrinkCatalog(query: string): DrinkCatalogEntry | null {
       if (!passesVariantGuard(q, item.title)) {
         continue;
       }
-      if (hasConflictingBrand(q, `${item.brand} ${item.title}`)) {
+      if (hasConflictingBrand(q, `${item.brand} ${item.title} ${item.keywords.join(" ")}`)) {
         continue;
       }
       return {

@@ -657,18 +657,20 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   }
   const genericBrand = /^(conventional grocery|clean grocery verified|usda verified|fresh whole food|fresh produce|fresh meat & eggs|whole nuts, seeds & legumes|.*category estimate.*)$/i;
   const callerWords = productTitle.split(/\s+/).filter(Boolean);
-  // If the caller/screen-reader provided a full store product title (3+ words), preserve it
-  // so a store brand (e.g. "Great Value", "Wellsley Farms") is never overwritten by a different brand ("Dairy Pure").
+  // Preserve caller's raw store title only when scoring direct screen-captured ingredients;
+  // for validated OFF, USDA, DSLD, and catalog matches, always surface the canonical product title.
   const shouldPrependBrand =
-    callerWords.length < 3 &&
-    found.brand &&
-    !genericBrand.test(found.brand) &&
-    !found.productTitle.toLowerCase().includes(found.brand.toLowerCase());
+    (found.source !== "screen" || callerWords.length < 3) &&
+    Boolean(
+      found.brand &&
+      !genericBrand.test(found.brand) &&
+      !found.productTitle.toLowerCase().includes(found.brand.toLowerCase()),
+    );
   const isAllLowerQuery = productTitle === productTitle.toLowerCase();
   const isCatalogPrefix = found.productTitle.toLowerCase().startsWith(productTitle.toLowerCase());
   const isCategoryEstimate = Boolean(found.brand && /category estimate/i.test(found.brand));
   const baseTitle = (
-    found.source !== "catalog" && callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
+    found.source === "screen" && callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
       ? productTitle
       : shouldPrependBrand
         ? `${found.brand} ${found.productTitle}`

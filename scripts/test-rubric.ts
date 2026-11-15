@@ -4299,10 +4299,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       )
     );
 
-    // P2 #14: Per-100g upper bounds, kJ-in-kcal conversion, and sweetener-first solid plausibility
+    // P2 #14: Per-100g upper bounds, kJ-corroborated >905 conversion, and sweetener-first solid plausibility
     const offBounded = extractOffNutrition({
       nutriments: {
         "energy-kcal_100g": 2100,
+        energy_100g: 2100,
         sugars_100g: 150,
         "saturated-fat_100g": 120,
         fiber_100g: 110,
@@ -4310,14 +4311,19 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         sodium_100g: 50,
       },
     });
-    const offImpossibleKcal = extractOffNutrition({ nutriments: { "energy-kcal_100g": 5000 } });
+    const offUncorroboratedKcal = extractOffNutrition({ nutriments: { "energy-kcal_100g": 2100 } });
+    const offImpossibleKcal = extractOffNutrition({ nutriments: { "energy-kcal_100g": 5000, energy_100g: 5000 } });
     const usdaBounded = extractUsdaNutrition({
       foodNutrients: [
         { nutrientName: "Energy", unitName: "KCAL", value: 2100 },
+        { nutrientName: "Energy", unitName: "KJ", value: 2100 },
         { nutrientName: "Total Sugars", unitName: "G", value: 150 },
         { nutrientName: "Protein", unitName: "G", value: 250 },
         { nutrientName: "Sodium, Na", unitName: "MG", value: 50000 },
       ],
+    });
+    const usdaUncorroboratedKcal = extractUsdaNutrition({
+      foodNutrients: [{ nutrientName: "Energy", unitName: "KCAL", value: 2100 }],
     });
     const candyImpossibleZero = scoreProductYuka("Sugar, Corn Syrup, Citric Acid.", {}, [], {
       productTitle: "Fruit Hard Candy",
@@ -4330,10 +4336,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       productKind: "food",
     });
     check(
-      "P2 #14: extractOffNutrition/extractUsdaNutrition convert kJ-in-kcal (<=905) and drop >100g/>40000mg outliers, and sweetener-first solids ignore impossible <15 kcal / <1g sugar",
+      "P2 #14: extractOffNutrition/extractUsdaNutrition convert >905 energy only when corroborated by kJ, drop uncorroborated >905 kcal & >100g/>40000mg outliers, and sweetener-first solids ignore impossible <15 kcal / <1g sugar",
       Boolean(
         offBounded.caloriesKcal100g !== undefined &&
           Math.round(offBounded.caloriesKcal100g) === 502 &&
+          offUncorroboratedKcal.caloriesKcal100g === undefined &&
           offBounded.sugarsG100g === undefined &&
           offBounded.saturatedFatG100g === undefined &&
           offBounded.fiberG100g === undefined &&
@@ -4342,6 +4349,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           offImpossibleKcal.caloriesKcal100g === undefined &&
           usdaBounded.caloriesKcal100g !== undefined &&
           Math.round(usdaBounded.caloriesKcal100g) === 502 &&
+          usdaUncorroboratedKcal.caloriesKcal100g === undefined &&
           usdaBounded.sugarsG100g === undefined &&
           usdaBounded.proteinG100g === undefined &&
           usdaBounded.sodiumMg100g === undefined &&
@@ -4350,7 +4358,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       )
     );
 
-    // P2 #15: POST /api/label-report safe coercion & length/array caps
+    // P2 #15: POST /api/label-report safe coercion, GTIN validation, and allowlist/length caps
     const labelReportRes = await labelReportMod.POST(
       new Request("http://localhost:3000/api/label-report", {
         method: "POST",
@@ -4358,7 +4366,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         body: JSON.stringify({
           productTitle: "T".repeat(500),
           brand: 98765,
-          barcode: "0012-3456-7890-1234-9999",
+          barcode: "00-12345-67890-5",
+          store: "untrusted-store-xyz",
           currentIngredients: "C".repeat(8500),
           reportedIngredients: "Water, " + "R".repeat(8500),
           issueType: "I".repeat(100),
@@ -4373,26 +4382,40 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         productTitle?: string;
         brand?: string;
         barcode?: string;
+        store?: string;
         previousIngredients?: string;
         verifiedIngredients?: string;
         issueType?: string;
       };
     };
+    const invalidOverlongBarcodeRes = await labelReportMod.POST(
+      new Request("http://localhost:3000/api/label-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.77.67" },
+        body: JSON.stringify({
+          productTitle: "Test Cereal",
+          barcode: "0012-3456-7890-1234-9999",
+          reportedIngredients: "Whole Grain Oats, Sugar, Salt.",
+        }),
+      })
+    );
     check(
-      "P2 #15: POST /api/label-report coerces non-string inputs without throwing and enforces field & watchlist caps",
+      "P2 #15: POST /api/label-report coerces non-string inputs without throwing, validates GTIN check digits (400 on invalid/overlong), and enforces store/issueType allowlists & caps",
       Boolean(
         labelReportRes.status === 200 &&
           labelReportJson.ok === true &&
           (labelReportJson.report?.productTitle?.length ?? 999) <= 300 &&
           labelReportJson.report?.brand === "98765" &&
-          labelReportJson.report?.barcode?.length === 14 &&
+          labelReportJson.report?.barcode === "0012345678905" &&
+          labelReportJson.report?.store === "walmart" &&
           (labelReportJson.report?.previousIngredients?.length ?? 9999) <= 6000 &&
           (labelReportJson.report?.verifiedIngredients?.length ?? 9999) <= 6000 &&
-          (labelReportJson.report?.issueType?.length ?? 99) <= 40
+          labelReportJson.report?.issueType === "reformulated" &&
+          invalidOverlongBarcodeRes.status === 400
       )
     );
 
-    // P2 #16: POST /api/apple/retention X.509 x5c chain verification and root CA fingerprint pinning
+    // P2 #16: POST /api/apple/retention X.509 x5c chain verification and mandatory root CA fingerprint pinning
     const derLen = (len: number): Buffer => {
       if (len < 0x80) return Buffer.from([len]);
       const hex = len.toString(16).padStart(len > 0xff ? 4 : 2, "0");
@@ -4428,8 +4451,12 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       notBefore: Date;
       notAfter: Date;
       isCa: boolean;
+      sigHash?: "sha256" | "sha384";
     }): Buffer => {
-      const sigAlg = derSeq(derOid([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]));
+      const sigAlg =
+        opts.sigHash === "sha384"
+          ? derSeq(derOid([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x03]))
+          : derSeq(derOid([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]));
       const version = derTlv(0xa0, derTlv(0x02, Buffer.from([0x02])));
       const serial = derTlv(0x02, Buffer.from([opts.serial]));
       const validity = derSeq(derUtcTime(opts.notBefore), derUtcTime(opts.notAfter));
@@ -4451,7 +4478,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         spki,
         exts
       );
-      const sig = cryptoMod.sign("sha256", tbs, opts.issuerPrivKey);
+      const sig = cryptoMod.sign(opts.sigHash || "sha256", tbs, opts.issuerPrivKey);
       return derSeq(tbs, sigAlg, derTlv(0x03, Buffer.concat([Buffer.from([0x00]), sig])));
     };
 
@@ -4501,22 +4528,53 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       notAfter: certNa,
       isCa: true,
     });
+    const selfSignedLeafNonCaDer = buildTestX509Der({
+      serial: 5,
+      issuerCn: "Apple Root CA - G3",
+      subjectCn: "Apple Root CA - G3",
+      subjectPubKey: leafKp.publicKey,
+      issuerPrivKey: leafKp.privateKey,
+      notBefore: certNb,
+      notAfter: certNa,
+      isCa: false,
+    });
+    const p384LeafKp = cryptoMod.generateKeyPairSync("ec", { namedCurve: "P-384" });
+    const p384LeafDer = buildTestX509Der({
+      serial: 6,
+      issuerCn: "Apple WWDR CA",
+      subjectCn: "App Store P384 Leaf",
+      subjectPubKey: p384LeafKp.publicKey,
+      issuerPrivKey: intKp.privateKey,
+      notBefore: certNb,
+      notAfter: certNa,
+      isCa: false,
+    });
     const rootX509 = new cryptoMod.X509Certificate(rootDer);
 
-    const signRetentionJws = (x5cList?: string[]) => {
+    const signRetentionJws = (
+      x5cList?: string[],
+      claimOverrides?: Record<string, unknown>,
+      signingKey: import("node:crypto").KeyObject = leafKp.privateKey,
+      sigHash: "sha256" | "sha384" = "sha256",
+    ) => {
       const hdr = Buffer.from(
         JSON.stringify(x5cList ? { alg: "ES256", x5c: x5cList } : { alg: "ES256" })
       ).toString("base64url");
-      const pay = Buffer.from(
-        JSON.stringify({
-          originalTransactionId: "unknown_tx_x5c",
-          productId: "com.heybroc.pro.annual",
-          environment: "Sandbox",
-        })
-      ).toString("base64url");
+      const baseClaims: Record<string, unknown> = {
+        originalTransactionId: "unknown_tx_x5c",
+        productId: "com.heybroc.pro.annual",
+        bundleId: "com.heybroc.app",
+        signedDate: Date.now(),
+        environment: "Sandbox",
+        ...claimOverrides,
+      };
+      for (const [k, v] of Object.entries(baseClaims)) {
+        if (v === undefined) delete baseClaims[k];
+      }
+      const pay = Buffer.from(JSON.stringify(baseClaims)).toString("base64url");
       const sig = cryptoMod
-        .sign("sha256", Buffer.from(`${hdr}.${pay}`, "utf8"), {
-          key: leafKp.privateKey,
+        .sign(sigHash, Buffer.from(`${hdr}.${pay}`, "utf8"), {
+          key: signingKey,
           dsaEncoding: "ieee-p1363",
         })
         .toString("base64url");
@@ -4525,13 +4583,42 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
     const prevReqX5cAudit = process.env.APPLE_RETENTION_REQUIRE_X5C;
     const prevRootShaAudit = process.env.APPLE_ROOT_CA_SHA256;
+    const prevNodeEnvAudit = process.env.NODE_ENV;
     let unsignedStrictStatus = 0;
     let validX5cStatus = 0;
     let wrongPinStatus = 0;
     let nonAppleRootStatus = 0;
+    let prodUnpinnedAppleCnStatus = 0;
+    let repeatedLeafCaFalseStatus = 0;
+    let p384LeafStatus = 0;
+    let wrongBundleStatus = 0;
+    let missingBundleStatus = 0;
+    let staleSignedDateStatus = 0;
+    let nullBodyStatus = 0;
+    let nonStringSignedPayloadStatus = 0;
     try {
       delete process.env.APPLE_RETENTION_REQUIRE_X5C;
       delete process.env.APPLE_ROOT_CA_SHA256;
+
+      nullBodyStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "null",
+          })
+        )
+      ).status;
+
+      nonStringSignedPayloadStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ signedPayload: 12345 }),
+          })
+        )
+      ).status;
 
       unsignedStrictStatus = (
         await appleRetentionMod.POST(
@@ -4543,8 +4630,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         )
       ).status;
 
-      process.env.APPLE_ROOT_CA_SHA256 = rootX509.fingerprint256;
-      validX5cStatus = (
+      // Production MUST reject a self-signed "Apple Root CA - G3" chain even if APPLE_ROOT_CA_SHA256 is unset or overridden
+      Object.assign(process.env, { NODE_ENV: "production" });
+      delete process.env.APPLE_ROOT_CA_SHA256;
+      prodUnpinnedAppleCnStatus = (
         await appleRetentionMod.POST(
           new Request("http://localhost:3000/api/apple/retention", {
             method: "POST",
@@ -4559,6 +4648,91 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           })
         )
       ).status;
+      Object.assign(process.env, { NODE_ENV: "test" });
+
+      process.env.APPLE_ROOT_CA_SHA256 = rootX509.fingerprint256;
+      const validChainB64 = [
+        leafDer.toString("base64"),
+        intDer.toString("base64"),
+        rootDer.toString("base64"),
+      ];
+      validX5cStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ signedPayload: signRetentionJws(validChainB64) }),
+          })
+        )
+      ).status;
+
+      wrongBundleStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signedPayload: signRetentionJws(validChainB64, { bundleId: "com.attacker.spoof" }),
+            }),
+          })
+        )
+      ).status;
+
+      missingBundleStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signedPayload: signRetentionJws(validChainB64, { bundleId: undefined }),
+            }),
+          })
+        )
+      ).status;
+
+      staleSignedDateStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signedPayload: signRetentionJws(validChainB64, { signedDate: Date.now() - 48 * 3600_000 }),
+            }),
+          })
+        )
+      ).status;
+
+      p384LeafStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signedPayload: signRetentionJws(
+                [p384LeafDer.toString("base64"), intDer.toString("base64"), rootDer.toString("base64")],
+                undefined,
+                p384LeafKp.privateKey,
+                "sha256"
+              ),
+            }),
+          })
+        )
+      ).status;
+
+      const selfLeafX509 = new cryptoMod.X509Certificate(selfSignedLeafNonCaDer);
+      process.env.APPLE_ROOT_CA_SHA256 = selfLeafX509.fingerprint256;
+      const repeatedB64 = selfSignedLeafNonCaDer.toString("base64");
+      repeatedLeafCaFalseStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              signedPayload: signRetentionJws([repeatedB64, repeatedB64, repeatedB64]),
+            }),
+          })
+        )
+      ).status;
 
       process.env.APPLE_ROOT_CA_SHA256 = "00".repeat(32);
       wrongPinStatus = (
@@ -4566,13 +4740,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           new Request("http://localhost:3000/api/apple/retention", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              signedPayload: signRetentionJws([
-                leafDer.toString("base64"),
-                intDer.toString("base64"),
-                rootDer.toString("base64"),
-              ]),
-            }),
+            body: JSON.stringify({ signedPayload: signRetentionJws(validChainB64) }),
           })
         )
       ).status;
@@ -4594,6 +4762,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         )
       ).status;
     } finally {
+      Object.assign(process.env, { NODE_ENV: prevNodeEnvAudit || "test" });
       if (prevReqX5cAudit === undefined) delete process.env.APPLE_RETENTION_REQUIRE_X5C;
       else process.env.APPLE_RETENTION_REQUIRE_X5C = prevReqX5cAudit;
       if (prevRootShaAudit === undefined) delete process.env.APPLE_ROOT_CA_SHA256;
@@ -4601,10 +4770,18 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     }
 
     check(
-      "P2 #16: POST /api/apple/retention enforces ES256 3-cert X.509 chain, 'Apple Root CA' subject, and APPLE_ROOT_CA_SHA256 pinning by default",
+      "P2 #16 + Post-Audit P0-1: POST /api/apple/retention enforces mandatory pinned Apple Root CA in production, CA Basic Constraints, P-256 curve, bundleId, signedDate freshness, and safe 400 body checks",
       Boolean(
-        unsignedStrictStatus === 401 &&
+        nullBodyStatus === 400 &&
+          nonStringSignedPayloadStatus === 400 &&
+          unsignedStrictStatus === 401 &&
+          prodUnpinnedAppleCnStatus === 401 &&
           validX5cStatus === 200 &&
+          wrongBundleStatus === 403 &&
+          missingBundleStatus === 403 &&
+          staleSignedDateStatus === 401 &&
+          p384LeafStatus === 401 &&
+          repeatedLeafCaFalseStatus === 401 &&
           wrongPinStatus === 401 &&
           nonAppleRootStatus === 401
       )
@@ -4624,6 +4801,321 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       "P2 #17: offSearch queries both hyphenated and collapsed possessive brands_tags ('trader-joe-s' OR 'trader-joes')",
       capturedOffUrls.some((u) =>
         u.includes('(brands_tags:"trader-joe-s" OR brands_tags:"trader-joes")')
+      )
+    );
+
+    // ==================== POST-2541d71 DUAL ADVERSARIAL AUDIT REGRESSION SUITE ====================
+    const dietaryMod = await import("../lib/dietary");
+    const scanMod = await import("../lib/scan");
+    globalThis.fetch = async () => Response.json({ status: 0, hits: [], products: [], foods: [] });
+
+    // 1. Consumer-safety dietary contradiction checks (title "-free" claims NEVER suppress actual ingredient allergens)
+    const dairyContradictionAlerts = dietaryMod.evaluateDietaryAlerts(
+      ["dairy"],
+      "Dairy-Free Strawberry Yogurt",
+      "Cultured Pasteurized Whole Milk, Cane Sugar, Whey Protein Concentrate, Pectin."
+    );
+    const dairyCleanPlantAlerts = dietaryMod.evaluateDietaryAlerts(
+      ["dairy"],
+      "Dairy-Free Strawberry Yogurt",
+      "Coconut Milk, Strawberries, Tapioca Starch, Live Cultures; May Contain Milk."
+    );
+    const glutenContradictionAlerts = dietaryMod.evaluateDietaryAlerts(
+      ["wheat_gluten"],
+      "Gluten-Free Artisan Bread",
+      "Water, Enriched Wheat Flour, Barley Malt, Yeast, Salt."
+    );
+    const sugarContradictionAlerts = dietaryMod.evaluateDietaryAlerts(
+      ["sugar_diabetes"],
+      "Sugar-Free Gummy Bears",
+      "Corn Syrup, Sugar, Gelatin, Citric Acid."
+    );
+
+    check(
+      "Post-Audit P0-2: evaluateDietaryAlerts & isDietaryOrVariantMismatch flag actual milk/wheat/sugar/salt contradictions even when productTitle claims '-free' or 'unsalted'",
+      Boolean(
+        dairyContradictionAlerts.some((a) => a.id === "dairy") &&
+          dairyCleanPlantAlerts.length === 0 &&
+          glutenContradictionAlerts.some((a) => a.id === "wheat_gluten") &&
+          sugarContradictionAlerts.some((a) => a.id === "sugar_diabetes") &&
+          lookupMod.isDietaryOrVariantMismatch(
+            "gluten free bread",
+            "Gluten-Free Bread",
+            "Water, Enriched Wheat Flour, Yeast, Salt"
+          ) &&
+          lookupMod.isDietaryOrVariantMismatch(
+            "dairy free yogurt",
+            "Dairy-Free Yogurt",
+            "Cultured Pasteurized Milk, Whey"
+          ) &&
+          lookupMod.isDietaryOrVariantMismatch(
+            "sugar free gummy bears",
+            "Sugar-Free Gummy Bears",
+            "Corn Syrup, Sugar, Gelatin"
+          ) &&
+          lookupMod.isDietaryOrVariantMismatch(
+            "Land O Lakes unsalted butter",
+            "Land O Lakes Butter",
+            "Sweet Cream, Salt",
+            { sodiumMg100g: 643 }
+          ) &&
+          !lookupMod.isDietaryOrVariantMismatch(
+            "unsalted butter",
+            "Unsalted Creamery Butter",
+            "Pasteurized Cream, Natural Flavorings",
+            { sodiumMg100g: 11 }
+          )
+      )
+    );
+
+    // 2. Whole-food pre-head + post-head + single-head-noun grammar across Produce, Meat/Seafood, and Nuts/Legumes
+    const postAuditWholeFoodRejects = [
+      "Beef & Broccoli",
+      "chicken alfredo with broccoli",
+      "chicken tikka masala with basmati rice and peas",
+      "Birds Eye Cheesy Broccoli",
+      "cream of mushroom",
+      "tempura vegetables",
+      "garlic salt",
+      "lemon pepper",
+      "strawberry banana",
+      "lemon lime",
+      "mint",
+      "Salt and Pepper Raw Almonds",
+      "praline pecans",
+      "cinnamon pecans",
+      "maple walnuts",
+      "chili lime cashews",
+      "refried black beans",
+    ];
+    const postAuditWholeFoodRejectResults = await Promise.all(
+      postAuditWholeFoodRejects.map((productTitle) => lookupMod.lookupIngredients({ productTitle }))
+    );
+
+    const postAuditWholeFoodResolves = [
+      "Beef Choice Angus Ribeye Steak, 0.7 - 1.76 lb Tray",
+      "Chicken Thighs Bone-In Skin-On Family Pack",
+      "Jumbo Raw Shrimp, Peeled & Deveined, Tail-On",
+      "Fresh Atlantic Salmon Skin-On Portions, 1 lb",
+      "Fresh Chicken Breast Thin Sliced",
+      "Apple, Honeycrisp",
+      "Potatoes, Russet",
+      "Grapes, Red Seedless",
+      "Fresh Banana Fruit, Each",
+      "Fresh Mint Leaves",
+      "Raw Almonds, No Salt Added",
+    ];
+    const postAuditWholeFoodResolveResults = await Promise.all(
+      postAuditWholeFoodResolves.map((productTitle) => lookupMod.lookupIngredients({ productTitle }))
+    );
+
+    check(
+      "Post-Audit P0-3: Whole-food fallbacks reject prepared meals, seasonings, flavor pairs, and flavored nuts while resolving retailer meat/seafood cuts & inverted '<Noun>, <Variety>' titles",
+      Boolean(
+        postAuditWholeFoodRejectResults.every((r) => r?.nutrition?.isWholeFood !== true) &&
+          postAuditWholeFoodResolveResults.every((r) => r?.nutrition?.isWholeFood === true)
+      )
+    );
+
+    // 3. FDA 21 CFR 101.61/101.62 bidirectional sodium/fat/light/soup variant tiers & canonical runScan titles
+    const campbellsScan = await scanMod.runScan({
+      productTitle: "Campbell's Condensed Chicken Noodle Soup, 10.75 oz Can",
+      skipAnalytics: true,
+    });
+    check(
+      "Post-Audit P1-4: passesVariantGuard enforces bidirectional 21 CFR sodium/fat/light/soup-line tiers and runScan surfaces canonical provider/catalog titles",
+      Boolean(
+        !passesVariantGuard("Swanson Unsalted Chicken Broth", "Swanson 33% Less Sodium Chicken Broth") &&
+          !passesVariantGuard("Swanson Low Sodium Chicken Broth", "Swanson 33% Less Sodium Chicken Broth") &&
+          !passesVariantGuard("Planters Lightly Salted Peanuts", "Planters Unsalted Peanuts") &&
+          !passesVariantGuard("Land O Lakes Salted Butter", "Land O Lakes Unsalted Butter") &&
+          !passesVariantGuard("Horizon 1% Lowfat Milk", "Horizon 2% Reduced Fat Milk") &&
+          !passesVariantGuard("Horizon Fat Free Skim Milk", "Horizon 1% Lowfat Milk") &&
+          !passesVariantGuard("Philadelphia light cream cheese", "Philadelphia Original Cream Cheese") &&
+          !passesVariantGuard("Philadelphia cream cheese", "Philadelphia Light Cream Cheese") &&
+          !passesVariantGuard("Log Cabin light syrup", "Log Cabin Original Syrup") &&
+          !passesVariantGuard("Hellmann's mayonnaise", "Hellmann's Light Mayonnaise") &&
+          !passesVariantGuard("Del Monte Peaches in Light Syrup", "Del Monte Sliced Peaches in Heavy Syrup") &&
+          !passesVariantGuard("Campbell's Homestyle Chicken Noodle Soup", "Campbell's Condensed Chicken Noodle Soup") &&
+          !passesVariantGuard("Campbell's Chunky Chicken Noodle Soup", "Campbell's Condensed Chicken Noodle Soup") &&
+          campbellsScan.ok &&
+          campbellsScan.product.title === "Campbell's Condensed Chicken Noodle Soup"
+      )
+    );
+
+    // 4. Broad-match catalog leak closure, category head-noun guard, brand aliases & co-brand form taxonomy
+    const catalogLeakQueries = [
+      "Rao's Homemade Arrabbiata Sauce, 24 oz",
+      "mandarin oranges in light syrup",
+      "Siete Tostadas",
+      "Rockstar Punched",
+      "Libby's Sliced Peaches in Heavy Syrup, 15 oz",
+      "Campbell's Homestyle Chicken Noodle Soup",
+      "Campbell's Chunky Chicken Noodle Soup",
+      "Larabar Peanut Butter Chocolate Chip",
+    ];
+    const catalogLeakResults = await Promise.all(
+      catalogLeakQueries.map((productTitle) => lookupMod.lookupIngredients({ productTitle }))
+    );
+    const honeyRoastedPeanutsHit = await lookupMod.lookupIngredients({ productTitle: "Honey Roasted Peanuts" });
+    const wasabiAlmondsHit = await lookupMod.lookupIngredients({ productTitle: "wasabi almonds" });
+    const pbChocBarHit = await lookupMod.lookupIngredients({ productTitle: "Peanut Butter Chocolate Chip Bar" });
+    const krogerBigKHit = await lookupMod.lookupIngredients({ productTitle: "Kroger Big K Cola 2 L" });
+    const phillyBrickHit = await lookupMod.lookupIngredients({
+      productTitle: "Philadelphia Original Cream Cheese, 8 oz Brick",
+    });
+    const cokeSodaPopHit = await lookupMod.lookupIngredients({
+      productTitle: "Coca-Cola Classic Soda Pop, 12 fl oz, 12 Pack Cans",
+    });
+    const cheeriosHeartHealthyHit = await lookupMod.lookupIngredients({
+      productTitle: "Cheerios Heart Healthy Cereal, 18 oz",
+    });
+
+    check(
+      "Post-Audit P1-5: Catalog identity guard closes broad-match leaks, category head-noun guard prevents aisle hijacks, house-brand aliases resolve 'Kroger Big K Cola', and relevance/brand guards block co-brand form swaps & 'A1C Foods'",
+      Boolean(
+        catalogLeakResults.every((r) => r === null) &&
+          !/natural\s+sweeteners/i.test(honeyRoastedPeanutsHit?.brand ?? "") &&
+          !/horseradish|wasabi\s+condiments/i.test(wasabiAlmondsHit?.brand ?? "") &&
+          !/^peanut\s+butter\b/i.test(pbChocBarHit?.brand ?? "") &&
+          krogerBigKHit?.source === "catalog" &&
+          /big\s+k/i.test(krogerBigKHit.productTitle) &&
+          phillyBrickHit?.source === "catalog" &&
+          cokeSodaPopHit?.source === "catalog" &&
+          cheeriosHeartHealthyHit?.source === "catalog" &&
+          lookupMod.relevance("Coca-Cola Oreo Soda", "OREO Coca-Cola Sandwich Cookies") === 0 &&
+          lookupMod.relevance("OREO Coca-Cola Sandwich Cookies", "Coca-Cola Oreo Zero Sugar Soda") === 0 &&
+          lookupMod.relevance("Premier Protein Chocolate Shake Multi-Pack", "Premier Protein Chocolate Shake") > 0.7 &&
+          !lookupMod.matchesRequestedBrand("A1 steak sauce", "A1C Foods", "A1C Foods Low Carb Sauce") &&
+          !lookupMod.matchesRequestedBrand("Heinz ketchup", "", "Herr's Heinz Ketchup Potato Chips")
+      )
+    );
+
+    // 5. Whole-fruit beverages, pet/OTC brand collisions, '&' single-ingredient separator, and /api/label-report honesty
+    const freshOjYuka = scoreProductYuka("Oranges.", {}, [], {
+      productTitle: "Fresh Squeezed Orange Juice",
+      caloriesKcal100g: 45,
+      sugarsG100g: 8.4,
+      fiberG100g: 0.2,
+      proteinG100g: 0.7,
+      fruitsVegNutsPct: 100,
+    });
+    const freshOjAsSolidCheck = scoreProductYuka("Oranges.", {}, [], {
+      productTitle: "Sliced Oranges",
+      caloriesKcal100g: 45,
+      sugarsG100g: 8.4,
+      fiberG100g: 0.2,
+      proteinG100g: 0.7,
+      fruitsVegNutsPct: 100,
+    });
+    const lemonadeYuka = scoreProductYuka("Lemons, Water, Cane Sugar.", {}, [], {
+      productTitle: "Old Fashioned Lemonade",
+      caloriesKcal100g: 42,
+      sugarsG100g: 10.2,
+    });
+    const fancyFeastYuka = scoreProductYuka(
+      "Chicken, Poultry Broth, Liver, Meat By-Products, Artificial and Natural Flavors, Tricalcium Phosphate.",
+      {},
+      [],
+      {
+        productTitle: "Fancy Feast Classic Chicken Pate",
+        productKind: "food",
+        caloriesKcal100g: 110,
+        proteinG100g: 11,
+      }
+    );
+    const allegraGelcapsYuka = scoreProductYuka("Corn Starch, Povidone, Microcrystalline Cellulose.", {}, [], {
+      productTitle: "Allegra Allergy 24hr Gelcaps",
+      productKind: "food",
+      caloriesKcal100g: 20,
+    });
+    const offCatFoodHit = lookupMod.offToResult(
+      {
+        product_name: "Classic Pate Salmon Feast",
+        brands: "Fancy Feast",
+        ingredients_text: "Salmon, Fish Broth, Liver.",
+        categories_tags: ["en:pet-foods", "en:cat-foods"],
+      },
+      "Fancy Feast Salmon"
+    );
+
+    const badCheckDigitReportRes = await labelReportMod.POST(
+      new Request("http://localhost:3000/api/label-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.77.68" },
+        body: JSON.stringify({
+          productTitle: "Test Soup",
+          barcode: "012345678901",
+        }),
+      })
+    );
+    const unverifiedEmptyReportRes = await labelReportMod.POST(
+      new Request("http://localhost:3000/api/label-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.77.69" },
+        body: JSON.stringify({
+          productTitle: "Mystery Local Bakery Muffin",
+          brand: "Local Bakery",
+        }),
+      })
+    );
+    const unverifiedEmptyReportJson = (await unverifiedEmptyReportRes.json()) as {
+      ok?: boolean;
+      resolutionSource?: string;
+      verifiedProduct?: unknown;
+      report?: { status?: string };
+    };
+
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("078742000008")) {
+        return Response.json({
+          status: 1,
+          product: {
+            code: "078742000008",
+            product_name: "Original Soymilk",
+            brands: "Great Value",
+            countries_tags: ["en:united-states"],
+            ingredients_text: "Filtered Water, Whole Soybeans, Cane Sugar, Sea Salt, Carrageenan.",
+            nutriments: {
+              "energy-kcal_100g": 45,
+              sugars_100g: 3.3,
+              sodium_100g: 0.045,
+              proteins_100g: 2.9,
+            },
+          },
+        });
+      }
+      return Response.json({ status: 0, hits: [], products: [], foods: [] });
+    };
+    const conflictingBarcodeReportRes = await labelReportMod.POST(
+      new Request("http://localhost:3000/api/label-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.77.70" },
+        body: JSON.stringify({
+          productTitle: "Silk Unsweetened Soymilk",
+          brand: "Silk",
+          barcode: "078742000008",
+        }),
+      })
+    );
+    globalThis.fetch = prevFetch48h;
+
+    check(
+      "Post-Audit P2-6: Whole-fruit juices score on beverage curve, Fancy Feast & Allegra Gelcaps classify as non-food, '&' blocks singleIngredientWholeFoodFlags, and /api/label-report enforces GTIN Mod-10 (400), barcode-title conflict (409), and honest unverified flagged_for_review",
+      Boolean(
+        freshOjYuka.score < freshOjAsSolidCheck.score &&
+          lemonadeYuka.score < 60 &&
+          fancyFeastYuka.yukaBreakdown?.nutriScoreGrade === "N/A" &&
+          allegraGelcapsYuka.yukaBreakdown?.nutriScoreGrade === "N/A" &&
+          offCatFoodHit.nutrition?.productKind === "non-food" &&
+          lookupMod.singleIngredientWholeFoodFlags("Mixed Spread", "Peanuts & Canola Oil") === null &&
+          badCheckDigitReportRes.status === 400 &&
+          unverifiedEmptyReportRes.status === 200 &&
+          unverifiedEmptyReportJson.resolutionSource === "unverified" &&
+          unverifiedEmptyReportJson.verifiedProduct === null &&
+          unverifiedEmptyReportJson.report?.status === "flagged_for_review" &&
+          conflictingBarcodeReportRes.status === 409
       )
     );
   }

@@ -18,9 +18,13 @@ import {
   evaluateZeroLeakageRetentionEligibility,
   getSubscriptionEntitlement,
 } from "@/lib/entitlements";
+import { APPLE_ROOT_FINGERPRINTS_SHA256 } from "../verify/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const MAX_SIGNED_DATE_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_SIGNED_DATE_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 interface AppleRetentionJwsHeader {
   alg?: string;
@@ -37,34 +41,48 @@ interface AppleRealtimeRequestPayload {
   signedDate?: number;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function decodeBase64UrlJson<T>(segment: string): T | null {
   try {
     const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
     const raw = Buffer.from(padded, "base64").toString("utf8");
-    return JSON.parse(raw) as T;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return null;
+    return parsed as T;
   } catch {
     return null;
   }
 }
 
-function normalizeSha256(fingerprint: string): string {
+function normalizeSha256Hex(fingerprint: string): string {
   return fingerprint.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
 }
+
+const PINNED_APPLE_ROOT_HEX = new Set(
+  Array.from(APPLE_ROOT_FINGERPRINTS_SHA256, (fp) => normalizeSha256Hex(fp))
+);
 
 function verifyAppleRetentionJws(
   parts: string[],
   header: AppleRetentionJwsHeader
-): boolean {
+): { ok: boolean; usedX5c: boolean } {
+  const isProduction = process.env.NODE_ENV === "production";
   const allowUnsignedDev =
-    process.env.APPLE_RETENTION_REQUIRE_X5C === "false" &&
-    process.env.NODE_ENV !== "production";
+    process.env.APPLE_RETENTION_REQUIRE_X5C === "false" && !isProduction;
 
   if (!Array.isArray(header.x5c) || header.x5c.length === 0) {
-    return allowUnsignedDev;
+    return { ok: allowUnsignedDev, usedX5c: false };
   }
-  if (header.alg !== "ES256" || header.x5c.length !== 3) {
-    return false;
+  if (
+    header.alg !== "ES256" ||
+    header.x5c.length !== 3 ||
+    !header.x5c.every((c) => typeof c === "string" && c.trim().length > 0)
+  ) {
+    return { ok: false, usedX5c: true };
   }
   try {
     const certs = header.x5c.map(
@@ -75,44 +93,71 @@ function verifyAppleRetentionJws(
       const from = Date.parse(cert.validFrom);
       const to = Date.parse(cert.validTo);
       if (!Number.isFinite(from) || !Number.isFinite(to) || now < from || now > to) {
-        return false;
+        return { ok: false, usedX5c: true };
       }
     }
     const [leafCert, intermediateCert, rootCert] = certs;
+    const leafFp = normalizeSha256Hex(leafCert.fingerprint256 || "");
+    const intFp = normalizeSha256Hex(intermediateCert.fingerprint256 || "");
+    const rootFp = normalizeSha256Hex(rootCert.fingerprint256 || "");
+    if (!leafFp || !intFp || !rootFp) {
+      return { ok: false, usedX5c: true };
+    }
+    // Prevent repeated self-signed certificates in x5c and enforce X.509 Basic Constraints (CA vs end-entity).
+    if (leafFp === intFp || intFp === rootFp || leafFp === rootFp) {
+      return { ok: false, usedX5c: true };
+    }
+    if (leafCert.ca || !intermediateCert.ca || !rootCert.ca) {
+      return { ok: false, usedX5c: true };
+    }
+    // Enforce ES256 key type and NIST P-256 curve (reject P-384 / P-521 / RSA under alg=ES256).
+    if (
+      leafCert.publicKey.asymmetricKeyType !== "ec" ||
+      leafCert.publicKey.asymmetricKeyDetails?.namedCurve !== "prime256v1"
+    ) {
+      return { ok: false, usedX5c: true };
+    }
     if (!leafCert.verify(intermediateCert.publicKey)) {
-      return false;
+      return { ok: false, usedX5c: true };
     }
     if (!intermediateCert.verify(rootCert.publicKey)) {
-      return false;
+      return { ok: false, usedX5c: true };
     }
     if (!rootCert.verify(rootCert.publicKey)) {
-      return false;
-    }
-    if (!rootCert.subject.includes("Apple Root CA")) {
-      return false;
-    }
-    const expectedRootSha256 = (process.env.APPLE_ROOT_CA_SHA256 || "").trim();
-    if (
-      expectedRootSha256 &&
-      normalizeSha256(rootCert.fingerprint256) !== normalizeSha256(expectedRootSha256)
-    ) {
-      return false;
+      return { ok: false, usedX5c: true };
     }
 
+    // Production ALWAYS requires Apple's official Root CA G1/G3 SHA-256 fingerprints.
+    // Non-production tests may supply an explicit 64-hex-char APPLE_ROOT_CA_SHA256 pin override.
+    const customTestPin = !isProduction
+      ? normalizeSha256Hex((process.env.APPLE_ROOT_CA_SHA256 || "").trim())
+      : "";
+    if (customTestPin) {
+      if (customTestPin.length !== 64 || rootFp !== customTestPin) {
+        return { ok: false, usedX5c: true };
+      }
+    } else if (!PINNED_APPLE_ROOT_HEX.has(rootFp)) {
+      return { ok: false, usedX5c: true };
+    }
+
+    if (!parts[2]) {
+      return { ok: false, usedX5c: true };
+    }
     const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, "utf8");
     const sigNorm = parts[2].replace(/-/g, "+").replace(/_/g, "/");
     const sigBytes = Buffer.from(
       sigNorm.padEnd(Math.ceil(sigNorm.length / 4) * 4, "="),
       "base64"
     );
-    return crypto.verify(
+    const sigOk = crypto.verify(
       "sha256",
       signingInput,
       { key: leafCert.publicKey, dsaEncoding: "ieee-p1363" },
       sigBytes
     );
+    return { ok: sigOk, usedX5c: true };
   } catch {
-    return false;
+    return { ok: false, usedX5c: true };
   }
 }
 
@@ -125,17 +170,23 @@ function inferApplePlan(productId?: string): "annual" | "monthly" {
 }
 
 export async function POST(request: Request) {
-  let body: { signedPayload?: string };
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as { signedPayload?: string };
+    rawBody = await request.json();
   } catch {
     return NextResponse.json(
       { error: "Invalid JSON body." },
       { status: 400 }
     );
   }
+  if (!isPlainObject(rawBody) || typeof rawBody.signedPayload !== "string") {
+    return NextResponse.json(
+      { error: "Missing or malformed signedPayload JWS." },
+      { status: 400 }
+    );
+  }
 
-  const signedPayload = (body.signedPayload || "").trim();
+  const signedPayload = rawBody.signedPayload.trim();
   const parts = signedPayload.split(".");
   if (parts.length !== 3 || !parts[0] || !parts[1]) {
     return NextResponse.json(
@@ -153,23 +204,50 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!verifyAppleRetentionJws(parts, header)) {
+  const verification = verifyAppleRetentionJws(parts, header);
+  if (!verification.ok) {
     return NextResponse.json(
       { error: "Invalid Apple JWS signature." },
       { status: 401 }
     );
   }
 
-  const expectedBundleId = (process.env.APPLE_BUNDLE_ID || "").trim();
-  if (
-    expectedBundleId &&
-    claims.bundleId &&
-    claims.bundleId !== expectedBundleId
-  ) {
-    return NextResponse.json(
-      { error: "Bundle ID mismatch." },
-      { status: 403 }
-    );
+  const isProduction = process.env.NODE_ENV === "production";
+  const configuredBundleId = (process.env.APPLE_BUNDLE_ID || "").trim();
+  const expectedBundleId = configuredBundleId || "com.heybroc.app";
+  if (verification.usedX5c || isProduction || claims.bundleId !== undefined) {
+    if (
+      typeof claims.bundleId !== "string" ||
+      claims.bundleId.trim() !== expectedBundleId
+    ) {
+      return NextResponse.json(
+        { error: "Bundle ID mismatch." },
+        { status: 403 }
+      );
+    }
+  }
+
+  if (verification.usedX5c || isProduction || claims.signedDate !== undefined) {
+    if (typeof claims.signedDate !== "number" || !Number.isFinite(claims.signedDate)) {
+      return NextResponse.json(
+        { error: "Missing or invalid signedDate claim." },
+        { status: 401 }
+      );
+    }
+    const signedMs =
+      claims.signedDate > 1e9 && claims.signedDate < 1e11
+        ? claims.signedDate * 1000
+        : claims.signedDate;
+    const now = Date.now();
+    if (
+      signedMs < now - MAX_SIGNED_DATE_AGE_MS ||
+      signedMs > now + MAX_SIGNED_DATE_FUTURE_SKEW_MS
+    ) {
+      return NextResponse.json(
+        { error: "Stale or future-dated Apple JWS signedDate." },
+        { status: 401 }
+      );
+    }
   }
 
   const valueMessageId =

@@ -20,7 +20,7 @@ import { checkRateLimitAsync } from "@/lib/scan";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const APPLE_ROOT_FINGERPRINTS_SHA256 = new Set([
+export const APPLE_ROOT_FINGERPRINTS_SHA256 = new Set([
   // Apple Root CA - G3 (App Store Server & StoreKit 2 JWS root)
   "63:34:3A:BF:B8:9A:6A:03:EB:B5:7E:9B:3F:5F:A7:BE:7C:4F:5C:75:6F:30:17:B3:A8:C4:88:C3:65:3E:91:79",
   // Apple Root CA (G1)

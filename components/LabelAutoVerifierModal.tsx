@@ -119,21 +119,23 @@ export default function LabelAutoVerifierModal({
           return;
         }
 
+        const status: "auto_updated" | "confirmed_accurate" | "flagged_for_review" =
+          data.report?.status || (data.verifiedProduct ? "confirmed_accurate" : "flagged_for_review");
         const verifiedScore: number = data.verifiedResult?.score ?? currentScore;
         const flaggedNames: string[] = Array.isArray(data.verifiedResult?.flagged)
           ? data.verifiedResult.flagged.map((f: { name: string }) => f.name)
           : [];
 
         setAuditResponse({
-          summary: data.report?.summary || "Label verified.",
-          status: data.report?.status || "confirmed_accurate",
+          summary: data.report?.summary || "Label review recorded.",
+          status,
           previousScore: data.report?.previousScore ?? currentScore,
           verifiedScore,
-          verifiedIngredients: data.verifiedProduct?.ingredients || currentIngredients,
+          verifiedIngredients: data.verifiedProduct?.ingredients || "",
           flaggedNames,
         });
 
-        if (data.verifiedProduct && data.verifiedResult) {
+        if (data.verifiedProduct && data.verifiedResult && status !== "flagged_for_review") {
           onApplyVerifiedProduct({
             title: data.verifiedProduct.title || productTitle,
             brand: data.verifiedProduct.brand || productBrand,
@@ -380,52 +382,81 @@ export default function LabelAutoVerifierModal({
               padding: "13px 14px",
               borderRadius: 14,
               background:
-                auditResponse.status === "auto_updated" ? "#ecfdf5" : "#f0fdf4",
-              border: "1.5px solid #86efac",
-              color: "#14532d",
+                auditResponse.status === "flagged_for_review"
+                  ? "#fffbeb"
+                  : auditResponse.status === "auto_updated"
+                    ? "#ecfdf5"
+                    : "#f0fdf4",
+              border:
+                auditResponse.status === "flagged_for_review"
+                  ? "1.5px solid #fcd34d"
+                  : "1.5px solid #86efac",
+              color: auditResponse.status === "flagged_for_review" ? "#78350f" : "#14532d",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                {auditResponse.status === "auto_updated"
-                  ? "✓ LABEL & SCORE AUTO-UPDATED"
-                  : "✓ VERIFIED AGAINST LIVE NUTRITION DATA"}
+                {auditResponse.status === "flagged_for_review"
+                  ? "⏳ QUEUED FOR LABEL REVIEW — LIVE LABEL NOT YET AVAILABLE"
+                  : auditResponse.status === "auto_updated"
+                    ? "✓ LABEL & SCORE AUTO-UPDATED"
+                    : "✓ VERIFIED AGAINST LIVE NUTRITION DATA"}
               </span>
-              <span
-                style={{
-                  background: "#16a34a",
-                  color: "#ffffff",
-                  padding: "2px 9px",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 900,
-                }}
-              >
-                {auditResponse.verifiedScore}/100
-              </span>
+              {auditResponse.status !== "flagged_for_review" && (
+                <span
+                  style={{
+                    background: "#16a34a",
+                    color: "#ffffff",
+                    padding: "2px 9px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  {auditResponse.verifiedScore}/100
+                </span>
+              )}
             </div>
-            <p style={{ fontSize: 12.5, lineHeight: 1.45, margin: "6px 0 8px", color: "#166534", fontWeight: 600 }}>
-              {auditResponse.summary}
-            </p>
-            <div
+            <p
               style={{
-                fontSize: 11.5,
-                color: "#334155",
-                background: "#ffffff",
-                borderRadius: 9,
-                padding: "7px 10px",
-                border: "1px solid #bbf7d0",
-                lineHeight: 1.4,
+                fontSize: 12.5,
+                lineHeight: 1.45,
+                margin: "6px 0 8px",
+                color: auditResponse.status === "flagged_for_review" ? "#92400e" : "#166534",
+                fontWeight: 600,
               }}
             >
-              <b>Verified Ingredients:</b> {auditResponse.verifiedIngredients}
-            </div>
+              {auditResponse.summary}
+            </p>
+            {auditResponse.verifiedIngredients && (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "#334155",
+                  background: "#ffffff",
+                  borderRadius: 9,
+                  padding: "7px 10px",
+                  border:
+                    auditResponse.status === "flagged_for_review"
+                      ? "1px solid #fde68a"
+                      : "1px solid #bbf7d0",
+                  lineHeight: 1.4,
+                }}
+              >
+                <b>Verified Ingredients:</b> {auditResponse.verifiedIngredients}
+              </div>
+            )}
             <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
               <button
                 type="button"
                 className="trip-pill"
                 onClick={onClose}
-                style={{ background: "#14532d", color: "#ffffff", borderColor: "#14532d", fontWeight: 800 }}
+                style={{
+                  background: auditResponse.status === "flagged_for_review" ? "#92400e" : "#14532d",
+                  color: "#ffffff",
+                  borderColor: auditResponse.status === "flagged_for_review" ? "#92400e" : "#14532d",
+                  fontWeight: 800,
+                }}
               >
                 Done ✓
               </button>
