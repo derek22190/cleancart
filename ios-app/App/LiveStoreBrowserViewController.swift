@@ -401,6 +401,82 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return r.width > 2 && r.height > 2;
           }
 
+          var APP_INSTALL_CTA_RE = /^(?:get\\s+the\\s+app|open\\s+in\\s+(?:the\\s+)?(?:walmart\\s+|target\\s+|instacart\\s+|sam'?s\\s+club\\s+|bj'?s\\s+|kroger\\s+|amazon\\s+|aldi\\s+|costco\\s+)?app|open\\s+app|use\\s+(?:the\\s+)?app|download\\s+(?:the\\s+)?app|continue\\s+in\\s+app|shop\\s+in\\s+(?:the\\s+)?app)$/i;
+          var APP_INSTALL_HREF_RE = /(?:apps|itunes)\\.apple\\.com|\\.onelink\\.me|\\.app\\.link|\\bbnc\\.lt\\b|app\\.adjust\\.com|\\.adj\\.st|\\.smart\\.link/i;
+
+          function ensureAppBannerSuppressorStyles() {
+            var meta = document.querySelector('meta[name="apple-itunes-app"]');
+            if (meta && meta.parentNode) meta.parentNode.removeChild(meta);
+            if (document.getElementById('hb-app-banner-suppressor')) return;
+            var head = document.head || document.documentElement;
+            if (!head) return;
+            var st = document.createElement('style');
+            st.id = 'hb-app-banner-suppressor';
+            st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+            head.appendChild(st);
+          }
+
+          function dismissRetailerAppBanners() {
+            ensureAppBannerSuppressorStyles();
+            var ctas = document.querySelectorAll('a, button, [role="button"]');
+            var vw = Math.max(280, window.innerWidth || 390);
+            var vh = Math.max(400, window.innerHeight || 844);
+            for (var i = 0; i < ctas.length; i++) {
+              var cta = ctas[i];
+              if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"]'))) continue;
+              var ctaText = clean(cta.textContent || '');
+              var href = String((cta.getAttribute && cta.getAttribute('href')) || '');
+              var matchesCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
+              if (!matchesCta) continue;
+
+              var bannerEl = null;
+              var cur = cta.parentElement;
+              var depth = 0;
+              while (cur && depth < 7) {
+                var tag = (cur.tagName || '').toUpperCase();
+                var cid = String(cur.id || '');
+                if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || cid === '__next' || cid === 'root' || cid === 'app') {
+                  break;
+                }
+                if (typeof cur.getBoundingClientRect === 'function') {
+                  var r = cur.getBoundingClientRect();
+                  var cs = window.getComputedStyle(cur);
+                  var pos = cs ? cs.position : '';
+                  var txtLen = clean(cur.textContent || '').length;
+                  var hasPageContent = Boolean(cur.querySelector && cur.querySelector('h1, input[type="search"], input[type="password"], input[type="email"]'));
+                  var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 36 || r.top <= 135);
+                  if (!hasPageContent && txtLen <= 420 && r.height >= 36 && r.height <= 380 && r.width >= vw * 0.55 && anchoredEdge) {
+                    bannerEl = cur;
+                  }
+                }
+                cur = cur.parentElement;
+                depth++;
+              }
+
+              if (bannerEl && bannerEl.getAttribute('data-hb-app-banner-hidden') !== '1') {
+                bannerEl.setAttribute('data-hb-app-banner-hidden', '1');
+                var btns = bannerEl.querySelectorAll('button, [role="button"]');
+                for (var b = 0; b < btns.length; b++) {
+                  var btn = btns[b];
+                  if (btn === cta) continue;
+                  var bHref = String((btn.getAttribute && btn.getAttribute('href')) || '');
+                  if (bHref && APP_INSTALL_HREF_RE.test(bHref)) continue;
+                  var aria = String((btn.getAttribute && (btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.getAttribute('data-testid') || btn.getAttribute('data-automation-id'))) || '');
+                  var bTxt = clean(btn.textContent || '');
+                  var br = typeof btn.getBoundingClientRect === 'function' ? btn.getBoundingClientRect() : { width: 999, height: 999 };
+                  var isCloseIcon = /^(?:close|dismiss)/i.test(aria) || /(?:close|dismiss)/i.test(aria) || /^[×✕✖xX]$/.test(bTxt) || (bTxt === '' && br.width <= 56 && br.height <= 56 && Boolean(btn.querySelector && btn.querySelector('svg')));
+                  if (isCloseIcon) {
+                    try { btn.click(); } catch (e) {}
+                    break;
+                  }
+                }
+                bannerEl.style.setProperty('display', 'none', 'important');
+                bannerEl.style.setProperty('visibility', 'hidden', 'important');
+                bannerEl.style.setProperty('pointer-events', 'none', 'important');
+              }
+            }
+          }
+
           function isCartUrl() {
             return /\\/(?:cart|bag|basket|checkout|gp\\/cart|store\\/cart|shop\\/cart)(?:\\/|$)/i.test(location.pathname);
           }
@@ -899,7 +975,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (!n) return false;
             var el = n.nodeType === 1 ? n : n.parentElement;
             if (!el) return false;
-            return el.id === 'hb-photo-badge-styles' || (el.classList && el.classList.contains('hb-photo-badge')) || Boolean(el.closest && el.closest('.hb-photo-badge'));
+            return el.id === 'hb-photo-badge-styles' || el.id === 'hb-app-banner-suppressor' || (el.getAttribute && el.getAttribute('data-hb-app-banner-hidden') === '1') || (el.classList && el.classList.contains('hb-photo-badge')) || Boolean(el.closest && (el.closest('.hb-photo-badge') || el.closest('[data-hb-app-banner-hidden="1"]')));
           }
 
           function isHbBadgeMutation(m) {
@@ -915,6 +991,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           function extractProductData() {
+            dismissRetailerAppBanners();
             scanPhotoBadges();
             var url = location.href;
             var modal = findOpenProductModal();
@@ -1041,10 +1118,22 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (document.documentElement) {
             obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
           }
+          dismissRetailerAppBanners();
           scheduleCheck(true);
         })();
         """
 
+        let earlyBannerCSSJS = """
+        (function() {
+          var head = document.head || document.documentElement;
+          if (!head || document.getElementById('hb-app-banner-suppressor')) return;
+          var st = document.createElement('style');
+          st.id = 'hb-app-banner-suppressor';
+          st.textContent = '#branch-banner-iframe, .branch-journeys-top, [id^="branch-banner"], [class*="branch-animation"], smart-banner, [data-testid="smart-banner"], [data-testid="app-banner"], [data-testid="download-app-banner"], [data-automation-id="app-banner"], [data-automation-id="smart-banner"], [data-test="smartBanner"], [data-test="appBanner"], [data-hb-app-banner-hidden="1"] { display: none !important; visibility: hidden !important; height: 0 !important; min-height: 0 !important; pointer-events: none !important; overflow: hidden !important; }';
+          head.appendChild(st);
+        })();
+        """
+        config.userContentController.addUserScript(WKUserScript(source: earlyBannerCSSJS, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let script = WKUserScript(source: detectorJS, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         config.userContentController.addUserScript(script)
         config.userContentController.add(WeakStoreScriptMessageProxy(self), name: "heybrocStoreBridge")
@@ -1500,6 +1589,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
+    private static func isBlockedAppRedirectHost(_ host: String) -> Bool {
+        return host == "itunes.apple.com"
+            || host == "apps.apple.com"
+            || host == "bnc.lt"
+            || host == "app.adjust.com"
+            || host == "smart.link"
+            || host.hasSuffix(".app.link")
+            || host.hasSuffix(".onelink.me")
+            || host.hasSuffix(".adj.st")
+            || host.hasSuffix(".branch.io")
+            || host.hasSuffix(".smart.link")
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         var didRespond = false
         func respond(_ policy: WKNavigationActionPolicy) {
@@ -1519,7 +1621,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return
         }
         let host = (url.host ?? "").lowercased()
-        if host == "itunes.apple.com" || host == "apps.apple.com" || host.hasSuffix(".app.link") {
+        if Self.isBlockedAppRedirectHost(host) {
             respond(.cancel)
             return
         }
@@ -1554,7 +1656,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
            let scheme = url.scheme?.lowercased(),
            (scheme == "http" || scheme == "https") {
             let host = (url.host ?? "").lowercased()
-            if host != "itunes.apple.com" && host != "apps.apple.com" && !host.hasSuffix(".app.link") {
+            if !Self.isBlockedAppRedirectHost(host) {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self, !self.isCleaningUp else { return }
                     self.storeWebView?.load(URLRequest(url: url))

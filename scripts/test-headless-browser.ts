@@ -899,6 +899,17 @@ async function main() {
       </section>
     </div>
   </main>
+  <div id="walmart-mobile-app-upsell" style="position:fixed; left:0; right:0; bottom:0; z-index:9999; background:#ffffff; padding:16px; border-top:1px solid #e2e8f0; box-shadow:0 -8px 24px rgba(15,23,42,0.14);">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+      <div>
+        <div style="font-size:13px; color:#475569;">Walmart - Shopping &amp; Grocery</div>
+        <div style="font-size:14px; font-weight:700; color:#0f172a; margin-top:2px;">The easiest way to shop, check out &amp; track your orders - anywhere you are.</div>
+        <div style="font-size:13px; color:#0f172a; margin-top:4px;">★★★★★</div>
+      </div>
+      <button id="walmart-upsell-close" type="button" aria-label="Close app banner" onclick="window.__walmartAppBannerDismissClicks = (window.__walmartAppBannerDismissClicks || 0) + 1;" style="background:transparent; border:none; font-size:22px; line-height:1; padding:4px; cursor:pointer;">×</button>
+    </div>
+    <a href="https://walmart.onelink.me/UIev?pid=SmartBanner" style="display:block; margin-top:12px; background:#0071dc; color:#ffffff; text-align:center; padding:12px; border-radius:999px; font-weight:700; text-decoration:none;">Get the app</a>
+  </div>
 </body>
 </html>`;
 
@@ -1059,8 +1070,27 @@ async function main() {
       detectedPdp.barcode === "0071100003116",
       `detectorJS failed to extract JSON-LD GTIN barcode: ${detectedPdp.barcode}`,
     );
+    const appBannerCheck = await storePage.eval<{
+      bannerDisplay: string;
+      dismissClicks: number;
+      mainTitleVisible: boolean;
+    }>(`(() => {
+      const b = document.getElementById("walmart-mobile-app-upsell");
+      const h1 = document.querySelector("h1");
+      return {
+        bannerDisplay: b ? window.getComputedStyle(b).display : "missing",
+        dismissClicks: Number(window.__walmartAppBannerDismissClicks || 0),
+        mainTitleVisible: Boolean(h1 && window.getComputedStyle(h1).display !== "none"),
+      };
+    })()`);
+    assert(
+      appBannerCheck.bannerDisplay === "none" &&
+        appBannerCheck.dismissClicks >= 1 &&
+        appBannerCheck.mainTitleVisible,
+      `Walmart 'Get the app' banner was not auto-dismissed cleanly: ${JSON.stringify(appBannerCheck)}`,
+    );
     console.log(
-      `   ✓ LiveStoreBrowser detectorJS extracted title, ingredients & GTIN (${detectedPdp.barcode})`,
+      `   ✓ LiveStoreBrowser detectorJS extracted title, ingredients & GTIN (${detectedPdp.barcode}) and auto-dismissed Walmart 'Get the app' banner`,
     );
 
     // 4B. Inject Safari Extension `content.js` + `overlay.css` with chrome.runtime mock forwarding to local Next.js!
