@@ -216,6 +216,12 @@ const DIETARY_PILLS: Array<{
     subtitle: "Flags shrimp, crab, lobster, salmon, tuna, cod, anchovy & fish sauce",
   },
   {
+    id: "sesame",
+    icon: "🌱",
+    title: "Sesame Guard",
+    subtitle: "Flags sesame seeds, tahini, sesame oil, sesame flour & halvah",
+  },
+  {
     id: "high_sodium",
     icon: "🧂",
     title: "High Sodium Watch",

@@ -91,20 +91,37 @@ export default function LabelAutoVerifierModal({
     }
   }, [open]);
 
+  useEffect(() => {
+    return () => {
+      ocrRunIdRef.current += 1;
+      if (workerRef.current) {
+        void workerRef.current.terminate().catch(() => {});
+        workerRef.current = null;
+      }
+    };
+  }, []);
+
   const runAutoCheck = useCallback(
     async (overrideIngredients?: string, overrideBarcode?: string) => {
       setBusy(true);
       setErrorMsg("");
       try {
+        const rawInputText = (overrideIngredients ?? reportedIngredients).trim();
+        const explicitBarcode = (overrideBarcode ?? barcode).trim();
+        const isPureDigitsInput =
+          Boolean(rawInputText) && /^\d+$/.test(rawInputText.replace(/[\s-]+/g, ""));
+        const payloadBarcode = explicitBarcode || (isPureDigitsInput ? rawInputText : "");
+        const payloadIngredients = isPureDigitsInput ? "" : rawInputText;
+
         const res = await fetch("/api/label-report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             productTitle,
             brand: productBrand,
-            barcode: (overrideBarcode ?? barcode).trim() || undefined,
+            barcode: payloadBarcode || undefined,
             currentIngredients,
-            reportedIngredients: (overrideIngredients ?? reportedIngredients).trim() || undefined,
+            reportedIngredients: payloadIngredients || undefined,
             issueType,
             store,
             preferStoreBrand,

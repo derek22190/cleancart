@@ -12,24 +12,23 @@
  * 3. Paid Monthly Subscribers (`status === "active"` && `lastChargeSucceeded === true`):
  *    -> Returns `alternateProduct` offering the Annual plan (`com.heybroc.pro.annual`).
  */
-import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import {
   evaluateZeroLeakageRetentionEligibility,
   getSubscriptionEntitlement,
 } from "@/lib/entitlements";
-import { APPLE_ROOT_FINGERPRINTS_SHA256 } from "../verify/route";
+import { checkRateLimitAsync } from "@/lib/rate-limit";
+import {
+  verifyAppleAppStoreX5cJws,
+  type AppleJwsHeader,
+} from "../verify/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_SIGNED_DATE_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_SIGNED_DATE_FUTURE_SKEW_MS = 5 * 60 * 1000;
-
-interface AppleRetentionJwsHeader {
-  alg?: string;
-  x5c?: string[];
-}
+const MAX_RETENTION_BODY_CHARS = 32_000;
 
 interface AppleRealtimeRequestPayload {
   appAppleId?: number;
@@ -58,107 +57,23 @@ function decodeBase64UrlJson<T>(segment: string): T | null {
   }
 }
 
-function normalizeSha256Hex(fingerprint: string): string {
-  return fingerprint.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-}
-
-const PINNED_APPLE_ROOT_HEX = new Set(
-  Array.from(APPLE_ROOT_FINGERPRINTS_SHA256, (fp) => normalizeSha256Hex(fp))
-);
-
 function verifyAppleRetentionJws(
   parts: string[],
-  header: AppleRetentionJwsHeader
+  header: AppleJwsHeader
 ): { ok: boolean; usedX5c: boolean } {
   const isProduction = process.env.NODE_ENV === "production";
   const allowUnsignedDev =
     process.env.APPLE_RETENTION_REQUIRE_X5C === "false" && !isProduction;
 
-  if (!Array.isArray(header.x5c) || header.x5c.length === 0) {
+  if (header.x5c === undefined || (Array.isArray(header.x5c) && header.x5c.length === 0)) {
     return { ok: allowUnsignedDev, usedX5c: false };
   }
-  if (
-    header.alg !== "ES256" ||
-    header.x5c.length !== 3 ||
-    !header.x5c.every((c) => typeof c === "string" && c.trim().length > 0)
-  ) {
+  if (!Array.isArray(header.x5c)) {
     return { ok: false, usedX5c: true };
   }
-  try {
-    const certs = header.x5c.map(
-      (b64) => new crypto.X509Certificate(Buffer.from(b64, "base64"))
-    );
-    const now = Date.now();
-    for (const cert of certs) {
-      const from = Date.parse(cert.validFrom);
-      const to = Date.parse(cert.validTo);
-      if (!Number.isFinite(from) || !Number.isFinite(to) || now < from || now > to) {
-        return { ok: false, usedX5c: true };
-      }
-    }
-    const [leafCert, intermediateCert, rootCert] = certs;
-    const leafFp = normalizeSha256Hex(leafCert.fingerprint256 || "");
-    const intFp = normalizeSha256Hex(intermediateCert.fingerprint256 || "");
-    const rootFp = normalizeSha256Hex(rootCert.fingerprint256 || "");
-    if (!leafFp || !intFp || !rootFp) {
-      return { ok: false, usedX5c: true };
-    }
-    // Prevent repeated self-signed certificates in x5c and enforce X.509 Basic Constraints (CA vs end-entity).
-    if (leafFp === intFp || intFp === rootFp || leafFp === rootFp) {
-      return { ok: false, usedX5c: true };
-    }
-    if (leafCert.ca || !intermediateCert.ca || !rootCert.ca) {
-      return { ok: false, usedX5c: true };
-    }
-    // Enforce ES256 key type and NIST P-256 curve (reject P-384 / P-521 / RSA under alg=ES256).
-    if (
-      leafCert.publicKey.asymmetricKeyType !== "ec" ||
-      leafCert.publicKey.asymmetricKeyDetails?.namedCurve !== "prime256v1"
-    ) {
-      return { ok: false, usedX5c: true };
-    }
-    if (!leafCert.verify(intermediateCert.publicKey)) {
-      return { ok: false, usedX5c: true };
-    }
-    if (!intermediateCert.verify(rootCert.publicKey)) {
-      return { ok: false, usedX5c: true };
-    }
-    if (!rootCert.verify(rootCert.publicKey)) {
-      return { ok: false, usedX5c: true };
-    }
 
-    // Production ALWAYS requires Apple's official Root CA G1/G3 SHA-256 fingerprints.
-    // Non-production tests may supply an explicit 64-hex-char APPLE_ROOT_CA_SHA256 pin override.
-    const customTestPin = !isProduction
-      ? normalizeSha256Hex((process.env.APPLE_ROOT_CA_SHA256 || "").trim())
-      : "";
-    if (customTestPin) {
-      if (customTestPin.length !== 64 || rootFp !== customTestPin) {
-        return { ok: false, usedX5c: true };
-      }
-    } else if (!PINNED_APPLE_ROOT_HEX.has(rootFp)) {
-      return { ok: false, usedX5c: true };
-    }
-
-    if (!parts[2]) {
-      return { ok: false, usedX5c: true };
-    }
-    const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, "utf8");
-    const sigNorm = parts[2].replace(/-/g, "+").replace(/_/g, "/");
-    const sigBytes = Buffer.from(
-      sigNorm.padEnd(Math.ceil(sigNorm.length / 4) * 4, "="),
-      "base64"
-    );
-    const sigOk = crypto.verify(
-      "sha256",
-      signingInput,
-      { key: leafCert.publicKey, dsaEncoding: "ieee-p1363" },
-      sigBytes
-    );
-    return { ok: sigOk, usedX5c: true };
-  } catch {
-    return { ok: false, usedX5c: true };
-  }
+  const check = verifyAppleAppStoreX5cJws(parts, header, { allowNonProdTestPin: true });
+  return { ok: check.ok, usedX5c: true };
 }
 
 function inferApplePlan(productId?: string): "annual" | "monthly" {
@@ -170,9 +85,27 @@ function inferApplePlan(productId?: string): "annual" | "monthly" {
 }
 
 export async function POST(request: Request) {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "127.0.0.1";
+  if (!(await checkRateLimitAsync(`apple-retention:${ip}`, 60))) {
+    return NextResponse.json(
+      { error: "Too many retention requests." },
+      { status: 429 }
+    );
+  }
+
   let rawBody: unknown;
   try {
-    rawBody = await request.json();
+    const rawText = await request.text();
+    if (rawText.length > MAX_RETENTION_BODY_CHARS) {
+      return NextResponse.json(
+        { error: "Request body too large." },
+        { status: 413 }
+      );
+    }
+    rawBody = JSON.parse(rawText);
   } catch {
     return NextResponse.json(
       { error: "Invalid JSON body." },
@@ -195,7 +128,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const header = decodeBase64UrlJson<AppleRetentionJwsHeader>(parts[0]);
+  const header = decodeBase64UrlJson<AppleJwsHeader>(parts[0]);
   const claims = decodeBase64UrlJson<AppleRealtimeRequestPayload>(parts[1]);
   if (!header || !claims) {
     return NextResponse.json(
@@ -267,9 +200,13 @@ export async function POST(request: Request) {
     (process.env.APPLE_ANNUAL_PRODUCT_ID || "").trim() ||
     "com.heybroc.pro.annual";
 
-  const origTxId = (claims.originalTransactionId || "").trim();
+  const origTxId =
+    typeof claims.originalTransactionId === "string"
+      ? claims.originalTransactionId.trim()
+      : "";
   const storedRecord = origTxId
-    ? await getSubscriptionEntitlement(`rc_${origTxId}`).catch(() => null)
+    ? (await getSubscriptionEntitlement(`rc_${origTxId}`).catch(() => null)) ??
+      (await getSubscriptionEntitlement(`apple_${origTxId}`).catch(() => null))
     : null;
 
   const inferredPlan = storedRecord?.plan || inferApplePlan(claims.productId);

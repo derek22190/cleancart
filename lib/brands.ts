@@ -249,7 +249,7 @@ export const SHARED_BRAND_PATTERNS: RegExp[] = [
   /\bsilk\b(?!\s+corn\b)/i,
   /\bwest\s*soy\b/i,
   /\beden\s*soy\b/i,
-  /\bripple\b/i,
+  /(?<!\b(?:fudge|raspberry|strawberry|cherry|blueberry|blackberry|butterscotch|caramel|chocolate|peanut\s+butter)\s+)\bripple\b(?!\s+(?:ice\s+cream|potato\s+chips?|chips?)\b)/i,
   /\bnutpods\b/i,
   /\bevian\b/i,
   /\bfiji\b/i,
@@ -312,7 +312,7 @@ export const SHARED_BRAND_PATTERNS: RegExp[] = [
   /(?<!\bcookie\s+)\bmonster\b(?!\s+(?:trail|cookies?|cookie|size|pack|bag|mix|mash|munch|cereal|popcorn|pretzels?|gummies|candy|bars?|snacks?)\b)/i,
   /\bcelsius\b/i,
   /\balani\b/i,
-  /\bghost\b(?!\s+(?:peppers?|chilis?|chiles?)\b)/i,
+  /(?<!\b(?:marshmallow|peeps)\s+)\bghost\b(?!\s+(?:peppers?|chilis?|chiles?|marshmallows?|cand(?:y|ies)|cookies?|cupcakes?|gummies|shapes?)\b)/i,
   /\breign\b/i,
   /\bbang\b(?!\s+bang\b)/i,
   /\brockstar\b/i,
@@ -466,8 +466,10 @@ export const SHARED_BRAND_PATTERNS: RegExp[] = [
   /\bbriannas\b/i,
   /\bmarzetti\b/i,
   /\bstubb'?s\b/i,
-  /(?<!\bvitamin\s+)(?<!\bgrade\s+)\ba(?:\.\s*|-?)1\.?(?!\s*%|\w)/i,
+  /(?<!\bvitamin\s+)(?<!\bgrade\s+)\ba(?:\.\s*|-?)1\.?(?!\s*(?:%|milk|protein|casein|beta|dairy|cows?)\b|\w)/i,
   /\bm\s*&\s*m'?s?\b/i,
+  /\bben\s*(?:&|and)\s*jerry'?s?\b/i,
+  /\bpost\b(?=\s+(?:oreo|honey|grape|fruity|cocoa|raisin|consumer|foods|cereal|bran|shredded|pebbles)\b)/i,
 ];
 
 /**
@@ -493,11 +495,22 @@ const CANDIDATE_BRAND_CREDITS: Array<[RegExp, string[]]> = [
   [/\b(?:simply\s+nature|millville|clancy'?s|specially\s+selected)\b/i, ["aldi"]],
   [/\b(?:signature\s+select|o\s+organics|open\s+nature|lucerne)\b/i, ["safeway", "albertsons"]],
 
-  // National sub-brands -> parent CPG manufacturer
+  // National sub-brands -> parent CPG manufacturer (strictly upward)
   [/\b(?:oreo|ritz|triscuit|chips\s+ahoy|wheat\s+thins|belvita|nutter\s+butter|fig\s+newtons?)\b/i, ["nabisco", "mondelez"]],
   [/\b(?:eggo|pop[- ]?tarts?|cheez[- ]?its?|frosted\s+flakes|froot\s+loops|rice\s+krispies|pringles)\b/i, ["kelloggs", "kellanova"]],
-  [/\b(?:cheerios|lucky\s+charms|cinnamon\s+toast\s+crunch|nature\s+valley|annie'?s|l[aä]rabar|pillsbury|betty\s+crocker|bisquick|totino'?s|progresso|muir\s+glen|h[aä]agen[- ]?dazs)\b/i, ["general mills"]],
-  [/\b(?:lay'?s|doritos|cheetos|fritos|ruffles|tostitos|smartfood)\b/i, ["frito lay", "pepsico"]],
+  [/\b(?:cheerios|lucky\s+charms|cinnamon\s+toast\s+crunch|nature\s+valley|annie'?s|l[aä]rabar|pillsbury|betty\s+crocker|bisquick|totino'?s|progresso|muir\s+glen|h[aä]agen[- ]?dazs|yoplait)\b/i, ["general mills"]],
+  [/\b(?:lay'?s|doritos|cheetos|fritos|ruffles|tostitos|smartfood|quaker|gatorade|tropicana)\b/i, ["frito lay", "pepsico"]],
+  [/\b(?:velveeta|philadelphia|jell-?o|oscar\s+mayer|capri\s+sun|maxwell\s+house|kool[- ]?aid|lunchables|stove\s+top|miracle\s+whip|claussen|jet[- ]?puffed|grey\s+poupon)\b/i, ["kraft", "kraft heinz"]],
+  [/\b(?:reese'?s|kit\s*kat|jolly\s+rancher|twizzlers|ice\s+breakers|skinny\s*pop|pirate'?s\s+booty)\b/i, ["hershey", "hersheys"]],
+  [/\b(?:nutella|kinder|tic\s+tac|ferrero\s+rocher)\b/i, ["ferrero"]],
+  [/\b(?:honey\s+bunches|grape[- ]?nuts|fruity\s+pebbles|cocoa\s+pebbles|raisin\s+bran)\b/i, ["post", "post foods", "post consumer"]],
+  [/\b(?:m\s*&\s*m'?s?|snickers|twix|milky\s+way|skittles|starburst|ben'?s\s+original)\b/i, ["mars", "mars wrigley"]],
+  [/\b(?:outshine|digiorno|stouffer'?s|lean\s+cuisine|hot\s+pockets?|coffee[- ]?mate|nesquik|gerber)\b/i, ["nestle"]],
+  [/\b(?:hellmann'?s|best\s+foods|breyers|talenti|klondike|ben\s*(?:&|and)\s*jerry'?s?|knorr|lipton)\b/i, ["unilever"]],
+  [/\b(?:pepperidge\s+farm|goldfish|swanson|prego|pace|\bv8\b|snyder'?s|cape\s+cod|kettle\s+brand|late\s+july|pacific\s+foods)\b/i, ["campbell", "campbells"]],
+  [/\b(?:dannon|activia|oikos|silk|so\s+delicious|horizon|international\s+delight|stok|evian)\b/i, ["danone"]],
+  [/\b(?:skippy|applegate|planters|justin'?s)\b/i, ["hormel"]],
+  [/\b(?:orville\s+redenbacher|hunt'?s|swiss\s+miss|marie\s+callender'?s?|banquet|healthy\s+choice|birds\s+eye|duncan\s+hines|vlasic|wish[- ]?bone|ro[- ]?tel)\b/i, ["conagra"]],
   [/\b(?:ezekiel)\b/i, ["food for life"]],
   [/\brx\s*bars?\b/i, ["rx", "rxbar"]],
 ];

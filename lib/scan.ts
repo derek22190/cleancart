@@ -680,13 +680,15 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     isCategoryEstimate && !/category estimate/i.test(baseTitle)
       ? `${baseTitle} (Category Estimate)`
       : baseTitle;
+  const scoringTitle =
+    found.source === "screen" ? `${productTitle} ${title}`.trim() : title;
   const result = scoreProductYuka(found.ingredients, watchlist, familyWatchlist, {
     ...found.nutrition,
-    productTitle: `${productTitle} ${title}`.trim(),
+    productTitle: scoringTitle,
   });
   const dietaryAlerts = evaluateDietaryAlerts(
     req.dietaryWatchlist,
-    `${productTitle} ${title}`.trim(),
+    scoringTitle,
     found.ingredients,
     found.nutrition,
   );

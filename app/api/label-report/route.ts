@@ -3,6 +3,7 @@ import { isAdminAuthorized } from "@/lib/admin-auth";
 import { passesVariantGuard } from "@/lib/drinks-catalog";
 import {
   isDietaryOrVariantMismatch,
+  isEnglishIngredientText,
   lookupLiveAuthoritative,
   matchesRequestedBrand,
 } from "@/lib/lookup";
@@ -146,10 +147,35 @@ export async function POST(req: Request) {
 
   const productTitle = coerceString(body.productTitle, 300);
   const brand = coerceString(body.brand, 120);
-  const rawBarcode = coerceString(body.barcode, 64);
+  let effectiveRawBarcode = coerceString(body.barcode, 64);
+  const currentIngredients = coerceString(body.currentIngredients, 6000);
+  let reportedIngredients = coerceString(body.reportedIngredients, 6000);
+
+  // If the shopper pasted a UPC/EAN barcode into the combined textarea, route it to barcode validation
+  // rather than scoring raw digits as a clean ingredient list.
+  if (reportedIngredients) {
+    const compactReported = reportedIngredients.replace(/[\s-]+/g, "");
+    if (/^\d+$/.test(compactReported)) {
+      if (!effectiveRawBarcode) {
+        effectiveRawBarcode = reportedIngredients.slice(0, 64);
+        reportedIngredients = "";
+      } else if (effectiveRawBarcode.replace(/[\s-]+/g, "") === compactReported) {
+        reportedIngredients = "";
+      } else {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Reported package ingredients cannot consist solely of digits.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   let barcode: string | undefined;
-  if (rawBarcode) {
-    const strippedBarcode = rawBarcode.replace(/[\s-]+/g, "");
+  if (effectiveRawBarcode) {
+    const strippedBarcode = effectiveRawBarcode.replace(/[\s-]+/g, "");
     if (!isValidGtin(strippedBarcode)) {
       return NextResponse.json(
         {
@@ -163,8 +189,21 @@ export async function POST(req: Request) {
     barcode = strippedBarcode;
   }
 
-  const currentIngredients = coerceString(body.currentIngredients, 6000);
-  const reportedIngredients = coerceString(body.reportedIngredients, 6000);
+  if (
+    reportedIngredients &&
+    (reportedIngredients.length < 6 ||
+      !/[a-zA-Z]{3,}/.test(reportedIngredients) ||
+      !isEnglishIngredientText(reportedIngredients))
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Please provide a valid English package ingredient list (at least 6 characters).",
+      },
+      { status: 400 }
+    );
+  }
+
   const issueTypeRaw = coerceString(body.issueType, 40).toLowerCase();
   const issueType = ALLOWED_ISSUE_TYPES.has(issueTypeRaw) ? issueTypeRaw : "reformulated";
   const storeRaw = coerceString(body.store, 32).toLowerCase();
@@ -193,10 +232,6 @@ export async function POST(req: Request) {
       : productTitle || "Scanned Grocery Item"
   ).slice(0, 300);
 
-  const previousScoreObj = currentIngredients.trim()
-    ? scoreProductYuka(currentIngredients, watchlist, familyWatchlist, { productTitle: fullTitle })
-    : null;
-
   let verifiedIngredients = "";
   let resolutionSource: LabelAuditReportItem["resolutionSource"] = "unverified";
   let sourceUrl: string | undefined;
@@ -205,8 +240,39 @@ export async function POST(req: Request) {
   let resolvedProductTitle = productTitle || fullTitle;
   let resolvedBrand = brand || undefined;
 
+  const isBarcodeConflictWithTitle = (liveHit: NonNullable<Awaited<ReturnType<typeof lookupLiveAuthoritative>>>) =>
+    Boolean(
+      barcode &&
+        hasExplicitProductTitle &&
+        liveHit.ingredients?.trim() &&
+        (!matchesRequestedBrand(fullTitle, liveHit.brand, liveHit.productTitle) ||
+          !passesVariantGuard(fullTitle, liveHit.productTitle) ||
+          isDietaryOrVariantMismatch(
+            fullTitle,
+            liveHit.productTitle,
+            liveHit.ingredients,
+            liveHit.nutrition
+          ))
+    );
+
   // Priority 1: Shopper provided or OCR'd the physical package ingredient list
   if (reportedIngredients && reportedIngredients.length >= 6) {
+    if (barcode && hasExplicitProductTitle) {
+      const barcodeHit = await lookupLiveAuthoritative({ productTitle: "", barcode });
+      if (barcodeHit && isBarcodeConflictWithTitle(barcodeHit)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Barcode ${barcode} resolved to "${barcodeHit.productTitle}", which conflicts with "${fullTitle}". Please verify the package barcode.`,
+          },
+          { status: 409 }
+        );
+      }
+      if (barcodeHit) {
+        resolvedNutrition = barcodeHit.nutrition;
+        sourceUrl = barcodeHit.sourceUrl;
+      }
+    }
     verifiedIngredients = reportedIngredients;
     resolutionSource = "package_label";
     sourceUpdatedAt = new Date().toISOString().slice(0, 10);
@@ -217,18 +283,7 @@ export async function POST(req: Request) {
       barcode,
     });
     if (liveHit && liveHit.ingredients?.trim()) {
-      if (
-        barcode &&
-        hasExplicitProductTitle &&
-        (!matchesRequestedBrand(fullTitle, liveHit.brand, liveHit.productTitle) ||
-          !passesVariantGuard(fullTitle, liveHit.productTitle) ||
-          isDietaryOrVariantMismatch(
-            fullTitle,
-            liveHit.productTitle,
-            liveHit.ingredients,
-            liveHit.nutrition
-          ))
-      ) {
+      if (isBarcodeConflictWithTitle(liveHit)) {
         return NextResponse.json(
           {
             ok: false,
@@ -252,7 +307,10 @@ export async function POST(req: Request) {
   const hasAuthoritativeEvidence = Boolean(verifiedIngredients.trim());
 
   if (!hasAuthoritativeEvidence) {
-    const fallbackScore = previousScoreObj?.score ?? 0;
+    const fallbackPrevScoreObj = currentIngredients.trim()
+      ? scoreProductYuka(currentIngredients, watchlist, familyWatchlist, { productTitle: fullTitle })
+      : null;
+    const fallbackScore = fallbackPrevScoreObj?.score ?? 0;
     const summary =
       "Queued for label review: live USDA FoodData Central and Open Food Facts records did not return a verified ingredient panel for this item yet. Snap or paste the package ingredients to score immediately.";
     const reportItem: LabelAuditReportItem = {
@@ -279,11 +337,21 @@ export async function POST(req: Request) {
       resolutionSource: "unverified",
       report: reportItem,
       verifiedProduct: null,
-      previousResult: previousScoreObj,
+      previousResult: fallbackPrevScoreObj,
       verifiedResult: null,
       swap: null,
     });
   }
+
+  const ingredientsChanged =
+    normalizeIngForCompare(verifiedIngredients) !== normalizeIngForCompare(currentIngredients);
+
+  const previousScoreObj = currentIngredients.trim()
+    ? scoreProductYuka(currentIngredients, watchlist, familyWatchlist, {
+        ...(ingredientsChanged ? {} : resolvedNutrition),
+        productTitle: resolvedProductTitle,
+      })
+    : null;
 
   const verifiedScoreObj = scoreProductYuka(
     verifiedIngredients,
@@ -292,8 +360,6 @@ export async function POST(req: Request) {
     { ...resolvedNutrition, productTitle: resolvedProductTitle }
   );
 
-  const ingredientsChanged =
-    normalizeIngForCompare(verifiedIngredients) !== normalizeIngForCompare(currentIngredients);
   const previousScoreVal = previousScoreObj ? previousScoreObj.score : verifiedScoreObj.score;
   const scoreChanged = previousScoreObj !== null && verifiedScoreObj.score !== previousScoreObj.score;
 
@@ -301,6 +367,7 @@ export async function POST(req: Request) {
     score: verifiedScoreObj.score,
     productTitle: resolvedProductTitle,
     ingredients: verifiedIngredients,
+    nutrition: resolvedNutrition,
     store,
     preferStoreBrand,
     watchlist,

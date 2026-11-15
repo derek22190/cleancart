@@ -204,6 +204,7 @@ export async function POST(request: Request) {
             familyWatchlist: effFw,
             dietaryWatchlist: effDw,
             preferStoreBrand: effPreferSb,
+            verifiedAccountPro: false,
             skipAnalytics: true,
           });
           memo.set(dedupKey, pending);

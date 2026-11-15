@@ -1539,7 +1539,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/cherry",
     verifiedAt: "2026-11-08",
-    match: /\b(cherry\s+coke|coca[- ]?cola\s+cherry|cherry\s+coca[- ]?cola)\b/i,
+    match: /\b(cherry\s+coke|coke\s+cherry|coca[- ]?cola\s+cherry|cherry\s+coca[- ]?cola)\b/i,
   },
   {
     id: "coca-cola-vanilla",
@@ -1564,7 +1564,7 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/vanilla",
     verifiedAt: "2026-11-08",
-    match: /\b(vanilla\s+coke|coca[- ]?cola\s+vanilla|vanilla\s+coca[- ]?cola)\b/i,
+    match: /\b(vanilla\s+coke|coke\s+vanilla|coca[- ]?cola\s+vanilla|vanilla\s+coca[- ]?cola)\b/i,
   },
   {
     id: "coca-cola-classic",
@@ -5431,11 +5431,11 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   // Percent signs are not word characters: a trailing \b after '%' misses '2% Milk'.
   if (/\bmilk\b/.test(q) || /\bmilk\b/.test(t)) {
     if (/\bwhole\b/.test(q) && !/\b(whole|full[ -]*fat)\b/.test(t)) return false;
-    const requestedFat = q.match(/(?:^|\s)([012])\s*%(?=\s|$)/)?.[1];
-    if (requestedFat && !new RegExp(`(?:^|\\s)${requestedFat}\\s*%(?=\\s|$)`).test(t)) return false;
-    const candidateFat = t.match(/(?:^|\s)([012])\s*%(?=\s|$)/)?.[1];
-    if (candidateFat && !options?.allowCleanerSwap && !/\bfairlife\b/.test(t) && !new RegExp(`(?:^|\\s)${candidateFat}\\s*%(?=\\s|$)`).test(q) && !/\b(reduced[ -]*fat|low[ -]*fat)\b/.test(q)) return false;
-    if (/\bwhole\b/.test(q) && (/(?:^|\s)[012]\s*%/.test(t) || /\b(skim|nonfat|fat[ -]*free|reduced[ -]*fat|low[ -]*fat)\b/.test(t))) return false;
+    const requestedFat = q.match(/(?:^|[\s(,/-])([012])\s*%(?=$|[\s),/.-])/)?.[1];
+    if (requestedFat && !new RegExp(`(?:^|[\\s(,/-])${requestedFat}\\s*%(?=$|[\\s),/.-])`).test(t)) return false;
+    const candidateFat = t.match(/(?:^|[\s(,/-])([012])\s*%(?=$|[\s),/.-])/)?.[1];
+    if (candidateFat && !options?.allowCleanerSwap && !/\bfairlife\b/.test(t) && !new RegExp(`(?:^|[\\s(,/-])${candidateFat}\\s*%(?=$|[\\s),/.-])`).test(q) && !/\b(reduced[ -]*fat|low[ -]*fat)\b/.test(q)) return false;
+    if (/\bwhole\b/.test(q) && (/(?:^|[\s(,/-])[012]\s*%/.test(t) || /\b(skim|nonfat|fat[ -]*free|reduced[ -]*fat|low[ -]*fat)\b/.test(t))) return false;
     if (/\b(skim|nonfat|fat[ -]*free)\b/.test(q) && !/\b(skim|nonfat|fat[ -]*free)\b/.test(t)) return false;
   }
 
@@ -5453,10 +5453,10 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   if (EXPLICIT_SALTED_RE.test(q) && UNSALTED_RE.test(t)) return false;
 
   // FDA 21 CFR 101.62 Fat Claim Tiers (fat-free vs low-fat vs reduced-fat vs light)
-  const FAT_FREE_RE = /\bfat[\s-]*free\b|\bnon[\s-]*fat\b|\bskim\b|(?:^|\s)0\s*%(?!\s*(?:juice|trans))/;
-  const LOW_FAT_RE = /\blow[\s-]*fat\b|(?:^|\s)1\s*%(?!\s*(?:juice|trans))/;
+  const FAT_FREE_RE = /\bfat[\s-]*free\b|\bnon[\s-]*fat\b|\bskim\b|(?:^|[\s(,/-])0\s*%(?!\s*(?:juice|trans))/;
+  const LOW_FAT_RE = /\blow[\s-]*fat\b|(?:^|[\s(,/-])1\s*%(?!\s*(?:juice|trans))/;
   const REDUCED_FAT_RE =
-    /\b(?:reduced|less|lower)[\s-]*fat\b|(?:^|\s)2\s*%(?!\s*(?:juice|trans))|\b1\/3\s+less(?:\s+fat)?\b|\bneufch[aâ]tel\b/;
+    /\b(?:reduced|less|lower)[\s-]*fat\b|(?:^|[\s(,/-])2\s*%(?!\s*(?:juice|trans))|\b1\/3\s+less(?:\s+fat)?\b|\bneufch[aâ]tel\b/;
 
   if (FAT_FREE_RE.test(q) && !FAT_FREE_RE.test(t)) return false;
   if (LOW_FAT_RE.test(q) && !LOW_FAT_RE.test(t)) return false;
@@ -5487,6 +5487,10 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
     [/\bsome\s+pulp\b|\blots\s+of\s+pulp\b|\bwith\s+pulp\b|\bhigh\s+pulp\b/, /\bsome\s+pulp\b|\blots\s+of\s+pulp\b|\bwith\s+pulp\b|\bhigh\s+pulp\b/],
     [/\bno\s+pulp\b|\bpulp[\s-]*free\b/, /\bno\s+pulp\b|\bpulp[\s-]*free\b/],
     [/\bunsweetened\b/, /\bunsweetened\b|\b0g\s+sugar\b/],
+    [
+      /\bno\s+(?:sugar\s+added|added\s+sugars?)\b/,
+      /\bno\s+(?:sugar\s+added|added\s+sugars?)\b|\bunsweetened\b|\bsugar[\s-]*free\b|\bzero\s+sugar\b|\bin\s+water\b|\b100%\s+(?:pure\s+)?(?:fruit\s+)?juice\b/,
+    ],
     [/\btrilogy\b/, /\btrilogy\b/],
     [/\bzero\s+sugar\b|\bsugar[\s-]*free\b|\bdiet\b/, /\bzero\b|\bsugar[\s-]*free\b|\bdiet\b|\bunsweetened\b|\blyte\b|\bultra(?![\s-]*filtered)\b/],
     [/\bdoubleshot\b/, /\bdoubleshot\b/],
@@ -5517,6 +5521,8 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   for (const [qRe, tRe] of variantTokens) {
     if (qRe.test(q) && !tRe.test(t)) return false;
   }
+  if (/\bcrunchy\b/.test(q) && /\b(?:creamy|smooth)\b/.test(t) && !/\b(?:crunchy|chunky)\b/.test(t)) return false;
+  if (/\bcreamy\b/.test(q) && /\b(?:crunchy|chunky)\b/.test(t) && !/\bcreamy\b/.test(t)) return false;
 
   const reverseStrict: [RegExp, RegExp][] = [
     [/\bunflavored\b/, /\bunflavored\b/],

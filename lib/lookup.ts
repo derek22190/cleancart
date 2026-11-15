@@ -248,10 +248,14 @@ const GENERIC_LEADING_MODIFIERS = new Set([
   "organic", "free", "lean",
   "large", "medium", "small", "baby", "mini", "jumbo", "extra", "super",
   "red", "green", "yellow", "white", "black", "brown", "golden", "dark", "light",
-  "sweet", "hot", "mild", "spicy", "sour", "salted", "unsalted", "roasted",
+  "sweet", "hot", "mild", "spicy", "sour", "salted", "unsalted", "roasted", "sharp",
+  "creamy", "crunchy", "chunky", "smooth", "whipped", "crispy", "thick", "thin",
+  "sparkling", "distilled", "purified", "mineral", "carbonated", "still", "iced", "brewed",
   "sliced", "diced", "chopped", "shredded", "crushed", "peeled", "minced", "ground",
-  "frozen", "canned", "raw", "cooked", "baked", "fried", "grilled", "smoked", "cured",
+  "frozen", "canned", "raw", "cooked", "baked", "fried", "grilled", "smoked", "cured", "rotisserie",
+  "rolled", "evaporated", "condensed", "instant", "dry", "dried",
   "boneless", "skinless", "seedless", "pitted", "hulled",
+  "cage", "pasture", "grass",
   "unflavored", "unsweetened", "sweetened", "skim", "gluten", "dairy", "sugar", "zero", "diet",
   "pack", "bag", "box", "can", "jar", "bottle", "tub", "carton", "pouch",
   "vegan", "vegetarian", "keto", "paleo", "kosher", "halal", "plant", "based", "lite", "less", "non",
@@ -1276,9 +1280,28 @@ export function matchesGenericWholeFood(query: string, candidate: string): boole
   const canonical = genericWholeFoodQuery(query);
   if (!canonical || classifyWholeFood(candidate).isWholeFood !== true) return false;
   const stem = (w: string) => w.length > 3 ? w.replace(/s$/, "") : w;
-  const candidateWords = new Set(candidate.toLowerCase().split(/[^a-z]+/).map(stem));
+  const candidateWords = new Set(candidate.toLowerCase().split(/[^a-z]+/).filter(Boolean).map(stem));
   const identity = canonical.replace(/\b(raw|cooked|roasted|boiled|baked|plain)\b/g, "").trim().split(/\s+/);
   if (!identity.every(word => candidateWords.has(stem(word)))) return false;
+
+  const queryCleaned = query
+    .toLowerCase()
+    .replace(/\b\d+(?:\.\d+)?(?:\s*[-–—x×/]\s*\d+(?:\.\d+)?)?\s*(?:%|fl\.?\s*oz|oz|ounces?|lbs?|pounds?|g|grams?|kg|ct|count|pk|packs?|pcs?|pieces?|dozens?)\b/gi, " ")
+    .replace(/\b\d+(?:\.\d+)?\b/g, " ");
+  const queryWords = queryCleaned.split(/[^a-z]+/).filter((w) => w.length >= 2);
+  const allowedWholeAliases = new Set(["oatmeal", "oats", "cooked", "roasted", "boiled", "baked", "plain", "greek", "yogurt", "extra", "virgin", "olive", "oil"]);
+  for (const w of queryWords) {
+    if (
+      !candidateWords.has(stem(w)) &&
+      !allowedWholeAliases.has(w) &&
+      !WHOLE_FOOD_PRODUCE_DESCRIPTORS.has(w) &&
+      !WHOLE_FOOD_MEAT_DESCRIPTORS.has(w) &&
+      !WHOLE_FOOD_NUTS_DESCRIPTORS.has(w)
+    ) {
+      return false;
+    }
+  }
+
   const prep = canonical.match(/\b(raw|cooked|roasted|boiled|baked)\b/)?.[0];
   const cooked = /\b(cooked|roasted|boiled|baked|grilled|broiled|poached|steamed)\b/i;
   if (prep === "raw" && cooked.test(candidate)) return false;
@@ -1318,7 +1341,7 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   const evaluateFoods = (foods: UsdaFood[] | undefined) => {
     for (const f of foods || []) {
       const isTrueWholeFood =
-        ["Foundation", "SR Legacy", "Survey (FNDDS)"].includes(f.dataType || "") &&
+        ["Foundation", "SR Legacy"].includes(f.dataType || "") &&
         classifyWholeFood(f.description || "").isWholeFood === true;
       const ing =
         f.ingredients?.trim() ||
@@ -1637,7 +1660,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\bhoney nut cheerios\b/i,
+    match: /\bhoney\s+nut\s+cheerios\b|\bcheerios\b.*\bhoney\s+nut\b/i,
     brand: "General Mills",
     title: "Honey Nut Cheerios Oats Cereal",
     ingredients: "Whole Grain Oats, Sugar, Corn Starch, Honey, Brown Sugar Syrup, Salt, Tripotassium Phosphate, Canola and/or Sunflower Oil, Natural Almond Flavor. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
@@ -3116,10 +3139,10 @@ const NON_FOOD_GUARD =
   /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|wax\s+paper|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i;
 
 const PROCESSED_FOOD_GUARD =
-  /\b(chips?|crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|cream\s+of|alfredo|tikka|masala|tempura|cheesy|refried|praline|cinnamon|maple|chili\s+lime|stir[- ]?fry|pudding|cider|burgers?|seasoning|powder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|cake|roll|muffin|donuts?|doughnuts?|bismarks?|bismark|pastries|pastry|danish|fritters?|eclairs?|strudels?|turnovers?|toaster|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips?(?!\s+steak)|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burrito|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?|gnocchi|pasta|chocolate|covered|dipped|coated|crusted|stuffed|caramel|creamed|loaded|baby\s+food|pur[eé]es?)\b/i;
+  /\b(chips?|(?<!cosmic\s+|honey\s*)crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|cream\s+of|alfredo|tikka|masala|tempura|cheesy|refried|praline|cinnamon|maple|chili\s+lime|stir[- ]?fry|pudding|cider|burgers?|seasoning|powder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|pies|cake|roll|muffin|donuts?|doughnuts?|bismarks?|bismark|pastries|pastry|danish|fritters?|eclairs?|strudels?|turnovers?|toaster|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|apple\s+butter|pumpkin\s+butter|cookie\s+butter|fruit\s+butter|garlic\s+butter|herb\s+butter|lemon\s+butter|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|corned|pastrami|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips?(?!\s+steak)|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burritos?|tacos?|quesadillas?|tamales?|enchiladas?|wraps?|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?|gnocchi|spaghetti(?!\s+squash\b)|pasta|stews?(?!\s+(?:meat|beef)\b)|chocolate|covered|dipped|coated|crusted|stuffed|caramel|creamed|loaded|baby\s+food|pur[eé]es?)\b/i;
 
 const NAMED_BRAND_GUARD =
-  /\b(gerber|beech[- ]?nut|earth'?s\s+best|happy\s+baby|plum\s+organics|once\s+upon\s+a\s+farm|silk|pedialyte|oscar\s+mayer|tyson|applegate|boar'?s\s+head|hormel|perdue|foster\s+farms|barilla|rao'?s|wonder|pepperidge|arnold|orowheat|chobani|fage|tillamook|sargento|philadelphia|haagen[- ]?dazs|häagen[- ]?dazs|ben\s*&\s*jerry|ore[- ]?ida|mccain|alexia|hunt'?s|muir\s+glen|bush'?s|goya|tostitos|pace|herdez|sabra|land\s+o'?\s*lakes|kerrygold|country\s+crock|blue\s+bonnet|hellmann'?s|best\s+foods|duke'?s|french'?s|grey\s+poupon|kikkoman|tabasco|cholula|frank'?s|pillsbury|betty\s+crocker|duncan\s+hines|kodiak|krusteaz|bisquick|aunt\s+jemima|pearl\s+milling|log\s+cabin|mrs\.?\s*butterworth|skippy|jif|peter\s+pan|welch'?s|bonne\s+maman|nissin|nongshim|buldak|samyang|progresso|campbell'?s|totino'?s|red\s+baron|tombstone|banquet|healthy\s+choice|lean\s+cuisine|marie\s+callender|breyers|talenti|jennie[- ]?o|hillshire|jimmy\s+dean|smithfield|wright|farmland|nathan'?s|hebrew\s+national|ball\s+park|stouffer'?s|amy'?s|halo\s+top|yasso|clif\s+bar|quest|nature\s+valley|quaker|belvita|thomas'?|canyon\s+bakehouse|udi'?s|sara\s+lee|nature'?s\s+own|king'?s\s+hawaiian|mission|eggo|pop[- ]?tarts?|cheez[- ]?its?|goldfish|oreo|nutella|smucker'?s|heinz|hidden\s+valley|sweet\s+baby\s+ray'?s|stubb'?s|miracle\s+whip|wish[- ]?bone|ken'?s|briannas|marzetti|prego|ragu|classico|bertolli|newman'?s\s+own|mateo'?s|tapatio|valentina|oikos|siggi'?s|dannon|activia|stonyfield|kraft|babybel|laughing\s+cow|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|mott'?s|outshine|digiorno|vlasic|mt\.?\s*olive|lay'?s|ruffles|pringles|doritos|cheetos|fritos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop|froot\s+loops|frosted\s+flakes|lucky\s+charms|cheerios|gatorade|powerade|coca[- ]?cola|pepsi|sprite|fanta|dr\.?\s*pepper)\b/i;
+  /\b(gerber|beech[- ]?nut|earth'?s\s+best|happy\s+baby|plum\s+organics|once\s+upon\s+a\s+farm|silk|pedialyte|oscar\s+mayer|tyson|applegate|boar'?s\s+head|hormel|perdue|foster\s+farms|barilla|rao'?s|wonder|pepperidge|arnold|orowheat|chobani|fage|tillamook|sargento|philadelphia|haagen[- ]?dazs|häagen[- ]?dazs|ben\s*&\s*jerry'?s?|ore[- ]?ida|mccain|alexia|hunt'?s|muir\s+glen|bush'?s|goya|tostitos|pace|herdez|sabra|land\s+o'?\s*lakes|kerrygold|country\s+crock|blue\s+bonnet|hellmann'?s|best\s+foods|duke'?s|french'?s|grey\s+poupon|kikkoman|tabasco|cholula|frank'?s|pillsbury|betty\s+crocker|duncan\s+hines|kodiak|krusteaz|bisquick|aunt\s+jemima|pearl\s+milling|log\s+cabin|mrs\.?\s*butterworth|skippy|jif|peter\s+pan|welch'?s|bonne\s+maman|nissin|nongshim|buldak|samyang|progresso|campbell'?s|totino'?s|red\s+baron|tombstone|banquet|healthy\s+choice|lean\s+cuisine|marie\s+callender'?s?|breyers|talenti|jennie[- ]?o|hillshire|jimmy\s+dean|smithfield|wright|farmland|nathan'?s|hebrew\s+national|ball\s+park|stouffer'?s|amy'?s|halo\s+top|yasso|clif\s+bar|quest|nature\s+valley|quaker|belvita|thomas'?|canyon\s+bakehouse|udi'?s|sara\s+lee|nature'?s\s+own|king'?s\s+hawaiian|mission|eggo|pop[- ]?tarts?|cheez[- ]?its?|goldfish|oreo|nutella|smucker'?s|heinz|hidden\s+valley|sweet\s+baby\s+ray'?s|stubb'?s|miracle\s+whip|wish[- ]?bone|ken'?s|briannas|marzetti|prego|ragu|classico|bertolli|newman'?s\s+own|mateo'?s|tapatio|valentina|oikos|siggi'?s|dannon|activia|stonyfield|kraft|babybel|laughing\s+cow|chips\s+ahoy|nutter\s+butter|keebler|fig\s+newtons?|haribo|sour\s+patch|skittles|starburst|swedish\s+fish|mott'?s|outshine|digiorno|vlasic|mt\.?\s*olive|lay'?s|ruffles|pringles|doritos|cheetos|fritos|utza?|herr'?s|cape\s+cod|smartfood|skinny\s*pop|froot\s+loops|frosted\s+flakes|lucky\s+charms|cheerios|gatorade|powerade|coca[- ]?cola|pepsi|sprite|fanta|dr\.?\s*pepper)\b/i;
 
 export const CATEGORY_FALLBACK_CATALOG: Array<{
   match: RegExp;
@@ -3365,7 +3388,7 @@ export function isDietaryOrVariantMismatch(
   // Strip precautionary cross-contact trailers and explicit "-free" / "no ..." negations before ingredient checks
   const ingClean = ing
     .replace(
-      /(?:[.;,(\[]|\b)(?:may\s+contain|manufactured\s+(?:in|on)|processed\s+(?:in|on)|produced\s+(?:in|on)|packaged\s+(?:in|on)|made\s+(?:in|on)\s+(?:a\s+facility|shared\s+equipment)|facility\s+that\s+(?:also\s+)?processes)[^.;)\]]*/g,
+      /(?:[.;,(\[]|\b)(?:may\s+contain(?:\s+traces\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\s+(?:in|on)\s+(?:a\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\s+equipment|lines?|machinery)|shared\s+equipment\s+with|facility\s+that\s+(?:also\s+)?(?:processes|handles|uses|manufactures|packages))(?!\s*:)[^.;)\]\r\n]*?(?=\b(?:ingredients?|contains)\s*:|$|[.;)\]\r\n])/gi,
       " ",
     )
     .replace(
@@ -3394,7 +3417,7 @@ export function isDietaryOrVariantMismatch(
         /\b(?:almond|oat|soy|coconut|cashew|rice|hemp|pea|flax|macadamia|hazelnut|walnut|pecan|pistachio|sesame|sunflower(?:\s+seed)?|pumpkin\s+seed|tiger\s*nut|banana|plant|non[\s-]*dairy|vegan)\s+(?:milks?|creams?|creamers?|butters?|yogurts?|cheeses?|ice\s+creams?)\b/g,
         " ",
       )
-      .replace(/\b(?:almond|oat|soy|coconut|cashew|rice|hemp|pea|flax)milks?\b/g, " ")
+      .replace(/\b(?:almond|oat|soy|coconut|cashew|rice|hemp|pea|flax|walnut|hazelnut|pistachio|pecan|macadamia)milks?\b/g, " ")
       .replace(
         /\b(?:cocoa|shea|mango|illipe|kokum|peanut|almond|cashew|hazelnut|walnut|pecan|pistachio|macadamia|sunflower(?:\s+seed)?|pumpkin\s+seed|sesame|tahini|soy(?:\s+nut)?|cookie|apple|pumpkin|maple|lemon|fruit)\s+butters?\b/g,
         " ",
@@ -3402,37 +3425,44 @@ export function isDietaryOrVariantMismatch(
       .replace(/\bcream\s+of\s+(?:tartar|coconut|rice|wheat)\b/g, " ")
       .replace(/\bbutter\s+(?:beans?|lettuce)\b|\bbutternut\b/g, " ")
       .replace(/\blactic\s+acid\b|\bcalcium\s+lactate\b|\bsodium\s+(?:lactate|stearoyl\s+lactylate)\b/g, " ");
-    const pattern = /\b(vegan|plant[\s-]*based)\b/.test(q)
-      ? /\b(milk|milkfat|butterfat|butteroil|ghee|cream|whey|casein\w*|butter|cheese|yogurt|lactose|egg|eggs|beef|pork|chicken|turkey|fish|anchov\w*|gelatin)\b/
-      : /\b(milk|milkfat|butterfat|butteroil|ghee|cream|whey|casein\w*|butter|cheese|yogurt|lactose)\b/;
-    if (pattern.test(ingWithoutPlantTerms)) {
+    const pattern = /\b(milk|milkfat|butterfat|butteroil|ghee|cream|whey|casein\w*|butter|cheese|yogurt|lactose|egg|eggs|beef|pork|chicken|turkey|fish|anchov\w*|gelatin)\b/;
+    const dairyOnlyPattern = /\b(milk|milkfat|butterfat|butteroil|ghee|cream|whey|casein\w*|butter|cheese|yogurt|lactose)\b/;
+    if ((/\b(vegan|plant[\s-]*based)\b/.test(q) ? pattern : dairyOnlyPattern).test(ingWithoutPlantTerms)) {
       return true;
     }
   }
 
-  // 3. Zero-sugar / sugar-free / unsweetened / diet query vs caloric sugars (never trust candidate title claim over actual ingredients)
-  if (/\b(zero\s+sugar|sugar[\s-]*free|sugarfree|no\s+sugar(?!\s+added)|unsweetened|\bdiet\b)\b/.test(q)) {
+  // 3. Zero-sugar / sugar-free / unsweetened / no-sugar-added / diet query vs caloric sugars
+  if (/\b(zero\s+sugar|sugar[\s-]*free|sugarfree|no\s+sugar(?:\s+added)?|no\s+added\s+sugars?|unsweetened|\bdiet\b)\b/.test(q)) {
     const ingForSugar = ingClean.replace(/\bsugar\s+(?:snap|kelp|alcohols?|cane\s+fiber|beet\s+fiber)\b/g, " ");
-    const hasAddedCaloricSweetener =
-      /\b(sugar|cane\s+sugar|brown\s+sugar|invert\s+sugar|sucrose|glucose|fructose|corn\s+syrup|high\s+fructose\s+corn\s+syrup|rice\s+syrup|malt\s+syrup|tapioca\s+syrup|dextrose|maltose|honey|maple\s+syrup|molasses|agave|fruit\s+juice\s+concentrate)\b/.test(
-        ingForSugar
-      );
+    const isNoSugarAddedOnly =
+      /\bno\s+(?:sugar\s+added|added\s+sugars?)\b/.test(q) &&
+      !/\b(zero\s+sugar|sugar[\s-]*free|sugarfree|unsweetened|\bdiet\b)\b/.test(q);
+    const hasAddedCaloricSweetener = isNoSugarAddedOnly
+      ? /\b(sugar|cane\s+sugar|brown\s+sugar|invert\s+sugar|sucrose|glucose|fructose|corn\s+syrup|high\s+fructose\s+corn\s+syrup|rice\s+syrup|malt\s+syrup|tapioca\s+syrup|dextrose|maltose|honey|maple\s+syrup|molasses|agave)\b/.test(
+          ingForSugar
+        )
+      : /\b(sugar|cane\s+sugar|brown\s+sugar|invert\s+sugar|sucrose|glucose|fructose|corn\s+syrup|high\s+fructose\s+corn\s+syrup|rice\s+syrup|malt\s+syrup|tapioca\s+syrup|dextrose|maltose|honey|maple\s+syrup|molasses|agave|fruit\s+juice\s+concentrate)\b/.test(
+          ingForSugar
+        );
     if (hasAddedCaloricSweetener) {
       return true;
     }
-    const isStrictZeroSugarQuery = /\b(zero\s+sugar|sugar[\s-]*free|sugarfree|no\s+sugar(?!\s+added)|\bdiet\b)\b/.test(q);
-    if (isStrictZeroSugarQuery) {
-      if ((entryNutrition?.sugarsG100g ?? 0) > 1) {
-        return true;
-      }
-    } else if (!/\bunsweetened\b/.test(t)) {
-      const isPlantOrDairyMilk =
-        /\b(milk|oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk|cashew\s*milk|milked\s+\w+|malk|elmhurst|califia|planet\s+oat)\b/.test(
-          t
-        );
-      const maxIntrinsicSugar = isPlantOrDairyMilk ? 5 : 0.5;
-      if ((entryNutrition?.sugarsG100g ?? 0) > maxIntrinsicSugar) {
-        return true;
+    if (!isNoSugarAddedOnly) {
+      const isStrictZeroSugarQuery = /\b(zero\s+sugar|sugar[\s-]*free|sugarfree|no\s+sugar(?!\s+added)|\bdiet\b)\b/.test(q);
+      if (isStrictZeroSugarQuery) {
+        if ((entryNutrition?.sugarsG100g ?? 0) > 1) {
+          return true;
+        }
+      } else if (!/\bunsweetened\b/.test(t)) {
+        const isPlantOrDairyMilk =
+          /\b(milk|oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk|cashew\s*milk|milked\s+\w+|malk|elmhurst|califia|planet\s+oat)\b/.test(
+            t
+          );
+        const maxIntrinsicSugar = isPlantOrDairyMilk ? 5 : 0.5;
+        if ((entryNutrition?.sugarsG100g ?? 0) > maxIntrinsicSugar) {
+          return true;
+        }
       }
     }
   }
@@ -3699,17 +3729,17 @@ const WHOLE_FOOD_PRODUCE_DESCRIPTORS = new Set([
   ...WHOLE_FOOD_COMMON_POST_DESCRIPTORS,
   // Produce varieties, cultivars, colors, and botanical parts (supports both pre-noun & inverted "<Noun>, <Variety>")
   "honeycrisp", "gala", "fuji", "granny", "smith", "pink", "lady", "cosmic", "crisp", "mcintosh",
-  "envy", "ambrosia", "jazz", "kanzi", "braeburn", "cortland", "empire", "golden", "delicious",
+  "envy", "jazz", "kanzi", "braeburn", "cortland", "empire", "golden", "delicious",
   "russet", "yukon", "gold", "fingerling", "baking",
   "roma", "cherry", "grape", "beefsteak", "campari", "plum", "vine",
   "vidalia", "walla", "sweet", "bell", "english", "persian", "kirby", "pickling",
   "hass", "navel", "valencia", "cara", "blood", "mandarin", "clementine", "meyer", "key",
   "bartlett", "anjou", "bosc", "asian", "bing", "rainier", "concord", "cotton",
   "portobello", "portabella", "cremini", "crimini", "bella", "shiitake", "button", "oyster", "enoki",
-  "acorn", "butternut", "spaghetti", "delicata", "kabocha", "yellow", "summer", "winter",
-  "romaine", "iceberg", "butterhead", "butter", "bibb", "boston", "rainbow", "swiss", "tuscan", "lacinato", "curly",
+  "acorn", "butternut", "delicata", "kabocha", "yellow", "summer", "winter",
+  "romaine", "iceberg", "butterhead", "bibb", "boston", "rainbow", "swiss", "tuscan", "lacinato", "curly",
   "red", "green", "white", "black", "purple", "orange",
-  "fruit", "fruits", "vegetable", "vegetables", "produce", "herb", "herbs", "garden", "sweet", "flat", "italian",
+  "fruit", "fruits", "vegetable", "vegetables", "produce", "herb", "herbs", "garden", "flat",
 ]);
 
 const WHOLE_FOOD_NUTS_DESCRIPTORS = new Set([
@@ -3735,17 +3765,44 @@ const WHOLE_FOOD_MEAT_DESCRIPTORS = new Set([
   "norwegian", "scottish", "chilean", "gulf", "argentine", "maine", "key", "west", "sea", "bay",
   "white", "brown", "red", "black", "yellowfin", "ahi", "bluefin", "albacore", "skipjack", "mahi",
   "new", "york", "ny", "kansas", "city", "top", "bottom", "round", "eye", "flat", "iron",
-  "tri", "tip", "t", "center", "thick", "thin", "ground", "stew", "young", "hen", "tom",
+  "tri", "tip", "t", "center", "thick", "thin", "ground", "young", "hen", "tom",
   "cornish", "game", "split", "half", "uncooked", "chilled", "air", "humanely", "certified",
   "american", "wagyu", "kobe", "grassfed", "pastured", "cagefree", "freerange", "non", "gmo",
-  "never", "ever", "added", "hormones", "antibiotics", "steroids", "water", "colossal",
+  "never", "ever", "hormones", "antibiotics", "steroids", "colossal",
 ]);
+
+const MEAT_SPECIES_FAMILIES: RegExp[] = [
+  /\b(?:beef|veal|angus|wagyu|kobe|ribeye|sirloin|brisket)\b/,
+  /\bchicken\b/,
+  /\bpork\b/,
+  /\bturkey\b/,
+  /\blamb\b/,
+  /\bbison\b/,
+  /\bsalmon\b/,
+  /\btuna\b/,
+  /\bshrimp\b/,
+  /\bcod\b/,
+  /\btilapia\b/,
+  /\bhaddock\b/,
+  /\bhalibut\b/,
+  /\btrout\b/,
+  /\bmahi\b/,
+  /\bswordfish\b/,
+  /\bcatfish\b/,
+  /\bsnapper\b/,
+  /\bbass\b/,
+  /\bscallops?\b/,
+  /\bcrab\b/,
+  /\blobster\b/,
+  /\beggs?\b/,
+];
 
 /**
  * Enforces that a single whole-food head noun anchors the phrase:
- * - Strips explicit "no salt added" / "without salt" / "salt-free" claims first (while bare "salt" is rejected).
- * - Requires `matchCount === 1` so multi-ingredient dishes and flavor pairs ("Beef & Broccoli",
- *   "strawberry banana", "lemon pepper", "lemon lime") never pass as single-ingredient whole foods.
+ * - Strips explicit "no salt added" / "without salt" / "no water added" / "no added hormones" claims first
+ *   (while bare "salt", "water", or "added" is rejected).
+ * - Requires `matchCount === 1` (and <= 1 animal/seafood species in meat mode) so multi-ingredient dishes
+ *   and blends ("Beef & Broccoli", "beef and turkey", "pork and shrimp", "tuna steak in water") never pass.
  * - Checks BOTH words before and words after the matched noun against category-specific descriptor sets.
  */
 export function hasWholeFoodHeadNoun(
@@ -3757,12 +3814,24 @@ export function hasWholeFoodHeadNoun(
     .toLowerCase()
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, " ")
     .replace(/,\s*(?:now|was)\b.*$/i, " ")
-    .replace(/\b(?:no\s+salt\s+added|without\s+salt|salt[\s-]+free)\b/gi, " ")
+    .replace(
+      /\b(?:no\s+salt\s+added|without\s+salt|salt[\s-]+free|no\s+water\s+added|without\s+added\s+water|no\s+(?:added\s+)?(?:hormones?|antibiotics?|steroids?|preservatives?|nitrates?|nitrites?)|never\s+any\s+(?:hormones?|antibiotics?))\b/gi,
+      " ",
+    )
     .replace(
       /\b\d+(?:\.\d+)?(?:\s*[-–—x×/]\s*\d+(?:\.\d+)?)?\s*(?:%|fl\.?\s*oz|oz|ounces?|lbs?|pounds?|g|grams?|kg|ct|count|pk|packs?|pcs?|pieces?|dozens?)\b/gi,
       " ",
     )
     .replace(/\b\d+(?:\.\d+)?\b/g, " ");
+
+  const mode = options?.mode ?? (options?.allowMeatCuts ? "meat" : "produce");
+  if (mode === "meat") {
+    let speciesCount = 0;
+    for (const spRe of MEAT_SPECIES_FAMILIES) {
+      if (spRe.test(cleaned)) speciesCount++;
+    }
+    if (speciesCount > 1) return false;
+  }
 
   const globalRe = new RegExp(nounRegex.source, "gi");
   let lastMatch: RegExpExecArray | null = null;
@@ -3775,7 +3844,6 @@ export function hasWholeFoodHeadNoun(
   }
   if (!lastMatch || matchCount !== 1) return false;
 
-  const mode = options?.mode ?? (options?.allowMeatCuts ? "meat" : "produce");
   const descriptorSet =
     mode === "meat"
       ? WHOLE_FOOD_MEAT_DESCRIPTORS
@@ -3933,7 +4001,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 
   // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly single-ingredient)
   const PRODUCE_NOUN_RE =
-    /\b(romaine\s+(?:lettuce|hearts|salad)|butter\s+lettuce|iceberg\s+lettuce|(?:red\s+|green\s+)?leaf\s+lettuce|(?:spinach|kale|arugula|spring|field|garden|mixed)\s+(?:salad|greens)|salad\s+greens|spring\s+mix|grape\s+tomato(?:es)?|cherry\s+tomato(?:es)?|plum\s+tomato(?:es)?|roma\s+tomato(?:es)?|orange\s+(?:bell\s+|sweet\s+)?peppers?|(?:(?:red|green|yellow)\s+)?bell\s+peppers?|sweet\s+peppers?|sweet\s+potato(?:es)?|green\s+onions?|spring\s+onions?|green\s+beans?|string\s+beans?|(?:sugar\s+)?snap\s+peas?|snow\s+peas?|brussels\s+sprouts?|bok\s+choy|ginger\s+gold\s+apples?|(?:fresh|organic)\s+(?:[a-z]+\s+)*mint|mint\s+(?:leaves|leaf|bunch|bunches|sprigs?|herb)|salad|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomato(?:es)?|potato(?:es)?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|chard|collards?|edamame|peas?|apples?|bananas?|strawberr(?:y|ies)|blueberr(?:y|ies)|raspberr(?:y|ies)|blackberr(?:y|ies)|cranberr(?:y|ies)|cherr(?:y|ies)|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangos?|mangoes|pineapples?|watermelons?|cantaloupes?|honeydews?|papayas?|pomegranates?|figs?|dates?|berries|vegetables?|veggies|fresh\s+produce)\b/;
+    /\b(romaine\s+(?:lettuce|hearts|salad)|butter(?:head)?\s+lettuce|lettuce\s*,?\s*butter(?:head)?|butter\s+potato(?:es)?|potato(?:es)?\s*,?\s*butter|spaghetti\s+squash|squash\s*,?\s*spaghetti|ambrosia\s+apples?|apples?\s*,?\s*ambrosia|cosmic\s+crisp\s+apples?|apples?\s*,?\s*cosmic\s+crisp|italian\s+(?:parsley|plums?|squash)|iceberg\s+lettuce|(?:red\s+|green\s+)?leaf\s+lettuce|(?:spinach|kale|arugula|spring|field|garden|mixed|baby)\s+(?:salad|greens)|salad\s+(?:greens|mix)|spring\s+mix|grape\s+tomato(?:es)?|cherry\s+tomato(?:es)?|plum\s+tomato(?:es)?|roma\s+tomato(?:es)?|orange\s+(?:bell\s+|sweet\s+)?peppers?|(?:(?:red|green|yellow)\s+)?bell\s+peppers?|sweet\s+peppers?|sweet\s+potato(?:es)?|green\s+onions?|spring\s+onions?|green\s+beans?|string\s+beans?|(?:sugar\s+)?snap\s+peas?|snow\s+peas?|brussels\s+sprouts?|bok\s+choy|ginger\s+gold\s+apples?|(?:fresh|organic)\s+(?:[a-z]+\s+)*mint|mint\s+(?:leaves|leaf|bunch|bunches|sprigs?|herb)|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomato(?:es)?|potato(?:es)?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|chard|collards?|edamame|peas?|apples?|bananas?|strawberr(?:y|ies)|blueberr(?:y|ies)|raspberr(?:y|ies)|blackberr(?:y|ies)|cranberr(?:y|ies)|cherr(?:y|ies)|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangos?|mangoes|pineapples?|watermelons?|cantaloupes?|honeydews?|papayas?|pomegranates?|figs?|dates?|berries|vegetables?|veggies|fresh\s+produce)\b/;
   if (PRODUCE_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, PRODUCE_NOUN_RE, { checkBefore: true, mode: "produce" })) {
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/169247/nutrients",
@@ -3949,7 +4017,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 
   // 2. Plain Fresh / Frozen Meat, Poultry (Whole Turkey, Chicken Breast Fillets, etc.), Seafood & Shell Eggs (unbreaded, uncured)
   const MEAT_NOUN_RE =
-    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|beef\s+(stew|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
+    /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|beef\s+(stew\s+meat|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|stew\s+beef|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
   if (MEAT_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, MEAT_NOUN_RE, { checkBefore: true, allowMeatCuts: true, mode: "meat" })) {
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
@@ -4051,7 +4119,8 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     );
 
   if (!input.barcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority)) {
-    const directCat = catalogFallback(title);
+    const directCat =
+      catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
     if (
       directCat &&
       !directCat.productTitle.startsWith("Conventional Grocery") &&
@@ -4077,7 +4146,9 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   let found: Omit<LookupResult, "ms"> | null = null;
 
   found = await lookupProviders({ ...input, productTitle: title });
-  if (!found && title) found = catalogFallback(title);
+  if (!found && title) {
+    found = catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
+  }
   if (!found) return null;
 
   if (found.source !== "catalog") {

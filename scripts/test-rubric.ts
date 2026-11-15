@@ -5118,6 +5118,555 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           conflictingBarcodeReportRes.status === 409
       )
     );
+
+    // ==================== POST-a95f22c SELF-AUDIT REGRESSION SUITE ====================
+    {
+    const scanRouteMod = await import("../app/api/scan/route");
+    const auditRouteMod = await import("../app/api/audit/route");
+    const dietarySelfMod = await import("../lib/dietary");
+    const nutritionMod = await import("../lib/nutrition");
+    const rubricMod = await import("../lib/rubric");
+    const brandsMod = await import("../lib/brands");
+    const drinksMod = await import("../lib/drinks-catalog");
+    const entitlementsMod = await import("../lib/entitlements");
+    const scanLibMod = await import("../lib/scan");
+
+    // A. Apple StoreKit 2 JWS OID / CA / P-384 / expiry / 413 hardening + Retention apple_<origTxId> lookup + Paywall verifiedAccountPro spoof guard
+    const expiredLeafDer = buildTestX509Der({
+      serial: 7,
+      issuerCn: "Apple WWDR CA",
+      subjectCn: "Expired App Store Leaf",
+      subjectPubKey: leafKp.publicKey,
+      issuerPrivKey: intKp.privateKey,
+      notBefore: new Date(certNow.getTime() - 172_800_000),
+      notAfter: new Date(certNow.getTime() - 3600_000),
+      isCa: false,
+    });
+    const nonCaIntDer = buildTestX509Der({
+      serial: 8,
+      issuerCn: "Apple Root CA - G3",
+      subjectCn: "Apple WWDR Non-CA",
+      subjectPubKey: intKp.publicKey,
+      issuerPrivKey: rootKp.privateKey,
+      notBefore: certNb,
+      notAfter: certNa,
+      isCa: false,
+    });
+
+    const signStoreKitTxJws = (
+      x5cList: unknown,
+      claimOverrides?: Record<string, unknown>,
+      signingKey: import("node:crypto").KeyObject = leafKp.privateKey,
+      sigHash: "sha256" | "sha384" = "sha256",
+    ) => {
+      const hdr = Buffer.from(JSON.stringify({ alg: "ES256", x5c: x5cList })).toString("base64url");
+      const claimsObj: Record<string, unknown> = {
+        transactionId: "tx_self_audit_1",
+        originalTransactionId: "orig_tx_self_audit_1",
+        bundleId: "com.heybroc.app",
+        productId: "com.heybroc.pro.annual",
+        signedDate: Date.now(),
+        expiresDate: Date.now() + 86_400_000,
+        environment: "Sandbox",
+        ...claimOverrides,
+      };
+      const pay = Buffer.from(JSON.stringify(claimsObj)).toString("base64url");
+      const sig = cryptoMod
+        .sign(sigHash, Buffer.from(`${hdr}.${pay}`, "utf8"), {
+          key: signingKey,
+          dsaEncoding: "ieee-p1363",
+        })
+        .toString("base64url");
+      return `${hdr}.${pay}.${sig}`;
+    };
+
+    const prevRootPinSelfAudit = process.env.APPLE_ROOT_CA_SHA256;
+    let verifyNonCaIntStatus = 0;
+    let verifyP384Status = 0;
+    let verifyExpiredStatus = 0;
+    let verifyMissingOidStatus = 0;
+    let verifyOversizeStatus = 0;
+    let verifyNullBodyStatus = 0;
+    let retentionNonArrayX5cStatus = 0;
+    let retentionOversizeStatus = 0;
+    let retentionApplePrefixStatus = 0;
+    let retentionApplePrefixPromoId = "";
+    try {
+      process.env.APPLE_ROOT_CA_SHA256 = rootX509.fingerprint256;
+
+      verifyNullBodyStatus = (
+        await appleVerifyRouteMod.POST(
+          new Request("http://localhost:3000/api/apple/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.1" },
+            body: "null",
+          })
+        )
+      ).status;
+
+      verifyOversizeStatus = (
+        await appleVerifyRouteMod.POST(
+          new Request("http://localhost:3000/api/apple/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.2" },
+            body: JSON.stringify({ signedTransactionInfo: "x".repeat(34_000) }),
+          })
+        )
+      ).status;
+
+      verifyNonCaIntStatus = (
+        await appleVerifyRouteMod.POST(
+          new Request("http://localhost:3000/api/apple/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.3" },
+            body: JSON.stringify({
+              signedTransactionInfo: signStoreKitTxJws([
+                leafDer.toString("base64"),
+                nonCaIntDer.toString("base64"),
+                rootDer.toString("base64"),
+              ]),
+            }),
+          })
+        )
+      ).status;
+
+      verifyP384Status = (
+        await appleVerifyRouteMod.POST(
+          new Request("http://localhost:3000/api/apple/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.4" },
+            body: JSON.stringify({
+              signedTransactionInfo: signStoreKitTxJws(
+                [
+                  p384LeafDer.toString("base64"),
+                  intDer.toString("base64"),
+                  rootDer.toString("base64"),
+                ],
+                undefined,
+                p384LeafKp.privateKey,
+                "sha384",
+              ),
+            }),
+          })
+        )
+      ).status;
+
+      verifyExpiredStatus = (
+        await appleVerifyRouteMod.POST(
+          new Request("http://localhost:3000/api/apple/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.5" },
+            body: JSON.stringify({
+              signedTransactionInfo: signStoreKitTxJws([
+                expiredLeafDer.toString("base64"),
+                intDer.toString("base64"),
+                rootDer.toString("base64"),
+              ]),
+            }),
+          })
+        )
+      ).status;
+
+      // /api/apple/verify sets allowNonProdTestPin: false, so even with APPLE_ROOT_CA_SHA256 set it MUST reject non-Apple roots/missing App Store OIDs
+      verifyMissingOidStatus = (
+        await appleVerifyRouteMod.POST(
+          new Request("http://localhost:3000/api/apple/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.6" },
+            body: JSON.stringify({
+              signedTransactionInfo: signStoreKitTxJws([
+                leafDer.toString("base64"),
+                intDer.toString("base64"),
+                rootDer.toString("base64"),
+              ]),
+            }),
+          })
+        )
+      ).status;
+
+      retentionNonArrayX5cStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.7" },
+            body: JSON.stringify({
+              signedPayload: signStoreKitTxJws("not-an-array"),
+            }),
+          })
+        )
+      ).status;
+
+      retentionOversizeStatus = (
+        await appleRetentionMod.POST(
+          new Request("http://localhost:3000/api/apple/retention", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.8" },
+            body: JSON.stringify({ signedPayload: "y".repeat(34_000) }),
+          })
+        )
+      ).status;
+
+      await entitlementsMod.saveEntitlement({
+        sessionId: "apple_tx_direct_ret_901",
+        subscriptionId: "apple_direct_ret_901",
+        plan: "monthly",
+        status: "active",
+        active: true,
+        lastChargeSucceeded: true,
+        expiresAtMs: Date.now() + 86_400_000,
+        updatedAt: new Date().toISOString(),
+      });
+      const retApplePrefixRes = await appleRetentionMod.POST(
+        new Request("http://localhost:3000/api/apple/retention", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.9" },
+          body: JSON.stringify({
+            signedPayload: signRetentionJws(
+              [
+                leafDer.toString("base64"),
+                intDer.toString("base64"),
+                rootDer.toString("base64"),
+              ],
+              { originalTransactionId: "direct_ret_901", productId: "com.heybroc.pro.monthly" },
+            ),
+          }),
+        })
+      );
+      retentionApplePrefixStatus = retApplePrefixRes.status;
+      const retApplePrefixJson = (await retApplePrefixRes.json()) as {
+        alternateProduct?: { productId?: string; messageIdentifier?: string };
+      };
+      retentionApplePrefixPromoId = retApplePrefixJson.alternateProduct?.productId || "";
+    } finally {
+      if (prevRootPinSelfAudit === undefined) delete process.env.APPLE_ROOT_CA_SHA256;
+      else process.env.APPLE_ROOT_CA_SHA256 = prevRootPinSelfAudit;
+    }
+
+    globalThis.fetch = async () => Response.json({ status: 0, hits: [], products: [], foods: [] });
+    let spoofScanIsPro: boolean | undefined;
+    let spoofAuditIsPro: boolean | undefined;
+    try {
+      const spoofScanRes = await scanRouteMod.POST(
+        new Request("http://localhost:3000/api/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.10" },
+          body: JSON.stringify({
+            productTitle: "Doritos Nacho Cheese",
+            deviceId: "dev_spoof_audit_999111",
+            verifiedAccountPro: true,
+            skipAnalytics: true,
+          }),
+        })
+      );
+      const spoofScanJson = (await spoofScanRes.json()) as {
+        entitlement?: { isProActive?: boolean };
+      };
+      spoofScanIsPro = spoofScanJson.entitlement?.isProActive;
+
+      const spoofAuditRes = await auditRouteMod.POST(
+        new Request("http://localhost:3000/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.11" },
+          body: JSON.stringify({
+            deviceId: "dev_spoof_audit_999111",
+            items: [
+              {
+                productTitle: "Doritos Nacho Cheese",
+                deviceId: "dev_spoof_audit_999111",
+                verifiedAccountPro: true,
+              },
+            ],
+          }),
+        })
+      );
+      const spoofAuditJson = (await spoofAuditRes.json()) as {
+        results?: Array<{ entitlement?: { isProActive?: boolean } }>;
+      };
+      spoofAuditIsPro = spoofAuditJson.results?.[0]?.entitlement?.isProActive;
+    } finally {
+      globalThis.fetch = prevFetch48h;
+    }
+
+    check(
+      "Self-Audit A: /api/apple/verify & /api/apple/retention enforce X.509 CA constraints, P-256 leaf curve, expiry, App Store OIDs, 32KB cap, and apple_<origTxId> lookup; /api/scan & /api/audit reject untrusted verifiedAccountPro spoofing",
+      Boolean(
+        verifyNullBodyStatus === 400 &&
+          verifyOversizeStatus === 413 &&
+          verifyNonCaIntStatus === 401 &&
+          verifyP384Status === 401 &&
+          verifyExpiredStatus === 401 &&
+          verifyMissingOidStatus === 401 &&
+          retentionNonArrayX5cStatus === 401 &&
+          retentionOversizeStatus === 413 &&
+          retentionApplePrefixStatus === 200 &&
+          retentionApplePrefixPromoId === "com.heybroc.pro.annual" &&
+          spoofScanIsPro === false &&
+          spoofAuditIsPro === false
+      )
+    );
+
+    // B. Precautionary allergen preservation ("processed in alkali", "packaged in soybean oil", "\nContains:") + coordinated "-free" claims + Sesame pill
+    const alkaliCookieAlerts = dietarySelfMod.evaluateDietaryAlerts(
+      ["dairy", "wheat_gluten", "soy", "egg", "shellfish_fish"],
+      "Chocolate Cookie",
+      "Sugar, Cocoa Processed in Alkali, Anchovies Packaged in Soybean Oil, Enriched Wheat Flour, Whole Milk, Eggs."
+    );
+    const alkaliCookieAlertIds = new Set(alkaliCookieAlerts.map((a) => a.id));
+    const newlineContainsAlerts = dietarySelfMod.evaluateDietaryAlerts(
+      ["dairy", "soy", "wheat_gluten", "sesame"],
+      "Butter Crackers",
+      "Enriched Flour, Canola Oil. May contain sesame\nContains: Wheat, Milk, Soy."
+    );
+    const newlineContainsIds = new Set(newlineContainsAlerts.map((a) => a.id));
+    const coordinatedFreeGranolaAlerts = dietarySelfMod.evaluateDietaryAlerts(
+      ["peanuts_nuts", "egg", "dairy"],
+      "Peanut & Tree Nut Free, Egg & Dairy Free Granola",
+      "Rolled Oats, Maple Syrup, Cashewmilk."
+    );
+    const coordinatedFreeIds = new Set(coordinatedFreeGranolaAlerts.map((a) => a.id));
+    const watchlistMiniFunnelSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+
+    check(
+      "Self-Audit B: evaluateDietaryAlerts & isDietaryOrVariantMismatch preserve allergens after 'processed in alkali'/'packaged in oil' and across '\\nContains:', detect compound Cashewmilk despite coordinated '-free' title claims, and expose Sesame Guard in WatchlistMiniFunnel",
+      Boolean(
+        alkaliCookieAlertIds.has("dairy") &&
+          alkaliCookieAlertIds.has("wheat_gluten") &&
+          alkaliCookieAlertIds.has("soy") &&
+          alkaliCookieAlertIds.has("egg") &&
+          alkaliCookieAlertIds.has("shellfish_fish") &&
+          newlineContainsIds.has("dairy") &&
+          newlineContainsIds.has("soy") &&
+          newlineContainsIds.has("wheat_gluten") &&
+          !newlineContainsIds.has("sesame") &&
+          coordinatedFreeIds.has("peanuts_nuts") &&
+          !coordinatedFreeIds.has("egg") &&
+          !coordinatedFreeIds.has("dairy") &&
+          lookupMod.isDietaryOrVariantMismatch(
+            "dairy free hot cocoa",
+            "Hot Cocoa Mix",
+            "Sugar, Cocoa Processed in Alkali, Nonfat Dry Milk."
+          ) &&
+          lookupMod.isDietaryOrVariantMismatch(
+            "no sugar added peach cups",
+            "Sliced Peaches",
+            "Peaches, Water, Cane Sugar."
+          ) &&
+          watchlistMiniFunnelSrc.includes('id: "sesame"')
+      )
+    );
+
+    // C. Whole-food descriptor hardening, multi-species meat guard, USDA Survey (FNDDS) prepared-dish exclusion, canonical word-order catalog self-resolution, & runScan aisle-prefix isolation
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("019156552641")) {
+        return Response.json({
+          status: 1,
+          product: {
+            code: "019156552641",
+            product_name: "Grade A Large Brown Eggs",
+            brands: "Happy Egg",
+            countries_tags: ["en:united-states"],
+            ingredients_text: "Shell Eggs.",
+            nutriments: { "energy-kcal_100g": 143, sugars_100g: 0.4, "saturated-fat_100g": 3.1, sodium_100g: 0.142, proteins_100g: 12.6 },
+          },
+        });
+      }
+      return Response.json({ status: 0, hits: [], products: [], foods: [] });
+    };
+    let sneakyWholeRejectsOk = false;
+    let legitWholeHitsOk = false;
+    let wordOrderCatalogOk = false;
+    let aisleEggScanOk = false;
+    try {
+      const sneakyWholeQueries = [
+        "apple butter",
+        "tomato spaghetti",
+        "spaghetti salad",
+        "italian salad",
+        "ambrosia salad",
+        "tuna steak in water",
+        "beef stew",
+        "beef and turkey",
+        "pork and shrimp",
+        "chicken and salmon",
+      ];
+      const sneakyResults = await Promise.all(
+        sneakyWholeQueries.map((productTitle) => lookupMod.lookupIngredients({ productTitle }))
+      );
+      sneakyWholeRejectsOk = sneakyResults.every((r) => r?.nutrition?.isWholeFood !== true);
+
+      const legitWholeQueries = [
+        "Cosmic Crisp Apples",
+        "Spaghetti Squash",
+        "Butter Potatoes",
+        "Beef Stew Meat",
+      ];
+      const legitResults = await Promise.all(
+        legitWholeQueries.map((productTitle) => lookupMod.lookupIngredients({ productTitle }))
+      );
+      legitWholeHitsOk = legitResults.every((r) => r?.nutrition?.isWholeFood === true);
+
+      const wordOrderQueries = [
+        "Honey Nut Cheerios",
+        "Cherry Coke",
+        "Post Oreo O's Cereal",
+        "Ben & Jerry's Cherry Garcia Ice Cream",
+      ];
+      const wordOrderResults = await Promise.all(
+        wordOrderQueries.map((productTitle) => lookupMod.lookupIngredients({ productTitle }))
+      );
+      wordOrderCatalogOk = wordOrderResults.every((r) => r?.source === "catalog");
+
+      const aisleEggScan = await scanLibMod.runScan({
+        productTitle: "Milk & Eggs - Grade A Large Brown Eggs",
+        barcode: "019156552641",
+        dietaryWatchlist: ["dairy"],
+        skipAnalytics: true,
+      });
+      aisleEggScanOk =
+        aisleEggScan.ok === true &&
+        aisleEggScan.result.score >= 80 &&
+        !(aisleEggScan.dietaryAlerts || []).some((a) => a.id === "dairy");
+    } finally {
+      globalThis.fetch = prevFetch48h;
+    }
+
+    const fnddsPotPieNut = nutritionMod.extractUsdaNutrition({
+      description: "Chicken pot pie, NFS",
+      dataType: "Survey (FNDDS)",
+      foodNutrients: [],
+    });
+    const foundationAppleNut = nutritionMod.extractUsdaNutrition({
+      description: "Apples, raw",
+      dataType: "Foundation",
+      foodNutrients: [],
+    });
+    const clampedWatchlistRubric = rubricMod.scoreIngredients("Water, Red 40", {
+      dyes: 999_999,
+    });
+    const normalWatchlistRubric = rubricMod.scoreIngredients("Water, Red 40", {
+      dyes: 3,
+    });
+
+    check(
+      "Self-Audit C: Prepared dishes & multi-species meats never score as whole foods, USDA Survey (FNDDS) prepared dishes never auto-flag isWholeFood, canonicalized word-order brands resolve from catalog, runScan isolates aisle prefixes, and rubric clamps watchlist multipliers",
+      Boolean(
+        sneakyWholeRejectsOk &&
+          legitWholeHitsOk &&
+          wordOrderCatalogOk &&
+          aisleEggScanOk &&
+          !nutritionMod.classifyWholeFood("Oatmeal creme pie").isWholeFood &&
+          !nutritionMod.classifyWholeFood("Beef burrito").isWholeFood &&
+          !nutritionMod.classifyWholeFood("Tuna salad").isWholeFood &&
+          !nutritionMod.classifyWholeFood("Chicken pot pie").isWholeFood &&
+          !nutritionMod.classifyWholeFood("Corned beef").isWholeFood &&
+          !fnddsPotPieNut.isWholeFood &&
+          foundationAppleNut.isWholeFood === true &&
+          Number.isFinite(clampedWatchlistRubric.score) &&
+          clampedWatchlistRubric.score === normalWatchlistRubric.score
+      )
+    );
+
+    // D. Brand guards (Fudge Ripple / A1 Milk / Peeps Ghost / CPG parent umbrellas), leading modifiers, passesVariantGuard, and /api/label-report digit & dual-input conflict hardening
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("078742000008")) {
+        return Response.json({
+          status: 1,
+          product: {
+            code: "078742000008",
+            product_name: "Original Soymilk",
+            brands: "Great Value",
+            countries_tags: ["en:united-states"],
+            ingredients_text: "Filtered Water, Whole Soybeans, Cane Sugar, Sea Salt, Carrageenan.",
+            nutriments: { "energy-kcal_100g": 45, sugars_100g: 3.3, sodium_100g: 0.045, proteins_100g: 2.9 },
+          },
+        });
+      }
+      return Response.json({ status: 0, hits: [], products: [], foods: [] });
+    };
+    let upcInTextareaJson: { resolutionSource?: string; verifiedProduct?: { score?: number } | null } = {};
+    let badUpcInTextareaStatus = 0;
+    let gibberishTextareaStatus = 0;
+    let dualInputConflictStatus = 0;
+    try {
+      const upcInTextareaRes = await labelReportMod.POST(
+        new Request("http://localhost:3000/api/label-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.20" },
+          body: JSON.stringify({
+            productTitle: " Coca-Cola Classic ",
+            reportedIngredients: "049000028904",
+          }),
+        })
+      );
+      upcInTextareaJson = (await upcInTextareaRes.json()) as typeof upcInTextareaJson;
+
+      badUpcInTextareaStatus = (
+        await labelReportMod.POST(
+          new Request("http://localhost:3000/api/label-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.21" },
+            body: JSON.stringify({
+              productTitle: "Test Soup",
+              reportedIngredients: "012345678901",
+            }),
+          })
+        )
+      ).status;
+
+      gibberishTextareaStatus = (
+        await labelReportMod.POST(
+          new Request("http://localhost:3000/api/label-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.22" },
+            body: JSON.stringify({
+              productTitle: "Test Soup",
+              reportedIngredients: "12345 !!!",
+            }),
+          })
+        )
+      ).status;
+
+      dualInputConflictStatus = (
+        await labelReportMod.POST(
+          new Request("http://localhost:3000/api/label-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-forwarded-for": "10.88.99.23" },
+            body: JSON.stringify({
+              productTitle: "Silk Unsweetened Soymilk",
+              brand: "Silk",
+              barcode: "078742000008",
+              reportedIngredients: "Filtered Water, Whole Soybeans.",
+            }),
+          })
+        )
+      ).status;
+    } finally {
+      globalThis.fetch = prevFetch48h;
+    }
+
+    check(
+      "Self-Audit D: Brand guards allow Fudge Ripple / A1 Milk / Peeps Ghost & CPG parent credits, passesVariantGuard catches '(2%)' / 'No Sugar Added' / 'Crunchy vs Creamy', and /api/label-report blocks raw UPC/gibberish scoring & dual-input barcode conflicts",
+      Boolean(
+        !brandsMod.hasConflictingBrand("Turkey Hill Fudge Ripple Ice Cream", "Turkey Hill Vanilla Ice Cream") &&
+          !brandsMod.hasConflictingBrand("A1 Milk", "Origin A1 & A2 Whole Milk") &&
+          !brandsMod.hasConflictingBrand("Peeps Ghost Marshmallows", "Peeps Marshmallows") &&
+          lookupMod.matchesRequestedBrand("Kraft Velveeta", "Velveeta", "Velveeta Original") &&
+          lookupMod.matchesRequestedBrand("Hershey's Reese's", "Reese's", "Reese's Peanut Butter Cups") &&
+          lookupMod.matchesRequestedBrand("Ferrero Nutella", "Nutella", "Nutella Hazelnut Spread") &&
+          lookupMod.relevance("Creamy Peanut Butter", "Skippy Creamy Peanut Butter") > 0.6 &&
+          !drinksMod.passesVariantGuard("Horizon Milk (2%)", "Horizon 1% Lowfat Milk") &&
+          !drinksMod.passesVariantGuard("No Sugar Added Peach Cups", "Del Monte Sliced Peaches in Heavy Syrup") &&
+          !drinksMod.passesVariantGuard("Crunchy Skippy Peanut Butter", "Skippy Creamy Peanut Butter") &&
+          upcInTextareaJson.resolutionSource !== "package_label" &&
+          (upcInTextareaJson.verifiedProduct?.score ?? 0) < 50 &&
+          badUpcInTextareaStatus === 400 &&
+          gibberishTextareaStatus === 400 &&
+          dualInputConflictStatus === 409
+      )
+    );
+    }
   }
 
   console.log("Checks executed:", checks);

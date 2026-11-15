@@ -27,9 +27,23 @@ export const APPLE_ROOT_FINGERPRINTS_SHA256 = new Set([
   "B0:B1:73:0E:CB:C7:FF:45:05:14:2C:49:F1:29:5E:6E:DA:6B:CA:ED:7E:2C:68:C5:BE:91:B5:A1:10:01:F0:24",
 ]);
 
-interface StoreKitJwsHeader {
+// ASN.1 DER OIDs required on genuine Apple App Store / StoreKit JWS certificates:
+// - Leaf OID 1.2.840.113635.100.6.11.1 (Mac App Store / App Store Receipt & JWS Signing)
+// - Intermediate OID 1.2.840.113635.100.6.2.1 (Apple Worldwide Developer Relations CA)
+const APPLE_APP_STORE_LEAF_OID_DER = Buffer.from("060a2a864886f76364060b01", "hex");
+const APPLE_WWDR_INTERMEDIATE_OID_DER = Buffer.from("060a2a864886f76364060201", "hex");
+
+function normalizeSha256Hex(fingerprint: string): string {
+  return fingerprint.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+}
+
+const PINNED_APPLE_ROOT_HEX = new Set(
+  Array.from(APPLE_ROOT_FINGERPRINTS_SHA256, (fp) => normalizeSha256Hex(fp))
+);
+
+export interface AppleJwsHeader {
   alg?: string;
-  x5c?: string[];
+  x5c?: unknown;
 }
 
 interface StoreKitTransactionPayload {
@@ -49,6 +63,10 @@ interface StoreKitTransactionPayload {
   signedDate?: number;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function getClientIp(req: Request): string {
   return (
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -62,48 +80,99 @@ function decodeBase64UrlJson<T>(segment: string): T | null {
     const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
     const raw = Buffer.from(padded, "base64").toString("utf8");
-    return JSON.parse(raw) as T;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return null;
+    return parsed as T;
   } catch {
     return null;
   }
 }
 
-function verifyAppleStoreKitJws(
-  jws: string
-): { ok: boolean; claims?: StoreKitTransactionPayload; error?: string } {
-  const parts = jws.trim().split(".");
-  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
-    return { ok: false, error: "Malformed StoreKit 2 JWS compact token." };
-  }
-
-  const header = decodeBase64UrlJson<StoreKitJwsHeader>(parts[0]);
-  const claims = decodeBase64UrlJson<StoreKitTransactionPayload>(parts[1]);
-  if (!header || !claims) {
-    return { ok: false, error: "Could not decode StoreKit 2 JWS header or payload." };
-  }
-  if (header.alg !== "ES256" || !Array.isArray(header.x5c) || header.x5c.length < 3) {
+export function verifyAppleAppStoreX5cJws(
+  parts: string[],
+  header: AppleJwsHeader,
+  options?: { allowNonProdTestPin?: boolean }
+): { ok: boolean; error?: string } {
+  if (
+    header.alg !== "ES256" ||
+    !Array.isArray(header.x5c) ||
+    header.x5c.length < 3 ||
+    header.x5c.length > 6 ||
+    !header.x5c.every((c): c is string => typeof c === "string" && c.trim().length > 0)
+  ) {
     return {
       ok: false,
-      error: "StoreKit 2 JWS requires ES256 signature with full Apple x5c certificate chain.",
+      error: "Apple JWS requires ES256 signature with a 3-to-6 certificate x5c chain.",
     };
+  }
+  if (!parts[2]) {
+    return { ok: false, error: "Missing JWS signature segment." };
   }
 
   try {
     const certs = header.x5c.map(
       (b64) => new crypto.X509Certificate(Buffer.from(b64, "base64"))
     );
+    const now = Date.now();
+    const fingerprints = new Set<string>();
+    for (const cert of certs) {
+      const from = Date.parse(cert.validFrom);
+      const to = Date.parse(cert.validTo);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || now < from || now > to) {
+        return { ok: false, error: "Certificate in Apple x5c chain is expired or not yet valid." };
+      }
+      const fp = normalizeSha256Hex(cert.fingerprint256 || "");
+      if (fp.length !== 64 || fingerprints.has(fp)) {
+        return { ok: false, error: "Duplicate or malformed certificate in Apple x5c chain." };
+      }
+      fingerprints.add(fp);
+    }
+
+    const leafCert = certs[0];
+    const rootCert = certs[certs.length - 1];
+    // Enforce X.509 Basic Constraints: end-entity leaf must be CA:FALSE; all intermediates + root must be CA:TRUE.
+    if (leafCert.ca || !certs.slice(1).every((c) => c.ca === true)) {
+      return { ok: false, error: "Invalid X.509 Basic Constraints (CA) in Apple x5c chain." };
+    }
+    // Enforce NIST P-256 curve for ES256 leaf signing key.
+    if (
+      leafCert.publicKey.asymmetricKeyType !== "ec" ||
+      leafCert.publicKey.asymmetricKeyDetails?.namedCurve !== "prime256v1"
+    ) {
+      return { ok: false, error: "Apple ES256 JWS leaf key must use EC prime256v1." };
+    }
+
     for (let i = 0; i < certs.length - 1; i++) {
       if (!certs[i].verify(certs[i + 1].publicKey)) {
         return { ok: false, error: "Apple x5c intermediate certificate signature invalid." };
       }
     }
-    const rootCert = certs[certs.length - 1];
     if (!rootCert.verify(rootCert.publicKey)) {
       return { ok: false, error: "Apple x5c root certificate self-signature invalid." };
     }
-    const rootFp = (rootCert.fingerprint256 || "").toUpperCase();
-    if (!APPLE_ROOT_FINGERPRINTS_SHA256.has(rootFp)) {
-      return { ok: false, error: "Untrusted root CA in StoreKit 2 x5c chain." };
+
+    const rootFp = normalizeSha256Hex(rootCert.fingerprint256 || "");
+    const isProduction = process.env.NODE_ENV === "production";
+    const customTestPin =
+      options?.allowNonProdTestPin && !isProduction
+        ? normalizeSha256Hex((process.env.APPLE_ROOT_CA_SHA256 || "").trim())
+        : "";
+
+    if (customTestPin) {
+      if (customTestPin.length !== 64 || rootFp !== customTestPin) {
+        return { ok: false, error: "Root CA does not match configured test pin." };
+      }
+    } else {
+      if (!PINNED_APPLE_ROOT_HEX.has(rootFp)) {
+        return { ok: false, error: "Untrusted root CA in Apple x5c chain." };
+      }
+      // Block third-party Apple Developer certs chaining to Apple Root G1/G3 by requiring App Store / WWDR JWS OIDs.
+      if (
+        !leafCert.raw.includes(APPLE_APP_STORE_LEAF_OID_DER) ||
+        !certs[1].raw.includes(APPLE_WWDR_INTERMEDIATE_OID_DER)
+      ) {
+        return { ok: false, error: "Certificate chain lacks required Apple App Store JWS OIDs." };
+      }
     }
 
     const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, "utf8");
@@ -115,17 +184,37 @@ function verifyAppleStoreKitJws(
     const sigValid = crypto.verify(
       "sha256",
       signingInput,
-      { key: certs[0].publicKey, dsaEncoding: "ieee-p1363" },
+      { key: leafCert.publicKey, dsaEncoding: "ieee-p1363" },
       sigBytes
     );
     if (!sigValid) {
-      return { ok: false, error: "Invalid StoreKit 2 ES256 transaction signature." };
+      return { ok: false, error: "Invalid Apple ES256 JWS signature." };
     }
-
-    return { ok: true, claims };
+    return { ok: true };
   } catch {
-    return { ok: false, error: "Failed verifying Apple StoreKit 2 certificate chain." };
+    return { ok: false, error: "Failed verifying Apple x5c certificate chain." };
   }
+}
+
+function verifyAppleStoreKitJws(
+  jws: string
+): { ok: boolean; claims?: StoreKitTransactionPayload; error?: string } {
+  const parts = jws.trim().split(".");
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+    return { ok: false, error: "Malformed StoreKit 2 JWS compact token." };
+  }
+
+  const header = decodeBase64UrlJson<AppleJwsHeader>(parts[0]);
+  const claims = decodeBase64UrlJson<StoreKitTransactionPayload>(parts[1]);
+  if (!header || !claims) {
+    return { ok: false, error: "Could not decode StoreKit 2 JWS header or payload." };
+  }
+
+  const chainCheck = verifyAppleAppStoreX5cJws(parts, header, { allowNonProdTestPin: false });
+  if (!chainCheck.ok) {
+    return { ok: false, error: chainCheck.error };
+  }
+  return { ok: true, claims };
 }
 
 function inferPlanFromProductId(productId?: string): PlanId {
@@ -150,10 +239,24 @@ export async function POST(request: Request) {
     token?: string;
   };
   try {
-    body = (await request.json()) as {
-      signedTransactionInfo?: string;
-      deviceId?: string;
-      token?: string;
+    const rawText = await request.text();
+    if (rawText.length > 32_000) {
+      return NextResponse.json(
+        { ok: false, error: "Payload too large." },
+        { status: 413 }
+      );
+    }
+    const parsed: unknown = JSON.parse(rawText);
+    if (!isPlainObject(parsed) || typeof parsed.signedTransactionInfo !== "string") {
+      return NextResponse.json(
+        { ok: false, error: "Missing signedTransactionInfo." },
+        { status: 400 }
+      );
+    }
+    body = {
+      signedTransactionInfo: parsed.signedTransactionInfo,
+      deviceId: typeof parsed.deviceId === "string" ? parsed.deviceId : undefined,
+      token: typeof parsed.token === "string" ? parsed.token : undefined,
     };
   } catch {
     return NextResponse.json(

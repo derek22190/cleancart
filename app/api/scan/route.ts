@@ -101,6 +101,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400, headers: CORS });
     }
     body = parsed as ScanRequest;
+    body.verifiedAccountPro = false;
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
   }

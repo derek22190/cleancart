@@ -754,8 +754,8 @@ export function scoreIngredients(
     const mult =
       pref === "2x" || (typeof pref === "number" && pref === 2) || familySet.has(rule.category)
         ? 2
-        : typeof pref === "number" && pref > 0
-          ? pref
+        : typeof pref === "number" && Number.isFinite(pref) && pref > 0
+          ? Math.min(3, Math.max(0.5, pref))
           : 1;
     const isBenzenePrecursor = rule.id === "nabenzoate" && hasAscorbicAcid;
     const effectiveRisk: RiskLevel = isBenzenePrecursor ? "moderate" : rule.risk;
@@ -1159,7 +1159,7 @@ export function scoreProductYuka(
     /^\s*100%\s+(?:usda\s+\w+\s+|organic\s+|grass[- ]?fed\s+|angus\s+)*beef\.?\s*$/i.test(rawIngredients);
 
   const NON_WHOLE_FOOD =
-    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|ice\s+cream|gelato|chips|crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|pie|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|patties|patty|nuggets|tenders|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips(?!\s+steak)|hot\s*pocket|pizza|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|corned|pastrami|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|creme|ice\s+cream|gelato|chips|(?<!cosmic\s+|honey\s*)crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|cupcake|pie|pies|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|biscuit|bread|bagel|tortilla|tostada|wrap|burrito|burritos|taco|tacos|quesadilla|tamale|enchilada|burgers?|patties|patty|meatloaf|meatballs?|nuggets|tenders|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips(?!\s+steak)|hot\s*pocket|pizza|lasagna|ravioli|dumplings?|casserole|(?<!romaine\s+|spinach\s+|kale\s+|arugula\s+|spring\s+|field\s+|garden\s+|mixed\s+|baby\s+)salads?(?!\s+(?:greens|mix)\b)|stews?(?!\s+(?:meat|beef)\b)|curr(?:y|ies)|chili(?!\s+peppers?\b)|tempura|soup|chowder|spaghetti(?!\s+squash\b)|pasta|noodles?|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
 
   const isWholeProduceIngredient = /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients);
 

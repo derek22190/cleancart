@@ -12,12 +12,39 @@ export function nutrientNumber(value: unknown): number | undefined {
 /** Conservative plain-food classification, never a certification assertion. */
 export function classifyWholeFood(title: string): Pick<NutritionInput, "isWholeFood" | "fruitsVegNutsPct"> {
   const s = title.toLowerCase().replace(/\bsugar\s+(snap|kelp|pumpkin)\b/g, "$1");
-  if (/\b(chips?|crisps?|cookies?|cakes?|bars?|nuggets?|chocolate|coated|covered|honey|sugar|syrup|salted|seasoned|marinated|breaded|battered|fried|cured|smoked|sausage|bacon|jerky|broth|stock|bouillon|pur[eé]es?|baby\s+food|sauce|dressing|mayonnaise|mayo|candy|sweetened|candied|flavored|flavoured|juice|smoothie|powder|supplement)\b/.test(s)) return {};
-  if (/\b(apples?|honeycrisp|bananas?|berries|blueberries|strawberries|raspberries|oranges?|avocados?|broccoli|spinach|kale|carrots?|(?:sweet\s+)?potato(?:es)?|yams?|tomato(?:es)?|onions?|peas|lentils|chickpeas|beans|almonds?|walnuts?|cashews?|pecans?|pistachios?|peanuts?|chia\s+seeds?|flax\s*seeds?|pumpkin\s+seeds?|sunflower\s+seeds?|dates|raisins)\b/.test(s) && !/\b(milk|butter|ice\s+cream|cereal|granola|yogurt|yoghurt|pudding|vinegar)\b/.test(s)) {
+  if (
+    /\b(chips?|(?<!cosmic\s+|honey\s*)crisps?|crispy|cookies?|cakes?|cupcakes?|pies?|creme|cream|pastries|pastry|donuts?|doughnuts?|muffins?|brownies?|waffles?|pancakes?|biscuits?|croissants?|bread|bagels?|rolls?|buns?|wraps?|tortillas?|tostadas?|crackers?|pretzels?|popcorn|bars?|nuggets?|tenders?|burgers?|patties|patty|meatloaf|meatballs?|burritos?|tacos?|quesadillas?|tamales?|enchiladas?|pizzas?|lasagna|ravioli|dumplings?|casseroles?|(?<!romaine\s+|spinach\s+|kale\s+|arugula\s+|spring\s+|field\s+|garden\s+|mixed\s+|baby\s+)salads?(?!\s+(?:greens|mix)\b)|stews?(?!\s+(?:meat|beef)\b)|curr(?:y|ies)|chili(?!\s+peppers?\b)|tempura|corned|pastrami|chocolate|coated|covered|dipped|crusted|stuffed|glazed|honey|sugar|syrup|salted|seasoned|marinated|breaded|battered|fried|cured|smoked|sausage|bacon|ham|hot\s*dogs?|franks?|jerky|broth|stock|bouillon|pur[eé]es?|baby\s+food|sauce|salsa|pesto|hummus|dip|dressing|mayonnaise|mayo|candy|sweetened|candied|praline|caramel|maple|cinnamon|flavored|flavoured|juice|lemonade|limeade|soda|smoothie|powder|supplement)\b/.test(
+      s,
+    )
+  ) {
+    return {};
+  }
+  if (
+    /\b(apples?|honeycrisp|bananas?|berries|blueberries|strawberries|raspberries|oranges?|avocados?|broccoli|spinach|kale|carrots?|(?:sweet\s+)?potato(?:es)?|yams?|tomato(?:es)?|onions?|peas|lentils|chickpeas|beans|almonds?|walnuts?|cashews?|pecans?|pistachios?|peanuts?|chia\s+seeds?|flax\s*seeds?|pumpkin\s+seeds?|sunflower\s+seeds?|dates|raisins)\b/.test(
+      s,
+    ) &&
+    !/\b(milk|butter|ice\s+cream|cereal|granola|yogurt|yoghurt|pudding|vinegar|spaghetti(?!\s+squash\b)|pasta|noodles?|soup|chowder|refried|baked)\b/.test(
+      s,
+    )
+  ) {
     return { isWholeFood: true, fruitsVegNutsPct: 100 };
   }
-  if (/\b(oats?|oatmeal|quinoa|brown\s+rice|salmon|trout|cod|tuna|sardines?|shrimp|chicken|turkey|beef|pork|lamb|eggs?)\b/.test(s) && !/\b(milk|yogurt|ice\s+cream|sandwich|soup|noodles?|pasta|cereal|granola|patties\s+with|seasoned|marinated|solution|stuffed|sugar|syrup)\b/.test(s)) return { isWholeFood: true, fruitsVegNutsPct: 0 };
-  if (/\b(?:plain\s+(?:greek\s+)?yog(?:h)?urt|yog(?:h)?urt.*\bplain|(?:extra\s+virgin\s+)?olive\s+oil)\b/.test(s) && !/\b(fruit|vanilla|chocolate|honey|strawberry|blueberry|sugar|syrup|blend|infused)\b/.test(s)) return { isWholeFood: true, fruitsVegNutsPct: 0 };
+  if (
+    /\b(oats?|oatmeal|quinoa|brown\s+rice|salmon|trout|cod|tuna|sardines?|shrimp|chicken|turkey|beef|pork|lamb|eggs?)\b/.test(
+      s,
+    ) &&
+    !/\b(milk|butter|yogurt|ice\s+cream|sandwich|soup|chowder|noodles?|pasta|spaghetti(?!\s+squash\b)|macaroni|ramen|cereal|granola|solution|in\s+oil)\b/.test(
+      s,
+    )
+  ) {
+    return { isWholeFood: true, fruitsVegNutsPct: 0 };
+  }
+  if (
+    /\b(?:plain\s+(?:greek\s+)?yog(?:h)?urt|yog(?:h)?urt.*\bplain|(?:extra\s+virgin\s+)?olive\s+oil)\b/.test(s) &&
+    !/\b(fruit|vanilla|chocolate|honey|strawberry|blueberry|sugar|syrup|blend|infused)\b/.test(s)
+  ) {
+    return { isWholeFood: true, fruitsVegNutsPct: 0 };
+  }
   return {};
 }
 
@@ -63,10 +90,16 @@ export function extractOffNutrition(p: OffNutritionRecord): NutritionInput {
     sodiumMg100g,
     fiberG100g: boundPct100g(nutrientNumber(n.fiber_100g)),
     proteinG100g: boundPct100g(nutrientNumber(n.proteins_100g)),
-    fruitsVegNutsPct: nutrientNumber(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]) ?? nutrientNumber(n["fruits-vegetables-nuts_100g"]),
-    nutriScoreGrade: grade && /^[abcde]$/.test(grade) ? grade as "a" | "b" | "c" | "d" | "e" : undefined,
+    fruitsVegNutsPct: boundPct100g(
+      nutrientNumber(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]) ??
+        nutrientNumber(n["fruits-vegetables-nuts_100g"]),
+    ),
+    nutriScoreGrade: grade && /^[abcde]$/.test(grade) ? (grade as "a" | "b" | "c" | "d" | "e") : undefined,
     // These are product-level provider labels, never words in the ingredients/title.
-    isOrganic: p.labels_tags?.some(t => /^(en|fr):(organic|usda-organic|eu-organic|ab-agriculture-biologique|bio)$/i.test(t)) === true,
+    isOrganic:
+      p.labels_tags?.some((t) =>
+        /^(en|fr):(organic|usda-organic|eu-organic|ab-agriculture-biologique|bio)$/i.test(t),
+      ) === true,
   };
 }
 
@@ -94,28 +127,42 @@ export interface UsdaFood {
 
 /** Search foodNutrients are already normalized per 100g, including Branded. */
 export function extractUsdaNutrition(f: UsdaFood): NutritionInput {
-  const rows = (f.foodNutrients || []).map(n => ({
+  const rows = (f.foodNutrients || []).map((n) => ({
     id: n.nutrientId ?? n.nutrient?.id,
     number: String(n.nutrientNumber ?? n.nutrient?.number ?? ""),
     name: n.nutrientName ?? n.nutrient?.name ?? "",
     unit: (n.unitName ?? n.nutrient?.unitName ?? "").toLowerCase(),
     value: nutrientNumber(n.value ?? n.amount),
   }));
+  const boundTarget = (val: number | undefined, target: "g" | "mg" | "kcal"): number | undefined => {
+    if (val === undefined) return undefined;
+    if (target === "kcal") return boundKcal(val);
+    if (target === "g") return boundPct100g(val);
+    return boundSodiumMg100g(val);
+  };
   const find = (ids: number[], numbers: string[], name: RegExp, target: "g" | "mg" | "kcal") => {
-    const candidates = rows.filter(n => n.value !== undefined && (ids.includes(n.id!) || numbers.includes(n.number) || name.test(n.name)));
-    const direct = candidates.find(n => n.unit === target);
-    if (direct) {
-      if (target !== "kcal") return direct.value;
-      const boundedDirect = boundKcal(direct.value);
-      if (boundedDirect !== undefined) return boundedDirect;
+    const candidates = rows.filter(
+      (n) => n.value !== undefined && (ids.includes(n.id!) || numbers.includes(n.number) || name.test(n.name)),
+    );
+    for (const n of candidates) {
+      if (n.unit === target) {
+        const bounded = boundTarget(n.value, target);
+        if (bounded !== undefined) return bounded;
+      }
     }
     for (const n of candidates) {
       if (target === "kcal" && n.unit === "kj") {
         const boundedKj = boundKcal(n.value! / 4.184);
         if (boundedKj !== undefined) return boundedKj;
       }
-      if (target === "g" && n.unit === "mg") return n.value! / 1000;
-      if (target === "mg" && n.unit === "g") return n.value! * 1000;
+      if (target === "g" && n.unit === "mg") {
+        const boundedG = boundPct100g(n.value! / 1000);
+        if (boundedG !== undefined) return boundedG;
+      }
+      if (target === "mg" && n.unit === "g") {
+        const boundedMg = boundSodiumMg100g(n.value! * 1000);
+        if (boundedMg !== undefined) return boundedMg;
+      }
       if (!n.unit && (ids.includes(n.id!) || numbers.includes(n.number))) {
         if (target === "kcal") {
           const fromKj = n.id === 1062 || n.number === "268";
@@ -123,20 +170,24 @@ export function extractUsdaNutrition(f: UsdaFood): NutritionInput {
           if (boundedUnitless !== undefined) return boundedUnitless;
           continue;
         }
-        return n.value;
+        const boundedUnitless = boundTarget(n.value, target);
+        if (boundedUnitless !== undefined) return boundedUnitless;
       }
     }
     return undefined;
   };
   const whole = ["Foundation", "SR Legacy", "Survey (FNDDS)"].includes(f.dataType || "")
-    ? classifyWholeFood(f.description || "") : {};
+    ? classifyWholeFood(f.description || "")
+    : {};
   return {
-    caloriesKcal100g: find([1008, 2047, 2048], ["208"], /^energy(?:\s*\(.*\))?$/i, "kcal") ?? find([1062], ["268"], /^energy$/i, "kcal"),
-    sugarsG100g: boundPct100g(find([2000], ["269"], /^(?:sugars,?\s*total|total\s+sugars)/i, "g")),
-    saturatedFatG100g: boundPct100g(find([1258], ["606"], /^fatty acids,\s*total saturated$/i, "g")),
-    sodiumMg100g: boundSodiumMg100g(find([1093], ["307"], /^sodium(?:,\s*na)?$/i, "mg")),
-    fiberG100g: boundPct100g(find([1079], ["291"], /^fiber,\s*total dietary$/i, "g")),
-    proteinG100g: boundPct100g(find([1003], ["203"], /^protein$/i, "g")),
+    caloriesKcal100g:
+      find([1008, 2047, 2048], ["208"], /^energy(?:\s*\(.*\))?$/i, "kcal") ??
+      find([1062], ["268"], /^energy$/i, "kcal"),
+    sugarsG100g: find([2000], ["269"], /^(?:sugars,?\s*total|total\s+sugars)/i, "g"),
+    saturatedFatG100g: find([1258], ["606"], /^fatty acids,\s*total saturated$/i, "g"),
+    sodiumMg100g: find([1093], ["307"], /^sodium(?:,\s*na)?$/i, "mg"),
+    fiberG100g: find([1079], ["291"], /^fiber,\s*total dietary$/i, "g"),
+    proteinG100g: find([1003], ["203"], /^protein$/i, "g"),
     ...whole,
     isOrganic: false,
   };
