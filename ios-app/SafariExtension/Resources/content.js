@@ -1264,7 +1264,10 @@
     return false;
   }
 
-  /* ---------------- Multi-Product Grid Card Hover / Focus Disambiguation ---------------- */
+  /* ---------------- Multi-Product Grid Card Hover / Focus & Photo Badges ---------------- */
+  const NON_FOOD_GRID_TITLE_RE =
+    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+
   const PRODUCT_CARD_SEL = [
     '[data-item-id]',
     '[data-testid*="list-view" i]',
@@ -1272,15 +1275,18 @@
     '[data-testid*="item-card" i]',
     '[data-testid*="product-tile" i]',
     '[data-test*="product-card" i]',
+    '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-qa*="product-card" i]',
     '[data-automation-id*="product" i]',
     '[data-component-type="s-search-result"]',
+    '[data-asin]:not([data-asin=""])',
     'article[class*="product" i]',
     'li[class*="product" i]',
   ].join(", ");
 
   function readProductCardInfo(cardEl) {
     if (!cardEl || host?.contains(cardEl)) return null;
+    if (cardEl.closest("header, nav, footer")) return null;
     if (isCartDrawerElement(cardEl.closest('[role="dialog"], aside, section'))) return null;
 
     const titleSelectors = [
@@ -1295,31 +1301,55 @@
       "h2",
       "h3",
       'a[href*="/ip/"]',
+      'a[href*="/sams/shop/product/"]',
       'a[href*="/p/"]',
       'a[href*="/dp/"]',
       'a[href*="/gp/aw/d/"]',
       'a[href*="/products/"]',
+      'a[href*="/detail/ps/p/"]',
+      'a[href*="/product/"]',
     ];
     let title = "";
     for (const sel of titleSelectors) {
-      const el = cardEl.querySelector(sel);
-      const raw = cleanProductTitleText(el?.getAttribute?.("aria-label") || el?.textContent || "");
-      if (raw && raw.length >= 5 && raw.length <= 200 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
-        title = raw;
-        break;
+      const els = cardEl.querySelectorAll(sel);
+      for (const el of els) {
+        if (el.classList?.contains?.("cc-photo-badge") || el.closest?.(".cc-photo-badge")) continue;
+        const raw = cleanProductTitleText(el?.getAttribute?.("aria-label") || el?.textContent || "");
+        if (raw && raw.length >= 5 && raw.length <= 200 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
+          title = raw;
+          break;
+        }
+      }
+      if (title) break;
+    }
+    let domImageUrl = null;
+    let primaryImgEl = null;
+    const imgs = cardEl.querySelectorAll("img");
+    for (const img of imgs) {
+      if (img.closest?.(".cc-photo-badge")) continue;
+      if (!title) {
+        const altCand = cleanProductTitleText(img.getAttribute("alt") || "");
+        if (
+          altCand &&
+          altCand.length >= 6 &&
+          altCand.length <= 200 &&
+          !NON_TITLE_RE.test(altCand) &&
+          !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(altCand) &&
+          !/^\$\d/.test(altCand)
+        ) {
+          title = altCand;
+        }
+      }
+      const cand = sanitizeDomImageUrl(img.currentSrc || img.getAttribute("src") || "", img);
+      if (cand && !domImageUrl) {
+        domImageUrl = cand;
+        primaryImgEl = img;
+      } else if (!primaryImgEl) {
+        primaryImgEl = img;
       }
     }
     if (!title) return null;
-    let domImageUrl = null;
-    const imgs = cardEl.querySelectorAll("img");
-    for (const img of imgs) {
-      const cand = sanitizeDomImageUrl(img.currentSrc || img.getAttribute("src") || "", img);
-      if (cand) {
-        domImageUrl = cand;
-        break;
-      }
-    }
-    return { title, image: domImageUrl, domImageUrl };
+    return { title, image: domImageUrl, domImageUrl, imgEl: primaryImgEl };
   }
 
   /* ---------------- Live Store Cart Scraping & Instant Deletion Sync ---------------- */
@@ -2782,6 +2812,7 @@
     if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") {
       pillEl.hidden = true;
       modalSlot.innerHTML = "";
+      if (typeof clearAllPhotoBadges === "function") clearAllPhotoBadges();
       return;
     }
 
@@ -3119,11 +3150,17 @@
 
   async function scan() {
     await loadBucketCart(false);
-    if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") return;
+    if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") {
+      clearAllPhotoBadges();
+      return;
+    }
     if (!host.isConnected) document.documentElement.appendChild(host);
 
     // Always sync live store cart if /cart or slide-out cart drawer is currently visible
     scrapeAndSyncLiveCart();
+
+    // Discover & score visible product grid/aisle cards with Automatic On-Photo Score Badges
+    scanVisiblePhotoBadges();
 
     const modalScope = activeDialogScope();
     if (!isProductPage()) {
@@ -3205,6 +3242,358 @@
       }
     );
   }
+
+  /* ---------------- Automatic On-Photo Score Badges (Search / Aisle Grids) ---------------- */
+  const PHOTO_BADGE_STYLE_ID = "cleancart-photo-badge-styles";
+  const PRODUCT_LINK_FALLBACK_SEL =
+    'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+
+  let photoBadgeObserver = null;
+  let observedBadgeCards = new WeakSet();
+  let badgedAnchors = new WeakSet();
+  const badgeDataByElement = new WeakMap();
+  const pendingPhotoBadgeQueue = new Map();
+  let photoBadgeBatchTimer = null;
+  let nextPhotoBadgeSeq = 1;
+  let photoBadgeGeneration = 1;
+
+  function ensurePhotoBadgeStyles() {
+    if (document.getElementById(PHOTO_BADGE_STYLE_ID)) return;
+    const styleEl = document.createElement("style");
+    styleEl.id = PHOTO_BADGE_STYLE_ID;
+    styleEl.textContent = `
+      .cc-photo-badge {
+        position: absolute !important;
+        bottom: 8px !important;
+        left: 8px !important;
+        z-index: 8 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 3px !important;
+        padding: 3px 8px !important;
+        border-radius: 999px !important;
+        font: 800 12px/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font-variant-numeric: tabular-nums !important;
+        letter-spacing: -0.01em !important;
+        color: #ffffff !important;
+        border: 1.5px solid rgba(255, 255, 255, 0.94) !important;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28) !important;
+        cursor: pointer !important;
+        user-select: none !important;
+        -webkit-user-select: none !important;
+        pointer-events: auto !important;
+        text-decoration: none !important;
+        white-space: nowrap !important;
+        transition: transform 0.14s ease, filter 0.14s ease !important;
+      }
+      .cc-photo-badge:hover { transform: scale(1.05) !important; filter: brightness(1.04) !important; }
+      .cc-photo-badge--green { background: rgba(22, 163, 74, 0.96) !important; }
+      .cc-photo-badge--yellow { background: rgba(217, 119, 6, 0.96) !important; }
+      .cc-photo-badge--red { background: rgba(220, 38, 38, 0.96) !important; }
+      .cc-photo-badge--loading { background: rgba(15, 23, 42, 0.72) !important; opacity: 0.85 !important; }
+    `;
+    (document.head || document.documentElement)?.appendChild(styleEl);
+  }
+
+  function isNonFoodScanResponse(resp) {
+    if (!resp?.ok || !resp.result) return true;
+    return (
+      resp.product?.nutrition?.productKind === "non-food" ||
+      resp.result.yukaBreakdown?.nutriScoreGrade === "N/A"
+    );
+  }
+
+  function clearAllPhotoBadges() {
+    photoBadgeGeneration++;
+    clearTimeout(photoBadgeBatchTimer);
+    photoBadgeBatchTimer = null;
+    pendingPhotoBadgeQueue.clear();
+    if (photoBadgeObserver) {
+      photoBadgeObserver.disconnect();
+      photoBadgeObserver = null;
+    }
+    observedBadgeCards = new WeakSet();
+    badgedAnchors = new WeakSet();
+    const existing = document.querySelectorAll(".cc-photo-badge");
+    for (const el of existing) {
+      el.remove();
+    }
+  }
+
+  function findCardPhotoAnchor(cardEl, preferredImgEl = null) {
+    const imgs = preferredImgEl ? [preferredImgEl, ...cardEl.querySelectorAll("img")] : Array.from(cardEl.querySelectorAll("img"));
+    let chosenImg = null;
+    let imgRect = null;
+    for (const img of imgs) {
+      if (!img || img.closest?.(".cc-photo-badge")) continue;
+      const src = img.currentSrc || img.getAttribute("src") || "";
+      if (src && /(?:1x1|pixel|spacer|spinner|logo|icon|badge|sprite)/i.test(src)) continue;
+      const r = img.getBoundingClientRect();
+      const parentR = img.parentElement?.getBoundingClientRect?.() || r;
+      const effW = Math.max(r.width, parentR.width);
+      const effH = Math.max(r.height, parentR.height);
+      if (effW >= 56 && effH >= 56 && effW <= 440 && effH <= 440) {
+        chosenImg = img;
+        imgRect = r.width >= 40 ? r : parentR;
+        break;
+      }
+    }
+    if (!chosenImg) return null;
+    let anchor = chosenImg.parentElement;
+    if (!anchor || anchor === document.body) return null;
+    if (anchor.tagName === "PICTURE" && anchor.parentElement && anchor.parentElement !== document.body) {
+      anchor = anchor.parentElement;
+    }
+    const anchorStyle = window.getComputedStyle(anchor);
+    if (anchorStyle.display === "inline" && anchor.parentElement && anchor.parentElement !== document.body) {
+      const pRect = anchor.parentElement.getBoundingClientRect();
+      if (pRect.width >= 56 && pRect.height <= (imgRect?.height || 220) + 64) {
+        anchor = anchor.parentElement;
+      } else {
+        anchor.style.display = "inline-block";
+      }
+    }
+    if (window.getComputedStyle(anchor).position === "static") {
+      anchor.style.position = "relative";
+    }
+    return anchor;
+  }
+
+  function applyScoredPhotoBadgeState(badgeEl, resp, info, domImg) {
+    if (!badgeEl || !badgeEl.isConnected) return;
+    if (!resp?.ok || isNonFoodScanResponse(resp)) {
+      badgeEl.remove();
+      return;
+    }
+    const safeScore = Math.max(0, Math.min(100, Math.round(Number(resp.result.score ?? 0))));
+    const hasDietAlerts = Array.isArray(resp.dietaryAlerts) && resp.dietaryAlerts.length > 0;
+    const tone = hasDietAlerts ? "red" : safeScore >= 75 ? "green" : safeScore >= 50 ? "yellow" : "red";
+    const icon = hasDietAlerts ? "⚠️" : "🥦";
+    badgeEl.classList.remove(
+      "cc-photo-badge--loading",
+      "cc-photo-badge--green",
+      "cc-photo-badge--yellow",
+      "cc-photo-badge--red"
+    );
+    badgeEl.classList.add(`cc-photo-badge--${tone}`);
+    badgeEl.textContent = `${icon} ${safeScore}`;
+    badgeEl.setAttribute(
+      "aria-label",
+      `HeyBroc score ${safeScore} out of 100 for ${resp.product?.title || info.title}. Tap to inspect and view Clean Swaps.`
+    );
+    badgeDataByElement.set(badgeEl, { resp, info, domImg });
+  }
+
+  function handlePhotoBadgeActivate(badgeEl) {
+    const entry = badgeDataByElement.get(badgeEl);
+    if (!entry?.resp?.ok) return;
+    modalOpenedAt = Date.now();
+    const seq = ++scanSeq;
+    state.hoveredCardData = entry.info;
+    state.auditorOpen = false;
+    state.drawerTab = "product";
+    state.expanded = true;
+    void applyScanResult(entry.resp, entry.domImg, seq);
+  }
+
+  function flushPhotoBadgeBatch() {
+    photoBadgeBatchTimer = null;
+    if (pendingPhotoBadgeQueue.size === 0) return;
+    if (isCartPageUrl() || sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") {
+      pendingPhotoBadgeQueue.clear();
+      return;
+    }
+
+    const batchEntries = [];
+    for (const [id, entry] of pendingPhotoBadgeQueue.entries()) {
+      pendingPhotoBadgeQueue.delete(id);
+      if (!entry.badgeEl?.isConnected) continue;
+      batchEntries.push(entry);
+      if (batchEntries.length >= 8) break;
+    }
+    if (pendingPhotoBadgeQueue.size > 0) {
+      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 140);
+    }
+    if (batchEntries.length === 0) return;
+
+    const gen = photoBadgeGeneration;
+    const reqBucket = activeBucket;
+    const items = batchEntries.map((e) => ({ id: e.id, productTitle: e.info.title }));
+
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: "CLEANCART_SCAN_BATCH",
+          items,
+          store: reqBucket.store,
+          instacartRetailerSlug: reqBucket.instacartRetailerSlug,
+        },
+        (batchResp) => {
+          if (gen !== photoBadgeGeneration || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
+          const map = batchResp?.results || batchResp?.batch || null;
+          if (!batchResp?.ok || !map || typeof map !== "object") {
+            for (const entry of batchEntries) {
+              entry.badgeEl?.remove();
+            }
+            return;
+          }
+          for (const entry of batchEntries) {
+            const itemResp = map[entry.id];
+            if (itemResp?.ok) {
+              scanCache.set(normCacheKey(entry.info.title, ""), itemResp);
+              applyScoredPhotoBadgeState(entry.badgeEl, itemResp, entry.info, entry.domImg);
+            } else {
+              entry.badgeEl?.remove();
+            }
+          }
+        }
+      );
+    } catch {
+      for (const entry of batchEntries) {
+        entry.badgeEl?.remove();
+      }
+    }
+  }
+
+  function processVisiblePhotoBadgeCard(cardEl) {
+    if (!cardEl || !cardEl.isConnected || isCartPageUrl()) return;
+    if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") return;
+    const info = readProductCardInfo(cardEl);
+    if (!info || NON_FOOD_GRID_TITLE_RE.test(info.title)) return;
+    const anchor = findCardPhotoAnchor(cardEl, info.imgEl);
+    if (!anchor) return;
+    if (badgedAnchors.has(anchor) || anchor.querySelector(":scope > .cc-photo-badge")) return;
+
+    ensurePhotoBadgeStyles();
+    badgedAnchors.add(anchor);
+
+    const domImg = info.domImageUrl || info.image || null;
+    const cKey = normCacheKey(info.title, "");
+    const cached = scanCache.get(cKey);
+    if (cached) {
+      if (!cached.ok || isNonFoodScanResponse(cached)) return;
+      const badgeEl = document.createElement("span");
+      badgeEl.className = "cc-photo-badge";
+      badgeEl.setAttribute("role", "button");
+      badgeEl.setAttribute("tabindex", "0");
+      anchor.appendChild(badgeEl);
+      applyScoredPhotoBadgeState(badgeEl, cached, info, domImg);
+      return;
+    }
+
+    const badgeEl = document.createElement("span");
+    badgeEl.className = "cc-photo-badge cc-photo-badge--loading";
+    badgeEl.setAttribute("role", "button");
+    badgeEl.setAttribute("tabindex", "0");
+    badgeEl.setAttribute("aria-label", "Scoring food item with HeyBroc");
+    badgeEl.textContent = "🥦 …";
+    anchor.appendChild(badgeEl);
+
+    const id = `c${nextPhotoBadgeSeq++}`;
+    pendingPhotoBadgeQueue.set(id, { id, info, domImg, badgeEl });
+    if (!photoBadgeBatchTimer) {
+      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 110);
+    }
+  }
+
+  function ensurePhotoBadgeObserver() {
+    if (photoBadgeObserver || typeof IntersectionObserver === "undefined") return photoBadgeObserver;
+    photoBadgeObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          photoBadgeObserver?.unobserve(entry.target);
+          processVisiblePhotoBadgeCard(entry.target);
+        }
+      },
+      { rootMargin: "180px 0px" }
+    );
+    return photoBadgeObserver;
+  }
+
+  function discoverPhotoBadgeCards() {
+    const found = [];
+    const seen = new Set();
+    const onPdp = isProductPage();
+
+    const addCandidate = (el) => {
+      if (!el || seen.has(el) || host?.contains(el)) return;
+      if (el.closest("header, nav, footer")) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 100 || r.height > 720)) return;
+      seen.add(el);
+      found.push(el);
+    };
+
+    const directCards = document.querySelectorAll(PRODUCT_CARD_SEL);
+    for (const c of directCards) addCandidate(c);
+
+    // Link-based tile fallback for mobile storefronts (Instacart, Sam's Club, ALDI, Walmart mobile)
+    if (!onPdp) {
+      const links = document.querySelectorAll(PRODUCT_LINK_FALLBACK_SEL);
+      for (const a of links) {
+        if (a.closest(PRODUCT_CARD_SEL) || a.closest("header, nav, footer")) continue;
+        let cur = a;
+        let tile = null;
+        for (let depth = 0; depth < 4 && cur && cur !== document.body; depth++) {
+          if (cur.querySelector("img")) {
+            const r = cur.getBoundingClientRect();
+            if (r.width >= 100 && r.width <= 520 && r.height >= 110 && r.height <= 680) {
+              tile = cur;
+              if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
+            }
+          }
+          cur = cur.parentElement;
+        }
+        if (tile) addCandidate(tile);
+      }
+    }
+    return found;
+  }
+
+  function scanVisiblePhotoBadges() {
+    if (isCartPageUrl() || sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") {
+      clearAllPhotoBadges();
+      return;
+    }
+    const obs = ensurePhotoBadgeObserver();
+    const cards = discoverPhotoBadgeCards();
+    for (const card of cards) {
+      if (observedBadgeCards.has(card)) continue;
+      observedBadgeCards.add(card);
+      if (obs) {
+        obs.observe(card);
+      } else {
+        processVisiblePhotoBadgeCard(card);
+      }
+    }
+  }
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      const badge = e.target?.closest?.(".cc-photo-badge");
+      if (!badge) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handlePhotoBadgeActivate(badge);
+    },
+    true
+  );
+
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const badge = e.target?.closest?.(".cc-photo-badge");
+      if (!badge) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handlePhotoBadgeActivate(badge);
+    },
+    true
+  );
 
   // Multi-product grid/aisle hover, keyboard-focus & mobile pill-alignment disambiguation:
   // Scans the exact product tile the shopper hovers, focuses, or aligns with the floating pill on mobile!
@@ -3396,7 +3785,7 @@
     (e) => {
       if (e.pointerType === "touch") return;
       if (isProductPage() || isCartPageUrl() || state.expanded || state.auditorOpen) return;
-      if (host?.contains(e.target)) return;
+      if (host?.contains(e.target) || e.target?.closest?.(".cc-photo-badge")) return;
       const card = e.target?.closest?.(PRODUCT_CARD_SEL);
       if (card === lastHoveredCardEl) return;
       lastHoveredCardEl = card;
@@ -3421,18 +3810,22 @@
   document.addEventListener(
     "focusin",
     (e) => {
-      if (isProductPage() || isCartPageUrl() || host?.contains(e.target)) return;
+      if (isProductPage() || isCartPageUrl() || host?.contains(e.target) || e.target?.closest?.(".cc-photo-badge")) return;
       const card = e.target?.closest?.(PRODUCT_CARD_SEL);
       if (card) triggerGridCardInspect(card);
     },
     { passive: true }
   );
 
-  // Instant pre-warm on pointerdown on any product link
+  // Stop store card press handlers when tapping a photo badge, or pre-warm product links otherwise
   document.addEventListener(
     "pointerdown",
     (e) => {
       if (host?.contains(e.target)) return;
+      if (e.target?.closest?.(".cc-photo-badge")) {
+        e.stopPropagation();
+        return;
+      }
       const a = e.target?.closest?.(
         'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/product/"], a[href*="/gp/aw/d/"], [data-testid*="product" i] a'
       );
@@ -3477,6 +3870,35 @@
     return false;
   });
 
+  function isPhotoBadgeNode(node) {
+    if (!node) return false;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el) return false;
+    return Boolean(
+      el.id === PHOTO_BADGE_STYLE_ID ||
+      el.classList?.contains?.("cc-photo-badge") ||
+      el.closest?.(".cc-photo-badge")
+    );
+  }
+
+  function isIgnoredOverlayMutation(m) {
+    const t = m.target;
+    if (host && (t === host || host.contains(t))) return true;
+    if (isPhotoBadgeNode(t)) return true;
+    if (m.type === "childList") {
+      const added = m.addedNodes ? Array.from(m.addedNodes) : [];
+      const removed = m.removedNodes ? Array.from(m.removedNodes) : [];
+      if (
+        (added.length > 0 || removed.length > 0) &&
+        added.every(isPhotoBadgeNode) &&
+        removed.every(isPhotoBadgeNode)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   loadBucketCart(true).then(() => {
     void checkLiveDestinationSwapStock();
 
@@ -3503,8 +3925,7 @@
     if (obsTarget) {
       new MutationObserver((mutations) => {
         for (let i = 0; i < mutations.length; i++) {
-          const t = mutations[i].target;
-          if (!host || (t !== host && !host.contains(t))) {
+          if (!isIgnoredOverlayMutation(mutations[i])) {
             schedule();
             return;
           }
@@ -3546,11 +3967,12 @@
           state.displayedAvg = calcCartAvg();
           render();
         }
-        // Live re-scoring of both active product AND cached cart items when Watchlist toggles change
-        if (changes.watchlist || changes.familyWatchlist || changes.dietaryWatchlist) {
+        // Live re-scoring of active product, photo badges, AND cached cart items when Watchlist toggles change
+        if (changes.watchlist || changes.familyWatchlist || changes.dietaryWatchlist || changes.preferStoreBrand) {
           scanCache.clear();
           stockCache.clear();
           lastKey = "";
+          clearAllPhotoBadges();
           if (state.cartItems.length > 0) {
             void auditCartItemsBatch([], true);
           }

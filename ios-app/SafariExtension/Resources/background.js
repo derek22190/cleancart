@@ -154,6 +154,45 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "CLEANCART_SCAN_BATCH") {
+    (async () => {
+      try {
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
+        const res = await fetch(`${apiBase}/api/scan`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            items: Array.isArray(msg.items) ? msg.items : [],
+            store: msg.store,
+            instacartRetailerSlug: msg.instacartRetailerSlug,
+            watchlist,
+            familyWatchlist,
+            dietaryWatchlist,
+            ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+            ...(authToken ? { authToken } : {}),
+            deviceId,
+            deviceSecret,
+            surface: "extension",
+            clientPlatform: "ios-safari",
+            format: "json",
+          }),
+        });
+        const data = await res.json();
+        if (data?.issuedDeviceSecret) {
+          await chrome.storage.local.set({ heybroc_device_secret: data.issuedDeviceSecret });
+        }
+        sendResponse(data);
+      } catch (err) {
+        sendResponse({ ok: false, error: `HeyBroc Batch API unreachable: ${err?.message || err}` });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "CLEANCART_AUDIT") {
     (async () => {
       try {

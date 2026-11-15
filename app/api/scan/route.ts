@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser, toPublicProfile } from "@/lib/auth";
-import { checkRateLimitAsync, inferClientPlatform, runScan, toIosText, type ScanRequest } from "@/lib/scan";
+import {
+  checkRateLimitAsync,
+  inferClientPlatform,
+  runBatchScan,
+  runScan,
+  toIosText,
+  type BatchScanItemInput,
+  type ScanRequest,
+} from "@/lib/scan";
 import { ADDITIVE_RULES, CATEGORY_LABELS, RUBRIC_VERSION } from "@/lib/rubric";
 import { isAffiliateAllowedOnClient } from "@/lib/swaps";
 
@@ -77,7 +85,7 @@ export async function GET(request: Request) {
     {
       service: "CleanCart scan API",
       rubricVersion: RUBRIC_VERSION,
-      usage: "POST { productTitle?, rawIngredients?, barcode?, store?, surface?, clientPlatform?, watchlist?, dietaryWatchlist?, format?: 'json' | 'ios_text' } or GET /api/scan?q=<title>&format=ios_text",
+      usage: "POST { productTitle?, rawIngredients?, barcode?, items?, store?, surface?, clientPlatform?, watchlist?, dietaryWatchlist?, format?: 'json' | 'ios_text' } or GET /api/scan?q=<title>&format=ios_text",
       categories: CATEGORY_LABELS,
       rules: ADDITIVE_RULES.map(({ id, name, risk, category }) => ({ id, name, risk, category })),
     },
@@ -90,7 +98,7 @@ export async function POST(request: Request) {
   if (!(await checkRateLimitAsync(`scan:${ip}`, 90))) {
     return NextResponse.json({ ok: false, error: "Too many scan requests. Please wait a moment." }, { status: 429, headers: CORS });
   }
-  let body: ScanRequest;
+  let body: ScanRequest & { items?: BatchScanItemInput[] };
   try {
     const text = await request.text();
     if (text.length > 24_000) {
@@ -100,7 +108,7 @@ export async function POST(request: Request) {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return NextResponse.json({ ok: false, error: "Body must be a JSON object." }, { status: 400, headers: CORS });
     }
-    body = parsed as ScanRequest;
+    body = parsed as ScanRequest & { items?: BatchScanItemInput[] };
     body.verifiedAccountPro = false;
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
@@ -141,6 +149,11 @@ export async function POST(request: Request) {
   body.clientPlatform = clientPlatform;
   if (!isAffiliateAllowedOnClient(body.surface ?? "web", clientPlatform)) {
     body.surface = "extension";
+  }
+
+  if (Array.isArray(body.items)) {
+    const batchRes = await runBatchScan(body, body.items);
+    return NextResponse.json(batchRes, { headers: CORS });
   }
 
   const scan = await runScan(body);

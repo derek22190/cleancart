@@ -1011,3 +1011,169 @@ export function toIosText(scan: ScanResponse): string {
   }
   return lines.join("\n");
 }
+
+export interface BatchScanItemInput {
+  id: string;
+  productTitle?: string;
+  barcode?: string;
+}
+
+export interface BatchScanResponse {
+  ok: true;
+  results: Record<string, ScanResponse | ScanError>;
+  batch: Record<string, ScanResponse | ScanError>;
+}
+
+export const NON_FOOD_GRID_ITEM_RE =
+  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+
+function stripGatedSwapLinks(s: SwapResult): SwapResult {
+  return {
+    ...s,
+    webUrl: undefined,
+    deepLink: undefined,
+    androidIntentUrl: undefined,
+  };
+}
+
+/**
+ * Scores up to 12 visible store product cards in a single request for On-Photo Score Badges.
+ * Resolves device entitlement once per batch and sets skipAnalytics: true so passive grid scrolling
+ * neither hits rate limits nor inflates single-scan funnel events or consumes free swap unlocks.
+ */
+export async function runBatchScan(
+  baseReq: ScanRequest,
+  rawItems: BatchScanItemInput[],
+): Promise<BatchScanResponse> {
+  const results: Record<string, ScanResponse | ScanError> = {};
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return { ok: true, results, batch: results };
+  }
+
+  const validItems: Array<{ id: string; productTitle?: string; barcode?: string; normKey: string }> = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== "object") continue;
+    const id = typeof raw.id === "string" ? raw.id.trim().slice(0, 80) : "";
+    if (!id) continue;
+    const productTitle = typeof raw.productTitle === "string" ? raw.productTitle.trim().slice(0, 300) : "";
+    const barcode = typeof raw.barcode === "string" ? raw.barcode.replace(/\D/g, "").slice(0, 32) : "";
+    if (!productTitle && !barcode) continue;
+    const normKey = `${productTitle.toLowerCase().replace(/\s+/g, " ")}|${barcode}`;
+    validItems.push({
+      id,
+      productTitle: productTitle || undefined,
+      barcode: barcode || undefined,
+      normKey,
+    });
+    if (validItems.length >= 12) break;
+  }
+
+  if (validItems.length === 0) {
+    return { ok: true, results, batch: results };
+  }
+
+  const rawDev = typeof baseReq.deviceId === "string" ? baseReq.deviceId.trim() : "";
+  const isAnonDevice =
+    !rawDev || rawDev.length < 4 || /^(?:anon-web|anonymous|anon|null|undefined)$/i.test(rawDev);
+  const effectiveDeviceId = isAnonDevice ? "anon-web" : rawDev;
+  const clientPlatform = inferClientPlatform({
+    clientPlatform: baseReq.clientPlatform,
+    surface: baseReq.surface,
+    format: "json",
+    deviceId: effectiveDeviceId,
+  });
+
+  let entitlement: EntitlementSummary | undefined;
+  if (!isAnonDevice) {
+    try {
+      if (baseReq.referredByCode) {
+        const { device } = await applyOrActivateReferral({
+          deviceId: effectiveDeviceId,
+          referralCode: baseReq.referredByCode,
+          activateNow: false,
+          deviceSecret: baseReq.deviceSecret,
+        });
+        entitlement = await serializeEntitlementWithPaidLookup(device);
+      } else {
+        const device = await getOrCreateDevice(effectiveDeviceId, baseReq.deviceSecret);
+        entitlement = await serializeEntitlementWithPaidLookup(device);
+      }
+    } catch {
+      entitlement = undefined;
+    }
+  }
+  if (baseReq.verifiedAccountPro && entitlement) {
+    entitlement = { ...entitlement, isProActive: true };
+  }
+  const canAccessSwapLinks = isAnonDevice
+    ? true
+    : Boolean(baseReq.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
+
+  const uniqueByNorm = new Map<string, { productTitle?: string; barcode?: string }>();
+  for (const it of validItems) {
+    if (!uniqueByNorm.has(it.normKey)) {
+      uniqueByNorm.set(it.normKey, { productTitle: it.productTitle, barcode: it.barcode });
+    }
+  }
+
+  const resolvedByNorm = new Map<string, ScanResponse | ScanError>();
+  const entries = Array.from(uniqueByNorm.entries());
+  const CONCURRENCY = 5;
+  let cursor = 0;
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, entries.length) }, async () => {
+    while (cursor < entries.length) {
+      const idx = cursor++;
+      const [normKey, target] = entries[idx];
+      if (target.productTitle && !target.barcode && NON_FOOD_GRID_ITEM_RE.test(target.productTitle)) {
+        resolvedByNorm.set(normKey, {
+          ok: false,
+          status: 422,
+          error: "Non-food household item skipped.",
+        });
+        continue;
+      }
+      const single = await runScan({
+        ...baseReq,
+        productTitle: target.productTitle,
+        barcode: target.barcode,
+        rawIngredients: undefined,
+        rawText: undefined,
+        deviceId: undefined,
+        clientPlatform,
+        format: "json",
+        skipAnalytics: true,
+      });
+      if (single.ok) {
+        const gated: ScanResponse = {
+          ...single,
+          entitlement,
+          ...(canAccessSwapLinks
+            ? {}
+            : {
+                swap: single.swap ? stripGatedSwapLinks(single.swap) : null,
+                ...(single.storeBrandSwap ? { storeBrandSwap: stripGatedSwapLinks(single.storeBrandSwap) } : {}),
+                ...(single.swapCandidates
+                  ? { swapCandidates: single.swapCandidates.map(stripGatedSwapLinks) }
+                  : {}),
+              }),
+        };
+        resolvedByNorm.set(normKey, gated);
+      } else {
+        resolvedByNorm.set(normKey, single);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+
+  for (const it of validItems) {
+    const out = resolvedByNorm.get(it.normKey);
+    if (out) {
+      results[it.id] = out;
+    }
+  }
+
+  return { ok: true, results, batch: results };
+}
+

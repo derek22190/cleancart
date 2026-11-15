@@ -25,8 +25,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 async function getSettings() {
   const [syncData, localData, { deviceId, deviceSecret }] = await Promise.all([
-    chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist"]),
-    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist", "heybroc_creator_code"]),
+    chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand"]),
+    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand", "heybroc_creator_code"]),
     getOrCreateDeviceCredentials(),
   ]);
   const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
@@ -36,6 +36,7 @@ async function getSettings() {
     watchlist: syncData.watchlist || localData.watchlist || undefined,
     familyWatchlist: syncData.familyWatchlist || localData.familyWatchlist || undefined,
     dietaryWatchlist: syncData.dietaryWatchlist || localData.dietaryWatchlist || undefined,
+    preferStoreBrand: syncData.preferStoreBrand ?? localData.preferStoreBrand ?? undefined,
     creatorCode: localData.heybroc_creator_code || undefined,
     deviceId,
     deviceSecret,
@@ -58,7 +59,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_SCAN") {
     (async () => {
       try {
-        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {
           method: "POST",
           headers: {
@@ -70,6 +71,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             watchlist,
             familyWatchlist,
             dietaryWatchlist,
+            ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
             deviceId,
             deviceSecret,
             surface: "extension",
@@ -81,6 +83,40 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(data);
       } catch (err) {
         sendResponse({ ok: false, error: `HeyBroc API unreachable: ${err?.message || err}` });
+      }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "CLEANCART_SCAN_BATCH") {
+    (async () => {
+      try {
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
+        const res = await fetch(`${apiBase}/api/scan`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Secret": deviceSecret,
+          },
+          body: JSON.stringify({
+            items: Array.isArray(msg.items) ? msg.items : [],
+            store: msg.store,
+            instacartRetailerSlug: msg.instacartRetailerSlug,
+            watchlist,
+            familyWatchlist,
+            dietaryWatchlist,
+            ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+            deviceId,
+            deviceSecret,
+            surface: "extension",
+            clientPlatform: "chrome-extension",
+            format: "json",
+          }),
+        });
+        const data = await res.json();
+        sendResponse(data);
+      } catch (err) {
+        sendResponse({ ok: false, error: `HeyBroc Batch API unreachable: ${err?.message || err}` });
       }
     })();
     return true;

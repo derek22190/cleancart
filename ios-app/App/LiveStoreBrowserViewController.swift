@@ -88,6 +88,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var lastDetectedIsCard: Bool = false
     private var lastScannedKey: String = ""
     private var latestSummary: HeyBrocNativeScanSummary?
+    private var cardSummariesById: [String: HeyBrocNativeScanSummary] = [:]
+    private var badgeBatchGeneration: Int = 0
     private var isScanning = false
     private var scanGeneration: Int = 0
     private var progressObservation: NSKeyValueObservation?
@@ -655,7 +657,265 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return bestDist <= 260 ? bestTitle : '';
           }
 
+          var NON_FOOD_GRID_RE = /\\b(?:paper\\s+towels?|toilet\\s+(?:paper|tissue)|bath\\s+tissue|facial\\s+tissues?|trash\\s+bags?|garbage\\s+bags?|storage\\s+bags?|freezer\\s+bags?|sandwich\\s+bags?|aluminum\\s+foil|parchment\\s+paper|plastic\\s+wrap|paper\\s+plates?|paper\\s+cups?|laundry\\s+(?:detergent|pods?|sanitizer)|fabric\\s+softener|dryer\\s+sheets?|dish\\s+(?:soap|detergent)|dishwasher\\s+(?:pods?|pac?ks?|detergent)|disinfecting\\s+wipes?|bleach|all[- ]purpose\\s+cleaner|glass\\s+cleaner|toilet\\s+bowl\\s+cleaner|air\\s+freshener|diapers?|pull[- ]ups?|baby\\s+wipes?|cat\\s+litter|dog\\s+(?:food|treats?|pads?)|cat\\s+(?:food|treats?)|pet\\s+food|alkaline\\s+batteries|aa\\s+batteries|aaa\\s+batteries|motor\\s+oil|windshield\\s+washer|light\\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\\s+wash|deodorant|antiperspirant|razor\\s+blades?|shaving\\s+cream|sunscreen|tampons?|maxi\\s+pads?|pantiliners?)\\b/i;
+
+          var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id*="product" i], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
+          var PRODUCT_LINK_SEL = 'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+
+          var hbCardSeq = 1;
+          var hbObservedCards = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+          var hbBadgedAnchors = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+          var hbPendingQueue = [];
+          var hbBatchTimer = null;
+          var hbIntersectionObs = null;
+
+          function ensureHbBadgeStyles() {
+            if (document.getElementById('hb-photo-badge-styles')) return;
+            var st = document.createElement('style');
+            st.id = 'hb-photo-badge-styles';
+            st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:8!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.72)!important;opacity:0.85!important;}';
+            (document.head || document.documentElement).appendChild(st);
+          }
+
+          function readCardInfo(cardEl) {
+            if (!cardEl || cardEl.closest('header, nav, footer')) return null;
+            if (isCartDrawer(cardEl.closest('[role="dialog"], aside, section'))) return null;
+            var sels = ['[data-automation-id="product-title"]', '[data-test="product-title"]', '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'];
+            var title = '';
+            for (var s = 0; s < sels.length; s++) {
+              var els = cardEl.querySelectorAll(sels[s]);
+              for (var k = 0; k < els.length; k++) {
+                var el = els[k];
+                if (el.closest && el.closest('.hb-photo-badge')) continue;
+                var raw = clean(el.getAttribute('aria-label') || el.textContent || '');
+                if (raw && raw.length >= 5 && raw.length <= 200 && !NON_TITLE_RE.test(raw) && !/^\\$\\d/.test(raw)) {
+                  title = raw;
+                  break;
+                }
+              }
+              if (title) break;
+            }
+            var imgs = cardEl.querySelectorAll('img');
+            var chosenImg = null;
+            var imgRect = null;
+            for (var m = 0; m < imgs.length; m++) {
+              var img = imgs[m];
+              if (img.closest && img.closest('.hb-photo-badge')) continue;
+              if (!title) {
+                var altCand = clean(img.getAttribute('alt') || '');
+                if (altCand && altCand.length >= 6 && altCand.length <= 200 && !NON_TITLE_RE.test(altCand) && !/^(?:product(?:\\s+image)?|thumbnail|photo|image)$/i.test(altCand) && !/^\\$\\d/.test(altCand)) {
+                  title = altCand;
+                }
+              }
+              var src = img.currentSrc || img.getAttribute('src') || '';
+              if (src && /(?:1x1|pixel|spacer|spinner|logo|icon|badge|sprite)/i.test(src)) continue;
+              var r = img.getBoundingClientRect();
+              var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
+              var ew = Math.max(r.width, pr.width);
+              var eh = Math.max(r.height, pr.height);
+              if (!chosenImg && ew >= 56 && eh >= 56 && ew <= 440 && eh <= 440) {
+                chosenImg = img;
+                imgRect = r.width >= 40 ? r : pr;
+              }
+            }
+            if (!title || !chosenImg || NON_FOOD_GRID_RE.test(title)) return null;
+            var anchor = chosenImg.parentElement;
+            if (!anchor || anchor === document.body) return null;
+            if (anchor.tagName === 'PICTURE' && anchor.parentElement && anchor.parentElement !== document.body) {
+              anchor = anchor.parentElement;
+            }
+            var ast = window.getComputedStyle(anchor);
+            if (ast && ast.display === 'inline' && anchor.parentElement && anchor.parentElement !== document.body) {
+              var pRect = anchor.parentElement.getBoundingClientRect();
+              if (pRect.width >= 56 && pRect.height <= (imgRect ? imgRect.height : 220) + 64) {
+                anchor = anchor.parentElement;
+              } else {
+                anchor.style.display = 'inline-block';
+              }
+            }
+            if (window.getComputedStyle(anchor).position === 'static') {
+              anchor.style.position = 'relative';
+            }
+            return { title: title, anchor: anchor };
+          }
+
+          function flushHbBadgeBatch() {
+            hbBatchTimer = null;
+            if (!hbPendingQueue.length || isCartUrl()) {
+              hbPendingQueue = [];
+              return;
+            }
+            var chunk = hbPendingQueue.splice(0, 8);
+            if (hbPendingQueue.length > 0) {
+              hbBatchTimer = setTimeout(flushHbBadgeBatch, 140);
+            }
+            var payloadItems = [];
+            for (var i = 0; i < chunk.length; i++) {
+              if (chunk[i].badgeEl && chunk[i].badgeEl.isConnected) {
+                payloadItems.push({ id: chunk[i].id, productTitle: chunk[i].title });
+              }
+            }
+            if (!payloadItems.length) return;
+            window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+              kind: 'gridBatch',
+              items: payloadItems
+            });
+          }
+
+          function processVisibleCard(cardEl) {
+            if (!cardEl || !cardEl.isConnected || isCartUrl()) return;
+            var info = readCardInfo(cardEl);
+            if (!info || !info.anchor) return;
+            if ((hbBadgedAnchors && hbBadgedAnchors.has(info.anchor)) || info.anchor.querySelector(':scope > .hb-photo-badge')) return;
+            ensureHbBadgeStyles();
+            if (hbBadgedAnchors) hbBadgedAnchors.add(info.anchor);
+            var cardId = 'hb' + (hbCardSeq++);
+            var b = document.createElement('span');
+            b.className = 'hb-photo-badge hb-photo-badge--loading';
+            b.setAttribute('role', 'button');
+            b.setAttribute('tabindex', '0');
+            b.setAttribute('data-hb-card-id', cardId);
+            b.setAttribute('data-hb-title', info.title);
+            b.textContent = '🥦 …';
+            info.anchor.appendChild(b);
+            hbPendingQueue.push({ id: cardId, title: info.title, badgeEl: b });
+            if (!hbBatchTimer) {
+              hbBatchTimer = setTimeout(flushHbBadgeBatch, 120);
+            }
+          }
+
+          function clearHbBadges() {
+            if (hbBatchTimer) { clearTimeout(hbBatchTimer); hbBatchTimer = null; }
+            hbPendingQueue = [];
+            if (hbIntersectionObs) { hbIntersectionObs.disconnect(); hbIntersectionObs = null; }
+            hbObservedCards = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+            hbBadgedAnchors = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+            var old = document.querySelectorAll('.hb-photo-badge');
+            for (var i = 0; i < old.length; i++) {
+              if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+            }
+          }
+
+          function scanPhotoBadges() {
+            if (isCartUrl()) {
+              clearHbBadges();
+              return;
+            }
+            if (!hbIntersectionObs && typeof IntersectionObserver !== 'undefined') {
+              hbIntersectionObs = new IntersectionObserver(function(entries) {
+                for (var i = 0; i < entries.length; i++) {
+                  if (!entries[i].isIntersecting) continue;
+                  hbIntersectionObs.unobserve(entries[i].target);
+                  processVisibleCard(entries[i].target);
+                }
+              }, { rootMargin: '180px 0px' });
+            }
+            var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
+            var seen = [];
+            function addCand(el) {
+              if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer')) return;
+              var r = el.getBoundingClientRect();
+              if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 100 || r.height > 720)) return;
+              seen.push(el);
+            }
+            var direct = document.querySelectorAll(CARD_SEL);
+            for (var d = 0; d < direct.length; d++) addCand(direct[d]);
+            if (!onPdp) {
+              var links = document.querySelectorAll(PRODUCT_LINK_SEL);
+              for (var l = 0; l < links.length; l++) {
+                var a = links[l];
+                if (a.closest(CARD_SEL) || a.closest('header, nav, footer')) continue;
+                var cur = a;
+                var tile = null;
+                for (var depth = 0; depth < 4 && cur && cur !== document.body; depth++) {
+                  if (cur.querySelector('img')) {
+                    var cr = cur.getBoundingClientRect();
+                    if (cr.width >= 100 && cr.width <= 520 && cr.height >= 110 && cr.height <= 680) {
+                      tile = cur;
+                      if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
+                    }
+                  }
+                  cur = cur.parentElement;
+                }
+                if (tile) addCand(tile);
+              }
+            }
+            for (var c = 0; c < seen.length; c++) {
+              var card = seen[c];
+              if (hbObservedCards && hbObservedCards.has(card)) continue;
+              if (hbObservedCards) hbObservedCards.add(card);
+              if (hbIntersectionObs) {
+                hbIntersectionObs.observe(card);
+              } else {
+                processVisibleCard(card);
+              }
+            }
+          }
+
+          window.__heybrocApplyCardBadges = function(badgeMap) {
+            if (!badgeMap || typeof badgeMap !== 'object') return;
+            for (var id in badgeMap) {
+              if (!Object.prototype.hasOwnProperty.call(badgeMap, id)) continue;
+              var badge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + id + '"]');
+              if (!badge) continue;
+              var entry = badgeMap[id];
+              if (!entry || !entry.ok) {
+                if (badge.parentNode) badge.parentNode.removeChild(badge);
+                continue;
+              }
+              var sc = Math.max(0, Math.min(100, Math.round(Number(entry.score || 0))));
+              var hasAlert = Boolean(entry.hasAlert);
+              var tone = hasAlert ? 'red' : (sc >= 75 ? 'green' : (sc >= 50 ? 'yellow' : 'red'));
+              badge.className = 'hb-photo-badge hb-photo-badge--' + tone;
+              badge.textContent = (hasAlert ? '⚠️ ' : '🥦 ') + sc;
+            }
+          };
+
+          window.__heybrocRefreshPhotoBadges = function() {
+            clearHbBadges();
+            scanPhotoBadges();
+          };
+
+          document.addEventListener('pointerdown', function(e) {
+            if (e.target && e.target.closest && e.target.closest('.hb-photo-badge')) {
+              e.stopPropagation();
+            }
+          }, true);
+
+          document.addEventListener('click', function(e) {
+            var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
+            if (!badge) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+              kind: 'inspectCard',
+              cardId: badge.getAttribute('data-hb-card-id') || '',
+              title: badge.getAttribute('data-hb-title') || ''
+            });
+          }, true);
+
+          function isHbBadgeNode(n) {
+            if (!n) return false;
+            var el = n.nodeType === 1 ? n : n.parentElement;
+            if (!el) return false;
+            return el.id === 'hb-photo-badge-styles' || (el.classList && el.classList.contains('hb-photo-badge')) || Boolean(el.closest && el.closest('.hb-photo-badge'));
+          }
+
+          function isHbBadgeMutation(m) {
+            if (isHbBadgeNode(m.target)) return true;
+            if (m.type === 'childList') {
+              var added = m.addedNodes ? Array.prototype.slice.call(m.addedNodes) : [];
+              var removed = m.removedNodes ? Array.prototype.slice.call(m.removedNodes) : [];
+              if ((added.length > 0 || removed.length > 0) && added.every(isHbBadgeNode) && removed.every(isHbBadgeNode)) {
+                return true;
+              }
+            }
+            return false;
+          }
+
           function extractProductData() {
+            scanPhotoBadges();
             var url = location.href;
             var modal = findOpenProductModal();
             var isPdp = Boolean(modal) || looksLikeProductUrl(url);
@@ -768,7 +1028,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return r;
           };
 
-          var obs = new MutationObserver(function() { scheduleCheck(false); });
+          var obs = new MutationObserver(function(mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+              if (!isHbBadgeMutation(mutations[i])) {
+                scheduleCheck(false);
+                return;
+              }
+            }
+          });
           if (document.documentElement) {
             obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
           }
@@ -985,6 +1252,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         updateStoreChipStyles()
         lastScannedKey = ""
         latestSummary = nil
+        badgeBatchGeneration += 1
+        cardSummariesById.removeAll()
         setBubbleIdleState()
         if let url = URL(string: chosen.homeURL) {
             if didStartInitialLoad && view.window != nil {
@@ -1000,6 +1269,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         updatePesticideButtonStyle()
         onPreferencesUpdated?()
         lastScannedKey = ""
+        badgeBatchGeneration += 1
+        cardSummariesById.removeAll()
+        storeWebView?.evaluateJavaScript("window.__heybrocRefreshPhotoBadges && window.__heybrocRefreshPhotoBadges();", completionHandler: nil)
         if !lastDetectedTitle.isEmpty || !lastDetectedBarcode.isEmpty {
             runLiveScan(title: lastDetectedTitle, ingredients: lastDetectedIngredients, barcode: lastDetectedBarcode, force: true)
         } else if let prev = latestSummary {
@@ -1138,6 +1410,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let title = (body["title"] as? String) ?? ""
         let ingredients = (body["ingredients"] as? String) ?? ""
         let barcode = (body["barcode"] as? String) ?? ""
+        let cardId = (body["cardId"] as? String) ?? ""
+        let rawBatchItems = (body["items"] as? [[String: Any]]) ?? []
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isCleaningUp else { return }
@@ -1158,6 +1432,68 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 self.lastScannedKey = ""
                 self.latestSummary = nil
                 self.setBubbleIdleState()
+            } else if kind == "gridBatch" {
+                var cleanItems: [[String: String]] = []
+                for item in rawBatchItems.prefix(10) {
+                    guard let id = item["id"] as? String, !id.isEmpty,
+                          let pTitle = item["productTitle"] as? String, !pTitle.isEmpty else { continue }
+                    cleanItems.append(["id": id, "productTitle": pTitle])
+                }
+                guard !cleanItems.isEmpty else { return }
+                let gen = self.badgeBatchGeneration
+                let storeKey = self.activeStore.apiStoreKey
+                HeyBrocNativeScannerAPI.scanBatch(items: cleanItems, store: storeKey) { [weak self] summaries in
+                    guard let self = self, !self.isCleaningUp, gen == self.badgeBatchGeneration else { return }
+                    var jsMap: [String: Any] = [:]
+                    for reqItem in cleanItems {
+                        guard let id = reqItem["id"] else { continue }
+                        if let sum = summaries[id] {
+                            self.cardSummariesById[id] = sum
+                            jsMap[id] = [
+                                "ok": true,
+                                "score": sum.score,
+                                "hasAlert": !sum.dietaryAlerts.isEmpty
+                            ]
+                        } else {
+                            jsMap[id] = ["ok": false]
+                        }
+                    }
+                    if let jsonData = try? JSONSerialization.data(withJSONObject: jsMap),
+                       let jsonStr = String(data: jsonData, encoding: .utf8) {
+                        self.storeWebView?.evaluateJavaScript(
+                            "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges(\(jsonStr));",
+                            completionHandler: nil
+                        )
+                    }
+                }
+            } else if kind == "inspectCard" {
+                let openSummarySheet: (HeyBrocNativeScanSummary) -> Void = { [weak self] summary in
+                    guard let self = self, !self.isCleaningUp else { return }
+                    self.applySummaryToBubble(summary)
+                    if let presented = self.presentedViewController {
+                        presented.dismiss(animated: false) { [weak self] in
+                            self?.presentInspectSheet(summary: summary)
+                        }
+                    } else {
+                        self.presentInspectSheet(summary: summary)
+                    }
+                }
+                if !cardId.isEmpty, let cachedSummary = self.cardSummariesById[cardId] {
+                    openSummarySheet(cachedSummary)
+                } else if !title.isEmpty {
+                    self.setBubbleScanningState()
+                    HeyBrocNativeScannerAPI.scan(productTitle: title, store: self.activeStore.apiStoreKey) { [weak self] res in
+                        guard let self = self, !self.isCleaningUp else { return }
+                        if case .success(let summary) = res {
+                            if !cardId.isEmpty {
+                                self.cardSummariesById[cardId] = summary
+                            }
+                            openSummarySheet(summary)
+                        } else {
+                            self.setBubbleIdleState()
+                        }
+                    }
+                }
             }
         }
     }

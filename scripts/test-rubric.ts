@@ -6040,6 +6040,92 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           (bobsOrganicOatsScan.result?.score ?? 0) >= 90
       ),
     );
+
+    // --- Automatic On-Photo Score Badges Suite (Batch API + Chrome/Safari Extension + iPhone Live Shop) ---
+    const { runBatchScan } = await import("../lib/scan");
+    const scanRouteMod = await import("../app/api/scan/route");
+    const gridBatchRes = await runBatchScan(
+      {
+        store: "walmart",
+        surface: "extension",
+        clientPlatform: "ios-safari",
+        dietaryWatchlist: ["pesticide_risk"],
+      },
+      [
+        { id: "c1", productTitle: "Quaker Maple & Brown Sugar Flavor Instant Oatmeal, 1.51 oz 20 Packets" },
+        { id: "c2", productTitle: "Bob's Red Mill Organic Old Fashioned Rolled Oats 32 oz Bag" },
+        { id: "c3", productTitle: "Bounty Select-A-Size Paper Towels, 6 Double Rolls" },
+        { id: "c4", productTitle: "Bob's Red Mill Organic Old Fashioned Rolled Oats 32 oz Bag" },
+      ],
+    );
+    const routeBatchHttpRes = await scanRouteMod.POST(
+      new Request("http://localhost:3000/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.77.66.55" },
+        body: JSON.stringify({
+          store: "walmart",
+          surface: "extension",
+          clientPlatform: "chrome-extension",
+          items: [
+            { id: "cardA", productTitle: "Stonyfield Organic Whole Milk Plain Yogurt, 32 oz" },
+            { id: "cardB", productTitle: "Tide Pods Liquid Laundry Detergent Pacs, 42 ct" },
+          ],
+        }),
+      }),
+    );
+    const routeBatchJson = (await routeBatchHttpRes.json()) as {
+      ok?: boolean;
+      results?: Record<string, { ok: boolean; result?: { score: number } }>;
+    };
+
+    const chromeContentJs = fs.readFileSync("chrome-extension/content.js", "utf8");
+    const safariContentJs = fs.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const chromeOverlayCss = fs.readFileSync("chrome-extension/overlay.css", "utf8");
+    const safariOverlayCss = fs.readFileSync("ios-app/SafariExtension/Resources/overlay.css", "utf8");
+    const chromeBgJs = fs.readFileSync("chrome-extension/background.js", "utf8");
+    const safariBgJs = fs.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+    const liveBrowserSwift = fs.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const shortcutsSwift = fs.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+
+    const c1Out = gridBatchRes.results.c1;
+    const c2Out = gridBatchRes.results.c2;
+    const c3Out = gridBatchRes.results.c3;
+    const c4Out = gridBatchRes.results.c4;
+
+    check(
+      "Automatic On-Photo Score Badges: runBatchScan & POST /api/scan score multi-card grids in one trip, flag conventional oats under Pesticide Watch, skip non-food household cards, and maintain Chrome/Safari/iOS Live Shop parity",
+      Boolean(
+        gridBatchRes.ok &&
+          c1Out?.ok &&
+          c1Out.result.score < 55 &&
+          (c1Out.dietaryAlerts?.length ?? 0) > 0 &&
+          Boolean(c1Out.swap) &&
+          c2Out?.ok &&
+          c2Out.result.score >= 85 &&
+          (c2Out.dietaryAlerts?.length ?? 0) === 0 &&
+          c3Out?.ok === false &&
+          c3Out.status === 422 &&
+          c4Out?.ok &&
+          c4Out.result.score === c2Out.result.score &&
+          routeBatchHttpRes.status === 200 &&
+          routeBatchJson.ok === true &&
+          routeBatchJson.results?.cardA?.ok === true &&
+          (routeBatchJson.results?.cardA?.result?.score ?? 0) >= 85 &&
+          routeBatchJson.results?.cardB?.ok === false &&
+          chromeContentJs === safariContentJs &&
+          chromeOverlayCss === safariOverlayCss &&
+          chromeContentJs.includes("cc-photo-badge") &&
+          chromeContentJs.includes("CLEANCART_SCAN_BATCH") &&
+          chromeContentJs.includes("isIgnoredOverlayMutation") &&
+          chromeBgJs.includes("CLEANCART_SCAN_BATCH") &&
+          safariBgJs.includes("CLEANCART_SCAN_BATCH") &&
+          liveBrowserSwift.includes("hb-photo-badge") &&
+          liveBrowserSwift.includes("gridBatch") &&
+          liveBrowserSwift.includes("inspectCard") &&
+          liveBrowserSwift.includes("__heybrocRefreshPhotoBadges") &&
+          shortcutsSwift.includes("static func scanBatch")
+      ),
+    );
   }
 
   console.log("Checks executed:", checks);

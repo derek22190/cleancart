@@ -337,6 +337,10 @@ enum HeyBrocNativeScannerAPI {
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             return .failure(NSError(domain: "HeyBroc", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from HeyBroc scanner."]))
         }
+        return parseScanObject(obj)
+    }
+
+    static func parseScanObject(_ obj: [String: Any]) -> Result<HeyBrocNativeScanSummary, NSError> {
         if let issuedSecret = obj["issuedDeviceSecret"] as? String, !issuedSecret.isEmpty {
             HeyBrocSharedPrefs.deviceSecret = issuedSecret
         }
@@ -347,6 +351,14 @@ enum HeyBrocNativeScannerAPI {
         }
         let prod = (obj["product"] as? [String: Any]) ?? [:]
         let res = (obj["result"] as? [String: Any]) ?? [:]
+        if let nut = prod["nutrition"] as? [String: Any],
+           (nut["productKind"] as? String) == "non-food" {
+            return .failure(NSError(domain: "HeyBroc", code: -4, userInfo: [NSLocalizedDescriptionKey: "Non-food item skipped."]))
+        }
+        if let yuka = res["yukaBreakdown"] as? [String: Any],
+           (yuka["nutriScoreGrade"] as? String) == "N/A" {
+            return .failure(NSError(domain: "HeyBroc", code: -4, userInfo: [NSLocalizedDescriptionKey: "Non-food item skipped."]))
+        }
         let title = (prod["title"] as? String) ?? "Scanned Food"
         let brand = (prod["brand"] as? String) ?? ""
         let ingredients = (prod["ingredients"] as? String) ?? ""
@@ -491,6 +503,70 @@ enum HeyBrocNativeScannerAPI {
             let parsed = parseScanJSON(data)
             DispatchQueue.main.async {
                 completion(parsed)
+            }
+        }.resume()
+    }
+
+    static func scanBatch(
+        items: [[String: String]],
+        store: String? = nil,
+        completion: @escaping ([String: HeyBrocNativeScanSummary]) -> Void
+    ) {
+        guard !items.isEmpty else {
+            DispatchQueue.main.async { completion([:]) }
+            return
+        }
+        var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 14)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("ios", forHTTPHeaderField: "X-HeyBroc-Platform")
+        req.setValue("ios-app", forHTTPHeaderField: "X-Client-Platform")
+        if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
+            req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
+        }
+        if let token = HeyBrocSharedPrefs.authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        var payload: [String: Any] = [
+            "items": Array(items.prefix(10)),
+            "store": store ?? HeyBrocSharedPrefs.activeStore,
+            "surface": "extension",
+            "clientPlatform": "ios-app",
+            "deviceId": HeyBrocSharedPrefs.deviceId,
+            "familyWatchlist": HeyBrocSharedPrefs.familyWatchlist,
+            "dietaryWatchlist": HeyBrocSharedPrefs.dietaryWatchlist,
+            "preferStoreBrand": HeyBrocSharedPrefs.preferStoreBrand
+        ]
+        if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
+            payload["deviceSecret"] = secret
+        }
+        if let token = HeyBrocSharedPrefs.authToken, !token.isEmpty {
+            payload["authToken"] = token
+        }
+
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: req) { data, _, error in
+            guard error == nil,
+                  let data = data,
+                  let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                DispatchQueue.main.async { completion([:]) }
+                return
+            }
+            if let issuedSecret = top["issuedDeviceSecret"] as? String, !issuedSecret.isEmpty {
+                HeyBrocSharedPrefs.deviceSecret = issuedSecret
+            }
+            let rawMap = (top["results"] as? [String: Any]) ?? (top["batch"] as? [String: Any]) ?? [:]
+            var parsedSummaries: [String: HeyBrocNativeScanSummary] = [:]
+            for (cardId, entryAny) in rawMap {
+                guard let entryObj = entryAny as? [String: Any] else { continue }
+                if case .success(let summary) = parseScanObject(entryObj) {
+                    parsedSummaries[cardId] = summary
+                }
+            }
+            DispatchQueue.main.async {
+                completion(parsedSummaries)
             }
         }.resume()
     }
