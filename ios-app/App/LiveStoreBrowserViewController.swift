@@ -53,6 +53,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private let onPreferencesUpdated: (() -> Void)?
     private let onUpgradePro: (() -> Void)?
+    private let initialURLString: String?
     private var activeStore: HeyBrocLiveStoreConfig
     private var storeWebView: WKWebView!
     private var progressView: UIProgressView!
@@ -77,13 +78,26 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var scanGeneration: Int = 0
     private var progressObservation: NSKeyValueObservation?
 
+    private static func validatedHTTPURL(_ raw: String?) -> URL? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              (scheme == "https" || scheme == "http") else {
+            return nil
+        }
+        return url
+    }
+
     init(
         initialStoreKey: String? = nil,
+        initialURLString: String? = nil,
         onPreferencesUpdated: (() -> Void)? = nil,
         onUpgradePro: (() -> Void)? = nil
     ) {
         let targetKey = Self.normalizeStoreKey(initialStoreKey ?? HeyBrocSharedPrefs.activeStore)
         self.activeStore = Self.stores.first(where: { $0.key == targetKey }) ?? Self.stores[0]
+        self.initialURLString = initialURLString
         self.onPreferencesUpdated = onPreferencesUpdated
         self.onUpgradePro = onUpgradePro
         super.init(nibName: nil, bundle: nil)
@@ -115,8 +129,30 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         updatePesticideButtonStyle()
         setBubbleIdleState()
 
-        if let startURL = URL(string: activeStore.homeURL) {
+        if let startURL = Self.validatedHTTPURL(initialURLString) ?? URL(string: activeStore.homeURL) {
             storeWebView.load(URLRequest(url: startURL))
+        }
+    }
+
+    func openStoreOrURL(storeKey: String?, urlString: String?) {
+        if let key = storeKey, !key.isEmpty {
+            let norm = Self.normalizeStoreKey(key)
+            if let chosen = Self.stores.first(where: { $0.key == norm }) {
+                activeStore = chosen
+                HeyBrocSharedPrefs.activeStore = chosen.apiStoreKey
+                onPreferencesUpdated?()
+                if isViewLoaded {
+                    updateStoreChipStyles()
+                }
+            }
+        }
+        lastScannedKey = ""
+        latestSummary = nil
+        if isViewLoaded {
+            setBubbleIdleState()
+            if let targetURL = Self.validatedHTTPURL(urlString) ?? URL(string: activeStore.homeURL) {
+                storeWebView.load(URLRequest(url: targetURL))
+            }
         }
     }
 

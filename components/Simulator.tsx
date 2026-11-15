@@ -285,6 +285,37 @@ const STORE_THEME: Record<Store, { bg: string; fg: string; accent: string; accen
   shipt: { bg: "#2b0c3d", fg: "#ffffff", accent: "#008248", accentFg: "#fff" },
 };
 
+const IOS_STORE_HOME_URLS: Record<Store, string> = {
+  walmart: "https://www.walmart.com/browse/food/976759",
+  instacart: "https://www.instacart.com",
+  target: "https://www.target.com/c/grocery/-/N-5xt1a",
+  kroger: "https://www.kroger.com",
+  aldi: "https://shop.aldi.us",
+  doordash: "https://www.doordash.com/grocery",
+  ubereats: "https://www.ubereats.com/category/grocery",
+  amazon: "https://www.amazon.com/alm/storefront?almBrandId=QW1hem9uIEZyZXNo",
+  sams: "https://www.samsclub.com/b/grocery/1444",
+  bjs: "https://www.bjs.com",
+  costco: "https://www.costco.com/grocery-household.html",
+  shipt: "https://www.shipt.com",
+};
+
+function checkNativeLiveShopBridge(): boolean {
+  if (typeof window === "undefined") return false;
+  const win = window as unknown as {
+    __HEYBROC_NATIVE_LIVE_SHOP__?: boolean;
+    webkit?: {
+      messageHandlers?: {
+        heybrocNative?: { postMessage?: (msg: unknown) => void };
+      };
+    };
+  };
+  return (
+    Boolean(win.__HEYBROC_NATIVE_LIVE_SHOP__) ||
+    typeof win.webkit?.messageHandlers?.heybrocNative?.postMessage === "function"
+  );
+}
+
 type UiIconName =
   | "store"
   | "camera"
@@ -1060,10 +1091,59 @@ export default function Simulator({
   }, []);
 
   const [iosPrefsHydrated, setIosPrefsHydrated] = useState(false);
+  const [hasNativeLiveShop, setHasNativeLiveShop] = useState(true);
+  const [iosProductDetailOpen, setIosProductDetailOpen] = useState(false);
+  const [iosFallbackModal, setIosFallbackModal] = useState<
+    { kind: "store"; storeKey: Store; targetUrl?: string } | { kind: "safari" } | null
+  >(null);
+  const iosSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const launchIosLiveShop = useCallback(
-    (targetStore?: string) => {
-      const chosenStore = targetStore || store || "walmart";
+    (targetStore?: string, targetUrl?: string) => {
+      const rawKey = (targetStore || store || "walmart").trim().toLowerCase();
+      const chosenStore: Store = (STORES as readonly string[]).includes(rawKey)
+        ? (rawKey as Store)
+        : store;
+      if (chosenStore !== store) {
+        setStore(chosenStore);
+      }
+      if (typeof window === "undefined") return;
+      const win = window as unknown as {
+        webkit?: {
+          messageHandlers?: {
+            controller?: { postMessage?: (msg: unknown) => void };
+            heybrocNative?: { postMessage?: (msg: unknown) => void };
+          };
+        };
+      };
+      if (checkNativeLiveShopBridge()) {
+        setHasNativeLiveShop(true);
+        const payload = {
+          action: "openStoreBrowser",
+          store: chosenStore,
+          ...(targetUrl ? { url: targetUrl } : {}),
+        };
+        if (typeof win.webkit?.messageHandlers?.heybrocNative?.postMessage === "function") {
+          win.webkit.messageHandlers.heybrocNative.postMessage(payload);
+        } else if (typeof win.webkit?.messageHandlers?.controller?.postMessage === "function") {
+          win.webkit.messageHandlers.controller.postMessage({
+            action: "open-live-shop",
+            store: chosenStore,
+            ...(targetUrl ? { url: targetUrl } : {}),
+          });
+        }
+      } else {
+        setHasNativeLiveShop(false);
+        setIosFallbackModal({ kind: "store", storeKey: chosenStore, targetUrl });
+      }
+    },
+    [store],
+  );
+
+  const openIosSafariSetup = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (checkNativeLiveShopBridge()) {
+      setHasNativeLiveShop(true);
       const win = window as unknown as {
         webkit?: {
           messageHandlers?: {
@@ -1073,24 +1153,15 @@ export default function Simulator({
         };
       };
       if (typeof win.webkit?.messageHandlers?.controller?.postMessage === "function") {
-        win.webkit.messageHandlers.controller.postMessage({
-          action: "open-live-shop",
-          store: chosenStore,
-        });
+        win.webkit.messageHandlers.controller.postMessage("open-safari-setup");
       } else if (typeof win.webkit?.messageHandlers?.heybrocNative?.postMessage === "function") {
-        win.webkit.messageHandlers.heybrocNative.postMessage({
-          action: "openStoreBrowser",
-          store: chosenStore,
-        });
-      } else {
-        setToast({
-          title: "Open Live Shop in HeyBroc iOS App",
-          body: "Tap 🛒 Live Shop on the bottom bar of the HeyBroc iPhone app to browse Walmart, Instacart, Target & Amazon with the floating 0–100 bubble.",
-        });
+        win.webkit.messageHandlers.heybrocNative.postMessage("open-safari-setup");
       }
-    },
-    [store],
-  );
+    } else {
+      setHasNativeLiveShop(false);
+      setIosFallbackModal({ kind: "safari" });
+    }
+  }, []);
 
   useEffect(() => {
     if (!iosPrefsHydrated || typeof window === "undefined") return;
@@ -1274,6 +1345,7 @@ export default function Simulator({
         if (!cancelled && iosNative) {
           setIsIosApp(true);
           setIsIosAppClient(true);
+          setHasNativeLiveShop(checkNativeLiveShopBridge());
         }
         const urlStoreParam = (params.get("store") || "").trim();
         const validUrlStore =
@@ -1921,6 +1993,7 @@ export default function Simulator({
       setViewMode("product");
       setYukaTab("inspect");
       setFavOnly(false);
+      setIosProductDetailOpen(true);
       if (!opts?.preserveOverlay) {
         setOverlay(openCardImmediately ? "card" : "pill");
       }
@@ -1931,6 +2004,9 @@ export default function Simulator({
       ]);
       if (!opts?.preserveOverlay) {
         scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        if (typeof window !== "undefined" && detectIosAppClient()) {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
       }
       // Live scans are already recorded server-side by `/api/scan`; only fire client `/api/analytics` on local presets
       if (countAsScan) registerScan(p.origin === "live");
@@ -1958,11 +2034,15 @@ export default function Simulator({
       setYukaTab("inspect");
       setOverlay("card");
       setOpenFlag(null);
+      setIosProductDetailOpen(true);
       setScanHistory((prev) => [
         { product: clean, timeLabel: "Just now" },
         ...prev.filter((h) => h.product.key !== clean.key),
       ]);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      if (typeof window !== "undefined" && detectIosAppClient()) {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     },
     [active, previousDirtyItem, isPro, swapsUsedThisWeek, weeklySwapLimit, store, preferStoreBrand, cancelPendingLiveLookup, requestProUpgrade],
   );
@@ -2131,6 +2211,7 @@ export default function Simulator({
       setAuditOpen(false);
       setOverlay("pill");
       setOpenFlag(null);
+      setIosProductDetailOpen(true);
       scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       setToast({
         title: `Viewing Clean Swap: ${targetSwap.title} (${targetSwap.score}/100)`,
@@ -2218,6 +2299,7 @@ export default function Simulator({
       if (opts.storeOverride) {
         setStore(opts.storeOverride);
       }
+      setIosProductDetailOpen(true);
       setLiveState("loading");
       setLiveError("");
       try {
@@ -2860,16 +2942,31 @@ export default function Simulator({
     [store],
   );
 
+  const inIosApp = Boolean(isIosApp || isIosAppClient);
+
   /* ---------------- Render ---------------- */
   return (
     <div className="app">
-      {!adTestMode && <HealthyFoodBackdrop />}
+      {!adTestMode && !inIosApp && <HealthyFoodBackdrop />}
 
       <div className="topbar-shell">
         <header className="topbar">
           <div className="topbar-main">
             <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
-              <a href="/" className="brand">
+              <a
+                href={inIosApp ? "/?platform=ios" : "/"}
+                onClick={(e) => {
+                  if (inIosApp) {
+                    e.preventDefault();
+                    cancelPendingLiveLookup();
+                    setLiveState("idle");
+                    setLiveError("");
+                    setIosProductDetailOpen(false);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }
+                }}
+                className="brand"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/broc-mascot.png" alt="Broc mascot" className="brand-mascot" />
                 <div className="brand-copy">
@@ -2879,7 +2976,7 @@ export default function Simulator({
                 </div>
               </a>
 
-              {!adTestMode && (
+              {!adTestMode && !inIosApp && (
                 <nav className="yuka-desktop-nav" aria-label="Primary navigation">
                   <a href="/" className="is-current">Application</a>
                   <a href="/independence">Family Owned</a>
@@ -2981,7 +3078,7 @@ export default function Simulator({
                       <div className="topbar-dropdown-sep" />
 
                       <a
-                        href="/independence"
+                        href={inIosApp ? "/independence?platform=ios" : "/independence"}
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
@@ -2994,7 +3091,7 @@ export default function Simulator({
 
                       <a
                         id="open-free-tools"
-                        href="/tools"
+                        href={inIosApp ? "/tools?platform=ios" : "/tools"}
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
@@ -3006,7 +3103,7 @@ export default function Simulator({
                       </a>
 
                       <a
-                        href="/swaps"
+                        href={inIosApp ? "/swaps?platform=ios" : "/swaps"}
                         role="menuitem"
                         className="topbar-dropdown-item"
                       >
@@ -3017,7 +3114,7 @@ export default function Simulator({
                         <span className="topbar-dropdown-arrow">→</span>
                       </a>
 
-                      {(isIosApp || isIosAppClient) ? (
+                      {inIosApp ? (
                         <>
                           <button
                             id="open-ios-live-shop"
@@ -3041,25 +3138,12 @@ export default function Simulator({
                             className="topbar-dropdown-item"
                             onClick={() => {
                               setTopMenuOpen(false);
-                              const iosBridge = (
-                                window as unknown as {
-                                  webkit?: {
-                                    messageHandlers?: {
-                                      controller?: { postMessage?: (msg: string) => void };
-                                    };
-                                  };
-                                }
-                              ).webkit?.messageHandlers?.controller;
-                              if (typeof iosBridge?.postMessage === "function") {
-                                iosBridge.postMessage("open-safari-setup");
-                              } else {
-                                window.location.href = "/tools?platform=ios#mobile-setup";
-                              }
+                              openIosSafariSetup();
                             }}
                           >
                             <span className="topbar-dropdown-label">
                               <UiIcon name="phone" size={15} />
-                              <span>iPhone Setup</span>
+                              <span>Safari Pill Guide</span>
                             </span>
                           </button>
                         </>
@@ -3087,144 +3171,1546 @@ export default function Simulator({
         </header>
       </div>
 
-      <main className={`layout ${adTestMode ? "layout--ad-test" : ""} ${adTestMode && !freeTestCompleted ? "is-ad-test-step1" : ""}`.trim()}>
-        {/* ============ CONTROL PANEL ============ */}
-        <section className="controls" aria-label="Store and product controls">
-          {(isIosApp || isIosAppClient) && (
+      {inIosApp ? (
+        <main
+          id="ios-app-workspace"
+          style={{
+            width: "100%",
+            maxWidth: 560,
+            margin: "0 auto",
+            padding: "10px 14px 44px",
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          {/* TestFlight Update Banner — automatically hidden once updated native bridge is present */}
+          {iosPrefsHydrated && !hasNativeLiveShop && (
             <div
-              id="ios-live-grocery-bar"
-              className="card"
+              id="ios-testflight-update-banner"
               style={{
-                border: "2px solid #0f7a4a",
-                background: "linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)",
-                padding: 15,
+                background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                border: "1.5px solid #f59e0b",
+                borderRadius: 16,
+                padding: "13px 15px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                <span className="eyebrow eyebrow--green" style={{ margin: 0 }}>
-                  🛒 LIVE GROCERY BROWSER + FLOATING PILL
-                </span>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", letterSpacing: "0.03em" }}>
+                📲 NEW HEYBROC APP UPDATE READY IN TESTFLIGHT
               </div>
-              <h2 style={{ fontSize: 17, lineHeight: 1.25, margin: "0 0 5px", color: "#0b2418" }}>
-                Shop Real Stores Inside HeyBroc
-              </h2>
-              <p className="meta" style={{ fontSize: 12.5, marginBottom: 11, color: "#334155", lineHeight: 1.4 }}>
-                Open Walmart, Instacart, Target, or Amazon right inside HeyBroc — our live 0–100 bubble scores every item and unlocks Clean Swaps as you browse.
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.4, color: "#78350f" }}>
+                Install the latest TestFlight update to unlock the built-in Walmart, Instacart, Target &amp; Amazon store browser with our floating 0–100 score bubble.
               </p>
+              <a
+                href="https://beta.itunes.apple.com/v1/app/6832296201"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "10px 14px",
+                  borderRadius: 11,
+                  background: "#0f7a4a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 13.5,
+                  textDecoration: "none",
+                }}
+              >
+                Open TestFlight &amp; Tap Update →
+              </a>
+            </div>
+          )}
+
+          {/* Full-Width Search + Camera Bar */}
+          <section
+            aria-label="Search or scan groceries"
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e2e8f0",
+              borderRadius: 18,
+              padding: "14px",
+              boxShadow: "0 4px 16px rgba(15, 23, 42, 0.05)",
+            }}
+          >
+            <form className="search" onSubmit={runLive} style={{ margin: 0 }}>
+              <input
+                id="ios-app-search-input"
+                ref={iosSearchInputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search any food, brand, or barcode (${STORE_META[store].label})…`}
+                aria-label="Search any food, brand, or barcode"
+                style={{ fontSize: 16 }}
+              />
+              <button type="submit" disabled={!query.trim()}>
+                {liveState === "loading" ? "…" : "Score"}
+              </button>
+            </form>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 8,
+                marginTop: 10,
+              }}
+            >
+              <button
+                id="ios-scan-barcode-btn"
+                type="button"
+                onClick={() => {
+                  if (barcodeScannerOpen) {
+                    stopCameraScanner();
+                    setBarcodeScannerOpen(false);
+                    setBarcodeStatus("");
+                  } else {
+                    setBarcodeScannerOpen(true);
+                    void startCameraScanner();
+                  }
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  padding: "11px 12px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: "#0f7a4a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 13.5,
+                  cursor: "pointer",
+                }}
+              >
+                <UiIcon name="barcode" size={16} />
+                <span>{barcodeScannerOpen ? "Close Scanner" : "Scan Barcode"}</span>
+              </button>
+              <button
+                id="ios-scan-label-btn"
+                type="button"
+                onClick={() => setLabelScannerOpen(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  padding: "11px 12px",
+                  borderRadius: 12,
+                  border: "1.5px solid #cbd5e1",
+                  background: "#f8fafc",
+                  color: "#0f172a",
+                  fontWeight: 800,
+                  fontSize: 13.5,
+                  cursor: "pointer",
+                }}
+              >
+                <UiIcon name="camera" size={16} />
+                <span>Scan Label Photo</span>
+              </button>
+            </div>
+
+            {barcodeScannerOpen && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "#0f172a",
+                  color: "#f8fafc",
+                }}
+              >
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 14px",
+                    borderRadius: 999,
+                    background: "#16a34a",
+                    color: "#ffffff",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  <UiIcon name="camera" size={14} />
+                  <span>Snap or Upload Barcode Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={onBarcodePhotoUpload}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                {barcodeStatus && (
+                  <p style={{ margin: "8px 0 0", fontSize: 12, color: "#cbd5e1", lineHeight: 1.4 }}>
+                    {barcodeStatus}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              <button
+                type="button"
+                className="trip-pill"
+                onClick={() => {
+                  setManualFunnelOpen(true);
+                  setWatchlistFunnelStep(1);
+                  setWatchlistFunnelOpen(true);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700 }}
+              >
+                <UiIcon name="shield" size={13} />
+                <span>Watchlist ({familyWatchlist.length + dietaryWatchlist.length})</span>
+              </button>
+              <button
+                type="button"
+                className="trip-pill"
+                onClick={() => togglePesticideWatch()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  background: pesticideWatchEnabled ? "#dcfce7" : undefined,
+                  color: pesticideWatchEnabled ? "#14532d" : undefined,
+                  borderColor: pesticideWatchEnabled ? "#86efac" : undefined,
+                }}
+              >
+                <UiIcon name="leaf" size={13} />
+                <span>Glyphosate: {pesticideWatchEnabled ? "ON" : "OFF"}</span>
+              </button>
+              <button
+                type="button"
+                className="trip-pill"
+                onClick={() => togglePreferStoreBrand()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  background: preferStoreBrand ? "#dcfce7" : undefined,
+                  color: preferStoreBrand ? "#14532d" : undefined,
+                  borderColor: preferStoreBrand ? "#86efac" : undefined,
+                }}
+              >
+                <span>Store-Brand: {preferStoreBrand ? "ON" : "OFF"}</span>
+              </button>
+            </div>
+          </section>
+
+          {/* ==================== FULL-WIDTH PRODUCT SCORE VIEW ==================== */}
+          {iosProductDetailOpen || liveState !== "idle" ? (
+            <section
+              id="ios-full-product-view"
+              aria-label="Scanned product score and ingredients"
+              style={{ display: "flex", flexDirection: "column", gap: 12 }}
+            >
+              {/* Top Navigation Bar */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <button
+                  id="ios-product-back-home"
+                  type="button"
+                  onClick={() => {
+                    cancelPendingLiveLookup();
+                    setLiveState("idle");
+                    setLiveError("");
+                    setIosProductDetailOpen(false);
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 13px",
+                    borderRadius: 999,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#0f172a",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  ← Home &amp; Stores
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavorite(active.key)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 999,
+                      border: "1px solid #cbd5e1",
+                      background: favorites.includes(active.key) ? "#fef9c3" : "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {favorites.includes(active.key) ? "★ Saved" : "☆ Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void startCameraScanner();
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "8px 13px",
+                      borderRadius: 999,
+                      border: "none",
+                      background: "#0f7a4a",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <UiIcon name="barcode" size={14} />
+                    <span>Scan Next</span>
+                  </button>
+                </div>
+              </div>
+
+              {liveState === "loading" ? (
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 18,
+                    padding: "28px 20px",
+                    textAlign: "center",
+                    boxShadow: "0 4px 16px rgba(15, 23, 42, 0.05)",
+                  }}
+                >
+                  <div className="spinner" style={{ margin: "0 auto 12px" }} aria-label="Scanning" />
+                  <b style={{ display: "block", fontSize: 16, color: "#0f172a", marginBottom: 4 }}>
+                    Scoring ingredients 0–100…
+                  </b>
+                  <span style={{ fontSize: 13, color: "#64748b" }}>
+                    Checking seed oils, synthetic dyes, sweeteners &amp; Clean Swaps at {STORE_META[store].label}
+                  </span>
+                </div>
+              ) : liveState === "error" ? (
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "1.5px solid #fca5a5",
+                    borderRadius: 18,
+                    padding: "20px 18px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  <b style={{ fontSize: 15.5, color: "#991b1b" }}>Could not match that barcode yet</b>
+                  <p style={{ margin: 0, fontSize: 13.5, color: "#475569", lineHeight: 1.45 }}>
+                    {liveError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setLabelScannerOpen(true)}
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "#0f7a4a",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      fontSize: 14,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📸 Snap Ingredients Label Photo Instead →
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Store Switcher Strip for Clean Swaps */}
+                  <div
+                    aria-label="Select store for Clean Swaps"
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      overflowX: "auto",
+                      paddingBottom: 2,
+                      WebkitOverflowScrolling: "touch",
+                    }}
+                  >
+                    {orderedStores.slice(0, 8).map((s) => {
+                      const selected = s === store;
+                      return (
+                        <button
+                          key={`ios-store-pill-${s}`}
+                          type="button"
+                          onClick={() => switchStore(s)}
+                          style={{
+                            flexShrink: 0,
+                            padding: "6px 12px",
+                            borderRadius: 999,
+                            border: selected ? "1.5px solid #0f7a4a" : "1px solid #cbd5e1",
+                            background: selected ? "#0f7a4a" : "#ffffff",
+                            color: selected ? "#ffffff" : "#334155",
+                            fontWeight: 700,
+                            fontSize: 12,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {STORE_META[s].label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Full-Width Product Score Hero Card */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 20,
+                      padding: "18px 16px",
+                      boxShadow: "0 6px 20px rgba(15, 23, 42, 0.06)",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                      <div style={{ width: 92, height: 92, flexShrink: 0 }}>
+                        <ProductArt
+                          product={active}
+                          className="yuka-hero-img"
+                          onSnapLabel={() => setLabelScannerOpen(true)}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            color: "#64748b",
+                            marginBottom: 3,
+                          }}
+                        >
+                          {active.brand}
+                        </div>
+                        <h2
+                          style={{
+                            margin: "0 0 10px",
+                            fontSize: 19,
+                            lineHeight: 1.25,
+                            fontWeight: 800,
+                            color: "#0f172a",
+                          }}
+                        >
+                          {active.title}
+                          {active.size ? `, ${active.size}` : ""}
+                        </h2>
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 9,
+                            padding: "7px 14px",
+                            borderRadius: 14,
+                            background:
+                              score.color === "green"
+                                ? "#ecfdf5"
+                                : score.color === "yellow"
+                                  ? "#fffbeb"
+                                  : "#fef2f2",
+                            border: `1.5px solid ${
+                              score.color === "green"
+                                ? "#6ee7b7"
+                                : score.color === "yellow"
+                                  ? "#fcd34d"
+                                  : "#fca5a5"
+                            }`,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 24,
+                              fontWeight: 900,
+                              lineHeight: 1,
+                              color:
+                                score.color === "green"
+                                  ? "#047857"
+                                  : score.color === "yellow"
+                                    ? "#b45309"
+                                    : "#dc2626",
+                            }}
+                          >
+                            {score.score}/100
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 800,
+                              color:
+                                score.color === "green"
+                                  ? "#065f46"
+                                  : score.color === "yellow"
+                                    ? "#92400e"
+                                    : "#991b1b",
+                            }}
+                          >
+                            {score.score < 25 ? "Bad" : score.rating}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Personal Allergy / Dietary / Pesticide Alerts */}
+                    {activeDietaryAlerts.length > 0 && (
+                      <div
+                        style={{
+                          background: "#fef2f2",
+                          border: "1.5px solid #fca5a5",
+                          borderRadius: 14,
+                          padding: "11px 14px",
+                          marginTop: 14,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            marginBottom: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              fontSize: 11,
+                              fontWeight: 800,
+                              letterSpacing: "0.05em",
+                              color: "#991b1b",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            <UiIcon name="alert" size={13} />
+                            <span>Personal Allergy &amp; Diet Alert ({activeDietaryAlerts.length})</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setManualFunnelOpen(true);
+                              setWatchlistFunnelStep(4);
+                              setWatchlistFunnelOpen(true);
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              color: "#b91c1c",
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit Guard
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {activeDietaryAlerts.map((alert) => (
+                            <div
+                              key={alert.id}
+                              style={{ fontSize: 13, color: "#7f1d1d", lineHeight: 1.4 }}
+                            >
+                              <b>{alert.label}:</b> {alert.reason}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 1-Tap Clean Swap Card */}
+                    {swap ? (
+                      !isPro && swapsUsedThisWeek >= weeklySwapLimit ? (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            padding: 14,
+                            borderRadius: 16,
+                            border: "2px solid #0f7a4a",
+                            background: "#f0fdf4",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ fontSize: 11.5, fontWeight: 800, color: "#15803d", textTransform: "uppercase" }}>
+                            🔒 CLEAN SWAP AVAILABLE · {swap.score}/100
+                          </div>
+                          <b style={{ fontSize: 16, color: "#0f172a" }}>
+                            {swap.score}/100 Clean Replacement at {STORE_META[store].label}
+                          </b>
+                          <span style={{ fontSize: 13, color: "#334155" }}>
+                            All {weeklySwapLimit} free weekly Clean Swaps used · Unlock unlimited Clean Swaps &amp; Live Store Bubbles with Family Pro.
+                          </span>
+                          <button
+                            type="button"
+                            className="swap-btn"
+                            onClick={requestProUpgrade}
+                            style={{ width: "100%", padding: "12px 16px", fontSize: 14.5 }}
+                          >
+                            Unlock Unlimited Clean Swaps →
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            padding: 15,
+                            borderRadius: 16,
+                            border: "2px solid #0f7a4a",
+                            background: "linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#0f7a4a", letterSpacing: "0.04em" }}>
+                              ✓ VERIFIED CLEAN SWAP · {STORE_META[store].label.toUpperCase()}
+                            </span>
+                            {swap.isStoreBrand && (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  background: "#15803d",
+                                  color: "#ffffff",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  padding: "2px 9px",
+                                  borderRadius: 999,
+                                }}
+                              >
+                                <UiIcon name="leaf" size={11} />
+                                <span>Store-Brand Value Pick</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                            <div style={{ width: 64, height: 64, flexShrink: 0 }}>
+                              <ProductArt
+                                product={swapResultToProduct(swap, active, store)}
+                                className="swap-art"
+                              />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <b style={{ display: "block", fontSize: 16, lineHeight: 1.3, color: "#0f172a" }}>
+                                {swap.title}
+                              </b>
+                              <span style={{ display: "inline-block", marginTop: 4, fontSize: 13.5, fontWeight: 800, color: "#15803d" }}>
+                                {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => launchIosLiveShop(store, swap.webUrl)}
+                              style={{
+                                width: "100%",
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: "none",
+                                background: "#0f7a4a",
+                                color: "#ffffff",
+                                fontWeight: 800,
+                                fontSize: 14,
+                                cursor: "pointer",
+                              }}
+                            >
+                              🛒 Open Clean Swap in {STORE_META[store].label} →
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => inspectCleanSwap(swap.category, active, swap)}
+                              style={{
+                                width: "100%",
+                                padding: "10px 14px",
+                                borderRadius: 12,
+                                border: "1px solid #86efac",
+                                background: "#ffffff",
+                                color: "#14532d",
+                                fontWeight: 800,
+                                fontSize: 13,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Inspect Clean Swap Ingredients ({swap.score}/100)
+                            </button>
+                          </div>
+
+                          {!swap.isStoreBrand && storeBrandCandidateIdx >= 0 && (
+                            <button
+                              type="button"
+                              className="trip-pill"
+                              onClick={() => setSelectedSwapIdx(storeBrandCandidateIdx)}
+                              style={{
+                                width: "100%",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: 5,
+                                background: "#ecfdf5",
+                                borderColor: "#86efac",
+                                color: "#14532d",
+                                fontWeight: 800,
+                                fontSize: 12,
+                              }}
+                            >
+                              <UiIcon name="leaf" size={13} />
+                              <span>
+                                Prefer store brand? Switch to {swapCandidates[storeBrandCandidateIdx].title} ({swapCandidates[storeBrandCandidateIdx].score}/100)
+                              </span>
+                            </button>
+                          )}
+
+                          {swapCandidates.length > 1 && (
+                            <button
+                              type="button"
+                              className="link-btn center"
+                              onClick={() => setSelectedSwapIdx((i) => (i + 1) % swapCandidates.length)}
+                            >
+                              ⇄ Option {(selectedSwapIdx % swapCandidates.length) + 1} of {swapCandidates.length} · Tap for next clean alternative
+                            </button>
+                          )}
+                        </div>
+                      )
+                    ) : activeRevertTarget ? (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          padding: 14,
+                          borderRadius: 16,
+                          border: "1.5px solid #86efac",
+                          background: "#f0fdf4",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <b style={{ fontSize: 14.5, color: "#14532d" }}>
+                          ✓ Viewing Clean Swap ({score.score}/100)
+                        </b>
+                        <button
+                          type="button"
+                          onClick={() => launchIosLiveShop(store)}
+                          style={{
+                            width: "100%",
+                            padding: "11px 14px",
+                            borderRadius: 11,
+                            border: "none",
+                            background: "#0f7a4a",
+                            color: "#ffffff",
+                            fontWeight: 800,
+                            fontSize: 13.5,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🛒 Shop {STORE_META[store].label} Inside HeyBroc →
+                        </button>
+                        <button
+                          type="button"
+                          className="link-btn center"
+                          onClick={() => {
+                            setActive(activeRevertTarget);
+                            setPreviousDirtyItem(null);
+                          }}
+                        >
+                          ← Back to {activeRevertTarget.brand} {activeRevertTarget.title}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      className="trip-pill"
+                      onClick={() => setExposeCardOpen(true)}
+                      style={{
+                        width: "100%",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                        padding: "10px 14px",
+                        marginTop: 12,
+                        fontWeight: 800,
+                        fontSize: 13,
+                        background: "#f0fdf4",
+                        borderColor: "#86efac",
+                        color: "#14532d",
+                      }}
+                    >
+                      <UiIcon name="share" size={14} />
+                      <span>Share Before/After Score Card</span>
+                    </button>
+                  </div>
+
+                  {/* 3-Pillar Score Gauge */}
+                  {score.yukaBreakdown && (
+                    <CleanArcScoreCard
+                      id="ios-inspect-clean-arc-card"
+                      headline={
+                        score.score >= 75
+                          ? "Clean family pick"
+                          : score.score >= 50
+                            ? "Room for a cleaner swap"
+                            : "Watchlist flags detected"
+                      }
+                      leftStatValue={score.flagged.length}
+                      leftStatLabel={score.flagged.length === 1 ? "Flagged" : "Flags"}
+                      rightStatValue={swap ? `${swap.score}/100` : "✓ Clean"}
+                      rightStatLabel={swap ? "Swap Score" : "Top Pick"}
+                      score={score.score}
+                      scoreSublabel={`Clean Score · ${score.score < 25 ? "Bad" : score.rating}`}
+                      miniRings={[
+                        {
+                          label: "Nutrition",
+                          valueText: `${score.yukaBreakdown.nutritionScore}/60`,
+                          fillPct: Math.round((score.yukaBreakdown.nutritionScore / 60) * 100),
+                          color: "#f59e0b",
+                          sublabel: `Grade ${score.yukaBreakdown.nutriScoreGrade}`,
+                        },
+                        {
+                          label: "Additives",
+                          valueText: `${score.yukaBreakdown.additiveScore}/30`,
+                          fillPct: Math.round((score.yukaBreakdown.additiveScore / 30) * 100),
+                          color: score.yukaBreakdown.additiveScore >= 24 ? "#10b981" : "#ef4444",
+                          sublabel: `${score.flagged.length} flagged`,
+                        },
+                        {
+                          label: "Oils & Dyes",
+                          valueText: `${
+                            score.flagged.filter(
+                              (f) => f.category === "seedOils" || f.category === "dyes",
+                            ).length
+                          } hit${
+                            score.flagged.filter(
+                              (f) => f.category === "seedOils" || f.category === "dyes",
+                            ).length === 1
+                              ? ""
+                              : "s"
+                          }`,
+                          fillPct:
+                            score.flagged.some(
+                              (f) => f.category === "seedOils" || f.category === "dyes",
+                            )
+                              ? 25
+                              : 100,
+                          color: score.flagged.some(
+                            (f) => f.category === "seedOils" || f.category === "dyes",
+                          )
+                            ? "#ea580c"
+                            : "#10b981",
+                          sublabel:
+                            score.yukaBreakdown.organicScore > 0
+                              ? `+${score.yukaBreakdown.organicScore} Organic`
+                              : "Seed oil / dye",
+                        },
+                      ]}
+                      footerNote={
+                        score.yukaBreakdown.glucoseImpact ? (
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 12.5,
+                                fontWeight: 800,
+                                color:
+                                  score.yukaBreakdown.glucoseImpact === "High Sugar / Carb"
+                                    ? "#dc2626"
+                                    : score.yukaBreakdown.glucoseImpact === "Moderate Sugar / Carb"
+                                      ? "#ea580c"
+                                      : "#16a34a",
+                              }}
+                            >
+                              Sugar &amp; Carb Note: {score.yukaBreakdown.glucoseImpact} &nbsp;·&nbsp;{" "}
+                              {score.yukaBreakdown.calorieNote}
+                            </div>
+                            <p
+                              style={{
+                                fontSize: 12,
+                                color: "#57534e",
+                                margin: "3px 0 0",
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              {score.yukaBreakdown.glucoseNote}
+                            </p>
+                          </div>
+                        ) : undefined
+                      }
+                    />
+                  )}
+
+                  {/* Full-Width Negatives Section */}
+                  {score.flagged.length > 0 && (
+                    <div
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 18,
+                        padding: "16px",
+                      }}
+                    >
+                      <h3 style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+                        Flagged Ingredients ({score.flagged.length})
+                      </h3>
+                      <div className="yuka-list">
+                        {score.flagged.map((f: FlaggedAdditive) => {
+                          const dotTone = f.risk === "high" ? "red" : "yellow";
+                          return (
+                            <div key={f.id} className="yuka-row-wrap">
+                              <div className="yuka-row is-open">
+                                <span className="yuka-row-icon">
+                                  <YukaLineIcon kind={f.category} />
+                                </span>
+                                <div className="yuka-row-text">
+                                  <b style={{ fontSize: 14.5 }}>{f.name}</b>
+                                  <small style={{ fontSize: 12 }}>
+                                    {CATEGORY_LABELS[f.category]} · {RISK_LABEL[f.risk]}
+                                  </small>
+                                </div>
+                                <div className="yuka-row-right">
+                                  <span className="yuka-row-val">−{f.penalty} pts</span>
+                                  <span className={`yuka-dot tone-${dotTone}`} />
+                                </div>
+                              </div>
+                              <div className={`explain risk-${f.risk}`}>
+                                <p style={{ fontSize: 13, lineHeight: 1.45 }}>{f.explanation}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Full-Width Positives Section */}
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 18,
+                      padding: "16px",
+                    }}
+                  >
+                    <h3 style={{ margin: "0 0 10px", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+                      Clean Checks Passed
+                    </h3>
+                    <div className="yuka-list">
+                      {ALL_CATEGORIES.filter(
+                        (cat) =>
+                          !score.flagged.some((f) => f.category === cat) &&
+                          !score.ignored.some((f) => f.category === cat),
+                      ).map((cat) => {
+                        const meta = POSITIVE_CHECKS[cat];
+                        return (
+                          <div key={cat} className="yuka-row">
+                            <span className="yuka-row-icon">
+                              <YukaLineIcon kind={cat} />
+                            </span>
+                            <div className="yuka-row-text">
+                              <b style={{ fontSize: 14 }}>{meta.title}</b>
+                              <small style={{ fontSize: 12 }}>{meta.subtitle}</small>
+                            </div>
+                            <div className="yuka-row-right">
+                              <span className="yuka-row-val">{meta.badge}</span>
+                              <span className="yuka-dot tone-green" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Full Ingredients List & Report a Mistake */}
+                  <div
+                    className="insights-ingredients-box"
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 18,
+                      padding: "16px",
+                      margin: 0,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                      Ingredients Inspected:
+                    </span>
+                    <p style={{ fontSize: 13.5, lineHeight: 1.5, color: "#334155", margin: "6px 0 0" }}>
+                      {active.ingredients}
+                    </p>
+                    <small style={{ display: "block", marginTop: 8, fontSize: 11.5, color: "#475569", fontWeight: 700, lineHeight: 1.4 }}>
+                      {lookupSourceLabel(active.lookup)}
+                      {active.lookup?.sourceUpdatedAt ? ` · updated ${active.lookup.sourceUpdatedAt}` : ""}
+                      {" · "}
+                      <button
+                        type="button"
+                        onClick={() => setLabelVerifierOpen(true)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "#15803d",
+                          fontWeight: 700,
+                          fontSize: "inherit",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Report a mistake (Auto-Verify)
+                      </button>
+                    </small>
+                    <small style={{ display: "block", marginTop: 5, fontSize: 11, color: "#64748b", lineHeight: 1.4 }}>
+                      Informational opinion only — not medical or regulatory advice. Most flagged ingredients are permitted or GRAS under U.S. FDA rules; scores reflect HeyBroc&apos;s independent clean-label rubric. Always verify the physical product label.
+                    </small>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : (
+            <>
+              {/* ==================== BUILT-IN LIVE STORE BROWSER CARD ==================== */}
+              <section
+                id="ios-live-grocery-bar"
+                className="card"
+                style={{
+                  border: "2px solid #0f7a4a",
+                  background: "linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)",
+                  padding: 16,
+                  borderRadius: 18,
+                }}
+              >
+                <span className="eyebrow eyebrow--green" style={{ margin: 0 }}>
+                  🛒 BUILT-IN GROCERY BROWSER + FLOATING SCORE BUBBLE
+                </span>
+                <h2 style={{ fontSize: 18.5, lineHeight: 1.25, margin: "6px 0 6px", color: "#0b2418" }}>
+                  Shop Real Stores Inside HeyBroc
+                </h2>
+                <p className="meta" style={{ fontSize: 13, marginBottom: 12, color: "#334155", lineHeight: 1.45 }}>
+                  Opens Walmart, Instacart, Target, Amazon, Costco, Kroger, or ALDI right inside HeyBroc with a floating 0–100 broccoli bubble — without kicking you out to external store apps.
+                </p>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    id="ios-shop-walmart"
+                    type="button"
+                    onClick={() => launchIosLiveShop("walmart")}
+                    style={{
+                      gridColumn: "1 / -1",
+                      padding: "13px 14px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "#0f7a4a",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      fontSize: 14.5,
+                      cursor: "pointer",
+                      boxShadow: "0 4px 12px rgba(15, 122, 74, 0.22)",
+                    }}
+                  >
+                    🛒 Open Walmart Inside HeyBroc →
+                  </button>
+                  <button
+                    id="ios-shop-instacart"
+                    type="button"
+                    onClick={() => launchIosLiveShop("instacart")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🥕 Instacart
+                  </button>
+                  <button
+                    id="ios-shop-target"
+                    type="button"
+                    onClick={() => launchIosLiveShop("target")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🎯 Target
+                  </button>
+                  <button
+                    id="ios-shop-amazon"
+                    type="button"
+                    onClick={() => launchIosLiveShop("amazon")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📦 Amazon / WFM
+                  </button>
+                  <button
+                    id="ios-shop-costco"
+                    type="button"
+                    onClick={() => launchIosLiveShop("costco")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🏬 Costco
+                  </button>
+                  <button
+                    id="ios-shop-kroger"
+                    type="button"
+                    onClick={() => launchIosLiveShop("kroger")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🛍️ Kroger
+                  </button>
+                  <button
+                    id="ios-shop-aldi"
+                    type="button"
+                    onClick={() => launchIosLiveShop("aldi")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🏷️ ALDI
+                  </button>
+                  <button
+                    id="ios-shop-sams"
+                    type="button"
+                    onClick={() => launchIosLiveShop("sams")}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#0f172a",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🛒 Sam&apos;s Club
+                  </button>
+                  <button
+                    id="ios-open-pill-setup"
+                    type="button"
+                    onClick={openIosSafariSetup}
+                    style={{
+                      padding: "11px 10px",
+                      borderRadius: 11,
+                      border: "1px solid #bbf7d0",
+                      background: "#f0fdf4",
+                      color: "#14532d",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🧭 Safari Pill Guide
+                  </button>
+                </div>
+              </section>
+
+              {/* Quick Order Audit & Family Pro Tools */}
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 7,
-                  marginBottom: 8,
+                  gap: 8,
                 }}
               >
                 <button
-                  id="ios-shop-walmart"
                   type="button"
-                  onClick={() => launchIosLiveShop("walmart")}
+                  onClick={() => setWeeklyAuditOpen(true)}
                   style={{
-                    gridColumn: "1 / -1",
-                    padding: "11px 14px",
-                    borderRadius: 11,
-                    border: "none",
-                    background: "#0f7a4a",
-                    color: "#ffffff",
+                    padding: "12px",
+                    borderRadius: 14,
+                    border: "1px solid #e2e8f0",
+                    background: "#ffffff",
+                    color: "#0f172a",
                     fontWeight: 800,
-                    fontSize: 14,
+                    fontSize: 13,
                     cursor: "pointer",
-                    boxShadow: "0 4px 12px rgba(15, 122, 74, 0.22)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
                   }}
                 >
-                  🛒 Shop Walmart Live (with Floating Score Bubble)
+                  <UiIcon name="receipt" size={15} />
+                  <span>Audit Pickup Order</span>
                 </button>
                 <button
-                  id="ios-shop-instacart"
                   type="button"
-                  onClick={() => launchIosLiveShop("instacart")}
+                  onClick={requestProUpgrade}
                   style={{
-                    padding: "9px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
-                    color: "#0f172a",
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: "pointer",
-                  }}
-                >
-                  🥕 Instacart Live
-                </button>
-                <button
-                  id="ios-shop-target"
-                  type="button"
-                  onClick={() => launchIosLiveShop("target")}
-                  style={{
-                    padding: "9px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
-                    color: "#0f172a",
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: "pointer",
-                  }}
-                >
-                  🎯 Target Live
-                </button>
-                <button
-                  id="ios-shop-amazon"
-                  type="button"
-                  onClick={() => launchIosLiveShop("amazon")}
-                  style={{
-                    padding: "9px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
-                    color: "#0f172a",
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: "pointer",
-                  }}
-                >
-                  📦 Amazon / WFM
-                </button>
-                <button
-                  id="ios-open-pill-setup"
-                  type="button"
-                  onClick={() => {
-                    const iosBridge = (
-                      window as unknown as {
-                        webkit?: {
-                          messageHandlers?: {
-                            controller?: { postMessage?: (msg: string) => void };
-                          };
-                        };
-                      }
-                    ).webkit?.messageHandlers?.controller;
-                    if (typeof iosBridge?.postMessage === "function") {
-                      iosBridge.postMessage("open-safari-setup");
-                    } else {
-                      window.location.href = "/tools?platform=ios#mobile-setup";
-                    }
-                  }}
-                  style={{
-                    padding: "9px 10px",
-                    borderRadius: 10,
+                    padding: "12px",
+                    borderRadius: 14,
                     border: "1px solid #bbf7d0",
                     background: "#f0fdf4",
                     color: "#14532d",
-                    fontWeight: 700,
-                    fontSize: 12.5,
+                    fontWeight: 800,
+                    fontSize: 13,
                     cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
                   }}
                 >
-                  ⚡ Safari &amp; Share Pill
+                  <UiIcon name="spark" size={15} />
+                  <span>{isPro ? "Family Pro Active ✓" : "Family Pro"}</span>
                 </button>
               </div>
+
+              {/* Recent Scans & Tap-to-Inspect Groceries */}
+              <section
+                aria-label="Recent scans and sample items"
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 18,
+                  padding: "16px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+                    Recent Scans &amp; Quick Test Items
+                  </h3>
+                  <span style={{ fontSize: 11.5, color: "#64748b", fontWeight: 700 }}>
+                    Tap to inspect
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {scanHistory.slice(0, 8).map(({ product: hp, timeLabel }) => {
+                    const hs = gradeProduct(
+                      `${hp.brand} ${hp.title}`,
+                      hp.ingredients,
+                      watch,
+                      hp.nutrition,
+                      familyWatchlist,
+                    );
+                    return (
+                      <button
+                        key={`ios-hist-${hp.key}`}
+                        type="button"
+                        onClick={() => showProduct(hp, false, true)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          width: "100%",
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          border: "1px solid #e2e8f0",
+                          background: "#f8fafc",
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ width: 48, height: 48, flexShrink: 0 }}>
+                          <ProductArt product={hp} className="yuka-history-img" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <b
+                            style={{
+                              display: "block",
+                              fontSize: 14,
+                              color: "#0f172a",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {hp.title}
+                          </b>
+                          <small style={{ fontSize: 12, color: "#64748b" }}>
+                            {hp.brand} · {timeLabel}
+                          </small>
+                        </div>
+                        <ScoreChip score={hs.score} color={hs.color} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </>
+          )}
+
+          {/* Toast Notification for iOS App Workspace */}
+          {toast && (
+            <div
+              role="status"
+              style={{
+                position: "fixed",
+                left: 14,
+                right: 14,
+                bottom: 20,
+                maxWidth: 520,
+                margin: "0 auto",
+                zIndex: 90,
+                background: "#0f172a",
+                color: "#ffffff",
+                padding: "12px 15px",
+                borderRadius: 14,
+                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.32)",
+              }}
+            >
+              <b style={{ display: "block", fontSize: 13.5, marginBottom: 2 }}>{toast.title}</b>
+              <p style={{ margin: 0, fontSize: 12.5, color: "#cbd5e1", lineHeight: 1.4 }}>{toast.body}</p>
             </div>
           )}
 
+          {/* Fallback Sheet for Older TestFlight Build (105) or Web Preview */}
+          {iosFallbackModal && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setIosFallbackModal(null)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 120,
+                background: "rgba(15, 23, 42, 0.58)",
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "center",
+                padding: 12,
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxWidth: 500,
+                  background: "#ffffff",
+                  borderRadius: 22,
+                  padding: "20px 18px 22px",
+                  boxShadow: "0 20px 44px rgba(15, 23, 42, 0.3)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: "#0f7a4a", letterSpacing: "0.05em" }}>
+                    {iosFallbackModal.kind === "store"
+                      ? `🛒 ${STORE_META[iosFallbackModal.storeKey].label.toUpperCase()} IN-APP BROWSER`
+                      : "🧭 SAFARI FLOATING PILL GUIDE"}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setIosFallbackModal(null)}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 999,
+                      border: "1px solid #e2e8f0",
+                      background: "#f8fafc",
+                      fontSize: 16,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {iosFallbackModal.kind === "store" ? (
+                  <>
+                    <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.25, color: "#0f172a" }}>
+                      Update HeyBroc in TestFlight to Open {STORE_META[iosFallbackModal.storeKey].label} Inside the App
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.45, color: "#475569" }}>
+                      Your iPhone is running an older TestFlight build before our built-in {STORE_META[iosFallbackModal.storeKey].label} browser was added. Tap below to open TestFlight and tap <b>Update</b> — or score {STORE_META[iosFallbackModal.storeKey].label} groceries right here now:
+                    </p>
+                    <a
+                      href="https://beta.itunes.apple.com/v1/app/6832296201"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "13px 16px",
+                        borderRadius: 13,
+                        background: "#0f7a4a",
+                        color: "#ffffff",
+                        fontWeight: 800,
+                        fontSize: 14.5,
+                        textDecoration: "none",
+                      }}
+                    >
+                      📲 Open TestFlight to Update App →
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        switchStore(iosFallbackModal.storeKey);
+                        setIosFallbackModal(null);
+                        setIosProductDetailOpen(false);
+                        setTimeout(() => iosSearchInputRef.current?.focus(), 60);
+                      }}
+                      style={{
+                        padding: "12px 16px",
+                        borderRadius: 13,
+                        border: "1.5px solid #cbd5e1",
+                        background: "#f8fafc",
+                        color: "#0f172a",
+                        fontWeight: 800,
+                        fontSize: 13.5,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🔍 Search &amp; Score {STORE_META[iosFallbackModal.storeKey].label} Foods Right Here
+                    </button>
+                    <a
+                      href={iosFallbackModal.targetUrl || IOS_STORE_HOME_URLS[iosFallbackModal.storeKey]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        border: "1px solid #e2e8f0",
+                        background: "#ffffff",
+                        color: "#334155",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Open {STORE_META[iosFallbackModal.storeKey].label} Website Externally ↗
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <h3 style={{ margin: 0, fontSize: 18, lineHeight: 1.25, color: "#0f172a" }}>
+                      1-Switch Safari Extension Setup
+                    </h3>
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 14,
+                        padding: "12px 14px",
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        color: "#1e293b",
+                      }}
+                    >
+                      <div>1. Open <b>iPhone Settings → Apps → Safari → Extensions → HeyBroc</b></div>
+                      <div>2. Turn <b>Allow Extension</b> ON</div>
+                      <div>3. Tap <b>All Websites → Allow</b> <em>(1 switch enables all 12 stores at once!)</em></div>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: "#475569" }}>
+                      Want to skip Safari setup altogether? Update HeyBroc in TestFlight to shop Walmart, Instacart, Target &amp; Amazon right inside HeyBroc!
+                    </p>
+                    <a
+                      href="https://beta.itunes.apple.com/v1/app/6832296201"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "13px 16px",
+                        borderRadius: 13,
+                        background: "#0f7a4a",
+                        color: "#ffffff",
+                        fontWeight: 800,
+                        fontSize: 14.5,
+                        textDecoration: "none",
+                      }}
+                    >
+                      📲 Open TestFlight to Update App →
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+      ) : (
+        <>
+      <main className={`layout ${adTestMode ? "layout--ad-test" : ""} ${adTestMode && !freeTestCompleted ? "is-ad-test-step1" : ""}`.trim()}>
+        {/* ============ CONTROL PANEL ============ */}
+        <section className="controls" aria-label="Store and product controls">
           {adTestMode && (
             <div
               id="ad-free-test-hero"
@@ -5408,6 +6894,8 @@ export default function Simulator({
       />
 
       <FooterKitchenScenery />
+        </>
+      )}
 
       {/* ============ PHASE 6 MODALS ============ */}
       <WatchlistMiniFunnel

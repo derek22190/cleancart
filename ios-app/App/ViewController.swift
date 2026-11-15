@@ -44,7 +44,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         config.mediaTypesRequiringUserActionForPlayback = []
         config.websiteDataStore = .default()
         config.applicationNameForUserAgent = "HeyBrocIOS/2.1.0"
-        let nativeFlagsJS = "window.__HEYBROC_NATIVE_APPLE_AUTH__ = true; window.__HEYBROC_NATIVE_STOREKIT__ = true;"
+        let nativeFlagsJS = "window.__HEYBROC_NATIVE_APPLE_AUTH__ = true; window.__HEYBROC_NATIVE_STOREKIT__ = true; window.__HEYBROC_NATIVE_LIVE_SHOP__ = true;"
         config.userContentController.addUserScript(
             WKUserScript(source: nativeFlagsJS, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
@@ -162,13 +162,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             presentNativeProSheet()
         case "liveshop":
             let storeKey = comps?.queryItems?.first(where: { $0.name == "store" })?.value
-            if let presented = presentedViewController, !(presented is LiveStoreBrowserViewController) {
-                presented.dismiss(animated: false) { [weak self] in
-                    self?.presentLiveStoreBrowser(initialStoreKey: storeKey)
-                }
-            } else if !(presentedViewController is LiveStoreBrowserViewController) {
-                presentLiveStoreBrowser(initialStoreKey: storeKey)
-            }
+            let targetURL = comps?.queryItems?.first(where: { $0.name == "url" })?.value
+            presentLiveStoreBrowser(initialStoreKey: storeKey, initialURLString: targetURL)
         case "safari":
             presentSafariSetupSheet()
         case "barcode":
@@ -449,9 +444,20 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
-    private func presentLiveStoreBrowser(initialStoreKey: String? = nil) {
+    private func presentLiveStoreBrowser(initialStoreKey: String? = nil, initialURLString: String? = nil) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.presentLiveStoreBrowser(initialStoreKey: initialStoreKey, initialURLString: initialURLString)
+            }
+            return
+        }
+        if let existing = presentedViewController as? LiveStoreBrowserViewController {
+            existing.openStoreOrURL(storeKey: initialStoreKey, urlString: initialURLString)
+            return
+        }
         let browser = LiveStoreBrowserViewController(
             initialStoreKey: initialStoreKey,
+            initialURLString: initialURLString,
             onPreferencesUpdated: { [weak self] in
                 self?.syncNativePrefsToWebView(forceOverwrite: true)
             },
@@ -460,7 +466,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
         )
         browser.modalPresentationStyle = .fullScreen
-        present(browser, animated: true)
+        if let presented = presentedViewController {
+            presented.dismiss(animated: false) { [weak self] in
+                self?.present(browser, animated: true)
+            }
+        } else {
+            present(browser, animated: true)
+        }
     }
 
     private func presentSafariSetupSheet() {
@@ -484,7 +496,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             pres.prefersGrabberVisible = true
             pres.preferredCornerRadius = 24
         }
-        present(sheet, animated: true)
+        if let presented = presentedViewController {
+            presented.dismiss(animated: false) { [weak self] in
+                self?.present(sheet, animated: true)
+            }
+        } else {
+            present(sheet, animated: true)
+        }
     }
 
     private func presentBarcodeScanner() {
@@ -492,7 +510,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             self?.handleScannedBarcode(rawCode)
         }
         scanner.modalPresentationStyle = .fullScreen
-        present(scanner, animated: true)
+        if let presented = presentedViewController {
+            presented.dismiss(animated: false) { [weak self] in
+                self?.present(scanner, animated: true)
+            }
+        } else {
+            present(scanner, animated: true)
+        }
     }
 
     private func handleScannedBarcode(_ code: String) {
@@ -551,7 +575,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             presentSafariSetupSheet()
         case "open-live-shop", "openStoreBrowser":
             let storeKey = payloadDict?["store"] as? String
-            presentLiveStoreBrowser(initialStoreKey: storeKey)
+            let targetURL = payloadDict?["url"] as? String
+            presentLiveStoreBrowser(initialStoreKey: storeKey, initialURLString: targetURL)
         case "apple-sign-in":
             startNativeAppleSignIn()
         case "upgrade-pro", "managePro", "manage-pro":

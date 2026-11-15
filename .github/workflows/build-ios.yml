@@ -531,11 +531,12 @@ jobs:
           app_id = app['id']
           puts "ASC App ID for com.heybroc.app: #{app_id}"
 
-          # Show the last 12 builds in App Store Connect so we know exact processingStatus of 105..116
+          # Show the last 12 builds in App Store Connect
           _, hist = asc_req(:get, "/v1/builds?filter[app]=#{app_id}&sort=-uploadedDate&limit=12&include=preReleaseVersion,buildBetaDetail", token)
           inc_map = {}
           (hist['included'] || []).each { |obj| inc_map["#{obj['type']}:#{obj['id']}"] = obj['attributes'] || {} }
           puts '--- Recent Builds in App Store Connect ---'
+          latest_approved_prev = nil
           (hist['data'] || []).each do |b|
             a = b['attributes'] || {}
             prv_id = b.dig('relationships', 'preReleaseVersion', 'data', 'id')
@@ -543,6 +544,140 @@ jobs:
             mkt_ver = prv_id ? inc_map.dig("preReleaseVersions:#{prv_id}", 'version') : nil
             bbd = bbd_id ? inc_map["buildBetaDetails:#{bbd_id}"] : {}
             puts "Build #{mkt_ver || '?'} (#{a['version']}) | state=#{a['processingState']} | expired=#{a['expired']} | nonExemptEnc=#{a['usesNonExemptEncryption'].inspect} | int=#{bbd['internalBuildState']} | ext=#{bbd['externalBuildState']} | uploaded=#{a['uploadedDate']}"
+            if latest_approved_prev.nil? && a['processingState'] == 'VALID' && a['expired'] != true && bbd['externalBuildState'] == 'BETA_APPROVED'
+              latest_approved_prev = b
+            end
+          end
+
+          _, groups_res = asc_req(:get, "/v1/apps/#{app_id}/betaGroups", token)
+          groups = groups_res['data'] || []
+          _, testers_res = asc_req(:get, "/v1/betaTesters?filter[apps]=#{app_id}&limit=100", token)
+          tester_ids = (testers_res['data'] || []).map { |t| t['id'] }.compact
+          puts "Found #{groups.length} Beta Group(s) and #{tester_ids.length} registered App Beta Tester(s)."
+
+          groups.each do |g|
+            ga = g['attributes'] || {}
+            gid = g['id']
+            _, gt_res = asc_req(:get, "/v1/betaGroups/#{gid}/betaTesters?limit=100", token)
+            gt_count = (gt_res['data'] || []).length
+            puts "  Group '#{ga['name']}' (id=#{gid}, internal=#{ga['isInternalGroup']}, publicLink=#{ga['publicLinkEnabled']}, testers=#{gt_count})"
+            if !ga['isInternalGroup'] && !tester_ids.empty?
+              add_code, add_res = asc_req(:post, "/v1/betaGroups/#{gid}/relationships/betaTesters", token, {
+                data: tester_ids.map { |tid| { type: 'betaTesters', id: tid } }
+              })
+              puts "    Synced #{tester_ids.length} tester(s) into external group '#{ga['name']}': HTTP #{add_code} #{add_code >= 400 ? add_res.to_json : 'OK'}"
+            end
+          end
+
+          whats_new_ascii = 'Full-screen iPhone product score cards (no small phone frame), built-in live store browser for Walmart, Instacart, Target, and Amazon with floating 0-100 score bubble, and 1-tap Clean Swaps.'
+
+          activate_build = lambda do |b_obj, label_ver, cur_tok|
+            b_id = b_obj['id']
+            puts "--- Activating TestFlight Distribution for Build #{label_ver} (#{b_id}) ---"
+
+            if b_obj.dig('attributes', 'usesNonExemptEncryption').nil?
+              pcode, pres = asc_req(:patch, "/v1/builds/#{b_id}", cur_tok, {
+                data: { type: 'builds', id: b_id, attributes: { usesNonExemptEncryption: false } }
+              })
+              puts "  Export Compliance cleared: HTTP #{pcode} #{pcode >= 400 ? pres.to_json : 'OK'}"
+            end
+
+            # 1. Ensure en-US BetaBuildLocalization ('What to Test' notes, pure ASCII) exists
+            _, locs_res = asc_req(:get, "/v1/builds/#{b_id}/betaBuildLocalizations", cur_tok)
+            locs = locs_res['data'] || []
+            en_loc = locs.find { |l| l.dig('attributes', 'locale') == 'en-US' } || locs.first
+            if en_loc
+              lcode, lres = asc_req(:patch, "/v1/betaBuildLocalizations/#{en_loc['id']}", cur_tok, {
+                data: {
+                  type: 'betaBuildLocalizations',
+                  id: en_loc['id'],
+                  attributes: { whatsNew: whats_new_ascii }
+                }
+              })
+              puts "  Updated betaBuildLocalization (#{en_loc['id']}): HTTP #{lcode} #{lcode >= 400 ? lres.to_json : 'OK'}"
+            else
+              lcode, lres = asc_req(:post, '/v1/betaBuildLocalizations', cur_tok, {
+                data: {
+                  type: 'betaBuildLocalizations',
+                  attributes: { locale: 'en-US', whatsNew: whats_new_ascii },
+                  relationships: { build: { data: { type: 'builds', id: b_id } } }
+                }
+              })
+              puts "  Created betaBuildLocalization (en-US): HTTP #{lcode} #{lcode >= 400 ? lres.to_json : 'OK'}"
+            end
+
+            # 2. Enable autoNotifyEnabled on buildBetaDetail
+            _, bbd_res = asc_req(:get, "/v1/builds/#{b_id}/buildBetaDetail", cur_tok)
+            bbd_data = bbd_res['data'] || {}
+            bbd_id = bbd_data['id']
+            ext_state = bbd_data.dig('attributes', 'externalBuildState').to_s
+            puts "  Initial BuildBetaDetail: #{bbd_data['attributes'].to_json}"
+            if bbd_id
+              ncode, nres = asc_req(:patch, "/v1/buildBetaDetails/#{bbd_id}", cur_tok, {
+                data: { type: 'buildBetaDetails', id: bbd_id, attributes: { autoNotifyEnabled: true } }
+              })
+              puts "  Enabled autoNotifyEnabled: HTTP #{ncode} #{ncode >= 400 ? nres.to_json : 'OK'}"
+            end
+
+            int_groups = groups.select { |g| g.dig('attributes', 'isInternalGroup') == true }
+            ext_groups = groups.reject { |g| g.dig('attributes', 'isInternalGroup') == true }
+
+            int_groups.each do |g|
+              gid = g['id']
+              gcode, gres = asc_req(:post, "/v1/betaGroups/#{gid}/relationships/builds", cur_tok, {
+                data: [{ type: 'builds', id: b_id }]
+              })
+              puts "  Assigned internal group '#{g.dig('attributes', 'name')}': HTTP #{gcode} #{gcode >= 400 ? gres.to_json : 'OK'}"
+            end
+
+            # 3. Submit for Beta App Review if needed, then poll briefly in case 2.1.0 train auto-approves
+            if !ext_groups.empty? && ext_state == 'READY_FOR_BETA_SUBMISSION'
+              rcode, rres = asc_req(:post, '/v1/betaAppReviewSubmissions', cur_tok, {
+                data: {
+                  type: 'betaAppReviewSubmissions',
+                  relationships: { build: { data: { type: 'builds', id: b_id } } }
+                }
+              })
+              puts "  BetaAppReviewSubmission: HTTP #{rcode} #{rcode >= 400 ? rres.to_json : 'SUBMITTED'}"
+              8.times do |pi|
+                sleep 15
+                _, chk = asc_req(:get, "/v1/builds/#{b_id}/buildBetaDetail", cur_tok)
+                ext_state = chk.dig('data', 'attributes', 'externalBuildState').to_s
+                puts "  [review poll #{pi + 1}] externalBuildState=#{ext_state}"
+                break if ext_state == 'BETA_APPROVED' || ext_state == 'IN_BETA_TESTING'
+              end
+            end
+
+            # 4. Attach external betaGroups (both Fastlane build->betaGroups and group->builds endpoints)
+            unless ext_groups.empty?
+              bg_code, bg_res = asc_req(:post, "/v1/builds/#{b_id}/relationships/betaGroups", cur_tok, {
+                data: ext_groups.map { |g| { type: 'betaGroups', id: g['id'] } }
+              })
+              puts "  POST /v1/builds/#{b_id}/relationships/betaGroups: HTTP #{bg_code} #{bg_code >= 400 ? bg_res.to_json : 'OK'}"
+              ext_groups.each do |g|
+                gid = g['id']
+                gcode, gres = asc_req(:post, "/v1/betaGroups/#{gid}/relationships/builds", cur_tok, {
+                  data: [{ type: 'builds', id: b_id }]
+                })
+                puts "  POST /v1/betaGroups/#{gid}/relationships/builds ('#{g.dig('attributes', 'name')}'): HTTP #{gcode} #{gcode >= 400 ? gres.to_json : 'OK'}"
+              end
+            end
+
+            # 5. Also attach individualTesters directly on the build if approved/ready
+            unless tester_ids.empty?
+              it_code, it_res = asc_req(:post, "/v1/builds/#{b_id}/relationships/individualTesters", cur_tok, {
+                data: tester_ids.map { |tid| { type: 'betaTesters', id: tid } }
+              })
+              puts "  POST /v1/builds/#{b_id}/relationships/individualTesters (#{tester_ids.length} tester(s)): HTTP #{it_code} #{it_code >= 400 ? it_res.to_json : 'OK'}"
+            end
+
+            _, final_bbd = asc_req(:get, "/v1/builds/#{b_id}/buildBetaDetail", cur_tok)
+            puts "  Final BuildBetaDetail for #{label_ver}: #{final_bbd.dig('data', 'attributes').to_json}"
+          end
+
+          if latest_approved_prev
+            prev_ver = latest_approved_prev.dig('attributes', 'version')
+            activate_build.call(latest_approved_prev, prev_ver, token)
           end
 
           # Poll for newly uploaded build
@@ -566,49 +701,14 @@ jobs:
             exit 0
           end
 
-          build_id = target_build['id']
           state = target_build.dig('attributes', 'processingState')
           if state != 'VALID'
             puts "::warning::Build #{build_version} ended with processingState=#{state}: #{target_build.to_json}"
             exit 0
           end
 
-          if target_build.dig('attributes', 'usesNonExemptEncryption').nil?
-            pcode, pres = asc_req(:patch, "/v1/builds/#{build_id}", token, {
-              data: { type: 'builds', id: build_id, attributes: { usesNonExemptEncryption: false } }
-            })
-            puts "Cleared Export Compliance for build #{build_id}: HTTP #{pcode} #{pcode >= 400 ? pres.to_json : ''}"
-          end
-
-          _, beta_detail = asc_req(:get, "/v1/builds/#{build_id}/buildBetaDetail", token)
-          puts "BuildBetaDetail: #{beta_detail.dig('data', 'attributes').to_json}"
-
-          _, groups_res = asc_req(:get, "/v1/apps/#{app_id}/betaGroups", token)
-          groups = groups_res['data'] || []
-          puts "Found #{groups.length} TestFlight Beta Group(s):"
-          has_external = false
-          groups.each do |g|
-            ga = g['attributes'] || {}
-            gid = g['id']
-            is_int = ga['isInternalGroup']
-            has_external = true unless is_int
-            gcode, gres = asc_req(:post, "/v1/betaGroups/#{gid}/relationships/builds", token, {
-              data: [{ type: 'builds', id: build_id }]
-            })
-            puts "  - Group '#{ga['name']}' (internal=#{is_int}, publicLink=#{ga['publicLinkEnabled']}) -> assign build HTTP #{gcode} #{gcode >= 400 ? gres.to_json : 'OK'}"
-          end
-
-          if has_external
-            rcode, rres = asc_req(:post, '/v1/betaAppReviewSubmissions', token, {
-              data: {
-                type: 'betaAppReviewSubmissions',
-                relationships: {
-                  build: { data: { type: 'builds', id: build_id } }
-                }
-              }
-            })
-            puts "BetaAppReviewSubmission HTTP #{rcode}: #{rcode >= 400 ? rres.to_json : 'SUBMITTED'}"
-          end
+          token = asc_token(key_id, issuer_id, pem)
+          activate_build.call(target_build, build_version, token)
           RUBY
 
       - name: Upload Xcode Project & Built App Artifact
