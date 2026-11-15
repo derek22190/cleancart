@@ -2762,14 +2762,14 @@ class MainActivity : Activity() {
             if (step == 5) {
                 card.addView(label("Why Families Watch for Glyphosate", 21f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "USGS herbicide spray maps peak in Iowa & the Corn Belt — matching the exact states with the fastest-rising U.S. cancer incidence:",
-                    13.5f,
+                    "Compare USGS agricultural herbicide maps alongside U.S. cancer incidence data — and optionally guard conventional risk crops:",
+                    13f,
                     0xFF4B5563.toInt()
-                ).apply { setPadding(0, dp(4), 0, dp(12)) })
+                ).apply { setPadding(0, dp(4), 0, dp(10)) })
 
                 val mapCard = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    setPadding(dp(12), dp(11), dp(12), dp(11))
                     background = GradientDrawable().apply {
                         setColor(0xFFFFFBEB.toInt())
                         setStroke(dp(1), 0xFFFCA5A5.toInt())
@@ -2780,8 +2780,9 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { bottomMargin = dp(12) }
                 }
-                mapCard.addView(label("🇺🇸 U.S. GLYPHOSATE MAP × CDC CANCER MAP", 11f, 0xFF991B1B.toInt(), bold = true))
+                mapCard.addView(label("🇺🇸 U.S. GLYPHOSATE MAP × CDC CANCER MAP", 10.5f, 0xFF991B1B.toInt(), bold = true))
 
+                val mapThumbRadius = dp(9).toFloat()
                 val mapsSideBySide = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     layoutParams = LinearLayout.LayoutParams(
@@ -2791,35 +2792,75 @@ class MainActivity : Activity() {
                 }
                 mapsSideBySide.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(10), dp(9), dp(10), dp(9))
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
                     background = GradientDrawable().apply {
                         setColor(Color.WHITE)
-                        setStroke(dp(1), 0xFFFDE68A.toInt())
+                        setStroke(dp(1), 0xFFFED7AA.toInt())
                         cornerRadius = dp(12).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                         marginEnd = dp(6)
                     }
-                    addView(label("🌾 USGS Glyphosate", 12f, 0xFF92400E.toInt(), bold = true))
-                    addView(label("280M+ lbs/yr sprayed; peaks in IA, IL, IN, NE & MN on corn, soy, oats & wheat.", 11.5f, 0xFF78350F.toInt()).apply { setPadding(0, dp(3), 0, 0) })
+                    addView(label("1. Glyphosate (USGS)", 11.5f, 0xFF9A3412.toInt(), bold = true).apply {
+                        setPadding(0, 0, 0, dp(4))
+                    })
+                    addView(ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.onboarding_usgs_map)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        contentDescription = "United States map of agricultural glyphosate usage concentrated in Iowa and the Corn Belt"
+                        background = GradientDrawable().apply {
+                            setColor(0xFFFCFBF7.toInt())
+                            cornerRadius = mapThumbRadius
+                        }
+                        clipToOutline = true
+                        outlineProvider = object : ViewOutlineProvider() {
+                            override fun getOutline(view: View, outline: Outline) {
+                                outline.setRoundRect(0, 0, view.width, view.height, mapThumbRadius)
+                            }
+                        }
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(88)).apply {
+                            bottomMargin = dp(5)
+                        }
+                    })
+                    addView(label("#1 Spray Zone: Concentrated in Iowa & Corn Belt on conventional crops.", 10.5f, 0xFF7C2D12.toInt()))
                 })
                 mapsSideBySide.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(10), dp(9), dp(10), dp(9))
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
                     background = GradientDrawable().apply {
                         setColor(Color.WHITE)
                         setStroke(dp(1), 0xFFFECACA.toInt())
                         cornerRadius = dp(12).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    addView(label("📊 CDC Cancer Map", 12f, 0xFF991B1B.toInt(), bold = true))
-                    addView(label("Iowa ranks #2 in U.S. cancer incidence & #1 fastest-rising across the Midwest belt.", 11.5f, 0xFF7F1D1D.toInt()).apply { setPadding(0, dp(3), 0, 0) })
+                    addView(label("2. Cancer Rate (CDC)", 11.5f, 0xFF991B1B.toInt(), bold = true).apply {
+                        setPadding(0, 0, 0, dp(4))
+                    })
+                    addView(ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.onboarding_cdc_map)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        contentDescription = "United States cancer incidence map showing Iowa hotspot per Iowa Cancer Registry"
+                        background = GradientDrawable().apply {
+                            setColor(0xFFFCFBF7.toInt())
+                            cornerRadius = mapThumbRadius
+                        }
+                        clipToOutline = true
+                        outlineProvider = object : ViewOutlineProvider() {
+                            override fun getOutline(view: View, outline: Outline) {
+                                outline.setRoundRect(0, 0, view.width, view.height, mapThumbRadius)
+                            }
+                        }
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(88)).apply {
+                            bottomMargin = dp(5)
+                        }
+                    })
+                    addView(label("Iowa has #2 highest & #1 rising cancer rate in the U.S. (Iowa Cancer Registry).", 10.5f, 0xFF7F1D1D.toInt()))
                 })
                 mapCard.addView(mapsSideBySide)
 
                 mapCard.addView(label(
-                    "USDA Organic strictly prohibits synthetic glyphosate & pre-harvest desiccation. Enable Glyphosate Watch below to flag conventional Dirty-Dozen produce, oats, wheat & beans:",
-                    11.5f,
+                    "Maps show where each is reported, not that one causes the other; EPA and IARC disagree on glyphosate's cancer risk. USDA Organic prohibits synthetic glyphosate.",
+                    10.5f,
                     0xFF7F1D1D.toInt()
                 ))
 
@@ -2860,9 +2901,9 @@ class MainActivity : Activity() {
                 return
             }
 
-            // Step 6: Merged Why It Matters (Healthy Family Hero + Real Product Comparison Photos + Honest Store Link Copy)
+            // Step 6: Merged Why It Matters (Healthy Family Hero + Uncropped Studio Product Comparison Photos + Swap Bridge)
             if (step == 6) {
-                val photoRadius = dp(18).toFloat()
+                val photoRadius = dp(16).toFloat()
                 val photoFrame = FrameLayout(this).apply {
                     background = GradientDrawable().apply {
                         setColor(0xFFF0FDF4.toInt())
@@ -2877,7 +2918,7 @@ class MainActivity : Activity() {
                     }
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(146)
+                        dp(132)
                     ).apply { bottomMargin = dp(10) }
                 }
                 photoFrame.addView(ImageView(this).apply {
@@ -2889,10 +2930,20 @@ class MainActivity : Activity() {
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 })
-                photoFrame.addView(label("💚 Protecting $activeHouseholdTitle", 11f, Color.WHITE, bold = true).apply {
+                photoFrame.addView(View(this).apply {
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(0x00111814, 0x9E111814.toInt())
+                    )
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                })
+                photoFrame.addView(label("💚 Protecting $activeHouseholdTitle", 10.5f, Color.WHITE, bold = true).apply {
                     setPadding(dp(10), dp(4), dp(10), dp(4))
                     background = GradientDrawable().apply {
-                        setColor(0xE614532D.toInt())
+                        setColor(0xEB14532D.toInt())
                         cornerRadius = dp(999).toFloat()
                     }
                     layoutParams = FrameLayout.LayoutParams(
@@ -2901,84 +2952,206 @@ class MainActivity : Activity() {
                         Gravity.BOTTOM or Gravity.START
                     ).apply {
                         leftMargin = dp(10)
-                        bottomMargin = dp(10)
+                        bottomMargin = dp(9)
+                    }
+                })
+                photoFrame.addView(label("⚡ 1-Second Scan", 10f, 0xFF14532D.toInt(), bold = true).apply {
+                    setPadding(dp(9), dp(4), dp(9), dp(4))
+                    background = GradientDrawable().apply {
+                        setColor(0xEBFFFFFF.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM or Gravity.END
+                    ).apply {
+                        rightMargin = dp(10)
+                        bottomMargin = dp(9)
                     }
                 })
                 card.addView(photoFrame)
 
-                card.addView(label("How HeyBroc Protects Your Cart in 1 Second", 20f, 0xFF111814.toInt(), bold = true))
+                card.addView(label("How HeyBroc Protects Your Cart in 1 Second", 19.5f, 0xFF111814.toInt(), bold = true))
                 card.addView(label(
-                    "Front labels say \"Homestyle.\" HeyBroc scores the back label (0–100) and gives you a direct link to open a cleaner option at $storeDisplayName:",
-                    13f,
+                    "Front labels say \"Homestyle\" — we grade the fine print (0–100) and link to a cleaner pick at $storeDisplayName:",
+                    12.5f,
                     0xFF4B5563.toInt()
-                ).apply { setPadding(0, dp(4), 0, dp(10)) })
+                ).apply { setPadding(0, dp(3), 0, dp(10)) })
 
-                // Side-by-Side Visual Comparison with Real Food Product Photos
-                val compareRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
+                // Side-by-Side Uncropped Studio Product Comparison + Centered Swap Arrow Bridge
+                val compareStage = FrameLayout(this).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(12) }
+                    ).apply { bottomMargin = dp(10) }
                 }
-                val thumbRadius = dp(10).toFloat()
+                val compareRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
+                val thumbRadius = dp(11).toFloat()
+
+                // Left Card: Poor Pick
                 compareRow.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(10), dp(10), dp(10), dp(10))
+                    setPadding(dp(9), dp(9), dp(9), dp(10))
                     background = GradientDrawable().apply {
-                        setColor(0xFFFFF5F5.toInt())
+                        setColor(0xFFFFF8F8.toInt())
                         setStroke(dp(1), 0xFFFCA5A5.toInt())
-                        cornerRadius = dp(14).toFloat()
+                        cornerRadius = dp(15).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        marginEnd = dp(8)
+                        marginEnd = dp(10)
                     }
-                    addView(ImageView(this@MainActivity).apply {
-                        setImageResource(R.drawable.onboarding_poor_pick)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                        contentDescription = "Conventional ranch bottle with seed oils"
+                    val poorThumbBox = FrameLayout(this@MainActivity).apply {
+                        background = GradientDrawable().apply {
+                            setColor(0xFFEAE5DF.toInt())
+                            cornerRadius = thumbRadius
+                        }
                         clipToOutline = true
                         outlineProvider = object : ViewOutlineProvider() {
                             override fun getOutline(view: View, outline: Outline) {
                                 outline.setRoundRect(0, 0, view.width, view.height, thumbRadius)
                             }
                         }
-                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)).apply {
-                            bottomMargin = dp(6)
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(118)).apply {
+                            bottomMargin = dp(7)
+                        }
+                    }
+                    poorThumbBox.addView(ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.onboarding_poor_pick)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        contentDescription = "Conventional ranch bottle with seed oils"
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    })
+                    poorThumbBox.addView(label("✕ 18/100 · Poor", 10f, Color.WHITE, bold = true).apply {
+                        setPadding(dp(7), dp(3), dp(7), dp(3))
+                        background = GradientDrawable().apply {
+                            setColor(0xFFDC2626.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.TOP or Gravity.START
+                        ).apply {
+                            leftMargin = dp(6)
+                            topMargin = dp(6)
                         }
                     })
-                    addView(label("✕ 18/100 · Poor", 11f, 0xFFDC2626.toInt(), bold = true))
-                    addView(label("\"Homestyle\" Dressing", 13f, 0xFF111814.toInt(), bold = true).apply { setPadding(0, dp(2), 0, dp(2)) })
-                    addView(label("Soybean oil (#1), MSG & artificial preservatives.", 11f, 0xFF991B1B.toInt()))
+                    addView(poorThumbBox)
+                    addView(label("\"Homestyle\" Ranch", 13f, 0xFF111814.toInt(), bold = true))
+                    addView(label("Soybean oil, MSG & polysorbate 60", 11f, 0xFF991B1B.toInt()).apply { setPadding(0, dp(2), 0, 0) })
                 })
+
+                // Right Card: Clean Pick
                 compareRow.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(10), dp(10), dp(10), dp(10))
+                    setPadding(dp(9), dp(9), dp(9), dp(10))
                     background = GradientDrawable().apply {
-                        setColor(0xFFF0FDF4.toInt())
+                        setColor(0xFFF2FDF6.toInt())
                         setStroke(dp(1), 0xFF86EFAC.toInt())
-                        cornerRadius = dp(14).toFloat()
+                        cornerRadius = dp(15).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    addView(ImageView(this@MainActivity).apply {
-                        setImageResource(R.drawable.onboarding_clean_pick)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                        contentDescription = "Organic avocado oil ranch bottle"
+                    val cleanThumbBox = FrameLayout(this@MainActivity).apply {
+                        background = GradientDrawable().apply {
+                            setColor(0xFFEAE5DF.toInt())
+                            cornerRadius = thumbRadius
+                        }
                         clipToOutline = true
                         outlineProvider = object : ViewOutlineProvider() {
                             override fun getOutline(view: View, outline: Outline) {
                                 outline.setRoundRect(0, 0, view.width, view.height, thumbRadius)
                             }
                         }
-                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)).apply {
-                            bottomMargin = dp(6)
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(118)).apply {
+                            bottomMargin = dp(7)
+                        }
+                    }
+                    cleanThumbBox.addView(ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.onboarding_clean_pick)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        contentDescription = "Organic avocado oil ranch bottle"
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    })
+                    cleanThumbBox.addView(label("✓ 95/100 · Clean", 10f, Color.WHITE, bold = true).apply {
+                        setPadding(dp(7), dp(3), dp(7), dp(3))
+                        background = GradientDrawable().apply {
+                            setColor(0xFF16A34A.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.TOP or Gravity.START
+                        ).apply {
+                            leftMargin = dp(6)
+                            topMargin = dp(6)
                         }
                     })
-                    addView(label("✓ 94/100 · Clean", 11f, 0xFF16A34A.toInt(), bold = true))
-                    addView(label("Verified Cleaner Pick ↗", 13f, 0xFF111814.toInt(), bold = true).apply { setPadding(0, dp(2), 0, dp(2)) })
-                    addView(label("100% avocado oil & organic herbs — opens in $storeDisplayName.", 11f, 0xFF166534.toInt()))
+                    addView(cleanThumbBox)
+                    addView(label("Avocado Oil Swap ↗", 13f, 0xFF111814.toInt(), bold = true))
+                    addView(label("100% avocado oil · Opens in $storeDisplayName", 11f, 0xFF166534.toInt()).apply { setPadding(0, dp(2), 0, 0) })
                 })
-                card.addView(compareRow)
+
+                compareStage.addView(compareRow)
+                compareStage.addView(label("→", 14f, Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    elevation = dp(4).toFloat()
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(0xFF16A34A.toInt())
+                        setStroke(dp(2), Color.WHITE)
+                    }
+                    layoutParams = FrameLayout.LayoutParams(dp(30), dp(30), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                        topMargin = dp(54)
+                    }
+                })
+                card.addView(compareStage)
+
+                // Personalized Active Watchlist Guard Chips
+                val activeGoalList = goalOptions.filter { it.id in selectedGoals }.ifEmpty { goalOptions.take(3) }.take(3)
+                if (activeGoalList.isNotEmpty()) {
+                    val chipsRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(12) }
+                    }
+                    activeGoalList.forEachIndexed { idx, g ->
+                        val shortTitle = g.title
+                            .replace("Industrial ", "")
+                            .replace("High-Fructose ", "")
+                            .replace(" (2x)", "")
+                        chipsRow.addView(label("${g.icon} $shortTitle", 10f, 0xFF166534.toInt(), bold = true).apply {
+                            gravity = Gravity.CENTER
+                            setSingleLine(true)
+                            ellipsize = TextUtils.TruncateAt.END
+                            setPadding(dp(7), dp(5), dp(7), dp(5))
+                            background = GradientDrawable().apply {
+                                setColor(0xFFF0FDF4.toInt())
+                                setStroke(dp(1), 0xFFBBF7D0.toInt())
+                                cornerRadius = dp(999).toFloat()
+                            }
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                                if (idx < activeGoalList.lastIndex) marginEnd = dp(5)
+                            }
+                        })
+                    }
+                    card.addView(chipsRow)
+                }
 
                 card.addView(label("Build My Personalized Plan →", 15f, Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER
@@ -4794,7 +4967,10 @@ class MainActivity : Activity() {
                         setOnClickListener {
                             if (!ScanApi.unlockSwapForProduct(this@MainActivity, title, sbAltTitle)) {
                                 dialogRef?.dismiss()
-                                showPaywallDialog()
+                                ScanApi.trackEvent(this@MainActivity, "checkout_started")
+                                runCatching {
+                                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@MainActivity))))
+                                }
                                 return@setOnClickListener
                             }
                             val promoted = JSONObject(storeBrandSwap.toString()).put("isStoreBrand", true)
@@ -4919,7 +5095,7 @@ class MainActivity : Activity() {
                 setPadding(dp(4), dp(10), dp(4), dp(2))
                 setOnClickListener {
                     text = "🤖 Checking USDA & Open Food Facts…"
-                    ScanApi.autoVerifyLabel(title, ingredients, selectedStore) { summary ->
+                    ScanApi.autoVerifyLabel(title, ingredients, itemStoreKey) { summary ->
                         text = "✓ $summary"
                     }
                 }

@@ -2398,7 +2398,7 @@ class OverlayWindowService : Service() {
                 setPadding(dp(2), dp(6), dp(2), 0)
                 setOnClickListener {
                     text = "🤖 Checking USDA & Open Food Facts…"
-                    ScanApi.autoVerifyLabel(prodTitle, ing, currentStore) { summary ->
+                    ScanApi.autoVerifyLabel(prodTitle, prodIngredients, currentStoreKey) { summary ->
                         text = "✓ $summary"
                     }
                 }

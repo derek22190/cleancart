@@ -1499,71 +1499,34 @@ export default function WatchlistMiniFunnel({
                     style={{
                       background: "#ffffff",
                       border: "1px solid #fed7aa",
-                      borderRadius: 10,
+                      borderRadius: 11,
                       padding: "6px 7px",
                     }}
                   >
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#9a3412", marginBottom: 3 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#9a3412", marginBottom: 4 }}>
                       1. Glyphosate Usage (USGS)
                     </div>
-                    <svg
-                      viewBox="0 0 320 195"
-                      role="img"
-                      aria-label="United States map of agricultural glyphosate usage showing low usage in Western states and a dark crimson bullseye over Iowa and the Midwest Corn Belt"
-                      style={{ width: "100%", maxHeight: 88, height: "auto", display: "block", borderRadius: 6, background: "#fffaf5" }}
+                    <div
+                      style={{
+                        position: "relative",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        background: "#fcfbf7",
+                        border: "1px solid #ffedd5",
+                      }}
                     >
-                      <path
-                        d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
-                        fill="#fef3c7"
-                        stroke="#9a3412"
-                        strokeWidth="1.8"
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/onboarding-usgs-map.jpg"
+                        alt="United States map of agricultural glyphosate usage showing concentration across Iowa and the Midwest Corn Belt"
+                        style={{
+                          width: "100%",
+                          height: 92,
+                          objectFit: "contain",
+                          display: "block",
+                        }}
                       />
-                      <g stroke="#d97706" strokeWidth="0.7" opacity="0.45" fill="none">
-                        <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
-                        <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
-                      </g>
-                      <path
-                        d="M124,22 L192,24 L214,44 L236,56 L238,88 L218,108 L196,148 L172,152 L166,118 L126,110 L118,68 Z"
-                        fill="#fb923c"
-                        opacity="0.72"
-                      />
-                      <path
-                        d="M142,44 L198,44 L228,62 L232,88 L204,98 L188,138 L174,138 L172,98 L144,92 Z"
-                        fill="#c2410c"
-                        opacity="0.88"
-                      />
-                      <path
-                        d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
-                        fill="#431407"
-                        stroke="#ffffff"
-                        strokeWidth="2"
-                      />
-                      <path
-                        d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
-                        fill="#7c2d12"
-                        stroke="#fed7aa"
-                        strokeWidth="1"
-                      />
-                      <circle
-                        cx="175"
-                        cy="68"
-                        r="22"
-                        fill="none"
-                        stroke="#dc2626"
-                        strokeWidth="2"
-                        strokeDasharray="4 2"
-                      />
-                      <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
-                        IA
-                      </text>
-                      <text x="54" y="82" textAnchor="middle" fill="#92400e" fontSize="8.5" fontWeight="700">
-                        LOW
-                      </text>
-                      <rect x="64" y="6" width="192" height="20" rx="10" fill="#7c2d12" />
-                      <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
-                        🎯 IOWA &amp; CORN BELT: #1 GLYPHOSATE ZONE
-                      </text>
-                    </svg>
+                    </div>
                     <div style={{ fontSize: 10, color: "#7c2d12", marginTop: 4, lineHeight: 1.3 }}>
                       <b>#1 Spray Zone:</b> Concentrated in <b>Iowa &amp; Corn Belt</b> on conventional crops.
                     </div>
@@ -1574,71 +1537,34 @@ export default function WatchlistMiniFunnel({
                     style={{
                       background: "#ffffff",
                       border: "1px solid #fecaca",
-                      borderRadius: 10,
+                      borderRadius: 11,
                       padding: "6px 7px",
                     }}
                   >
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#991b1b", marginBottom: 3 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#991b1b", marginBottom: 4 }}>
                       2. Cancer Incidence (CDC)
                     </div>
-                    <svg
-                      viewBox="0 0 320 195"
-                      role="img"
-                      aria-label="United States cancer incidence map showing Iowa hotspot (#2 highest and #1 fastest-rising cancer rate per Iowa Cancer Registry)"
-                      style={{ width: "100%", maxHeight: 88, height: "auto", display: "block", borderRadius: 6, background: "#fff5f5" }}
+                    <div
+                      style={{
+                        position: "relative",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        background: "#fcfbf7",
+                        border: "1px solid #fee2e2",
+                      }}
                     >
-                      <path
-                        d="M26,18 L174,18 L186,28 L206,26 L224,38 L236,52 L252,48 L278,34 L292,18 L304,28 L296,48 L286,62 L282,84 L274,108 L256,132 L268,172 L254,176 L240,144 L204,146 L182,156 L166,152 L148,180 L132,176 L116,148 L98,150 L82,138 L52,136 L24,120 L12,86 L14,48 Z"
-                        fill="#fee2e2"
-                        stroke="#991b1b"
-                        strokeWidth="1.8"
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/onboarding-cdc-map.jpg"
+                        alt="United States cancer incidence map showing Iowa hotspot (#2 highest and #1 fastest-rising cancer rate per Iowa Cancer Registry)"
+                        style={{
+                          width: "100%",
+                          height: 92,
+                          objectFit: "contain",
+                          display: "block",
+                        }}
                       />
-                      <g stroke="#ef4444" strokeWidth="0.7" opacity="0.38" fill="none">
-                        <path d="M56,18 L48,132 M96,18 L92,148 M134,18 L134,174 M174,18 L176,154 M214,34 L212,146 M252,48 L244,144" />
-                        <path d="M14,54 L288,56 M12,92 L278,94 M36,124 L258,126" />
-                      </g>
-                      <path
-                        d="M126,24 L196,26 L220,46 L242,60 L240,94 L220,114 L198,146 L172,148 L164,114 L128,106 L122,66 Z"
-                        fill="#f87171"
-                        opacity="0.72"
-                      />
-                      <path
-                        d="M144,42 L202,42 L228,62 L230,90 L204,100 L186,132 L172,132 L170,96 L144,90 Z"
-                        fill="#dc2626"
-                        opacity="0.88"
-                      />
-                      <path
-                        d="M156,54 L192,54 L196,68 L192,82 L158,82 L154,68 Z"
-                        fill="#450a0a"
-                        stroke="#ffffff"
-                        strokeWidth="2"
-                      />
-                      <path
-                        d="M194,58 L214,58 L216,90 L196,92 L192,82 L196,68 Z"
-                        fill="#991b1b"
-                        stroke="#fecaca"
-                        strokeWidth="1"
-                      />
-                      <circle
-                        cx="175"
-                        cy="68"
-                        r="22"
-                        fill="none"
-                        stroke="#fef08a"
-                        strokeWidth="2.2"
-                        strokeDasharray="4 2"
-                      />
-                      <text x="175" y="72" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="900">
-                        IA
-                      </text>
-                      <text x="54" y="82" textAnchor="middle" fill="#991b1b" fontSize="8.5" fontWeight="700">
-                        LOW
-                      </text>
-                      <rect x="54" y="6" width="212" height="20" rx="10" fill="#7f1d1d" />
-                      <text x="160" y="19" textAnchor="middle" fill="#ffffff" fontSize="9.5" fontWeight="800">
-                        🎯 IOWA: #2 US CANCER RATE (#1 RISING)
-                      </text>
-                    </svg>
+                    </div>
                     <div style={{ fontSize: 10, color: "#7f1d1d", marginTop: 4, lineHeight: 1.3 }}>
                       Iowa has <b>#2 highest &amp; #1 rising cancer rate</b> in the U.S. (Iowa Cancer Registry).
                     </div>
@@ -1689,17 +1615,18 @@ export default function WatchlistMiniFunnel({
             </>
           )}
 
-          {/* ==================== STEP 6: WHY IT MATTERS & HOW HEYBROC WORKS (SINGLE-SCREEN COMPACT) ==================== */}
+          {/* ==================== STEP 6: WHY IT MATTERS & HOW HEYBROC WORKS (PHOTO-FIRST VISUAL SHOWDOWN) ==================== */}
           {step === 6 && (
             <>
-              {/* Compact Healthy Family Banner */}
+              {/* Lifestyle Hero Photo Banner */}
               <div
                 style={{
                   position: "relative",
-                  borderRadius: 13,
+                  borderRadius: 15,
                   overflow: "hidden",
-                  marginBottom: 7,
+                  marginBottom: 9,
                   border: "1.5px solid #bbf7d0",
+                  boxShadow: "0 4px 14px rgba(17, 24, 20, 0.06)",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1708,165 +1635,240 @@ export default function WatchlistMiniFunnel({
                   alt="Happy family with kids eating healthy whole foods together at the kitchen table"
                   style={{
                     width: "100%",
-                    height: 68,
+                    height: 92,
                     objectFit: "cover",
-                    objectPosition: "center 30%",
+                    objectPosition: "center 28%",
                     display: "block",
                   }}
                 />
                 <div
                   style={{
                     position: "absolute",
-                    left: 8,
-                    bottom: 6,
-                    background: "rgba(20, 83, 45, 0.90)",
-                    color: "#ffffff",
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    padding: "2px 8px",
-                    borderRadius: 999,
+                    inset: 0,
+                    background:
+                      "linear-gradient(180deg, rgba(17, 24, 20, 0) 32%, rgba(17, 24, 20, 0.62) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 9,
+                    right: 9,
+                    bottom: 7,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 6,
                   }}
                 >
-                  💚 Protecting {householdSummaryLabel}
+                  <span
+                    style={{
+                      background: "rgba(20, 83, 45, 0.92)",
+                      color: "#ffffff",
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    💚 Protecting {householdSummaryLabel}
+                  </span>
+                  <span
+                    style={{
+                      background: "rgba(255, 255, 255, 0.92)",
+                      color: "#14532d",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      padding: "2.5px 8px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    ⚡ 1-Second Scan
+                  </span>
                 </div>
               </div>
 
               <h2
                 id="heybroc-onboarding-heading"
                 style={{
-                  fontSize: 17.5,
+                  fontSize: 18,
                   fontWeight: 800,
                   color: "#111814",
                   margin: "0 0 3px",
                   lineHeight: 1.2,
+                  letterSpacing: "-0.01em",
                 }}
               >
-                Front Labels Say &ldquo;Natural.&rdquo; How HeyBroc Protects Your Cart in 1 Second:
+                How HeyBroc Protects Your Cart in 1 Second
               </h2>
               <p
                 style={{
                   fontSize: 11.5,
                   color: "#4b5563",
-                  margin: "0 0 7px",
-                  lineHeight: 1.32,
+                  margin: "0 0 9px",
+                  lineHeight: 1.35,
                 }}
               >
-                Grades fine print (0–100) &amp; jumps straight to a cleaner pick in <b>{storeDisplayName}</b>:
+                Front labels say &ldquo;Homestyle&rdquo; — we grade the fine print and link to a cleaner pick in{" "}
+                <b>{storeDisplayName}</b>:
               </p>
 
-              {/* Side-by-Side Real Food Photo Comparison */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 7,
-                  marginBottom: 7,
-                }}
-              >
+              {/* Side-by-Side Uncropped Studio Product Comparison + Swap Arrow Bridge */}
+              <div style={{ position: "relative", marginBottom: 9 }}>
                 <div
                   style={{
-                    background: "#fff5f5",
-                    border: "1.5px solid #fca5a5",
-                    borderRadius: 13,
-                    padding: "7px 8px",
-                    display: "flex",
-                    flexDirection: "column",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 10,
                   }}
                 >
-                  <div style={{ position: "relative", marginBottom: 4 }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src="/onboarding-poor-pick.jpg"
-                      alt="Conventional creamy ranch dressing bottle containing soybean oil"
+                  {/* Poor Pick Card */}
+                  <div
+                    style={{
+                      background: "#fff8f8",
+                      border: "1.5px solid #fca5a5",
+                      borderRadius: 15,
+                      padding: 8,
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <div
                       style={{
-                        width: "100%",
-                        height: 58,
-                        objectFit: "cover",
-                        borderRadius: 8,
-                        display: "block",
-                        background: "#ffffff",
-                      }}
-                    />
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 4,
-                        left: 4,
-                        background: "#dc2626",
-                        color: "#ffffff",
-                        fontSize: 9.5,
-                        fontWeight: 800,
-                        padding: "1.5px 6px",
-                        borderRadius: 999,
+                        position: "relative",
+                        marginBottom: 6,
+                        borderRadius: 11,
+                        overflow: "hidden",
+                        background: "#eae5df",
                       }}
                     >
-                      ✕ 18/100 · Poor
-                    </span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/onboarding-poor-pick.jpg"
+                        alt="Conventional creamy ranch dressing bottle containing soybean oil"
+                        style={{
+                          width: "100%",
+                          height: 112,
+                          objectFit: "contain",
+                          display: "block",
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 6,
+                          left: 6,
+                          background: "#dc2626",
+                          color: "#ffffff",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "2px 7px",
+                          borderRadius: 999,
+                          boxShadow: "0 2px 6px rgba(220, 38, 38, 0.3)",
+                        }}
+                      >
+                        ✕ 18/100 · Poor
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#111814", lineHeight: 1.22 }}>
+                      &ldquo;Homestyle&rdquo; Ranch
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#991b1b", marginTop: 2, lineHeight: 1.28 }}>
+                      Soybean oil, MSG &amp; polysorbate 60
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, color: "#111814" }}>
-                    &ldquo;Homestyle&rdquo; Store Pick
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "#991b1b", marginTop: 1, lineHeight: 1.25 }}>
-                    Soybean oil, MSG &amp; polysorbate 60.
+
+                  {/* Clean Pick Card */}
+                  <div
+                    style={{
+                      background: "#f2fdf6",
+                      border: "1.5px solid #86efac",
+                      borderRadius: 15,
+                      padding: 8,
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "relative",
+                        marginBottom: 6,
+                        borderRadius: 11,
+                        overflow: "hidden",
+                        background: "#eae5df",
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/onboarding-clean-pick.jpg"
+                        alt="Organic avocado oil ranch dressing bottle with fresh avocados and herbs"
+                        style={{
+                          width: "100%",
+                          height: 112,
+                          objectFit: "contain",
+                          display: "block",
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 6,
+                          left: 6,
+                          background: "#16a34a",
+                          color: "#ffffff",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "2px 7px",
+                          borderRadius: 999,
+                          boxShadow: "0 2px 6px rgba(22, 163, 74, 0.3)",
+                        }}
+                      >
+                        ✓ 95/100 · Clean
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#111814", lineHeight: 1.22 }}>
+                      Avocado Oil Swap ↗
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#166534", marginTop: 2, lineHeight: 1.28 }}>
+                      100% avocado oil · Opens in {storeDisplayName}
+                    </div>
                   </div>
                 </div>
 
+                {/* Centered Visual Swap Bridge */}
                 <div
+                  aria-hidden="true"
                   style={{
-                    background: "#f0fdf4",
-                    border: "1.5px solid #86efac",
-                    borderRadius: 13,
-                    padding: "7px 8px",
+                    position: "absolute",
+                    left: "50%",
+                    top: 64,
+                    transform: "translate(-50%, -50%)",
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    background: "#16a34a",
+                    color: "#ffffff",
+                    border: "2.5px solid #ffffff",
+                    boxShadow: "0 3px 10px rgba(17, 24, 20, 0.18)",
                     display: "flex",
-                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 13,
+                    fontWeight: 900,
+                    zIndex: 2,
                   }}
                 >
-                  <div style={{ position: "relative", marginBottom: 4 }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src="/onboarding-clean-pick.jpg"
-                      alt="Organic avocado oil ranch dressing bottle with fresh avocados and herbs"
-                      style={{
-                        width: "100%",
-                        height: 58,
-                        objectFit: "cover",
-                        borderRadius: 8,
-                        display: "block",
-                        background: "#ffffff",
-                      }}
-                    />
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 4,
-                        left: 4,
-                        background: "#16a34a",
-                        color: "#ffffff",
-                        fontSize: 9.5,
-                        fontWeight: 800,
-                        padding: "1.5px 6px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      ✓ 95/100 · Clean
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, color: "#111814" }}>
-                    Verified Cleaner Pick ↗
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "#166534", marginTop: 1, lineHeight: 1.25 }}>
-                    Pure avocado oil in {storeDisplayName}.
-                  </div>
+                  →
                 </div>
               </div>
 
-              {/* Side-by-Side Single-Row Watchlist Chips (Never Stacks Vertically) */}
+              {/* Personalized Active Watchlist Guard Chips */}
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: `repeat(${Math.max(1, Math.min(3, displayGoalItems.length))}, minmax(0, 1fr))`,
                   gap: 5,
-                  marginBottom: 7,
                 }}
               >
                 {displayGoalItems.slice(0, 3).map((g) => (
@@ -1875,54 +1877,20 @@ export default function WatchlistMiniFunnel({
                     style={{
                       fontSize: 10,
                       fontWeight: 800,
-                      background: "#fef2f2",
-                      color: "#991b1b",
-                      border: "1px solid #fecaca",
+                      background: "#f0fdf4",
+                      color: "#166534",
+                      border: "1px solid #bbf7d0",
                       borderRadius: 999,
-                      padding: "3px 7px",
+                      padding: "4px 7px",
                       textAlign: "center",
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
                   >
-                    {g.icon} No {g.title.replace(/^Industrial\s+/i, "").replace(/High-Fructose\s+/i, "")}
+                    {g.icon} Guarding {g.title.replace(/^Industrial\s+/i, "").replace(/High-Fructose\s+/i, "")}
                   </span>
                 ))}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                <div
-                  style={{
-                    padding: "6px 9px",
-                    borderRadius: 10,
-                    background: "#f8fafc",
-                    border: "1.5px solid #e2e8f0",
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#111814" }}>
-                    📷 Free Barcode &amp; Search
-                  </div>
-                  <div style={{ fontSize: 10, color: "#4b5563", marginTop: 1 }}>
-                    0–100 scores on 1.5M+ foods.
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    padding: "6px 9px",
-                    borderRadius: 10,
-                    background: "#f0fdf4",
-                    border: "1.5px solid #bbf7d0",
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#14532d" }}>
-                    🟢 Live Store Bubble
-                  </div>
-                  <div style={{ fontSize: 10, color: "#166534", marginTop: 1 }}>
-                    Grades items &amp; finds clean picks.
-                  </div>
-                </div>
               </div>
             </>
           )}

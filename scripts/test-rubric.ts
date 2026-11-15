@@ -5666,6 +5666,36 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           dualInputConflictStatus === 409
       )
     );
+      const funnelVisualSrc = fs.readFileSync("components/WatchlistMiniFunnel.tsx", "utf8");
+      const mainKtVisualSrc = fs.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+        "utf8"
+      );
+      const overlaySvcVisualSrc = fs.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+        "utf8"
+      );
+      check(
+        "Onboarding Visual Polish & Android APK Build Guard: Step 5 US choropleth map images + Iowa Cancer Registry/EPA-IARC parity, Step 6 uncropped studio product stages + swap bridge, and zero unresolved Kotlin references",
+        Boolean(
+          fs.existsSync("public/onboarding-usgs-map.jpg") &&
+            fs.existsSync("public/onboarding-cdc-map.jpg") &&
+            fs.existsSync("android-app/app/src/main/res/drawable-nodpi/onboarding_usgs_map.jpg") &&
+            fs.existsSync("android-app/app/src/main/res/drawable-nodpi/onboarding_cdc_map.jpg") &&
+            funnelVisualSrc.includes("/onboarding-usgs-map.jpg") &&
+            funnelVisualSrc.includes("/onboarding-cdc-map.jpg") &&
+            funnelVisualSrc.includes('background: "#eae5df"') &&
+            mainKtVisualSrc.includes("R.drawable.onboarding_usgs_map") &&
+            mainKtVisualSrc.includes("R.drawable.onboarding_cdc_map") &&
+            mainKtVisualSrc.includes("ImageView.ScaleType.FIT_CENTER") &&
+            mainKtVisualSrc.includes("Iowa Cancer Registry") &&
+            mainKtVisualSrc.includes("EPA and IARC disagree on glyphosate's cancer risk") &&
+            !mainKtVisualSrc.includes("showPaywallDialog()") &&
+            !/autoVerifyLabel\([^)]*selectedStore/.test(mainKtVisualSrc) &&
+            overlaySvcVisualSrc.includes("ScanApi.autoVerifyLabel(prodTitle, prodIngredients, currentStoreKey)") &&
+            !overlaySvcVisualSrc.includes("ScanApi.autoVerifyLabel(prodTitle, ing, currentStore)")
+        )
+      );
     }
   }
 
