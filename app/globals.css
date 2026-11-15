@@ -1299,6 +1299,8 @@ h1, h2, h3, h4, p { margin: 0; }
   scrollbar-width: none;
 }
 .store-rail::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
 
 .store-rail-arrow {
   width: 30px; height: 36px; border-radius: 10px; flex: none;

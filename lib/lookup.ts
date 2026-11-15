@@ -851,6 +851,65 @@ function decodeHtmlEntities(s: string): string {
 const NON_FOOD_OFF_CATEGORY_TAG_RE =
   /(?:^|:)(?:pet-food|pet-foods|cat-food|cat-foods|dog-food|dog-foods|animal-feed|pets|non-food|cleaning|household|hygiene|beauty|cosmetics|body-care|skin-care|hair-care|oral-care|perfumes|deodorants|medical|pharmacy|medications|otc)\b/i;
 
+const LOWERCASE_TITLE_MINOR_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "by",
+  "for",
+  "from",
+  "in",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "with",
+]);
+
+const LOWERCASE_UNIT_TOKENS = new Set([
+  "oz",
+  "fl",
+  "ml",
+  "l",
+  "g",
+  "kg",
+  "mg",
+  "mcg",
+  "lb",
+  "lbs",
+  "ct",
+  "pk",
+]);
+
+function normalizeOffDisplayTitle(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed || !/[a-z]/.test(trimmed)) {
+    return trimmed;
+  }
+  const words = trimmed.split(/\s+/);
+  const firstHasUpper = /[A-Z]/.test(words[0] || "");
+  const tailHasUpper = words.slice(1).some((w) => /[A-Z]/.test(w));
+  if (firstHasUpper && (words.length === 1 || tailHasUpper)) {
+    return trimmed;
+  }
+  let wordIdx = 0;
+  return trimmed
+    .split(/(\s+)/)
+    .map((part) => {
+      if (/^\s+$/.test(part)) return part;
+      const idx = wordIdx++;
+      const clean = part.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, "").toLowerCase();
+      if (!clean) return part;
+      if (LOWERCASE_UNIT_TOKENS.has(clean)) return part;
+      if (idx > 0 && LOWERCASE_TITLE_MINOR_WORDS.has(clean)) return part;
+      return part.replace(/[a-z]/, (ch) => ch.toUpperCase());
+    })
+    .join("");
+}
+
 export function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupResult, "ms"> {
   const sourceUpdatedAt =
     typeof p.last_modified_t === "number" && p.last_modified_t > 0
@@ -858,7 +917,9 @@ export function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupRe
       : null;
   const rawBrand = normalizeOffBrand(p.brands).split(",")[0]?.trim();
   const brandStr = rawBrand ? decodeHtmlEntities(rawBrand) : undefined;
-  const rawName = decodeHtmlEntities((p.product_name_en || p.product_name || fallbackTitle).trim());
+  const rawName = normalizeOffDisplayTitle(
+    decodeHtmlEntities((p.product_name_en || p.product_name || fallbackTitle).trim()),
+  );
   const fullTitle = mergeBrandAndTitle(brandStr, rawName);
   const baseNut = sanitizeOffFoodNutrition(fullTitle, extractOffNutrition(p), p.nutriments);
   const inferredKind: NutritionInput["productKind"] = p.categories_tags?.some((t) => NON_FOOD_OFF_CATEGORY_TAG_RE.test(t))
@@ -4157,7 +4218,13 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
         !isDietaryOrVariantMismatch(title, hit.productTitle, hit.ingredients, hit.nutrition)))
   ) {
     const { cachedAt: _c, source, ...rest } = hit;
-    return { ...rest, source: "cache", origin: source, ms: ms() };
+    return {
+      ...rest,
+      productTitle: normalizeOffDisplayTitle(rest.productTitle),
+      source: "cache",
+      origin: source,
+      ms: ms(),
+    };
   }
 
   let found: Omit<LookupResult, "ms"> | null = null;

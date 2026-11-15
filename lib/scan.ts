@@ -762,16 +762,17 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const canAccessSwapLinks = isAnonDevice
     ? true
     : Boolean(req.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
+  const effectiveBarcode = found.barcode || req.barcode?.replace(/\D/g, "") || "";
   const resolvedImageUrl =
     found.imageUrl && found.imageUrl.startsWith("http")
       ? found.imageUrl
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}&v=4`;
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}${found.brand ? `&brand=${encodeURIComponent(found.brand)}` : ""}${effectiveBarcode ? `&code=${encodeURIComponent(effectiveBarcode)}` : ""}&v=6`;
   const formatSwapWithAccess = (s: SwapResult): SwapResult => ({
     ...s,
     image:
       s.image && s.image.startsWith("http")
         ? s.image
-        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(s.title)}&v=4`,
+        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(s.title)}${s.brand ? `&brand=${encodeURIComponent(s.brand)}` : ""}&v=6`,
     ...(canAccessSwapLinks
       ? {}
       : {

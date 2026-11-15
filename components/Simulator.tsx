@@ -72,6 +72,7 @@ interface Product {
   brand: string;
   description?: string;
   size?: string;
+  barcode?: string;
   image?: string;
   ingredients: string;
   nutrition?: NutritionInput;
@@ -150,6 +151,9 @@ function pickClosestBarcodeToCenter(
 
 function detectIosAppClient(): boolean {
   if (typeof window === "undefined") return false;
+  if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)) {
+    return false;
+  }
   const win = window as unknown as {
     __HEYBROC_CLIENT_PLATFORM__?: string;
     webkit?: { messageHandlers?: { controller?: unknown } };
@@ -159,6 +163,10 @@ function detectIosAppClient(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
     const plat = params.get("platform");
+    if (plat === "web" || plat === "android") {
+      window.localStorage.removeItem("heybroc_client_platform");
+      return false;
+    }
     if (plat === "ios-app" || plat === "ios") {
       window.localStorage.setItem("heybroc_client_platform", "ios-app");
       return true;
@@ -583,7 +591,8 @@ function ProductArt({
   onSnapLabel?: () => void;
 }) {
   const brandParam = product.brand ? `&brand=${encodeURIComponent(product.brand)}` : "";
-  const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}${brandParam}&v=6`;
+  const codeParam = product.barcode ? `&code=${encodeURIComponent(product.barcode)}` : "";
+  const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}${brandParam}${codeParam}&v=6`;
   const normalizedProductImg = normalizeProductArtUrl(product.image);
   const explicitMissing = Boolean(product.image) && isMissingProductPhotoUrl(normalizedProductImg);
   const primarySrc = !explicitMissing && normalizedProductImg ? normalizedProductImg : apiFallbackSrc;
@@ -2362,14 +2371,18 @@ export default function Simulator({
         if (lastLiveLookupOptsRef.current && seq === lookupSeqRef.current) {
           lastLiveLookupOptsRef.current.liveProductKey = liveKey;
         }
+        const rawStrippedTitle =
+          data.product.title
+            .replace(
+              new RegExp(`^${(data.product.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s,:\\-–—]*`, "i"),
+              "",
+            )
+            .replace(/^[\s,:\-–—]+/, "") || data.product.title;
         const p: Product = {
           key: liveKey,
-          title:
-            data.product.title.replace(
-              new RegExp(`^${(data.product.brand || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
-              "",
-            ) || data.product.title,
+          title: rawStrippedTitle.replace(/^[a-z]/, (ch) => ch.toUpperCase()),
           brand: data.product.brand || (rawIng ? "Scanned Label" : "Open data"),
+          barcode: data.product.barcode || opts.barcode,
           description: data.product.description,
           image: data.product.imageUrl || "/product-photo-unavailable.svg",
           ingredients: data.product.ingredients,
@@ -2517,17 +2530,28 @@ export default function Simulator({
   const startCameraScanner = useCallback(async () => {
     setBarcodeStatus("");
     if (typeof window !== "undefined") {
-      const iosBridge = (
+      const handlers = (
         window as unknown as {
-          webkit?: { messageHandlers?: { controller?: { postMessage?: (msg: string) => void } } };
+          webkit?: {
+            messageHandlers?: {
+              heybrocNative?: { postMessage?: (msg: unknown) => void };
+              controller?: { postMessage?: (msg: string) => void };
+            };
+          };
         }
-      ).webkit?.messageHandlers?.controller;
-      if (typeof iosBridge?.postMessage === "function") {
+      ).webkit?.messageHandlers;
+      if (typeof handlers?.controller?.postMessage === "function") {
         setBarcodeScannerOpen(false);
-        iosBridge.postMessage("open-barcode-scanner");
+        handlers.controller.postMessage("open-barcode-scanner");
+        return;
+      }
+      if (typeof handlers?.heybrocNative?.postMessage === "function") {
+        setBarcodeScannerOpen(false);
+        handlers.heybrocNative.postMessage({ action: "open-barcode-scanner" });
         return;
       }
     }
+    setBarcodeScannerOpen(true);
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setBarcodeStatus("Camera access is unavailable in this browser — upload a barcode photo or type the UPC.");
       return;
@@ -3243,7 +3267,7 @@ export default function Simulator({
                 ref={iosSearchInputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search any food, brand, or barcode (${STORE_META[store].label})…`}
+                placeholder="Search food, brand, or UPC…"
                 aria-label="Search any food, brand, or barcode"
                 style={{ fontSize: 16 }}
               />
@@ -3269,7 +3293,6 @@ export default function Simulator({
                     setBarcodeScannerOpen(false);
                     setBarcodeStatus("");
                   } else {
-                    setBarcodeScannerOpen(true);
                     void startCameraScanner();
                   }
                 }}
@@ -3548,11 +3571,13 @@ export default function Simulator({
                 <>
                   {/* Store Switcher Strip for Clean Swaps */}
                   <div
+                    className="no-scrollbar"
                     aria-label="Select store for Clean Swaps"
                     style={{
                       display: "flex",
                       gap: 6,
                       overflowX: "auto",
+                      scrollbarWidth: "none",
                       paddingBottom: 2,
                       WebkitOverflowScrolling: "touch",
                     }}

@@ -953,6 +953,8 @@ class MainActivity : Activity() {
         val res = item.optJSONObject("result")
         val title = ScanHistoryStore.extractTitle(item)
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
+        val barcode = prod?.optString("barcode").orEmpty()
+            .ifBlank { item.optJSONObject("lookup")?.optString("barcode").orEmpty() }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
         val score = res?.optInt("score") ?: item.optInt("score", 50)
         val rating = ratingForScore(score)
@@ -969,7 +971,7 @@ class MainActivity : Activity() {
         }
 
         // Left Product Bottle/Box Image (68dp x 82dp on clean white)
-        row.addView(buildProductImageBox(imgUrl, title, dp(68), dp(82)).apply {
+        row.addView(buildProductImageBox(imgUrl, title, dp(68), dp(82), brand, barcode).apply {
             layoutParams = LinearLayout.LayoutParams(dp(68), dp(82)).apply { marginEnd = dp(16) }
         })
 
@@ -1951,19 +1953,33 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(20), dp(20), dp(12))
         }
-        box.addView(label("Instant Food & Brand Scanner", 18f, 0xFF111814.toInt(), bold = true))
-        box.addView(label("Start typing any food or brand — tap a suggestion below or press Scan.", 13.5f, 0xFF4B5563.toInt()).apply {
+        box.addView(label("Instant Food & Barcode Scanner", 18f, 0xFF111814.toInt(), bold = true))
+        box.addView(label("Type any food, brand, or 12-digit UPC barcode — tap a suggestion below or press Scan.", 13.5f, 0xFF4B5563.toInt()).apply {
             setPadding(0, dp(4), 0, dp(12))
         })
         val input = EditText(this).apply {
-            hint = "e.g. Monster, Red Bull, Coke, C4, Milk, Water, Juice…"
+            hint = "e.g. Hidden Valley Ranch, Doritos, or UPC barcode…"
             textSize = 15f
             setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
             setPadding(dp(14), dp(12), dp(14), dp(12))
             background = GradientDrawable().apply {
                 setColor(0xFFF3F4F6.toInt())
                 cornerRadius = dp(14).toFloat()
                 setStroke(dp(1), 0xFF2E9E5B.toInt())
+            }
+            setOnEditorActionListener { _, actionId, event ->
+                val isEnter = event != null && event.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN
+                if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE || isEnter) {
+                    val q = text?.toString()?.trim().orEmpty()
+                    if (q.isNotBlank()) {
+                        modalDialog?.dismiss()
+                        performLiveProductSearch(q)
+                    }
+                    true
+                } else {
+                    false
+                }
             }
         }
         box.addView(input)
@@ -4585,6 +4601,8 @@ class MainActivity : Activity() {
         val res = item.optJSONObject("result")
         val title = ScanHistoryStore.extractTitle(item)
         val brand = prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") }
+        val barcode = prod?.optString("barcode").orEmpty()
+            .ifBlank { item.optJSONObject("lookup")?.optString("barcode").orEmpty() }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
         val description = prod?.optString("description").orEmpty().ifBlank { item.optString("description") }
         val ingredients = prod?.optString("ingredients").orEmpty().ifBlank { item.optString("ingredients") }
@@ -4610,7 +4628,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        topHeader.addView(buildProductImageBox(imgUrl, title, dp(64), dp(76)).apply {
+        topHeader.addView(buildProductImageBox(imgUrl, title, dp(64), dp(76), brand, barcode).apply {
             layoutParams = LinearLayout.LayoutParams(dp(64), dp(76)).apply { marginEnd = dp(14) }
         })
         topHeader.addView(LinearLayout(this).apply {
@@ -5175,8 +5193,9 @@ class MainActivity : Activity() {
             merged.take(6).forEachIndexed { index, (sug, fullItem) ->
                 val sugTitle = sug.optString("title")
                 val sugBrand = sug.optString("brand")
+                val sugBarcode = sug.optString("barcode")
                 val sugScore = sug.optInt("score", 50)
-                val sugImg = sug.optString("imageUrl").ifBlank { ScanHistoryStore.productImageUrl(sugTitle) }
+                val sugImg = sug.optString("imageUrl").ifBlank { ScanHistoryStore.productImageUrl(sugTitle, sugBrand, sugBarcode) }
 
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -5188,7 +5207,7 @@ class MainActivity : Activity() {
                         onPicked(sugTitle, fullItem)
                     }
                 }
-                row.addView(buildProductImageBox(sugImg, sugTitle, dp(38), dp(46)).apply {
+                row.addView(buildProductImageBox(sugImg, sugTitle, dp(38), dp(46), sugBrand, sugBarcode).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(38), dp(46)).apply { marginEnd = dp(12) }
                 })
                 row.addView(LinearLayout(this).apply {
@@ -5332,7 +5351,14 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun buildProductImageBox(imgUrl: String, title: String, wPx: Int, hPx: Int): FrameLayout {
+    private fun buildProductImageBox(
+        imgUrl: String,
+        title: String,
+        wPx: Int,
+        hPx: Int,
+        brand: String = "",
+        code: String = ""
+    ): FrameLayout {
         val box = FrameLayout(this)
         val fallback = buildNeutralPackagePlaceholder(wPx, hPx)
         box.addView(fallback)
@@ -5343,8 +5369,8 @@ class MainActivity : Activity() {
         }
         box.addView(iv)
 
-        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(title)
-        val primaryUrl = ScanHistoryStore.resolveBestImageUrl(title, imgUrl)
+        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(title, brand, code)
+        val primaryUrl = ScanHistoryStore.resolveBestImageUrl(title, imgUrl, brand, code)
         loadThumbnailAsync(primaryUrl, fallbackApiUrl, iv, fallback)
         return box
     }
@@ -5512,8 +5538,8 @@ class MainActivity : Activity() {
     private fun fetchBitmapFromUrl(urlStr: String): Bitmap? = runCatching {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
-            connectTimeout = 4500
-            readTimeout = 4500
+            connectTimeout = 5000
+            readTimeout = 7500
             setRequestProperty("User-Agent", "HeyBroc-Android/2.0")
         }
         try {

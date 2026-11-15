@@ -1396,9 +1396,9 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       historyStoreKt.includes("VERIFIED_OFF_IMAGES") &&
       historyStoreKt.includes("fun resolveBestImageUrl") &&
       historyStoreKt.includes("fun productImageApiFallbackUrl") &&
-      mainKt.includes("ScanHistoryStore.resolveBestImageUrl(title, imgUrl)") &&
+      mainKt.includes("ScanHistoryStore.resolveBestImageUrl(title, imgUrl") &&
       !mainKt.includes('imgSource.contains("Category Illustration", ignoreCase = true)') &&
-      overlayKt.includes("ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage)") &&
+      overlayKt.includes("ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage") &&
       simulatorTsx.includes("/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}")
   );
 
@@ -1798,7 +1798,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         toasterPastryScan.result.score < 50 &&
         !prodImgRouteTs.includes("PROCESSED_FOOD_IMAGE_QUERY") &&
         prodImgRouteTs.includes("local:public/swaps/ranch.jpg") &&
-        historyStoreKtSrc.includes("&v=4") &&
+        (historyStoreKtSrc.includes("&v=6") || historyStoreKtSrc.includes("&v=4")) &&
         !mainActivityKtSrc.includes('"● Live"') &&
         mainActivityKtSrc.includes("includeWatchlist: Boolean = false") &&
         readerKtSrc.includes("val shouldReplace = isFirstCartFrame && cartTitles.isNotEmpty()") &&

@@ -468,25 +468,58 @@ object ScanHistoryStore {
         return VERIFIED_OFF_IMAGES.firstOrNull { (re, _) -> re.containsMatchIn(t) }?.second
     }
 
-    fun productImageApiFallbackUrl(title: String): String =
-        "https://www.heybroc.com/api/product-image?q=${java.net.URLEncoder.encode(title.trim(), "UTF-8")}&v=4"
-
-    fun productImageUrl(title: String): String =
-        verifiedDirectImageUrl(title) ?: productImageApiFallbackUrl(title)
-
-    fun resolveBestImageUrl(title: String, rawImageUrl: String): String {
-        verifiedDirectImageUrl(title)?.let { return it }
-        val trimmed = rawImageUrl.trim()
-        if (
-            trimmed.startsWith("https://") &&
-            !trimmed.contains("/swaps/") &&
-            !trimmed.contains("/products/") &&
-            !REVOKED_OFF_IMAGE_RE.containsMatchIn(trimmed) &&
-            (!trimmed.contains("/api/product-image") || trimmed.contains("v=4"))
-        ) {
-            return trimmed
+    fun productImageApiFallbackUrl(title: String, brand: String = "", code: String = ""): String {
+        val sb = StringBuilder("https://www.heybroc.com/api/product-image?q=")
+        sb.append(java.net.URLEncoder.encode(title.trim(), "UTF-8"))
+        val cleanBrand = brand.trim()
+        if (cleanBrand.isNotEmpty()) {
+            sb.append("&brand=").append(java.net.URLEncoder.encode(cleanBrand, "UTF-8"))
         }
-        return productImageUrl(title)
+        val cleanCode = code.filter { it.isDigit() }.take(14)
+        if (cleanCode.length >= 8) {
+            sb.append("&code=").append(cleanCode)
+        }
+        sb.append("&v=6")
+        return sb.toString()
+    }
+
+    fun productImageUrl(title: String, brand: String = "", code: String = ""): String {
+        val lookupTitle = if (brand.isNotBlank() && !title.contains(brand, ignoreCase = true)) {
+            "${brand.trim()} ${title.trim()}"
+        } else {
+            title
+        }
+        return verifiedDirectImageUrl(lookupTitle) ?: productImageApiFallbackUrl(title, brand, code)
+    }
+
+    fun resolveBestImageUrl(title: String, rawImageUrl: String, brand: String = "", code: String = ""): String {
+        val lookupTitle = if (brand.isNotBlank() && !title.contains(brand, ignoreCase = true)) {
+            "${brand.trim()} ${title.trim()}"
+        } else {
+            title
+        }
+        verifiedDirectImageUrl(lookupTitle)?.let { return it }
+
+        var normalized = rawImageUrl.trim()
+        if (normalized.startsWith("/api/product-image")) {
+            normalized = "https://www.heybroc.com$normalized"
+        }
+        if (normalized.contains("/api/product-image")) {
+            normalized = normalized.replace("v=4", "v=6").replace("v=5", "v=6")
+            if (!normalized.contains("v=")) {
+                normalized += if (normalized.contains("?")) "&v=6" else "?v=6"
+            }
+        }
+        if (
+            normalized.startsWith("https://") &&
+            !normalized.contains("product-photo-unavailable", ignoreCase = true) &&
+            !normalized.contains("/swaps/") &&
+            !normalized.contains("/products/") &&
+            !REVOKED_OFF_IMAGE_RE.containsMatchIn(normalized)
+        ) {
+            return normalized
+        }
+        return productImageUrl(title, brand, code)
     }
 
     private fun parseList(raw: String): List<JSONObject> = runCatching {
@@ -517,7 +550,9 @@ object ScanHistoryStore {
                     prod.put("isOrganic", true)
                 }
                 val curImg = prod.optString("imageUrl")
-                prod.put("imageUrl", resolveBestImageUrl(effectiveTitle, curImg))
+                val prodBrand = prod.optString("brand")
+                val prodBarcode = prod.optString("barcode").ifBlank { lookupObj?.optString("barcode").orEmpty() }
+                prod.put("imageUrl", resolveBestImageUrl(effectiveTitle, curImg, prodBrand, prodBarcode))
                 val isPlainGroundMeat = Regex("""^(?!.*\b(?:patties|burger|jerky|seasoned|marinated|taco|sauce|soup|chili|helper|lasagna|burrito)\b).*\b(?:ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean\s*/?\s*\d{1,2}%\s*fat\s*ground\s*(?:beef|chuck))\b""", RegexOption.IGNORE_CASE).containsMatchIn(effectiveTitle)
                 val resObj = item.optJSONObject("result")
                 if (isPlainGroundMeat && resObj != null && resObj.optInt("score", 90) < 75) {
@@ -542,9 +577,10 @@ object ScanHistoryStore {
             item.optJSONObject("swap")?.let { sw ->
                 upgradeSwapForStore(sw, effectiveTitle, itemStore)
                 val swTitle = sw.optString("title")
+                val swBrand = sw.optString("brand")
                 if (swTitle.isNotBlank()) {
                     val curSwImg = sw.optString("imageUrl").ifBlank { sw.optString("image") }
-                    sw.put("imageUrl", resolveBestImageUrl(swTitle, curSwImg))
+                    sw.put("imageUrl", resolveBestImageUrl(swTitle, curSwImg, swBrand))
                 }
             }
             item.optJSONObject("storeSwapLink")?.let { sw ->

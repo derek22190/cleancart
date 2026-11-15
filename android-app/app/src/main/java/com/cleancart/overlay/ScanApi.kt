@@ -1124,8 +1124,17 @@ object ScanApi {
             normStore == "amazon" && subSlug == "wholefoods" -> "amazon"
             else -> store
         }
+        val barcodeDigits = productTitle.trim().let { raw ->
+            if (Regex("""^\d[\d\s-]{6,16}\d$""").matches(raw)) {
+                val digits = raw.filter { it.isDigit() }
+                if (digits.length in 8..14) digits else ""
+            } else {
+                ""
+            }
+        }
         val body = JSONObject().apply {
             put("productTitle", productTitle)
+            if (barcodeDigits.isNotEmpty()) put("barcode", barcodeDigits)
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
             put("store", effectiveRequestStore)
             if (subSlug.isNotBlank() && (normStore == "instacart" || instacartRetailerSlug.isNotBlank())) {

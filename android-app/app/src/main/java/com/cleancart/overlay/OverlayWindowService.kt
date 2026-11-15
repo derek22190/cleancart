@@ -1986,8 +1986,12 @@ class OverlayWindowService : Service() {
             })
         })
         if (prodTitle.isNotBlank()) {
+            val prodBarcode = prodObj?.optString("barcode").orEmpty()
+                .ifBlank { d.optJSONObject("lookup")?.optString("barcode").orEmpty() }
             val prodThumbJson = JSONObject().apply {
                 put("title", prodTitle)
+                put("brand", prodBrand)
+                put("barcode", prodBarcode)
                 put("imageUrl", prodObj?.optString("imageUrl").orEmpty())
                 put("isProductHeader", true)
             }
@@ -2705,9 +2709,11 @@ class OverlayWindowService : Service() {
 
     private fun buildSwapThumbnailView(swap: JSONObject, sizePx: Int): FrameLayout {
         val swapTitle = swap.optString("title", "Clean Alternative")
+        val swapBrand = swap.optString("brand", "")
+        val swapBarcode = swap.optString("barcode", "")
         val rawImage = swap.optString("image", "").ifBlank { swap.optString("imageUrl", "") }
-        val fullUrl = ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage)
-        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(swapTitle)
+        val fullUrl = ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage, swapBrand, swapBarcode)
+        val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(swapTitle, swapBrand, swapBarcode)
         val radius = dp(14).toFloat()
         val box = FrameLayout(this).apply {
             background = GradientDrawable().apply {

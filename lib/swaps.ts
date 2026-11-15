@@ -3676,6 +3676,21 @@ function evaluateCandidateForSwap(
       if (/^(?:zero\s+sugar|sugar[ -]*free)$/i.test(tok) && altHasZeroAddedSugar && !/\b(soda|cola|pop|energy|drink|tea|lemonade)\b/i.test(requested)) {
         return false;
       }
+      if (/^gluten[ -]*free$/i.test(tok)) {
+        const isGrainOrBakeryRequest =
+          /\b(bread|loaf|buns?|rolls?|bagels?|muffins?|waffles?|pancakes?|pasta|macaroni|noodles?|spaghetti|penne|crackers?|cookies?|oreos?|pretzels?|cake|brownies?|pastries|pie|crust|pizza|flour|cereal|oats?|oatmeal|granola|tortillas?|wraps?)\b/i.test(
+            requested
+          );
+        const altHasZeroGlutenOrOats =
+          Boolean(alt.ingredients?.trim()) &&
+          !candidateAllergens.has("wheat_gluten") &&
+          !/\b(oats?|oatmeal|granola|barley|malt|rye|wheat|spelt|farro|kamut|semolina|durum|triticale|flour)\b/i.test(
+            alt.ingredients
+          );
+        if (!isGrainOrBakeryRequest && altHasZeroGlutenOrOats) {
+          return false;
+        }
+      }
       return true;
     });
     const guardQuery = restrictions.join(" ") + (isPlainDairyMilk ? " milk" : "");
@@ -3721,7 +3736,7 @@ function evaluateCandidateForSwap(
     verifiedAt: alt.verifiedAt,
     image: alt.image.startsWith("https://")
       ? alt.image
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}&v=4`,
+      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}${alt.brand ? `&brand=${encodeURIComponent(alt.brand)}` : ""}&v=6`,
     score: altScore,
     store: params.store,
     isStoreBrand: isStoreBrandForStore(alt.brand, params.store),

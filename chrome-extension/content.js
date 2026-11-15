@@ -68,9 +68,22 @@
     return `${base}/?${params.toString()}`;
   }
 
-  function fallbackThumbUrl(title) {
+  function resolveApiAssetUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== "string") return "";
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return "";
+    if (trimmed.startsWith("/")) {
+      const base = (clientInfo.apiBase || DEFAULT_API).replace(/\/+$/, "");
+      return `${base}${trimmed}`;
+    }
+    return trimmed;
+  }
+
+  function fallbackThumbUrl(title, brand = "") {
     const base = (clientInfo.apiBase || DEFAULT_API).replace(/\/+$/, "");
-    return `${base}/api/product-image?q=${encodeURIComponent(String(title || "grocery"))}&v=4`;
+    const cleanBrand = String(brand || "").trim();
+    const brandParam = cleanBrand ? `&brand=${encodeURIComponent(cleanBrand)}` : "";
+    return `${base}/api/product-image?q=${encodeURIComponent(String(title || "grocery"))}${brandParam}&v=6`;
   }
 
   function isPlaceholderProductImage(url) {
@@ -124,17 +137,18 @@
   const apiImagePlaceholderCache = new Map();
 
   async function checkApiImageIsPlaceholder(url) {
-    if (!url || typeof url !== "string" || !url.includes("/api/product-image")) return false;
-    if (apiImagePlaceholderCache.has(url)) return apiImagePlaceholderCache.get(url);
+    const fullUrl = resolveApiAssetUrl(url);
+    if (!fullUrl || !fullUrl.includes("/api/product-image")) return false;
+    if (apiImagePlaceholderCache.has(fullUrl)) return apiImagePlaceholderCache.get(fullUrl);
     try {
-      const res = await fetch(url, { method: "HEAD" });
+      const res = await fetch(fullUrl, { method: "HEAD" });
       const imgSrcHeader = res.headers.get("x-image-source") || "";
       const cType = res.headers.get("content-type") || "";
       const isPh =
         imgSrcHeader.toLowerCase().includes("placeholder") ||
         res.url?.includes("product-photo-unavailable") ||
         cType.includes("image/svg+xml");
-      apiImagePlaceholderCache.set(url, isPh);
+      apiImagePlaceholderCache.set(fullUrl, isPh);
       return isPh;
     } catch {
       return false;
@@ -1931,7 +1945,7 @@
           swapTitle: chosenSwap?.title || null,
           swapScore: chosenSwap?.score ?? null,
           swapUrl: chosenSwap?.webUrl || null,
-          swapImage: chosenSwap?.image || null,
+          swapImage: chosenSwap?.image || chosenSwap?.imageUrl || null,
           swapIsPaidLink: Boolean(chosenSwap?.isPaidLink),
           swapInStock: Boolean(chosenSwap?.inStock),
           swapOutOfStock,
@@ -2323,10 +2337,11 @@
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   function buildThumbMarkup(className, verifiedUrl, domImageUrl, lazy = false) {
-    const hasVerified = Boolean(verifiedUrl && !isPlaceholderProductImage(verifiedUrl));
+    const resolvedVerified = resolveApiAssetUrl(verifiedUrl);
+    const hasVerified = Boolean(resolvedVerified && !isPlaceholderProductImage(resolvedVerified));
     const cleanDom = sanitizeDomImageUrl(domImageUrl);
     if (hasVerified) {
-      return `<img class="${className}" src="${esc(verifiedUrl)}"${
+      return `<img class="${className}" src="${esc(resolvedVerified)}"${
         cleanDom ? ` data-dom-fallback="${esc(cleanDom)}"` : ""
       } referrerpolicy="no-referrer" alt=""${lazy ? ' loading="lazy"' : ""} />`;
     }
@@ -2629,9 +2644,16 @@
       d.product?.nutrition?.productKind === "non-food" || r.yukaBreakdown?.nutriScoreGrade === "N/A";
     const safeScore = Math.max(0, Math.min(100, Math.round(Number(r.score ?? 0))));
     const C = 2 * Math.PI * 42;
+    const rawProdImg = d.product?.imageUrl;
+    const prodVerifiedImg =
+      rawProdImg && !isPlaceholderProductImage(rawProdImg)
+        ? resolveApiAssetUrl(rawProdImg)
+        : !isNonFood && d.product?.title
+          ? fallbackThumbUrl(d.product.title, d.product.brand)
+          : null;
     const prodThumbHtml = buildThumbMarkup(
       "cc-prod-thumb",
-      d.product?.imageUrl,
+      prodVerifiedImg,
       state.lastDomProductImageUrl,
       false
     );
@@ -2653,15 +2675,25 @@
     const flagsHtml = isNonFood
       ? `<p class="cc-meta-line">Household / non-food item — not scored as food.</p>`
       : r.flagged.length
+        ? `<div class="cc-flags">${r.flagged
+            .slice(0, 3)
+            .map((f) => `<span class="cc-flag cc-risk-${esc(f.risk)}">${esc(f.name)}</span>`)
+            .join("")}${
+            r.flagged.length > 3
+              ? `<span class="cc-flag cc-risk-moderate">+${r.flagged.length - 3} more</span>`
+              : ""
+          }</div>`
+        : `<p class="cc-clean">✓ 0 Watchlist Additives Found</p>`;
+
+    const explainList =
+      !isNonFood && r.flagged.length
         ? `<div class="cc-explain-list">${r.flagged
             .map(
               (f) =>
                 `<div class="cc-explain cc-risk-${esc(f.risk)}"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b>${esc(f.name)}</b><span>−${esc(f.penalty)} pts</span></div><p>${esc(f.explanation)}</p></div>`
             )
             .join("")}</div>`
-        : `<p class="cc-clean">✓ 0 Watchlist Additives Found</p>`;
-
-    const explainList = "";
+        : "";
 
     const ingHtml = d.product?.ingredients && !isNonFood
       ? `<details class="cc-ing-box"><summary>Ingredients (${d.product.ingredients.split(",").length} listed)</summary><p>${esc(d.product.ingredients)}</p></details>`
@@ -2678,12 +2710,13 @@
         const swapLocked = !activeSwap.webUrl;
         const swapPaidSuffix = !swapLocked && activeSwap.isPaidLink ? " · paid link" : "";
         const swapRating = ratingLabelForScore(activeSwap.score);
+        const rawSwapImg = activeSwap.image || activeSwap.imageUrl;
         const swapThumb =
-          activeSwap.image && !isPlaceholderProductImage(activeSwap.image)
-            ? activeSwap.image
-            : fallbackThumbUrl(activeSwap.title);
+          rawSwapImg && !isPlaceholderProductImage(rawSwapImg)
+            ? resolveApiAssetUrl(rawSwapImg)
+            : fallbackThumbUrl(activeSwap.title, activeSwap.brand);
         swapHtml = `<div class="cc-swap">
-          ${buildThumbMarkup("cc-swap-thumb", swapThumb, null, true)}
+          ${buildThumbMarkup("cc-swap-thumb", swapThumb, null, false)}
           <div class="cc-swap-info">
             <div class="cc-swap-badges">
               ${swapLocked ? `<span class="cc-eyebrow">🔒 Swap Locked</span>` : `<span class="cc-instock-badge">✓ In Stock</span>`}
@@ -2723,9 +2756,9 @@
           ${flagsHtml}
         </div>
       </div>
+      ${swapHtml}
       ${explainList}
       ${ingHtml}
-      ${swapHtml}
       <p class="cc-footnote">Informational opinion only — verify physical product label. HeyBroc is independent and not affiliated with ${esc(activeBucket.label)}.</p>
     `;
   }
@@ -3101,6 +3134,20 @@
       return;
     }
 
+    let pageBarcode = "";
+    try {
+      const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const sc of ldScripts) {
+        const m = (sc.textContent || "").match(/"(?:gtin13|gtin12|gtin14|gtin8|gtin|upc)"\s*:\s*"(\d{8,14})"/i);
+        if (m?.[1]) {
+          pageBarcode = m[1];
+          break;
+        }
+      }
+    } catch {
+      // ignore JSON-LD read errors
+    }
+
     const reqBucket = activeBucket;
     chrome.runtime.sendMessage(
       {
@@ -3108,6 +3155,7 @@
         payload: {
           productTitle,
           rawIngredients: rawIngredients || undefined,
+          barcode: pageBarcode || undefined,
           store: reqBucket.store,
           instacartRetailerSlug: reqBucket.instacartRetailerSlug,
         },
