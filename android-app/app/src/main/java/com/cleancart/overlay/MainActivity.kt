@@ -74,6 +74,8 @@ class MainActivity : Activity() {
     private val io = Executors.newSingleThreadExecutor()
     private val REQ_PICK_GOOGLE_ACCOUNT = 9041
     private var pendingGoogleAccountPicked: ((String) -> Unit)? = null
+    private var activeAuthDialog: AlertDialog? = null
+    private var activeFunnelDialog: AlertDialog? = null
     private val imgExecutor = Executors.newFixedThreadPool(4)
     private val bmpCache = LruCache<String, Bitmap>(64)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -3383,6 +3385,8 @@ class MainActivity : Activity() {
         renderFunnelStep(1)
 
         funnelDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+            activeFunnelDialog = dlg
+            dlg.setOnDismissListener { if (activeFunnelDialog === dlg) activeFunnelDialog = null }
             dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
             dlg.setCanceledOnTouchOutside(alreadyDone)
             dlg.setOnKeyListener { _, keyCode, event ->
@@ -4004,6 +4008,8 @@ class MainActivity : Activity() {
         renderStep("welcome")
 
         authDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+            activeAuthDialog = dlg
+            dlg.setOnDismissListener { if (activeAuthDialog === dlg) activeAuthDialog = null }
             dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
             dlg.show()
         }
@@ -4209,8 +4215,8 @@ class MainActivity : Activity() {
                     )
                     mainHandler.post {
                         if (isDestroyed || isFinishing) return@post
-                        authDialog?.dismiss()
-                        funnelDialog?.dismiss()
+                        activeAuthDialog?.dismiss()
+                        activeFunnelDialog?.dismiss()
                         renderScreen()
                         Toast.makeText(this@MainActivity, "👋 Signed in with Google as $resolvedName!", Toast.LENGTH_LONG).show()
                     }
