@@ -2072,6 +2072,21 @@ object ScanHistoryStore {
             swap.put("searchQuery", "Barilla Organic Spaghetti Pasta")
             swap.put("imageUrl", productImageUrl("Barilla Organic Spaghetti Pasta"))
             swap.put("ingredients", "Organic durum wheat semolina.")
+        } else if (Regex("""\b(cinnamon\s+toast\s+crunch|french\s+toast\s+crunch|cinnamon\s+(?:crunch|toasters?|squares?|oat\s+crunch|chex|life)|ctoast)\b""").containsMatchIn(lowProd) &&
+            (lowSwap.contains("heritage flakes") || lowSwap.contains("sunrise crunchy cinnamon"))
+        ) {
+            swap.put("title", "Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal")
+            swap.put("name", "Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal")
+            swap.put("brand", "Food For Life")
+            swap.put("size", "16 oz box")
+            swap.put("score", 90)
+            swap.put("isOrganic", true)
+            swap.put("searchQuery", "Ezekiel 4:9 Cinnamon Raisin Cereal")
+            swap.put("imageUrl", productImageUrl("Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal"))
+            swap.put("ingredients", "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon.")
+            val searchUrl = storeSearchUrl(normStore, "Ezekiel 4:9 Cinnamon Raisin Cereal")
+            swap.put("webUrl", searchUrl)
+            swap.put("deepLink", searchUrl)
         } else if (lowSwap.contains("nooma")) {
             swap.put("title", "Harmless Harvest Organic Coconut Water")
             swap.put("name", "Organic Coconut Water")
@@ -2088,7 +2103,11 @@ object ScanHistoryStore {
         swap.put("isStoreBrand", isStoreBrandForStore("$latestBrand $latestTitle", normStore))
         val latestQuery = swap.optString("searchQuery").ifBlank { latestTitle }
         val curLink = swap.optString("deepLink").ifBlank { swap.optString("webUrl") }
-        if (isWalmart) {
+        if (curLink.contains("/ip/10898744") && latestQuery.isNotBlank()) {
+            val fixedSearchUrl = storeSearchUrl(normStore, latestQuery)
+            swap.put("webUrl", fixedSearchUrl)
+            swap.put("deepLink", fixedSearchUrl)
+        } else if (isWalmart) {
             val latestSwapLow = latestTitle.lowercase()
             if (!urlMatchesStore(curLink, "walmart") || !curLink.contains("/ip/")) {
                 val walmartItemId = when {
@@ -2103,7 +2122,6 @@ object ScanHistoryStore {
                     latestSwapLow.contains("21 whole grains") && latestSwapLow.contains("bread") -> "45804393"
                     latestSwapLow.contains("plain awesome bagels") -> "109128726"
                     latestSwapLow.contains("stonyfield") && latestSwapLow.contains("yogurt") -> "10535275"
-                    latestSwapLow.contains("heritage flakes") -> "10898744"
                     latestSwapLow.contains("oven roasted turkey breast") && latestSwapLow.contains("applegate") -> "15610519"
                     latestSwapLow.contains("boulder canyon") && latestSwapLow.contains("kettle chips") -> "44391408"
                     latestSwapLow.contains("unsalted butter") && latestSwapLow.contains("organic valley") -> "10804557"

@@ -1,5 +1,6 @@
 package com.cleancart.overlay
 
+import android.accounts.Account
 import android.accounts.AccountManager
 import android.app.Activity
 import android.app.AlertDialog
@@ -249,11 +250,12 @@ class MainActivity : Activity() {
         renderScreen()
         syncDynamicHomeScreenShortcuts()
 
-        val handledShortcut = handleIncomingShortcutIntent(intent)
-        val handledShare = if (!handledShortcut) handleIncomingShareIntent(intent) else false
+        val handledAuth = handleIncomingAuthRedirect(intent)
+        val handledShortcut = if (!handledAuth) handleIncomingShortcutIntent(intent) else false
+        val handledShare = if (!handledAuth && !handledShortcut) handleIncomingShareIntent(intent) else false
 
-        // Launch the 8-Step Onboarding Funnel on first open unless the user shared a product or tapped a Home-Screen Quick Action
-        if (savedInstanceState == null && !handledShare && !handledShortcut) {
+        // Launch the Onboarding Funnel on first open unless returning from OAuth, Share, or Home-Screen Quick Action
+        if (savedInstanceState == null && !handledAuth && !handledShare && !handledShortcut) {
             val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             val onboardingDone = prefs.getBoolean("onboarding_funnel_done_v1", false)
             val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
@@ -277,6 +279,7 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         syncDynamicHomeScreenShortcuts()
+        if (handleIncomingAuthRedirect(intent)) return
         if (!handleIncomingShortcutIntent(intent)) {
             handleIncomingShareIntent(intent)
         }
@@ -704,21 +707,11 @@ class MainActivity : Activity() {
 
     /* ---------------- TAB 0: MY SCANS ---------------- */
 
-    private fun buildDarkGreenStep2Card(subStep: String): View {
-        val stepTitle = when (subStep) {
-            "2B" -> "Step 2 of 3: Unlock Restricted Settings"
-            "2C" -> "Step 3 of 3: Flip HeyBroc Switch ON"
-            else -> "Step 1 of 3: Tap Greyed-Out HeyBroc Once"
-        }
-        val stepBody = when (subStep) {
-            "2B" -> "Tap below to open App Info → tap ⋮ (3 dots in top-right corner) → tap 'Allow restricted settings'."
-            "2C" -> "Restricted settings unlocked! Tap below → Installed apps → HeyBroc → flip the switch ON."
-            else -> "Android requires tapping the greyed-out 'HeyBroc' in Accessibility → Installed apps once before the ⋮ 3-dot unlock menu appears."
-        }
-        val btnText = when (subStep) {
-            "2B" -> "⚡ Open App Info (Tap ⋮ Top-Right 3 Dots) →"
-            "2C" -> "⚡ Open Accessibility & Turn ON HeyBroc →"
-            else -> "⚡ Step 1: Open Installed Apps →"
+    private fun buildLiveBubbleSetupCard(a11yServiceEnabled: Boolean, consentOk: Boolean): View {
+        val btnText = if (a11yServiceEnabled && !consentOk) {
+            "⚡ Confirm & Activate Bubble →"
+        } else {
+            "⚡ Turn ON in Accessibility →"
         }
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -728,13 +721,17 @@ class MainActivity : Activity() {
                 cornerRadius = dp(18).toFloat()
                 setStroke(dp(1), 0xFF10B981.toInt())
             }
-            addView(label("LIVE STORE BUBBLE SETUP · 1-SWITCH ACCESSIBILITY", 10.5f, 0xFFA7F3D0.toInt(), bold = true).apply {
+            addView(label("LIVE STORE BUBBLE · 1-SWITCH SETUP", 10.5f, 0xFFA7F3D0.toInt(), bold = true).apply {
                 letterSpacing = 0.06f
             })
-            addView(label(stepTitle, 15.5f, Color.WHITE, bold = true).apply {
+            addView(label("Enable Live Store Bubble", 15.5f, Color.WHITE, bold = true).apply {
                 setPadding(0, dp(4), 0, dp(3))
             })
-            addView(label(stepBody, 12.5f, 0xFFD1FAE5.toInt()).apply {
+            addView(label(
+                "Tap below → Installed apps → HeyBroc → flip ON to auto-grade foods in Walmart, Target, Kroger, Costco & 12+ apps.",
+                12.5f,
+                0xFFD1FAE5.toInt()
+            ).apply {
                 setPadding(0, 0, 0, dp(10))
             })
             addView(label(btnText, 13.5f, 0xFF064E3B.toInt(), bold = true).apply {
@@ -746,6 +743,19 @@ class MainActivity : Activity() {
                 }
                 setOnClickListener { runGuidedSetupStep() }
             })
+            if (!a11yServiceEnabled && !isInstalledFromPlayStore()) {
+                addView(label("Switch greyed out? Unlock in App Info (⋮ → Allow restricted settings) ↗", 11.5f, 0xFFA7F3D0.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(6), dp(10), dp(6), dp(2))
+                    setOnClickListener {
+                        scheduleSettingsToasts(
+                            "Tap ⋮ (top-right 3 dots) → 'Allow restricted settings', then press Back!",
+                            "Note: If ⋮ isn't visible yet, tap greyed-out HeyBroc in Accessibility once first."
+                        )
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                    }
+                })
+            }
         }
     }
 
@@ -858,9 +868,8 @@ class MainActivity : Activity() {
         val consentOk = AccessibilityConsent.granted(this)
         val a11yOk = a11yServiceEnabled && consentOk
 
-        // Show the sleek auto-advancing dark-green setup card when consent is granted on a sideloaded APK
         if (consentOk && !a11yServiceEnabled && !isInstalledFromPlayStore()) {
-            tabContentContainer.addView(buildDarkGreenStep2Card(getSetupSubStep()).apply {
+            tabContentContainer.addView(buildLiveBubbleSetupCard(a11yServiceEnabled, consentOk).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1863,61 +1872,34 @@ class MainActivity : Activity() {
             ))
         } else {
             val statusBadge = label("0 of 1 enabled", 12f, 0xFF7A5B00.toInt(), bold = true)
-            val subStep = getSetupSubStep()
 
-            val checklist = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = GradientDrawable().apply {
-                    setColor(0xFFF4F3EE.toInt())
-                    cornerRadius = dp(14).toFloat()
-                }
-                addView(label(
-                    when {
-                        a11yOk -> "✓  1. Store Screen Reader & Floating Bubble (Enabled)"
-                        a11yServiceEnabled && !consentOk -> "○  1. Confirm in-app disclosure (1 tap)"
-                        else -> "○  1. Turn ON HeyBroc in Accessibility → Installed apps"
-                    },
-                    13.5f,
-                    if (a11yOk) 0xFF16A34A.toInt() else 0xFF15201B.toInt(),
-                    bold = !a11yOk
-                ))
-            }
-
-            val mainActionLabel = when {
-                a11yServiceEnabled && !consentOk -> "⚡ Confirm & Activate HeyBroc"
-                isInstalledFromPlayStore() -> "⚡ Turn ON HeyBroc in Accessibility →"
-                subStep == "2B" -> "⚡ Step 2: Open App Info (Tap ⋮ Top-Right 3 Dots) →"
-                subStep == "2C" -> "⚡ Step 3: Open Accessibility & Turn ON HeyBroc →"
-                else -> "⚡ Step 1: Open Accessibility → Installed apps →"
+            val mainActionLabel = if (a11yServiceEnabled && !consentOk) {
+                "⚡ Confirm & Activate HeyBroc →"
+            } else {
+                "⚡ Turn ON HeyBroc in Accessibility →"
             }
 
             val extras = mutableListOf<View>(
-                checklist,
                 primaryButton(mainActionLabel) { runGuidedSetupStep() }
             )
 
             if (!a11yServiceEnabled && !isInstalledFromPlayStore()) {
                 extras.add(
                     label(
-                        "Why don't the ⋮ (3 dots) show up in App Info right away?\n" +
-                            "• Step 1 (Required first): Open Accessibility → Installed apps and tap the greyed-out \"HeyBroc\" once. Android hides the ⋮ 3-dot menu in App Info until you tap the greyed-out HeyBroc first!\n" +
-                            "• Step 2: Only AFTER tapping the greyed-out HeyBroc, open App Info below → tap ⋮ (top-right 3 dots) → \"Allow restricted settings\".\n" +
-                            "• Step 3: Go back to Accessibility → Installed apps → HeyBroc and flip it ON.",
-                        12.5f, 0xFF7A5B00.toInt(),
+                        "Switch greyed out? Unlock in App Info (⋮ → Allow restricted settings) ↗",
+                        12f,
+                        0xFF0F7A4A.toInt(),
+                        bold = true
                     ).apply {
-                        setPadding(dp(12), dp(10), dp(12), dp(10))
-                        background = GradientDrawable().apply { setColor(0xFFFDF6DC.toInt()); cornerRadius = dp(12).toFloat() }
-                    }
-                )
-                extras.add(
-                    primaryButton("Step 2: Open App Info (Tap ⋮ Top-Right 3 Dots)", filled = false) {
-                        setSetupSubStep("2C")
-                        scheduleSettingsToasts(
-                            "Look at top-right ↑ Tap ⋮ (3 dots) → Allow restricted settings!",
-                            "After tapping 'Allow restricted settings', press Back to return to HeyBroc!"
-                        )
-                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                        gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(8), dp(8), dp(4))
+                        setOnClickListener {
+                            scheduleSettingsToasts(
+                                "Tap ⋮ (top-right 3 dots) → 'Allow restricted settings', then press Back!",
+                                "Note: If ⋮ isn't visible yet, tap greyed-out HeyBroc in Accessibility once first."
+                            )
+                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                        }
                     }
                 )
             }
@@ -1925,11 +1907,7 @@ class MainActivity : Activity() {
             target.addView(stepCard(
                 "Quick 1-Switch Setup",
                 "Enable Store Bubble & Screen Reader",
-                if (isInstalledFromPlayStore()) {
-                    "Tap below to open Accessibility → Installed apps → turn HeyBroc ON."
-                } else {
-                    "Follow Steps 1 → 2 → 3 below to unlock and turn on HeyBroc in Accessibility."
-                },
+                "Tap below to open Accessibility → Installed apps → flip HeyBroc ON.",
                 statusBadge,
                 *extras.toTypedArray(),
             ))
@@ -2881,23 +2859,53 @@ class MainActivity : Activity() {
                 ))
 
                 val glyphOn = "pesticide_risk" in selectedDietary
-                mapCard.addView(label(
-                    if (glyphOn) "✓ Glyphosate & Pesticide Watch Active" else "+ Guard My Family Against Glyphosate",
-                    13f,
-                    if (glyphOn) Color.WHITE else 0xFF14532D.toInt(),
-                    bold = true
-                ).apply {
-                    gravity = Gravity.CENTER
+                mapCard.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(12), dp(10), dp(12), dp(10))
                     background = GradientDrawable().apply {
-                        setColor(if (glyphOn) 0xFF15803D.toInt() else 0xFFECFDF5.toInt())
-                        setStroke(dp(1), 0xFF16A34A.toInt())
-                        cornerRadius = dp(999).toFloat()
+                        setColor(Color.WHITE)
+                        setStroke(dp(if (glyphOn) 2 else 1), if (glyphOn) 0xFF16A34A.toInt() else 0xFFCBD5E1.toInt())
+                        cornerRadius = dp(12).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = dp(10) }
+
+                    addView(label(
+                        if (glyphOn) "✓" else "",
+                        13.5f,
+                        Color.WHITE,
+                        bold = true
+                    ).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            setColor(if (glyphOn) 0xFF16A34A.toInt() else Color.WHITE)
+                            setStroke(dp(2), if (glyphOn) 0xFF16A34A.toInt() else 0xFF94A3B8.toInt())
+                            cornerRadius = dp(6).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                            marginEnd = dp(10)
+                        }
+                    })
+
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(label(
+                            "Guard my family against glyphosate",
+                            13f,
+                            0xFF111814.toInt(),
+                            bold = true
+                        ))
+                        addView(label(
+                            "Flags non-organic oats, wheat & high-residue produce",
+                            11f,
+                            0xFF4B5563.toInt()
+                        ))
+                    })
+
                     setOnClickListener {
                         if (glyphOn) selectedDietary.remove("pesticide_risk") else selectedDietary.add("pesticide_risk")
                         renderFunnelStep(5)
@@ -3136,39 +3144,6 @@ class MainActivity : Activity() {
                 })
                 card.addView(compareStage)
 
-                // Personalized Active Watchlist Guard Chips
-                val activeGoalList = goalOptions.filter { it.id in selectedGoals }.ifEmpty { goalOptions.take(3) }.take(3)
-                if (activeGoalList.isNotEmpty()) {
-                    val chipsRow = LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        layoutParams = LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                        ).apply { bottomMargin = dp(12) }
-                    }
-                    activeGoalList.forEachIndexed { idx, g ->
-                        val shortTitle = g.title
-                            .replace("Industrial ", "")
-                            .replace("High-Fructose ", "")
-                            .replace(" (2x)", "")
-                        chipsRow.addView(label("${g.icon} $shortTitle", 10f, 0xFF166534.toInt(), bold = true).apply {
-                            gravity = Gravity.CENTER
-                            setSingleLine(true)
-                            ellipsize = TextUtils.TruncateAt.END
-                            setPadding(dp(7), dp(5), dp(7), dp(5))
-                            background = GradientDrawable().apply {
-                                setColor(0xFFF0FDF4.toInt())
-                                setStroke(dp(1), 0xFFBBF7D0.toInt())
-                                cornerRadius = dp(999).toFloat()
-                            }
-                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                                if (idx < activeGoalList.lastIndex) marginEnd = dp(5)
-                            }
-                        })
-                    }
-                    card.addView(chipsRow)
-                }
-
                 card.addView(label("Build My Personalized Plan →", 15f, Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(16), dp(14), dp(16), dp(14))
@@ -3181,7 +3156,7 @@ class MainActivity : Activity() {
                 return
             }
 
-            // Step 7: Personalized Plan (Start Free Pro Trial / Continue with Free Plan / Sign In)
+            // Step 7: Personalized Plan (Start Free Pro Trial / Continue with Free Plan / Log In)
             val refCode = ScanApi.referredByCode(this@MainActivity)
             val isFriendRef = refCode?.startsWith("BROC-", ignoreCase = true) == true
             val effectiveTrialDays = 7
@@ -3238,21 +3213,21 @@ class MainActivity : Activity() {
 
             card.addView(label("Choose How You Want to Start", 21f, 0xFF111814.toInt(), bold = true))
             card.addView(label(
-                "Unlock unlimited cleaner store links with a $effectiveTrialDays-Day Free Pro Trial ($0 today), or start on the Free Plan ($freeStarterSwaps free picks included):",
+                "Try Family Pro free for $effectiveTrialDays days ($0 today), or start right away on the Free Plan:",
                 13f,
                 0xFF4B5563.toInt()
-            ).apply { setPadding(0, dp(4), 0, dp(12)) })
+            ).apply { setPadding(0, dp(4), 0, dp(10)) })
 
             val proStoresBullet = if (selectedStores.isNotEmpty()) {
-                "$storesSummary & all 12+ stores"
+                "1-tap healthier picks in $storesSummary & all 12+ stores"
             } else {
-                "all 12+ grocery & delivery stores"
+                "1-tap healthier picks across all 12+ grocery & delivery stores"
             }
             val proCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
+                setPadding(dp(12), dp(12), dp(12), dp(12))
                 background = GradientDrawable().apply {
-                    setColor(0xFFF0FDF4.toInt())
+                    setColor(Color.WHITE)
                     setStroke(dp(2), 0xFF16A34A.toInt())
                     cornerRadius = dp(16).toFloat()
                 }
@@ -3261,16 +3236,79 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(12) }
             }
-            proCard.addView(label("⭐ HeyBroc Family Pro · $effectiveTrialDays DAYS FREE ($0 TODAY)", 13.5f, 0xFF14532D.toInt(), bold = true))
+
+            // Header Row: Title + Green Badge Pill
+            proCard.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(9) }
+                addView(label("⭐ HeyBroc Family Pro", 14f, 0xFF14532D.toInt(), bold = true).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(label("$effectiveTrialDays DAYS FREE · $0 TODAY", 10f, Color.WHITE, bold = true).apply {
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                    background = GradientDrawable().apply {
+                        setColor(0xFF16A34A.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                })
+            })
+
+            // 3 Structured Icon-Bubble Feature Rows
+            val proFeatures = listOf(
+                Triple("🛒", "Unlimited Clean Swaps", proStoresBullet),
+                Triple("🧾", "Order Audits & 2x Watchlists", "Receipt health grades + double additive penalties"),
+                Triple("🫧", "Live Store Bubble & Cloud Sync", "Auto-grades carts as you shop + syncs across devices")
+            )
+            proFeatures.forEachIndexed { idx, (iconEmoji, featTitle, featSub) ->
+                proCard.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), dp(7), dp(8), dp(7))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF0FDF4.toInt())
+                        setStroke(dp(1), 0xFFDCFCE7.toInt())
+                        cornerRadius = dp(10).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        bottomMargin = dp(if (idx < proFeatures.lastIndex) 6 else 8)
+                    }
+                    addView(label(iconEmoji, 13.5f, 0xFF14532D.toInt()).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            setColor(0xFFDCFCE7.toInt())
+                            cornerRadius = dp(8).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                            marginEnd = dp(9)
+                        }
+                    })
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(label(featTitle, 12.5f, 0xFF111814.toInt(), bold = true))
+                        addView(label(featSub, 11f, 0xFF4B5563.toInt()))
+                    })
+                })
+            }
+
+            proCard.addView(View(this).apply {
+                setBackgroundColor(0xFFE5E7EB.toInt())
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                    bottomMargin = dp(7)
+                }
+            })
             proCard.addView(label(
-                "• Unlimited cleaner alternative links across $proStoresBullet\n• Weekly Order / Receipt Health Audits & custom 2x Watchlists\n• Unlimited Live Store Bubble & Family Cloud Sync",
-                12.5f,
-                0xFF166534.toInt()
-            ).apply { setPadding(0, dp(6), 0, dp(6)) })
-            proCard.addView(label(
-                "$0 due today · Then $4.17/mo billed annually ($49.99/yr) or $9.99/mo. Cancel anytime in 1 tap before day $effectiveTrialDays.",
-                11.5f,
-                0xFF15803D.toInt()
+                "$0 due today · Then $4.17/mo ($49.99/yr) or $9.99/mo. Cancel anytime in 1 tap.",
+                11f,
+                0xFF15803D.toInt(),
+                bold = true
             ))
             card.addView(proCard)
 
@@ -3298,10 +3336,12 @@ class MainActivity : Activity() {
                 }
             })
 
-            // Secondary CTA: Continue with Free Plan (3 Free Swaps Included — no "/Wk")
-            card.addView(label("Continue with Free Plan ($freeStarterSwaps Free Swaps Included) →", 13.5f, 0xFF1F2937.toInt(), bold = true).apply {
+            // Secondary CTA: Continue with Free Plan (single-line so arrow never wraps to 2nd line)
+            card.addView(label("Continue with Free Plan ($freeStarterSwaps Free Swaps Included) →", 12.5f, 0xFF1F2937.toInt(), bold = true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(14), dp(13), dp(14), dp(13))
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+                setPadding(dp(12), dp(13), dp(12), dp(13))
                 background = GradientDrawable().apply {
                     setColor(Color.WHITE)
                     setStroke(dp(2), 0xFFD1D5DB.toInt())
@@ -3310,7 +3350,7 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) }
+                ).apply { bottomMargin = dp(6) }
                 setOnClickListener {
                     ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("guest"))
                     saveWatchlistAndMarkDone()
@@ -3323,17 +3363,21 @@ class MainActivity : Activity() {
                 }
             })
 
-            // Tertiary Link: Sign In & Sync Free Across Devices
-            card.addView(label("Save Watchlist (${selectedGoals.size}) & Sign In / Sync Free Across Devices →", 12.5f, 0xFF0F7A4A.toInt(), bold = true).apply {
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(8), dp(8), dp(4))
-                setOnClickListener {
-                    ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("signin"))
-                    saveWatchlistAndMarkDone()
-                    funnelDialog?.dismiss()
-                    showGoCoCoLoginDialog()
-                }
-            })
+            // Quiet Returning-User Login Link (only when signed out, never competing with Free Plan)
+            val signedInEmail = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+                .getString("auth_email", "")
+            if (signedInEmail.isNullOrBlank()) {
+                card.addView(label("Already have an account? Log in", 12f, 0xFF6B7280.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(6), dp(8), dp(4))
+                    setOnClickListener {
+                        ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("signin"))
+                        saveWatchlistAndMarkDone()
+                        funnelDialog?.dismiss()
+                        showGoCoCoLoginDialog()
+                    }
+                })
+            }
         }
 
         renderFunnelStep(1)
@@ -3675,7 +3719,7 @@ class MainActivity : Activity() {
                     0xFF6B7280.toInt()
                 ).apply { setPadding(0, dp(6), 0, dp(22)) })
 
-                // 1. Continue with Google Button (4-color Google 'G' logo + system Google account picker)
+                // 1. Continue with Google Button (opens Google's official accounts.google.com 'Choose an account' OAuth sheet)
                 card.addView(buildIconPillButton(
                     iconRes = R.drawable.ic_google_logo,
                     iconWidthDp = 20,
@@ -3685,29 +3729,13 @@ class MainActivity : Activity() {
                     borderColor = 0xFFD1D5DB.toInt(),
                     textColor = 0xFF1F2937.toInt(),
                     onClick = {
-                        selectedProvider = "google"
-                        pendingGoogleAccountPicked = { pickedEmail ->
-                            prefilledEmail = pickedEmail
-                            selectedProvider = "google"
-                            renderStep("email_login")
-                        }
-                        val launched = runCatching {
-                            @Suppress("DEPRECATION")
-                            val intent = AccountManager.newChooseAccountIntent(
-                                null,
-                                null,
-                                arrayOf("com.google"),
-                                null,
-                                null,
-                                null,
-                                null
-                            )
-                            startActivityForResult(intent, REQ_PICK_GOOGLE_ACCOUNT)
-                            true
-                        }.getOrDefault(false)
-                        if (!launched) {
-                            renderStep("email_login")
-                        }
+                        launchGoogleWebOAuthOrFallback(
+                            onFallbackToEmail = {
+                                selectedProvider = "email"
+                                renderStep("email_login")
+                            },
+                            onSuccess = { authDialog?.dismiss() }
+                        )
                     }
                 ))
 
@@ -3775,7 +3803,6 @@ class MainActivity : Activity() {
                 when {
                     isRegister -> "Create Account"
                     isReset -> "Reset Password"
-                    selectedProvider == "google" -> "Continue with Google"
                     else -> "Continue with Email"
                 },
                 23f,
@@ -3786,19 +3813,20 @@ class MainActivity : Activity() {
                 when {
                     isRegister -> "Create a free HeyBroc account to sync your Watchlist & Clean Swaps across devices."
                     isReset -> "Enter your email, 6-digit reset code, and a new password (8+ characters)."
-                    selectedProvider == "google" -> "Confirm your Google email and enter a password (8+ characters) to sign in or create your account."
-                    else -> "Enter your email and password (8+ characters) — we'll sign you in or create your account automatically."
+                    else -> "Enter your email and password (8+ characters) — saved passwords autofill automatically."
                 },
                 14f,
                 0xFF6B7280.toInt()
             ).apply { setPadding(0, dp(4), 0, dp(16)) })
 
             val emailInput = EditText(this).apply {
-                hint = if (selectedProvider == "google") "Google email (you@gmail.com)" else "Email address"
+                hint = "Email address"
                 setHintTextColor(0xFF9CA3AF.toInt())
                 setTextColor(0xFF111814.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+                setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS)
                 setSingleLine(true)
                 if (prefilledEmail.isNotBlank()) {
                     setText(prefilledEmail)
@@ -3858,6 +3886,8 @@ class MainActivity : Activity() {
                 setTextColor(0xFF111814.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+                setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
                 setSingleLine(true)
                 background = null
                 setPadding(0, dp(13), dp(8), dp(13))
@@ -3964,7 +3994,7 @@ class MainActivity : Activity() {
                         },
                         password = pw,
                         resetCode = if (isReset) rc else null,
-                        provider = selectedProvider,
+                        provider = "email",
                         onSuccess = { authDialog?.dismiss() }
                     )
                 }
@@ -3976,6 +4006,343 @@ class MainActivity : Activity() {
         authDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
             dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
             dlg.show()
+        }
+    }
+
+    private fun openGoogleOAuthCustomTab(clientId: String): Boolean {
+        val cleanClientId = clientId.trim()
+        if (cleanClientId.isBlank()) return false
+        val nonce = java.util.UUID.randomUUID().toString().replace("-", "")
+        val state = "android_${nonce.take(20)}"
+        getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+            .edit()
+            .putString("pending_google_oauth_state", state)
+            .apply()
+
+        val authUri = Uri.parse("https://accounts.google.com/o/oauth2/v2/auth").buildUpon()
+            .appendQueryParameter("client_id", cleanClientId)
+            .appendQueryParameter("redirect_uri", "https://www.heybroc.com/auth/google-callback")
+            .appendQueryParameter("response_type", "id_token")
+            .appendQueryParameter("scope", "openid email profile")
+            .appendQueryParameter("prompt", "select_account")
+            .appendQueryParameter("nonce", nonce)
+            .appendQueryParameter("state", state)
+            .build()
+
+        return runCatching {
+            val ctIntent = Intent(Intent.ACTION_VIEW, authUri).apply {
+                putExtras(Bundle().apply {
+                    putBinder("android.support.customtabs.extra.SESSION", null)
+                })
+                putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", 0xFF111814.toInt())
+            }
+            startActivity(ctIntent)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun launchSystemAccountPickerFallback(
+        onFallbackToEmail: () -> Unit,
+        onSuccess: (() -> Unit)?
+    ) {
+        pendingGoogleAccountPicked = { pickedEmail ->
+            if (pickedEmail.isNotBlank()) {
+                Toast.makeText(this@MainActivity, "Signing in with Google…", Toast.LENGTH_SHORT).show()
+                completeGoogleAccountSignIn(
+                    pickedEmail = pickedEmail,
+                    onSuccess = onSuccess
+                )
+            }
+        }
+        val launched = runCatching {
+            @Suppress("DEPRECATION")
+            val intent = AccountManager.newChooseAccountIntent(
+                null,
+                null,
+                arrayOf("com.google"),
+                null,
+                null,
+                null,
+                null
+            )
+            startActivityForResult(intent, REQ_PICK_GOOGLE_ACCOUNT)
+            true
+        }.getOrDefault(false)
+        if (!launched) {
+            onFallbackToEmail()
+        }
+    }
+
+    private fun launchGoogleWebOAuthOrFallback(
+        onFallbackToEmail: () -> Unit,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val cachedClientId = prefs.getString("cached_google_client_id", "").orEmpty().trim()
+        if (cachedClientId.isNotBlank() && openGoogleOAuthCustomTab(cachedClientId)) {
+            return
+        }
+
+        io.execute {
+            val fetchedClientId = runCatching {
+                val conn = (URL("https://www.heybroc.com/api/auth?config=1").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 3500
+                    readTimeout = 3500
+                }
+                try {
+                    if (conn.responseCode in 200..299) {
+                        val raw = conn.inputStream.bufferedReader().use { it.readText() }
+                        JSONObject(raw).optString("googleClientId", "").trim()
+                    } else ""
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrDefault("")
+
+            if (fetchedClientId.isNotBlank()) {
+                prefs.edit().putString("cached_google_client_id", fetchedClientId).apply()
+            }
+
+            mainHandler.post {
+                if (isDestroyed || isFinishing) return@post
+                if (fetchedClientId.isNotBlank() && openGoogleOAuthCustomTab(fetchedClientId)) {
+                    return@post
+                }
+                launchSystemAccountPickerFallback(onFallbackToEmail, onSuccess)
+            }
+        }
+    }
+
+    private fun handleIncomingAuthRedirect(incoming: Intent?): Boolean {
+        val data = incoming?.data ?: return false
+        if (!data.scheme.equals("heybroc", ignoreCase = true) || !data.host.equals("auth", ignoreCase = true)) {
+            return false
+        }
+        incoming.data = null
+
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val expectedState = prefs.getString("pending_google_oauth_state", "").orEmpty()
+        prefs.edit().remove("pending_google_oauth_state").apply()
+
+        val idToken = data.getQueryParameter("id_token").orEmpty().trim()
+        val returnedState = data.getQueryParameter("state").orEmpty().trim()
+        val err = data.getQueryParameter("error").orEmpty().trim()
+
+        if (expectedState.isNotBlank() && returnedState.isNotBlank() && expectedState != returnedState) {
+            Toast.makeText(this, "Google sign-in session expired. Please try again.", Toast.LENGTH_LONG).show()
+            return true
+        }
+        if (err.isNotBlank() || idToken.isBlank()) {
+            if (err.isNotBlank() && err != "access_denied" && err != "cancelled") {
+                Toast.makeText(this, "Google Sign-In: $err", Toast.LENGTH_LONG).show()
+            }
+            return true
+        }
+
+        var claimEmail = ""
+        var claimName = ""
+        runCatching {
+            val parts = idToken.split(".")
+            if (parts.size >= 2) {
+                val decoded = String(
+                    android.util.Base64.decode(
+                        parts[1],
+                        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                    ),
+                    Charsets.UTF_8
+                )
+                val claims = JSONObject(decoded)
+                claimEmail = claims.optString("email", "").trim().lowercase()
+                claimName = claims.optString("name", "").trim()
+            }
+        }
+
+        Toast.makeText(this, "Completing Google sign-in…", Toast.LENGTH_SHORT).show()
+        io.execute {
+            runCatching {
+                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    connectTimeout = 7000
+                    readTimeout = 7000
+                }
+                val (okHttp, json) = try {
+                    val payload = JSONObject().apply {
+                        put("action", "oauth")
+                        put("provider", "google")
+                        put("idToken", idToken)
+                        if (claimEmail.isNotBlank()) put("email", claimEmail)
+                        if (claimName.isNotBlank()) put("displayName", claimName)
+                        put("deviceId", ScanApi.deviceId(this@MainActivity))
+                        put("deviceSecret", ScanApi.deviceSecret(this@MainActivity))
+                    }.toString()
+                    conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                    val okStatus = conn.responseCode in 200..299
+                    val stream = if (okStatus) conn.inputStream else conn.errorStream
+                    val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    val parsed = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                    Pair(okStatus && parsed.optBoolean("ok"), parsed)
+                } finally {
+                    conn.disconnect()
+                }
+
+                if (okHttp) {
+                    val tok = json.optString("token", "")
+                    val usr = json.optJSONObject("user")
+                    val resolvedEmail = usr?.optString("email", claimEmail)?.ifBlank { claimEmail } ?: claimEmail
+                    val fallbackName = claimName.ifBlank { resolvedEmail.substringBefore("@") }
+                    val resolvedName = usr?.optString("displayName", fallbackName)?.ifBlank { fallbackName } ?: fallbackName
+                    ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
+                    prefs.edit()
+                        .putString("auth_email", resolvedEmail)
+                        .putString("auth_name", resolvedName)
+                        .putString("auth_provider", "google")
+                        .putString("auth_token", tok)
+                        .putBoolean("onboarding_funnel_done_v1", true)
+                        .apply()
+                    ScanApi.trackEvent(
+                        this@MainActivity,
+                        "auth_completed",
+                        properties = JSONObject().put("provider", "google")
+                    )
+                    mainHandler.post {
+                        if (isDestroyed || isFinishing) return@post
+                        authDialog?.dismiss()
+                        funnelDialog?.dismiss()
+                        renderScreen()
+                        Toast.makeText(this@MainActivity, "👋 Signed in with Google as $resolvedName!", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    val errMsg = json.optString("error", "Could not verify Google account. Please try again.")
+                    mainHandler.post {
+                        if (isDestroyed || isFinishing) return@post
+                        Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }.onFailure {
+                mainHandler.post {
+                    if (isDestroyed || isFinishing) return@post
+                    Toast.makeText(this@MainActivity, "Network error completing Google sign-in.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        return true
+    }
+
+    private fun completeGoogleAccountSignIn(
+        pickedEmail: String,
+        allowRetryOnStaleToken: Boolean = true,
+        onSuccess: (() -> Unit)? = null
+    ) {
+        val cleanEmail = pickedEmail.trim().lowercase()
+        if (cleanEmail.isBlank()) return
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val am = AccountManager.get(this)
+        val account = Account(pickedEmail.trim(), "com.google")
+        val oauthScope = "oauth2:https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+
+        runCatching {
+            am.getAuthToken(
+                account,
+                oauthScope,
+                null,
+                this,
+                { future ->
+                    io.execute {
+                        runCatching {
+                            val bundle = future.result
+                            val token = bundle?.getString(AccountManager.KEY_AUTHTOKEN).orEmpty().trim()
+                            if (token.isBlank()) {
+                                mainHandler.post {
+                                    if (!isDestroyed && !isFinishing) {
+                                        Toast.makeText(this@MainActivity, "Google sign-in was canceled.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                return@runCatching
+                            }
+
+                            val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                                requestMethod = "POST"
+                                doOutput = true
+                                setRequestProperty("Content-Type", "application/json")
+                                connectTimeout = 7000
+                                readTimeout = 7000
+                            }
+                            val (httpCode, okHttp, json) = try {
+                                val payload = JSONObject().apply {
+                                    put("action", "oauth")
+                                    put("provider", "google")
+                                    put("email", cleanEmail)
+                                    put("displayName", cleanEmail.substringBefore("@"))
+                                    put("accessToken", token)
+                                    put("deviceId", ScanApi.deviceId(this@MainActivity))
+                                    put("deviceSecret", ScanApi.deviceSecret(this@MainActivity))
+                                }.toString()
+                                conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                                val code = conn.responseCode
+                                val okStatus = code in 200..299
+                                val stream = if (okStatus) conn.inputStream else conn.errorStream
+                                val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                                val parsed = if (raw.isNotBlank()) JSONObject(raw) else JSONObject()
+                                Triple(code, okStatus && parsed.optBoolean("ok"), parsed)
+                            } finally {
+                                conn.disconnect()
+                            }
+
+                            if (!okHttp && allowRetryOnStaleToken && (httpCode == 401 || json.optString("error").contains("token", ignoreCase = true) || json.optString("error").contains("Google", ignoreCase = true))) {
+                                am.invalidateAuthToken("com.google", token)
+                                mainHandler.post {
+                                    if (!isDestroyed && !isFinishing) {
+                                        completeGoogleAccountSignIn(pickedEmail, allowRetryOnStaleToken = false, onSuccess = onSuccess)
+                                    }
+                                }
+                                return@runCatching
+                            }
+
+                            if (okHttp) {
+                                val tok = json.optString("token", "")
+                                val usr = json.optJSONObject("user")
+                                val fallbackName = cleanEmail.substringBefore("@")
+                                val resolvedName = usr?.optString("displayName", fallbackName) ?: fallbackName
+                                ScanApi.saveEntitlementSnapshot(this@MainActivity, usr)
+                                prefs.edit()
+                                    .putString("auth_email", cleanEmail)
+                                    .putString("auth_name", resolvedName)
+                                    .putString("auth_provider", "google")
+                                    .putString("auth_token", tok)
+                                    .apply()
+                                ScanApi.trackEvent(
+                                    this@MainActivity,
+                                    "auth_completed",
+                                    properties = JSONObject().put("provider", "google")
+                                )
+                                mainHandler.post {
+                                    if (isDestroyed || isFinishing) return@post
+                                    onSuccess?.invoke()
+                                    renderScreen()
+                                    Toast.makeText(this@MainActivity, "👋 Signed in with Google as $resolvedName!", Toast.LENGTH_LONG).show()
+                                }
+                            } else {
+                                val errMsg = json.optString("error", "Could not complete Google sign-in. Please try again.")
+                                mainHandler.post {
+                                    if (isDestroyed || isFinishing) return@post
+                                    Toast.makeText(this@MainActivity, errMsg, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }.onFailure {
+                            mainHandler.post {
+                                if (isDestroyed || isFinishing) return@post
+                                Toast.makeText(this@MainActivity, "Google sign-in canceled or unavailable.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
+                mainHandler
+            )
+        }.onFailure {
+            Toast.makeText(this, "Google sign-in unavailable on this device. Please use Continue with Email.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -4027,8 +4394,6 @@ class MainActivity : Activity() {
                 }
 
                 var (ok, json) = sendAuthRequest(action)
-                // If user tapped "Continue with Google" or "Continue with Email" and doesn't have an account yet,
-                // automatically create their account with the password they entered.
                 if (!ok && action == "login" && json.optString("error").contains("No account found", ignoreCase = true)) {
                     val regResult = sendAuthRequest("register")
                     ok = regResult.first
@@ -5486,7 +5851,7 @@ class MainActivity : Activity() {
         val explicitPkg = ScanHistoryStore.storePackageForKey(storeKey).ifBlank {
             swapObj?.optString("androidPackage").orEmpty()
         }
-        val isDirectProductLink = isDirectNativeStoreProductLink(explicitDeepLink, storeKey)
+        val isDirectProductLink = storeKey != "walmart" && isDirectNativeStoreProductLink(explicitDeepLink, storeKey)
         val supportsDirectUrlDeepLink = isDirectProductLink || (
             explicitPkg in setOf("com.target.ui", "com.amazon.mShop.android.shopping") &&
                 !explicitDeepLink.contains("goto.") &&
@@ -5622,35 +5987,12 @@ class MainActivity : Activity() {
         val a11yServiceEnabled = isAccessibilityEnabled()
 
         if (!a11yServiceEnabled) {
-            val subStep = getSetupSubStep()
             startPermissionWatcher()
-            if (isInstalledFromPlayStore()) {
-                scheduleSettingsToasts(
-                    "Tap 'Installed apps' → 'HeyBroc' → flip switch ON!",
-                    "Almost done! Tap 'HeyBroc' and turn the switch ON!"
-                )
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            } else if (subStep == "2B") {
-                setSetupSubStep("2C")
-                scheduleSettingsToasts(
-                    "Look at top-right ↑ Tap ⋮ (3 dots) → Allow restricted settings!",
-                    "After tapping 'Allow restricted settings', press Back to return to HeyBroc!"
-                )
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-            } else if (subStep == "2C") {
-                scheduleSettingsToasts(
-                    "Tap 'Installed apps' → 'HeyBroc' → flip switch ON!",
-                    "Almost done! Tap 'HeyBroc' and turn the switch ON!"
-                )
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            } else {
-                setSetupSubStep("2B")
-                scheduleSettingsToasts(
-                    "1) Tap 'Installed apps'  2) Tap greyed-out 'HeyBroc' once, then press Back!",
-                    "After tapping greyed-out 'HeyBroc' once, press Back to return to HeyBroc for Step 2!"
-                )
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
+            scheduleSettingsToasts(
+                "Tap 'Installed apps' → 'HeyBroc' → flip switch ON!",
+                "Almost done! Tap 'HeyBroc' and turn the switch ON!"
+            )
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         } else {
             clearScheduledToasts()
             hideFloatingSetupHelper()

@@ -145,6 +145,7 @@ export async function POST(request: Request) {
       resetCode?: string;
       verificationCode?: string;
       idToken?: string;
+      accessToken?: string;
       displayName?: string;
       provider?: "google" | "apple";
       deviceId?: string;
@@ -217,6 +218,7 @@ export async function POST(request: Request) {
         provider,
         email: body.email || "",
         idToken: body.idToken,
+        accessToken: body.accessToken,
         password: body.password,
         displayName: body.displayName,
         deviceId: normalizedDeviceId,

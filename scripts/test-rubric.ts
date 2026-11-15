@@ -5696,6 +5696,67 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             !overlaySvcVisualSrc.includes("ScanApi.autoVerifyLabel(prodTitle, ing, currentStore)")
         )
       );
+
+      // --- Nov 15 Mobile QA Suite: Cinnamon Toast Crunch Swap, Non-Food Appliance/Cart Guards, PDP Photo Gallery, 1-Step Bubble Setup & Google OAuth ---
+      const ctcScan = await runScan({
+        productTitle: "Cinnamon Toast Crunch Breakfast Cereal, Crispy Cinnamon Cereal, Family Size, 18.8 oz",
+        store: "walmart",
+      });
+      const airFryerScan = await runScan({
+        productTitle: "12QT Air Fryer Toaster Oven, Digital Stainless Steel Countertop Convection Oven",
+        store: "walmart",
+      });
+      const inCartBowlScan = await runScan({
+        productTitle: "In Cart - Mainstays Stainless Steel Mixing Bowl, 5 Quart",
+        store: "walmart",
+      });
+      const toasterPastryFoodScan = await runScan({
+        productTitle: "My Cookie Dealer Protein Toaster Pastry, Powdered...",
+        store: "walmart",
+      });
+      const readerQaSrc = fs.readFileSync(
+        "android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt",
+        "utf8"
+      );
+      const googleCallbackQaSrc = fs.readFileSync(
+        "app/auth/google-callback/page.tsx",
+        "utf8"
+      );
+      const authRouteQaSrc = fs.readFileSync("app/api/auth/route.ts", "utf8");
+      const authLibQaSrc = fs.readFileSync("lib/auth.ts", "utf8");
+
+      const ctcSwap = ctcScan.ok ? ctcScan.swap : null;
+      const ctcSwapName = `${ctcSwap?.brand ?? ""} ${ctcSwap?.name ?? ""}`.trim();
+      const ctcSwapUrl = `${ctcSwap?.deepLink ?? ""} ${ctcSwap?.webUrl ?? ""}`;
+
+      check(
+        "Nov 15 Mobile QA Suite: Cinnamon Toast Crunch swaps to 90/100 Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal (no dead /ip/10898744), Air Fryer & 'In Cart - Mainstays' bowls rejected as non-food while Toaster Pastries still scan, PDP Photo Gallery ('Images (14) | Videos (1)') stays scannable, 1-Step Bubble Setup replaces 'Step 1 of 3', and Google OAuth opens accounts.google.com + heybroc://auth passwordlessly",
+        Boolean(
+          ctcScan.ok &&
+            ctcSwapName.includes("Ezekiel 4:9 Cinnamon Raisin") &&
+            (ctcSwap?.score ?? 0) === 90 &&
+            !ctcSwapUrl.includes("10898744") &&
+            !airFryerScan.ok &&
+            airFryerScan.status === 404 &&
+            !inCartBowlScan.ok &&
+            inCartBowlScan.status === 404 &&
+            toasterPastryFoodScan.ok &&
+            readerQaSrc.includes("isCartEndHeader") &&
+            readerQaSrc.includes("SAVED_FOR_LATER_ROW_CTA") &&
+            readerQaSrc.includes("NON_CART_ROW_CTA") &&
+            readerQaSrc.includes("isPdpMediaGallery") &&
+            overlaySvcVisualSrc.includes("preferNativeInAppSearch") &&
+            !mainKtVisualSrc.includes("Step 1 of 3") &&
+            !mainKtVisualSrc.includes("Step 2 of 3") &&
+            mainKtVisualSrc.includes("openGoogleOAuthCustomTab") &&
+            mainKtVisualSrc.includes("handleIncomingAuthRedirect") &&
+            mainKtVisualSrc.includes("AUTOFILL_HINT_PASSWORD") &&
+            googleCallbackQaSrc.includes('state.startsWith("android_")') &&
+            googleCallbackQaSrc.includes("heybroc://auth?") &&
+            authRouteQaSrc.includes("accessToken") &&
+            authLibQaSrc.includes("verifyGoogleAccessToken")
+        )
+      );
     }
   }
 

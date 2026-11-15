@@ -460,9 +460,6 @@ export default function WatchlistMiniFunnel({
     );
   };
 
-  const activeGoalItems = WATCHLIST_PILLS.filter((p) => selected.includes(p.id));
-  const displayGoalItems =
-    activeGoalItems.length > 0 ? activeGoalItems : WATCHLIST_PILLS.slice(0, 2);
   const activeHouseholdObj =
     HOUSEHOLD_OPTIONS.find((h) => h.id === primaryHousehold) || HOUSEHOLD_OPTIONS[0];
   const householdSummaryLabel =
@@ -1574,43 +1571,55 @@ export default function WatchlistMiniFunnel({
                   {"Maps show where each is reported, not that one causes the other; EPA and IARC disagree on glyphosate's cancer risk."}
                 </div>
 
-                <div
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={dietarySelected.includes("pesticide_risk")}
+                  onClick={() => toggleDietary("pesticide_risk")}
                   style={{
+                    width: "100%",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    paddingTop: 6,
-                    borderTop: "1px solid rgba(239, 68, 68, 0.2)",
+                    gap: 9,
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: dietarySelected.includes("pesticide_risk")
+                      ? "1.5px solid #16a34a"
+                      : "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    color: "#111814",
+                    cursor: "pointer",
+                    textAlign: "left",
                   }}
                 >
-                  <span style={{ fontSize: 11, color: "#7f1d1d", lineHeight: 1.28, flex: 1 }}>
-                    <b>USDA Organic</b> prohibits synthetic glyphosate.
-                  </span>
-                  <button
-                    type="button"
-                    aria-pressed={dietarySelected.includes("pesticide_risk")}
-                    onClick={() => toggleDietary("pesticide_risk")}
+                  <span
+                    aria-hidden="true"
                     style={{
-                      padding: "6px 10px",
-                      borderRadius: 999,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 5,
                       border: dietarySelected.includes("pesticide_risk")
-                        ? "1.5px solid #16a34a"
-                        : "1.5px solid #dc2626",
-                      background: dietarySelected.includes("pesticide_risk") ? "#dcfce7" : "#dc2626",
-                      color: dietarySelected.includes("pesticide_risk") ? "#14532d" : "#ffffff",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
+                        ? "2px solid #16a34a"
+                        : "2px solid #94a3b8",
+                      background: dietarySelected.includes("pesticide_risk") ? "#16a34a" : "#ffffff",
+                      color: "#ffffff",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 900,
                       flexShrink: 0,
                     }}
                   >
-                    {dietarySelected.includes("pesticide_risk")
-                      ? "✓ Glyphosate Watch Active"
-                      : "🌱 Guard Glyphosate"}
-                  </button>
-                </div>
+                    {dietarySelected.includes("pesticide_risk") ? "✓" : ""}
+                  </span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#111814", lineHeight: 1.28 }}>
+                    Guard my family against glyphosate{" "}
+                    <span style={{ fontWeight: 500, color: "#4b5563" }}>
+                      (USDA Organic prohibits synthetic glyphosate)
+                    </span>
+                  </span>
+                </button>
               </div>
             </>
           )}
@@ -1862,36 +1871,6 @@ export default function WatchlistMiniFunnel({
                   →
                 </div>
               </div>
-
-              {/* Personalized Active Watchlist Guard Chips */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${Math.max(1, Math.min(3, displayGoalItems.length))}, minmax(0, 1fr))`,
-                  gap: 5,
-                }}
-              >
-                {displayGoalItems.slice(0, 3).map((g) => (
-                  <span
-                    key={g.id}
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 800,
-                      background: "#f0fdf4",
-                      color: "#166534",
-                      border: "1px solid #bbf7d0",
-                      borderRadius: 999,
-                      padding: "4px 7px",
-                      textAlign: "center",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {g.icon} Guarding {g.title.replace(/^Industrial\s+/i, "").replace(/High-Fructose\s+/i, "")}
-                  </span>
-                ))}
-              </div>
             </>
           )}
 
@@ -1967,17 +1946,17 @@ export default function WatchlistMiniFunnel({
                   lineHeight: 1.35,
                 }}
               >
-                Your Watchlist works right away with <b>no pre-signup needed</b> — try Family Pro free for{" "}
-                <b>{effectiveTrialDays} days ($0 today)</b>, or start on the Free Plan:
+                Try Family Pro free for <b>{effectiveTrialDays} days ($0 today)</b>, or start immediately on the Free Plan:
               </p>
 
-              {/* Plan Comparison Card */}
+              {/* Plan Comparison Card with Icon Bubbles */}
               <div
                 style={{
-                  background: "#f0fdf4",
+                  background: "#ffffff",
                   border: "2px solid #16a34a",
-                  borderRadius: 14,
+                  borderRadius: 15,
                   padding: "10px 12px",
+                  boxShadow: "0 4px 14px rgba(22, 163, 74, 0.08)",
                 }}
               >
                 <div
@@ -1986,7 +1965,7 @@ export default function WatchlistMiniFunnel({
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 6,
-                    marginBottom: 5,
+                    marginBottom: 8,
                   }}
                 >
                   <span style={{ fontSize: 13.5, fontWeight: 800, color: "#14532d" }}>
@@ -1998,7 +1977,7 @@ export default function WatchlistMiniFunnel({
                       color: "#ffffff",
                       fontSize: 10,
                       fontWeight: 800,
-                      padding: "2.5px 8px",
+                      padding: "3px 8px",
                       borderRadius: 999,
                       whiteSpace: "nowrap",
                     }}
@@ -2006,32 +1985,81 @@ export default function WatchlistMiniFunnel({
                     {effectiveTrialDays} DAYS FREE · $0 TODAY
                   </span>
                 </div>
-                <ul
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                  {[
+                    {
+                      icon: "🛒",
+                      title: "Unlimited Clean Swaps",
+                      desc:
+                        selectedStores.length > 0
+                          ? `1-tap healthier picks in ${storesSummaryLabel} & all 12 stores`
+                          : "1-tap healthier picks across all 12 grocery & delivery stores",
+                    },
+                    {
+                      icon: "🧾",
+                      title: "Order Audits & 2x Watchlists",
+                      desc: "Receipt health grades + double penalties on flagged additives",
+                    },
+                    {
+                      icon: "🫧",
+                      title: "Live Store Bubble & Cloud Sync",
+                      desc: "Auto-grades carts as you shop + syncs across family devices",
+                    },
+                  ].map((feat) => (
+                    <div
+                      key={feat.title}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 9,
+                        background: "#f0fdf4",
+                        border: "1px solid #dcfce7",
+                        borderRadius: 10,
+                        padding: "5px 8px",
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 8,
+                          background: "#dcfce7",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 13,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {feat.icon}
+                      </span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: "#111814", lineHeight: 1.2 }}>
+                          {feat.title}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#4b5563", lineHeight: 1.25 }}>
+                          {feat.desc}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div
                   style={{
-                    margin: "0 0 5px",
-                    paddingLeft: 17,
-                    fontSize: 11.5,
-                    color: "#166534",
-                    lineHeight: 1.42,
+                    fontSize: 10.5,
+                    color: "#15803d",
+                    fontWeight: 600,
+                    lineHeight: 1.32,
+                    paddingTop: 6,
+                    borderTop: "1px solid #e5e7eb",
                   }}
                 >
-                  <li>
-                    <b>Unlimited Cleaner Alternative Links ↗</b> across{" "}
-                    {selectedStores.length > 0
-                      ? `${storesSummaryLabel} & all 12 stores`
-                      : "all 12 grocery & delivery stores"}
-                  </li>
-                  <li>
-                    <b>Order &amp; Receipt Health Audits</b> + Custom 2x Family Watchlists
-                  </li>
-                  <li>
-                    <b>Unlimited Live Store Bubble</b> &amp; Cross-Device Cloud Sync
-                  </li>
-                </ul>
-                <div style={{ fontSize: 10.5, color: "#15803d", lineHeight: 1.32 }}>
                   {isIosApp
-                    ? `$0 due today via Apple ID · Then $${annualPerMonth.toFixed(2)}/mo billed annually ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime in iPhone Settings.`
-                    : `$0 due today · Then $${annualPerMonth.toFixed(2)}/mo billed annually ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime in 1 tap.`}
+                    ? `$0 due today via Apple ID · Then $${annualPerMonth.toFixed(2)}/mo ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime.`
+                    : `$0 due today · Then $${annualPerMonth.toFixed(2)}/mo ($${PRICING.annual}/yr) or $${PRICING.monthly}/mo. Cancel anytime in 1 tap.`}
                 </div>
               </div>
             </>
@@ -2271,17 +2299,17 @@ export default function WatchlistMiniFunnel({
                   }}
                   style={{
                     width: "100%",
-                    padding: "5px 10px",
+                    padding: "4px 10px",
                     borderRadius: 999,
                     border: "none",
                     background: "transparent",
-                    color: "#0f7a4a",
-                    fontSize: 12,
-                    fontWeight: 800,
+                    color: "#6b7280",
+                    fontSize: 11.5,
+                    fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
-                  Save Watchlist &amp; Create Free Account / Sign In →
+                  Already have an account? <span style={{ color: "#0f7a4a", textDecoration: "underline" }}>Log in</span>
                 </button>
               )}
             </div>

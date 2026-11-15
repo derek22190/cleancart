@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 export default function GoogleOAuthCallbackPage() {
   const [status, setStatus] = useState("Completing Google Sign-In…");
+  const [androidReturnHref, setAndroidReturnHref] = useState("");
 
   useEffect(() => {
     try {
@@ -22,6 +23,24 @@ export default function GoogleOAuthCallbackPage() {
         searchParams.get("error_description") ||
         searchParams.get("error") ||
         "";
+
+      if (state.startsWith("android_")) {
+        const qs = new URLSearchParams();
+        if (idToken) qs.set("id_token", idToken);
+        if (state) qs.set("state", state);
+        if (err) qs.set("error", err);
+        const query = qs.toString();
+        const customSchemeUrl = `heybroc://auth?${query}`;
+        const intentUrl = `intent://auth?${query}#Intent;scheme=heybroc;package=com.cleancart.overlay;end`;
+        setAndroidReturnHref(intentUrl);
+        setStatus(
+          err
+            ? "Sign-in cancelled. Returning to HeyBroc…"
+            : "Signed in with Google! Returning to HeyBroc…"
+        );
+        window.location.replace(customSchemeUrl);
+        return;
+      }
 
       if (window.opener && window.opener !== window) {
         window.opener.postMessage(
@@ -79,6 +98,24 @@ export default function GoogleOAuthCallbackPage() {
           style={{ width: 56, height: 56, objectFit: "contain", marginBottom: 12 }}
         />
         <p style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{status}</p>
+        {androidReturnHref && (
+          <a
+            href={androidReturnHref}
+            style={{
+              display: "inline-block",
+              marginTop: 16,
+              padding: "12px 22px",
+              borderRadius: 999,
+              background: "#16a34a",
+              color: "#ffffff",
+              fontSize: 14,
+              fontWeight: 800,
+              textDecoration: "none",
+            }}
+          >
+            Return to HeyBroc App →
+          </a>
+        )}
       </div>
     </main>
   );

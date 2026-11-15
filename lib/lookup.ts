@@ -138,7 +138,11 @@ const CANONICAL_BRAND_PATTERNS: RegExp[] = SHARED_BRAND_PATTERNS;
  * so word-order permutations resolve to the exact same cache key, provider query, and score.
  */
 export function canonicalizeGroceryQuery(raw: string): string {
-  let q = raw.replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
+  let q = raw
+    .replace(/[’‘]/g, "'")
+    .replace(/^(?:\d+\s+)?in\s+(?:cart|bag|basket|order)\s*[-–—:,]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!q) return "";
 
   q = q
@@ -1729,6 +1733,26 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
+    match: /\bezekiel\s*4:?9\b.*\bcinnamon\s+raisin\b|\bfood\s+for\s+life\b.*\bcinnamon\s+raisin\b.*\bcereal\b/i,
+    brand: "Food For Life",
+    title: "Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal",
+    ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon.",
+    imageUrl: "/swaps/cereal.jpg",
+    nutrition: { caloriesKcal100g: 351, sugarsG100g: 14.0, saturatedFatG100g: 0, sodiumMg100g: 281, fiberG100g: 10.5, proteinG100g: 12.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
+    sourceUrl: "https://www.foodforlife.com/product/cereals/ezekiel-49-cinnamon-raisin-sprouted-whole-grain-cereal",
+    verifiedAt: "2026-11-15",
+  },
+  {
+    match: /\bnature'?s\s+path\b.*\bsunrise\b.*\bcinnamon\b|\bsunrise\s+crunchy\s+cinnamon\b/i,
+    brand: "Nature's Path",
+    title: "Nature's Path Organic Sunrise Crunchy Cinnamon Cereal",
+    ingredients: "Organic brown rice flour, organic whole grain corn meal, organic cane sugar, organic corn meal, organic yellow corn flour, organic inulin, organic quinoa, organic flax seeds, sea salt, organic buckwheat flour, organic amaranth, organic cinnamon, organic molasses, tocopherols (vitamin E).",
+    imageUrl: "/swaps/cereal.jpg",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 22.5, saturatedFatG100g: 0, sodiumMg100g: 375, fiberG100g: 10, proteinG100g: 7.5, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
+    sourceUrl: "https://naturespath.com/products/crunchy-sunrise-cinnamon-cold-cereal-np-us",
+    verifiedAt: "2026-11-15",
+  },
+  {
     match: /\bhoney\s+nut\s+cheerios\b|\bcheerios\b.*\bhoney\s+nut\b/i,
     brand: "General Mills",
     title: "Honey Nut Cheerios Oats Cereal",
@@ -3205,7 +3229,7 @@ const UI_NOISE_QUERY =
   /\b(bought \d+\+?\s*times?|purchased \d+\+?\s*times?|stay stocked|last purchased|price may vary|max \d+ per order|final cost by weight|instant savings|really philly good|straight talk|google pixel|pixel \d+a?|tracfone|boost mobile|cricket wireless|total wireless|gas savings|walmart\+|walmart cash|manufacturer offer|subscribe to save|new notification|scan barcodes?|barcode scanner|opens barcode scanner|qr code|pickup or delivery|pickup and delivery|your favorites, for less|rollbacks & more|the holiday shop|shop all food|thanksgiving\s+meal|feast\s+for\s+\d+|classic\s+sides|meals?\s+made\s+easy|get\s+it\s+fast|household\s+essentials|grocery\s+list\s+staples|weekly\s+essentials|under\s+\$?\d+\s+per\s+person|shop\s+the\s+list|sparky|my items|product information|items to add next|frequently bought together|customers also viewed|similar items|sold by|fulfilled by|sold and shipped by|arrives between|arrives by|free \d+-day returns|free holiday returns|gift eligible|available for \d+ of \d+ items|fees may apply|snap ebt eligible|pro seller|preferred address|change delivery address|change address|usual items in stock|out of stock|replace with best match|add note for shopper|item instructions|visit the store|freshness guarantee|see customer images|from the manufacturer|excellent source of|good source of|hear the highlights|copy associates link|ways to buy|price history|\d+\s*[-–—]\s*\d+\s*min|\d+\s*(?:hr|hour|min)s?\s+or\s+less|\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)|free with w\+)\b|&\s*more\.?$|^(?:(?:flavor|flavor\s+name|size|style|color|colour|scent|count|pack|pack\s+size|variant|option|type|model|pattern|weight|material)\s*:\s*.+|cart\s*,?\s*\(\d+(?:\s+items?)?\)|in\s+\d+[kKmM]?\+?\s*people'?s?\s*c(?:arts?|a.*)|\d+[kKmM]?\+?\s*bought\b.*|options(?:\s+from\s+.*)?|.*\bsam'?s\s+club|\d+\s+[a-z]{2,}(?:\s+[a-z]{2,}){0,2}\s+(?:street|rd|road|drive|ave|avenue|blvd|boulevard|lane|court|place|circle|pkwy|parkway|hwy|highway)\b.*|.*,\s*was|.*\?)$/i;
 
 const NON_FOOD_GUARD =
-  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|wax\s+paper|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i;
+  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|wax\s+paper|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops|toaster\s+ovens?|convection\s+ovens?|countertop\s+ovens?|microwave\s+ovens?|air\s+fryer\s+(?:toaster\s+)?ovens?|\d+(?:\.\d+)?\s*(?:qt|quart)\s+(?:digital\s+|stainless\s+)?air\s+fryers?|coffee\s+makers?|espresso\s+machines?|(?:countertop|immersion|personal|high-speed)\s+blenders?|food\s+processors?|stand\s+mixers?|hand\s+mixers?|electric\s+kettles?|waffle\s+makers?|rice\s+cookers?|pressure\s+cookers?|cookware(?:\s+sets?)?|bakeware(?:\s+sets?)?|frying\s+pans?|saucepans?|(?:cast\s+iron|nonstick|non-stick|stainless\s+steel|enameled)\s+(?:skillets?|pans?|dutch\s+ovens?)|baking\s+sheets?|mixing\s+bowls?|cutting\s+boards?|knife\s+(?:sets?|blocks?)|can\s+openers?|mainstays|better\s+homes\s*(?:&|and)\s*gardens|ninja\s+(?:crispi|foodi|creami|blast)|hair\s+cutting|hair\s+clippers?|beard\s+trimmers?|spotlights?|floodlights?|solar\s+lights?|extension\s+cords?|surge\s+protectors?)\b/i;
 
 const PROCESSED_FOOD_GUARD =
   /\b(chips?|(?<!cosmic\s+|honey\s*)crisps?|crispy|fried|battered|breaded|rings?|instant|mashed|flakes?|au\s+gratin|scalloped|casserole|flavou?red|dressing|ranch|caesar|mayo|mayonnaise|aioli|vinaigrette|marinade|kit|soup|chowder|cream\s+of|alfredo|tikka|masala|tempura|cheesy|refried|praline|cinnamon|maple|chili\s+lime|stir[- ]?fry|pudding|cider|burgers?|seasoning|powder|sauce|a\.?1\.?|steak[- ]?umm\w*|ketchup|salsa|pie|pies|cake|roll|muffin|donuts?|doughnuts?|bismarks?|bismark|pastries|pastry|danish|fritters?|eclairs?|strudels?|turnovers?|toaster|candy|candied|gummies|juice|drink|soda|yogurt|cereal|puffs?|bars?|cookies?|wafers?|dried|dehydrated|craisins|fries|tots|ore[- ]?ida|idahoan|hash\s*browns?|macaroni|pasta\s+salad|potato\s+salad|chicken\s+salad|tuna\s+salad|egg\s+salad|ice\s+cream|gelato|sorbet|popsicle|jam|jelly|spread|apple\s+butter|pumpkin\s+butter|cookie\s+butter|fruit\s+butter|garlic\s+butter|herb\s+butter|lemon\s+butter|syrup|canned|fruit\s+cup|del\s+monte|dole|pickled|marinated|seasoned|grilled|roasted|smoked|cured|corned|pastrami|jerky|bacon|sausage|hot\s*dog|franks?|frankfurters?|salami|pepperoni|bologna|deli|lunch|ham|nuggets?|tenders?|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips?(?!\s+steak)|patties|patty|popcorn|teriyaki|bbq|barbecue|buffalo|honey|glazed|sandwich|biscuit|croissant|burritos?|tacos?|quesadillas?|tamales?|enchiladas?|wraps?|pizza|ramen|helper|eggnog|egg\s+nog|egg\s+roll|noodles?|gnocchi|spaghetti(?!\s+squash\b)|pasta|stews?(?!\s+(?:meat|beef)\b)|chocolate|covered|dipped|coated|crusted|stuffed|caramel|creamed|loaded|baby\s+food|pur[eé]es?)\b/i;

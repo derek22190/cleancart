@@ -867,10 +867,55 @@ async function verifyAppleIdToken(
   });
 }
 
+async function verifyGoogleAccessToken(
+  accessToken: string,
+  expectedEmail: string
+): Promise<{ ok: boolean; email: string; name?: string }> {
+  const cleanToken = accessToken.trim();
+  if (!cleanToken || cleanToken.length < 16 || cleanToken.length > 4096) {
+    return { ok: false, email: "" };
+  }
+  try {
+    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(4000),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { ok: false, email: "" };
+    }
+    const data = (await res.json()) as {
+      sub?: string;
+      email?: string;
+      email_verified?: boolean | string;
+      name?: string;
+    };
+    const verified =
+      data.email_verified === true || data.email_verified === "true";
+    const email = normalizeEmail(data.email || "");
+    if (!verified || !email || !email.includes("@")) {
+      return { ok: false, email: "" };
+    }
+    const cleanExpected = normalizeEmail(expectedEmail || "");
+    if (cleanExpected && cleanExpected !== email) {
+      return { ok: false, email: "" };
+    }
+    const name = typeof data.name === "string" ? data.name.trim() : undefined;
+    return { ok: true, email, name };
+  } catch {
+    return { ok: false, email: "" };
+  }
+}
+
 export async function loginWithOAuth(params: {
   provider: "google" | "apple";
   email: string;
   idToken?: string;
+  accessToken?: string;
   password?: string;
   displayName?: string;
   deviceId?: string;
@@ -882,29 +927,41 @@ export async function loginWithOAuth(params: {
   token?: string;
   user?: PublicUserProfile;
 }> {
-  if (!params.idToken || !params.idToken.trim()) {
+  const cleanIdToken = (params.idToken || "").trim();
+  const cleanAccessToken = (params.accessToken || "").trim();
+
+  if (!cleanIdToken && !(params.provider === "google" && cleanAccessToken)) {
     return {
       ok: false,
       error: "A verified OAuth identity token is required.",
     };
   }
 
-  const verification =
-    params.provider === "google"
-      ? await verifyGoogleIdToken(params.idToken, params.email)
-      : await verifyAppleIdToken(params.idToken, params.email);
+  let verification: { ok: boolean; email: string; name?: string };
+  if (params.provider === "google") {
+    verification = cleanIdToken
+      ? await verifyGoogleIdToken(cleanIdToken, params.email)
+      : await verifyGoogleAccessToken(cleanAccessToken, params.email);
+  } else {
+    verification = await verifyAppleIdToken(cleanIdToken, params.email);
+  }
 
   if (!verification.ok || !verification.email) {
     return {
       ok: false,
       error:
         params.provider === "google"
-          ? "Invalid or unverified Google ID token."
+          ? "Invalid or unverified Google token."
           : "Invalid or unverified Apple identity token.",
     };
   }
 
   const email = verification.email;
+  const resolvedDisplayName = (
+    params.displayName ||
+    verification.name ||
+    ""
+  ).trim();
   const existing = await getUserByEmail(email);
   const cleanDeviceId = normalizeRealDeviceId(params.deviceId);
   const cleanDeviceSecret = (params.deviceSecret || "").trim();
@@ -927,7 +984,7 @@ export async function loginWithOAuth(params: {
   const user: UserAccount = existing || {
     userId: `usr_${crypto.randomBytes(8).toString("hex")}`,
     email,
-    displayName: (params.displayName || fallbackName || "HeyBroc Shopper").trim(),
+    displayName: (resolvedDisplayName || fallbackName || "HeyBroc Shopper").trim(),
     provider: params.provider,
     emailVerified: true,
     tokenVersion: initialTokenVersion,

@@ -160,7 +160,6 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
     isOrganic: true,
     image: "/swaps/cereal.jpg",
     ingredients: "Organic whole wheat meal, organic oat flour, organic khorasan wheat, organic barley flour, organic spelt flour, organic millet, organic quinoa, organic cane sugar, sea salt.",
-    itemIds: { walmart: "10898744" },
   },
   "Deli Meat": {
     category: "Deli Meat",
@@ -923,6 +922,29 @@ export const EXACT_PRODUCT_ALTERNATIVES: { match: RegExp; alt: CleanAlternative 
   },
 
   // --- Cereal, Oatmeal, Granola, Maple Syrup ---
+  {
+    match: /\b(cinnamon\s+toast\s+crunch|french\s+toast\s+crunch|cinnamon\s+(?:crunch|toasters?|squares?|oat\s+crunch|chex|life)|ctoast)\b/i,
+    alt: {
+      category: "Cereal",
+      brand: "Food For Life",
+      name: "Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal",
+      sourceUrl: "https://www.foodforlife.com/product/cereals/ezekiel-49-cinnamon-raisin-sprouted-whole-grain-cereal",
+      verifiedAt: "2026-11-15",
+      size: "16 oz box",
+      isOrganic: true,
+      image: "/swaps/cereal.jpg",
+      ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon.",
+      nutrition: {
+        caloriesKcal100g: 351,
+        sugarsG100g: 14.0,
+        saturatedFatG100g: 0,
+        sodiumMg100g: 281,
+        fiberG100g: 10.5,
+        proteinG100g: 12.3,
+        isOrganic: true,
+      },
+    },
+  },
   {
     match: /\b(oatmeal|rolled\s+oats|steel\s+cut\s+oats|instant\s+oats|quaker\s+oats)\b/i,
     alt: {
@@ -3198,7 +3220,7 @@ export function buildLinks(
 }
 
 const NON_FOOD_SWAP_GUARD =
-  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue)\b/i;
+  /\b(sunscreen|banana\s+boat|coppertone|neutrogena|lotion|spf|lip\s+balm|shampoo|conditioner|body\s+wash|face\s+wash|soap|detergent|cleaner|bleach|wipes?|candle|deodorant|toothpaste|mouthwash|diapers?|litter|pet\s+food|dog\s+food|cat\s+food|toilet\s+paper|paper\s+towels?|bath\s+tissue|toaster\s+ovens?|convection\s+ovens?|countertop\s+ovens?|microwave\s+ovens?|air\s+fryer\s+(?:toaster\s+)?ovens?|\d+(?:\.\d+)?\s*(?:qt|quart)\s+(?:digital\s+|stainless\s+)?air\s+fryers?|coffee\s+makers?|espresso\s+machines?|(?:countertop|immersion|personal|high-speed)\s+blenders?|food\s+processors?|stand\s+mixers?|hand\s+mixers?|electric\s+kettles?|waffle\s+makers?|rice\s+cookers?|pressure\s+cookers?|cookware(?:\s+sets?)?|bakeware(?:\s+sets?)?|frying\s+pans?|saucepans?|(?:cast\s+iron|nonstick|non-stick|stainless\s+steel|enameled)\s+(?:skillets?|pans?|dutch\s+ovens?)|baking\s+sheets?|mixing\s+bowls?|cutting\s+boards?|knife\s+(?:sets?|blocks?)|can\s+openers?|mainstays|better\s+homes\s*(?:&|and)\s*gardens|ninja\s+(?:crispi|foodi|creami|blast)|hair\s+cutting|hair\s+clippers?|beard\s+trimmers?|spotlights?|floodlights?|solar\s+lights?|extension\s+cords?|surge\s+protectors?)\b/i;
 
 const ALREADY_PURE_MAPLE_SYRUP_GUARD =
   /\b(100%\s*(?:pure\s*)?(?:organic\s*)?(?:grade\s+a\s+)?maple\s+syrup|pure\s+maple\s+syrup|organic\s+(?:grade\s+a\s+)?maple\s+syrup|grade\s+a\s+(?:golden|amber|dark|very\s+dark)\b.*\bmaple\s+syrup|crown\s+maple|coombs\s+family|sapjack)\b/i;

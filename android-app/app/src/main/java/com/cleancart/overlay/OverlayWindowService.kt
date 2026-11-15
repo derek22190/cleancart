@@ -105,7 +105,7 @@ class OverlayWindowService : Service() {
             "grass-fed salted butter"
         )
         private val NON_FOOD_CART_ITEM = Regex(
-            """\b(paper\s+towels?|toilet\s+paper|bath\s+tissue|facial\s+tissue|kleenex|bounty|charmin|angel\s+soft|cottonelle|quilted\s+northern|brawny|sparkle|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|tableware)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?|wrap)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|ziploc|aluminum\s+foil|parchment\s+paper|detergent|laundry|fabric\s+softener|dryer\s+sheets?|bleach|clorox|lysol|dish\s+soap|dishwasher|cascade|dawn\s+(?:ultra|platinum|powerwash)|tide|gain|persil|downy|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|toothpaste|mouthwash|toothbrushes?|diapers?|pull-ups|huggies|pampers|cat\s+litter|dog\s+food|cat\s+food|pet\s+food|batteries|motor\s+oil)\b""",
+            """\b(paper\s+towels?|toilet\s+paper|bath\s+tissue|facial\s+tissue|kleenex|bounty|charmin|angel\s+soft|cottonelle|quilted\s+northern|brawny|sparkle|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|tableware)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?|wrap)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|ziploc|aluminum\s+foil|parchment\s+paper|detergent|laundry|fabric\s+softener|dryer\s+sheets?|bleach|clorox|lysol|dish\s+soap|dishwasher|cascade|dawn\s+(?:ultra|platinum|powerwash)|tide|gain|persil|downy|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|toothpaste|mouthwash|toothbrushes?|diapers?|pull-ups|huggies|pampers|cat\s+litter|dog\s+food|cat\s+food|pet\s+food|batteries|motor\s+oil|toaster\s+ovens?|convection\s+ovens?|countertop\s+ovens?|microwave\s+ovens?|air\s+fryer\s+(?:toaster\s+)?ovens?|\d+(?:\.\d+)?\s*(?:qt|quart)\s+(?:digital\s+|stainless\s+)?air\s+fryers?|coffee\s+makers?|espresso\s+machines?|(?:countertop|immersion|personal|high-speed)\s+blenders?|food\s+processors?|stand\s+mixers?|hand\s+mixers?|electric\s+kettles?|waffle\s+makers?|rice\s+cookers?|pressure\s+cookers?|cookware(?:\s+sets?)?|bakeware(?:\s+sets?)?|frying\s+pans?|saucepans?|(?:cast\s+iron|nonstick|non-stick|stainless\s+steel|enameled)\s+(?:skillets?|pans?|dutch\s+ovens?)|baking\s+sheets?|mixing\s+bowls?|cutting\s+boards?|knife\s+(?:sets?|blocks?)|can\s+openers?|mainstays|better\s+homes\s*(?:&|and)\s*gardens|ninja\s+(?:crispi|foodi|creami|blast)|hair\s+cutting|hair\s+clippers?|beard\s+trimmers?|spotlights?|floodlights?|solar\s+lights?|extension\s+cords?|surge\s+protectors?)\b""",
             RegexOption.IGNORE_CASE
         )
         private val VARIANT_NOISE_TITLE = Regex(
@@ -575,7 +575,8 @@ class OverlayWindowService : Service() {
     }
 
     private fun cleanCartTitle(raw: String): String =
-        raw.replace(Regex("^(?i)conventional grocery\\s+"), "")
+        raw.replace(Regex("^(?i)(?:\\d+\\s+)?in\\s+(?:cart|bag|basket|order)\\s*[-–—:,]\\s*"), "")
+            .replace(Regex("^(?i)conventional grocery\\s+"), "")
             .replace(Regex("^(?i)\\d+\\s*(?:ct|count|pk|pack|ea)\\s+(?=[a-zA-Z]{2,})"), "")
             .replace(Regex("(?i)\\s*\\(category\\s+estimate[^)]*\\)"), "")
             .replace(Regex("(?i)\\b(?:average|avg)\\s+price\\b\\s*[,•|\\-.]?"), " ")
@@ -816,11 +817,12 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        // Only prune unseen offscreen/PDP items when an authoritative cart badge count proves fewer total units exist
+        // Enforce authoritative cart badge count: prune unseen offscreen items first, then cap any tail overflow
         if (!keepMode && badgeCount > 0 && totalCartUnits() > badgeCount) {
             while (totalCartUnits() > badgeCount) {
                 val unseen = tripCart.filter { it.lastSeenAtMs < now }
                 val candidate = unseen.minByOrNull { if (!it.fromCartScreen) it.lastSeenAtMs - 86_400_000L else it.lastSeenAtMs }
+                    ?: tripCart.lastOrNull()
                     ?: break
                 if (candidate.quantity > 1 && totalCartUnits() - 1 >= badgeCount) {
                     candidate.quantity -= 1
@@ -2923,8 +2925,16 @@ class OverlayWindowService : Service() {
         removeCard()
         showPill()
 
-        val isDirectLinkPrimary = isDirectNativeStoreUrl(link, currentStoreKey)
-        val isDirectLinkWeb = isDirectNativeStoreUrl(rawWebUrl, currentStoreKey)
+        val preferNativeInAppSearch =
+            GroceryScreenReaderService.activeWindowManager() != null &&
+                pkg.isNotBlank() &&
+                searchQuery.isNotBlank()
+        val isDirectLinkPrimary = !preferNativeInAppSearch &&
+            currentStoreKey != "walmart" &&
+            isDirectNativeStoreUrl(link, currentStoreKey)
+        val isDirectLinkWeb = !preferNativeInAppSearch &&
+            currentStoreKey != "walmart" &&
+            isDirectNativeStoreUrl(rawWebUrl, currentStoreKey)
         val isDirectProductLink = isDirectLinkPrimary || isDirectLinkWeb
 
         Toast.makeText(
@@ -2934,8 +2944,8 @@ class OverlayWindowService : Service() {
             Toast.LENGTH_LONG
         ).show()
 
-        // 1. If the Clean Swap has a verified direct native product deep link (/ip/<id>, /p/<id>, /dp/<id>)
-        //    on the retailer's own host (not an affiliate redirect), open the exact product page in the native app!
+        // 1. When Accessibility is NOT driving in-app search (e.g. Target / Amazon direct deep links),
+        //    open verified non-Walmart native product deep links directly.
         if (isDirectProductLink && pkg.isNotBlank()) {
             val directCandidates = buildList {
                 if (isDirectLinkPrimary) {
@@ -2984,15 +2994,19 @@ class OverlayWindowService : Service() {
                 }
             }
             if (!launchedInNativeApp) {
-                val targetWebUrl = rawWebUrl.ifBlank { fallbackStoreSearchUrl }
-                if (targetWebUrl.isNotBlank()) {
-                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val safeWebUrl = if (currentStoreKey == "walmart" && rawWebUrl.contains("/ip/")) {
+                    fallbackStoreSearchUrl
+                } else {
+                    rawWebUrl.ifBlank { fallbackStoreSearchUrl }
+                }
+                if (safeWebUrl.isNotBlank()) {
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(safeWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     // Bind explicitly to an external browser when opening a search URL so Android App Links never routes
                     // walmart.com/search?q=... into Walmart's blank white internal WebView!
                     resolveExternalBrowserPackage()?.let { webIntent.setPackage(it) }
                     if (runCatching { startActivity(webIntent) }.isFailure) {
                         runCatching {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
                     }
                 }
