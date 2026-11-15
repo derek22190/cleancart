@@ -7,6 +7,10 @@
 
   const DEFAULT_API = "https://www.heybroc.com";
   const HOST = location.hostname.toLowerCase();
+  const SUPPORTED_GROCERY_HOST_RE =
+    /(?:^|\.)(?:walmart\.com|instacart\.com|target\.com|kroger\.com|ralphs\.com|fredmeyer\.com|kingsoopers\.com|frysfood\.com|smithsfoodanddrug\.com|harristeeter\.com|aldi\.us|doordash\.com|ubereats\.com|amazon\.com|wholefoodsmarket\.com|samsclub\.com|bjs\.com|costco\.com|shipt\.com)$/;
+  if (!SUPPORTED_GROCERY_HOST_RE.test(HOST)) return;
+
   const BASE_STORE = HOST.includes("walmart") ? "walmart"
     : HOST.includes("instacart") ? "instacart"
     : HOST.includes("target") ? "target"

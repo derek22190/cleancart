@@ -867,12 +867,17 @@ export function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupRe
         SUPPLEMENT_FORM.test(`${fullTitle} ${fallbackTitle}`)
       ? "supplement"
       : "food";
+  const directOffImage = bestOffImage(p);
+  const fallbackOffImage =
+    !directOffImage && inferredKind !== "non-food" && fullTitle
+      ? `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}${brandStr ? `&brand=${encodeURIComponent(brandStr)}` : ""}${p.code ? `&code=${encodeURIComponent(p.code)}` : ""}&v=6`
+      : undefined;
   const result: Omit<LookupResult, "ms"> = {
     productTitle: fullTitle,
     brand: brandStr,
     barcode: p.code,
     ingredients: englishIngredients(p),
-    imageUrl: bestOffImage(p),
+    imageUrl: directOffImage || fallbackOffImage,
     nutrition: inferNutritionFromText(fullTitle, englishIngredients(p), {
       ...baseNut,
       productKind: inferredKind,
@@ -1397,7 +1402,10 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     brandLabel !== "USDA FoodData Central"
       ? mergeBrandAndTitle(brandLabel, descTitle)
       : descTitle;
-  const imageUrl = `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}`;
+  const usdaBrandParam =
+    brandLabel && brandLabel !== "USDA FoodData Central" ? `&brand=${encodeURIComponent(brandLabel)}` : "";
+  const usdaCodeParam = best.gtinUpc ? `&code=${encodeURIComponent(best.gtinUpc)}` : "";
+  const imageUrl = `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}${usdaBrandParam}${usdaCodeParam}&v=6`;
   return withSingleIngredientWholeFood({
     productTitle: fullTitle,
     brand: brandLabel,
@@ -3951,9 +3959,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       const resolvedTitle = NON_BRAND_CATEGORY_LABELS.test(entry.brand)
         ? entry.title
         : mergeBrandAndTitle(entry.brand, entry.title);
+      const catalogBrandParam =
+        entry.brand && !NON_BRAND_CATEGORY_LABELS.test(entry.brand)
+          ? `&brand=${encodeURIComponent(entry.brand)}`
+          : "";
       const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
         ? entry.imageUrl
-        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}&v=4`;
+        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}${catalogBrandParam}&v=4`;
       return {
         sourceUrl: entry.sourceUrl,
         productTitle: resolvedTitle,
@@ -4094,10 +4106,15 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     // If productTitle is also provided (e.g. from the mobile screen reader or browser extension),
     // verify that rawIngredients is an actual ingredient list and not an adjacent UI heading like "Items to add next".
     if (!rawTitle || isPlausibleScreenIngredients(rawIng)) {
+      const screenImgUrl =
+        rawTitle || input.barcode
+          ? `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(rawTitle)}${input.barcode ? `&code=${encodeURIComponent(input.barcode)}` : ""}&v=6`
+          : undefined;
       return {
         productTitle: rawTitle || "Scanned product",
         barcode: input.barcode,
         ingredients: rawIng,
+        imageUrl: screenImgUrl,
         nutrition: SUPPLEMENT_FORM.test(`${rawTitle} ${rawIng}`) ? { productKind: "supplement", isOrganic: false } : undefined,
         source: "screen",
         ms: ms(),

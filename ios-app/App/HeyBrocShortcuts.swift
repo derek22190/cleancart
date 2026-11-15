@@ -25,8 +25,10 @@ enum HeyBrocSharedPrefs {
     private static let isProKey = "heybroc_is_pro"
     private static let pendingLiveShopKey = "heybroc_pending_open_live_shop"
 
+    private static let cachedGroupDefaults: UserDefaults? = UserDefaults(suiteName: appGroupSuite)
+
     private static var groupDefaults: UserDefaults? {
-        return UserDefaults(suiteName: appGroupSuite)
+        return cachedGroupDefaults
     }
 
     static var deviceId: String {

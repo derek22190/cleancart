@@ -582,7 +582,8 @@ function ProductArt({
   showAttribution?: boolean;
   onSnapLabel?: () => void;
 }) {
-  const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}&v=5`;
+  const brandParam = product.brand ? `&brand=${encodeURIComponent(product.brand)}` : "";
+  const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}${brandParam}&v=6`;
   const normalizedProductImg = normalizeProductArtUrl(product.image);
   const explicitMissing = Boolean(product.image) && isMissingProductPhotoUrl(normalizedProductImg);
   const primarySrc = !explicitMissing && normalizedProductImg ? normalizedProductImg : apiFallbackSrc;
@@ -595,7 +596,7 @@ function ProductArt({
   const primaryUnusable =
     explicitMissing || Boolean(failedSrcs[primarySrc]) || Boolean(placeholderSrcs[primarySrc]);
   const fallbackUnusable =
-    explicitMissing || Boolean(failedSrcs[apiFallbackSrc]) || Boolean(placeholderSrcs[apiFallbackSrc]);
+    Boolean(failedSrcs[apiFallbackSrc]) || Boolean(placeholderSrcs[apiFallbackSrc]);
 
   const activeSrc = !primaryUnusable
     ? primarySrc
@@ -4678,7 +4679,7 @@ export default function Simulator({
                     >
                       <div>1. Open <b>iPhone Settings → Apps → Safari → Extensions → HeyBroc</b></div>
                       <div>2. Turn <b>Allow Extension</b> ON</div>
-                      <div>3. Tap <b>All Websites → Allow</b> <em>(1 switch enables all 12 stores at once!)</em></div>
+                      <div>3. Tap <b>All Websites</b> (or <b>Other Websites</b> at the bottom) <b>→ Allow</b> <em>(1 switch enables every grocery store at once!)</em></div>
                     </div>
                     <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: "#475569" }}>
                       Want to skip Safari setup altogether? Update HeyBroc in TestFlight to shop Walmart, Instacart, Target &amp; Amazon right inside HeyBroc!

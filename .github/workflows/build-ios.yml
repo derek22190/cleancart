@@ -350,6 +350,59 @@ jobs:
           puts "Configured App Group (group.com.heybroc.app) entitlements across Host App, SafariExtension, and HeyBrocShare"
           RUBY
 
+      - name: Verify LiveStoreBrowser on iOS Simulator (iOS 26 Crash Gate)
+        run: |
+          SIM_DERIVED="$RUNNER_TEMP/heybroc-sim-derived"
+          xcodebuild -project "ios-app/build/HeyBroc/HeyBroc.xcodeproj" \
+            -scheme "HeyBroc" \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath "$SIM_DERIVED" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          SIM_APP=$(find "$SIM_DERIVED/Build/Products" -maxdepth 2 -name "HeyBroc.app" | head -n 1)
+          if [ -z "$SIM_APP" ]; then
+            echo "::error::Simulator HeyBroc.app bundle not found!"
+            exit 1
+          fi
+          SIM_UDID=$(ruby -rjson -e '
+            data = JSON.parse(`xcrun simctl list devices available -j`)
+            devs = (data["devices"] || {}).select { |k, _| k.include?("iOS") }.values.flatten
+            iphone = devs.select { |d| d["isAvailable"] && d["name"].to_s.start_with?("iPhone") }.last
+            puts iphone ? iphone["udid"] : ""
+          ')
+          if [ -z "$SIM_UDID" ]; then
+            echo "::warning::No available iPhone simulator runtime found on runner; skipping runtime boot."
+            exit 0
+          fi
+          echo "Booting iOS Simulator UDID: $SIM_UDID"
+          xcrun simctl boot "$SIM_UDID" || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          rm -f ~/Library/Logs/DiagnosticReports/HeyBroc*.ips
+          xcrun simctl install "$SIM_UDID" "$SIM_APP"
+          LAUNCH_OUT=$(xcrun simctl launch "$SIM_UDID" com.heybroc.app --heybroc-smoke-test-liveshop)
+          echo "Launched: $LAUNCH_OUT"
+          APP_PID=$(echo "$LAUNCH_OUT" | awk -F': ' '{print $2}' | tr -d ' \r\n')
+          sleep 9
+          CRASH_REPORTS=$(ls ~/Library/Logs/DiagnosticReports/HeyBroc*.ips 2>/dev/null || true)
+          if [ -n "$CRASH_REPORTS" ]; then
+            echo "::error::HeyBroc crashed during LiveStoreBrowser smoke test!"
+            cat ~/Library/Logs/DiagnosticReports/HeyBroc*.ips || true
+            xcrun simctl shutdown "$SIM_UDID" || true
+            exit 1
+          fi
+          if [ -n "$APP_PID" ] && ! kill -0 "$APP_PID" 2>/dev/null; then
+            echo "::error::HeyBroc process ($APP_PID) exited unexpectedly during LiveStoreBrowser smoke test!"
+            xcrun simctl spawn "$SIM_UDID" log show --last 20s --predicate 'process == "HeyBroc"' || true
+            xcrun simctl shutdown "$SIM_UDID" || true
+            exit 1
+          fi
+          echo "✅ LiveStoreBrowser survived opening Walmart + switching to Target on iOS Simulator (PID $APP_PID alive, 0 crash reports)!"
+          xcrun simctl terminate "$SIM_UDID" com.heybroc.app || true
+          xcrun simctl shutdown "$SIM_UDID" || true
+
       - name: Build unsigned iOS Release Archive (Verification)
         if: ${{ github.event.inputs.upload_to_testflight == 'false' || env.ASC_KEY_ID == '' }}
         run: |

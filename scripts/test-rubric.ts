@@ -5699,6 +5699,122 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     }
   }
 
+  // ==================== BUILD 120 REGRESSION: SELF-HEALING 5M PHOTOS, 1-SWITCH SAFARI & IOS 26 CRASH GUARD ====================
+  {
+    const fakeJpegBytes = new Uint8Array(512).fill(0xff);
+    fakeJpegBytes[0] = 0xff;
+    fakeJpegBytes[1] = 0xd8;
+    const prevFetchImg = globalThis.fetch;
+    let healedHiddenValleyRes: Response | null = null;
+    let frontLabelBrandRes: Response | null = null;
+    let crossBrandRejectedRes: Response | null = null;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (u.includes("/007/110/000/3116/front_en.7.400.jpg")) {
+          return new Response("Not Found", { status: 404 });
+        }
+        if (u.includes("/api/v2/product/0071100003116.json")) {
+          return Response.json({
+            status: 1,
+            product: {
+              code: "0071100003116",
+              brands: "Hidden Valley",
+              product_name: "THE ORIGINAL Ranch",
+              image_front_url: "https://images.openfoodfacts.org/images/products/007/110/000/3116/front_en.29.400.jpg",
+            },
+          });
+        }
+        if (u.includes("/007/110/000/3116/front_en.29.400.jpg")) {
+          return new Response(fakeJpegBytes, { status: 200, headers: { "content-type": "image/jpeg" } });
+        }
+        if (u.includes("search.openfoodfacts.org/search") && decodeURIComponent(u).toLowerCase().includes("kens")) {
+          return Response.json({
+            hits: [
+              {
+                code: "0041335000129",
+                brands: "Ken's Steak House",
+                product_name: "Country French",
+                countries_tags: ["en:united-states"],
+                image_front_small_url: "https://images.openfoodfacts.org/images/products/004/133/500/0129/front_en.9.400.jpg",
+              },
+            ],
+          });
+        }
+        if (u.includes("/004/133/500/0129/front_en.9.400.jpg")) {
+          return new Response(fakeJpegBytes, { status: 200, headers: { "content-type": "image/jpeg" } });
+        }
+        if (u.includes("search.openfoodfacts.org/search") && decodeURIComponent(u).toLowerCase().includes("briannas")) {
+          return Response.json({
+            hits: [
+              {
+                code: "0078742000114",
+                brands: "Great Value",
+                product_name: "Homestyle French",
+                countries_tags: ["en:united-states"],
+                image_front_small_url: "https://images.openfoodfacts.org/images/products/007/874/200/0114/front_en.4.400.jpg",
+              },
+            ],
+          });
+        }
+        return Response.json({ status: 0, hits: [], products: [] });
+      };
+
+      healedHiddenValleyRes = await productImageRouteMod.GET(
+        new Request(
+          "http://localhost:3000/api/product-image?q=" +
+            encodeURIComponent("Hidden Valley Original Ranch Salad Dressing") +
+            "&brand=" +
+            encodeURIComponent("Hidden Valley"),
+          { headers: { "x-forwarded-for": "127.0.0.91" } },
+        ),
+      );
+      frontLabelBrandRes = await productImageRouteMod.GET(
+        new Request(
+          "http://localhost:3000/api/product-image?q=" +
+            encodeURIComponent("Ken's Steak House Country French Salad Dressing") +
+            "&brand=" +
+            encodeURIComponent("Ken's Steak House"),
+          { headers: { "x-forwarded-for": "127.0.0.92" } },
+        ),
+      );
+      crossBrandRejectedRes = await productImageRouteMod.GET(
+        new Request(
+          "http://localhost:3000/api/product-image?q=" +
+            encodeURIComponent("Briannas Homestyle French Salad Dressing") +
+            "&brand=" +
+            encodeURIComponent("Briannas"),
+          { headers: { "x-forwarded-for": "127.0.0.93" } },
+        ),
+      );
+    } finally {
+      globalThis.fetch = prevFetchImg;
+    }
+
+    const safariManifest120 = fs.readFileSync("ios-app/SafariExtension/Resources/manifest.json", "utf8");
+    const liveBrowser120 = fs.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const hostVc120 = fs.readFileSync("ios-app/App/ViewController.swift", "utf8");
+
+    check(
+      "Build 120 Suite: Hidden Valley stale OFF revision self-heals via live UPC v2, front-of-pack titles omitting generic category nouns match while cross-brand collisions reject, Safari manifest has 1-switch *://*/* matches, and iOS 26 LiveStoreBrowser eliminates force-unwraps & synchronous WebKit re-entrancy",
+      Boolean(
+        healedHiddenValleyRes?.status === 200 &&
+          (healedHiddenValleyRes?.headers.get("content-type") || "").includes("image/jpeg") &&
+          (healedHiddenValleyRes?.headers.get("x-image-source") || "").includes("front_en.29.400.jpg") &&
+          frontLabelBrandRes?.status === 200 &&
+          (frontLabelBrandRes?.headers.get("content-type") || "").includes("image/jpeg") &&
+          crossBrandRejectedRes?.status === 200 &&
+          (crossBrandRejectedRes?.headers.get("content-type") || "").includes("image/svg+xml") &&
+          !safariManifest120.includes("walmart.com") &&
+          liveBrowser120.includes("WeakStoreScriptMessageProxy") &&
+          liveBrowser120.includes("didStartInitialLoad") &&
+          !liveBrowser120.includes("storeWebView: WKWebView!") &&
+          hostVc120.includes("WeakHostScriptMessageProxy") &&
+          hostVc120.includes("Other Websites")
+      ),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

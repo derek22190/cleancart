@@ -15,6 +15,16 @@ struct HeyBrocLiveStoreConfig {
     }
 }
 
+private final class WeakStoreScriptMessageProxy: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+
 final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
 
     static let stores: [HeyBrocLiveStoreConfig] = [
@@ -55,18 +65,21 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private let onUpgradePro: (() -> Void)?
     private let initialURLString: String?
     private var activeStore: HeyBrocLiveStoreConfig
-    private var storeWebView: WKWebView!
-    private var progressView: UIProgressView!
+    private var storeWebView: WKWebView?
+    private var progressView: UIProgressView?
     private var storeButtons: [String: UIButton] = [:]
-    private var pesticideBtn: UIButton!
+    private var pesticideBtn: UIButton?
+    private var pendingInitialURL: URL?
+    private var didStartInitialLoad = false
+    private var isCleaningUp = false
 
     // Permanent Draggable Native Floating Broccoli Bubble
     private let floatingBubble = UIControl()
     private let bubbleBadgeLabel = UILabel()
     private let bubbleSubLabel = UILabel()
-    private var bubbleTopConstraint: NSLayoutConstraint!
-    private var bubbleTrailingConstraint: NSLayoutConstraint!
-    private var bubbleLeadingConstraint: NSLayoutConstraint!
+    private var bubbleTopConstraint: NSLayoutConstraint?
+    private var bubbleTrailingConstraint: NSLayoutConstraint?
+    private var bubbleLeadingConstraint: NSLayoutConstraint?
     private var isDockedLeft = false
 
     private var lastDetectedTitle: String = ""
@@ -108,8 +121,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     deinit {
+        cleanupWebView()
+    }
+
+    private func cleanupWebView() {
+        guard !isCleaningUp else { return }
+        isCleaningUp = true
         progressObservation?.invalidate()
-        storeWebView?.configuration.userContentController.removeScriptMessageHandler(forName: "heybrocStoreBridge")
+        progressObservation = nil
+        if let wv = storeWebView {
+            wv.stopLoading()
+            wv.navigationDelegate = nil
+            wv.uiDelegate = nil
+            wv.configuration.userContentController.removeScriptMessageHandler(forName: "heybrocStoreBridge")
+        }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -129,8 +154,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         updatePesticideButtonStyle()
         setBubbleIdleState()
 
-        if let startURL = Self.validatedHTTPURL(initialURLString) ?? URL(string: activeStore.homeURL) {
-            storeWebView.load(URLRequest(url: startURL))
+        pendingInitialURL = Self.validatedHTTPURL(initialURLString) ?? URL(string: activeStore.homeURL)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if !didStartInitialLoad {
+            didStartInitialLoad = true
+            view.layoutIfNeeded()
+            if let startURL = pendingInitialURL ?? URL(string: activeStore.homeURL) {
+                pendingInitialURL = nil
+                storeWebView?.load(URLRequest(url: startURL))
+            }
         }
     }
 
@@ -148,11 +183,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
         lastScannedKey = ""
         latestSummary = nil
+        let targetURL = Self.validatedHTTPURL(urlString) ?? URL(string: activeStore.homeURL)
         if isViewLoaded {
             setBubbleIdleState()
-            if let targetURL = Self.validatedHTTPURL(urlString) ?? URL(string: activeStore.homeURL) {
-                storeWebView.load(URLRequest(url: targetURL))
+            if didStartInitialLoad && view.window != nil {
+                if let u = targetURL {
+                    storeWebView?.load(URLRequest(url: u))
+                }
+            } else {
+                pendingInitialURL = targetURL
             }
+        } else {
+            pendingInitialURL = targetURL
         }
     }
 
@@ -246,7 +288,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             chipStack.addArrangedSubview(chip)
         }
 
-        let prog = UIProgressView(progressViewStyle: .bar)
+        let prog = UIProgressView(progressViewStyle: .default)
         prog.translatesAutoresizingMaskIntoConstraints = false
         prog.progressTintColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 1.0)
         prog.trackTintColor = UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0)
@@ -299,6 +341,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     private func updatePesticideButtonStyle() {
+        guard let pesticideBtn = pesticideBtn else { return }
         let on = HeyBrocSharedPrefs.isPesticideWatchEnabled
         pesticideBtn.setTitle(on ? "🌱 Pest: ON" : "🌱 Pest: OFF", for: .normal)
         if on {
@@ -318,6 +361,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.allowsInlineMediaPlayback = true
+        config.defaultWebpagePreferences.preferredContentMode = .mobile
 
         let detectorJS = """
         (function() {
@@ -632,14 +676,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
         let script = WKUserScript(source: detectorJS, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         config.userContentController.addUserScript(script)
-        config.userContentController.add(self, name: "heybrocStoreBridge")
+        config.userContentController.add(WeakStoreScriptMessageProxy(self), name: "heybrocStoreBridge")
 
-        let wv = WKWebView(frame: .zero, configuration: config)
+        let initialRect = CGRect(
+            x: 0,
+            y: 0,
+            width: max(320, view.bounds.width),
+            height: max(480, view.bounds.height)
+        )
+        let wv = WKWebView(frame: initialRect, configuration: config)
         wv.translatesAutoresizingMaskIntoConstraints = false
         wv.navigationDelegate = self
         wv.uiDelegate = self
         wv.allowsBackForwardNavigationGestures = true
-        wv.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1"
         view.addSubview(wv)
         self.storeWebView = wv
 
@@ -650,11 +699,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             wv.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
-        progressObservation = wv.observe(\.estimatedProgress, options: [.new]) { [weak self] webView, _ in
-            DispatchQueue.main.async {
-                let p = Float(webView.estimatedProgress)
-                self?.progressView.alpha = p >= 0.99 ? 0.0 : 1.0
-                self?.progressView.setProgress(p, animated: true)
+        progressObservation = wv.observe(\.estimatedProgress, options: [.new]) { [weak self] _, change in
+            let rawProgress = Float(change.newValue ?? 0.0)
+            let clamped = rawProgress.isFinite ? min(1.0, max(0.0, rawProgress)) : 0.0
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, !self.isCleaningUp else { return }
+                self.progressView?.alpha = clamped >= 0.99 ? 0.0 : 1.0
+                self.progressView?.setProgress(clamped, animated: true)
             }
         }
     }
@@ -703,14 +754,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         floatingBubble.addSubview(hStack)
         view.addSubview(floatingBubble)
 
-        bubbleTopConstraint = floatingBubble.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 190)
-        bubbleTrailingConstraint = floatingBubble.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
-        bubbleLeadingConstraint = floatingBubble.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
-        bubbleLeadingConstraint.isActive = false
+        let topC = floatingBubble.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 190)
+        let trailingC = floatingBubble.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
+        let leadingC = floatingBubble.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12)
+        leadingC.isActive = false
+        self.bubbleTopConstraint = topC
+        self.bubbleTrailingConstraint = trailingC
+        self.bubbleLeadingConstraint = leadingC
 
         NSLayoutConstraint.activate([
-            bubbleTopConstraint,
-            bubbleTrailingConstraint,
+            topC,
+            trailingC,
             floatingBubble.heightAnchor.constraint(equalToConstant: 50),
             floatingBubble.widthAnchor.constraint(lessThanOrEqualToConstant: 235),
 
@@ -759,15 +813,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
         let minTop: CGFloat = 95
         let maxTop: CGFloat = max(minTop + 40, view.bounds.height - view.safeAreaInsets.bottom - 70)
-        bubbleTopConstraint.constant = min(maxTop, max(minTop, bubbleTopConstraint.constant + translation.y))
+        if let topC = bubbleTopConstraint {
+            topC.constant = min(maxTop, max(minTop, topC.constant + translation.y))
+        }
 
         if gesture.state == .ended || gesture.state == .cancelled {
             let loc = gesture.location(in: view)
             let snapLeft = loc.x < view.bounds.midX
             if snapLeft != isDockedLeft {
                 isDockedLeft = snapLeft
-                bubbleTrailingConstraint.isActive = !snapLeft
-                bubbleLeadingConstraint.isActive = snapLeft
+                bubbleTrailingConstraint?.isActive = !snapLeft
+                bubbleLeadingConstraint?.isActive = snapLeft
             }
             UIView.animate(withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.82, initialSpringVelocity: 0.5) {
                 self.view.layoutIfNeeded()
@@ -778,17 +834,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     // MARK: - Actions & Scanning
 
     @objc private func tapClose() {
+        cleanupWebView()
         dismiss(animated: true)
     }
 
     @objc private func tapNavBack() {
-        if storeWebView.canGoBack {
-            storeWebView.goBack()
+        if storeWebView?.canGoBack == true {
+            storeWebView?.goBack()
         }
     }
 
     @objc private func tapReload() {
-        storeWebView.reload()
+        storeWebView?.reload()
     }
 
     @objc private func tapStoreChip(_ sender: UIButton) {
@@ -802,7 +859,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         latestSummary = nil
         setBubbleIdleState()
         if let url = URL(string: chosen.homeURL) {
-            storeWebView.load(URLRequest(url: url))
+            if didStartInitialLoad && view.window != nil {
+                storeWebView?.load(URLRequest(url: url))
+            } else {
+                pendingInitialURL = url
+            }
         }
     }
 
@@ -827,12 +888,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     private func scanVisibleViewportViaSnapshot(presentWhenDone: Bool) {
-        guard !isScanning else { return }
+        guard !isScanning, let wv = storeWebView else { return }
         isScanning = true
         setBubbleScanningState()
 
         let snapConfig = WKSnapshotConfiguration()
-        storeWebView.takeSnapshot(with: snapConfig) { [weak self] image, _ in
+        wv.takeSnapshot(with: snapConfig) { [weak self] image, _ in
             guard let self = self else { return }
             guard let image = image else {
                 self.isScanning = false
@@ -900,12 +961,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     private func presentInspectSheet(summary: HeyBrocNativeScanSummary) {
+        guard view.window != nil, presentedViewController == nil else { return }
         let sheet = LiveStoreInspectSheetViewController(
             summary: summary,
             storeLabel: activeStore.label,
             onOpenSwapInStore: { [weak self] urlString in
                 guard let self = self, let u = URL(string: urlString) else { return }
-                self.storeWebView.load(URLRequest(url: u))
+                self.storeWebView?.load(URLRequest(url: u))
             },
             onRescanScreenOCR: { [weak self] in
                 self?.scanVisibleViewportViaSnapshot(presentWhenDone: true)
@@ -914,12 +976,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 self?.tapTogglePesticide()
             },
             onReturnToScanner: { [weak self] in
-                if let upgrade = self?.onUpgradePro {
-                    self?.dismiss(animated: true) {
-                        upgrade()
-                    }
-                } else {
-                    self?.dismiss(animated: true)
+                guard let self = self else { return }
+                let upgrade = self.onUpgradePro
+                self.cleanupWebView()
+                self.dismiss(animated: true) {
+                    upgrade?()
                 }
             }
         )
@@ -932,6 +993,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     private func showQuickAlert(title: String, message: String) {
+        guard view.window != nil, presentedViewController == nil else { return }
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Got It", style: .default))
         present(alert, animated: true)
@@ -940,70 +1002,82 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     // MARK: - WKScriptMessageHandler & Navigation
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "heybrocStoreBridge",
+        guard !isCleaningUp,
+              message.name == "heybrocStoreBridge",
               let body = message.body as? [String: Any],
               let kind = body["kind"] as? String else { return }
 
-        if kind == "product" {
-            let title = (body["title"] as? String) ?? ""
-            let ingredients = (body["ingredients"] as? String) ?? ""
-            let barcode = (body["barcode"] as? String) ?? ""
-            guard !title.isEmpty else { return }
-            lastDetectedTitle = title
-            lastDetectedIngredients = ingredients
-            lastDetectedBarcode = barcode
-            runLiveScan(title: title, ingredients: ingredients, barcode: barcode)
-        } else if kind == "browse" {
-            scanGeneration += 1
-            isScanning = false
-            lastDetectedTitle = ""
-            lastDetectedIngredients = ""
-            lastDetectedBarcode = ""
-            lastScannedKey = ""
-            latestSummary = nil
-            setBubbleIdleState()
+        let title = (body["title"] as? String) ?? ""
+        let ingredients = (body["ingredients"] as? String) ?? ""
+        let barcode = (body["barcode"] as? String) ?? ""
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, !self.isCleaningUp else { return }
+            if kind == "product" {
+                guard !title.isEmpty else { return }
+                self.lastDetectedTitle = title
+                self.lastDetectedIngredients = ingredients
+                self.lastDetectedBarcode = barcode
+                self.runLiveScan(title: title, ingredients: ingredients, barcode: barcode)
+            } else if kind == "browse" {
+                self.scanGeneration += 1
+                self.isScanning = false
+                self.lastDetectedTitle = ""
+                self.lastDetectedIngredients = ""
+                self.lastDetectedBarcode = ""
+                self.lastScannedKey = ""
+                self.latestSummary = nil
+                self.setBubbleIdleState()
+            }
         }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        var didRespond = false
+        func respond(_ policy: WKNavigationActionPolicy) {
+            guard !didRespond else { return }
+            didRespond = true
+            decisionHandler(policy)
+        }
+
         guard let url = navigationAction.request.url else {
-            decisionHandler(.allow)
+            respond(.allow)
             return
         }
         let scheme = (url.scheme ?? "").lowercased()
         // Block retailer custom URL schemes ("Open in Walmart App" banners) so shopping stays inside HeyBroc
         if scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" && scheme != "data" {
-            decisionHandler(.cancel)
+            respond(.cancel)
             return
         }
         let host = (url.host ?? "").lowercased()
         if host == "itunes.apple.com" || host == "apps.apple.com" || host.hasSuffix(".app.link") {
-            decisionHandler(.cancel)
+            respond(.cancel)
             return
         }
         // Prevent iOS Universal Links from hijacking link taps out to installed Walmart / Target / Amazon native apps
+        // using WebKit's native non-reentrant app-link suppression policy (avoids cancel+load re-entrancy crashes on iOS 26).
         if navigationAction.navigationType == .linkActivated,
-           navigationAction.targetFrame?.isMainFrame == true,
            (scheme == "https" || scheme == "http") {
-            if let cur = webView.url,
-               cur.scheme?.lowercased() == scheme,
-               cur.host?.lowercased() == host,
-               cur.path == url.path,
-               cur.query == url.query,
-               url.fragment != nil {
-                decisionHandler(.allow)
-                return
-            }
-            decisionHandler(.cancel)
-            webView.load(navigationAction.request)
+            let allowWithoutAppLink = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
+            respond(allowWithoutAppLink)
             return
         }
-        decisionHandler(.allow)
+        respond(.allow)
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         scanGeneration += 1
         isScanning = false
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard !isCleaningUp else { return }
+        if let currentURL = webView.url {
+            webView.load(URLRequest(url: currentURL))
+        } else if let homeURL = URL(string: activeStore.homeURL) {
+            webView.load(URLRequest(url: homeURL))
+        }
     }
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
@@ -1013,7 +1087,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
            (scheme == "http" || scheme == "https") {
             let host = (url.host ?? "").lowercased()
             if host != "itunes.apple.com" && host != "apps.apple.com" && !host.hasSuffix(".app.link") {
-                webView.load(URLRequest(url: url))
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, !self.isCleaningUp else { return }
+                    self.storeWebView?.load(URLRequest(url: url))
+                }
             }
         }
         return nil
