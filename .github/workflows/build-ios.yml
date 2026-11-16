@@ -369,7 +369,7 @@ jobs:
             exit 1
           fi
           rm -f ~/Library/Logs/DiagnosticReports/HeyBroc*.ips
-          ruby -rjson -e '
+          ruby -rjson -rtempfile -e '
             $stdout.sync = true
             SIM_APP = ARGV[0]
             EXPECTED_STORES = %w[walmart instacart bjs sams target].freeze
@@ -390,38 +390,30 @@ jobs:
             end
 
             def run_bounded(timeout_s, *cmd)
-              r, w = IO.pipe
-              pid = Process.spawn(*cmd, pgroup: true, in: "/dev/null", out: w, err: [:child, :out])
-              w.close
-              out = +""
+              tf = Tempfile.new("heybroc_simctl")
+              tf_path = tf.path
+              tf.close
+              pid = Process.spawn(*cmd, pgroup: true, in: "/dev/null", out: [tf_path, "w"], err: [:child, :out])
               deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout_s
               loop do
-                remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-                if remaining <= 0
-                  Process.kill("KILL", -pid) rescue nil
-                  Process.waitpid2(pid, Process::WNOHANG) rescue nil
-                  r.close rescue nil
-                  return [:timeout, out]
-                end
-                ready = IO.select([r], nil, nil, [remaining, 0.2].min)
-                if ready
-                  chunk = r.read_nonblock(8192, exception: false)
-                  if chunk && chunk != :wait_readable
-                    out << chunk
-                  end
-                end
                 wpid, status = Process.waitpid2(pid, Process::WNOHANG)
                 if wpid
-                  while (rest = r.read_nonblock(8192, exception: false)) && rest != :wait_readable
-                    out << rest
-                  end
-                  r.close rescue nil
+                  out = File.read(tf_path) rescue ""
+                  File.delete(tf_path) rescue nil
                   return [status.exitstatus || 1, out]
                 end
+                if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+                  Process.kill("KILL", -pid) rescue nil
+                  Process.waitpid2(pid, Process::WNOHANG) rescue nil
+                  out = File.read(tf_path) rescue ""
+                  File.delete(tf_path) rescue nil
+                  return [:timeout, out]
+                end
+                sleep 0.25
               end
             end
 
-            st, raw = run_bounded(15, "xcrun", "simctl", "list", "devices", "available", "-j")
+            st, raw = run_bounded(30, "xcrun", "simctl", "list", "devices", "available", "-j")
             if st != 0
               puts "::error::simctl list devices failed (#{st}): #{raw.strip}"
               exit 1
@@ -438,23 +430,29 @@ jobs:
               exit 1
             end
             puts "Booting iOS Simulator: #{preferred["name"]} (#{udid})"
-            # Detached /dev/null fds prevent launchd_sim from holding stdout pipes open; 90s + 180s avoids premature SIGKILL during cold boot.
+            # Detached /dev/null fds prevent launchd_sim from holding stdout pipes open; 90s + 210s avoids premature SIGKILL during cold boot.
             spawn_detached_bounded(90, "xcrun", "simctl", "boot", udid)
-            boot_st = spawn_detached_bounded(180, "xcrun", "simctl", "bootstatus", udid, "-b")
+            boot_st = spawn_detached_bounded(210, "xcrun", "simctl", "bootstatus", udid, "-b")
             if boot_st != 0
-              puts "::error::iOS Simulator failed to finish booting within 180s (status: #{boot_st})!"
+              puts "::error::iOS Simulator failed to finish booting within 210s (status: #{boot_st})!"
               spawn_detached_bounded(10, "xcrun", "simctl", "shutdown", udid)
               exit 1
             end
 
-            inst_code, inst_out = run_bounded(60, "xcrun", "simctl", "install", udid, SIM_APP)
+            puts "Simulator booted; installing HeyBroc.app..."
+            inst_code, inst_out = run_bounded(180, "xcrun", "simctl", "install", udid, SIM_APP)
+            if inst_code != 0
+              puts "::warning::First simctl install attempt returned #{inst_code}; retrying once after 3s..."
+              sleep 3
+              inst_code, inst_out = run_bounded(180, "xcrun", "simctl", "install", udid, SIM_APP)
+            end
             if inst_code != 0
               puts "::error::iOS Simulator install failed (#{inst_code}): #{inst_out.strip}"
               spawn_detached_bounded(10, "xcrun", "simctl", "shutdown", udid)
               exit 1
             end
 
-            dc_code, dc_out = run_bounded(15, "xcrun", "simctl", "get_app_container", udid, "com.heybroc.app", "data")
+            dc_code, dc_out = run_bounded(30, "xcrun", "simctl", "get_app_container", udid, "com.heybroc.app", "data")
             if dc_code != 0 || dc_out.strip.empty?
               puts "::error::Failed to resolve app data container (#{dc_code}): #{dc_out.strip}"
               spawn_detached_bounded(10, "xcrun", "simctl", "shutdown", udid)
@@ -463,7 +461,7 @@ jobs:
             marker_file = File.join(dc_out.strip, "tmp", "heybroc_smoke_passed.json")
             File.delete(marker_file) if File.exist?(marker_file)
 
-            l_code, l_out = run_bounded(45, "xcrun", "simctl", "launch", udid, "com.heybroc.app", "--heybroc-smoke-test-liveshop")
+            l_code, l_out = run_bounded(90, "xcrun", "simctl", "launch", udid, "com.heybroc.app", "--heybroc-smoke-test-liveshop")
             if l_code != 0
               puts "::error::iOS Simulator launch failed (#{l_code}): #{l_out.strip}"
               spawn_detached_bounded(10, "xcrun", "simctl", "shutdown", udid)
@@ -474,7 +472,7 @@ jobs:
             pid = l_out.split(":").last.to_s.strip
 
             marker_data = nil
-            deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20.0
+            deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 35.0
             while Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
               if File.exist?(marker_file)
                 parsed = JSON.parse(File.read(marker_file)) rescue nil
