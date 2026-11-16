@@ -7399,12 +7399,23 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             overlayKt.includes("ACTION_SHOW_GRID_BADGES") &&
             readerKt.includes("if (res.isCategoryEstimate) continue") &&
             readerKt.includes("scheduleVisibleGridBatchScan"),
+          iosNativeAlertPropertyValid:
+            (() => {
+              const iosLiveVc = fsSync.readFileSync(
+                "ios-app/App/LiveStoreBrowserViewController.swift",
+                "utf8",
+              );
+              return (
+                iosLiveVc.includes("advisoryKeys.contains(alert.id)") &&
+                !iosLiveVc.includes("alert.key")
+              );
+            })(),
         };
         if (Object.values(androidDualModeMap).some((v) => !v)) {
           console.error("androidDualModeMap failure detail:", androidDualModeMap);
         }
         check(
-          "Android Dual-Mode Architecture & JS VM Parity: LiveStoreBrowserActivity hardened WebView + valid DETECTOR_JS (WeakMap sig invalidation, banner safety, category-estimate suppression), smart single-row store routing, and zero-allocation pass-through GridScoreBadgesView",
+          "Android Dual-Mode Architecture & iOS/Android Parity: LiveStoreBrowserActivity hardened WebView + valid DETECTOR_JS (WeakMap sig invalidation, banner safety, category-estimate suppression), smart single-row store routing, zero-allocation pass-through GridScoreBadgesView, and iOS HeyBrocNativeAlert.id parity",
           Object.values(androidDualModeMap).every(Boolean),
         );
       }

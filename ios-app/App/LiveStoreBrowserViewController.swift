@@ -2111,7 +2111,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         // Pesticide & Dietary Alerts
         let advisoryKeys: Set<String> = ["pesticide_risk", "sugar_diabetes", "high_sodium"]
         for alert in summary.dietaryAlerts {
-            let isAdvisory = advisoryKeys.contains(alert.key)
+            let isAdvisory = advisoryKeys.contains(alert.id)
             let alertBox = UIStackView()
             alertBox.axis = .vertical
             alertBox.spacing = 4
@@ -2201,7 +2201,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                     altBtn.layer.cornerRadius = 10
                     altBtn.layer.borderWidth = 1
                     altBtn.layer.borderColor = UIColor(red: 0.525, green: 0.937, blue: 0.675, alpha: 1.0).cgColor
-                    altBtn.contentEdgeInsets = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+                    altBtn.heightAnchor.constraint(equalToConstant: 38).isActive = true
                     altBtn.addTarget(self, action: #selector(tapOpenAlternateSwap(_:)), for: .touchUpInside)
                     swapCard.addArrangedSubview(altBtn)
                 }
