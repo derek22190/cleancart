@@ -1310,11 +1310,9 @@ class OverlayWindowService : Service() {
         pillDotView = dotView
         pillTextView = labelView
         pillParams = params
-        syncGridBadgesOverlayVisibility(fadeIn = false)
     }
 
     private fun removePill() {
-        hideGridBadgesOverlay()
         removeOverlayView(pill)
         pill = null
         pillDotView = null
