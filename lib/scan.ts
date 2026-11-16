@@ -22,8 +22,14 @@ import {
   type SwapResult,
 } from "./swaps";
 
-import { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId } from "./dietary";
-export { evaluateDietaryAlerts, type DietaryAlert, type DietaryOptionId };
+import {
+  classifyDietaryAlertSeverity,
+  evaluateDietaryAlerts,
+  type DietaryAlert,
+  type DietaryAlertSeverity,
+  type DietaryOptionId,
+} from "./dietary";
+export { classifyDietaryAlertSeverity, evaluateDietaryAlerts, type DietaryAlert, type DietaryAlertSeverity, type DietaryOptionId };
 
 const VALID_CLIENT_PLATFORMS = new Set<ClientPlatform>([
   "web",
@@ -119,6 +125,8 @@ export interface ScanResponse {
   };
   result: ScoreResult;
   dietaryAlerts?: DietaryAlert[];
+  alertSeverity?: import("./dietary").DietaryAlertSeverity;
+  isCategoryEstimate?: boolean;
   swap: SwapResult | null;
   storeBrandSwap?: SwapResult | null;
   swapCandidates?: SwapResult[];
@@ -964,6 +972,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       .catch(() => {});
   }
 
+  const alertSeverity = classifyDietaryAlertSeverity(dietaryAlerts);
   const pillText =
     dietaryAlerts.length > 0
       ? `⚠️ ${dietaryAlerts.slice(0, 2).map((a) => a.shortBadge).join(" + ")} • ${result.score}/100`
@@ -990,6 +999,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     },
     result,
     ...(dietaryAlerts.length > 0 ? { dietaryAlerts } : {}),
+    alertSeverity,
+    isCategoryEstimate,
     swap: resolvedSwap,
     ...(storeBrandSwap ? { storeBrandSwap } : {}),
     ...(resolvedSwapCandidates.length > 0 ? { swapCandidates: resolvedSwapCandidates } : {}),
@@ -1034,11 +1045,14 @@ export interface BatchScanItemInput {
 export interface BatchScanResponse {
   ok: true;
   results: Record<string, ScanResponse | ScanError>;
-  batch: Record<string, ScanResponse | ScanError>;
 }
 
+const VALID_BATCH_ITEM_ID_RE = /^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$/i;
+const MAX_BATCH_SCAN_ITEMS = 8;
+const BATCH_ENTITLEMENT_TIMEOUT_MS = 900;
+
 export const NON_FOOD_GRID_ITEM_RE =
-  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|(?<!\b(?:dough|bread|food|meat|beer)\s+)conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
 
 function stripGatedSwapLinks(s: SwapResult): SwapResult {
   return {
@@ -1051,24 +1065,24 @@ function stripGatedSwapLinks(s: SwapResult): SwapResult {
 }
 
 /**
- * Scores up to 12 visible store product cards in a single request for On-Photo Score Badges.
- * Resolves device entitlement once per batch and sets skipAnalytics: true so passive grid scrolling
- * neither hits rate limits nor inflates single-scan funnel events or consumes free swap unlocks.
+ * Scores up to 8 visible store product cards in a single request for On-Photo Score Badges.
+ * Resolves device entitlement once per batch (with a 900ms fail-closed swap-link timeout) and sets
+ * skipAnalytics: true so passive grid scrolling never inflates single-scan funnel events or consumes free swap unlocks.
  */
 export async function runBatchScan(
   baseReq: ScanRequest,
   rawItems: BatchScanItemInput[],
 ): Promise<BatchScanResponse> {
-  const results: Record<string, ScanResponse | ScanError> = {};
+  const results: Record<string, ScanResponse | ScanError> = Object.create(null);
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
-    return { ok: true, results, batch: results };
+    return { ok: true, results };
   }
 
   const validItems: Array<{ id: string; productTitle?: string; barcode?: string; normKey: string }> = [];
   for (const raw of rawItems) {
     if (!raw || typeof raw !== "object") continue;
-    const id = typeof raw.id === "string" ? raw.id.trim().slice(0, 80) : "";
-    if (!id) continue;
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (!VALID_BATCH_ITEM_ID_RE.test(id)) continue;
     const productTitle = typeof raw.productTitle === "string" ? raw.productTitle.trim().slice(0, 300) : "";
     const barcode = typeof raw.barcode === "string" ? raw.barcode.replace(/\D/g, "").slice(0, 32) : "";
     if (!productTitle && !barcode) continue;
@@ -1079,11 +1093,11 @@ export async function runBatchScan(
       barcode: barcode || undefined,
       normKey,
     });
-    if (validItems.length >= 12) break;
+    if (validItems.length >= MAX_BATCH_SCAN_ITEMS) break;
   }
 
   if (validItems.length === 0) {
-    return { ok: true, results, batch: results };
+    return { ok: true, results };
   }
 
   const rawDev = typeof baseReq.deviceId === "string" ? baseReq.deviceId.trim() : "";
@@ -1098,30 +1112,46 @@ export async function runBatchScan(
   });
 
   let entitlement: EntitlementSummary | undefined;
+  let entitlementTimedOut = false;
   if (!isAnonDevice) {
-    try {
-      if (baseReq.referredByCode) {
-        const { device } = await applyOrActivateReferral({
-          deviceId: effectiveDeviceId,
-          referralCode: baseReq.referredByCode,
-          activateNow: false,
-          deviceSecret: baseReq.deviceSecret,
-        });
-        entitlement = await serializeEntitlementWithPaidLookup(device);
-      } else {
+    const loadEntitlement = async (): Promise<{ ok: true; value?: EntitlementSummary }> => {
+      try {
+        if (baseReq.referredByCode) {
+          const { device } = await applyOrActivateReferral({
+            deviceId: effectiveDeviceId,
+            referralCode: baseReq.referredByCode,
+            activateNow: false,
+            deviceSecret: baseReq.deviceSecret,
+          });
+          return { ok: true, value: await serializeEntitlementWithPaidLookup(device) };
+        }
         const device = await getOrCreateDevice(effectiveDeviceId, baseReq.deviceSecret);
-        entitlement = await serializeEntitlementWithPaidLookup(device);
+        return { ok: true, value: await serializeEntitlementWithPaidLookup(device) };
+      } catch {
+        return { ok: true, value: undefined };
       }
-    } catch {
+    };
+    const raced = await Promise.race([
+      loadEntitlement(),
+      new Promise<{ ok: false }>((resolve) =>
+        setTimeout(() => resolve({ ok: false }), BATCH_ENTITLEMENT_TIMEOUT_MS),
+      ),
+    ]);
+    if (raced.ok) {
+      entitlement = raced.value;
+    } else {
+      entitlementTimedOut = true;
       entitlement = undefined;
     }
   }
   if (baseReq.verifiedAccountPro && entitlement) {
     entitlement = { ...entitlement, isProActive: true };
   }
-  const canAccessSwapLinks = isAnonDevice
-    ? true
-    : Boolean(baseReq.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
+  const canAccessSwapLinks = entitlementTimedOut
+    ? Boolean(baseReq.verifiedAccountPro)
+    : isAnonDevice
+      ? true
+      : Boolean(baseReq.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
 
   const uniqueByNorm = new Map<string, { productTitle?: string; barcode?: string }>();
   for (const it of validItems) {
@@ -1132,7 +1162,7 @@ export async function runBatchScan(
 
   const resolvedByNorm = new Map<string, ScanResponse | ScanError>();
   const entries = Array.from(uniqueByNorm.entries());
-  const CONCURRENCY = 5;
+  const CONCURRENCY = 3;
   let cursor = 0;
 
   const workers = Array.from({ length: Math.min(CONCURRENCY, entries.length) }, async () => {
@@ -1188,6 +1218,6 @@ export async function runBatchScan(
     }
   }
 
-  return { ok: true, results, batch: results };
+  return { ok: true, results };
 }
 

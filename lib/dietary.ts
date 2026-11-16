@@ -1,4 +1,4 @@
-import type { NutritionInput } from "./rubric";
+import { stripPrecautionaryCrossContactClauses, type NutritionInput } from "./rubric";
 
 export type DietaryOptionId =
   | "sugar_diabetes"
@@ -22,11 +22,23 @@ export const MAJOR_ALLERGEN_IDS: readonly DietaryOptionId[] = [
   "sesame",
 ] as const;
 
+export type DietaryAlertSeverity = "allergen" | "advisory" | "none";
+
 export interface DietaryAlert {
   id: DietaryOptionId;
   label: string;
   shortBadge: string;
   reason: string;
+}
+
+export function classifyDietaryAlertSeverity(alerts: readonly DietaryAlert[] | undefined): DietaryAlertSeverity {
+  if (!Array.isArray(alerts) || alerts.length === 0) return "none";
+  for (const alert of alerts) {
+    if ((MAJOR_ALLERGEN_IDS as readonly string[]).includes(alert.id)) {
+      return "allergen";
+    }
+  }
+  return "advisory";
 }
 
 const CERTIFIED_ORGANIC_OR_CLEAN_CROP =
@@ -53,7 +65,7 @@ export function detectPesticideRisk(
 ): PesticideRiskMatch | null {
   const combined = `${productTitle || ""} ${ingredients || ""}`.trim();
   if (!combined) return null;
-  if (nutrition?.isOrganic === true || CERTIFIED_ORGANIC_OR_CLEAN_CROP.test(combined)) {
+  if (nutrition?.isOrganic === true || CERTIFIED_ORGANIC_OR_CLEAN_CROP.test(productTitle || "")) {
     return null;
   }
   if (NON_PRODUCE_BEVERAGE_OR_CANDY.test(productTitle || "") && !/\b(oats?|oatmeal|wheat|flour)\b/i.test(ingredients || "")) {
@@ -64,7 +76,7 @@ export function detectPesticideRisk(
   const stripOrganicAndFlavorNoise = (s: string) =>
     s
       .replace(
-        /\borganic\s+(?:whole\s+grain\s+|rolled\s+|steel[\s-]*cut\s+|sprouted\s+|gluten[\s-]*free\s+|unbleached\s+|enriched\s+|durum\s+|baby\s+|fresh\s+|frozen\s+|sweet\s+|red\s+|green\s+|black\s+)?[a-z]+(?:\s+(?:oats?|wheat|flour|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?/gi,
+        /\borganic\s+(?:whole\s+grain\s+|rolled\s+|steel[\s-]*cut\s+|sprouted\s+|gluten[\s-]*free\s+|unbleached\s+|enriched\s+|durum\s+|baby\s+|fresh\s+|frozen\s+|sweet\s+|red\s+|green\s+|black\s+|cane\s+|brown\s+|raw\s+)?[a-z]+(?:\s+(?:oats?|oatmeal|wheat|flour|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina|sugar|syrup))?/gi,
         " ",
       )
       .replace(
@@ -76,7 +88,7 @@ export function detectPesticideRisk(
   const cleanIng = stripOrganicAndFlavorNoise(ingredients || "");
   const cleanCombined = `${cleanTitle} ${cleanIng}`;
 
-  // 1) USDA Pesticide Data Program (PDP) high-residue conventional produce categories
+  // 1) USDA Pesticide Data Program (PDP) & EWG Dirty Dozen high-residue conventional produce categories
   const produceMatch = cleanCombined.match(
     /\b(strawberries|strawberry|baby\s+spinach|spinach|kale|collard\s+greens?|mustard\s+greens?|seedless\s+grapes?|red\s+grapes?|green\s+grapes?|grapes?|raisins?|peaches|peach|pears|pear|nectarines?|honeycrisp\s+apples?|gala\s+apples?|fuji\s+apples?|granny\s+smith\s+apples?|applesauce|apples?|bell\s+peppers?|sweet\s+peppers?|jalape[nñ]o\s+peppers?|hot\s+peppers?|cherries|blueberries|blueberry|green\s+beans?|string\s+beans?|russet\s+potatoes?|yukon\s+gold\s+potatoes?|red\s+potatoes?|potatoes|celery|roma\s+tomatoes?|cherry\s+tomatoes?|grape\s+tomatoes?|tomatoes)\b/i,
   );
@@ -85,7 +97,7 @@ export function detectPesticideRisk(
     return {
       crop,
       category: "high_residue_produce",
-      reason: `Conventional ${crop} — high-residue produce category in USDA Pesticide Data Program (Dirty Dozen) monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides & herbicides (including glyphosate)`,
+      reason: `Conventional ${crop} — high-residue produce category in USDA Pesticide Data Program & EWG Dirty Dozen monitoring; USDA Organic (7 CFR § 205.105) prohibits synthetic pesticides & herbicides (including glyphosate)`,
     };
   }
 
@@ -98,7 +110,7 @@ export function detectPesticideRisk(
     return {
       crop,
       category: "conventional_grain_legume",
-      reason: `Conventional ${crop} — non-organic grain/legume farming permits synthetic herbicides & pre-harvest desiccants (such as glyphosate); USDA Organic (7 CFR § 205.105) prohibits glyphosate & synthetic herbicides`,
+      reason: `Conventional ${crop} — non-organic grain/legume category tracked in USDA Pesticide Data Program & EWG Dirty Dozen / herbicide monitoring where pre-harvest desiccants (such as glyphosate) are permitted; USDA Organic (7 CFR § 205.105) prohibits glyphosate & synthetic herbicides`,
     };
   }
 
@@ -124,12 +136,7 @@ export function evaluateDietaryAlerts(
         " ",
       );
   const ing = stripCoordinatedFreeClaims(
-    ingredients
-      .toLowerCase()
-      .replace(
-        /(?:[.;(\[\r\n]|\b)(?:may\s+contain(?:\s+traces\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\s+(?:in|on)\s+(?:a\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\s+equipment|lines?|machinery)|shared\s+equipment\s+with|facility\s+that\s+(?:also\s+)?(?:processes|handles|uses|manufactures|packages))\b(?:(?!\b(?:ingredients?|contains)\s*:|[.;)\]\r\n]).)*/gi,
-        " ",
-      ),
+    stripPrecautionaryCrossContactClauses(ingredients).toLowerCase(),
   );
   const cleanTitleForAlerts = stripCoordinatedFreeClaims(productTitle.toLowerCase());
   const text = `${cleanTitleForAlerts} ${ing}`;

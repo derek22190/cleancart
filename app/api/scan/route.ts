@@ -95,9 +95,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (!(await checkRateLimitAsync(`scan:${ip}`, 90))) {
-    return NextResponse.json({ ok: false, error: "Too many scan requests. Please wait a moment." }, { status: 429, headers: CORS });
-  }
   let body: ScanRequest & { items?: BatchScanItemInput[] };
   try {
     const text = await request.text();
@@ -112,6 +109,15 @@ export async function POST(request: Request) {
     body.verifiedAccountPro = false;
   } catch {
     return NextResponse.json({ ok: false, error: "Body must be valid JSON." }, { status: 400, headers: CORS });
+  }
+
+  const batchItemCount = Array.isArray(body.items) ? Math.min(8, Math.max(1, body.items.length)) : 0;
+  const rateCost = batchItemCount > 0 ? Math.max(1, Math.ceil(batchItemCount / 2)) : 1;
+  if (!(await checkRateLimitAsync(`scan:${ip}`, 120, 60_000, rateCost))) {
+    return NextResponse.json(
+      { ok: false, error: "Too many scan requests. Please wait a moment." },
+      { status: 429, headers: { ...CORS, "Retry-After": "3" } },
+    );
   }
 
   const headerSecret = request.headers.get("x-device-secret")?.trim();

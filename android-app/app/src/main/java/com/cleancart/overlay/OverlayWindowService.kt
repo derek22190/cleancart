@@ -157,6 +157,7 @@ class OverlayWindowService : Service() {
     private var currentStoreKey = "walmart"
     private var currentStoreBucket = "walmart"
     private val tripCart = mutableListOf<TripCartItem>()
+    private var consecutiveFullCartFrames: Int = 0
     private var displayedCartAvg: Int? = null
     private var pendingSwapFromKey: String? = null
     private var pendingSwapTitle: String? = null
@@ -712,6 +713,7 @@ class OverlayWindowService : Service() {
         if (replaceCart) {
             if ((arr.length() == 0 && qtyDelta == 0 && targetTitle.isBlank()) || badgeCount == 0) {
                 tripCart.clear()
+                consecutiveFullCartFrames = 0
             } else {
                 // Virtualized RecyclerView carts only expose 2–4 visible rows on frame 1; preserve offscreen rows when scrolling
                 tripCart.removeAll {
@@ -830,9 +832,14 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        // Purge any phantom non-cart items on Cart screen entry, and purge all unseen stale items whenever the entire Cart section is visible!
+        // Purge any phantom non-cart items on Cart screen entry, and purge all unseen stale items only after 2 consecutive verified full-cart frames!
         if (!keepMode && arr.length() > 0) {
             if (allCartRowsVisible) {
+                consecutiveFullCartFrames = (consecutiveFullCartFrames + 1).coerceAtMost(10)
+            } else {
+                consecutiveFullCartFrames = 0
+            }
+            if (allCartRowsVisible && consecutiveFullCartFrames >= 2) {
                 tripCart.removeAll { it.lastSeenAtMs < now }
             } else if (replaceCart) {
                 tripCart.removeAll { !it.fromCartScreen && it.lastSeenAtMs < now }
@@ -844,6 +851,8 @@ class OverlayWindowService : Service() {
                     tripCart[0].quantity = badgeCount
                 }
             }
+        } else if (keepMode) {
+            consecutiveFullCartFrames = 0
         }
         // Enforce authoritative cart badge count ONLY against unseen offscreen items — never delete or decrement items visible on the current screen!
         if (!keepMode && badgeCount > 0 && totalCartUnits() > badgeCount) {

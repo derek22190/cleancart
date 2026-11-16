@@ -234,33 +234,36 @@ export async function kvDel(key: string): Promise<void> {
  */
 export async function kvIncrWithPExpire(
   key: string,
-  windowMs = 60_000
+  windowMs = 60_000,
+  delta = 1
 ): Promise<number> {
+  const safeDelta = Math.max(1, Math.floor(delta));
   const cfg = getRedisConfig();
   if (cfg) {
     const lua = [
-      'local c = redis.call("INCR", KEYS[1])',
-      "if c == 1 then",
+      'local d = tonumber(ARGV[2])',
+      'local c = redis.call("INCRBY", KEYS[1], d)',
+      "if c == d then",
       '  redis.call("PEXPIRE", KEYS[1], tonumber(ARGV[1]))',
       "end",
       "return c",
     ].join("\n");
     const res = await upstashCommand<number>(
-      ["EVAL", lua, 1, key, Math.max(1000, Math.floor(windowMs))],
+      ["EVAL", lua, 1, key, Math.max(1000, Math.floor(windowMs)), safeDelta],
       key
     );
-    return Number(res ?? 1);
+    return Number(res ?? safeDelta);
   }
   const now = Date.now();
   const existing = memoryFallback.get(key);
   if (!existing || (existing.expiresAt && existing.expiresAt <= now)) {
     setBoundedMemoryFallback(key, {
-      raw: "1",
+      raw: String(safeDelta),
       expiresAt: now + Math.max(1000, Math.floor(windowMs)),
     });
-    return 1;
+    return safeDelta;
   }
-  const next = (Number(existing.raw) || 0) + 1;
+  const next = (Number(existing.raw) || 0) + safeDelta;
   setBoundedMemoryFallback(key, {
     raw: String(next),
     expiresAt: existing.expiresAt,

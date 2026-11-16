@@ -1266,7 +1266,7 @@
 
   /* ---------------- Multi-Product Grid Card Hover / Focus & Photo Badges ---------------- */
   const NON_FOOD_GRID_TITLE_RE =
-    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|(?<!\b(?:dough|bread|food|meat|beer)\s+)conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
 
   const PRODUCT_CARD_SEL = [
     '[data-item-id]',
@@ -3200,13 +3200,6 @@
 
     // Increment scanSeq BEFORE synchronous scanCache hits so any older in-flight network scan is immediately invalidated!
     const seq = ++scanSeq;
-    const cKey = normCacheKey(productTitle, rawIngredients);
-    const cached = scanCache.get(cKey) || (!rawIngredients ? scanCache.get(normCacheKey(productTitle, "")) : null);
-    if (cached?.ok) {
-      void applyScanResult(cached, domImage, seq);
-      return;
-    }
-
     let pageBarcode = "";
     if (!modalScope) {
       try {
@@ -3263,6 +3256,13 @@
       }
     }
 
+    const cKey = `${normCacheKey(productTitle, rawIngredients)}|${pageBarcode}`;
+    const cached = scanCache.get(cKey);
+    if (cached?.ok) {
+      void applyScanResult(cached, domImage, seq);
+      return;
+    }
+
     const reqBucket = activeBucket;
     chrome.runtime.sendMessage(
       {
@@ -3289,15 +3289,29 @@
   const PHOTO_BADGE_STYLE_ID = "cleancart-photo-badge-styles";
   const PRODUCT_LINK_FALLBACK_SEL =
     'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+  const MAJOR_ALLERGEN_BADGE_IDS = new Set([
+    "peanuts_nuts",
+    "dairy",
+    "wheat_gluten",
+    "soy",
+    "egg",
+    "shellfish_fish",
+    "sesame",
+  ]);
+  const MAX_IN_FLIGHT_PHOTO_BATCHES = 2;
 
+  const gridScanCache = new Map();
   let photoBadgeObserver = null;
-  let observedBadgeCards = new WeakSet();
-  let badgedAnchors = new WeakSet();
+  let cardStateByEl = new WeakMap();
   const badgeDataByElement = new WeakMap();
   const pendingPhotoBadgeQueue = new Map();
   let photoBadgeBatchTimer = null;
+  let photoBadgeRetryTimer = null;
   let nextPhotoBadgeSeq = 1;
   let photoBadgeGeneration = 1;
+  let photoBadgePrefRev = 1;
+  let lastPhotoBadgePageUrl = location.href;
+  let inFlightPhotoBatches = 0;
 
   function ensurePhotoBadgeStyles() {
     if (document.getElementById(PHOTO_BADGE_STYLE_ID)) return;
@@ -3308,7 +3322,7 @@
         position: absolute !important;
         bottom: 8px !important;
         left: 8px !important;
-        z-index: 8 !important;
+        z-index: 2 !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 3px !important;
@@ -3332,6 +3346,7 @@
       .cc-photo-badge--green { background: rgba(22, 163, 74, 0.96) !important; }
       .cc-photo-badge--yellow { background: rgba(217, 119, 6, 0.96) !important; }
       .cc-photo-badge--red { background: rgba(220, 38, 38, 0.96) !important; }
+      .cc-photo-badge--advisory { box-shadow: 0 0 0 2px #fbbf24, 0 4px 12px rgba(15, 23, 42, 0.28) !important; }
       .cc-photo-badge--loading { background: rgba(15, 23, 42, 0.72) !important; opacity: 0.85 !important; }
     `;
     (document.head || document.documentElement)?.appendChild(styleEl);
@@ -3340,22 +3355,63 @@
   function isNonFoodScanResponse(resp) {
     if (!resp?.ok || !resp.result) return true;
     return (
+      resp.isCategoryEstimate === true ||
+      /category estimate/i.test(resp.product?.title || "") ||
       resp.product?.nutrition?.productKind === "non-food" ||
       resp.result.yukaBreakdown?.nutriScoreGrade === "N/A"
     );
+  }
+
+  function resolveBadgeAlertSeverity(resp) {
+    if (resp?.alertSeverity === "allergen" || resp?.alertSeverity === "advisory" || resp?.alertSeverity === "none") {
+      return resp.alertSeverity;
+    }
+    const alerts = Array.isArray(resp?.dietaryAlerts) ? resp.dietaryAlerts : [];
+    if (alerts.length === 0) return "none";
+    return alerts.some((a) => MAJOR_ALLERGEN_BADGE_IDS.has(a?.id)) ? "allergen" : "advisory";
+  }
+
+  function computeCardSignature(cardEl, info) {
+    const linkEl = cardEl?.querySelector?.(PRODUCT_LINK_FALLBACK_SEL) || cardEl?.querySelector?.("a[href]");
+    const rawHref = (linkEl?.getAttribute("href") || "").split("#")[0].split("?")[0];
+    const rawImg = (
+      info?.domImageUrl ||
+      info?.image ||
+      info?.imgEl?.currentSrc ||
+      info?.imgEl?.getAttribute?.("src") ||
+      ""
+    ).slice(0, 180);
+    return `${(info?.title || "").toLowerCase().trim()}|${rawHref}|${rawImg}|${activeBucket.bucketKey}|${photoBadgePrefRev}`;
+  }
+
+  function isPlaceholderCardImage(src, imgEl) {
+    if (!src) return false;
+    if (imgEl && imgEl.naturalWidth > 48 && imgEl.naturalHeight > 48) return false;
+    return /(?:^data:image\/gif;base64,R0lGOD|(?:^|[/_.-])(?:1x1|spacer|spinner|pixel|blank|transparent)\.(?:gif|png|svg)|\/(?:icons?|sprites?)\/)/i.test(
+      src
+    );
+  }
+
+  function schedulePhotoBadgeRetry(delayMs) {
+    if (photoBadgeRetryTimer) return;
+    photoBadgeRetryTimer = setTimeout(() => {
+      photoBadgeRetryTimer = null;
+      scanVisiblePhotoBadges();
+    }, Math.max(200, delayMs));
   }
 
   function clearAllPhotoBadges() {
     photoBadgeGeneration++;
     clearTimeout(photoBadgeBatchTimer);
     photoBadgeBatchTimer = null;
+    clearTimeout(photoBadgeRetryTimer);
+    photoBadgeRetryTimer = null;
     pendingPhotoBadgeQueue.clear();
     if (photoBadgeObserver) {
       photoBadgeObserver.disconnect();
       photoBadgeObserver = null;
     }
-    observedBadgeCards = new WeakSet();
-    badgedAnchors = new WeakSet();
+    cardStateByEl = new WeakMap();
     const existing = document.querySelectorAll(".cc-photo-badge");
     for (const el of existing) {
       el.remove();
@@ -3363,79 +3419,148 @@
   }
 
   function findCardPhotoAnchor(cardEl, preferredImgEl = null) {
-    const imgs = preferredImgEl ? [preferredImgEl, ...cardEl.querySelectorAll("img")] : Array.from(cardEl.querySelectorAll("img"));
+    const imgs = preferredImgEl
+      ? [preferredImgEl, ...cardEl.querySelectorAll("img")]
+      : Array.from(cardEl.querySelectorAll("img"));
     let chosenImg = null;
     let imgRect = null;
     for (const img of imgs) {
       if (!img || img.closest?.(".cc-photo-badge")) continue;
       const src = img.currentSrc || img.getAttribute("src") || "";
-      if (src && /(?:1x1|pixel|spacer|spinner|logo|icon|badge|sprite)/i.test(src)) continue;
+      if (isPlaceholderCardImage(src, img)) continue;
       const r = img.getBoundingClientRect();
       const parentR = img.parentElement?.getBoundingClientRect?.() || r;
       const effW = Math.max(r.width, parentR.width);
       const effH = Math.max(r.height, parentR.height);
       if (effW >= 56 && effH >= 56 && effW <= 440 && effH <= 440) {
         chosenImg = img;
-        imgRect = r.width >= 40 ? r : parentR;
+        imgRect = r.width >= 40 && r.height >= 40 ? r : parentR;
         break;
       }
     }
     if (!chosenImg) return null;
-    let anchor = chosenImg.parentElement;
-    if (!anchor || anchor === document.body) return null;
-    if (anchor.tagName === "PICTURE" && anchor.parentElement && anchor.parentElement !== document.body) {
-      anchor = anchor.parentElement;
-    }
-    const anchorStyle = window.getComputedStyle(anchor);
-    if (anchorStyle.display === "inline" && anchor.parentElement && anchor.parentElement !== document.body) {
-      const pRect = anchor.parentElement.getBoundingClientRect();
-      if (pRect.width >= 56 && pRect.height <= (imgRect?.height || 220) + 64) {
-        anchor = anchor.parentElement;
-      } else {
-        anchor.style.display = "inline-block";
+
+    const maxContainerH = (imgRect?.height || 240) + 72;
+    let cur = chosenImg.parentElement;
+    let fallbackBlock = null;
+    for (let depth = 0; depth < 4 && cur && cur !== document.body && cardEl.contains(cur); depth++) {
+      if (cur.tagName === "PICTURE") {
+        cur = cur.parentElement;
+        continue;
       }
+      const cs = window.getComputedStyle(cur);
+      const cr = cur.getBoundingClientRect();
+      if (cr.width >= 56 && cr.height >= 56 && cr.height <= maxContainerH) {
+        if (cs.position !== "static") {
+          return cur;
+        }
+        if (!fallbackBlock && !/^inline$/i.test(cs.display)) {
+          fallbackBlock = cur;
+        }
+      }
+      if (cur === cardEl) break;
+      cur = cur.parentElement;
     }
-    if (window.getComputedStyle(anchor).position === "static") {
-      anchor.style.position = "relative";
+
+    if (!fallbackBlock) return null;
+    const imgPos = window.getComputedStyle(chosenImg).position;
+    if (imgPos === "static" && window.getComputedStyle(fallbackBlock).position === "static") {
+      fallbackBlock.style.position = "relative";
+    } else if (window.getComputedStyle(fallbackBlock).position === "static") {
+      return null;
     }
-    return anchor;
+    return fallbackBlock;
   }
 
-  function applyScoredPhotoBadgeState(badgeEl, resp, info, domImg) {
-    if (!badgeEl || !badgeEl.isConnected) return;
+  function applyScoredPhotoBadgeState(badgeEl, resp, info, domImg, cardEl, sig) {
+    if (!badgeEl || !badgeEl.isConnected) return false;
     if (!resp?.ok || isNonFoodScanResponse(resp)) {
       badgeEl.remove();
-      return;
+      return false;
     }
     const safeScore = Math.max(0, Math.min(100, Math.round(Number(resp.result.score ?? 0))));
-    const hasDietAlerts = Array.isArray(resp.dietaryAlerts) && resp.dietaryAlerts.length > 0;
-    const tone = hasDietAlerts ? "red" : safeScore >= 75 ? "green" : safeScore >= 50 ? "yellow" : "red";
-    const icon = hasDietAlerts ? "⚠️" : "🥦";
+    const severity = resolveBadgeAlertSeverity(resp);
+    const scoreTone = safeScore >= 75 ? "green" : safeScore >= 50 ? "yellow" : "red";
+    const tone = severity === "allergen" ? "red" : scoreTone;
+    const icon = severity === "none" ? "🥦" : "⚠️";
     badgeEl.classList.remove(
       "cc-photo-badge--loading",
       "cc-photo-badge--green",
       "cc-photo-badge--yellow",
-      "cc-photo-badge--red"
+      "cc-photo-badge--red",
+      "cc-photo-badge--advisory"
     );
     badgeEl.classList.add(`cc-photo-badge--${tone}`);
+    if (severity === "advisory") {
+      badgeEl.classList.add("cc-photo-badge--advisory");
+    }
+    badgeEl.dataset.ccSig = sig;
     badgeEl.textContent = `${icon} ${safeScore}`;
     badgeEl.setAttribute(
       "aria-label",
       `HeyBroc score ${safeScore} out of 100 for ${resp.product?.title || info.title}. Tap to inspect and view Clean Swaps.`
     );
-    badgeDataByElement.set(badgeEl, { resp, info, domImg });
+    badgeDataByElement.set(badgeEl, { resp, info, domImg, cardEl, sig, loading: false, openOnResolve: false });
+    return true;
+  }
+
+  function openBadgeScanInDrawer(resp, info, domImg) {
+    if (!resp?.ok) return;
+    modalOpenedAt = Date.now();
+    const seq = ++scanSeq;
+    state.hoveredCardData = info;
+    state.auditorOpen = false;
+    state.drawerTab = "product";
+    state.expanded = true;
+    void applyScanResult(resp, domImg, seq);
   }
 
   function handlePhotoBadgeActivate(badgeEl) {
     const entry = badgeDataByElement.get(badgeEl);
-    if (!entry?.resp?.ok) return;
-    modalOpenedAt = Date.now();
-    const seq = ++scanSeq;
-    state.hoveredCardData = entry.info;
-    state.auditorOpen = false;
-    state.drawerTab = "product";
-    state.expanded = true;
-    void applyScanResult(entry.resp, entry.domImg, seq);
+    if (!entry) return;
+    if (entry.loading) {
+      entry.openOnResolve = true;
+      return;
+    }
+    const liveCard = entry.cardEl?.isConnected ? entry.cardEl : badgeEl.closest(PRODUCT_CARD_SEL);
+    const liveInfo = liveCard ? readProductCardInfo(liveCard) : null;
+    if (
+      liveCard &&
+      liveInfo &&
+      (computeCardSignature(liveCard, liveInfo) !== entry.sig ||
+        liveInfo.title.toLowerCase().trim() !== entry.info.title.toLowerCase().trim())
+    ) {
+      badgeEl.remove();
+      cardStateByEl.delete(liveCard);
+      processVisiblePhotoBadgeCard(liveCard);
+      const reqBucket = activeBucket;
+      const liveDomImg = liveInfo.domImageUrl || liveInfo.image || null;
+      modalOpenedAt = Date.now();
+      const seq = ++scanSeq;
+      state.hoveredCardData = liveInfo;
+      state.auditorOpen = false;
+      state.drawerTab = "product";
+      state.expanded = true;
+      chrome.runtime.sendMessage(
+        {
+          type: "CLEANCART_SCAN",
+          payload: {
+            productTitle: liveInfo.title,
+            store: reqBucket.store,
+            instacartRetailerSlug: reqBucket.instacartRetailerSlug,
+          },
+        },
+        (freshResp) => {
+          if (freshResp?.ok) {
+            gridScanCache.set(normCacheKey(liveInfo.title, ""), freshResp);
+          }
+          if (seq !== scanSeq || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
+          void applyScanResult(freshResp, liveDomImg, seq);
+        }
+      );
+      return;
+    }
+    openBadgeScanInDrawer(entry.resp, entry.info, entry.domImg);
   }
 
   function flushPhotoBadgeBatch() {
@@ -3445,22 +3570,69 @@
       pendingPhotoBadgeQueue.clear();
       return;
     }
+    if (inFlightPhotoBatches >= MAX_IN_FLIGHT_PHOTO_BATCHES) {
+      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 220);
+      return;
+    }
 
     const batchEntries = [];
     for (const [id, entry] of pendingPhotoBadgeQueue.entries()) {
       pendingPhotoBadgeQueue.delete(id);
-      if (!entry.badgeEl?.isConnected) continue;
+      if (!entry.badgeEl?.isConnected || !entry.cardEl?.isConnected) continue;
+      const liveInfo = readProductCardInfo(entry.cardEl);
+      if (!liveInfo || computeCardSignature(entry.cardEl, liveInfo) !== entry.sig) {
+        entry.badgeEl.remove();
+        cardStateByEl.delete(entry.cardEl);
+        processVisiblePhotoBadgeCard(entry.cardEl);
+        continue;
+      }
+      cardStateByEl.set(entry.cardEl, {
+        sig: entry.sig,
+        status: "inflight",
+        badgeEl: entry.badgeEl,
+        retryCount: entry.retryCount || 0,
+        nextRetryAt: 0,
+      });
       batchEntries.push(entry);
       if (batchEntries.length >= 8) break;
     }
-    if (pendingPhotoBadgeQueue.size > 0) {
-      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 140);
+    if (pendingPhotoBadgeQueue.size > 0 && !photoBadgeBatchTimer) {
+      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 180);
     }
     if (batchEntries.length === 0) return;
 
     const gen = photoBadgeGeneration;
     const reqBucket = activeBucket;
     const items = batchEntries.map((e) => ({ id: e.id, productTitle: e.info.title }));
+    inFlightPhotoBatches++;
+
+    const markBatchRetry = (backoffMs, allowRetry = true) => {
+      for (const entry of batchEntries) {
+        entry.badgeEl?.remove();
+        if (!entry.cardEl?.isConnected) continue;
+        const prevRetries = entry.retryCount || 0;
+        if (allowRetry && prevRetries < 2) {
+          cardStateByEl.set(entry.cardEl, {
+            sig: entry.sig,
+            status: "retry",
+            badgeEl: null,
+            retryCount: prevRetries + 1,
+            nextRetryAt: Date.now() + backoffMs,
+          });
+        } else {
+          cardStateByEl.set(entry.cardEl, {
+            sig: entry.sig,
+            status: "nonfood",
+            badgeEl: null,
+            retryCount: prevRetries,
+            nextRetryAt: 0,
+          });
+        }
+      }
+      if (allowRetry) {
+        schedulePhotoBadgeRetry(backoffMs + 60);
+      }
+    };
 
     try {
       chrome.runtime.sendMessage(
@@ -3471,29 +3643,83 @@
           instacartRetailerSlug: reqBucket.instacartRetailerSlug,
         },
         (batchResp) => {
-          if (gen !== photoBadgeGeneration || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
-          const map = batchResp?.results || batchResp?.batch || null;
-          if (!batchResp?.ok || !map || typeof map !== "object") {
+          inFlightPhotoBatches = Math.max(0, inFlightPhotoBatches - 1);
+          if (pendingPhotoBadgeQueue.size > 0 && !photoBadgeBatchTimer) {
+            photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 140);
+          }
+          if (gen !== photoBadgeGeneration) return;
+          if (resolveStoreBucket().bucketKey !== reqBucket.bucketKey) {
             for (const entry of batchEntries) {
               entry.badgeEl?.remove();
+              if (entry.cardEl?.isConnected) cardStateByEl.delete(entry.cardEl);
             }
+            schedulePhotoBadgeRetry(250);
+            return;
+          }
+          const map = batchResp?.results || batchResp?.batch || null;
+          if (!batchResp?.ok || !map || typeof map !== "object") {
+            const shouldRetry = batchResp?.transient !== false;
+            const retryMs = Math.max(1500, Number(batchResp?.retryAfterMs) || 2200);
+            markBatchRetry(retryMs, shouldRetry);
             return;
           }
           for (const entry of batchEntries) {
-            const itemResp = map[entry.id];
+            if (!entry.cardEl?.isConnected) {
+              entry.badgeEl?.remove();
+              continue;
+            }
+            const liveInfo = readProductCardInfo(entry.cardEl);
+            if (!liveInfo || computeCardSignature(entry.cardEl, liveInfo) !== entry.sig) {
+              entry.badgeEl?.remove();
+              cardStateByEl.delete(entry.cardEl);
+              processVisiblePhotoBadgeCard(entry.cardEl);
+              continue;
+            }
+            const itemResp = Object.prototype.hasOwnProperty.call(map, entry.id) ? map[entry.id] : null;
             if (itemResp?.ok) {
-              scanCache.set(normCacheKey(entry.info.title, ""), itemResp);
-              applyScoredPhotoBadgeState(entry.badgeEl, itemResp, entry.info, entry.domImg);
+              gridScanCache.set(normCacheKey(entry.info.title, ""), itemResp);
+              const keepOpen = Boolean(badgeDataByElement.get(entry.badgeEl)?.openOnResolve);
+              const shown = applyScoredPhotoBadgeState(
+                entry.badgeEl,
+                itemResp,
+                entry.info,
+                entry.domImg,
+                entry.cardEl,
+                entry.sig
+              );
+              cardStateByEl.set(entry.cardEl, {
+                sig: entry.sig,
+                status: shown ? "scored" : "nonfood",
+                badgeEl: shown ? entry.badgeEl : null,
+                retryCount: 0,
+                nextRetryAt: 0,
+              });
+              if (shown && keepOpen) {
+                handlePhotoBadgeActivate(entry.badgeEl);
+              }
             } else {
               entry.badgeEl?.remove();
+              cardStateByEl.set(entry.cardEl, {
+                sig: entry.sig,
+                status: "nonfood",
+                badgeEl: null,
+                retryCount: 0,
+                nextRetryAt: 0,
+              });
             }
           }
         }
       );
     } catch {
-      for (const entry of batchEntries) {
-        entry.badgeEl?.remove();
-      }
+      inFlightPhotoBatches = Math.max(0, inFlightPhotoBatches - 1);
+      markBatchRetry(2200, true);
+    }
+  }
+
+  function removeCardPhotoBadges(cardEl) {
+    if (!cardEl?.querySelectorAll) return;
+    for (const b of cardEl.querySelectorAll(".cc-photo-badge")) {
+      b.remove();
     }
   }
 
@@ -3501,25 +3727,43 @@
     if (!cardEl || !cardEl.isConnected || isCartPageUrl()) return;
     if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") return;
     const info = readProductCardInfo(cardEl);
-    if (!info || NON_FOOD_GRID_TITLE_RE.test(info.title)) return;
+    if (!info) return;
+    const sig = computeCardSignature(cardEl, info);
+    const prevState = cardStateByEl.get(cardEl);
+    const prevRetryCount = prevState && prevState.sig === sig ? prevState.retryCount || 0 : 0;
+
+    if (NON_FOOD_GRID_TITLE_RE.test(info.title)) {
+      removeCardPhotoBadges(cardEl);
+      cardStateByEl.set(cardEl, { sig, status: "nonfood", badgeEl: null, retryCount: 0, nextRetryAt: 0 });
+      return;
+    }
     const anchor = findCardPhotoAnchor(cardEl, info.imgEl);
     if (!anchor) return;
-    if (badgedAnchors.has(anchor) || anchor.querySelector(":scope > .cc-photo-badge")) return;
 
+    removeCardPhotoBadges(cardEl);
     ensurePhotoBadgeStyles();
-    badgedAnchors.add(anchor);
 
     const domImg = info.domImageUrl || info.image || null;
     const cKey = normCacheKey(info.title, "");
-    const cached = scanCache.get(cKey);
+    const cached = gridScanCache.get(cKey);
     if (cached) {
-      if (!cached.ok || isNonFoodScanResponse(cached)) return;
+      if (!cached.ok || isNonFoodScanResponse(cached)) {
+        cardStateByEl.set(cardEl, { sig, status: "nonfood", badgeEl: null, retryCount: 0, nextRetryAt: 0 });
+        return;
+      }
       const badgeEl = document.createElement("span");
       badgeEl.className = "cc-photo-badge";
       badgeEl.setAttribute("role", "button");
       badgeEl.setAttribute("tabindex", "0");
       anchor.appendChild(badgeEl);
-      applyScoredPhotoBadgeState(badgeEl, cached, info, domImg);
+      const shown = applyScoredPhotoBadgeState(badgeEl, cached, info, domImg, cardEl, sig);
+      cardStateByEl.set(cardEl, {
+        sig,
+        status: shown ? "scored" : "nonfood",
+        badgeEl: shown ? badgeEl : null,
+        retryCount: 0,
+        nextRetryAt: 0,
+      });
       return;
     }
 
@@ -3527,14 +3771,31 @@
     badgeEl.className = "cc-photo-badge cc-photo-badge--loading";
     badgeEl.setAttribute("role", "button");
     badgeEl.setAttribute("tabindex", "0");
-    badgeEl.setAttribute("aria-label", "Scoring food item with HeyBroc");
+    badgeEl.setAttribute("aria-label", `Scoring ${info.title} with HeyBroc`);
+    badgeEl.dataset.ccSig = sig;
     badgeEl.textContent = "🥦 …";
     anchor.appendChild(badgeEl);
+    badgeDataByElement.set(badgeEl, {
+      resp: null,
+      info,
+      domImg,
+      cardEl,
+      sig,
+      loading: true,
+      openOnResolve: false,
+    });
+    cardStateByEl.set(cardEl, {
+      sig,
+      status: "queued",
+      badgeEl,
+      retryCount: prevRetryCount,
+      nextRetryAt: 0,
+    });
 
     const id = `c${nextPhotoBadgeSeq++}`;
-    pendingPhotoBadgeQueue.set(id, { id, info, domImg, badgeEl });
+    pendingPhotoBadgeQueue.set(id, { id, info, domImg, badgeEl, cardEl, sig, retryCount: prevRetryCount });
     if (!photoBadgeBatchTimer) {
-      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 110);
+      photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 220);
     }
   }
 
@@ -3594,16 +3855,51 @@
   }
 
   function scanVisiblePhotoBadges() {
+    if (location.href !== lastPhotoBadgePageUrl) {
+      lastPhotoBadgePageUrl = location.href;
+      clearAllPhotoBadges();
+    }
     if (isCartPageUrl() || sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") {
       clearAllPhotoBadges();
       return;
     }
     const obs = ensurePhotoBadgeObserver();
     const cards = discoverPhotoBadgeCards();
+    const now = Date.now();
     for (const card of cards) {
-      if (observedBadgeCards.has(card)) continue;
-      observedBadgeCards.add(card);
+      const info = readProductCardInfo(card);
+      const prev = cardStateByEl.get(card);
+      if (!info) {
+        if (prev) {
+          prev.badgeEl?.remove();
+          removeCardPhotoBadges(card);
+          cardStateByEl.delete(card);
+        }
+        continue;
+      }
+      const sig = computeCardSignature(card, info);
+      if (prev) {
+        if (prev.sig !== sig) {
+          prev.badgeEl?.remove();
+          removeCardPhotoBadges(card);
+          obs?.unobserve(card);
+          cardStateByEl.delete(card);
+        } else if (prev.status === "retry") {
+          if (now < (prev.nextRetryAt || 0)) continue;
+        } else if (prev.status === "scored" && !prev.badgeEl?.isConnected) {
+          cardStateByEl.delete(card);
+        } else {
+          continue;
+        }
+      }
       if (obs) {
+        cardStateByEl.set(card, {
+          sig,
+          status: "observing",
+          badgeEl: null,
+          retryCount: prev && prev.sig === sig ? prev.retryCount || 0 : 0,
+          nextRetryAt: 0,
+        });
         obs.observe(card);
       } else {
         processVisiblePhotoBadgeCard(card);
@@ -3783,12 +4079,12 @@
     if (isProductPage() || isCartPageUrl()) return;
     const info = readProductCardInfo(cardEl);
     if (!info) return;
-    // Increment scanSeq BEFORE synchronous scanCache hits so any older in-flight network scan is immediately invalidated!
+    // Increment scanSeq BEFORE synchronous gridScanCache hits so any older in-flight network scan is immediately invalidated!
     const seq = ++scanSeq;
     state.hoveredCardData = info;
     const domImg = info.domImageUrl || info.image || null;
     const cKey = normCacheKey(info.title, "");
-    const cached = scanCache.get(cKey);
+    const cached = gridScanCache.get(cKey);
     if (cached?.ok) {
       void applyScanResult(cached, domImg, seq);
       return;
@@ -3801,11 +4097,12 @@
           productTitle: info.title,
           store: reqBucket.store,
           instacartRetailerSlug: reqBucket.instacartRetailerSlug,
+          skipAnalytics: true,
         },
       },
       (resp) => {
         if (resp?.ok) {
-          scanCache.set(cKey, resp);
+          gridScanCache.set(cKey, resp);
         } else if (lastMobileAlignedTitle === info.title) {
           lastMobileAlignedTitle = "";
         }
@@ -3866,6 +4163,7 @@
       if (host?.contains(e.target)) return;
       if (e.target?.closest?.(".cc-photo-badge")) {
         e.stopPropagation();
+        e.stopImmediatePropagation();
         return;
       }
       const a = e.target?.closest?.(
@@ -3875,7 +4173,7 @@
       const rawText = cleanProductTitleText(a.getAttribute("aria-label") || a.textContent || "");
       if (rawText.length < 4 || rawText.length > 180 || NON_TITLE_RE.test(rawText)) return;
       const cKey = normCacheKey(rawText, "");
-      if (scanCache.has(cKey)) return;
+      if (gridScanCache.has(cKey)) return;
       chrome.runtime.sendMessage(
         {
           type: "CLEANCART_SCAN",
@@ -3883,10 +4181,11 @@
             productTitle: rawText,
             store: activeBucket.store,
             instacartRetailerSlug: activeBucket.instacartRetailerSlug,
+            skipAnalytics: true,
           },
         },
         (resp) => {
-          if (resp?.ok) scanCache.set(cKey, resp);
+          if (resp?.ok) gridScanCache.set(cKey, resp);
         }
       );
     },
@@ -3976,6 +4275,8 @@
         childList: true,
         subtree: true,
         characterData: true,
+        attributes: true,
+        attributeFilter: ["src", "srcset", "href"],
       });
     }
     const scheduleSpaTransition = () => {
@@ -4011,7 +4312,9 @@
         }
         // Live re-scoring of active product, photo badges, AND cached cart items when Watchlist toggles change
         if (changes.watchlist || changes.familyWatchlist || changes.dietaryWatchlist || changes.preferStoreBrand) {
+          photoBadgePrefRev++;
           scanCache.clear();
+          gridScanCache.clear();
           stockCache.clear();
           lastKey = "";
           clearAllPhotoBadges();

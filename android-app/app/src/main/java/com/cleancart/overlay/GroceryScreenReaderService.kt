@@ -108,6 +108,10 @@ class GroceryScreenReaderService : AccessibilityService() {
             """^(saved?\s+for\s+later.*|your\s+recently\s+viewed\s+items.*|recently\s+viewed(?:\s+items)?.*|items\s+you\s+may\s+like.*|picked\s+for\s+you.*|more\s+items\s+to\s+explore.*|buy\s+(?:it\s+)?again.*|featured\s+items.*|instant\s+savings.*|sponsored\s+products?.*|recommended\s+for\s+you.*|customers\s+also.*|similar\s+items.*|frequently\s+bought.*|people\s+also\s+bought.*|don'?t\s+forget.*|(?:your\s+)?usuals\b.*|items\s+to\s+add\s+next.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|last\s+chance.*|impulse\s+picks.*|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available.*|these\s+items\s+have\s+been\s+removed\s+from\s+your\s+cart.*)$""",
             RegexOption.IGNORE_CASE,
         )
+        private val AMBIGUOUS_PROMO_BOUNDARY = Regex(
+            """^(?:featured\s+items.*|instant\s+savings.*|sponsored\s+products?.*)$""",
+            RegexOption.IGNORE_CASE,
+        )
         private val SAVED_FOR_LATER_ROW_CTA = Regex(
             """^move\s+to\s+(?:cart|bag|basket|order)$""",
             RegexOption.IGNORE_CASE,
@@ -123,6 +127,10 @@ class GroceryScreenReaderService : AccessibilityService() {
         private fun isCartEndHeader(raw: String): Boolean {
             val norm = raw.replace('’', '\'').replace('‘', '\'').replace('ʼ', '\'').trim()
             return norm.isNotEmpty() && CART_END_BOUNDARY.matches(norm)
+        }
+        private fun isAmbiguousPromoHeader(raw: String): Boolean {
+            val norm = raw.replace('’', '\'').replace('‘', '\'').replace('ʼ', '\'').trim()
+            return norm.isNotEmpty() && AMBIGUOUS_PROMO_BOUNDARY.matches(norm)
         }
         private val EMPTY_CART_SIGNALS = Regex(
             """(\byour\s+(?:[a-z]+\s+){0,2}(?:cart|bag|basket)\s+(?:is\s+)?(?:currently\s+)?empty\b|\btime\s+to\s+start\s+shopping\b|\blet'?s\s+get\s+shopping\b|\badd\s+items\s+to\s+(?:get\s+started|start\s+a\s+basket)\b|\bnothing\s+in\s+your\s+(?:cart|bag|basket)\b|\b(?:cart|subtotal)\s*\(\s*0(?:\s+items?)?\s*\)|\b0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)\b)""",
@@ -802,6 +810,84 @@ class GroceryScreenReaderService : AccessibilityService() {
         }
     }
 
+    private data class CartScrollState(
+        val canScrollBackward: Boolean,
+        val canScrollForward: Boolean
+    )
+
+    private var lastConfirmedFullCartBaseKey: String = ""
+    private val confirmFullCartRunnable = Runnable {
+        if (wasOnCartScreen) {
+            lastKey = ""
+            readAndScan()
+        }
+    }
+
+    private fun inspectCartScrollState(root: AccessibilityNodeInfo): CartScrollState {
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val minWidthPx = (180f * density).toInt()
+        val minHeightPx = (160f * density).toInt()
+        val rect = Rect()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        var canBackward = false
+        var canForward = false
+        while (queue.isNotEmpty() && visited < 220) {
+            val cur = queue.removeFirst()
+            visited++
+            if (cur.isVisibleToUser && cur.isScrollable) {
+                cur.getBoundsInScreen(rect)
+                if (rect.width() >= minWidthPx && rect.height() >= minHeightPx) {
+                    val acts = cur.actionList
+                    if (acts.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id }) {
+                        canBackward = true
+                    }
+                    if (acts.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id }) {
+                        canForward = true
+                    }
+                    if (canBackward && canForward) {
+                        break
+                    }
+                }
+            }
+            val childCount = cur.childCount
+            for (i in 0 until childCount) {
+                val ch = cur.getChild(i) ?: continue
+                queue.addLast(ch)
+            }
+            if (cur !== root) {
+                recycleNode(cur)
+            }
+        }
+        while (queue.isNotEmpty()) {
+            val rem = queue.removeFirst()
+            if (rem !== root) {
+                recycleNode(rem)
+            }
+        }
+        return CartScrollState(canScrollBackward = canBackward, canScrollForward = canForward)
+    }
+
+    private fun findSafeCartBoundaryIndex(list: List<TextNode>): Int {
+        var sawActiveCartItemRowAbove = false
+        for ((idx, node) in list.withIndex()) {
+            val txt = node.text.trim()
+            if (!sawActiveCartItemRowAbove) {
+                if (CART_ITEM_CONTROLS.matches(txt) || PRICE_PATTERN.containsMatchIn(txt)) {
+                    sawActiveCartItemRowAbove = true
+                }
+            }
+            if (isCartEndHeader(txt)) {
+                if (isAmbiguousPromoHeader(txt) && !sawActiveCartItemRowAbove) {
+                    continue
+                }
+                return idx
+            }
+        }
+        return -1
+    }
+
     /* ---------------- Screen reading ---------------- */
 
     private fun readAndScan() {
@@ -817,6 +903,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                 inFlightScanKey = ""
                 lastKey = ""
                 wasOnCartScreen = false
+                lastConfirmedFullCartBaseKey = ""
+                handler.removeCallbacks(confirmFullCartRunnable)
                 lastCartAuthoritativeCount = -1
                 pendingAddToCartClick = false
                 lastClickedProductTitle = null
@@ -862,9 +950,9 @@ class GroceryScreenReaderService : AccessibilityService() {
             val hasClubItemNumber = nodes.any { CLUB_ITEM_NUMBER.matches(it.text.trim()) }
 
             val isMultiCartSwitcher = nodes.any { it.text.trim().equals("Your carts", ignoreCase = true) }
-            val cartBoundaryIdx = nodes.indexOfFirst { isCartEndHeader(it.text) }
+            val cartBoundaryIdx = findSafeCartBoundaryIndex(nodes)
             val activeCartSectionNodes = if (cartBoundaryIdx >= 0) nodes.subList(0, cartBoundaryIdx) else nodes
-            val allCartBoundaryIdx = allNodes.indexOfFirst { isCartEndHeader(it.text) }
+            val allCartBoundaryIdx = findSafeCartBoundaryIndex(allNodes)
             val activeCartSectionAllNodes = if (allCartBoundaryIdx >= 0) allNodes.subList(0, allCartBoundaryIdx) else allNodes
             val hasEmptyCartScreenSignal = !isMultiCartSwitcher && (
                 activeCartSectionNodes.any { EMPTY_CART_SIGNALS.containsMatchIn(it.text.trim()) } ||
@@ -967,12 +1055,15 @@ class GroceryScreenReaderService : AccessibilityService() {
                 if (isFirstCartFrame) {
                     bumpScanGeneration()
                     lastCartAuthoritativeCount = -1
+                    lastConfirmedFullCartBaseKey = ""
                 }
                 wasOnCartScreen = true
                 lastConfirmedPdpTitle = null
                 if (hasEmptyCartScreenSignal) {
                     lastCartTitleNodes = emptyList()
                     lastCartAuthoritativeCount = 0
+                    lastConfirmedFullCartBaseKey = ""
+                    handler.removeCallbacks(confirmFullCartRunnable)
                     val emptyCartKey = "$pkg|$bucketSig|CART_EMPTY"
                     if (lastKey != emptyCartKey) {
                         bumpScanGeneration()
@@ -1022,10 +1113,32 @@ class GroceryScreenReaderService : AccessibilityService() {
                         t.contains("item subtotal", ignoreCase = true) ||
                         t.matches(Regex("""(?i)^subtotal\b.*"""))
                 }
-                val allCartRowsVisible = topHeaderVisible && bottomSummaryVisible
+                val cartScroll = inspectCartScrollState(root)
                 val removedTitles = explicitRemovedTitles.distinct()
                 val cartQuantities = extractCartQuantities(activeCartSectionNodes, cartTitles)
+                val scrapedUnitSum = cartTitles.sumOf { cartQuantities[it] ?: 1 }
+                val countConsistentWithFullVisibility = authoritativeCartCount <= 0 || scrapedUnitSum >= authoritativeCartCount
+                val noCartRowsAboveViewport = topHeaderVisible && !cartScroll.canScrollBackward
+                // Sticky bottom bars ("Estimated total", "Subtotal") stay visible even when off-screen items exist below;
+                // only treat bottomSummaryVisible as end-of-cart when the cart container cannot scroll forward!
+                val noCartRowsBelowViewport = cartBoundaryIdx >= 0 || (!cartScroll.canScrollForward && bottomSummaryVisible)
+                val allCartRowsVisible = !isFirstCartFrame &&
+                    noCartRowsAboveViewport &&
+                    noCartRowsBelowViewport &&
+                    countConsistentWithFullVisibility
                 val qtySig = cartTitles.joinToString(",") { t -> "${cartQuantities[t] ?: 1}" }
+                val fullCartBaseKey = "$pkg|$bucketSig|${cartTitles.joinToString("|")}|QTY:$qtySig|badge=$authoritativeCartCount"
+                if ((isFirstCartFrame && noCartRowsAboveViewport && noCartRowsBelowViewport && countConsistentWithFullVisibility) ||
+                    (allCartRowsVisible && lastConfirmedFullCartBaseKey != fullCartBaseKey)
+                ) {
+                    if (allCartRowsVisible) {
+                        lastConfirmedFullCartBaseKey = fullCartBaseKey
+                    }
+                    handler.removeCallbacks(confirmFullCartRunnable)
+                    handler.postDelayed(confirmFullCartRunnable, 260L)
+                } else if (!allCartRowsVisible) {
+                    lastConfirmedFullCartBaseKey = ""
+                }
                 if (cartTitles.isNotEmpty() || removedTitles.isNotEmpty()) {
                     val wlSig = ScanApi.currentWatchlistSignature(this)
                     val cartKey = "$pkg|$bucketSig|CART|$wlSig|first=$isFirstCartFrame|full=$allCartRowsVisible|badge=$authoritativeCartCount|${cartTitles.joinToString("|")}|QTY:$qtySig|REM:${removedTitles.joinToString("|")}"
@@ -2219,7 +2332,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         removedTitles: List<String> = emptyList(),
         recordNodes: Boolean = false
     ): List<String> {
-        val headerEndIdx = nodes.indexOfFirst { isCartEndHeader(it.text) }
+        val headerEndIdx = findSafeCartBoundaryIndex(nodes)
         // In Walmart/Target/Instacart/Kroger/Amazon carts, "Saved for later" is always below active cart items.
         // If the user scrolled past the "Saved for later (102 items)" heading so it's offscreen, any "Move to cart"
         // CTA proves every card from that row downward is Saved-for-later or recommendations, NOT in the active cart!
@@ -2286,12 +2399,12 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun extractCartQuantities(nodes: List<TextNode>, cartTitles: List<String>): Map<String, Int> {
         if (cartTitles.isEmpty()) return emptyMap()
-        val endIdx = nodes.indexOfFirst { isCartEndHeader(it.text) }
+        val endIdx = findSafeCartBoundaryIndex(nodes)
         val cartNodes = if (endIdx >= 0) nodes.subList(0, endIdx) else nodes
         val density = resources.displayMetrics.density.coerceAtLeast(1f)
         // Sam's Club places 3 fulfillment boxes ("Shipping", "Pickup", "Delivery") between the cart item title and its [- 2 +] stepper (~220-280dp below)
         val maxRowDistPx = (320f * density).toInt()
-        val explicitQtyRe = Regex("""(?i)(?:\b(?:qty|quantity)\s*:?\s*(\d{1,2})\b|^(\d{1,2})\s*(?:ct|in\s+(?:cart|bag|basket|order)|items?)\b)""")
+        val explicitQtyRe = Regex("""(?i)(?:\b(?:qty|quantity)\s*:?\s*(\d{1,2})\b|^(\d{1,2})\s*(?:in\s+(?:cart|bag|basket|order)|items?\s+in\s+(?:cart|bag|basket|order))\b)""")
         val bareQtyRe = Regex("""^(\d{1,2})$""")
         val anchorIndices = cartTitles.map { title ->
             cartNodes.indexOfFirst { n ->

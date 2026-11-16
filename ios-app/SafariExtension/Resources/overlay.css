@@ -297,7 +297,7 @@
   position: absolute !important;
   bottom: 8px !important;
   left: 8px !important;
-  z-index: 8 !important;
+  z-index: 2 !important;
   display: inline-flex !important;
   align-items: center !important;
   gap: 3px !important;
@@ -320,5 +320,5 @@
 .cc-photo-badge--green { background: rgba(22, 163, 74, 0.96) !important; }
 .cc-photo-badge--yellow { background: rgba(217, 119, 6, 0.96) !important; }
 .cc-photo-badge--red { background: rgba(220, 38, 38, 0.96) !important; }
+.cc-photo-badge--advisory { box-shadow: 0 0 0 2px #fbbf24, 0 4px 12px rgba(15, 23, 42, 0.28) !important; }
 .cc-photo-badge--loading { background: rgba(15, 23, 42, 0.72) !important; opacity: 0.85 !important; }
-

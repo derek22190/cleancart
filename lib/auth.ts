@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { kvDel, kvGet, kvSet } from "./storage";
+import { kvDel, kvGet, kvSet, kvSetNx } from "./storage";
 import {
   getDevicePaidEntitlement,
   getEmailEntitlement,
@@ -699,6 +699,26 @@ function constantTimeStringEquals(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+const OAUTH_SERVER_NONCE_PREFIX = "heybroc:oauth_nonce:";
+const OIDC_TOKEN_REPLAY_PREFIX = "heybroc:oidc_replay:";
+
+export async function issueServerOAuthNonce(): Promise<string> {
+  const nonce = `srvn_${crypto.randomBytes(18).toString("hex")}`;
+  const hash = crypto.createHash("sha256").update(nonce, "utf8").digest("hex");
+  await kvSet(`${OAUTH_SERVER_NONCE_PREFIX}${hash}`, { issuedAt: Date.now() }, 600).catch(() => {});
+  return nonce;
+}
+
+async function consumeServerOAuthNonceIfIssued(rawNonce: string): Promise<boolean> {
+  if (!rawNonce.startsWith("srvn_")) return true;
+  const hash = crypto.createHash("sha256").update(rawNonce, "utf8").digest("hex");
+  const key = `${OAUTH_SERVER_NONCE_PREFIX}${hash}`;
+  const existing = await kvGet<{ issuedAt?: number }>(key).catch(() => null);
+  if (!existing) return false;
+  await kvDel(key).catch(() => {});
+  return true;
+}
+
 function matchesExpectedOidcNonce(tokenNonce: string, expectedNonce: string): boolean {
   if (constantTimeStringEquals(tokenNonce, expectedNonce)) return true;
   const sha256Hex = crypto.createHash("sha256").update(expectedNonce, "utf8").digest("hex");
@@ -719,7 +739,8 @@ async function verifyOidcJwtWithJwks(params: {
     if (params.allowedAudiences.length === 0) {
       return { ok: false, email: "" };
     }
-    const parts = (params.idToken || "").trim().split(".");
+    const cleanToken = (params.idToken || "").trim();
+    const parts = cleanToken.split(".");
     if (parts.length !== 3) return { ok: false, email: "" };
     const [headerB64, payloadB64, sigB64] = parts;
 
@@ -821,6 +842,16 @@ async function verifyOidcJwtWithJwks(params: {
       signature
     );
     if (!verified) return { ok: false, email: "" };
+
+    if (cleanExpectedNonce && !(await consumeServerOAuthNonceIfIssued(cleanExpectedNonce))) {
+      return { ok: false, email: "" };
+    }
+    const tokenDigest = crypto.createHash("sha256").update(cleanToken, "utf8").digest("hex");
+    const ttlSeconds = Math.max(60, Math.min(7200, Math.ceil(payload.exp - Date.now() / 1000) + 60));
+    const firstUse = await kvSetNx(`${OIDC_TOKEN_REPLAY_PREFIX}${tokenDigest}`, "1", ttlSeconds).catch(() => true);
+    if (!firstUse) {
+      return { ok: false, email: "" };
+    }
 
     if (!tokenEmail && params.allowAppleSubFallback && tokenSub) {
       const mappedEmail = await kvGet<string>(
@@ -1000,12 +1031,33 @@ export async function loginWithOAuth(params: {
     updatedAt: new Date().toISOString(),
   };
 
+  const wasPreviouslyUnverified = Boolean(existing && !existing.emailVerified);
+  if (existing && wasPreviouslyUnverified) {
+    existing.provider = params.provider;
+    delete existing.passwordHash;
+    delete existing.passwordSalt;
+    delete existing.passwordIterations;
+    delete existing.verificationCode;
+    delete existing.verificationExpiresAt;
+    existing.verificationAttempts = 0;
+    existing.linkedDevices = [];
+    existing.tokenVersion = (existing.tokenVersion ?? 0) + 1;
+    // Also re-derive referral code cleanly if an unverified caller had planted a device code
+    existing.referralCode =
+      (isDeviceSecretVerified ? dev?.referralCode : undefined) ||
+      codeFromDeviceId(email);
+  }
+
   user.emailVerified = true;
   if (existing) {
     if (params.displayName) user.displayName = params.displayName.trim();
-    if (params.watchlist && !user.watchlist) {
+    else if (wasPreviouslyUnverified && resolvedDisplayName) {
+      user.displayName = resolvedDisplayName;
+    }
+    if (params.watchlist && (!user.watchlist || wasPreviouslyUnverified)) {
       user.watchlist = params.watchlist;
     }
+    user.updatedAt = new Date().toISOString();
   }
 
   const linkRes = await linkDeviceToUser(user, cleanDeviceId, cleanDeviceSecret);

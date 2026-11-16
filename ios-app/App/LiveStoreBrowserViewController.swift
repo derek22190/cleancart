@@ -85,6 +85,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var lastDetectedTitle: String = ""
     private var lastDetectedIngredients: String = ""
     private var lastDetectedBarcode: String = ""
+    private var lastDetectedInstacartSlug: String = ""
     private var lastDetectedIsCard: Bool = false
     private var lastScannedKey: String = ""
     private var latestSummary: HeyBrocNativeScanSummary?
@@ -191,6 +192,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
         lastScannedKey = ""
         latestSummary = nil
+        badgeBatchGeneration += 1
+        cardSummariesById.removeAll()
         let targetURL = Self.validatedHTTPURL(urlString) ?? URL(string: activeStore.homeURL)
         if isViewLoaded {
             setBubbleIdleState()
@@ -403,6 +406,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           var APP_INSTALL_CTA_RE = /^(?:get\\s+the\\s+app|open\\s+in\\s+(?:the\\s+)?(?:walmart\\s+|target\\s+|instacart\\s+|sam'?s\\s+club\\s+|bj'?s\\s+|kroger\\s+|amazon\\s+|aldi\\s+|costco\\s+)?app|open\\s+app|use\\s+(?:the\\s+)?app|download\\s+(?:the\\s+)?app|continue\\s+in\\s+app|shop\\s+in\\s+(?:the\\s+)?app)$/i;
           var APP_INSTALL_HREF_RE = /(?:apps|itunes)\\.apple\\.com|\\.onelink\\.me|\\.app\\.link|\\bbnc\\.lt\\b|app\\.adjust\\.com|\\.adj\\.st|\\.smart\\.link/i;
+          var SENSITIVE_BANNER_PATH_RE = /\\/(?:cart|bag|basket|checkout|gp\\/cart|store\\/cart|shop\\/cart|login|signin|sign-in|account|auth|register)(?:\\/|$)/i;
+          var BANNER_FORBIDDEN_TEXT_RE = /\\$\\s*\\d|\\b(?:cart|bag|basket|checkout|subtotal|total|pickup|delivery|shipping|address|zip\\s*code|sign\\s*in|log\\s*in|account|password|verification|filter|sort|search\\s+results)\\b/i;
+          var hbBannerLastHref = location.href;
+          var hbBannerScanDeadline = Date.now() + 2600;
 
           function ensureAppBannerSuppressorStyles() {
             var meta = document.querySelector('meta[name="apple-itunes-app"]');
@@ -418,12 +425,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           function dismissRetailerAppBanners() {
             ensureAppBannerSuppressorStyles();
+            if (location.href !== hbBannerLastHref) {
+              hbBannerLastHref = location.href;
+              hbBannerScanDeadline = Date.now() + 2600;
+            }
+            if (Date.now() > hbBannerScanDeadline) return;
+            if (SENSITIVE_BANNER_PATH_RE.test(location.pathname || '')) return;
+
             var ctas = document.querySelectorAll('a, button, [role="button"]');
             var vw = Math.max(280, window.innerWidth || 390);
             var vh = Math.max(400, window.innerHeight || 844);
             for (var i = 0; i < ctas.length; i++) {
               var cta = ctas[i];
-              if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"]'))) continue;
+              if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], header, nav, form, [role="dialog"], [aria-modal="true"]'))) continue;
               var ctaText = clean(cta.textContent || '');
               var href = String((cta.getAttribute && cta.getAttribute('href')) || '');
               var matchesCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
@@ -432,21 +446,26 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var bannerEl = null;
               var cur = cta.parentElement;
               var depth = 0;
-              while (cur && depth < 7) {
+              while (cur && depth < 6) {
                 var tag = (cur.tagName || '').toUpperCase();
                 var cid = String(cur.id || '');
-                if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || cid === '__next' || cid === 'root' || cid === 'app') {
+                var role = String((cur.getAttribute && cur.getAttribute('role')) || '').toLowerCase();
+                var ariaModal = String((cur.getAttribute && cur.getAttribute('aria-modal')) || '').toLowerCase();
+                if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || tag === 'HEADER' || tag === 'NAV' || tag === 'FORM' || role === 'dialog' || ariaModal === 'true' || cid === '__next' || cid === 'root' || cid === 'app') {
                   break;
                 }
                 if (typeof cur.getBoundingClientRect === 'function') {
                   var r = cur.getBoundingClientRect();
                   var cs = window.getComputedStyle(cur);
                   var pos = cs ? cs.position : '';
-                  var txtLen = clean(cur.textContent || '').length;
-                  var hasPageContent = Boolean(cur.querySelector && cur.querySelector('h1, input[type="search"], input[type="password"], input[type="email"]'));
-                  var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 36 || r.top <= 135);
-                  if (!hasPageContent && txtLen <= 420 && r.height >= 36 && r.height <= 380 && r.width >= vw * 0.55 && anchoredEdge) {
+                  var curText = clean(cur.textContent || '');
+                  var txtLen = curText.length;
+                  var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
+                  var hasForbiddenCopy = BANNER_FORBIDDEN_TEXT_RE.test(curText);
+                  var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 96 || r.top <= 96);
+                  if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 36 && r.height <= 240 && r.width >= vw * 0.60 && anchoredEdge) {
                     bannerEl = cur;
+                    break;
                   }
                 }
                 cur = cur.parentElement;
@@ -461,11 +480,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   if (btn === cta) continue;
                   var bHref = String((btn.getAttribute && btn.getAttribute('href')) || '');
                   if (bHref && APP_INSTALL_HREF_RE.test(bHref)) continue;
-                  var aria = String((btn.getAttribute && (btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.getAttribute('data-testid') || btn.getAttribute('data-automation-id'))) || '');
+                  var aria = clean(String((btn.getAttribute && (btn.getAttribute('aria-label') || btn.getAttribute('title'))) || ''));
                   var bTxt = clean(btn.textContent || '');
-                  var br = typeof btn.getBoundingClientRect === 'function' ? btn.getBoundingClientRect() : { width: 999, height: 999 };
-                  var isCloseIcon = /^(?:close|dismiss)/i.test(aria) || /(?:close|dismiss)/i.test(aria) || /^[×✕✖xX]$/.test(bTxt) || (bTxt === '' && br.width <= 56 && br.height <= 56 && Boolean(btn.querySelector && btn.querySelector('svg')));
-                  if (isCloseIcon) {
+                  var safeAriaClose = /^(?:close|dismiss)(?:\\s+(?:app\\s+)?(?:banner|prompt|bar))?$/i.test(aria) && !/cart|drawer|modal|dialog|menu|address|search|filter|nav/i.test(aria);
+                  var safeTextClose = /^(?:[×✕✖]|not\\s+now|no\\s+thanks|continue\\s+in\\s+(?:mobile\\s+)?browser)$/i.test(bTxt);
+                  if (safeAriaClose || safeTextClose) {
                     try { btn.click(); } catch (e) {}
                     break;
                   }
@@ -475,6 +494,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 bannerEl.style.setProperty('pointer-events', 'none', 'important');
               }
             }
+          }
+
+          function detectInstacartSlug() {
+            var host = String(location.hostname || '').toLowerCase();
+            if (host.indexOf('instacart.') === -1) return '';
+            var m = String(location.pathname || '').match(/\\/store\\/([a-z0-9][a-z0-9_-]{1,60})(?:\\/|$)/i);
+            if (!m || !m[1]) return '';
+            var slug = m[1].toLowerCase();
+            if (/^(?:items?|products?|checkout|cart|account|help|search|recipes|categories|collections|referrals|gift-cards|orders|lists|bookmarks|login|signup)$/.test(slug)) {
+              return '';
+            }
+            return slug;
           }
 
           function isCartUrl() {
@@ -735,22 +766,76 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           var NON_FOOD_GRID_RE = /\\b(?:paper\\s+towels?|toilet\\s+(?:paper|tissue)|bath\\s+tissue|facial\\s+tissues?|trash\\s+bags?|garbage\\s+bags?|storage\\s+bags?|freezer\\s+bags?|sandwich\\s+bags?|aluminum\\s+foil|parchment\\s+paper|plastic\\s+wrap|paper\\s+plates?|paper\\s+cups?|laundry\\s+(?:detergent|pods?|sanitizer)|fabric\\s+softener|dryer\\s+sheets?|dish\\s+(?:soap|detergent)|dishwasher\\s+(?:pods?|pac?ks?|detergent)|disinfecting\\s+wipes?|bleach|all[- ]purpose\\s+cleaner|glass\\s+cleaner|toilet\\s+bowl\\s+cleaner|air\\s+freshener|diapers?|pull[- ]ups?|baby\\s+wipes?|cat\\s+litter|dog\\s+(?:food|treats?|pads?)|cat\\s+(?:food|treats?)|pet\\s+food|alkaline\\s+batteries|aa\\s+batteries|aaa\\s+batteries|motor\\s+oil|windshield\\s+washer|light\\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\\s+wash|deodorant|antiperspirant|razor\\s+blades?|shaving\\s+cream|sunscreen|tampons?|maxi\\s+pads?|pantiliners?)\\b/i;
 
+          function isNonFoodGridTitle(t) {
+            if (/\\b(?:dough|bread|food|meat|beer)\\s+conditioner\\b/i.test(t)) return false;
+            return NON_FOOD_GRID_RE.test(t);
+          }
+
           var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id*="product" i], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
           var PRODUCT_LINK_SEL = 'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+          var PLACEHOLDER_IMG_RE = /(?:^|[\\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank)(?:[\\/_.-]|$)|^data:image\\/gif/i;
 
+          function makePageToken() {
+            return 'p' + Math.random().toString(36).slice(2, 8);
+          }
+
+          var hbPageToken = makePageToken();
+          var hbLastBadgeUrl = location.href;
+          var hbPrefRev = 1;
           var hbCardSeq = 1;
-          var hbObservedCards = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
-          var hbBadgedAnchors = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+          var hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+          var hbOwnerCardById = {};
           var hbPendingQueue = [];
           var hbBatchTimer = null;
+          var hbRetryTimer = null;
+          var hbInFlightBatches = 0;
+          var MAX_IN_FLIGHT_BATCHES = 2;
           var hbIntersectionObs = null;
 
           function ensureHbBadgeStyles() {
             if (document.getElementById('hb-photo-badge-styles')) return;
             var st = document.createElement('style');
             st.id = 'hb-photo-badge-styles';
-            st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:8!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.72)!important;opacity:0.85!important;}';
+            st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:2!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2px #fbbf24,0 4px 12px rgba(15,23,42,0.28)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.72)!important;opacity:0.85!important;}';
             (document.head || document.documentElement).appendChild(st);
+          }
+
+          function findSafeCardAnchor(chosenImg, cardEl) {
+            var cur = chosenImg.parentElement;
+            if (cur && cur.tagName === 'PICTURE') cur = cur.parentElement;
+            var candidate = null;
+            var steps = 0;
+            while (cur && cur !== document.body && steps < 5) {
+              var cs = window.getComputedStyle(cur);
+              var disp = cs ? cs.display : '';
+              var cr = cur.getBoundingClientRect();
+              if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 56 && cr.height >= 56 && cr.height <= 460) {
+                candidate = cur;
+                break;
+              }
+              if (cur === cardEl) break;
+              cur = cur.parentElement;
+              steps++;
+            }
+            if (!candidate) candidate = cardEl;
+            if (!candidate || candidate === document.body) return null;
+            var candCs = window.getComputedStyle(candidate);
+            if (candCs && candCs.position === 'static') {
+              var beforeR = chosenImg.getBoundingClientRect();
+              candidate.style.position = 'relative';
+              var afterR = chosenImg.getBoundingClientRect();
+              if (beforeR.width >= 40 && (afterR.width < 24 || afterR.height < 24)) {
+                candidate.style.position = '';
+                if (cardEl && cardEl !== candidate) {
+                  if (window.getComputedStyle(cardEl).position === 'static') {
+                    cardEl.style.position = 'relative';
+                  }
+                  return cardEl;
+                }
+                return null;
+              }
+            }
+            return candidate;
           }
 
           function readCardInfo(cardEl) {
@@ -771,9 +856,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
               if (title) break;
             }
+            var linkEl = cardEl.querySelector(PRODUCT_LINK_SEL) || cardEl.querySelector('a[href]');
+            var hrefKey = linkEl ? String(linkEl.getAttribute('href') || '').split('#')[0].slice(0, 140) : '';
             var imgs = cardEl.querySelectorAll('img');
             var chosenImg = null;
-            var imgRect = null;
+            var imgKey = '';
             for (var m = 0; m < imgs.length; m++) {
               var img = imgs[m];
               if (img.closest && img.closest('.hb-photo-badge')) continue;
@@ -783,42 +870,43 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   title = altCand;
                 }
               }
-              var src = img.currentSrc || img.getAttribute('src') || '';
-              if (src && /(?:1x1|pixel|spacer|spinner|logo|icon|badge|sprite)/i.test(src)) continue;
+              var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset') || '';
+              if (src && PLACEHOLDER_IMG_RE.test(src)) continue;
               var r = img.getBoundingClientRect();
               var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
               var ew = Math.max(r.width, pr.width);
               var eh = Math.max(r.height, pr.height);
               if (!chosenImg && ew >= 56 && eh >= 56 && ew <= 440 && eh <= 440) {
                 chosenImg = img;
-                imgRect = r.width >= 40 ? r : pr;
+                imgKey = String(src).split('?')[0].slice(-90);
               }
             }
-            if (!title || !chosenImg || NON_FOOD_GRID_RE.test(title)) return null;
-            var anchor = chosenImg.parentElement;
-            if (!anchor || anchor === document.body) return null;
-            if (anchor.tagName === 'PICTURE' && anchor.parentElement && anchor.parentElement !== document.body) {
-              anchor = anchor.parentElement;
+            if (!title || !chosenImg || isNonFoodGridTitle(title)) return null;
+            var anchor = findSafeCardAnchor(chosenImg, cardEl);
+            if (!anchor) return null;
+            var sig = title.toLowerCase() + '|' + hrefKey + '|' + imgKey + '|' + detectInstacartSlug() + '|' + hbPrefRev;
+            return { title: title, anchor: anchor, sig: sig };
+          }
+
+          function removeCardBadgeState(cardEl, st) {
+            if (!st) return;
+            if (st.id && hbOwnerCardById[st.id] === cardEl) {
+              delete hbOwnerCardById[st.id];
             }
-            var ast = window.getComputedStyle(anchor);
-            if (ast && ast.display === 'inline' && anchor.parentElement && anchor.parentElement !== document.body) {
-              var pRect = anchor.parentElement.getBoundingClientRect();
-              if (pRect.width >= 56 && pRect.height <= (imgRect ? imgRect.height : 220) + 64) {
-                anchor = anchor.parentElement;
-              } else {
-                anchor.style.display = 'inline-block';
-              }
+            if (st.badgeEl && st.badgeEl.parentNode) {
+              st.badgeEl.parentNode.removeChild(st.badgeEl);
             }
-            if (window.getComputedStyle(anchor).position === 'static') {
-              anchor.style.position = 'relative';
-            }
-            return { title: title, anchor: anchor };
+            st.badgeEl = null;
           }
 
           function flushHbBadgeBatch() {
             hbBatchTimer = null;
             if (!hbPendingQueue.length || isCartUrl()) {
-              hbPendingQueue = [];
+              if (isCartUrl()) hbPendingQueue = [];
+              return;
+            }
+            if (hbInFlightBatches >= MAX_IN_FLIGHT_BATCHES) {
+              hbBatchTimer = setTimeout(flushHbBadgeBatch, 180);
               return;
             }
             var chunk = hbPendingQueue.splice(0, 8);
@@ -827,14 +915,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             var payloadItems = [];
             for (var i = 0; i < chunk.length; i++) {
-              if (chunk[i].badgeEl && chunk[i].badgeEl.isConnected) {
-                payloadItems.push({ id: chunk[i].id, productTitle: chunk[i].title });
+              var entry = chunk[i];
+              if (entry.badgeEl && entry.badgeEl.isConnected && entry.cardEl && entry.cardEl.isConnected) {
+                var liveInfo = readCardInfo(entry.cardEl);
+                if (liveInfo && liveInfo.sig === entry.sig) {
+                  payloadItems.push({ id: entry.id, productTitle: liveInfo.title });
+                } else {
+                  removeCardBadgeState(entry.cardEl, hbCardState ? hbCardState.get(entry.cardEl) : null);
+                  if (hbCardState) hbCardState.delete(entry.cardEl);
+                }
               }
             }
             if (!payloadItems.length) return;
+            hbInFlightBatches++;
             window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
               kind: 'gridBatch',
-              items: payloadItems
+              items: payloadItems,
+              instacartSlug: detectInstacartSlug()
             });
           }
 
@@ -842,19 +939,45 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (!cardEl || !cardEl.isConnected || isCartUrl()) return;
             var info = readCardInfo(cardEl);
             if (!info || !info.anchor) return;
-            if ((hbBadgedAnchors && hbBadgedAnchors.has(info.anchor)) || info.anchor.querySelector(':scope > .hb-photo-badge')) return;
+            var prev = hbCardState ? hbCardState.get(cardEl) : null;
+            var now = Date.now();
+            if (prev && prev.sig === info.sig) {
+              if (prev.suppressedEstimate) return;
+              if (prev.retryAfter && now < prev.retryAfter) return;
+              if (prev.badgeEl && prev.badgeEl.isConnected) return;
+            } else if (prev) {
+              removeCardBadgeState(cardEl, prev);
+            }
+            var staleBadges = info.anchor.querySelectorAll(':scope > .hb-photo-badge');
+            for (var sb = 0; sb < staleBadges.length; sb++) {
+              if (staleBadges[sb].parentNode) staleBadges[sb].parentNode.removeChild(staleBadges[sb]);
+            }
             ensureHbBadgeStyles();
-            if (hbBadgedAnchors) hbBadgedAnchors.add(info.anchor);
-            var cardId = 'hb' + (hbCardSeq++);
+            var cardId = hbPageToken + '_' + (hbCardSeq++);
             var b = document.createElement('span');
             b.className = 'hb-photo-badge hb-photo-badge--loading';
             b.setAttribute('role', 'button');
             b.setAttribute('tabindex', '0');
+            b.setAttribute('aria-label', 'Checking HeyBroc score for ' + info.title);
             b.setAttribute('data-hb-card-id', cardId);
-            b.setAttribute('data-hb-title', info.title);
+            b.setAttribute('data-hb-sig', info.sig);
             b.textContent = '🥦 …';
             info.anchor.appendChild(b);
-            hbPendingQueue.push({ id: cardId, title: info.title, badgeEl: b });
+            var nextState = {
+              id: cardId,
+              sig: info.sig,
+              title: info.title,
+              anchor: info.anchor,
+              badgeEl: b,
+              resolved: false,
+              suppressedEstimate: false,
+              retryCount: (prev && prev.sig === info.sig) ? (prev.retryCount || 0) : 0,
+              retryAfter: 0,
+              openOnResolve: false
+            };
+            if (hbCardState) hbCardState.set(cardEl, nextState);
+            hbOwnerCardById[cardId] = cardEl;
+            hbPendingQueue.push({ id: cardId, title: info.title, sig: info.sig, badgeEl: b, cardEl: cardEl });
             if (!hbBatchTimer) {
               hbBatchTimer = setTimeout(flushHbBadgeBatch, 120);
             }
@@ -862,10 +985,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           function clearHbBadges() {
             if (hbBatchTimer) { clearTimeout(hbBatchTimer); hbBatchTimer = null; }
+            if (hbRetryTimer) { clearTimeout(hbRetryTimer); hbRetryTimer = null; }
             hbPendingQueue = [];
+            hbInFlightBatches = 0;
+            hbPageToken = makePageToken();
+            hbOwnerCardById = {};
             if (hbIntersectionObs) { hbIntersectionObs.disconnect(); hbIntersectionObs = null; }
-            hbObservedCards = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
-            hbBadgedAnchors = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+            hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
             var old = document.querySelectorAll('.hb-photo-badge');
             for (var i = 0; i < old.length; i++) {
               if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
@@ -873,6 +999,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           function scanPhotoBadges() {
+            if (location.href !== hbLastBadgeUrl) {
+              hbLastBadgeUrl = location.href;
+              clearHbBadges();
+            }
             if (isCartUrl()) {
               clearHbBadges();
               return;
@@ -916,10 +1046,29 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 if (tile) addCand(tile);
               }
             }
+            var now = Date.now();
             for (var c = 0; c < seen.length; c++) {
               var card = seen[c];
-              if (hbObservedCards && hbObservedCards.has(card)) continue;
-              if (hbObservedCards) hbObservedCards.add(card);
+              var st = hbCardState ? hbCardState.get(card) : null;
+              if (st) {
+                var curInfo = readCardInfo(card);
+                if (!curInfo) {
+                  removeCardBadgeState(card, st);
+                  hbCardState.delete(card);
+                  continue;
+                }
+                if (curInfo.sig !== st.sig) {
+                  removeCardBadgeState(card, st);
+                  hbCardState.delete(card);
+                  st = null;
+                } else if (st.suppressedEstimate) {
+                  continue;
+                } else if (st.badgeEl && st.badgeEl.isConnected) {
+                  continue;
+                } else if (st.retryAfter && now < st.retryAfter) {
+                  continue;
+                }
+              }
               if (hbIntersectionObs) {
                 hbIntersectionObs.observe(card);
               } else {
@@ -929,46 +1078,151 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
 
           window.__heybrocApplyCardBadges = function(badgeMap) {
+            hbInFlightBatches = Math.max(0, hbInFlightBatches - 1);
+            if (hbPendingQueue.length > 0 && !hbBatchTimer) {
+              hbBatchTimer = setTimeout(flushHbBadgeBatch, 80);
+            }
             if (!badgeMap || typeof badgeMap !== 'object') return;
+            var earliestRetryMs = 0;
             for (var id in badgeMap) {
               if (!Object.prototype.hasOwnProperty.call(badgeMap, id)) continue;
-              var badge = document.querySelector('.hb-photo-badge[data-hb-card-id="' + id + '"]');
+              var ownerCard = hbOwnerCardById[id] || null;
+              var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
+              var badge = (st && st.badgeEl) ? st.badgeEl : document.querySelector('.hb-photo-badge[data-hb-card-id="' + id.replace(/[^A-Za-z0-9_-]/g, '') + '"]');
               if (!badge) continue;
+
+              if (ownerCard && ownerCard.isConnected) {
+                var liveCheck = readCardInfo(ownerCard);
+                if (!liveCheck || (st && liveCheck.sig !== st.sig)) {
+                  removeCardBadgeState(ownerCard, st);
+                  if (hbCardState) hbCardState.delete(ownerCard);
+                  scanPhotoBadges();
+                  continue;
+                }
+              }
+
               var entry = badgeMap[id];
               if (!entry || !entry.ok) {
                 if (badge.parentNode) badge.parentNode.removeChild(badge);
+                if (st) {
+                  st.badgeEl = null;
+                  if (entry && entry.transient && (st.retryCount || 0) < 2) {
+                    st.retryCount = (st.retryCount || 0) + 1;
+                    var delay = st.retryCount === 1 ? 2200 : 5000;
+                    st.retryAfter = Date.now() + delay;
+                    if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
+                  } else {
+                    st.suppressedEstimate = true;
+                  }
+                }
                 continue;
               }
+
+              if (entry.isCategoryEstimate) {
+                if (badge.parentNode) badge.parentNode.removeChild(badge);
+                if (st) {
+                  st.badgeEl = null;
+                  st.suppressedEstimate = true;
+                }
+                continue;
+              }
+
               var sc = Math.max(0, Math.min(100, Math.round(Number(entry.score || 0))));
               var hasAlert = Boolean(entry.hasAlert);
-              var tone = hasAlert ? 'red' : (sc >= 75 ? 'green' : (sc >= 50 ? 'yellow' : 'red'));
-              badge.className = 'hb-photo-badge hb-photo-badge--' + tone;
+              var severity = String(entry.alertSeverity || (hasAlert ? 'advisory' : 'none'));
+              var scoreTone = sc >= 75 ? 'green' : (sc >= 50 ? 'yellow' : 'red');
+              var tone = severity === 'allergen' ? 'red' : scoreTone;
+              var extraCls = (hasAlert && severity !== 'allergen') ? ' hb-photo-badge--advisory' : '';
+              badge.className = 'hb-photo-badge hb-photo-badge--' + tone + extraCls;
               badge.textContent = (hasAlert ? '⚠️ ' : '🥦 ') + sc;
+              var labelTitle = st ? st.title : '';
+              badge.setAttribute('aria-label', 'HeyBroc score ' + sc + ' out of 100' + (labelTitle ? ' for ' + labelTitle : ''));
+              if (st) {
+                st.resolved = true;
+                if (st.openOnResolve) {
+                  st.openOnResolve = false;
+                  window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                    kind: 'inspectCard',
+                    cardId: id,
+                    title: st.title,
+                    instacartSlug: detectInstacartSlug()
+                  });
+                }
+              }
+            }
+            if (earliestRetryMs > 0 && !hbRetryTimer) {
+              hbRetryTimer = setTimeout(function() {
+                hbRetryTimer = null;
+                scanPhotoBadges();
+              }, earliestRetryMs + 80);
             }
           };
 
           window.__heybrocRefreshPhotoBadges = function() {
+            hbPrefRev++;
             clearHbBadges();
             scanPhotoBadges();
           };
 
+          function activateHbPhotoBadge(badge, e) {
+            if (!badge) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            var cardId = badge.getAttribute('data-hb-card-id') || '';
+            var badgeSig = badge.getAttribute('data-hb-sig') || '';
+            var ownerCard = (cardId && hbOwnerCardById[cardId]) ? hbOwnerCardById[cardId] : (badge.closest ? badge.closest(CARD_SEL) : null);
+            var st = (ownerCard && hbCardState) ? hbCardState.get(ownerCard) : null;
+            var liveInfo = ownerCard ? readCardInfo(ownerCard) : null;
+            if (ownerCard && liveInfo && badgeSig && liveInfo.sig !== badgeSig) {
+              if (st) removeCardBadgeState(ownerCard, st);
+              if (hbCardState) hbCardState.delete(ownerCard);
+              processVisibleCard(ownerCard);
+              window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                kind: 'inspectCard',
+                cardId: '',
+                title: liveInfo.title,
+                instacartSlug: detectInstacartSlug()
+              });
+              return;
+            }
+            var liveTitle = (liveInfo && liveInfo.title) ? liveInfo.title : (st ? st.title : '');
+            if (st && !st.resolved && liveTitle) {
+              st.openOnResolve = false;
+              window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+                kind: 'inspectCard',
+                cardId: '',
+                title: liveTitle,
+                instacartSlug: detectInstacartSlug()
+              });
+              return;
+            }
+            window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
+              kind: 'inspectCard',
+              cardId: cardId,
+              title: liveTitle,
+              instacartSlug: detectInstacartSlug()
+            });
+          }
+
           document.addEventListener('pointerdown', function(e) {
             if (e.target && e.target.closest && e.target.closest('.hb-photo-badge')) {
               e.stopPropagation();
+              e.stopImmediatePropagation();
             }
           }, true);
 
           document.addEventListener('click', function(e) {
             var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
             if (!badge) return;
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
-              kind: 'inspectCard',
-              cardId: badge.getAttribute('data-hb-card-id') || '',
-              title: badge.getAttribute('data-hb-title') || ''
-            });
+            activateHbPhotoBadge(badge, e);
+          }, true);
+
+          document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
+            if (!badge) return;
+            activateHbPhotoBadge(badge, e);
           }, true);
 
           function isHbBadgeNode(n) {
@@ -994,6 +1248,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             dismissRetailerAppBanners();
             scanPhotoBadges();
             var url = location.href;
+            var instacartSlug = detectInstacartSlug();
             var modal = findOpenProductModal();
             var isPdp = Boolean(modal) || looksLikeProductUrl(url);
 
@@ -1005,6 +1260,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   title: alignedTitle.slice(0, 260),
                   ingredients: '',
                   barcode: '',
+                  instacartSlug: instacartSlug,
                   url: url
                 });
               } else {
@@ -1065,6 +1321,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 title: title.slice(0, 260),
                 ingredients: ingredients.slice(0, 2500),
                 barcode: barcode,
+                instacartSlug: instacartSlug,
                 url: url
               });
             } else {
@@ -1116,7 +1373,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
           });
           if (document.documentElement) {
-            obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+            obs.observe(document.documentElement, {
+              childList: true,
+              subtree: true,
+              characterData: true,
+              attributes: true,
+              attributeFilter: ['src', 'srcset', 'href']
+            });
           }
           dismissRetailerAppBanners();
           scheduleCheck(true);
@@ -1254,21 +1517,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return String(cleanT.prefix(19)).trimmingCharacters(in: .whitespaces) + "…"
         }()
 
-        if let firstAlert = summary.dietaryAlerts.first {
+        if summary.alertSeverity == "allergen" || summary.score < 50 {
             floatingBubble.backgroundColor = UIColor(red: 0.863, green: 0.149, blue: 0.149, alpha: 0.96)
+        } else if summary.score >= 75 {
+            floatingBubble.backgroundColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 0.96)
+        } else {
+            floatingBubble.backgroundColor = UIColor(red: 0.851, green: 0.467, blue: 0.024, alpha: 0.96)
+        }
+
+        if let firstAlert = summary.dietaryAlerts.first {
             bubbleBadgeLabel.text = "⚠️ \(firstAlert.shortBadge) • \(summary.score)/100"
             bubbleSubLabel.text = lastDetectedIsCard
                 ? "\(shortItemTitle) • Tap"
                 : (summary.swap != nil ? "Tap for Organic / Clean Swap" : "Tap to inspect alert")
             return
-        }
-
-        if summary.score >= 75 {
-            floatingBubble.backgroundColor = UIColor(red: 0.086, green: 0.639, blue: 0.290, alpha: 0.96)
-        } else if summary.score >= 50 {
-            floatingBubble.backgroundColor = UIColor(red: 0.851, green: 0.467, blue: 0.024, alpha: 0.96)
-        } else {
-            floatingBubble.backgroundColor = UIColor(red: 0.863, green: 0.149, blue: 0.149, alpha: 0.96)
         }
 
         bubbleBadgeLabel.text = "\(summary.score)/100 • \(summary.rating)"
@@ -1364,9 +1626,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         cardSummariesById.removeAll()
         storeWebView?.evaluateJavaScript("window.__heybrocRefreshPhotoBadges && window.__heybrocRefreshPhotoBadges();", completionHandler: nil)
         if !lastDetectedTitle.isEmpty || !lastDetectedBarcode.isEmpty {
-            runLiveScan(title: lastDetectedTitle, ingredients: lastDetectedIngredients, barcode: lastDetectedBarcode, force: true)
+            runLiveScan(
+                title: lastDetectedTitle,
+                ingredients: lastDetectedIngredients,
+                barcode: lastDetectedBarcode,
+                instacartRetailerSlug: lastDetectedInstacartSlug,
+                skipAnalytics: lastDetectedIsCard,
+                force: true
+            )
         } else if let prev = latestSummary {
-            runLiveScan(title: prev.title, ingredients: prev.ingredients, barcode: "", force: true)
+            runLiveScan(
+                title: prev.title,
+                ingredients: prev.ingredients,
+                barcode: "",
+                instacartRetailerSlug: lastDetectedInstacartSlug,
+                skipAnalytics: true,
+                force: true
+            )
         }
     }
 
@@ -1401,7 +1677,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     }
                     return
                 }
-                HeyBrocNativeScannerAPI.scan(rawText: ocrText, store: self.activeStore.apiStoreKey) { [weak self] result in
+                HeyBrocNativeScannerAPI.scan(
+                    rawText: ocrText,
+                    store: self.activeStore.apiStoreKey,
+                    instacartRetailerSlug: self.lastDetectedInstacartSlug
+                ) { [weak self] result in
                     guard let self = self else { return }
                     self.isScanning = false
                     switch result {
@@ -1421,8 +1701,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
-    private func runLiveScan(title: String, ingredients: String, barcode: String, force: Bool = false) {
-        let dedupeKey = "\(activeStore.apiStoreKey)|\(title.lowercased())|\(barcode)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))"
+    private func runLiveScan(
+        title: String,
+        ingredients: String,
+        barcode: String,
+        instacartRetailerSlug: String = "",
+        skipAnalytics: Bool = false,
+        force: Bool = false
+    ) {
+        let dedupeKey = "\(activeStore.apiStoreKey)|\(instacartRetailerSlug.lowercased())|\(title.lowercased())|\(barcode)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))|\(HeyBrocSharedPrefs.familyWatchlist.joined(separator: ","))"
         if !force && dedupeKey == lastScannedKey {
             return
         }
@@ -1436,7 +1723,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             productTitle: title,
             rawIngredients: ingredients,
             barcode: barcode,
-            store: activeStore.apiStoreKey
+            store: activeStore.apiStoreKey,
+            instacartRetailerSlug: instacartRetailerSlug,
+            skipAnalytics: skipAnalytics
         ) { [weak self] result in
             guard let self = self, gen == self.scanGeneration else { return }
             self.isScanning = false
@@ -1457,7 +1746,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             summary: summary,
             storeLabel: activeStore.label,
             onOpenSwapInStore: { [weak self] urlString in
-                guard let self = self, let u = URL(string: urlString) else { return }
+                guard let self = self, let u = Self.validatedHTTPURL(urlString) else { return }
                 self.storeWebView?.load(URLRequest(url: u))
             },
             onRescanScreenOCR: { [weak self] in
@@ -1501,18 +1790,29 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let title = (body["title"] as? String) ?? ""
         let ingredients = (body["ingredients"] as? String) ?? ""
         let barcode = (body["barcode"] as? String) ?? ""
+        let instacartSlug = (body["instacartSlug"] as? String) ?? ""
         let cardId = (body["cardId"] as? String) ?? ""
         let rawBatchItems = (body["items"] as? [[String: Any]]) ?? []
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self, !self.isCleaningUp else { return }
+            if !instacartSlug.isEmpty || self.activeStore.apiStoreKey != "instacart" {
+                self.lastDetectedInstacartSlug = instacartSlug
+            }
             if kind == "product" || kind == "card" {
                 guard !title.isEmpty else { return }
-                self.lastDetectedIsCard = (kind == "card")
+                let isPassiveCard = (kind == "card")
+                self.lastDetectedIsCard = isPassiveCard
                 self.lastDetectedTitle = title
                 self.lastDetectedIngredients = ingredients
                 self.lastDetectedBarcode = barcode
-                self.runLiveScan(title: title, ingredients: ingredients, barcode: barcode)
+                self.runLiveScan(
+                    title: title,
+                    ingredients: ingredients,
+                    barcode: barcode,
+                    instacartRetailerSlug: instacartSlug,
+                    skipAnalytics: isPassiveCard
+                )
             } else if kind == "browse" {
                 self.scanGeneration += 1
                 self.isScanning = false
@@ -1525,7 +1825,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 self.setBubbleIdleState()
             } else if kind == "gridBatch" {
                 var cleanItems: [[String: String]] = []
-                for item in rawBatchItems.prefix(10) {
+                for item in rawBatchItems.prefix(8) {
                     guard let id = item["id"] as? String, !id.isEmpty,
                           let pTitle = item["productTitle"] as? String, !pTitle.isEmpty else { continue }
                     cleanItems.append(["id": id, "productTitle": pTitle])
@@ -1533,20 +1833,34 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 guard !cleanItems.isEmpty else { return }
                 let gen = self.badgeBatchGeneration
                 let storeKey = self.activeStore.apiStoreKey
-                HeyBrocNativeScannerAPI.scanBatch(items: cleanItems, store: storeKey) { [weak self] summaries in
+                HeyBrocNativeScannerAPI.scanBatchWithOutcome(
+                    items: cleanItems,
+                    store: storeKey,
+                    instacartRetailerSlug: instacartSlug
+                ) { [weak self] outcome in
                     guard let self = self, !self.isCleaningUp, gen == self.badgeBatchGeneration else { return }
+                    if self.cardSummariesById.count > 300 {
+                        self.cardSummariesById.removeAll(keepingCapacity: true)
+                    }
                     var jsMap: [String: Any] = [:]
                     for reqItem in cleanItems {
                         guard let id = reqItem["id"] else { continue }
-                        if let sum = summaries[id] {
-                            self.cardSummariesById[id] = sum
+                        if let sum = outcome.summaries[id] {
+                            if !sum.isCategoryEstimate {
+                                self.cardSummariesById[id] = sum
+                            }
                             jsMap[id] = [
                                 "ok": true,
                                 "score": sum.score,
-                                "hasAlert": !sum.dietaryAlerts.isEmpty
+                                "hasAlert": !sum.dietaryAlerts.isEmpty,
+                                "alertSeverity": sum.alertSeverity,
+                                "isCategoryEstimate": sum.isCategoryEstimate
                             ]
                         } else {
-                            jsMap[id] = ["ok": false]
+                            jsMap[id] = [
+                                "ok": false,
+                                "transient": outcome.isTransientError
+                            ]
                         }
                     }
                     if let jsonData = try? JSONSerialization.data(withJSONObject: jsMap),
@@ -1573,10 +1887,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     openSummarySheet(cachedSummary)
                 } else if !title.isEmpty {
                     self.setBubbleScanningState()
-                    HeyBrocNativeScannerAPI.scan(productTitle: title, store: self.activeStore.apiStoreKey) { [weak self] res in
+                    HeyBrocNativeScannerAPI.scan(
+                        productTitle: title,
+                        store: self.activeStore.apiStoreKey,
+                        instacartRetailerSlug: instacartSlug
+                    ) { [weak self] res in
                         guard let self = self, !self.isCleaningUp else { return }
                         if case .success(let summary) = res {
                             if !cardId.isEmpty {
+                                if self.cardSummariesById.count > 300 {
+                                    self.cardSummariesById.removeAll(keepingCapacity: true)
+                                }
                                 self.cardSummariesById[cardId] = summary
                             }
                             openSummarySheet(summary)
@@ -1638,6 +1959,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         scanGeneration += 1
+        badgeBatchGeneration += 1
+        cardSummariesById.removeAll()
         isScanning = false
     }
 
@@ -1676,6 +1999,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
     private let onRescanScreenOCR: () -> Void
     private let onTogglePesticide: () -> Void
     private let onReturnToScanner: () -> Void
+    private var alternateSwapURLsByTag: [Int: String] = [:]
 
     init(
         summary: HeyBrocNativeScanSummary,
@@ -1727,7 +2051,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         scorePill.layer.masksToBounds = true
         scorePill.widthAnchor.constraint(equalToConstant: 56).isActive = true
         scorePill.heightAnchor.constraint(equalToConstant: 56).isActive = true
-        if !summary.dietaryAlerts.isEmpty || summary.score < 50 {
+        if summary.alertSeverity == "allergen" || summary.score < 50 {
             scorePill.backgroundColor = UIColor(red: 0.863, green: 0.149, blue: 0.149, alpha: 1.0)
         } else if summary.score < 75 {
             scorePill.backgroundColor = UIColor(red: 0.851, green: 0.467, blue: 0.024, alpha: 1.0)
@@ -1745,13 +2069,34 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         prodTitle.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
         prodTitle.numberOfLines = 3
 
+        let ratingPrefix = summary.isCategoryEstimate ? "🥦 Category Estimate • " : "🥦 "
         let ratingLbl = UILabel()
-        ratingLbl.text = "🥦 \(summary.rating) (\(summary.score)/100)"
+        ratingLbl.text = "\(ratingPrefix)\(summary.rating) (\(summary.score)/100)"
         ratingLbl.font = UIFont.systemFont(ofSize: 13, weight: .bold)
         ratingLbl.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
 
         titleStack.addArrangedSubview(prodTitle)
         titleStack.addArrangedSubview(ratingLbl)
+
+        if let nScore = summary.nutritionScore,
+           let aScore = summary.additiveScore,
+           let oScore = summary.organicScore {
+            let gradeBit = summary.nutriScoreGrade.map { " • Nutri-Score \($0)" } ?? ""
+            let subLbl = UILabel()
+            subLbl.text = "Nutrition \(nScore)/60 • Additives \(aScore)/30 • Organic \(oScore)/10\(gradeBit)"
+            subLbl.font = UIFont.systemFont(ofSize: 11.5, weight: .semibold)
+            subLbl.textColor = UIColor(red: 0.392, green: 0.455, blue: 0.545, alpha: 1.0)
+            subLbl.numberOfLines = 2
+            titleStack.addArrangedSubview(subLbl)
+        }
+
+        if let srcLabel = summary.sourceLabel, !srcLabel.isEmpty {
+            let provLbl = UILabel()
+            provLbl.text = "Source: \(srcLabel)"
+            provLbl.font = UIFont.systemFont(ofSize: 11, weight: .medium)
+            provLbl.textColor = UIColor(red: 0.455, green: 0.518, blue: 0.608, alpha: 1.0)
+            titleStack.addArrangedSubview(provLbl)
+        }
 
         let closeBtn = UIButton(type: .system)
         closeBtn.setTitle("Done", for: .normal)
@@ -1764,26 +2109,36 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         stack.addArrangedSubview(topRow)
 
         // Pesticide & Dietary Alerts
+        let advisoryKeys: Set<String> = ["pesticide_risk", "sugar_diabetes", "high_sodium"]
         for alert in summary.dietaryAlerts {
+            let isAdvisory = advisoryKeys.contains(alert.key)
             let alertBox = UIStackView()
             alertBox.axis = .vertical
             alertBox.spacing = 4
             alertBox.isLayoutMarginsRelativeArrangement = true
             alertBox.layoutMargins = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-            alertBox.backgroundColor = UIColor(red: 0.996, green: 0.949, blue: 0.949, alpha: 1.0)
+            alertBox.backgroundColor = isAdvisory
+                ? UIColor(red: 1.0, green: 0.984, blue: 0.922, alpha: 1.0)
+                : UIColor(red: 0.996, green: 0.949, blue: 0.949, alpha: 1.0)
             alertBox.layer.cornerRadius = 14
             alertBox.layer.borderWidth = 1
-            alertBox.layer.borderColor = UIColor(red: 0.988, green: 0.647, blue: 0.647, alpha: 1.0).cgColor
+            alertBox.layer.borderColor = (isAdvisory
+                ? UIColor(red: 0.961, green: 0.620, blue: 0.043, alpha: 0.55)
+                : UIColor(red: 0.988, green: 0.647, blue: 0.647, alpha: 1.0)).cgColor
 
             let h = UILabel()
             h.text = alert.label
             h.font = UIFont.systemFont(ofSize: 13.5, weight: .heavy)
-            h.textColor = UIColor(red: 0.600, green: 0.106, blue: 0.106, alpha: 1.0)
+            h.textColor = isAdvisory
+                ? UIColor(red: 0.573, green: 0.251, blue: 0.055, alpha: 1.0)
+                : UIColor(red: 0.600, green: 0.106, blue: 0.106, alpha: 1.0)
 
             let b = UILabel()
             b.text = alert.reason
             b.font = UIFont.systemFont(ofSize: 12.5, weight: .medium)
-            b.textColor = UIColor(red: 0.498, green: 0.114, blue: 0.114, alpha: 1.0)
+            b.textColor = isAdvisory
+                ? UIColor(red: 0.471, green: 0.208, blue: 0.059, alpha: 1.0)
+                : UIColor(red: 0.498, green: 0.114, blue: 0.114, alpha: 1.0)
             b.numberOfLines = 0
 
             alertBox.addArrangedSubview(h)
@@ -1791,7 +2146,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             stack.addArrangedSubview(alertBox)
         }
 
-        // 1-Tap Clean Swap Card
+        // 1-Tap Clean Swap Card (+ Alternate Swap Candidates)
         if let swap = summary.swap {
             let swapCard = UIStackView()
             swapCard.axis = .vertical
@@ -1828,6 +2183,28 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 openSwapBtn.heightAnchor.constraint(equalToConstant: 46).isActive = true
                 openSwapBtn.addTarget(self, action: #selector(tapOpenSwap), for: .touchUpInside)
                 swapCard.addArrangedSubview(openSwapBtn)
+
+                let alternates = summary.swapCandidates.filter { cand in
+                    cand.title.caseInsensitiveCompare(swap.title) != .orderedSame && cand.webUrl != nil
+                }.prefix(2)
+                for (idx, alt) in alternates.enumerated() {
+                    guard let altUrl = alt.webUrl else { continue }
+                    let tag = 900 + idx
+                    alternateSwapURLsByTag[tag] = altUrl
+                    let altBtn = UIButton(type: .system)
+                    altBtn.tag = tag
+                    altBtn.setTitle("Option \(idx + 2): \(alt.title) (\(alt.score)/100) →", for: .normal)
+                    altBtn.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .bold)
+                    altBtn.titleLabel?.lineBreakMode = .byTruncatingTail
+                    altBtn.backgroundColor = .white
+                    altBtn.setTitleColor(UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0), for: .normal)
+                    altBtn.layer.cornerRadius = 10
+                    altBtn.layer.borderWidth = 1
+                    altBtn.layer.borderColor = UIColor(red: 0.525, green: 0.937, blue: 0.675, alpha: 1.0).cgColor
+                    altBtn.contentEdgeInsets = UIEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+                    altBtn.addTarget(self, action: #selector(tapOpenAlternateSwap(_:)), for: .touchUpInside)
+                    swapCard.addArrangedSubview(altBtn)
+                }
             } else {
                 let lockedBtn = UIButton(type: .system)
                 lockedBtn.setTitle("🔒 Weekly free swaps used — Unlock Pro / Sign In →", for: .normal)
@@ -1934,6 +2311,13 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
 
     @objc private func tapOpenSwap() {
         guard let url = summary.swap?.webUrl else { return }
+        dismiss(animated: true) { [onOpenSwapInStore] in
+            onOpenSwapInStore(url)
+        }
+    }
+
+    @objc private func tapOpenAlternateSwap(_ sender: UIButton) {
+        guard let url = alternateSwapURLsByTag[sender.tag] else { return }
         dismiss(animated: true) { [onOpenSwapInStore] in
             onOpenSwapInStore(url)
         }

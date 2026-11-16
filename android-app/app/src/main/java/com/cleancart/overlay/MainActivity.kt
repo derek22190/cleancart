@@ -4283,17 +4283,23 @@ class MainActivity : Activity() {
         val expectedState = prefs.getString("pending_google_oauth_state", "").orEmpty().trim()
         val expectedNonce = prefs.getString("pending_google_oauth_nonce", "").orEmpty().trim()
         val pendingTs = prefs.getLong("pending_google_oauth_ts", 0L)
-        prefs.edit()
-            .remove("pending_google_oauth_state")
-            .remove("pending_google_oauth_nonce")
-            .remove("pending_google_oauth_ts")
-            .apply()
 
         val idToken = data.getQueryParameter("id_token").orEmpty().trim()
         val returnedState = data.getQueryParameter("state").orEmpty().trim()
         val err = data.getQueryParameter("error").orEmpty().trim()
 
         val now = System.currentTimeMillis()
+        val pendingExpired = pendingTs > 0L && (now - pendingTs) !in 0L..600_000L
+        if (pendingExpired) {
+            prefs.edit()
+                .remove("pending_google_oauth_state")
+                .remove("pending_google_oauth_nonce")
+                .remove("pending_google_oauth_ts")
+                .apply()
+            Toast.makeText(this, "Google sign-in session expired. Please try again.", Toast.LENGTH_LONG).show()
+            return true
+        }
+
         val stateValid =
             expectedState.isNotBlank() &&
                 returnedState.isNotBlank() &&
@@ -4303,9 +4309,17 @@ class MainActivity : Activity() {
                 (now - pendingTs) in 0L..600_000L
 
         if (!stateValid) {
+            // Do not clear an active, unexpired pending_google_oauth_* session on a mismatched state parameter
             Toast.makeText(this, "Google sign-in session expired. Please try again.", Toast.LENGTH_LONG).show()
             return true
         }
+
+        prefs.edit()
+            .remove("pending_google_oauth_state")
+            .remove("pending_google_oauth_nonce")
+            .remove("pending_google_oauth_ts")
+            .apply()
+
         if (err.isNotBlank() || idToken.isBlank()) {
             if (err.isNotBlank() && err != "access_denied" && err != "cancelled") {
                 Toast.makeText(this, "Google sign-in could not be completed. Please try again.", Toast.LENGTH_LONG).show()

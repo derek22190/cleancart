@@ -645,10 +645,57 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
   return Math.max(0, base + bigramBonus - extraFlavorPenalty - spinoffPenalty - extraTokensPenalty - formFactorPenalty);
 }
 
+const NEGATIVE_LOOKUP_TTL_MS = 15 * 60_000;
+const MAX_NEGATIVE_LOOKUP_ENTRIES = 1000;
+const negativeLookupCache = new Map<string, number>();
+const providerRateWindows = new Map<string, { count: number; resetAt: number }>();
+let trackedLookupFetchRef: unknown = globalThis.fetch;
+
+function ensureLookupRuntimeFreshForFetch(): void {
+  if (trackedLookupFetchRef !== globalThis.fetch) {
+    trackedLookupFetchRef = globalThis.fetch;
+    negativeLookupCache.clear();
+    providerRateWindows.clear();
+    usdaUnavailableUntil = 0;
+    dsldUnavailableUntil = 0;
+  }
+}
+
+function consumeOutboundProviderBudget(url: string): boolean {
+  let bucket = "";
+  let maxPerMin = 0;
+  if (url.includes("openfoodfacts.org")) {
+    if (url.includes("/cgi/search.pl") || url.includes("/api/v2/search")) {
+      bucket = "off_search";
+      maxPerMin = 40;
+    } else {
+      bucket = "off_product";
+      maxPerMin = 90;
+    }
+  } else if (url.includes("api.nal.usda.gov")) {
+    bucket = "usda";
+    maxPerMin = 90;
+  }
+  if (!bucket) return true;
+  const now = Date.now();
+  const win = providerRateWindows.get(bucket);
+  if (!win || now >= win.resetAt) {
+    providerRateWindows.set(bucket, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (win.count >= maxPerMin) return false;
+  win.count += 1;
+  return true;
+}
+
 async function getJson<T>(url: string): Promise<T | null> {
+  ensureLookupRuntimeFreshForFetch();
   const isUsda = url.includes("api.nal.usda.gov");
   const isDsld = url.includes("api.ods.od.nih.gov");
   if ((isUsda && Date.now() < usdaUnavailableUntil) || (isDsld && Date.now() < dsldUnavailableUntil)) {
+    return null;
+  }
+  if (!consumeOutboundProviderBudget(url)) {
     return null;
   }
   try {
@@ -761,8 +808,36 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
 const OCR_NUTRITION_GARBAGE =
   /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|\d+\s*%\s+\d+\s*%\b|(?<!\bin)gredients?\b|swingredients\b|itamin\s+[a-d]|alcium\s+\d)|(?:\b[a-z]{1,3}\s+\d+\s*%$)/i;
 
-const FOREIGN_OCR_SPILLOVER_AFTER_PERIOD =
-  /\.\s+(?:ingredientes?\b|ingr[eé]dients?\b|contiene\b|puede\s+contener\b|hecho\s+en\b|distribuido\s+por\b|conservar\b|entero\b|grano\s+entero\b|otros\s+alimentos\b|dtros\s+alimentos\b|[^.]*\b(?:alimentos|az[uú]cares|grasas|calor[ií]as|colesterol|yodeterol|queden|pueden|salud|dieta|avena|harina|leche|trigo|soja|soya|nueces|cacahuates|huevo)\b)/i;
+const FOREIGN_DECLARATION_AFTER_PERIOD_RE =
+  /\.\s+(?:ingredientes\s*[:.-]?|ingr\u00e9dients?\s*[:.-]?|contiene\s*:|puede\s+contener\b|elaborado\s+(?:en|por)\b|hecho\s+en\b|distribuido\s+por\b|conservar\s+en\b)/i;
+
+const FOREIGN_OCR_GARBAGE_TOKEN_RE =
+  /\b(?:entero|grano\s+entero|dtros|otros\s+alimentos|alimentos|az[u\u00fa]cares|grasas|calor[i\u00ed]as|colesterol|yodeterol|queden|pueden|porci[o\u00f3]n|sodio)\b/gi;
+
+const ENGLISH_ALLERGEN_OR_DECLARATION_IN_TAIL_RE =
+  /\b(?:ingredients?|contains|allergen|milk|cream|whey|casein|butter|cheese|yogurt|eggs?|yolks?|whites?|peanuts?|tree\s+nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|pistachios?|macadamia|sesame|wheat|gluten|barley|rye|oats?|soy|soya|soybeans?|lecithin|fish|shellfish|shrimp|crab|lobster)\b/i;
+
+function findSafeForeignSpilloverCutoff(s: string): number {
+  const declMatch = s.match(FOREIGN_DECLARATION_AFTER_PERIOD_RE);
+  if (declMatch && typeof declMatch.index === "number" && declMatch.index >= 8) {
+    const tail = s.slice(declMatch.index + 1);
+    if (!ENGLISH_ALLERGEN_OR_DECLARATION_IN_TAIL_RE.test(tail)) {
+      return declMatch.index;
+    }
+  }
+  const periodRe = /\.\s+/g;
+  let m: RegExpExecArray | null;
+  while ((m = periodRe.exec(s)) !== null) {
+    if (m.index < 8) continue;
+    const tail = s.slice(m.index + 1);
+    if (ENGLISH_ALLERGEN_OR_DECLARATION_IN_TAIL_RE.test(tail)) continue;
+    const foreignHits = tail.match(FOREIGN_OCR_GARBAGE_TOKEN_RE);
+    if (foreignHits && foreignHits.length >= 2) {
+      return m.index;
+    }
+  }
+  return -1;
+}
 
 const INGREDIENT_PRESERVED_ACRONYMS = new Set([
   "BHA", "BHT", "TBHQ", "MSG", "EDTA", "DATEM", "PGPR", "FD&C", "USDA", "FDA", "GMO", "UHT", "DNA",
@@ -772,9 +847,9 @@ const INGREDIENT_PRESERVED_ACRONYMS = new Set([
 export function sanitizeIngredientDisplay(raw: string): string {
   let s = (raw || "").replace(/_/g, "").replace(/\s+/g, " ").trim();
   if (!s) return "";
-  const foreignMatch = s.match(FOREIGN_OCR_SPILLOVER_AFTER_PERIOD);
-  if (foreignMatch && typeof foreignMatch.index === "number" && foreignMatch.index >= 8) {
-    s = s.slice(0, foreignMatch.index + 1).trim();
+  const cutoffIdx = findSafeForeignSpilloverCutoff(s);
+  if (cutoffIdx >= 8) {
+    s = s.slice(0, cutoffIdx + 1).trim();
   }
   const letters = s.replace(/[^A-Za-z]/g, "");
   if (letters.length >= 6) {
@@ -4722,7 +4797,19 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   let found: Omit<LookupResult, "ms"> | null = null;
 
-  found = await lookupProviders(normalizedInput);
+  ensureLookupRuntimeFreshForFetch();
+  const negExpiresAt = negativeLookupCache.get(key);
+  if (!negExpiresAt || Date.now() >= negExpiresAt) {
+    if (negExpiresAt) negativeLookupCache.delete(key);
+    found = await lookupProviders(normalizedInput);
+    if (!found && !providerSignal.getStore()?.aborted) {
+      if (negativeLookupCache.size >= MAX_NEGATIVE_LOOKUP_ENTRIES) {
+        const oldestKey = negativeLookupCache.keys().next().value;
+        if (oldestKey !== undefined) negativeLookupCache.delete(oldestKey);
+      }
+      negativeLookupCache.set(key, Date.now() + NEGATIVE_LOOKUP_TTL_MS);
+    }
+  }
   if (!found && title) {
     found = catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
   }

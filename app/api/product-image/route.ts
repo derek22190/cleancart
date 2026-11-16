@@ -513,7 +513,9 @@ async function resolveVerifiedProductMedia(
   rawBrand: string,
 ): Promise<ResolvedProductMedia> {
   const cacheKey = `${rawQuery.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
-  const cachedBytes = imageBytesCache.get(cacheKey) || (rawQuery ? imageBytesCache.get(rawQuery.toLowerCase()) : undefined);
+  const cachedBytes =
+    imageBytesCache.get(cacheKey) ||
+    (rawQuery && !rawCode && !rawBrand ? imageBytesCache.get(rawQuery.toLowerCase()) : undefined);
   if (cachedBytes) {
     return { kind: "remote", ...cachedBytes };
   }
@@ -524,7 +526,7 @@ async function resolveVerifiedProductMedia(
       if (oldest !== undefined) imageBytesCache.delete(oldest);
     }
     imageBytesCache.set(cacheKey, entry);
-    if (rawQuery && !rawCode) {
+    if (rawQuery && !rawCode && !rawBrand) {
       imageBytesCache.set(rawQuery.toLowerCase(), entry);
     }
   };

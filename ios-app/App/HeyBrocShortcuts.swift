@@ -287,9 +287,23 @@ struct HeyBrocNativeScanSummary {
     let rating: String
     let color: String
     let store: String
+    let alertSeverity: String
+    let isCategoryEstimate: Bool
+    let nutritionScore: Int?
+    let additiveScore: Int?
+    let organicScore: Int?
+    let nutriScoreGrade: String?
+    let sourceLabel: String?
+    let sourceUrl: String?
     let dietaryAlerts: [HeyBrocNativeAlert]
     let flagged: [HeyBrocNativeFlag]
     let swap: HeyBrocNativeSwap?
+    let swapCandidates: [HeyBrocNativeSwap]
+}
+
+struct HeyBrocBatchScanOutcome {
+    let summaries: [String: HeyBrocNativeScanSummary]
+    let isTransientError: Bool
 }
 
 enum HeyBrocVisionOCR {
@@ -332,12 +346,30 @@ enum HeyBrocVisionOCR {
 
 enum HeyBrocNativeScannerAPI {
     static let endpoint = URL(string: "https://www.heybroc.com/api/scan")!
+    private static let majorAllergenIds: Set<String> = [
+        "peanuts_nuts", "dairy", "wheat_gluten", "soy", "egg", "shellfish_fish", "sesame"
+    ]
 
     static func parseScanJSON(_ data: Data) -> Result<HeyBrocNativeScanSummary, NSError> {
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             return .failure(NSError(domain: "HeyBroc", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from HeyBroc scanner."]))
         }
         return parseScanObject(obj)
+    }
+
+    private static func parseSwapObject(_ sw: [String: Any]) -> HeyBrocNativeSwap? {
+        guard let swTitle = sw["title"] as? String, !swTitle.isEmpty else { return nil }
+        let nut = sw["nutrition"] as? [String: Any]
+        let isOrg = (nut?["isOrganic"] as? Bool) ?? false
+        let rawUrl = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
+        return HeyBrocNativeSwap(
+            title: swTitle,
+            brand: (sw["brand"] as? String) ?? "",
+            score: (sw["score"] as? Int) ?? 90,
+            webUrl: rawUrl.flatMap { sanitizeRetailerURL($0) },
+            isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
+            isOrganic: isOrg
+        )
     }
 
     static func parseScanObject(_ obj: [String: Any]) -> Result<HeyBrocNativeScanSummary, NSError> {
@@ -355,8 +387,8 @@ enum HeyBrocNativeScannerAPI {
            (nut["productKind"] as? String) == "non-food" {
             return .failure(NSError(domain: "HeyBroc", code: -4, userInfo: [NSLocalizedDescriptionKey: "Non-food item skipped."]))
         }
-        if let yuka = res["yukaBreakdown"] as? [String: Any],
-           (yuka["nutriScoreGrade"] as? String) == "N/A" {
+        let yuka = res["yukaBreakdown"] as? [String: Any]
+        if (yuka?["nutriScoreGrade"] as? String) == "N/A" {
             return .failure(NSError(domain: "HeyBroc", code: -4, userInfo: [NSLocalizedDescriptionKey: "Non-food item skipped."]))
         }
         let title = (prod["title"] as? String) ?? "Scanned Food"
@@ -366,6 +398,28 @@ enum HeyBrocNativeScannerAPI {
         let rating = (res["rating"] as? String) ?? (score >= 75 ? "Excellent" : score >= 50 ? "Good" : "Poor")
         let color = (res["color"] as? String) ?? (score >= 75 ? "green" : score >= 50 ? "yellow" : "red")
         let store = (obj["store"] as? String) ?? HeyBrocSharedPrefs.activeStore
+        let isCategoryEstimate = (obj["isCategoryEstimate"] as? Bool)
+            ?? (title.lowercased().contains("category estimate") || brand.lowercased().contains("category estimate"))
+
+        let nutritionScore = (yuka?["nutritionScore"] as? Int) ?? (yuka?["nutritionScore"] as? Double).map { Int($0.rounded()) }
+        let additiveScore = (yuka?["additiveScore"] as? Int) ?? (yuka?["additiveScore"] as? Double).map { Int($0.rounded()) }
+        let organicScore = (yuka?["organicScore"] as? Int) ?? (yuka?["organicScore"] as? Double).map { Int($0.rounded()) }
+        let nutriScoreGrade = yuka?["nutriScoreGrade"] as? String
+
+        let lookupObj = obj["lookup"] as? [String: Any]
+        let rawSource = ((lookupObj?["origin"] as? String) ?? (lookupObj?["source"] as? String) ?? "").lowercased()
+        let sourceLabel: String? = {
+            if isCategoryEstimate { return "Category Estimate — Verify Package Label" }
+            switch rawSource {
+            case "catalog": return "Verified US Package Label"
+            case "usda": return "USDA FoodData Central"
+            case "off", "openfoodfacts": return "Open Food Facts"
+            case "dsld": return "NIH Supplement Label Database"
+            case "screen": return "Live Package Label"
+            default: return rawSource.isEmpty ? nil : "Verified Food Database"
+            }
+        }()
+        let sourceUrl = (lookupObj?["sourceUrl"] as? String).flatMap { sanitizeRetailerURL($0) }
 
         var alerts: [HeyBrocNativeAlert] = []
         if let rawAlerts = obj["dietaryAlerts"] as? [[String: Any]] {
@@ -381,6 +435,15 @@ enum HeyBrocNativeScannerAPI {
             }
         }
 
+        let alertSeverity: String = {
+            if let explicit = obj["alertSeverity"] as? String,
+               (explicit == "allergen" || explicit == "advisory" || explicit == "none") {
+                return explicit
+            }
+            if alerts.isEmpty { return "none" }
+            return alerts.contains(where: { majorAllergenIds.contains($0.id) }) ? "allergen" : "advisory"
+        }()
+
         var flags: [HeyBrocNativeFlag] = []
         if let rawFlags = res["flagged"] as? [[String: Any]] {
             for f in rawFlags {
@@ -394,19 +457,17 @@ enum HeyBrocNativeScannerAPI {
             }
         }
 
-        var parsedSwap: HeyBrocNativeSwap?
-        if let sw = obj["swap"] as? [String: Any], let swTitle = sw["title"] as? String {
-            let nut = sw["nutrition"] as? [String: Any]
-            let isOrg = (nut?["isOrganic"] as? Bool) ?? swTitle.lowercased().contains("organic")
-            let rawUrl = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
-            parsedSwap = HeyBrocNativeSwap(
-                title: swTitle,
-                brand: (sw["brand"] as? String) ?? "",
-                score: (sw["score"] as? Int) ?? 90,
-                webUrl: rawUrl.flatMap { sanitizeRetailerURL($0) },
-                isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
-                isOrganic: isOrg
-            )
+        let parsedSwap = (obj["swap"] as? [String: Any]).flatMap { parseSwapObject($0) }
+        var candidates: [HeyBrocNativeSwap] = []
+        if let rawCands = obj["swapCandidates"] as? [[String: Any]] {
+            for rc in rawCands {
+                if let cand = parseSwapObject(rc) {
+                    if cand.title.lowercased() == parsedSwap?.title.lowercased() { continue }
+                    if !candidates.contains(where: { $0.title.lowercased() == cand.title.lowercased() }) {
+                        candidates.append(cand)
+                    }
+                }
+            }
         }
 
         return .success(
@@ -418,9 +479,18 @@ enum HeyBrocNativeScannerAPI {
                 rating: rating,
                 color: color,
                 store: store,
+                alertSeverity: alertSeverity,
+                isCategoryEstimate: isCategoryEstimate,
+                nutritionScore: nutritionScore,
+                additiveScore: additiveScore,
+                organicScore: organicScore,
+                nutriScoreGrade: nutriScoreGrade,
+                sourceLabel: sourceLabel,
+                sourceUrl: sourceUrl,
                 dietaryAlerts: alerts,
                 flagged: flags,
-                swap: parsedSwap
+                swap: parsedSwap,
+                swapCandidates: candidates
             )
         )
     }
@@ -451,6 +521,8 @@ enum HeyBrocNativeScannerAPI {
         rawText: String = "",
         barcode: String = "",
         store: String? = nil,
+        instacartRetailerSlug: String? = nil,
+        skipAnalytics: Bool = false,
         completion: @escaping (Result<HeyBrocNativeScanSummary, NSError>) -> Void
     ) {
         var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
@@ -474,6 +546,12 @@ enum HeyBrocNativeScannerAPI {
             "dietaryWatchlist": HeyBrocSharedPrefs.dietaryWatchlist,
             "preferStoreBrand": HeyBrocSharedPrefs.preferStoreBrand
         ]
+        if let slug = instacartRetailerSlug?.trimmingCharacters(in: .whitespacesAndNewlines), !slug.isEmpty {
+            payload["instacartRetailerSlug"] = String(slug.prefix(80))
+        }
+        if skipAnalytics {
+            payload["skipAnalytics"] = true
+        }
         if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
             payload["deviceSecret"] = secret
         }
@@ -510,13 +588,27 @@ enum HeyBrocNativeScannerAPI {
     static func scanBatch(
         items: [[String: String]],
         store: String? = nil,
+        instacartRetailerSlug: String? = nil,
         completion: @escaping ([String: HeyBrocNativeScanSummary]) -> Void
     ) {
+        scanBatchWithOutcome(items: items, store: store, instacartRetailerSlug: instacartRetailerSlug) { outcome in
+            completion(outcome.summaries)
+        }
+    }
+
+    static func scanBatchWithOutcome(
+        items: [[String: String]],
+        store: String? = nil,
+        instacartRetailerSlug: String? = nil,
+        completion: @escaping (HeyBrocBatchScanOutcome) -> Void
+    ) {
         guard !items.isEmpty else {
-            DispatchQueue.main.async { completion([:]) }
+            DispatchQueue.main.async {
+                completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: false))
+            }
             return
         }
-        var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 14)
+        var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 9)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("ios", forHTTPHeaderField: "X-HeyBroc-Platform")
@@ -529,7 +621,7 @@ enum HeyBrocNativeScannerAPI {
         }
 
         var payload: [String: Any] = [
-            "items": Array(items.prefix(10)),
+            "items": Array(items.prefix(8)),
             "store": store ?? HeyBrocSharedPrefs.activeStore,
             "surface": "extension",
             "clientPlatform": "ios-app",
@@ -538,6 +630,9 @@ enum HeyBrocNativeScannerAPI {
             "dietaryWatchlist": HeyBrocSharedPrefs.dietaryWatchlist,
             "preferStoreBrand": HeyBrocSharedPrefs.preferStoreBrand
         ]
+        if let slug = instacartRetailerSlug?.trimmingCharacters(in: .whitespacesAndNewlines), !slug.isEmpty {
+            payload["instacartRetailerSlug"] = String(slug.prefix(80))
+        }
         if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
             payload["deviceSecret"] = secret
         }
@@ -547,11 +642,19 @@ enum HeyBrocNativeScannerAPI {
 
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
-        URLSession.shared.dataTask(with: req) { data, _, error in
-            guard error == nil,
-                  let data = data,
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if error != nil || statusCode == 429 || statusCode >= 500 {
+                DispatchQueue.main.async {
+                    completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: true))
+                }
+                return
+            }
+            guard let data = data,
                   let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                DispatchQueue.main.async { completion([:]) }
+                DispatchQueue.main.async {
+                    completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: true))
+                }
                 return
             }
             if let issuedSecret = top["issuedDeviceSecret"] as? String, !issuedSecret.isEmpty {
@@ -566,7 +669,7 @@ enum HeyBrocNativeScannerAPI {
                 }
             }
             DispatchQueue.main.async {
-                completion(parsedSummaries)
+                completion(HeyBrocBatchScanOutcome(summaries: parsedSummaries, isTransientError: false))
             }
         }.resume()
     }
@@ -577,7 +680,8 @@ enum HeyBrocNativeScannerAPI {
         rawIngredients: String = "",
         rawText: String = "",
         barcode: String = "",
-        store: String? = nil
+        store: String? = nil,
+        instacartRetailerSlug: String? = nil
     ) async throws -> HeyBrocNativeScanSummary {
         try await withCheckedThrowingContinuation { continuation in
             scan(
@@ -585,7 +689,8 @@ enum HeyBrocNativeScannerAPI {
                 rawIngredients: rawIngredients,
                 rawText: rawText,
                 barcode: barcode,
-                store: store
+                store: store,
+                instacartRetailerSlug: instacartRetailerSlug
             ) { result in
                 switch result {
                 case .success(let summary):
@@ -607,7 +712,7 @@ struct HeyBrocSnippetCardView: View {
     let summary: HeyBrocNativeScanSummary
 
     private var scoreColor: Color {
-        if !summary.dietaryAlerts.isEmpty {
+        if summary.alertSeverity == "allergen" {
             return Color(red: 0.86, green: 0.15, blue: 0.15)
         }
         if summary.score >= 75 {

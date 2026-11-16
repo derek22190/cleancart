@@ -502,7 +502,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     patterns: [
       "(?:mono|di|tri|penta)?(?:sodium|potassium)(?: (?:dihydrogen|acid|aluminum|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)",
     ],
-    explanation: "FDA-gras inorganic phosphate salt used for moisture retention and texture in processed foods.",
+    explanation: "FDA-gras inorganic sodium phosphate salt used for moisture retention and texture in processed foods.",
   },
   {
     id: "msg", name: "MSG (Monosodium Glutamate)", risk: "low", category: "flavors",
@@ -634,13 +634,31 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
 
 const SEED_WORDS = "soybean|soy|canola|corn|cottonseed|sunflower|safflower|grapeseed|rapeseed|rice bran";
 
+const PRECAUTIONARY_ALLERGEN_TOKEN_SRC =
+  "(?:peanuts?|tree\\s+nuts?|nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|pistachios?|macadamia(?:\\s+nuts?)?|brazil\\s+nuts?|pine\\s+nuts?|coconuts?|milk|dairy(?:\\s+products?)?|eggs?|wheat|gluten|soy(?:a|beans?)?(?:\\s+lecithin)?|lecithin\\s+soy(?:a|bean)?|sesame(?:\\s+seeds?)?|shellfish|crustaceans?|fish|finfish|mustard|sulfites?|sulphites?|lupin|allergens?)(?:\\s+products?|\\s+traces?)?";
+
+const PRECAUTIONARY_PREFIX_SRC =
+  "\\b(?:may\\s+contain(?:\\s+traces\\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:in|on)\\s+(?:a\\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\\s+equipment|lines?|machinery)(?:\\s+(?:that|which)\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|\\s+with)?|shared\\s+equipment\\s+with|facility\\s+that\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages))(?:\\s*:)?\\s+(?:traces\\s+of\\s+)?(?:the\\s+following\\s*:?\\s*)?";
+
+const PRECAUTIONARY_END_BOUNDARY_SRC =
+  "(?=\\s*(?:[.;:!)\\]\\n]|$|\\b(?:ingredients?|contains|distributed|manufactured|produced|packaged|questions|allergen)\\b))";
+
+const PRECAUTIONARY_CROSS_CONTACT_CLAUSE_RE = new RegExp(
+  `${PRECAUTIONARY_PREFIX_SRC}(?:${PRECAUTIONARY_ALLERGEN_TOKEN_SRC}(?:\\s*(?:,\\s*(?:and\\s+|or\\s+)?|\\s+(?:and|or)\\s+|\\s*[&/]\\s*)${PRECAUTIONARY_ALLERGEN_TOKEN_SRC})+${PRECAUTIONARY_END_BOUNDARY_SRC}|${PRECAUTIONARY_ALLERGEN_TOKEN_SRC}(?:\\s+(?:and|or)\\s+${PRECAUTIONARY_ALLERGEN_TOKEN_SRC})*)`,
+  "gi",
+);
+
+export function stripPrecautionaryCrossContactClauses(raw: string): string {
+  return (raw || "").replace(PRECAUTIONARY_CROSS_CONTACT_CLAUSE_RE, " ");
+}
+
 /**
  * Lowercases, strips accents and punctuation, and expands shorthand oil lists like
  * "Vegetable Oil (Soybean, Canola and/or Sunflower)" into explicit "soybean oil, canola oil ..."
  * so every seed oil is detected. Fully deterministic.
  */
 export function normalizeIngredients(raw: string): string {
-  let s = (raw || "")
+  let s = stripPrecautionaryCrossContactClauses(raw || "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -758,19 +776,40 @@ export function scoreIngredients(
           ? Math.min(3, Math.max(0.5, pref))
           : 1;
     const isBenzenePrecursor = rule.id === "nabenzoate" && hasAscorbicAcid;
+    const isPhosphateRule = rule.id === "naphosphate";
+    const hasSodiumPhosphate =
+      isPhosphateRule &&
+      /\b(?:mono|di|tri|penta)?sodium(?: (?:dihydrogen|acid|aluminum|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)\b/.test(
+        normalized,
+      );
+    const hasPotassiumPhosphate =
+      isPhosphateRule &&
+      /\b(?:mono|di|tri|penta)?potassium(?: (?:dihydrogen|acid|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)\b/.test(
+        normalized,
+      );
+    const resolvedName = isBenzenePrecursor
+      ? "Benzoate + Vitamin C (Benzene Precursor)"
+      : isPhosphateRule && hasPotassiumPhosphate && !hasSodiumPhosphate
+        ? "Potassium Phosphate"
+        : isPhosphateRule && hasPotassiumPhosphate && hasSodiumPhosphate
+          ? "Sodium / Potassium Phosphate"
+          : rule.name;
+    const resolvedExplanation = isBenzenePrecursor
+      ? "Sodium or potassium benzoate combined with ascorbic acid (vitamin C) in acidic beverages can form trace benzene (an FDA-monitored carcinogen) under heat or light exposure."
+      : isPhosphateRule && hasPotassiumPhosphate && !hasSodiumPhosphate
+        ? "FDA-gras inorganic potassium phosphate buffering and stabilizing salt used in shelf-stable plant milks, creamers, and processed foods."
+        : isPhosphateRule && hasPotassiumPhosphate && hasSodiumPhosphate
+          ? "FDA-gras inorganic sodium and potassium phosphate salts used for buffering, moisture retention, and texture in processed foods."
+          : rule.explanation;
     const effectiveRisk: RiskLevel = isBenzenePrecursor ? "moderate" : rule.risk;
     const basePenalty = isBenzenePrecursor ? 18 : (rule.penalty ?? PENALTIES[rule.risk]);
     const hit: FlaggedAdditive = {
       id: rule.id,
-      name: isBenzenePrecursor
-        ? "Benzoate + Vitamin C (Benzene Precursor)"
-        : rule.name,
+      name: resolvedName,
       risk: effectiveRisk,
       category: rule.category,
       penalty: Math.round(basePenalty * mult),
-      explanation: isBenzenePrecursor
-        ? "Sodium or potassium benzoate combined with ascorbic acid (vitamin C) in acidic beverages can form trace benzene (an FDA-monitored carcinogen) under heat or light exposure."
-        : rule.explanation,
+      explanation: resolvedExplanation,
       matched: m[0],
     };
     if (pref === false) ignored.push(hit);

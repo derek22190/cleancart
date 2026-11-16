@@ -6,8 +6,10 @@ const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 function incrementLocalBucket(
   key: string,
   windowMs: number,
-  remoteCount?: number
+  remoteCount?: number,
+  cost = 1
 ): number {
+  const safeCost = Math.max(1, Math.floor(cost));
   const now = Date.now();
   const existing = rateBuckets.get(key);
   if (!existing || now > existing.resetAt) {
@@ -21,14 +23,14 @@ function incrementLocalBucket(
         if (oldest !== undefined) rateBuckets.delete(oldest);
       }
     }
-    const nextCount = remoteCount !== undefined ? Math.max(1, remoteCount) : 1;
+    const nextCount = remoteCount !== undefined ? Math.max(safeCost, remoteCount) : safeCost;
     rateBuckets.set(key, { count: nextCount, resetAt: now + windowMs });
     return nextCount;
   }
   existing.count =
     remoteCount !== undefined
-      ? Math.max(existing.count + 1, remoteCount)
-      : existing.count + 1;
+      ? Math.max(existing.count + safeCost, remoteCount)
+      : existing.count + safeCost;
   return existing.count;
 }
 
@@ -39,19 +41,21 @@ function incrementLocalBucket(
 export async function checkRateLimitAsync(
   key: string,
   limitPerMin = 90,
-  windowMs = 60_000
+  windowMs = 60_000,
+  cost = 1
 ): Promise<boolean> {
+  const safeCost = Math.max(1, Math.min(12, Math.floor(cost)));
   const safeKey = `heybroc:ratelimit:${key.trim().slice(0, 128)}`;
   if (isPersistentKvConfigured()) {
     try {
-      const count = await kvIncrWithPExpire(safeKey, windowMs);
-      incrementLocalBucket(safeKey, windowMs, count);
+      const count = await kvIncrWithPExpire(safeKey, windowMs, safeCost);
+      incrementLocalBucket(safeKey, windowMs, count, safeCost);
       return count <= limitPerMin;
     } catch {
       // Fall back to bounded local bucket if Redis experiences transient network error
     }
   }
-  const localCount = incrementLocalBucket(safeKey, windowMs);
+  const localCount = incrementLocalBucket(safeKey, windowMs, undefined, safeCost);
   return localCount <= limitPerMin;
 }
 
@@ -62,12 +66,14 @@ export async function checkRateLimitAsync(
 export function checkRateLimit(
   key: string,
   limitPerMin = 90,
-  windowMs = 60_000
+  windowMs = 60_000,
+  cost = 1
 ): boolean {
+  const safeCost = Math.max(1, Math.min(12, Math.floor(cost)));
   const safeKey = `heybroc:ratelimit:${key.trim().slice(0, 128)}`;
-  const localCount = incrementLocalBucket(safeKey, windowMs);
+  const localCount = incrementLocalBucket(safeKey, windowMs, undefined, safeCost);
   if (isPersistentKvConfigured()) {
-    void kvIncrWithPExpire(safeKey, windowMs)
+    void kvIncrWithPExpire(safeKey, windowMs, safeCost)
       .then((remoteCount) => {
         const bucket = rateBuckets.get(safeKey);
         if (bucket && remoteCount > bucket.count) {

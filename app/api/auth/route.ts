@@ -3,6 +3,7 @@ import {
   confirmPasswordReset,
   deleteUserAccount,
   getAuthenticatedUser,
+  issueServerOAuthNonce,
   linkDeviceToUser,
   loginWithOAuth,
   normalizeEmail,
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  if (searchParams.get("config") === "1") {
+  if (searchParams.get("config") === "1" || searchParams.get("oauthNonce") === "1") {
     const rawClientId =
       process.env.GOOGLE_CLIENT_ID ||
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -80,11 +81,13 @@ export async function GET(request: Request) {
       process.env.APPLE_CLIENT_ID ||
       process.env.NEXT_PUBLIC_APPLE_CLIENT_ID ||
       "";
+    const oauthNonce = await issueServerOAuthNonce();
     return NextResponse.json(
       {
         ok: true,
         googleClientId: rawClientId.trim(),
         appleClientId: rawAppleClientId.split(",")[0]?.trim() || "",
+        oauthNonce,
       },
       { headers: CORS }
     );

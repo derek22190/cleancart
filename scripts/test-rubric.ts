@@ -6468,6 +6468,783 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         "Behavioural Title Normalization Idempotency: heals Shift-hold leading-cap mangling ('REduced FAt MIlk', 'REDuced FAT MILk', '100% PUre PUmpkin', 'ORganic') while preserving genuine mixed-case words ('RedHot', 'DeLallo', 'SmartFood') with f(f(x)) === f(x)",
         allTitlesCleanAndIdempotent,
       );
+
+      // 6. 24-Hour Dual Audit Remediation Suite (P0 / P1 / P2 Behavioural & Cross-Surface Regressions)
+      {
+        const fsSync = await import("node:fs");
+        const vmMod = await import("node:vm");
+        const { runScan, runBatchScan } = await import("../lib/scan");
+        const { resolveSwapCandidates } = await import("../lib/swaps");
+        const scanRouteMod = await import("../app/api/scan/route");
+        const prodImgRouteMod = await import("../app/api/product-image/route");
+        const ALL_7_ALLERGENS = [
+          "peanuts_nuts",
+          "dairy",
+          "wheat_gluten",
+          "soy",
+          "egg",
+          "shellfish_fish",
+          "sesame",
+        ] as const;
+
+        // P0-2: All 5 multi-part, UK soya, and unpunctuated OCR ingredient strings retain real allergens through runScan
+        const p02Case1 = await runScan({
+          productTitle: "Dulce de Leche Pecan Ice Cream",
+          rawIngredients: "Cream, Skim Milk, Sugar. Dulce de Leche Swirl: Milk, Sugar, Egg Yolks, Pecans.",
+          dietaryWatchlist: [...ALL_7_ALLERGENS],
+          skipAnalytics: true,
+        });
+        const p02Case2 = await runScan({
+          productTitle: "Filled Sandwich Cookies",
+          rawIngredients: "Cookie: Wheat Flour, Sugar, Palm Oil. Ingredients of filling: Peanut Butter, Sugar, Sesame Seeds.",
+          dietaryWatchlist: [...ALL_7_ALLERGENS],
+          skipAnalytics: true,
+        });
+        const p02Case3 = await runScan({
+          productTitle: "Milk Chocolate Hazelnut Bar",
+          rawIngredients: "Sugar, Cocoa Butter, Cocoa Mass. Emulsifier: Soya Lecithin. Contains Milk, Hazelnuts.",
+          dietaryWatchlist: [...ALL_7_ALLERGENS],
+          skipAnalytics: true,
+        });
+        const p02Case4 = await runScan({
+          productTitle: "Crunchy Almond Oat Clusters",
+          rawIngredients: "Oats, Sugar, Palm Oil, may contain peanuts, Almond Butter, Egg Whites, Salt",
+          dietaryWatchlist: [...ALL_7_ALLERGENS],
+          skipAnalytics: true,
+        });
+        const p02Case5 = await runScan({
+          productTitle: "Honey Almond Granola Bar",
+          rawIngredients: "May contain traces of peanuts and milk Ingredients - Oats, Almonds, Honey, Whey",
+          dietaryWatchlist: [...ALL_7_ALLERGENS],
+          skipAnalytics: true,
+        });
+        const alertKeysOf = (res: Awaited<ReturnType<typeof runScan>>) =>
+          new Set((res.ok ? (res.dietaryAlerts ?? []) : []).map((a) => a.id));
+        const k1 = alertKeysOf(p02Case1);
+        const k2 = alertKeysOf(p02Case2);
+        const k3 = alertKeysOf(p02Case3);
+        const k4 = alertKeysOf(p02Case4);
+        const k5 = alertKeysOf(p02Case5);
+
+        check(
+          "P0-2 Allergen & OCR Spillover Safety: all 5 multi-part / UK soya / mid-sentence may-contain ingredient labels preserve every real allergen through runScan",
+          Boolean(
+            p02Case1.ok &&
+              p02Case3.ok &&
+              k1.has("dairy") &&
+              k1.has("egg") &&
+              k1.has("peanuts_nuts") &&
+              p02Case1.alertSeverity === "allergen" &&
+              k2.has("wheat_gluten") &&
+              k2.has("peanuts_nuts") &&
+              k2.has("sesame") &&
+              k3.has("soy") &&
+              k3.has("dairy") &&
+              k3.has("peanuts_nuts") &&
+              p02Case3.result?.flagged.some((f) => f.id === "soylecithin") &&
+              k4.has("peanuts_nuts") &&
+              k4.has("egg") &&
+              k5.has("peanuts_nuts") &&
+              k5.has("dairy"),
+          ),
+        );
+
+        // Codex #6 + Codex #3 + P1-6 + Codex #14: Precautionary cross-contact non-penalty, conventional oats + Organic Cane Sugar pesticide risk, alertSeverity, and Potassium vs Sodium Phosphate
+        const crossContactSoy = scoreIngredients("Whole Grain Oats. May contain traces of soy lecithin.");
+        const realSoyLecithin = scoreIngredients("Sugar, Cocoa Butter, Soy Lecithin.");
+        const convOatsWithOrgSugar = await runScan({
+          productTitle: "Maple Brown Sugar Instant Oatmeal",
+          rawIngredients: "Whole Grain Rolled Oats, Organic Cane Sugar, Sea Salt.",
+          dietaryWatchlist: ["pesticide_risk"],
+          skipAnalytics: true,
+        });
+        const kPhosOnly = scoreIngredients("Oat Base (Water, Oats), Dipotassium Phosphate, Sea Salt.");
+        const naPhosOnly = scoreIngredients("Pork, Water, Salt, Sodium Phosphate.");
+
+        check(
+          "Scoring & Dietary Precision: precautionary soy lecithin has 0 additive penalty, conventional oats + Organic Cane Sugar triggers advisory pesticide_risk, and Potassium vs Sodium Phosphate are named accurately",
+          Boolean(
+            crossContactSoy.score === 100 &&
+              crossContactSoy.flagged.length === 0 &&
+              realSoyLecithin.flagged.some((f) => f.id === "soylecithin") &&
+              convOatsWithOrgSugar.ok &&
+              convOatsWithOrgSugar.dietaryAlerts?.some(
+                (a) => a.id === "pesticide_risk" && a.reason.includes("USDA Pesticide Data Program"),
+              ) &&
+              convOatsWithOrgSugar.alertSeverity === "advisory" &&
+              kPhosOnly.flagged.some((f) => f.id === "naphosphate" && f.name === "Potassium Phosphate") &&
+              naPhosOnly.flagged.some((f) => f.id === "naphosphate" && f.name === "Sodium Phosphate"),
+          ),
+        );
+
+        // P1-7 + Codex #15 + Codex #13 + P2-6 + P2-7 + Codex #8: Category estimate flag, Dough Conditioner food inclusion, swap candidate parity, and null-prototype batch safety
+        const prevFetchBatch = globalThis.fetch;
+        let catEstimateScan!: Awaited<ReturnType<typeof runScan>>;
+        let verifiedCatalogScan!: Awaited<ReturnType<typeof runScan>>;
+        let batchProtoAndFoodRes!: Awaited<ReturnType<typeof runBatchScan>>;
+        try {
+          globalThis.fetch = async (input: RequestInfo | URL) => {
+            const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+            if (/dough/i.test(decodeURIComponent(u))) {
+              return Response.json({
+                hits: [
+                  {
+                    code: "0041220001122",
+                    product_name_en: "Artisan Bakery Dough Conditioner",
+                    brands: "King Arthur",
+                    countries_tags: ["en:united-states"],
+                    ingredients_text_en: "Wheat Flour, Malted Barley Flour, Ascorbic Acid, Enzymes.",
+                  },
+                ],
+                products: [
+                  {
+                    code: "0041220001122",
+                    product_name_en: "Artisan Bakery Dough Conditioner",
+                    brands: "King Arthur",
+                    countries_tags: ["en:united-states"],
+                    ingredients_text_en: "Wheat Flour, Malted Barley Flour, Ascorbic Acid, Enzymes.",
+                  },
+                ],
+              });
+            }
+            return Response.json({ products: [], hits: [], foods: [] });
+          };
+          catEstimateScan = await runScan({
+            productTitle: "Classic Caesar Salad Dressing, 16 fl oz",
+            store: "walmart",
+            skipAnalytics: true,
+          });
+          verifiedCatalogScan = await runScan({
+            productTitle: "Quaker Old Fashioned Oats, 42 oz",
+            store: "walmart",
+            skipAnalytics: true,
+          });
+          batchProtoAndFoodRes = await runBatchScan({ store: "walmart" }, [
+            { id: "__proto__", productTitle: "Quaker Old Fashioned Oats" },
+            { id: "constructor", productTitle: "Quaker Old Fashioned Oats" },
+            { id: "hb_dough_1", productTitle: "King Arthur Artisan Bakery Dough Conditioner" },
+            { id: "hb_hair_2", productTitle: "Pantene Pro-V Daily Moisture Renewal Conditioner" },
+          ]);
+        } finally {
+          globalThis.fetch = prevFetchBatch;
+        }
+        const mochaCands = resolveSwapCandidates({
+          score: 35,
+          productTitle: "Starbucks Bottled Mocha Frappuccino Coffee Drink",
+          store: "walmart",
+        });
+        const mochaSingle = resolveSwap({
+          score: 35,
+          productTitle: "Starbucks Bottled Mocha Frappuccino Coffee Drink",
+          store: "walmart",
+        });
+        const premierCands = resolveSwapCandidates({
+          score: 42,
+          productTitle: "Premier Protein Chocolate Shake",
+          store: "walmart",
+        });
+        const premierSingle = resolveSwap({
+          score: 42,
+          productTitle: "Premier Protein Chocolate Shake",
+          store: "walmart",
+        });
+        const allSwapCandsClean = [...mochaCands, ...premierCands].every((cand) => {
+          const matchedAlt =
+            Object.values(CLEAN_ALTERNATIVES).find((a) => `${a.brand} ${a.name}` === cand.title) ||
+            EXACT_PRODUCT_ALTERNATIVES.map((e) => e.alt).find((a) => `${a.brand} ${a.name}` === cand.title);
+          if (!matchedAlt) return true;
+          return scoreIngredients(matchedAlt.ingredients).flagged.every((f) => f.risk === "low");
+        });
+
+        check(
+          "Batch & Swap Hardening: isCategoryEstimate flags estimates, 'Dough Conditioner' grades as food while hair conditioner is skipped, __proto__ IDs cannot pollute Object.prototype, duplicate batch field is omitted, and resolveSwapCandidates matches resolveSwap eligibility",
+          Boolean(
+            catEstimateScan.ok &&
+              catEstimateScan.isCategoryEstimate === true &&
+              verifiedCatalogScan.ok &&
+              verifiedCatalogScan.isCategoryEstimate === false &&
+              Object.getPrototypeOf(batchProtoAndFoodRes.results) === null &&
+              !("batch" in (batchProtoAndFoodRes as unknown as Record<string, unknown>)) &&
+              !Object.prototype.hasOwnProperty.call(batchProtoAndFoodRes.results, "__proto__") &&
+              !Object.prototype.hasOwnProperty.call(batchProtoAndFoodRes.results, "constructor") &&
+              (({} as Record<string, unknown>).ok === undefined) &&
+              batchProtoAndFoodRes.results.hb_dough_1?.ok === true &&
+              batchProtoAndFoodRes.results.hb_hair_2?.ok === false &&
+              mochaSingle &&
+              mochaCands.some((c) => c.title === mochaSingle.title) &&
+              premierSingle &&
+              premierCands.some((c) => c.title === premierSingle.title) &&
+              allSwapCandsClean,
+          ),
+        );
+
+        // P1-2: Weighted batch rate limiting on POST /api/scan (8-item batch costs ceil(8/2)=4 tokens against 120/min budget -> 429 on batch #31 with Retry-After)
+        let batch429Status = 0;
+        let batch429RetryAfter = "";
+        let batchesSucceededBefore429 = 0;
+        for (let b = 1; b <= 35; b++) {
+          const res = await scanRouteMod.POST(
+            new Request("http://localhost:3000/api/scan", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-forwarded-for": "10.199.77.88",
+              },
+              body: JSON.stringify({
+                store: "walmart",
+                items: Array.from({ length: 8 }, (_, idx) => ({
+                  id: `c${idx + 1}`,
+                  productTitle: "Quaker Old Fashioned Oats, 42 oz",
+                })),
+              }),
+            }),
+          );
+          if (res.status === 429) {
+            batch429Status = res.status;
+            batch429RetryAfter = res.headers.get("Retry-After") ?? "";
+            break;
+          }
+          if (res.status === 200) batchesSucceededBefore429++;
+        }
+
+        check(
+          "P1-2 Weighted Batch Rate Limit: 8-item batches consume proportional tokens (throttling at 30 batches = 120 weighted units instead of allowing 120*8=960 scans/min) and emit Retry-After",
+          batchesSucceededBefore429 === 30 && batch429Status === 429 && Number(batch429RetryAfter) >= 1,
+        );
+
+        // Codex #5 + P2-8: Pre-created unverified password/session revoked upon verified Google OIDC claim + single-use OIDC token replay rejection
+        const prevClientId2 = process.env.GOOGLE_CLIENT_ID;
+        const prevFetch2 = globalThis.fetch;
+        let preAccountPasswordRevoked = false;
+        let preAccountSessionRevoked = false;
+        let oidcReplayRejected401 = false;
+        try {
+          process.env.GOOGLE_CLIENT_ID = "heybroc-test-web-client.apps.googleusercontent.com";
+          globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+            if (u.includes("googleapis.com/oauth2/v3/certs")) {
+              return Response.json({
+                keys: [{ ...jwk, kid: testKid, kty: "RSA", alg: "RS256", use: "sig" }],
+              });
+            }
+            return prevFetch2(input, init);
+          };
+
+          const takeoverEmail = `precreated.${Date.now()}@example.com`;
+          const regRes = await authRouteMod.POST(
+            new Request("http://localhost:3000/api/auth", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.188.99.21" },
+              body: JSON.stringify({
+                action: "register",
+                email: takeoverEmail,
+                password: "AttackerPassword123!",
+                deviceId: "dev_attacker_precreated_1",
+              }),
+            }),
+          );
+          const regJson = (await regRes.json()) as { token?: string };
+          const attackerOldToken = regJson.token ?? "";
+
+          const cfgRes = await authRouteMod.GET(
+            new Request("http://localhost:3000/api/auth?config=1", {
+              headers: { "x-forwarded-for": "10.188.99.22" },
+            }),
+          );
+          const cfgJson = (await cfgRes.json()) as { oauthNonce?: string };
+          const serverNonce = cfgJson.oauthNonce ?? "";
+
+          const ownerIdToken = signMockGoogleJwt({
+            sub: `google-owner-${Date.now()}`,
+            email: takeoverEmail,
+            email_verified: true,
+            aud: "heybroc-test-web-client.apps.googleusercontent.com",
+            azp: "heybroc-test-web-client.apps.googleusercontent.com",
+            nonce: serverNonce,
+          });
+
+          const claimRes = await authRouteMod.POST(
+            new Request("http://localhost:3000/api/auth", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.188.99.22" },
+              body: JSON.stringify({
+                action: "oauth",
+                provider: "google",
+                idToken: ownerIdToken,
+                nonce: serverNonce,
+              }),
+            }),
+          );
+
+          // 1) Attacker tries logging in with the pre-created password -> must be rejected (400/401, ok: false)
+          const attackerLoginRes = await authRouteMod.POST(
+            new Request("http://localhost:3000/api/auth", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.188.99.23" },
+              body: JSON.stringify({
+                action: "login",
+                email: takeoverEmail,
+                password: "AttackerPassword123!",
+              }),
+            }),
+          );
+          const attackerLoginJson = (await attackerLoginRes.json()) as { ok?: boolean };
+          preAccountPasswordRevoked =
+            claimRes.status === 200 && !attackerLoginRes.ok && attackerLoginJson.ok === false;
+
+          // 2) Attacker tries using old bearer token -> must be unauthenticated
+          const oldSessionCheck = await authRouteMod.GET(
+            new Request("http://localhost:3000/api/auth", {
+              headers: {
+                Authorization: `Bearer ${attackerOldToken}`,
+                "x-forwarded-for": "10.188.99.23",
+              },
+            }),
+          );
+          const oldSessionJson = (await oldSessionCheck.json()) as { authenticated?: boolean };
+          preAccountSessionRevoked = oldSessionJson.authenticated === false;
+
+          // 3) Replaying the exact same Google idToken a second time -> must be 401
+          const replayRes = await authRouteMod.POST(
+            new Request("http://localhost:3000/api/auth", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.188.99.24" },
+              body: JSON.stringify({
+                action: "oauth",
+                provider: "google",
+                idToken: ownerIdToken,
+                nonce: serverNonce,
+              }),
+            }),
+          );
+          oidcReplayRejected401 = replayRes.status === 401;
+        } finally {
+          if (prevClientId2 === undefined) delete process.env.GOOGLE_CLIENT_ID;
+          else process.env.GOOGLE_CLIENT_ID = prevClientId2;
+          globalThis.fetch = prevFetch2;
+        }
+
+        check(
+          "OAuth Pre-Account Takeover & Replay Defense: verified Google OAuth claim wipes unverified pre-created password + linked devices + old sessions and rejects single-use OIDC token/nonce replay",
+          preAccountPasswordRevoked && preAccountSessionRevoked && oidcReplayRejected401,
+        );
+
+        // Codex #16: /api/product-image brand + barcode cache isolation
+        const prevFetchImg = globalThis.fetch;
+        let brandAlphaBody = "";
+        let brandBetaBody = "";
+        try {
+          const fakePngAlpha = new Uint8Array(260);
+          fakePngAlpha.set([137, 80, 78, 71, 13, 10, 26, 10, 65, 76, 80, 72, 65]);
+          fakePngAlpha.fill(65, 16);
+          const fakePngBeta = new Uint8Array(260);
+          fakePngBeta.set([137, 80, 78, 71, 13, 10, 26, 10, 66, 69, 84, 65, 33]);
+          fakePngBeta.fill(66, 16);
+          globalThis.fetch = async (input: RequestInfo | URL) => {
+            const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+            if (u.includes("0011111111115")) {
+              return Response.json({
+                status: 1,
+                product: { image_front_small_url: "https://images.openfoodfacts.org/images/products/alpha.png" },
+              });
+            }
+            if (u.includes("0022222222221")) {
+              return Response.json({
+                status: 1,
+                product: { image_front_small_url: "https://images.openfoodfacts.org/images/products/beta.png" },
+              });
+            }
+            if (u.endsWith("/alpha.png")) {
+              return new Response(fakePngAlpha, { status: 200, headers: { "content-type": "image/png" } });
+            }
+            if (u.endsWith("/beta.png")) {
+              return new Response(fakePngBeta, { status: 200, headers: { "content-type": "image/png" } });
+            }
+            return Response.json({ products: [], hits: [] });
+          };
+          const resAlpha = await prodImgRouteMod.GET(
+            new Request(
+              "http://localhost:3000/api/product-image?q=Organic%20Whole%20Milk&brand=BrandAlpha&code=0011111111115",
+              { headers: { "x-forwarded-for": "10.177.66.11" } },
+            ),
+          );
+          brandAlphaBody = Buffer.from(await resAlpha.arrayBuffer()).toString("hex");
+          const resBeta = await prodImgRouteMod.GET(
+            new Request(
+              "http://localhost:3000/api/product-image?q=Organic%20Whole%20Milk&brand=BrandBeta&code=0022222222221",
+              { headers: { "x-forwarded-for": "10.177.66.12" } },
+            ),
+          );
+          brandBetaBody = Buffer.from(await resBeta.arrayBuffer()).toString("hex");
+        } finally {
+          globalThis.fetch = prevFetchImg;
+        }
+
+        check(
+          "Product-Image Cache Isolation: distinct brand/barcode queries sharing the same generic product title never collide on title-only imageBytesCache",
+          brandAlphaBody.length > 0 && brandBetaBody.length > 0 && brandAlphaBody !== brandBetaBody,
+        );
+
+        // P0-1 + P1-1 + P1-3 + P1-4 + P1-5 + P1-8 + Codex #17 + Codex #18: Cross-Surface Extension, iOS Live Shop JS VM Simulation, & Android Invariants
+        const extContent = fsSync.readFileSync("chrome-extension/content.js", "utf8");
+        const safContent = fsSync.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+        const extBg = fsSync.readFileSync("chrome-extension/background.js", "utf8");
+        const safBg = fsSync.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+        const extCss = fsSync.readFileSync("chrome-extension/overlay.css", "utf8");
+        const safCss = fsSync.readFileSync("ios-app/SafariExtension/Resources/overlay.css", "utf8");
+        const iosLiveSwift = fsSync.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+        const androidMainKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+          "utf8",
+        );
+        const androidReaderKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt",
+          "utf8",
+        );
+        const androidOverlayKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+          "utf8",
+        );
+
+        // Extract and execute iOS detectorJS inside a synthetic DOM VM to behaviourally verify P0-1 (reused card mutation oatmeal -> yogurt) & P1-4 (header/cart safety)!
+        const detectorMatch = iosLiveSwift.match(/let detectorJS = """\n([\s\S]*?)\n\s+"""/);
+        const unescapedDetectorJS = detectorMatch
+          ? detectorMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\")
+          : "";
+        let detectorSyntaxValid = false;
+        let p01ReusedCardInvalidatedAndRescanned = false;
+        let p14HeaderPreservedOnAppLink = false;
+        try {
+          // Compile check
+          new Function(unescapedDetectorJS);
+          detectorSyntaxValid = true;
+
+          // Synthetic DOM harness for iOS detectorJS reused-card lifecycle & banner safety
+          const bridgeMessages: Array<Record<string, unknown>> = [];
+          class MockElement {
+            tagName: string;
+            id = "";
+            className = "";
+            textContent = "";
+            innerText = "";
+            parentElement: MockElement | null = null;
+            children: MockElement[] = [];
+            attrs: Record<string, string> = {};
+            styleMap: Record<string, string> = { display: "block", visibility: "visible", opacity: "1", position: "relative" };
+            rect = { top: 140, bottom: 320, left: 16, right: 196, width: 180, height: 180 };
+            isConnected = true;
+            currentSrc = "";
+            clicked = false;
+            constructor(tag: string) {
+              this.tagName = tag.toUpperCase();
+            }
+            get parentNode() {
+              return this.parentElement;
+            }
+            setAttribute(k: string, v: string) {
+              this.attrs[k] = String(v);
+              if (k === "class") this.className = String(v);
+              if (k === "id") this.id = String(v);
+            }
+            getAttribute(k: string) {
+              if (k === "class") return this.className || null;
+              if (k === "id") return this.id || null;
+              return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null;
+            }
+            appendChild(ch: MockElement) {
+              ch.parentElement = this;
+              ch.isConnected = this.isConnected;
+              this.children.push(ch);
+              return ch;
+            }
+            removeChild(ch: MockElement) {
+              const i = this.children.indexOf(ch);
+              if (i !== -1) this.children.splice(i, 1);
+              ch.parentElement = null;
+              ch.isConnected = false;
+              return ch;
+            }
+            getBoundingClientRect() {
+              return this.rect;
+            }
+            get style() {
+              const self = this;
+              return {
+                get position() {
+                  return self.styleMap.position || "static";
+                },
+                set position(v: string) {
+                  self.styleMap.position = v;
+                },
+                get display() {
+                  return self.styleMap.display || "block";
+                },
+                set display(v: string) {
+                  self.styleMap.display = v;
+                },
+                setProperty(k: string, v: string) {
+                  self.styleMap[k] = v;
+                },
+              };
+            }
+            get classList() {
+              const self = this;
+              return {
+                contains(cls: string) {
+                  return self.className.split(/\s+/).includes(cls);
+                },
+              };
+            }
+            click() {
+              this.clicked = true;
+            }
+            matchesSimple(sel: string): boolean {
+              const s = sel.trim();
+              if (s === "*") return true;
+              if (s === ":scope > .hb-photo-badge") return false;
+              if (s.startsWith(".hb-photo-badge[data-hb-card-id=")) {
+                const wantId = s.match(/data-hb-card-id="([^"]+)"/)?.[1] ?? "";
+                return this.classList.contains("hb-photo-badge") && this.getAttribute("data-hb-card-id") === wantId;
+              }
+              if (s === ".hb-photo-badge") return this.classList.contains("hb-photo-badge");
+              if (s === '[data-hb-app-banner-hidden="1"]') return this.getAttribute("data-hb-app-banner-hidden") === "1";
+              if (s === '[data-testid*="product-card" i]' || s.includes("product-card")) {
+                return (this.getAttribute("data-testid") || "").toLowerCase().includes("product-card");
+              }
+              if (s === '[data-testid*="product-title" i]') {
+                return (this.getAttribute("data-testid") || "").toLowerCase().includes("product-title");
+              }
+              if (s === 'a[href*="/ip/"]' || s === "a[href]") {
+                return this.tagName === "A" && Boolean(this.getAttribute("href"));
+              }
+              if (/^[a-z0-9]+$/i.test(s)) return this.tagName === s.toUpperCase();
+              return false;
+            }
+            matchesAny(selectorGroup: string): boolean {
+              return selectorGroup.split(",").some((part) => this.matchesSimple(part));
+            }
+            closest(selectorGroup: string): MockElement | null {
+              let cur: MockElement | null = this;
+              while (cur) {
+                if (cur.matchesAny(selectorGroup)) return cur;
+                cur = cur.parentElement;
+              }
+              return null;
+            }
+            querySelectorAll(selectorGroup: string): MockElement[] {
+              if (selectorGroup === ":scope > .hb-photo-badge") {
+                return this.children.filter((c) => c.classList.contains("hb-photo-badge"));
+              }
+              if (selectorGroup === ".hb-photo-badge") {
+                const badges: MockElement[] = [];
+                const walkB = (n: MockElement) => {
+                  for (const ch of n.children) {
+                    if (ch.classList.contains("hb-photo-badge")) badges.push(ch);
+                    walkB(ch);
+                  }
+                };
+                walkB(this);
+                return badges;
+              }
+              const out: MockElement[] = [];
+              const walk = (node: MockElement) => {
+                for (const ch of node.children) {
+                  if (ch.matchesAny(selectorGroup)) out.push(ch);
+                  walk(ch);
+                }
+              };
+              walk(this);
+              return out;
+            }
+            querySelector(selectorGroup: string): MockElement | null {
+              return this.querySelectorAll(selectorGroup)[0] ?? null;
+            }
+          }
+
+          const docEl = new MockElement("html");
+          const headEl = docEl.appendChild(new MockElement("head"));
+          const bodyEl = docEl.appendChild(new MockElement("body"));
+
+          // Site <header> containing a "Get the app" link AND a cart button — P1-4 must NEVER hide <header> or click the cart icon!
+          const siteHeader = bodyEl.appendChild(new MockElement("header"));
+          siteHeader.rect = { top: 0, bottom: 64, left: 0, right: 390, width: 390, height: 64 };
+          const headerAppLink = siteHeader.appendChild(new MockElement("a"));
+          headerAppLink.textContent = "Get the app";
+          headerAppLink.setAttribute("href", "https://apps.apple.com/app/id123");
+          const headerCartBtn = siteHeader.appendChild(new MockElement("button"));
+          headerCartBtn.setAttribute("aria-label", "Close cart drawer");
+
+          // Reusable product card (starts as Quaker Oatmeal, then mutates in place to Chobani Greek Yogurt)
+          const cardEl = bodyEl.appendChild(new MockElement("div"));
+          cardEl.setAttribute("data-testid", "product-card");
+          const photoWrap = cardEl.appendChild(new MockElement("div"));
+          const imgEl = photoWrap.appendChild(new MockElement("img"));
+          imgEl.setAttribute("src", "https://cdn.example.com/oatmeal.jpg");
+          const linkEl = cardEl.appendChild(new MockElement("a"));
+          linkEl.setAttribute("href", "/ip/111");
+          const titleEl = linkEl.appendChild(new MockElement("span"));
+          titleEl.setAttribute("data-testid", "product-title");
+          titleEl.textContent = "Quaker Old Fashioned Oats, 42 oz";
+
+          const clickListeners: Array<(ev: Record<string, unknown>) => void> = [];
+          let nextTimerId = 1;
+          const pendingTimers = new Map<number, () => void>();
+          const flushVmTimers = () => {
+            let guard = 0;
+            while (pendingTimers.size > 0 && guard++ < 50) {
+              const firstKey = pendingTimers.keys().next().value!;
+              const fn = pendingTimers.get(firstKey)!;
+              pendingTimers.delete(firstKey);
+              fn();
+            }
+          };
+          const sandbox: Record<string, unknown> = {
+            window: null as unknown,
+            document: {
+              documentElement: docEl,
+              head: headEl,
+              body: bodyEl,
+              getElementById: (id: string) =>
+                docEl.querySelectorAll("*").find((n) => n.id === id) ??
+                (headEl.children.find((n) => n.id === id) ?? null),
+              createElement: (tag: string) => new MockElement(tag),
+              querySelectorAll: (sel: string) => docEl.querySelectorAll(sel),
+              querySelector: (sel: string) => docEl.querySelector(sel),
+              addEventListener: (type: string, fn: (ev: Record<string, unknown>) => void) => {
+                if (type === "click") clickListeners.push(fn);
+              },
+            },
+            location: {
+              href: "https://www.walmart.com/search?q=oatmeal",
+              hostname: "www.walmart.com",
+              pathname: "/search",
+              search: "?q=oatmeal",
+            },
+            history: { pushState: () => {}, replaceState: () => {} },
+            MutationObserver: class {
+              observe() {}
+              disconnect() {}
+            },
+            WeakMap,
+            WeakSet,
+            Math,
+            Date,
+            Number,
+            String,
+            Boolean,
+            Array,
+            Object,
+            JSON,
+            RegExp,
+            parseInt,
+            setTimeout: (fn: () => void) => {
+              const id = nextTimerId++;
+              pendingTimers.set(id, fn);
+              return id;
+            },
+            clearTimeout: (id: number) => {
+              pendingTimers.delete(id);
+            },
+          };
+          const winObj = {
+            ...sandbox,
+            innerWidth: 390,
+            innerHeight: 844,
+            addEventListener: () => {},
+            getComputedStyle: (el: MockElement) => el.styleMap,
+            webkit: {
+              messageHandlers: {
+                heybrocStoreBridge: {
+                  postMessage: (msg: Record<string, unknown>) => bridgeMessages.push(msg),
+                },
+              },
+            },
+          };
+          sandbox.window = winObj;
+          vmMod.runInNewContext(unescapedDetectorJS, sandbox);
+          flushVmTimers();
+
+          p14HeaderPreservedOnAppLink =
+            siteHeader.styleMap.display !== "none" && !headerCartBtn.clicked;
+
+          const firstBatchMsg = bridgeMessages.find((m) => m.kind === "gridBatch") as
+            | { items: Array<{ id: string; productTitle: string }> }
+            | undefined;
+          const firstItem = firstBatchMsg?.items?.[0];
+          if (firstItem && typeof (winObj as Record<string, unknown>).__heybrocApplyCardBadges === "function") {
+            ((winObj as Record<string, unknown>).__heybrocApplyCardBadges as (m: Record<string, unknown>) => void)({
+              [firstItem.id]: { ok: true, score: 92, hasAlert: false, alertSeverity: "none", isCategoryEstimate: false },
+            });
+            // Now mutate the SAME cardEl in place to Yogurt (simulating React index-keyed list reuse!)
+            titleEl.textContent = "Chobani Non-Fat Plain Greek Yogurt, 32 oz";
+            linkEl.setAttribute("href", "/ip/222");
+            imgEl.setAttribute("src", "https://cdn.example.com/yogurt.jpg");
+
+            // Even BEFORE a MutationObserver pass runs, tapping the stale badge on the mutated card must inspect the LIVE Yogurt title, NEVER Oatmeal!
+            const currentBadge = photoWrap.querySelector(".hb-photo-badge");
+            if (currentBadge && clickListeners[0]) {
+              clickListeners[0]({
+                target: currentBadge,
+                preventDefault() {},
+                stopPropagation() {},
+                stopImmediatePropagation() {},
+              });
+            }
+            flushVmTimers();
+            const inspectMsg = bridgeMessages.find((m) => m.kind === "inspectCard") as
+              | { cardId: string; title: string }
+              | undefined;
+            const batchMsgs = bridgeMessages.filter((m) => m.kind === "gridBatch") as Array<{
+              items: Array<{ id: string; productTitle: string }>;
+            }>;
+            const secondBatchHasYogurt = batchMsgs.some((bm) =>
+              bm.items.some((it) => /Chobani Non-Fat Plain Greek Yogurt/i.test(it.productTitle)),
+            );
+            p01ReusedCardInvalidatedAndRescanned = Boolean(
+              inspectMsg &&
+                inspectMsg.cardId === "" &&
+                /Chobani Non-Fat Plain Greek Yogurt/i.test(inspectMsg.title) &&
+                !/Quaker/i.test(inspectMsg.title) &&
+                secondBatchHasYogurt,
+            );
+          }
+        } catch (err) {
+          console.error("detectorJS VM check error:", err);
+        }
+
+        // Verify Android OAuth state check precedes SharedPreferences removal
+        const oauthSliceStart = androidMainKt.indexOf("private fun handleIncomingAuthRedirect");
+        const oauthSlice = oauthSliceStart >= 0 ? androidMainKt.slice(oauthSliceStart, oauthSliceStart + 3500) : "";
+        const stateValidIdx = oauthSlice.indexOf("if (!stateValid)");
+        const postValidRemoveIdx = oauthSlice.lastIndexOf('.remove("pending_google_oauth_state")');
+
+        const crossSurfaceMap = {
+          extSaf: extContent === safContent,
+          cssSaf: extCss === safCss,
+          extBgTimeout: extBg.includes("new AbortController()"),
+          safBgTimeout: safBg.includes("new AbortController()"),
+          sig: extContent.includes("computeCardSignature"),
+          adv: extContent.includes("cc-photo-badge--advisory"),
+          skip: extContent.includes("skipAnalytics: true"),
+          stop: extContent.includes("stopImmediatePropagation"),
+          detectorSyntaxValid,
+          p14HeaderPreservedOnAppLink,
+          p01ReusedCardInvalidatedAndRescanned,
+          stateOrder: stateValidIdx > 0 && postValidRemoveIdx > stateValidIdx,
+          scroll: androidReaderKt.includes("inspectCartScrollState"),
+          boundary: androidReaderKt.includes("findSafeCartBoundaryIndex"),
+          noCt: !androidReaderKt.includes("(?:ct|in\\s+(?:cart"),
+          frames: androidOverlayKt.includes("consecutiveFullCartFrames >= 2"),
+        };
+        if (Object.values(crossSurfaceMap).some((v) => !v)) {
+          console.error("crossSurfaceMap failure detail:", crossSurfaceMap);
+        }
+
+        check(
+          "Cross-Surface Client Remediation: Chrome/Safari extension parity, iOS detectorJS VM reused-card invalidation (P0-1) + header/cart banner safety (P1-4), and Android OAuth/Cart/Quantity guards (P1-8, Codex #17, Codex #18)",
+          Object.values(crossSurfaceMap).every(Boolean),
+        );
+      }
     }
   }
 

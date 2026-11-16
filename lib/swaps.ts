@@ -109,6 +109,8 @@ export interface SwapResult {
   isStoreBrand?: boolean;
   /** True when store swap links were withheld by server-side free-swap gating and must not be synthesized client-side. */
   locked?: boolean;
+  /** Discloses any minor low-risk rubric additives (e.g. Natural Flavors, Erythritol) present on a >=85/100 fallback swap. */
+  flaggedAdditives?: string[];
 }
 
 export const STORE_META: Record<Store, { label: string; host: string; androidPackage: string; scheme: string }> = {
@@ -3652,6 +3654,13 @@ function evaluateCandidateForSwap(
 
   const baseClean = scoreIngredients(alt.ingredients, params.watchlist, params.familyWatchlist);
   if (baseClean.score < 85) return null;
+  const hasDisqualifyingFlag = baseClean.flagged.some(
+    (f) =>
+      f.risk !== "low" ||
+      Boolean(params.watchlist?.[f.category]) ||
+      Boolean(params.familyWatchlist?.includes(f.category))
+  );
+  if (hasDisqualifyingFlag) return null;
   if (params.requireZeroFlags && baseClean.flagged.length > 0) return null;
 
   const fullTitle = formatSwapFullTitle(alt);
@@ -3839,6 +3848,9 @@ function evaluateCandidateForSwap(
     score: altScore,
     store: params.store,
     isStoreBrand: isStoreBrandForStore(alt.brand, params.store),
+    ...(baseClean.flagged.length > 0
+      ? { flaggedAdditives: baseClean.flagged.map((f) => f.name) }
+      : {}),
     ...buildLinks(
       alt,
       params.store,
@@ -4176,7 +4188,7 @@ export function resolveSwapCandidates(params: {
   }
 
   const seen = new Set<string>();
-  const evaluated: Array<{ swap: SwapResult; tier: number; isPrimary: boolean }> = [];
+  const evaluated: Array<{ swap: SwapResult; tier: number; isPrimary: boolean; flagCount: number }> = [];
 
   for (const entry of rawPool) {
     const key = formatSwapFullTitle(entry.alt).toLowerCase();
@@ -4194,15 +4206,19 @@ export function resolveSwapCandidates(params: {
       surface,
       clientPlatform: params.clientPlatform,
       instacartRetailerSlug: params.instacartRetailerSlug,
-      requireZeroFlags: true,
       requireOrganicUpgrade,
     });
     if (res) {
-      evaluated.push({ swap: res.swap, tier: entry.tier, isPrimary: key === primaryAltKey });
+      evaluated.push({
+        swap: res.swap,
+        tier: entry.tier,
+        isPrimary: key === primaryAltKey,
+        flagCount: res.flagCount,
+      });
     }
   }
 
-  // Prefer Yuka >= 85 candidates (plus the primary 1-for-1 clean match & verified 0-flag store-brand picks);
+  // Prefer Yuka >= 85 candidates (plus the primary 1-for-1 clean match & verified store-brand picks);
   // fall back to clean-additive (>=85 ingredient rubric) 1-for-1 swaps where Nutri-Score caps energy-dense foods < 85.
   const highYuka = evaluated.filter((e) => e.swap.score >= 85 || e.isPrimary || e.swap.isStoreBrand);
   const pool = highYuka.length > 0 ? highYuka : evaluated;
@@ -4217,6 +4233,7 @@ export function resolveSwapCandidates(params: {
       return b.swap.isStoreBrand ? 1 : -1;
     }
     if (b.tier !== a.tier) return b.tier - a.tier;
+    if ((a.flagCount === 0) !== (b.flagCount === 0)) return a.flagCount === 0 ? -1 : 1;
     return b.swap.score - a.swap.score;
   });
 

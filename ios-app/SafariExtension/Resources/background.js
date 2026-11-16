@@ -156,17 +156,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg?.type === "CLEANCART_SCAN_BATCH") {
     (async () => {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 8500);
       try {
         const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {
           method: "POST",
+          signal: ctrl.signal,
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
-            items: Array.isArray(msg.items) ? msg.items : [],
+            items: Array.isArray(msg.items) ? msg.items.slice(0, 8) : [],
             store: msg.store,
             instacartRetailerSlug: msg.instacartRetailerSlug,
             watchlist,
@@ -181,13 +184,31 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             format: "json",
           }),
         });
-        const data = await res.json();
+        const retrySec = Number(res.headers.get("retry-after")) || 0;
+        const data = await res.json().catch(() => null);
         if (data?.issuedDeviceSecret) {
           await chrome.storage.local.set({ heybroc_device_secret: data.issuedDeviceSecret });
         }
+        if (!res.ok || !data) {
+          sendResponse({
+            ok: false,
+            status: res.status,
+            transient: res.status === 429 || res.status >= 500,
+            retryAfterMs: retrySec > 0 ? retrySec * 1000 : 2200,
+            error: data?.error || `HTTP ${res.status}`,
+          });
+          return;
+        }
         sendResponse(data);
       } catch (err) {
-        sendResponse({ ok: false, error: `HeyBroc Batch API unreachable: ${err?.message || err}` });
+        sendResponse({
+          ok: false,
+          transient: true,
+          retryAfterMs: 2500,
+          error: `HeyBroc Batch API unreachable: ${err?.message || err}`,
+        });
+      } finally {
+        clearTimeout(timeoutId);
       }
     })();
     return true;
