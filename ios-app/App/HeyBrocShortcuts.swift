@@ -277,6 +277,7 @@ struct HeyBrocNativeSwap {
     let webUrl: String?
     let isStoreBrand: Bool
     let isOrganic: Bool
+    let locked: Bool
 }
 
 struct HeyBrocNativeScanSummary {
@@ -346,6 +347,7 @@ enum HeyBrocVisionOCR {
 
 enum HeyBrocNativeScannerAPI {
     static let endpoint = URL(string: "https://www.heybroc.com/api/scan")!
+    static let entitlementsEndpoint = URL(string: "https://www.heybroc.com/api/entitlements")!
     private static let majorAllergenIds: Set<String> = [
         "peanuts_nuts", "dairy", "wheat_gluten", "soy", "egg", "shellfish_fish", "sesame"
     ]
@@ -361,14 +363,16 @@ enum HeyBrocNativeScannerAPI {
         guard let swTitle = sw["title"] as? String, !swTitle.isEmpty else { return nil }
         let nut = sw["nutrition"] as? [String: Any]
         let isOrg = (nut?["isOrganic"] as? Bool) ?? false
+        let isLocked = (sw["locked"] as? Bool) ?? false
         let rawUrl = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
         return HeyBrocNativeSwap(
             title: swTitle,
             brand: (sw["brand"] as? String) ?? "",
             score: (sw["score"] as? Int) ?? 90,
-            webUrl: rawUrl.flatMap { sanitizeRetailerURL($0) },
+            webUrl: isLocked ? nil : rawUrl.flatMap { sanitizeRetailerURL($0) },
             isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
-            isOrganic: isOrg
+            isOrganic: isOrg,
+            locked: isLocked
         )
     }
 
@@ -674,6 +678,38 @@ enum HeyBrocNativeScannerAPI {
         }.resume()
     }
 
+    static func recordSwapUnlock(productKey: String) {
+        let cleanKey = String(productKey.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160))
+        guard !cleanKey.isEmpty else { return }
+        var req = URLRequest(url: entitlementsEndpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("ios", forHTTPHeaderField: "X-HeyBroc-Platform")
+        req.setValue("ios-app", forHTTPHeaderField: "X-Client-Platform")
+        if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
+            req.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
+        }
+        if let token = HeyBrocSharedPrefs.authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        var payload: [String: Any] = [
+            "action": "record_swap",
+            "deviceId": HeyBrocSharedPrefs.deviceId,
+            "productKey": cleanKey
+        ]
+        if let secret = HeyBrocSharedPrefs.deviceSecret, !secret.isEmpty {
+            payload["deviceSecret"] = secret
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            guard let data = data,
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let issuedSecret = obj["issuedDeviceSecret"] as? String,
+                  !issuedSecret.isEmpty else { return }
+            HeyBrocSharedPrefs.deviceSecret = issuedSecret
+        }.resume()
+    }
+
     @available(iOS 15.0, *)
     static func scanAsync(
         productTitle: String = "",
@@ -767,8 +803,11 @@ struct HeyBrocSnippetCardView: View {
             }
 
             if let swap = summary.swap {
+                let displaySwap = swap.locked
+                    ? "🔒 Clean Swap Available (\(swap.score)/100) — Unlock in HeyBroc"
+                    : "🔁 Swap: \(swap.title) (\(swap.score)/100)"
                 HStack(spacing: 6) {
-                    Text("🔁 Swap: \(swap.title) (\(swap.score)/100)")
+                    Text(displaySwap)
                         .font(.system(size: 12.5, weight: .bold))
                         .foregroundColor(Color(red: 0.05, green: 0.40, blue: 0.25))
                         .lineLimit(2)
@@ -803,7 +842,8 @@ struct ScanGroceryScreenshotIntent: AppIntent {
         let summary = try await HeyBrocNativeScannerAPI.scanAsync(rawText: ocrText)
         let headline: String
         if let sw = summary.swap {
-            headline = "\(summary.score)/100 \(summary.rating) — \(summary.title). Clean Swap: \(sw.title) (\(sw.score)/100)."
+            let swLabel = sw.locked ? "Clean Swap Available (\(sw.score)/100 — Unlock in HeyBroc)" : "\(sw.title) (\(sw.score)/100)"
+            headline = "\(summary.score)/100 \(summary.rating) — \(summary.title). Clean Swap: \(swLabel)."
         } else {
             headline = "\(summary.score)/100 \(summary.rating) — \(summary.title)."
         }
@@ -832,7 +872,8 @@ struct CheckFoodWithHeyBrocIntent: AppIntent {
         let summary = try await HeyBrocNativeScannerAPI.scanAsync(productTitle: trimmed, rawText: trimmed)
         let headline: String
         if let sw = summary.swap {
-            headline = "\(summary.score)/100 \(summary.rating) — \(summary.title). Clean Swap: \(sw.title) (\(sw.score)/100)."
+            let swLabel = sw.locked ? "Clean Swap Available (\(sw.score)/100 — Unlock in HeyBroc)" : "\(sw.title) (\(sw.score)/100)"
+            headline = "\(summary.score)/100 \(summary.rating) — \(summary.title). Clean Swap: \(swLabel)."
         } else {
             headline = "\(summary.score)/100 \(summary.rating) — \(summary.title)."
         }

@@ -81,6 +81,7 @@ object ScanHistoryStore {
 
     private val PRESERVED_TITLE_ACRONYMS = setOf(
         "USDA", "FDA", "MSG", "BBQ", "USA", "GMO", "IPA", "UHT", "BPA",
+        "MCT", "DHA", "EPA", "A2",
         "D3", "B12", "B6", "A1", "V8", "C4", "7UP", "XL", "XXL", "II", "III", "IV"
     )
 
@@ -98,7 +99,10 @@ object ScanHistoryStore {
         s = s.replace(Regex("\\b([A-Z])([A-Z])([a-z]{1,})\\b")) { m ->
             val full = m.value
             val stem = if (m.groupValues[3] == "s") "${m.groupValues[1]}${m.groupValues[2]}" else ""
-            if (full == "PBfit" || (stem.isNotEmpty() && (stem in PRESERVED_TITLE_ACRONYMS || stem in setOf("TV", "ID", "CD", "DJ", "PJ", "PC", "UV")))) {
+            if (
+                full in setOf("PBfit", "BJs", "RXBar", "McCafe") ||
+                (stem.isNotEmpty() && (stem in PRESERVED_TITLE_ACRONYMS || stem in setOf("BJ", "TV", "ID", "CD", "DJ", "PJ", "PC", "UV")))
+            ) {
                 full
             } else {
                 "${m.groupValues[1]}${m.groupValues[2].lowercase()}${m.groupValues[3]}"
@@ -1912,21 +1916,32 @@ object ScanHistoryStore {
 
     private data class FlagInfo(val name: String, val penalty: Int, val risk: String, val explanation: String)
 
-    fun storePackageForKey(storeKey: String): String = when (storeKey.lowercase()) {
-        "walmart" -> "com.walmart.android"
-        "target" -> "com.target.ui"
-        "instacart" -> "com.instacart.client"
-        "aldi" -> "de.apptiv.business.android.aldi_us"
-        "bjs" -> "com.bjs.mobile"
-        "costco" -> "com.costco.app.android"
-        "kroger" -> "com.kroger.mobile"
-        "sams" -> "com.rfi.sams.android"
-        "amazon", "wholefoods" -> "com.amazon.mShop.android.shopping"
-        "doordash" -> "com.dd.doordash"
-        "ubereats" -> "com.ubercab.eats"
-        "shipt" -> "com.shipt.groceries"
-        else -> ""
+    fun storePackagesForKey(storeKey: String): List<String> = when (storeKey.lowercase()) {
+        "walmart" -> listOf("com.walmart.android")
+        "target" -> listOf("com.target.ui")
+        "instacart" -> listOf("com.instacart.client")
+        "aldi" -> listOf("de.apptiv.business.android.aldi_us")
+        "bjs" -> listOf("com.bjs.mobile", "com.brandingbrand.reactnative.and.bjs")
+        "costco" -> listOf("com.costco.app.android")
+        "kroger" -> listOf("com.kroger.mobile")
+        "sams" -> listOf("com.rfi.sams.android", "com.samsclub.app")
+        "wholefoods" -> listOf("com.wholefoods.wholefoodsmarket", "com.amazon.mShop.android.shopping")
+        "amazon" -> listOf("com.amazon.mShop.android.shopping")
+        "doordash" -> listOf("com.dd.doordash")
+        "ubereats" -> listOf("com.ubercab.eats")
+        "shipt" -> listOf("com.shipt.groceries")
+        else -> emptyList()
     }
+
+    fun resolveInstalledStorePackage(context: Context, storeKey: String): String? {
+        val pm = context.packageManager
+        return storePackagesForKey(storeKey).firstOrNull { pkg ->
+            runCatching { pm.getLaunchIntentForPackage(pkg) }.getOrNull() != null
+        }
+    }
+
+    fun storePackageForKey(storeKey: String): String =
+        storePackagesForKey(storeKey).firstOrNull().orEmpty()
 
     fun storeSearchUrl(storeKey: String, query: String): String {
         val encoded = java.net.URLEncoder.encode(query.trim(), "UTF-8")
@@ -1946,6 +1961,13 @@ object ScanHistoryStore {
         }
     }
 
+    private val KROGER_BANNER_DOMAINS = listOf(
+        "kroger.com", "ralphs.com", "fredmeyer.com", "frysfood.com", "kingsoopers.com",
+        "smithsfoodanddrug.com", "qfc.com", "harristeeter.com", "marianos.com", "picknsave.com",
+        "dillons.com", "bakersplus.com", "citymarket.com", "gerbes.com", "jaycfoods.com",
+        "pay-less.com", "food4less.com", "foodscomarket.com"
+    )
+
     fun urlMatchesStore(url: String, storeKey: String): Boolean {
         val u = url.lowercase()
         return when (storeKey.lowercase()) {
@@ -1955,9 +1977,10 @@ object ScanHistoryStore {
             "aldi" -> u.contains("aldi.us")
             "bjs" -> u.contains("bjs.com")
             "costco" -> u.contains("costco.com")
-            "kroger" -> u.contains("kroger.com")
+            "kroger" -> KROGER_BANNER_DOMAINS.any { u.contains(it) }
             "sams" -> u.contains("samsclub.com")
-            "amazon", "wholefoods" -> u.contains("amazon.com")
+            "wholefoods" -> u.contains("amazon.com") || u.contains("wholefoodsmarket.com")
+            "amazon" -> u.contains("amazon.com")
             "doordash" -> u.contains("doordash.com")
             "ubereats" -> u.contains("ubereats.com")
             "shipt" -> u.contains("shipt.com")
@@ -1975,7 +1998,7 @@ object ScanHistoryStore {
             "costco" -> Regex("\\bkirkland\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
             "sams" -> Regex("\\bmember'?s\\s+mark\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
             "kroger" -> Regex("\\b(simple\\s+truth|private\\s+selection)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
-            "amazon" -> Regex("\\b(365\\b|whole\\s+foods|amazon\\s+fresh|happy\\s+belly|wickedly\\s+prime)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            "amazon", "wholefoods" -> Regex("\\b(365\\b|whole\\s+foods|amazon\\s+fresh|happy\\s+belly|wickedly\\s+prime)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
             "bjs" -> Regex("\\b(wellsley\\s+farms|berkley\\s+jensen)\\b", RegexOption.IGNORE_CASE).containsMatchIn(t)
             "instacart", "shipt", "doordash", "ubereats" -> Regex(
                 "\\b(great\\s+value|bettergoods|marketside|good\\s*&\\s*gather|simply\\s+nature|kirkland|member'?s\\s+mark|simple\\s+truth|private\\s+selection|365\\s+by\\s+whole\\s+foods|wellsley\\s+farms)\\b",

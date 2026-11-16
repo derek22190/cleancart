@@ -1270,6 +1270,7 @@
 
   const PRODUCT_CARD_SEL = [
     '[data-item-id]',
+    '[data-testid="item-stack"] > div',
     '[data-testid*="list-view" i]',
     '[data-testid*="product-card" i]',
     '[data-testid*="item-card" i]',
@@ -1277,11 +1278,21 @@
     '[data-test*="product-card" i]',
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-qa*="product-card" i]',
-    '[data-automation-id*="product" i]',
+    '[data-automation-id="product-tile"]',
     '[data-component-type="s-search-result"]',
     '[data-asin]:not([data-asin=""])',
     'article[class*="product" i]',
     'li[class*="product" i]',
+  ].join(", ");
+
+  const MULTI_CARD_UNIT_SEL = [
+    '[data-item-id]',
+    '[data-asin]:not([data-asin=""])',
+    '[data-component-type="s-search-result"]',
+    '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
+    '[data-testid*="product-card" i]',
+    '[data-testid*="item-card" i]',
+    '[data-qa*="product-card" i]',
   ].join(", ");
 
   function readProductCardInfo(cardEl) {
@@ -1291,6 +1302,7 @@
 
     const titleSelectors = [
       '[data-automation-id="product-title"]',
+      "span.w_iUH7",
       '[data-test="product-title"]',
       '[data-testid*="product-title" i]',
       '[data-testid*="item-title" i]',
@@ -1300,7 +1312,9 @@
       "h3 a span",
       "h2",
       "h3",
+      "a[link-identifier]",
       'a[href*="/ip/"]',
+      'a[href*="/sp/track"]',
       'a[href*="/sams/shop/product/"]',
       'a[href*="/p/"]',
       'a[href*="/dp/"]',
@@ -2808,6 +2822,25 @@
     `;
   }
 
+  const MAJOR_ALLERGEN_BADGE_IDS = new Set([
+    "peanuts_nuts",
+    "dairy",
+    "wheat_gluten",
+    "soy",
+    "egg",
+    "shellfish_fish",
+    "sesame",
+  ]);
+
+  function resolveBadgeAlertSeverity(resp) {
+    if (resp?.alertSeverity === "allergen" || resp?.alertSeverity === "advisory" || resp?.alertSeverity === "none") {
+      return resp.alertSeverity;
+    }
+    const alerts = Array.isArray(resp?.dietaryAlerts) ? resp.dietaryAlerts : [];
+    if (alerts.length === 0) return "none";
+    return alerts.some((a) => MAJOR_ALLERGEN_BADGE_IDS.has(a?.id)) ? "allergen" : "advisory";
+  }
+
   function render() {
     if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") {
       pillEl.hidden = true;
@@ -2835,7 +2868,17 @@
         r.yukaBreakdown?.nutriScoreGrade === "N/A";
       const safeScore = Math.max(0, Math.min(100, Math.round(Number(r.score ?? 0))));
       const pillHasAlerts = Array.isArray(state.data.dietaryAlerts) && state.data.dietaryAlerts.length > 0;
-      const prodTone = isNonFood ? "gray" : pillHasAlerts ? "red" : toneForScore(safeScore);
+      const pillSeverity = resolveBadgeAlertSeverity(state.data);
+      const pillScoreTone = toneForScore(safeScore);
+      const prodTone = isNonFood
+        ? "gray"
+        : pillSeverity === "allergen"
+          ? "red"
+          : pillSeverity === "advisory"
+            ? pillScoreTone === "red"
+              ? "red"
+              : "yellow"
+            : pillScoreTone;
       const alertChip = pillHasAlerts
         ? `<span class="cc-pill-alert">⚠️ ${esc(state.data.dietaryAlerts[0].shortBadge)}</span>`
         : "";
@@ -2883,13 +2926,17 @@
 
     const canShowProductTab = Boolean(state.data?.ok && state.data.result);
     const activeTab = state.auditorOpen || !canShowProductTab ? "cart" : state.drawerTab;
-    const modalHasDietAlerts =
-      canShowProductTab && Array.isArray(state.data.dietaryAlerts) && state.data.dietaryAlerts.length > 0;
+    const modalSeverity = canShowProductTab ? resolveBadgeAlertSeverity(state.data) : "none";
+    const modalScoreTone = canShowProductTab ? toneForScore(state.data.result.score) : avgTone;
     const cardToneClass =
       activeTab === "product" && canShowProductTab
-        ? modalHasDietAlerts
+        ? modalSeverity === "allergen"
           ? "cc-tone-red"
-          : `cc-tone-${toneForScore(state.data.result.score)}`
+          : modalSeverity === "advisory"
+            ? modalScoreTone === "red"
+              ? "cc-tone-red"
+              : "cc-tone-yellow"
+            : `cc-tone-${modalScoreTone}`
         : avgToneClass;
 
     const tabsHtml = canShowProductTab
@@ -3288,21 +3335,13 @@
   /* ---------------- Automatic On-Photo Score Badges (Search / Aisle Grids) ---------------- */
   const PHOTO_BADGE_STYLE_ID = "cleancart-photo-badge-styles";
   const PRODUCT_LINK_FALLBACK_SEL =
-    'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
-  const MAJOR_ALLERGEN_BADGE_IDS = new Set([
-    "peanuts_nuts",
-    "dairy",
-    "wheat_gluten",
-    "soy",
-    "egg",
-    "shellfish_fish",
-    "sesame",
-  ]);
+    'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
   const MAX_IN_FLIGHT_PHOTO_BATCHES = 2;
 
   const gridScanCache = new Map();
   let photoBadgeObserver = null;
   let cardStateByEl = new WeakMap();
+  let ownerCardByImg = new WeakMap();
   const badgeDataByElement = new WeakMap();
   const pendingPhotoBadgeQueue = new Map();
   let photoBadgeBatchTimer = null;
@@ -3322,7 +3361,7 @@
         position: absolute !important;
         bottom: 8px !important;
         left: 8px !important;
-        z-index: 2 !important;
+        z-index: 20 !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 3px !important;
@@ -3360,15 +3399,6 @@
       resp.product?.nutrition?.productKind === "non-food" ||
       resp.result.yukaBreakdown?.nutriScoreGrade === "N/A"
     );
-  }
-
-  function resolveBadgeAlertSeverity(resp) {
-    if (resp?.alertSeverity === "allergen" || resp?.alertSeverity === "advisory" || resp?.alertSeverity === "none") {
-      return resp.alertSeverity;
-    }
-    const alerts = Array.isArray(resp?.dietaryAlerts) ? resp.dietaryAlerts : [];
-    if (alerts.length === 0) return "none";
-    return alerts.some((a) => MAJOR_ALLERGEN_BADGE_IDS.has(a?.id)) ? "allergen" : "advisory";
   }
 
   function computeCardSignature(cardEl, info) {
@@ -3412,6 +3442,7 @@
       photoBadgeObserver = null;
     }
     cardStateByEl = new WeakMap();
+    ownerCardByImg = new WeakMap();
     const existing = document.querySelectorAll(".cc-photo-badge");
     for (const el of existing) {
       el.remove();
@@ -3728,6 +3759,11 @@
     if (sessionStorage.getItem(hideKeyForBucket(activeBucket.bucketKey)) === "1") return;
     const info = readProductCardInfo(cardEl);
     if (!info) return;
+    if (info.imgEl) {
+      const existingOwner = ownerCardByImg.get(info.imgEl);
+      if (existingOwner && existingOwner !== cardEl && existingOwner.isConnected) return;
+      ownerCardByImg.set(info.imgEl, cardEl);
+    }
     const sig = computeCardSignature(cardEl, info);
     const prevState = cardStateByEl.get(cardEl);
     const prevRetryCount = prevState && prevState.sig === sig ? prevState.retryCount || 0 : 0;
@@ -3822,8 +3858,19 @@
     const addCandidate = (el) => {
       if (!el || seen.has(el) || host?.contains(el)) return;
       if (el.closest("header, nav, footer")) return;
+      if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 100 || r.height > 720)) return;
+      if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 84 || r.height > 760)) return;
+      for (let i = 0; i < found.length; i++) {
+        const ex = found[i];
+        if (ex.contains(el)) return;
+        if (el.contains(ex)) {
+          seen.delete(ex);
+          seen.add(el);
+          found[i] = el;
+          return;
+        }
+      }
       seen.add(el);
       found.push(el);
     };
@@ -3838,10 +3885,11 @@
         if (a.closest(PRODUCT_CARD_SEL) || a.closest("header, nav, footer")) continue;
         let cur = a;
         let tile = null;
-        for (let depth = 0; depth < 4 && cur && cur !== document.body; depth++) {
+        for (let depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
           if (cur.querySelector("img")) {
+            if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
             const r = cur.getBoundingClientRect();
-            if (r.width >= 100 && r.width <= 520 && r.height >= 110 && r.height <= 680) {
+            if (r.width >= 96 && r.width <= 540 && r.height >= 92 && r.height <= 720) {
               tile = cur;
               if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
             }
@@ -3952,13 +4000,28 @@
 
     const seen = new Set();
     const candidates = [];
-    for (const el of document.querySelectorAll(PRODUCT_CARD_SEL)) {
-      if (!el || host?.contains(el) || seen.has(el)) continue;
+    const addMobileCandidate = (el) => {
+      if (!el || host?.contains(el) || seen.has(el)) return;
+      if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
+      for (let i = 0; i < candidates.length; i++) {
+        const ex = candidates[i];
+        if (ex.contains(el)) return;
+        if (el.contains(ex)) {
+          seen.delete(ex);
+          seen.add(el);
+          candidates[i] = el;
+          return;
+        }
+      }
       seen.add(el);
       candidates.push(el);
+    };
+
+    for (const el of document.querySelectorAll(PRODUCT_CARD_SEL)) {
+      addMobileCandidate(el);
     }
     const prodLinks = document.querySelectorAll(
-      'a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"]'
+      'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"]'
     );
     for (let i = 0; i < prodLinks.length && i < 140; i++) {
       const a = prodLinks[i];
@@ -3968,6 +4031,7 @@
         let cur = a.parentElement;
         let depth = 0;
         while (cur && cur !== document.body && !/^(MAIN|UL|OL|SECTION)$/i.test(cur.tagName) && depth < 6) {
+          if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
           const r = cur.getBoundingClientRect();
           if (r.height >= 64 && r.height <= 640 && r.width >= 110) {
             card = cur;
@@ -3977,10 +4041,7 @@
           depth++;
         }
       }
-      if (card && !seen.has(card)) {
-        seen.add(card);
-        candidates.push(card);
-      }
+      if (card) addMobileCandidate(card);
     }
 
     const vh = Math.max(320, window.innerHeight || 720);
@@ -4086,6 +4147,7 @@
     const cKey = normCacheKey(info.title, "");
     const cached = gridScanCache.get(cKey);
     if (cached?.ok) {
+      if (isNonFoodScanResponse(cached)) return;
       void applyScanResult(cached, domImg, seq);
       return;
     }
@@ -4110,7 +4172,8 @@
           seq !== scanSeq ||
           isProductPage() ||
           state.hoveredCardData?.title !== info.title ||
-          resolveStoreBucket().bucketKey !== reqBucket.bucketKey
+          resolveStoreBucket().bucketKey !== reqBucket.bucketKey ||
+          isNonFoodScanResponse(resp)
         ) {
           return;
         }
@@ -4167,7 +4230,7 @@
         return;
       }
       const a = e.target?.closest?.(
-        'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/product/"], a[href*="/gp/aw/d/"], [data-testid*="product" i] a'
+        'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/product/"], a[href*="/gp/aw/d/"], [data-testid*="product" i] a'
       );
       if (!a) return;
       const rawText = cleanProductTitleText(a.getAttribute("aria-label") || a.textContent || "");
@@ -4279,6 +4342,13 @@
         attributeFilter: ["src", "srcset", "href"],
       });
     }
+    document.addEventListener(
+      "load",
+      (e) => {
+        if (e?.target?.tagName === "IMG") schedule();
+      },
+      true
+    );
     const scheduleSpaTransition = () => {
       schedule();
       setTimeout(schedule, 500);

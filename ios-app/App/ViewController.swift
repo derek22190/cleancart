@@ -493,6 +493,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
             if (\(isProVal)) {
               localStorage.setItem('heybroc_is_pro', '1');
+            } else {
+              localStorage.removeItem('heybroc_is_pro');
             }
             if (\(shouldWritePrefs) || localStorage.getItem('heybroc_dietary_watchlist') === null) {
               localStorage.setItem('heybroc_dietary_watchlist', '\(dietaryJSON)');
@@ -631,8 +633,21 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     // MARK: - WKScriptMessageHandler
 
+    private static func isTrustedAppBridgeOrigin(_ origin: WKSecurityOrigin) -> Bool {
+        let proto = origin.protocol.lowercased()
+        if proto == "file" { return true }
+        guard proto == "https" else { return false }
+        let host = origin.host.lowercased()
+        return host == "heybroc.com"
+            || host == "www.heybroc.com"
+            || host.hasSuffix(".heybroc.com")
+            || host == "cleancart-teal.vercel.app"
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "controller" || message.name == "heybrocNative" else { return }
+        guard message.frameInfo.isMainFrame,
+              Self.isTrustedAppBridgeOrigin(message.frameInfo.securityOrigin) else { return }
         var payloadDict: [String: Any]?
         let action: String
         if let str = message.body as? String {
@@ -675,8 +690,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             if let token = token {
                 HeyBrocSharedPrefs.authToken = token
             }
-            if let pro = isPro, pro {
-                HeyBrocSharedPrefs.isPro = true
+            if let pro = isPro {
+                HeyBrocSharedPrefs.isPro = pro
             }
             return
         }

@@ -290,6 +290,38 @@ export async function POST(request: Request) {
     );
   }
 
+  const claimEnv = String(claims.environment || "").trim();
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.APPLE_ALLOW_SANDBOX_IN_PRODUCTION !== "true" &&
+    (claimEnv === "Sandbox" || claimEnv === "Xcode")
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Sandbox StoreKit transactions are not accepted in production." },
+      { status: 403 }
+    );
+  }
+
+  const allowedProductIds = new Set(
+    [
+      "com.heybroc.pro.annual",
+      "com.heybroc.pro.monthly",
+      "heybroc_pro_annual",
+      "heybroc_pro_monthly",
+      ...(process.env.APPLE_PRODUCT_IDS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ].map((s) => s.toLowerCase())
+  );
+  const claimProductId = String(claims.productId || "").trim().toLowerCase();
+  if (!claimProductId || !allowedProductIds.has(claimProductId)) {
+    return NextResponse.json(
+      { ok: false, error: "Unrecognized App Store subscription productId." },
+      { status: 403 }
+    );
+  }
+
   const origTxId = String(claims.originalTransactionId || claims.transactionId || "").trim();
   if (!origTxId) {
     return NextResponse.json(
@@ -306,10 +338,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const expiresAtMs =
-    typeof claims.expiresDate === "number" && claims.expiresDate > 0
-      ? claims.expiresDate
-      : now + 30 * 24 * 60 * 60 * 1000;
+  if (
+    typeof claims.expiresDate !== "number" ||
+    !Number.isFinite(claims.expiresDate) ||
+    claims.expiresDate <= 0
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "StoreKit subscription transaction is missing a valid expiresDate." },
+      { status: 400 }
+    );
+  }
+  const expiresAtMs = claims.expiresDate;
   if (expiresAtMs <= now) {
     return NextResponse.json({
       ok: true,

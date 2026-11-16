@@ -278,18 +278,9 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
-    private val gridBatchIo = Executors.newSingleThreadExecutor()
     private val rejectedTitles = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
     @Volatile
     private var scanGeneration: Int = 0
-    @Volatile
-    private var gridBatchGeneration: Int = 0
-    @Volatile
-    private var gridBadgesSentVisible: Boolean = false
-    @Volatile
-    private var lastGridBadgesSig: String = ""
-    @Volatile
-    private var lastAnyScrollAtMs: Long = 0L
     private var currentPackage = ""
     private var currentStoreBucket = ""
     private var lastKey = ""
@@ -321,25 +312,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         return next
     }
 
-    @Synchronized
-    private fun bumpGridBatchGeneration(): Int {
-        val next = gridBatchGeneration + 1
-        gridBatchGeneration = next
-        return next
-    }
-
-    private fun hideGridBadgesIfShown(
-        pkgOverride: String = currentPackage,
-        bucketOverride: String = currentStoreBucket
-    ) {
-        bumpGridBatchGeneration()
-        lastGridBadgesSig = ""
-        if (gridBadgesSentVisible) {
-            gridBadgesSentVisible = false
-            sendToOverlay(OverlayWindowService.ACTION_HIDE_GRID_BADGES, pkgOverride, bucketOverride)
-        }
-    }
-
     private fun isTargetGroceryWindowActive(expectedPkg: String): Boolean {
         if (expectedPkg.isBlank() || expectedPkg !in STORE_PACKAGES) return false
         val activeRoot = rootInActiveWindow
@@ -356,13 +328,17 @@ class GroceryScreenReaderService : AccessibilityService() {
         var otherStoreWindowVisible = false
         runCatching {
             for (win in windows) {
-                val r = win.root ?: continue
-                val wPkg = r.packageName?.toString().orEmpty()
-                recycleNode(r)
-                if (wPkg == expectedPkg) {
-                    matchedWindow = true
-                } else if (wPkg.isNotEmpty() && wPkg != packageName && wPkg in STORE_PACKAGES) {
-                    otherStoreWindowVisible = true
+                try {
+                    val r = win.root ?: continue
+                    val wPkg = r.packageName?.toString().orEmpty()
+                    recycleNode(r)
+                    if (wPkg == expectedPkg) {
+                        matchedWindow = true
+                    } else if (wPkg.isNotEmpty() && wPkg != packageName && wPkg in STORE_PACKAGES) {
+                        otherStoreWindowVisible = true
+                    }
+                } finally {
+                    recycleWindow(win)
                 }
             }
         }
@@ -397,9 +373,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         override fun run() {
             if (!AccessibilityConsent.granted(this@GroceryScreenReaderService) || !isDeviceInteractiveAndUnlocked()) {
                 bumpScanGeneration()
-                bumpGridBatchGeneration()
-                gridBadgesSentVisible = false
-                lastGridBadgesSig = ""
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
@@ -416,9 +389,6 @@ class GroceryScreenReaderService : AccessibilityService() {
                 nullPkgCount++
                 if (overlayVisible && nullPkgCount >= 2) {
                     bumpScanGeneration()
-                    bumpGridBatchGeneration()
-                    gridBadgesSentVisible = false
-                    lastGridBadgesSig = ""
                     sendToOverlay(OverlayWindowService.ACTION_HIDE)
                     overlayVisible = false
                     lastKey = ""
@@ -430,9 +400,6 @@ class GroceryScreenReaderService : AccessibilityService() {
                 val isTransient = pkg in IGNORED_TRANSIENT_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 if (overlayVisible && !isTransient && pkg !in STORE_PACKAGES && pkg != packageName) {
                     bumpScanGeneration()
-                    bumpGridBatchGeneration()
-                    gridBadgesSentVisible = false
-                    lastGridBadgesSig = ""
                     sendToOverlay(OverlayWindowService.ACTION_HIDE)
                     overlayVisible = false
                     lastKey = ""
@@ -450,9 +417,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         super.onServiceConnected()
         activeInstance = this
         bumpScanGeneration()
-        bumpGridBatchGeneration()
-        gridBadgesSentVisible = false
-        lastGridBadgesSig = ""
         // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
         sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
         lastKey = ""
@@ -481,9 +445,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (!AccessibilityConsent.granted(this) || !isDeviceInteractiveAndUnlocked()) {
             if (overlayVisible) {
                 bumpScanGeneration()
-                bumpGridBatchGeneration()
-                gridBadgesSentVisible = false
-                lastGridBadgesSig = ""
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
@@ -494,7 +455,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (pkg !in STORE_PACKAGES) return
         nullPkgCount = 0
         if (pkg != currentPackage) {
-            hideGridBadgesIfShown(pkg, defaultBucketForPackage(pkg))
             bumpScanGeneration()
             currentPackage = pkg
             currentStoreBucket = defaultBucketForPackage(pkg)
@@ -511,16 +471,10 @@ class GroceryScreenReaderService : AccessibilityService() {
             rejectedTitles.clear()
         }
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            hideGridBadgesIfShown()
-        }
-
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            lastAnyScrollAtMs = System.currentTimeMillis()
-            hideGridBadgesIfShown()
             if (event.scrollDeltaX != 0) {
                 lastHorizontalScrollDir = if (event.scrollDeltaX > 0) 1 else -1
-                lastHorizontalScrollAtMs = lastAnyScrollAtMs
+                lastHorizontalScrollAtMs = System.currentTimeMillis()
             }
             handler.removeCallbacks(scrollSettleScanRunnable)
             handler.postDelayed(scrollSettleScanRunnable, 210L)
@@ -841,7 +795,6 @@ class GroceryScreenReaderService : AccessibilityService() {
         sendToOverlay(OverlayWindowService.ACTION_HIDE)
         handler.removeCallbacksAndMessages(null)
         io.shutdownNow()
-        gridBatchIo.shutdownNow()
         super.onDestroy()
     }
 
@@ -858,6 +811,14 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             @Suppress("DEPRECATION")
             runCatching { node.recycle() }
+        }
+    }
+
+    private fun recycleWindow(win: android.view.accessibility.AccessibilityWindowInfo?) {
+        if (win == null) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            @Suppress("DEPRECATION")
+            runCatching { win.recycle() }
         }
     }
 
@@ -948,7 +909,6 @@ class GroceryScreenReaderService : AccessibilityService() {
             val pkg = root.packageName?.toString() ?: return
             if (pkg !in STORE_PACKAGES) return
             if (pkg != currentPackage) {
-                hideGridBadgesIfShown(pkg, defaultBucketForPackage(pkg))
                 bumpScanGeneration()
                 currentPackage = pkg
                 currentStoreBucket = defaultBucketForPackage(pkg)
@@ -1103,7 +1063,6 @@ class GroceryScreenReaderService : AccessibilityService() {
             val isCartScreen = !isConfirmedSinglePdp && hasDefinitiveCartScreenSignal
 
             if (isCartScreen) {
-                hideGridBadgesIfShown(pkg, bucketSig)
                 val isFirstCartFrame = !wasOnCartScreen
                 if (isFirstCartFrame) {
                     bumpScanGeneration()
@@ -1323,40 +1282,6 @@ class GroceryScreenReaderService : AccessibilityService() {
                 hasCarouselPricesOrStock = hasCarouselPricesOrStock,
             )
 
-            // 2b. Per-item Mini Score Badges over multi-card search/aisle/carousel grids (hidden on single PDP, Cart, keyboard search, or active scroll)
-            if (isConfirmedSinglePdp ||
-                isPdpMediaGallery ||
-                !isProductView ||
-                shouldSuppressAutomaticPopup(allNodes, totalTileAddCount, hasCarouselPricesOrStock)
-            ) {
-                hideGridBadgesIfShown(pkg, bucketSig)
-            } else {
-                val focusedInput = runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
-                val isTypingSearch = focusedInput != null &&
-                    focusedInput.isVisibleToUser &&
-                    (focusedInput.isEditable || focusedInput.className?.toString()?.contains("EditText", ignoreCase = true) == true)
-                if (focusedInput != null && focusedInput !== root) {
-                    recycleNode(focusedInput)
-                }
-                if (isTypingSearch) {
-                    hideGridBadgesIfShown(pkg, bucketSig)
-                } else if (System.currentTimeMillis() - lastAnyScrollAtMs >= 180L) {
-                    val gridSourceNodes = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
-                        nodes.subList(carouselIdx + 1, nodes.size)
-                    } else {
-                        nodes
-                    }
-                    scheduleVisibleGridBatchScan(
-                        pkg = pkg,
-                        bucketSig = bucketSig,
-                        searchNodes = gridSourceNodes,
-                        totalTileAddCount = totalTileAddCount,
-                        hasHomeOrAisleBanners = hasHomeOrAisleBanners,
-                        isViewingFullScreenCarousel = isViewingFullScreenCarousel
-                    )
-                }
-            }
-
             val candidates = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
                 val carouselSlice = nodes.subList(carouselIdx + 1, nodes.size)
                 findCandidateTitles(carouselSlice, carouselSlice, isConfirmedSinglePdp = false, pkg = pkg)
@@ -1475,164 +1400,6 @@ class GroceryScreenReaderService : AccessibilityService() {
             )
         } finally {
             recycleNode(root)
-        }
-    }
-
-    private data class VisibleGridCard(
-        val title: String,
-        val left: Int,
-        val top: Int,
-        val right: Int,
-        val bottom: Int,
-        val width: Int
-    )
-
-    private fun extractVisibleGridFoodCards(searchNodes: List<TextNode>): List<VisibleGridCard> {
-        if (searchNodes.isEmpty()) return emptyList()
-        val dm = resources.displayMetrics
-        val density = dm.density.coerceAtLeast(1f)
-        val screenW = dm.widthPixels.coerceAtLeast(720)
-        val screenH = dm.heightPixels.coerceAtLeast(1200)
-        val minHeaderSafeTop = (screenH * 0.13f).toInt()
-        val maxBottomSafeY = (screenH * 0.87f).toInt()
-        val edgeClipPx = (3f * density).toInt()
-        val fullListTitleWidthPx = (screenW * 0.36f).toInt()
-        val minRightReachPx = (screenW * 0.28f).toInt()
-        val maxLeftStartPx = (screenW * 0.72f).toInt()
-        val sameCardDxPx = (68f * density).toInt()
-        val sameCardDyPx = (64f * density).toInt()
-
-        val collected = ArrayList<VisibleGridCard>()
-        for (n in searchNodes.take(260)) {
-            if (!n.isVisible || n.isEdgeClipped) continue
-            if (n.top < minHeaderSafeTop || n.top > maxBottomSafeY || n.bottom > (screenH * 0.92f).toInt()) continue
-            val w = (n.right - n.left).coerceAtLeast(0)
-            if (w < (54f * density).toInt()) continue
-            if (n.left < edgeClipPx && w < fullListTitleWidthPx) continue
-            if (n.right > screenW - edgeClipPx && w < fullListTitleWidthPx) continue
-            if (n.right < minRightReachPx || n.left > maxLeftStartPx) continue
-
-            val cleaned = cleanTitleCandidate(n.text)
-            if (!isCandidateProductTitle(cleaned)) continue
-            if (NON_FOOD_PRODUCT.containsMatchIn(cleaned)) continue
-            if (cleaned.lowercase() in rejectedTitles) continue
-            val isFood = (cleaned.split(' ').size >= 2 && looksLikeFoodTitle(cleaned)) ||
-                SINGLE_WORD_PRODUCE.matches(cleaned.trim())
-            if (!isFood) continue
-
-            val dupTitleIdx = collected.indexOfFirst { it.title.equals(cleaned, ignoreCase = true) }
-            if (dupTitleIdx >= 0) {
-                if (w > collected[dupTitleIdx].width) {
-                    collected[dupTitleIdx] = VisibleGridCard(cleaned, n.left, n.top, n.right, n.bottom, w)
-                }
-                continue
-            }
-            val spatialDupIdx = collected.indexOfFirst {
-                kotlin.math.abs(it.left - n.left) < sameCardDxPx &&
-                    kotlin.math.abs(it.top - n.top) < sameCardDyPx
-            }
-            if (spatialDupIdx >= 0) {
-                val prev = collected[spatialDupIdx]
-                if (cleaned.length > prev.title.length && w >= prev.width) {
-                    collected[spatialDupIdx] = VisibleGridCard(cleaned, n.left, n.top, n.right, n.bottom, w)
-                }
-                continue
-            }
-            collected.add(VisibleGridCard(cleaned, n.left, n.top, n.right, n.bottom, w))
-        }
-
-        return collected
-            .sortedWith(compareBy<VisibleGridCard> { it.top / (48f * density).toInt().coerceAtLeast(1) }.thenBy { it.left })
-            .take(8)
-    }
-
-    private fun scheduleVisibleGridBatchScan(
-        pkg: String,
-        bucketSig: String,
-        searchNodes: List<TextNode>,
-        totalTileAddCount: Int,
-        hasHomeOrAisleBanners: Boolean,
-        isViewingFullScreenCarousel: Boolean
-    ) {
-        val visibleCards = extractVisibleGridFoodCards(searchNodes)
-        val hasMultiCardBrowseSignals = visibleCards.size >= 2 ||
-            (visibleCards.size == 1 && (totalTileAddCount >= 2 || hasHomeOrAisleBanners || isViewingFullScreenCarousel))
-        if (!hasMultiCardBrowseSignals) {
-            hideGridBadgesIfShown(pkg, bucketSig)
-            return
-        }
-
-        val wlSig = ScanApi.currentWatchlistSignature(this)
-        val gridSig = "$pkg|$bucketSig|$wlSig|" + visibleCards.joinToString("|") {
-            "${it.title.lowercase()}@${it.left / 16},${it.top / 16}"
-        }
-        if (gridSig == lastGridBadgesSig && gridBadgesSentVisible) return
-        lastGridBadgesSig = gridSig
-
-        val batchGen = bumpGridBatchGeneration()
-        val capturedPkg = pkg
-        val capturedBucket = bucketSig
-        val store = ScanApi.storeForPackage(capturedPkg)
-        val appContext = applicationContext
-        val cardsSnapshot = visibleCards.toList()
-        val reqItems = cardsSnapshot.mapIndexed { idx, card ->
-            ScanApi.BatchScanRequestItem(id = "g$idx", productTitle = card.title)
-        }
-
-        gridBatchIo.execute {
-            if (batchGen != gridBatchGeneration) return@execute
-            val scoredMap = runCatching {
-                ScanApi.scanBatch(
-                    ctx = appContext,
-                    items = reqItems,
-                    store = store,
-                    storeBucket = capturedBucket
-                )
-            }.getOrDefault(emptyMap())
-            if (batchGen != gridBatchGeneration) return@execute
-
-            val arr = org.json.JSONArray()
-            for ((idx, card) in cardsSnapshot.withIndex()) {
-                val res = scoredMap["g$idx"] ?: continue
-                if (res.isCategoryEstimate) continue
-                if (card.title.lowercase() in rejectedTitles) continue
-                val alertShort = res.dietaryAlerts.firstOrNull()?.shortBadge
-                arr.put(org.json.JSONObject().apply {
-                    put("title", card.title)
-                    put("score", res.score)
-                    put("rating", res.rating)
-                    put("color", res.color)
-                    put("alertSeverity", res.alertSeverity)
-                    if (!alertShort.isNullOrBlank()) put("alertBadge", alertShort)
-                    put("left", card.left)
-                    put("top", card.top)
-                    put("right", card.right)
-                    put("bottom", card.bottom)
-                    put("rawJson", res.rawJsonStr)
-                })
-            }
-
-            handler.post {
-                if (batchGen != gridBatchGeneration) return@post
-                if (!AccessibilityConsent.granted(this@GroceryScreenReaderService) ||
-                    currentPackage != capturedPkg ||
-                    currentStoreBucket != capturedBucket ||
-                    wasOnCartScreen ||
-                    System.currentTimeMillis() - lastAnyScrollAtMs < 170L ||
-                    !isTargetGroceryWindowActive(capturedPkg)
-                ) {
-                    return@post
-                }
-                if (arr.length() > 0) {
-                    gridBadgesSentVisible = true
-                    markVisible()
-                    sendToOverlay(OverlayWindowService.ACTION_SHOW_GRID_BADGES, capturedPkg, capturedBucket) {
-                        putExtra(OverlayWindowService.EXTRA_GRID_BADGES_JSON, arr.toString())
-                    }
-                } else {
-                    hideGridBadgesIfShown(capturedPkg, capturedBucket)
-                }
-            }
         }
     }
 
@@ -2948,25 +2715,42 @@ class GroceryScreenReaderService : AccessibilityService() {
                 return active
             }
         }
+        var winMatch: AccessibilityNodeInfo? = null
         runCatching {
             val allWindows = windows
+            var chosen: AccessibilityNodeInfo? = null
             var fallbackSupportedRoot: AccessibilityNodeInfo? = null
             for (win in allWindows) {
-                val r = win.root ?: continue
-                val pkg = r.packageName?.toString().orEmpty()
-                if (pkg.isEmpty() || pkg == packageName) continue
-                if (preferredPkg.isNotBlank() && pkg == preferredPkg) {
-                    return r
+                val r = win.root
+                if (r != null) {
+                    val pkg = r.packageName?.toString().orEmpty()
+                    if (chosen == null && pkg.isNotEmpty() && pkg != packageName && preferredPkg.isNotBlank() && pkg == preferredPkg) {
+                        if (fallbackSupportedRoot != null && fallbackSupportedRoot !== r) {
+                            recycleNode(fallbackSupportedRoot)
+                        }
+                        fallbackSupportedRoot = null
+                        chosen = r
+                    } else if (chosen == null && fallbackSupportedRoot == null && pkg.isNotEmpty() && pkg != packageName && pkg in STORE_PACKAGES) {
+                        fallbackSupportedRoot = r
+                    } else {
+                        recycleNode(r)
+                    }
                 }
-                if (fallbackSupportedRoot == null && pkg in STORE_PACKAGES) {
-                    fallbackSupportedRoot = r
-                }
+                recycleWindow(win)
             }
-            if (fallbackSupportedRoot != null) {
-                return fallbackSupportedRoot
-            }
+            winMatch = chosen ?: fallbackSupportedRoot
         }
-        return active?.takeIf { it.packageName?.toString() != packageName }
+        if (winMatch != null) {
+            if (active != null && active !== winMatch) {
+                recycleNode(active)
+            }
+            return winMatch
+        }
+        if (active != null && active.packageName?.toString() != packageName) {
+            return active
+        }
+        recycleNode(active)
+        return null
     }
 
     private fun startInAppSearch(
@@ -3072,172 +2856,209 @@ class GroceryScreenReaderService : AccessibilityService() {
             return
         }
 
-        // 1. Check for an editable search EditText on screen
-        val editNode = findEditableSearchNode(root)
-        if (editNode != null) {
-            val hasQueryText = editNodeHasQuery(editNode, query)
-            if (!hasQueryText) {
-                // On Walmart PDP & Search Hub, clicking an unfocused EditText/search bar transitions to a new search input fragment ~250ms later.
-                // Focus/click it first and wait 320ms so ACTION_SET_TEXT hits the live, focused EditText instead of the outgoing bar.
-                if (!editNode.isFocused && focusedEditCount < 2) {
-                    clickNodeOrParent(editNode)
-                    editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        try {
+            // 1. Check for an editable search EditText on screen
+            val editNode = findEditableSearchNode(root)
+            if (editNode != null) {
+                try {
+                    val hasQueryText = editNodeHasQuery(editNode, query)
+                    if (!hasQueryText) {
+                        // On Walmart PDP & Search Hub, clicking an unfocused EditText/search bar transitions to a new search input fragment ~250ms later.
+                        // Focus/click it first and wait 320ms so ACTION_SET_TEXT hits the live, focused EditText instead of the outgoing bar.
+                        if (!editNode.isFocused && focusedEditCount < 2) {
+                            clickNodeOrParent(editNode)
+                            editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                            handler.postDelayed({
+                                performInAppSearchStep(
+                                    targetPkg = targetPkg,
+                                    query = query,
+                                    attempt = attempt + 1,
+                                    triggerClicks = triggerClicks,
+                                    focusedEditCount = focusedEditCount + 1,
+                                    submittedCount = submittedCount,
+                                    launchedFallback = launchedFallback,
+                                    onFallbackNeeded = onFallbackNeeded
+                                )
+                            }, 320L)
+                            return
+                        }
+                        val args = android.os.Bundle().apply {
+                            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
+                        }
+                        var setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                        if (!setOk) {
+                            editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                            setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                        }
+                        if (setOk) {
+                            fireImeEnter(editNode)
+                            handler.postDelayed({
+                                runCatching {
+                                    val latestRoot = findStoreWindowRoot(targetPkg) ?: return@runCatching
+                                    try {
+                                        val latestEdit = findEditableSearchNode(latestRoot)
+                                        try {
+                                            if (latestEdit != null) {
+                                                fireImeEnter(latestEdit)
+                                            }
+                                        } finally {
+                                            if (latestEdit !== latestRoot) recycleNode(latestEdit)
+                                        }
+                                    } finally {
+                                        recycleNode(latestRoot)
+                                    }
+                                }
+                            }, 180L)
+                            // Schedule a follow-up step to verify the text stuck and tap the top autocomplete/submit row if needed.
+                            handler.postDelayed({
+                                performInAppSearchStep(
+                                    targetPkg = targetPkg,
+                                    query = query,
+                                    attempt = attempt + 1,
+                                    triggerClicks = triggerClicks,
+                                    focusedEditCount = focusedEditCount,
+                                    submittedCount = submittedCount + 1,
+                                    launchedFallback = launchedFallback,
+                                    onFallbackNeeded = onFallbackNeeded
+                                )
+                            }, 420L)
+                            return
+                        }
+                    } else {
+                        // Query is already in the EditText! Fire IME_ENTER again and tap the top autocomplete suggestion / submit row.
+                        fireImeEnter(editNode)
+                        val editRect = Rect()
+                        editNode.getBoundsInScreen(editRect)
+                        val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query, editRect.bottom)
+                        val clickedSuggestion = try {
+                            submitOrSuggestion != null && clickNodeOrParent(submitOrSuggestion)
+                        } finally {
+                            if (submitOrSuggestion !== root && submitOrSuggestion !== editNode) {
+                                recycleNode(submitOrSuggestion)
+                            }
+                        }
+                        if (clickedSuggestion) {
+                            return
+                        }
+                        // Over slow 4G LTE connections (e.g. Walmart Search Input page), autocomplete rows can take ~600-1000ms to render.
+                        // Keep retrying every 340ms while the search EditText is still open so we tap the top suggestion as soon as it appears!
+                        if (attempt < 14) {
+                            handler.postDelayed({
+                                performInAppSearchStep(
+                                    targetPkg = targetPkg,
+                                    query = query,
+                                    attempt = attempt + 1,
+                                    triggerClicks = triggerClicks,
+                                    focusedEditCount = focusedEditCount,
+                                    submittedCount = submittedCount + 1,
+                                    launchedFallback = launchedFallback,
+                                    onFallbackNeeded = onFallbackNeeded
+                                )
+                            }, 340L)
+                        }
+                        return
+                    }
+                } finally {
+                    if (editNode !== root) recycleNode(editNode)
+                }
+            }
+
+            // 2. If we already typed & submitted the query and suggestions are visible, tap the top suggestion row if present
+            if (submittedCount > 0) {
+                val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query, 0)
+                if (submitOrSuggestion != null) {
+                    try {
+                        clickNodeOrParent(submitOrSuggestion)
+                    } finally {
+                        if (submitOrSuggestion !== root) recycleNode(submitOrSuggestion)
+                    }
+                    return
+                }
+            }
+
+            // 3. No live EditText yet: find and click the store's search bar pill or bottom/top "Search" icon/tab.
+            if (triggerClicks < 5) {
+                val triggerNode = findSearchTriggerNode(root)
+                val clickedTrigger = try {
+                    triggerNode != null && clickNodeOrParent(triggerNode)
+                } finally {
+                    if (triggerNode !== root) recycleNode(triggerNode)
+                }
+                if (clickedTrigger) {
                     handler.postDelayed({
                         performInAppSearchStep(
                             targetPkg = targetPkg,
                             query = query,
                             attempt = attempt + 1,
-                            triggerClicks = triggerClicks,
-                            focusedEditCount = focusedEditCount + 1,
+                            triggerClicks = triggerClicks + 1,
+                            focusedEditCount = 0,
                             submittedCount = submittedCount,
                             launchedFallback = launchedFallback,
                             onFallbackNeeded = onFallbackNeeded
                         )
-                    }, 320L)
+                    }, 380L)
                     return
                 }
-                val args = android.os.Bundle().apply {
-                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
-                }
-                var setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                if (!setOk) {
-                    editNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-                    setOk = editNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                }
-                if (setOk) {
-                    fireImeEnter(editNode)
-                    handler.postDelayed({
-                        runCatching {
-                            val latestRoot = findStoreWindowRoot(targetPkg)
-                            val latestEdit = latestRoot?.let { findEditableSearchNode(it) }
-                            if (latestEdit != null) {
-                                fireImeEnter(latestEdit)
-                            }
-                        }
-                    }, 180L)
-                    // Schedule a follow-up step to verify the text stuck and tap the top autocomplete/submit row if needed.
-                    handler.postDelayed({
-                        performInAppSearchStep(
-                            targetPkg = targetPkg,
-                            query = query,
-                            attempt = attempt + 1,
-                            triggerClicks = triggerClicks,
-                            focusedEditCount = focusedEditCount,
-                            submittedCount = submittedCount + 1,
-                            launchedFallback = launchedFallback,
-                            onFallbackNeeded = onFallbackNeeded
-                        )
-                    }, 420L)
-                    return
-                }
-            } else {
-                // Query is already in the EditText! Fire IME_ENTER again and tap the top autocomplete suggestion / submit row.
-                fireImeEnter(editNode)
-                val editRect = Rect()
-                editNode.getBoundsInScreen(editRect)
-                val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query, editRect.bottom)
-                if (submitOrSuggestion != null && clickNodeOrParent(submitOrSuggestion)) {
-                    return
-                }
-                // Over slow 4G LTE connections (e.g. Walmart Search Input page), autocomplete rows can take ~600-1000ms to render.
-                // Keep retrying every 340ms while the search EditText is still open so we tap the top suggestion as soon as it appears!
-                if (attempt < 14) {
-                    handler.postDelayed({
-                        performInAppSearchStep(
-                            targetPkg = targetPkg,
-                            query = query,
-                            attempt = attempt + 1,
-                            triggerClicks = triggerClicks,
-                            focusedEditCount = focusedEditCount,
-                            submittedCount = submittedCount + 1,
-                            launchedFallback = launchedFallback,
-                            onFallbackNeeded = onFallbackNeeded
-                        )
-                    }, 340L)
-                }
-                return
             }
-        }
 
-        // 2. If we already typed & submitted the query and suggestions are visible, tap the top suggestion row if present
-        if (submittedCount > 0) {
-            val submitOrSuggestion = findSearchSubmitOrSuggestionNode(root, query, 0)
-            if (submitOrSuggestion != null) {
-                clickNodeOrParent(submitOrSuggestion)
-                return
-            }
-        }
-
-        // 3. No live EditText yet: find and click the store's search bar pill or bottom/top "Search" icon/tab.
-        if (triggerClicks < 5) {
-            val triggerNode = findSearchTriggerNode(root)
-            if (triggerNode != null && clickNodeOrParent(triggerNode)) {
+            // 4. If we are on a screen with NO search bar at all (such as Walmart's Cart screen), invoke onFallbackNeeded
+            //    to jump into the app's search screen, and KEEP running performInAppSearchStep so we type the query once it loads!
+            if (!launchedFallback && triggerClicks == 0 && submittedCount == 0 && onFallbackNeeded != null) {
+                onFallbackNeeded.invoke()
                 handler.postDelayed({
                     performInAppSearchStep(
                         targetPkg = targetPkg,
                         query = query,
                         attempt = attempt + 1,
-                        triggerClicks = triggerClicks + 1,
+                        triggerClicks = 0,
                         focusedEditCount = 0,
+                        submittedCount = 0,
+                        launchedFallback = true,
+                        onFallbackNeeded = null
+                    )
+                }, 550L)
+                return
+            }
+
+            // 5. Retry while the search screen or fragment is still animating open
+            if (attempt < 13) {
+                handler.postDelayed({
+                    performInAppSearchStep(
+                        targetPkg = targetPkg,
+                        query = query,
+                        attempt = attempt + 1,
+                        triggerClicks = triggerClicks,
+                        focusedEditCount = focusedEditCount,
                         submittedCount = submittedCount,
                         launchedFallback = launchedFallback,
                         onFallbackNeeded = onFallbackNeeded
                     )
-                }, 380L)
-                return
+                }, 340L)
             }
-        }
-
-        // 4. If we are on a screen with NO search bar at all (such as Walmart's Cart screen), invoke onFallbackNeeded
-        //    to jump into the app's search screen, and KEEP running performInAppSearchStep so we type the query once it loads!
-        if (!launchedFallback && triggerClicks == 0 && submittedCount == 0 && onFallbackNeeded != null) {
-            onFallbackNeeded.invoke()
-            handler.postDelayed({
-                performInAppSearchStep(
-                    targetPkg = targetPkg,
-                    query = query,
-                    attempt = attempt + 1,
-                    triggerClicks = 0,
-                    focusedEditCount = 0,
-                    submittedCount = 0,
-                    launchedFallback = true,
-                    onFallbackNeeded = null
-                )
-            }, 550L)
-            return
-        }
-
-        // 5. Retry while the search screen or fragment is still animating open
-        if (attempt < 13) {
-            handler.postDelayed({
-                performInAppSearchStep(
-                    targetPkg = targetPkg,
-                    query = query,
-                    attempt = attempt + 1,
-                    triggerClicks = triggerClicks,
-                    focusedEditCount = focusedEditCount,
-                    submittedCount = submittedCount,
-                    launchedFallback = launchedFallback,
-                    onFallbackNeeded = onFallbackNeeded
-                )
-            }, 340L)
+        } finally {
+            recycleNode(root)
         }
     }
 
     private fun findEditableSearchNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         val focused = runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
-        if (focused != null && focused.isVisibleToUser && !focused.isPassword) {
-            val fCls = focused.className?.toString().orEmpty()
-            if (focused.isEditable || fCls.contains("EditText", ignoreCase = true) || fCls.contains("AutoComplete", ignoreCase = true)) {
-                return focused
+        if (focused != null) {
+            if (focused.isVisibleToUser && !focused.isPassword) {
+                val fCls = focused.className?.toString().orEmpty()
+                if (focused.isEditable || fCls.contains("EditText", ignoreCase = true) || fCls.contains("AutoComplete", ignoreCase = true)) {
+                    return focused
+                }
             }
+            if (focused !== root) recycleNode(focused)
         }
         val queue = ArrayDeque<AccessibilityNodeInfo>()
+        val visited = ArrayList<AccessibilityNodeInfo>()
         queue.add(root)
         var bestFocused: AccessibilityNodeInfo? = null
         var bestUnfocused: AccessibilityNodeInfo? = null
-        while (queue.isNotEmpty()) {
+        while (queue.isNotEmpty() && visited.size < 350) {
             val n = queue.removeFirst()
+            visited.add(n)
             if (n.isVisibleToUser && !n.isPassword) {
                 val cls = n.className?.toString().orEmpty()
                 if (n.isEditable || cls.contains("EditText", ignoreCase = true) || cls.contains("AutoComplete", ignoreCase = true)) {
@@ -3253,7 +3074,15 @@ class GroceryScreenReaderService : AccessibilityService() {
                 n.getChild(i)?.let(queue::addLast)
             }
         }
-        return bestFocused ?: bestUnfocused
+        val result = bestFocused ?: bestUnfocused
+        for (v in visited) {
+            if (v !== root && v !== result) recycleNode(v)
+        }
+        while (queue.isNotEmpty()) {
+            val rem = queue.removeFirst()
+            if (rem !== root && rem !== result) recycleNode(rem)
+        }
+        return result
     }
 
     private fun findSearchTriggerNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -3274,10 +3103,12 @@ class GroceryScreenReaderService : AccessibilityService() {
         var bestFallbackSearchTab: AccessibilityNodeInfo? = null
 
         val queue = ArrayDeque<AccessibilityNodeInfo>()
+        val visited = ArrayList<AccessibilityNodeInfo>()
         queue.add(root)
         val rect = Rect()
-        while (queue.isNotEmpty()) {
+        while (queue.isNotEmpty() && visited.size < 450) {
             val n = queue.removeFirst()
+            visited.add(n)
             if (n.isVisibleToUser) {
                 val txt = n.text?.toString()?.trim().orEmpty()
                 val desc = n.contentDescription?.toString()?.trim().orEmpty()
@@ -3329,7 +3160,15 @@ class GroceryScreenReaderService : AccessibilityService() {
                 n.getChild(i)?.let(queue::addLast)
             }
         }
-        return bestTopSearchBar ?: bestFallbackSearchTab
+        val result = bestTopSearchBar ?: bestFallbackSearchTab
+        for (v in visited) {
+            if (v !== root && v !== result) recycleNode(v)
+        }
+        while (queue.isNotEmpty()) {
+            val rem = queue.removeFirst()
+            if (rem !== root && rem !== result) recycleNode(rem)
+        }
+        return result
     }
 
     private fun findSearchSubmitOrSuggestionNode(
@@ -3341,6 +3180,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         val firstWord = cleanWords.firstOrNull().orEmpty()
         val secondWord = cleanWords.getOrNull(1).orEmpty()
         val queue = ArrayDeque<AccessibilityNodeInfo>()
+        val visited = ArrayList<AccessibilityNodeInfo>()
         queue.add(root)
         val rect = Rect()
         val dm = resources.displayMetrics
@@ -3348,9 +3188,11 @@ class GroceryScreenReaderService : AccessibilityService() {
         val topMinY = if (editBottomY > 0) (editBottomY - (4f * density).toInt()).coerceAtLeast(0) else (dm.heightPixels * 0.08f).toInt()
         val topMaxY = (dm.heightPixels * 0.62f).toInt()
         var bestMatch: AccessibilityNodeInfo? = null
+        var immediateMatch: AccessibilityNodeInfo? = null
 
-        while (queue.isNotEmpty()) {
+        while (queue.isNotEmpty() && visited.size < 450) {
             val n = queue.removeFirst()
+            visited.add(n)
             if (n.isVisibleToUser && !n.isEditable && n.className?.toString()?.contains("EditText", ignoreCase = true) != true) {
                 val txt = n.text?.toString()?.trim().orEmpty()
                 val desc = n.contentDescription?.toString()?.trim().orEmpty()
@@ -3367,7 +3209,8 @@ class GroceryScreenReaderService : AccessibilityService() {
                             desc.equals("Search", ignoreCase = true)
                         ) {
                             if (lowTxt.startsWith("search for") || (secondWord.isNotEmpty() && lowTxt.contains(secondWord) && belowSearchBar)) {
-                                return n
+                                immediateMatch = n
+                                break
                             }
                             if (bestMatch == null) {
                                 bestMatch = n
@@ -3380,7 +3223,15 @@ class GroceryScreenReaderService : AccessibilityService() {
                 n.getChild(i)?.let(queue::addLast)
             }
         }
-        return bestMatch
+        val result = immediateMatch ?: bestMatch
+        for (v in visited) {
+            if (v !== root && v !== result) recycleNode(v)
+        }
+        while (queue.isNotEmpty()) {
+            val rem = queue.removeFirst()
+            if (rem !== root && rem !== result) recycleNode(rem)
+        }
+        return result
     }
 
     private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
@@ -3388,11 +3239,15 @@ class GroceryScreenReaderService : AccessibilityService() {
         var depth = 0
         while (curr != null && depth < 6) {
             if (curr.isClickable && curr.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                if (curr !== node) recycleNode(curr)
                 return true
             }
-            curr = curr.parent
+            val next = curr.parent
+            if (curr !== node) recycleNode(curr)
+            curr = next
             depth++
         }
+        if (curr != null && curr !== node) recycleNode(curr)
         return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 }

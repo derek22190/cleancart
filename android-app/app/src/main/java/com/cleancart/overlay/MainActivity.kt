@@ -371,9 +371,9 @@ class MainActivity : Activity() {
             low.contains("walmart.com") -> "walmart"
             low.contains("target.com") -> "target"
             low.contains("instacart.com") -> "instacart"
-            low.contains("wholefoodsmarket.com") -> "amazon"
+            low.contains("wholefoodsmarket.com") -> "wholefoods"
             low.contains("amazon.com") || low.contains("a.co/") -> "amazon"
-            low.contains("kroger.com") -> "kroger"
+            ScanHistoryStore.urlMatchesStore(low, "kroger") -> "kroger"
             low.contains("aldi.us") -> "aldi"
             low.contains("costco.com") -> "costco"
             low.contains("samsclub.com") -> "sams"
@@ -811,39 +811,20 @@ class MainActivity : Activity() {
 
     private fun isPreferInAppShop(): Boolean {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        return prefs.getBoolean("prefer_in_app_live_shop", false)
+        return prefs.getBoolean("prefer_in_app_live_shop_v2", true)
     }
 
     private fun setPreferInAppShop(preferInApp: Boolean) {
         getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             .edit()
-            .putBoolean("prefer_in_app_live_shop", preferInApp)
+            .putBoolean("prefer_in_app_live_shop_v2", preferInApp)
             .apply()
     }
 
-    private fun resolveInstalledStorePackage(storeKey: String): String? {
-        val candidates = when (LiveStoreBrowserActivity.normalizeStoreKey(storeKey)) {
-            "walmart" -> listOf("com.walmart.android")
-            "instacart" -> listOf("com.instacart.client")
-            "target" -> listOf("com.target.ui")
-            "kroger" -> listOf("com.kroger.mobile")
-            "aldi" -> listOf("de.apptiv.business.android.aldi_us")
-            "costco" -> listOf("com.costco.app.android")
-            "sams" -> listOf("com.rfi.sams.android", "com.samsclub.app")
-            "bjs" -> listOf("com.bjs.mobile", "com.brandingbrand.reactnative.and.bjs")
-            "amazon" -> listOf("com.amazon.mShop.android.shopping")
-            "wholefoods" -> listOf("com.wholefoods.wholefoodsmarket", "com.amazon.mShop.android.shopping")
-            "shipt" -> listOf("com.shipt.groceries")
-            "doordash" -> listOf("com.dd.doordash")
-            "ubereats" -> listOf("com.ubercab.eats")
-            else -> emptyList()
-        }
-        return candidates.firstOrNull { pkg ->
-            runCatching { packageManager.getLaunchIntentForPackage(pkg) }.getOrNull() != null
-        }
-    }
+    private fun resolveInstalledStorePackage(storeKey: String): String? =
+        ScanHistoryStore.resolveInstalledStorePackage(this, storeKey)
 
-    private fun launchStoreSmart(storeKey: String, searchQuery: String? = null) {
+    private fun launchStoreSmart(storeKey: String, searchQuery: String? = null, forceInApp: Boolean = false) {
         val normKey = LiveStoreBrowserActivity.normalizeStoreKey(storeKey)
         getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             .edit()
@@ -852,7 +833,7 @@ class MainActivity : Activity() {
 
         val a11yOk = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
         val nativePkg = resolveInstalledStorePackage(normKey)
-        if (a11yOk && !isPreferInAppShop() && nativePkg != null) {
+        if (!forceInApp && a11yOk && !isPreferInAppShop() && nativePkg != null) {
             runCatching {
                 startService(
                     Intent(this, OverlayWindowService::class.java)
@@ -900,14 +881,15 @@ class MainActivity : Activity() {
                 }
             }
         )
+        val selectedStore = orderedStores.firstOrNull() ?: LiveStoreBrowserActivity.STORES.first()
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(dp(14), dp(13), dp(14), dp(13))
             background = GradientDrawable().apply {
                 setColor(0xFFF0FDF4.toInt())
                 cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), 0xFFBBF7D0.toInt())
+                setStroke(dp(1), 0xFF86EFAC.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -916,52 +898,77 @@ class MainActivity : Activity() {
                 setMargins(dp(16), dp(4), dp(16), dp(10))
             }
 
-            // Header Row: Title + Compact Mode Toggle Chip
+            // Header Row: Title + Secondary Native Pill Toggle
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(label("🥦 Shop Live with 0–100 Scores", 14.5f, 0xFF14532D.toInt(), bold = true).apply {
+                addView(label("🥦 Shop Live with 0–100 Scores", 15f, 0xFF14532D.toInt(), bold = true).apply {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
-                val modeChipLabel = when {
-                    a11yOk && !preferInApp -> "✓ App Pill + Mini Scores"
-                    a11yOk && preferInApp -> "🌐 In-App Shop"
-                    else -> "🌐 Instant In-App"
-                }
-                addView(label(modeChipLabel, 11f, 0xFF065F46.toInt(), bold = true).apply {
-                    setPadding(dp(9), dp(4), dp(9), dp(4))
-                    background = GradientDrawable().apply {
-                        setColor(Color.WHITE)
-                        setStroke(dp(1), 0xFF86EFAC.toInt())
-                        cornerRadius = dp(999).toFloat()
-                    }
-                    setOnClickListener {
-                        if (a11yOk) {
+                if (a11yOk) {
+                    val modeChipLabel = if (preferInApp) "📲 Native App Pill" else "✓ Native App Pill"
+                    addView(label(modeChipLabel, 11f, if (preferInApp) 0xFF065F46.toInt() else Color.WHITE, bold = true).apply {
+                        setPadding(dp(9), dp(4), dp(9), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(if (preferInApp) Color.WHITE else 0xFF0F7A4A.toInt())
+                            setStroke(dp(1), if (preferInApp) 0xFF86EFAC.toInt() else 0xFF0F7A4A.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        setOnClickListener {
                             val next = !isPreferInAppShop()
                             setPreferInAppShop(next)
                             Toast.makeText(
                                 this@MainActivity,
-                                if (next) "Store buttons now open inside HeyBroc Live Shop" else "Store buttons now launch your native grocery apps + Pill",
+                                if (next) "Store buttons now open inside HeyBroc In-App Shop" else "Store buttons now launch your native grocery app + floating Pill",
                                 Toast.LENGTH_SHORT
                             ).show()
                             renderScreen()
-                        } else {
-                            runGuidedSetupStep()
                         }
-                    }
-                })
+                    })
+                }
             })
 
             val subDesc = if (a11yOk && !preferInApp) {
-                "Tap any store — opens your installed app with the floating Pill + per-item mini scores (or Live Shop if not installed)."
+                "Native App Pill active — or tap the big In-App Shop button below for live on-photo scores."
             } else {
-                "Tap any store to shop right inside HeyBroc with live photo score badges & 1-tap Clean Swaps."
+                "Shop right inside HeyBroc with live 0–100 score badges on every food photo & 1-tap Clean Swaps."
             }
             addView(label(subDesc, 11.5f, 0xFF166534.toInt()).apply {
-                setPadding(0, dp(3), 0, dp(9))
+                setPadding(0, dp(3), 0, dp(10))
             })
 
-            // Single Uncluttered Horizontal Store Row
+            // Prominent Primary Full-Width "In-App Shop" Hero CTA Button with Active Store Brand Symbol
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                minimumHeight = dp(50)
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                elevation = dp(3).toFloat()
+                background = GradientDrawable().apply {
+                    setColor(0xFF0F7A4A.toInt())
+                    setStroke(dp(1), 0xFF065F46.toInt())
+                    cornerRadius = dp(15).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(10)
+                }
+                addView(StoreBrandIcons.createIconView(context, selectedStore.key, 24).apply {
+                    (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(9)
+                })
+                addView(label("In-App Shop · ${selectedStore.label} →", 15f, Color.WHITE, bold = true).apply {
+                    setSingleLine(true)
+                    ellipsize = TextUtils.TruncateAt.END
+                })
+                setOnClickListener {
+                    setPreferInAppShop(true)
+                    launchStoreSmart(selectedStore.key, forceInApp = true)
+                }
+            })
+
+            // Horizontal Store Row — Every Store Button Has Its Corresponding Brand Symbol Next to the Font
             val storeScroll = HorizontalScrollView(context).apply {
                 isHorizontalScrollBarEnabled = false
                 clipToPadding = false
@@ -972,33 +979,35 @@ class MainActivity : Activity() {
             }
             orderedStores.forEachIndexed { idx, store ->
                 val isPrimary = idx == 0
-                storeRow.addView(label(
-                    if (isPrimary) "🛒 ${store.label} →" else store.label,
-                    13f,
-                    if (isPrimary) Color.WHITE else 0xFF14532D.toInt(),
-                    bold = true
+                val chipHandle = StoreBrandIcons.buildStoreChip(
+                    context = context,
+                    storeKey = store.key,
+                    labelText = store.label,
+                    selected = isPrimary,
+                    iconSizeDp = 21,
+                    textSizeSp = 13f,
+                    padHdp = 12,
+                    padVdp = 8,
+                    selectedBgColor = 0xFF15803D.toInt(),
+                    unselectedBgColor = Color.WHITE,
+                    unselectedStrokeColor = 0xFF86EFAC.toInt(),
+                    unselectedTextColor = 0xFF14532D.toInt()
+                )
+                chipHandle.container.layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setPadding(dp(14), dp(9), dp(14), dp(9))
-                    background = GradientDrawable().apply {
-                        setColor(if (isPrimary) 0xFF15803D.toInt() else Color.WHITE)
-                        setStroke(dp(1), if (isPrimary) 0xFF15803D.toInt() else 0xFF86EFAC.toInt())
-                        cornerRadius = dp(999).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        if (idx < orderedStores.lastIndex) marginEnd = dp(8)
-                    }
-                    setOnClickListener { launchStoreSmart(store.key) }
-                })
+                    if (idx < orderedStores.lastIndex) marginEnd = dp(8)
+                }
+                chipHandle.container.setOnClickListener { launchStoreSmart(store.key) }
+                storeRow.addView(chipHandle.container)
             }
             storeScroll.addView(storeRow)
             addView(storeScroll)
 
             if (!a11yOk) {
                 addView(label(
-                    "⚡ Prefer shopping inside the native Walmart / Target app? Enable Native App Pill →",
+                    "⚡ Prefer shopping inside the native Walmart / Target app? Enable Floating Pill →",
                     11.5f,
                     0xFF0F7A4A.toInt(),
                     bold = true
@@ -1309,7 +1318,8 @@ class MainActivity : Activity() {
             addView(label(badRating, 13f, 0xFF374151.toInt()))
         })
 
-        val swapUnlocked = ScanApi.isSwapUnlocked(this, badTitle, swapTitle)
+        val serverLocked = swapObj.optBoolean("locked", false)
+        val swapUnlocked = !serverLocked && ScanApi.isSwapUnlocked(this, badTitle, swapTitle)
         val rem = ScanApi.swapsRemaining(this)
         val lim = ScanApi.weeklySwapsLimit(this)
 
@@ -4367,7 +4377,8 @@ class MainActivity : Activity() {
                         confirmAndExchangeGoogleIdToken(
                             idToken = idToken,
                             nonce = nonce,
-                            onSuccess = onSuccess
+                            onSuccess = onSuccess,
+                            onServerExchangeFailure = onFallback
                         )
                     } else {
                         onFallback()
@@ -4510,7 +4521,8 @@ class MainActivity : Activity() {
     private fun confirmAndExchangeGoogleIdToken(
         idToken: String,
         nonce: String,
-        onSuccess: (() -> Unit)?
+        onSuccess: (() -> Unit)?,
+        onServerExchangeFailure: (() -> Unit)? = null
     ) {
         val (claimEmail, claimName) = decodeJwtPreview(idToken)
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
@@ -4531,14 +4543,14 @@ class MainActivity : Activity() {
                 .setTitle("Switch HeyBroc Account?")
                 .setMessage(promptMsg)
                 .setPositiveButton("Switch Account") { _, _ ->
-                    exchangeGoogleIdTokenOnServer(idToken, nonce, claimEmail, claimName, onSuccess)
+                    exchangeGoogleIdTokenOnServer(idToken, nonce, claimEmail, claimName, onSuccess, onServerExchangeFailure)
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
             return
         }
 
-        exchangeGoogleIdTokenOnServer(idToken, nonce, claimEmail, claimName, onSuccess)
+        exchangeGoogleIdTokenOnServer(idToken, nonce, claimEmail, claimName, onSuccess, onServerExchangeFailure)
     }
 
     private fun exchangeGoogleIdTokenOnServer(
@@ -4546,7 +4558,8 @@ class MainActivity : Activity() {
         nonce: String,
         claimEmail: String,
         claimName: String,
-        onSuccess: (() -> Unit)?
+        onSuccess: (() -> Unit)?,
+        onServerExchangeFailure: (() -> Unit)? = null
     ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         Toast.makeText(this, "Completing Google sign-in…", Toast.LENGTH_SHORT).show()
@@ -4610,7 +4623,11 @@ class MainActivity : Activity() {
                 } else {
                     mainHandler.post {
                         if (isDestroyed || isFinishing) return@post
-                        Toast.makeText(this@MainActivity, "Could not verify Google account. Please try again.", Toast.LENGTH_LONG).show()
+                        if (onServerExchangeFailure != null) {
+                            onServerExchangeFailure.invoke()
+                        } else {
+                            Toast.makeText(this@MainActivity, "Could not verify Google account. Please try again.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             }.onFailure {
@@ -5180,7 +5197,7 @@ class MainActivity : Activity() {
                         if (sw != null) {
                             val swTitle = sw.optString("title", "Clean Swap")
                             val swScore = sw.optInt("score", 90)
-                            val swUnlocked = ScanApi.isSwapUnlocked(this, pTitle, swTitle)
+                            val swUnlocked = !sw.optBoolean("locked", false) && ScanApi.isSwapUnlocked(this, pTitle, swTitle)
                             val isSb = sw.optBoolean("isStoreBrand", false)
                             val sbTag = if (isSb) " · 💚 Store-Brand Pick" else ""
                             val swDisplay = if (swUnlocked) {
@@ -5221,7 +5238,7 @@ class MainActivity : Activity() {
         val swap = item.optJSONObject("swap")
         val swapTitle = swap?.optString("title").orEmpty()
         val swapScore = swap?.optInt("score", 0) ?: 0
-        val swapUnlocked = swap != null && ScanApi.isSwapUnlocked(this, title, swapTitle)
+        val swapUnlocked = swap != null && !swap.optBoolean("locked", false) && ScanApi.isSwapUnlocked(this, title, swapTitle)
         val isStoreBrand = swap?.optBoolean("isStoreBrand", false) == true
 
         val refCode = ScanApi.myReferralCode(this)
@@ -5555,7 +5572,8 @@ class MainActivity : Activity() {
             val swapRating = ratingForScore(swapScore)
             val swapImg = swap.optString("image").ifBlank { swap.optString("imageUrl") }
             val swapIng = swap.optString("ingredients").ifBlank { swap.optString("cleanIngredients") }
-            val swapUnlocked = ScanApi.isSwapUnlocked(this, title, swapTitle)
+            val serverLocked = swap.optBoolean("locked", false)
+            val swapUnlocked = !serverLocked && ScanApi.isSwapUnlocked(this, title, swapTitle)
             val isStoreBrand = swap.optBoolean("isStoreBrand", false)
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
@@ -5630,7 +5648,8 @@ class MainActivity : Activity() {
                 val sbAltTitle = storeBrandSwap?.optString("title").orEmpty()
                 val sbAltBrand = storeBrandSwap?.optString("brand").orEmpty()
                 val sbAltScore = storeBrandSwap?.optInt("score", 0) ?: 0
-                val sbMatchesStore = ScanHistoryStore.isStoreBrandForStore("$sbAltBrand $sbAltTitle", itemStoreKey)
+                val sbServerLocked = storeBrandSwap?.optBoolean("locked", false) == true
+                val sbMatchesStore = !sbServerLocked && ScanHistoryStore.isStoreBrandForStore("$sbAltBrand $sbAltTitle", itemStoreKey)
                 if (!isStoreBrand && storeBrandSwap != null && sbAltTitle.isNotBlank() && sbMatchesStore && !sbAltTitle.equals(swapTitle, ignoreCase = true)) {
                     val canRevealSb = ScanApi.isProActive(this) || rem > 0 || ScanApi.isSwapUnlocked(this, title, sbAltTitle)
                     val sbBtnLabel = if (canRevealSb) {
@@ -5674,7 +5693,7 @@ class MainActivity : Activity() {
                         }
                     })
                 }
-            } else if (rem > 0) {
+            } else if (!serverLocked && rem > 0 && swapTitle.isNotBlank()) {
                 swapCard.addView(label("🔒 CLEAN SWAP FOUND · $swapScore/100 ${swapRating.uppercase()}", 11f, 0xFF166534.toInt(), bold = true).apply {
                     letterSpacing = 0.06f
                 })
@@ -6117,10 +6136,12 @@ class MainActivity : Activity() {
         if (swapObj != null) {
             ScanHistoryStore.upgradeSwapForStore(swapObj, prodTitle, storeKey)
         }
+        val serverLocked = swapObj?.optBoolean("locked", false) == true
         val effectiveQuery = swapObj?.optString("searchQuery").orEmpty()
             .ifBlank { swapObj?.optString("title").orEmpty() }
             .ifBlank { query }
-        if (!ScanApi.isSwapUnlocked(this, prodTitle, effectiveQuery) && !ScanApi.canUseSwap(this)) {
+        val isSwapAction = swapObj != null || effectiveQuery.isNotBlank()
+        if (isSwapAction && (serverLocked || (!ScanApi.isSwapUnlocked(this, prodTitle, effectiveQuery) && !ScanApi.canUseSwap(this)))) {
             ScanApi.trackEvent(this, "paywall_viewed")
             val limit = ScanApi.weeklySwapsLimit(this)
             val builder = AlertDialog.Builder(this)
@@ -6156,7 +6177,8 @@ class MainActivity : Activity() {
         val rawDeepLink = swapObj?.optString("deepLink").orEmpty().ifBlank { swapObj?.optString("webUrl").orEmpty() }
         val normalizedLink = normalizeSwapUrl(rawDeepLink)
         val explicitDeepLink = if (ScanHistoryStore.urlMatchesStore(normalizedLink, storeKey)) normalizedLink else ""
-        val explicitPkg = ScanHistoryStore.storePackageForKey(storeKey).ifBlank {
+        val explicitPkg = (ScanHistoryStore.resolveInstalledStorePackage(this, storeKey)
+            ?: ScanHistoryStore.storePackageForKey(storeKey)).ifBlank {
             swapObj?.optString("androidPackage").orEmpty()
         }
         val isDirectProductLink = storeKey != "walmart" && isDirectNativeStoreProductLink(explicitDeepLink, storeKey)
@@ -6631,6 +6653,10 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        runCatching { activeAuthDialog?.dismiss() }
+        activeAuthDialog = null
+        runCatching { activeFunnelDialog?.dismiss() }
+        activeFunnelDialog = null
         mainHandler.removeCallbacks(permissionWatcher)
         pendingSuggestRunnable?.let { mainHandler.removeCallbacks(it) }
         io.shutdownNow()

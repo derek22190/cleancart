@@ -465,6 +465,13 @@ object ScanApi {
             shortBadge = "FISH"
         ),
         DietaryOption(
+            id = "sesame",
+            emoji = "🥯",
+            title = "Sesame Allergy",
+            subtitle = "Flags sesame seeds, sesame oil, tahini, halvah & sesamol",
+            shortBadge = "SESAME"
+        ),
+        DietaryOption(
             id = "high_sodium",
             emoji = "🧂",
             title = "High Sodium / Blood Pressure",
@@ -490,17 +497,18 @@ object ScanApi {
         val title = productJson?.optString("title").orEmpty()
         val ingredients = productJson?.optString("ingredients").orEmpty()
         val nutrition = productJson?.optJSONObject("nutrition")
+        val hasIngredients = ingredients.isNotBlank()
         val combined = "$title $ingredients"
-        if (combined.isBlank()) {
-            // Fall back to server-computed dietaryAlerts if product JSON has no local ingredients
-            val serverArr = rootDataJson?.optJSONArray("dietaryAlerts")
+        val alerts = ArrayList<DietaryAlert>()
+
+        fun mergeServerAlerts() {
+            val serverArr = rootDataJson?.optJSONArray("dietaryAlerts") ?: resultJson?.optJSONArray("dietaryAlerts")
             if (serverArr != null && serverArr.length() > 0) {
-                val list = ArrayList<DietaryAlert>()
                 for (i in 0 until serverArr.length()) {
                     val o = serverArr.optJSONObject(i) ?: continue
                     val id = o.optString("id")
-                    if (id in selected) {
-                        list.add(
+                    if (id in selected && alerts.none { it.id == id }) {
+                        alerts.add(
                             DietaryAlert(
                                 id = id,
                                 label = o.optString("label", "⚠️ Dietary Alert"),
@@ -510,15 +518,16 @@ object ScanApi {
                         )
                     }
                 }
-                return list
             }
-            return emptyList()
         }
 
-        val alerts = ArrayList<DietaryAlert>()
+        if (combined.isBlank()) {
+            mergeServerAlerts()
+            return alerts
+        }
 
         if ("sugar_diabetes" in selected &&
-            !Regex("\\b(zero\\s+sugar|sugar[\\s-]*free|unsweetened|\\bdiet\\b)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+            (hasIngredients || !Regex("\\b(zero\\s+sugar|sugar[\\s-]*free|unsweetened|\\bdiet\\b)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title))
         ) {
             val sugarsG = nutrition?.optDouble("sugarsG100g", 0.0) ?: 0.0
             val sugarMatch = Regex(
@@ -548,53 +557,78 @@ object ScanApi {
             }
         }
 
-        if ("dairy" in selected &&
-            !Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|plant[\\s-]*based|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
-        ) {
-            val cleanedDairyText = combined.replace(
-                Regex("\\b(coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|rice\\s+milk|cashew\\s+milk|milk\\s+thistle|peanut\\s+butter|cocoa\\s+butter|shea\\s+butter|apple\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|butter\\s+beans?|butternut|cream\\s+of\\s+tartar)\\b", RegexOption.IGNORE_CASE),
-                " "
-            )
-            val m = Regex(
-                "\\b(milk|cream|butter|buttermilk|whey|casein|caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|sour\\s+cream|half\\s+and\\s+half|lactalbumin)\\b",
-                RegexOption.IGNORE_CASE
-            ).find(cleanedDairyText)
-            if (m != null) {
-                alerts.add(
-                    DietaryAlert(
-                        id = "dairy",
-                        label = "🥛 Dairy / Lactose Alert",
-                        shortBadge = "DAIRY",
-                        reason = "Contains ${m.value.lowercase()}"
-                    )
+        // Never let front-of-pack "Non-Dairy" / "Plant-Based" / "Gluten-Free" / "Vegan" claims suppress
+        // actual ingredient-list scanning (e.g. Coffee-mate "Non-Dairy" containing sodium caseinate).
+        if ("dairy" in selected) {
+            val dairySource = if (hasIngredients) {
+                ingredients
+            } else if (!Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|plant[\\s-]*based|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
+                title
+            } else {
+                ""
+            }
+            if (dairySource.isNotBlank()) {
+                val cleanedDairyText = dairySource.replace(
+                    Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|lactic\\s+acid|calcium\\s+lactate|sodium\\s+lactate|sodium\\s+stearoyl\\s+lactylate|coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|rice\\s+milk|cashew\\s+milk|milk\\s+thistle|peanut\\s+butter|cocoa\\s+butter|shea\\s+butter|apple\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|butter\\s+beans?|butternut|cream\\s+of\\s+tartar)\\b", RegexOption.IGNORE_CASE),
+                    " "
                 )
+                val m = Regex(
+                    "\\b(milk|cream|butter|buttermilk|whey|casein|caseinate|sodium\\s+caseinate|calcium\\s+caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|sour\\s+cream|half\\s+and\\s+half|lactalbumin|lactoglobulin)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleanedDairyText)
+                if (m != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "dairy",
+                            label = "🥛 Dairy / Lactose Alert",
+                            shortBadge = "DAIRY",
+                            reason = "Contains ${m.value.lowercase()}"
+                        )
+                    )
+                }
             }
         }
 
-        if ("wheat_gluten" in selected &&
-            !Regex("\\b(gluten[\\s-]*free|grain[\\s-]*free|celiac)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
-        ) {
-            val m = Regex(
-                "\\b(wheat|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|graham\\s+flour|vital\\s+wheat\\s+gluten)\\b",
-                RegexOption.IGNORE_CASE
-            ).find(combined)
-            if (m != null) {
-                alerts.add(
-                    DietaryAlert(
-                        id = "wheat_gluten",
-                        label = "🌾 Wheat / Gluten Alert",
-                        shortBadge = "WHEAT",
-                        reason = "Contains ${m.value.lowercase()}"
-                    )
+        if ("wheat_gluten" in selected) {
+            val glutenSource = if (hasIngredients) {
+                ingredients
+            } else if (!Regex("\\b(gluten[\\s-]*free|grain[\\s-]*free|celiac)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
+                title
+            } else {
+                ""
+            }
+            if (glutenSource.isNotBlank()) {
+                val cleanedGlutenText = glutenSource.replace(
+                    Regex("\\b(gluten[\\s-]*free(?:\\s+oats?)?|buckwheat)\\b", RegexOption.IGNORE_CASE),
+                    " "
                 )
+                val m = Regex(
+                    "\\b(wheat|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|graham\\s+flour|vital\\s+wheat\\s+gluten)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleanedGlutenText)
+                if (m != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "wheat_gluten",
+                            label = "🌾 Wheat / Gluten Alert",
+                            shortBadge = "WHEAT",
+                            reason = "Contains ${m.value.lowercase()}"
+                        )
+                    )
+                }
             }
         }
 
         if ("peanuts_nuts" in selected) {
+            val nutSource = if (hasIngredients) ingredients else combined
+            val cleanedNutText = nutSource.replace(
+                Regex("\\b(peanut[\\s-]*free|nut[\\s-]*free|tree[\\s-]*nut[\\s-]*free|butternut|nutmeg|water\\s+chestnuts?|coconut(?:\\s+(?:oil|milk|water|sugar|flour|cream))?)\\b", RegexOption.IGNORE_CASE),
+                " "
+            )
             val m = Regex(
                 "\\b(peanuts?|peanut\\s+butter|peanut\\s+oil|peanut\\s+flour|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\\s+nuts?|pine\\s+nuts?|praline|marzipan|nougat|gianduja)\\b",
                 RegexOption.IGNORE_CASE
-            ).find(combined)
+            ).find(cleanedNutText)
             if (m != null) {
                 alerts.add(
                     DietaryAlert(
@@ -607,54 +641,69 @@ object ScanApi {
             }
         }
 
-        if ("soy" in selected &&
-            !Regex("\\bsoy[\\s-]*free\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
-        ) {
-            val cleanedSoyText = combined.replace(Regex("\\b(soy[\\s-]*free|no\\s+soy)\\b", RegexOption.IGNORE_CASE), " ")
-            val m = Regex(
-                "\\b(soy|soya|soybeans?|soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\\s+vegetable\\s+protein)\\b",
-                RegexOption.IGNORE_CASE
-            ).find(cleanedSoyText)
-            if (m != null) {
-                alerts.add(
-                    DietaryAlert(
-                        id = "soy",
-                        label = "🫘 Soy Alert",
-                        shortBadge = "SOY",
-                        reason = "Contains ${m.value.lowercase()}"
+        if ("soy" in selected) {
+            val soySource = if (hasIngredients) {
+                ingredients
+            } else if (!Regex("\\bsoy[\\s-]*free\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
+                title
+            } else {
+                ""
+            }
+            if (soySource.isNotBlank()) {
+                val cleanedSoyText = soySource.replace(Regex("\\b(soy[\\s-]*free|no\\s+soy)\\b", RegexOption.IGNORE_CASE), " ")
+                val m = Regex(
+                    "\\b(soy|soya|soybeans?|soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\\s+vegetable\\s+protein)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleanedSoyText)
+                if (m != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "soy",
+                            label = "🫘 Soy Alert",
+                            shortBadge = "SOY",
+                            reason = "Contains ${m.value.lowercase()}"
+                        )
                     )
-                )
+                }
             }
         }
 
-        if ("egg" in selected &&
-            !Regex("\\b(egg[\\s-]*free|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
-        ) {
-            val cleanedEggText = combined.replace(
-                Regex("\\b(eggplants?|egg[\\s-]*free(?:\\s+vegan)?(?:\\s+mayonnaise)?|vegan\\s+mayonnaise|eggless(?:\\s+mayonnaise)?)\\b", RegexOption.IGNORE_CASE),
-                " "
-            )
-            val m = Regex(
-                "\\b(eggs?|egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
-                RegexOption.IGNORE_CASE
-            ).find(cleanedEggText)
-            if (m != null) {
-                alerts.add(
-                    DietaryAlert(
-                        id = "egg",
-                        label = "🥚 Egg Alert",
-                        shortBadge = "EGG",
-                        reason = "Contains ${m.value.lowercase()}"
-                    )
+        if ("egg" in selected) {
+            val eggSource = if (hasIngredients) {
+                ingredients
+            } else if (!Regex("\\b(egg[\\s-]*free|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
+                title
+            } else {
+                ""
+            }
+            if (eggSource.isNotBlank()) {
+                val cleanedEggText = eggSource.replace(
+                    Regex("\\b(eggplants?|egg[\\s-]*free(?:\\s+vegan)?(?:\\s+mayonnaise)?|vegan\\s+mayonnaise|eggless(?:\\s+mayonnaise)?)\\b", RegexOption.IGNORE_CASE),
+                    " "
                 )
+                val m = Regex(
+                    "\\b(eggs?|egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleanedEggText)
+                if (m != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "egg",
+                            label = "🥚 Egg Alert",
+                            shortBadge = "EGG",
+                            reason = "Contains ${m.value.lowercase()}"
+                        )
+                    )
+                }
             }
         }
 
         if ("shellfish_fish" in selected) {
+            val fishSource = if (hasIngredients) ingredients else combined
             val m = Regex(
                 "\\b(shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\\s+sauce|fish\\s+oil)\\b",
                 RegexOption.IGNORE_CASE
-            ).find(combined)
+            ).find(fishSource)
             if (m != null) {
                 alerts.add(
                     DietaryAlert(
@@ -664,6 +713,36 @@ object ScanApi {
                         reason = "Contains ${m.value.lowercase()}"
                     )
                 )
+            }
+        }
+
+        if ("sesame" in selected) {
+            val sesameSource = if (hasIngredients) {
+                ingredients
+            } else if (!Regex("\\b(sesame[\\s-]*free|no\\s+sesame)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
+                title
+            } else {
+                ""
+            }
+            if (sesameSource.isNotBlank()) {
+                val cleanedSesameText = sesameSource.replace(
+                    Regex("\\b(sesame[\\s-]*free|no\\s+sesame)\\b", RegexOption.IGNORE_CASE),
+                    " "
+                )
+                val m = Regex(
+                    "\\b(sesame(?:\\s+(?:seeds?|oil|flour|paste))?|tahini|halvah|halva|benne\\s+seeds?|gingelly|gomasio|sesamol|sesamolin)\\b",
+                    RegexOption.IGNORE_CASE
+                ).find(cleanedSesameText)
+                if (m != null) {
+                    alerts.add(
+                        DietaryAlert(
+                            id = "sesame",
+                            label = "🥯 Sesame Alert",
+                            shortBadge = "SESAME",
+                            reason = "Contains ${m.value.lowercase()}"
+                        )
+                    )
+                }
             }
         }
 
@@ -689,18 +768,27 @@ object ScanApi {
         }
 
         if ("pesticide_risk" in selected) {
-            val isOrganic = (nutrition?.optBoolean("isOrganic", false) == true) ||
+            // Never infer whole-product USDA Organic from an individual ingredient (e.g. "organic cane sugar"
+            // in conventional oatmeal) or from negated "Non-Organic" titles.
+            val sanitizedTitleForOrganic = title
+                .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("\\b(?:made\\s+)?with\\s+organic\\s+[a-z]+(?:\\s+[a-z]+){0,2}\\b", RegexOption.IGNORE_CASE), " ")
+            val isCertifiedProductOrganic = (nutrition?.optBoolean("isOrganic", false) == true) ||
+                (productJson?.optBoolean("isOrganic", false) == true) ||
                 Regex(
-                    "\\b(organic|organics|usda\\s+organic|biodynamic|glyphosate[\\s-]*residue[\\s-]*free|pesticide[\\s-]*free|herbicide[\\s-]*free)\\b",
+                    "\\b(usda\\s+organic|certified\\s+organic|biodynamic|glyphosate[\\s-]*residue[\\s-]*free|pesticide[\\s-]*free|herbicide[\\s-]*free)\\b",
                     RegexOption.IGNORE_CASE
-                ).containsMatchIn(combined)
+                ).containsMatchIn(sanitizedTitleForOrganic) ||
+                (!hasIngredients && Regex("\\b(organic|organics)\\b", RegexOption.IGNORE_CASE).containsMatchIn(sanitizedTitleForOrganic))
             val isBeverageOrCandy = Regex(
                 "\\b(sparkling\\s+water|seltzer|club\\s+soda|energy\\s+drink|diet\\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\\s+gum|gummy|gummies|skittles|starburst|sunscreen|lotion|shampoo|soap|detergent|toothpaste)\\b",
                 RegexOption.IGNORE_CASE
             ).containsMatchIn(title) && !Regex("\\b(oats?|oatmeal|wheat|flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
 
-            if (!isOrganic && !isBeverageOrCandy) {
-                val cleaned = combined
+            if (!isCertifiedProductOrganic && !isBeverageOrCandy) {
+                val riskSource = if (hasIngredients) ingredients else title
+                val cleaned = riskSource
+                    .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), "conventional")
                     .replace(
                         Regex("\\borganic\\s+(?:whole\\s+grain\\s+|rolled\\s+|steel[\\s-]*cut\\s+|sprouted\\s+|gluten[\\s-]*free\\s+|unbleached\\s+|enriched\\s+|durum\\s+|baby\\s+|fresh\\s+|frozen\\s+)?[a-z]+(?:\\s+(?:oats?|wheat|flour|strawberr\\w*|blueberr\\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina))?", RegexOption.IGNORE_CASE),
                         " "
@@ -740,6 +828,7 @@ object ScanApi {
             }
         }
 
+        mergeServerAlerts()
         return alerts
     }
 
@@ -1392,9 +1481,12 @@ object ScanApi {
                         savedEntitlement = true
                     }
                     if (itemJson.optBoolean("ok", false)) {
-                        val rawItemStr = itemJson.toString()
+                        val isEstimate = itemJson.optBoolean("isCategoryEstimate", false)
+                        val swapLockedWithoutEntitlement = !itemJson.has("entitlement") &&
+                            (itemJson.optJSONObject("swap")?.optBoolean("locked", false) == true)
                         val cacheTitle = if (!u.barcode.isNullOrBlank()) "${u.productTitle}|upc:${u.barcode}" else u.productTitle
-                        if (cacheTitle.isNotBlank()) {
+                        if (!isEstimate && !swapLockedWithoutEntitlement && cacheTitle.isNotBlank()) {
+                            val rawItemStr = itemJson.toString()
                             val normKey = normalizedCacheKey(ctx, cacheTitle, null, store, storeBucket, instacartRetailerSlug)
                             synchronized(responseCache) {
                                 responseCache[normKey] = rawItemStr

@@ -22,6 +22,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -43,6 +44,8 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
@@ -86,6 +89,27 @@ class LiveStoreBrowserActivity : Activity() {
             LiveStoreConfig("ubereats", "ubereats", "ubereats", "Uber Eats", "https://www.ubereats.com/category/grocery")
         )
 
+        private val KROGER_BANNER_HOST_SUFFIXES = listOf(
+            "kroger.com",
+            "ralphs.com",
+            "fredmeyer.com",
+            "frysfood.com",
+            "kingsoopers.com",
+            "smithsfoodanddrug.com",
+            "qfc.com",
+            "harristeeter.com",
+            "marianos.com",
+            "picknsave.com",
+            "dillons.com",
+            "bakersplus.com",
+            "citymarket.com",
+            "gerbes.com",
+            "jaycfoods.com",
+            "pay-less.com",
+            "food4less.com",
+            "foodscomarket.com"
+        )
+
         private val ALLOWED_RETAILER_HOST_SUFFIXES = listOf(
             "walmart.com",
             "instacart.com",
@@ -94,12 +118,24 @@ class LiveStoreBrowserActivity : Activity() {
             "wholefoodsmarket.com",
             "costco.com",
             "samsclub.com",
-            "kroger.com",
             "aldi.us",
             "bjs.com",
             "shipt.com",
             "doordash.com",
             "ubereats.com"
+        ) + KROGER_BANNER_HOST_SUFFIXES
+
+        private val ALLOWED_SSO_HOST_SUFFIXES = listOf(
+            "uber.com",
+            "accounts.google.com",
+            "appleid.apple.com",
+            "login.target.com",
+            "identity.walmart.com"
+        )
+
+        private val VALID_BATCH_ID_RE = Regex(
+            "^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$",
+            RegexOption.IGNORE_CASE
         )
 
         fun normalizeStoreKey(raw: String?): String {
@@ -118,6 +154,15 @@ class LiveStoreBrowserActivity : Activity() {
             val host = rawHost?.trim()?.lowercase().orEmpty()
             if (host.isEmpty()) return false
             return ALLOWED_RETAILER_HOST_SUFFIXES.any { suffix ->
+                host == suffix || host.endsWith(".$suffix")
+            }
+        }
+
+        fun isAllowedNavigationHost(rawHost: String?): Boolean {
+            if (isAllowedRetailerHost(rawHost)) return true
+            val host = rawHost?.trim()?.lowercase().orEmpty()
+            if (host.isEmpty()) return false
+            return ALLOWED_SSO_HOST_SUFFIXES.any { suffix ->
                 host == suffix || host.endsWith(".$suffix")
             }
         }
@@ -163,6 +208,9 @@ class LiveStoreBrowserActivity : Activity() {
             }
         }
 
+        private fun buildDetectorJs(bridgeSecret: String): String =
+            DETECTOR_JS_TEMPLATE.replace("__HB_BRIDGE_SECRET__", bridgeSecret)
+
         private const val EARLY_BANNER_CSS_JS = """
             (function() {
               if (window !== window.top) return;
@@ -179,9 +227,10 @@ class LiveStoreBrowserActivity : Activity() {
             })();
         """
 
-        private const val DETECTOR_JS = """
+        private const val DETECTOR_JS_TEMPLATE = """
             (function() {
               if (window !== window.top) return;
+              var HB_BRIDGE_SECRET = '__HB_BRIDGE_SECRET__';
               if (window.__heybrocLiveObserverInstalled) {
                 if (typeof window.__heybrocScheduleCheck === 'function') window.__heybrocScheduleCheck(true);
                 return;
@@ -191,6 +240,7 @@ class LiveStoreBrowserActivity : Activity() {
               function postBridge(payload) {
                 try {
                   if (window.heybrocAndroidBridge && typeof window.heybrocAndroidBridge.postMessage === 'function') {
+                    payload._hbSec = HB_BRIDGE_SECRET;
                     window.heybrocAndroidBridge.postMessage(JSON.stringify(payload));
                   }
                 } catch (e) {}
@@ -481,10 +531,10 @@ class LiveStoreBrowserActivity : Activity() {
 
               function findAlignedSearchCardTitle() {
                 if (isCartUrl()) return '';
-                var cardSel = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-qa*="product-card" i], [data-component-type="s-search-result"], article[class*="product" i], li[class*="product" i]';
+                var cardSel = '[data-item-id], [data-testid*="list-view" i], [data-testid*="item-stack" i] > div, div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-qa*="product-card" i], [data-component-type="s-search-result"], article[class*="product" i], li[class*="product" i]';
                 var rawCards = Array.prototype.slice.call(document.querySelectorAll(cardSel));
                 if (!rawCards.length) {
-                  var links = document.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"], a[href*="/product/"]');
+                  var links = document.querySelectorAll('a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"], a[href*="/product/"]');
                   for (var k = 0; k < links.length && rawCards.length < 40; k++) {
                     var anc = links[k].closest('article, li, [role="group"], div');
                     if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
@@ -497,30 +547,37 @@ class LiveStoreBrowserActivity : Activity() {
                 var bestTitle = '';
                 var bestDist = 999999;
                 var titleSels = [
-                  '[data-automation-id="product-title"]', '[data-test="product-title"]', '[data-testid*="product-title" i]',
+                  '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-testid*="product-title" i]',
                   '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]',
-                  'h2 a span', 'h3 a span', 'h2', 'h3', 'a[href*="/ip/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]',
+                  'span.w_iUH7', '[class*="w_iUH7"]',
+                  'h2 a span', 'h3 a span', 'h2', 'h3',
+                  'a[link-identifier]', 'a[href*="/sp/track"]', 'a[href*="/ip/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]',
                   'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]', 'a[href*="/product/"]'
                 ];
 
                 for (var i = 0; i < rawCards.length; i++) {
                   var card = rawCards[i];
                   if (!isVisible(card)) continue;
+                  if (card.querySelectorAll('[data-item-id], [data-asin]:not([data-asin=""]), [data-testid*="product-card" i]').length > 1) continue;
                   if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
                   if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
                   var cr = card.getBoundingClientRect();
-                  if (cr.height < 64 || cr.height > vh * 0.92 || cr.width < 120) continue;
-                  if (cr.bottom < 105 || cr.top > vh - 55) continue;
+                  if (cr.height < 64 || cr.height > vh * 0.92 || cr.width < 110) continue;
+                  if (cr.bottom < 95 || cr.top > vh - 45) continue;
 
                   var candTitle = '';
                   for (var s = 0; s < titleSels.length; s++) {
-                    var tel = card.querySelector(titleSels[s]);
-                    if (!tel) continue;
-                    var rawT = clean(tel.getAttribute('aria-label') || tel.textContent || '');
-                    if (rawT && rawT.length >= 5 && rawT.length <= 210 && !NON_TITLE_RE.test(rawT) && !/^\$\d/.test(rawT)) {
-                      candTitle = rawT;
-                      break;
+                    var tels = card.querySelectorAll(titleSels[s]);
+                    for (var tk = 0; tk < tels.length; tk++) {
+                      var tel = tels[tk];
+                      if (tel.closest && tel.closest('.hb-photo-badge')) continue;
+                      var rawT = clean(tel.getAttribute('aria-label') || tel.textContent || '');
+                      if (rawT && rawT.length >= 5 && rawT.length <= 210 && !NON_TITLE_RE.test(rawT) && !CARD_CTA_NOISE_RE.test(rawT) && !/^\$\d/.test(rawT)) {
+                        candTitle = rawT;
+                        break;
+                      }
                     }
+                    if (candTitle) break;
                   }
                   if (!candTitle) continue;
 
@@ -544,9 +601,11 @@ class LiveStoreBrowserActivity : Activity() {
                 return NON_FOOD_GRID_RE.test(t);
               }
 
-              var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id*="product" i], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
-              var PRODUCT_LINK_SEL = 'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+              var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="item-stack" i] > div, div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
+              var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-testid*="product-card" i], [data-testid*="item-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"]';
+              var PRODUCT_LINK_SEL = 'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
               var PLACEHOLDER_IMG_RE = /(?:^|[\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank)(?:[\/_.-]|$)|^data:image\/gif/i;
+              var CARD_CTA_NOISE_RE = /^(?:add(?:\s+to\s+(?:cart|bag|basket|order))?|options|choose\s+options|select\s+options|quick\s+add|view\s+details|sponsored|shop\s+now|\+|-|\d+\s*ct)$/i;
 
               function makePageToken() {
                 return 'p' + Math.random().toString(36).slice(2, 8);
@@ -557,9 +616,11 @@ class LiveStoreBrowserActivity : Activity() {
               var hbPrefRev = 1;
               var hbCardSeq = 1;
               var hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+              var hbOwnerCardByImg = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
               var hbOwnerCardById = {};
               var hbPendingQueue = [];
               var hbBatchTimer = null;
+              var hbBatchWatchdog = null;
               var hbRetryTimer = null;
               var hbInFlightBatches = 0;
               var MAX_IN_FLIGHT_BATCHES = 2;
@@ -569,7 +630,7 @@ class LiveStoreBrowserActivity : Activity() {
                 if (document.getElementById('hb-photo-badge-styles')) return;
                 var st = document.createElement('style');
                 st.id = 'hb-photo-badge-styles';
-                st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:2!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 Roboto,-apple-system,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2px #fbbf24,0 4px 12px rgba(15,23,42,0.28)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.72)!important;opacity:0.85!important;}';
+                st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:20!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 Roboto,-apple-system,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.32)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2px #fbbf24,0 4px 12px rgba(15,23,42,0.32)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.76)!important;opacity:0.9!important;}';
                 (document.head || document.documentElement).appendChild(st);
               }
 
@@ -582,7 +643,7 @@ class LiveStoreBrowserActivity : Activity() {
                   var cs = window.getComputedStyle(cur);
                   var disp = cs ? cs.display : '';
                   var cr = cur.getBoundingClientRect();
-                  if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 56 && cr.height >= 56 && cr.height <= 460) {
+                  if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 44 && cr.height >= 44 && cr.height <= 480) {
                     candidate = cur;
                     break;
                   }
@@ -614,7 +675,15 @@ class LiveStoreBrowserActivity : Activity() {
               function readCardInfo(cardEl) {
                 if (!cardEl || cardEl.closest('header, nav, footer')) return null;
                 if (isCartDrawer(cardEl.closest('[role="dialog"], aside, section'))) return null;
-                var sels = ['[data-automation-id="product-title"]', '[data-test="product-title"]', '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'];
+                var sels = [
+                  '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-testid*="product-title" i]',
+                  '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]',
+                  'span.w_iUH7', '[class*="w_iUH7"]',
+                  'h2 a span', 'h3 a span', 'h2', 'h3',
+                  'a[link-identifier]', 'a[href*="/sp/track"]', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]',
+                  'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]',
+                  'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'
+                ];
                 var title = '';
                 for (var s = 0; s < sels.length; s++) {
                   var els = cardEl.querySelectorAll(sels[s]);
@@ -622,7 +691,7 @@ class LiveStoreBrowserActivity : Activity() {
                     var el = els[k];
                     if (el.closest && el.closest('.hb-photo-badge')) continue;
                     var raw = clean(el.getAttribute('aria-label') || el.textContent || '');
-                    if (raw && raw.length >= 5 && raw.length <= 200 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
+                    if (raw && raw.length >= 5 && raw.length <= 210 && !NON_TITLE_RE.test(raw) && !CARD_CTA_NOISE_RE.test(raw) && !/^\$\d/.test(raw)) {
                       title = raw;
                       break;
                     }
@@ -639,26 +708,38 @@ class LiveStoreBrowserActivity : Activity() {
                   if (img.closest && img.closest('.hb-photo-badge')) continue;
                   if (!title) {
                     var altCand = clean(img.getAttribute('alt') || '');
-                    if (altCand && altCand.length >= 6 && altCand.length <= 200 && !NON_TITLE_RE.test(altCand) && !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(altCand) && !/^\$\d/.test(altCand)) {
+                    if (altCand && altCand.length >= 6 && altCand.length <= 210 && !NON_TITLE_RE.test(altCand) && !CARD_CTA_NOISE_RE.test(altCand) && !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(altCand) && !/^\$\d/.test(altCand)) {
                       title = altCand;
                     }
                   }
-                  var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset') || '';
+                  var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset') || img.getAttribute('data-src') || '';
                   if (src && PLACEHOLDER_IMG_RE.test(src)) continue;
                   var r = img.getBoundingClientRect();
                   var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
                   var ew = Math.max(r.width, pr.width);
                   var eh = Math.max(r.height, pr.height);
-                  if (!chosenImg && ew >= 56 && eh >= 56 && ew <= 440 && eh <= 440) {
+                  if (!chosenImg && ew >= 44 && eh >= 44 && ew <= 480 && eh <= 480) {
                     chosenImg = img;
                     imgKey = String(src).split('?')[0].slice(-90);
+                  }
+                }
+                if (!title) {
+                  var anyLinks = cardEl.querySelectorAll('a[href]');
+                  for (var al = 0; al < anyLinks.length; al++) {
+                    var aEl = anyLinks[al];
+                    if (aEl.closest && aEl.closest('.hb-photo-badge')) continue;
+                    var aCand = clean(aEl.getAttribute('aria-label') || aEl.textContent || '');
+                    if (aCand && aCand.length >= 6 && aCand.length <= 210 && !NON_TITLE_RE.test(aCand) && !CARD_CTA_NOISE_RE.test(aCand) && !/^\$\d/.test(aCand)) {
+                      title = aCand;
+                      break;
+                    }
                   }
                 }
                 if (!title || !chosenImg || isNonFoodGridTitle(title)) return null;
                 var anchor = findSafeCardAnchor(chosenImg, cardEl);
                 if (!anchor) return null;
                 var sig = title.toLowerCase() + '|' + hrefKey + '|' + imgKey + '|' + detectInstacartSlug() + '|' + hbPrefRev;
-                return { title: title, anchor: anchor, sig: sig };
+                return { title: title, anchor: anchor, img: chosenImg, sig: sig };
               }
 
               function removeCardBadgeState(cardEl, st) {
@@ -666,10 +747,29 @@ class LiveStoreBrowserActivity : Activity() {
                 if (st.id && hbOwnerCardById[st.id] === cardEl) {
                   delete hbOwnerCardById[st.id];
                 }
+                if (st.img && hbOwnerCardByImg && hbOwnerCardByImg.get(st.img) === cardEl) {
+                  hbOwnerCardByImg.delete(st.img);
+                }
                 if (st.badgeEl && st.badgeEl.parentNode) {
                   st.badgeEl.parentNode.removeChild(st.badgeEl);
                 }
                 st.badgeEl = null;
+              }
+
+              var hbLastBatchSentAt = 0;
+              function armBatchWatchdog() {
+                if (hbBatchWatchdog) clearTimeout(hbBatchWatchdog);
+                hbBatchWatchdog = setTimeout(function() {
+                  hbBatchWatchdog = null;
+                  if (hbInFlightBatches > 0 && (Date.now() - hbLastBatchSentAt >= 11000)) {
+                    hbInFlightBatches = 0;
+                    if (hbPendingQueue.length > 0 && !hbBatchTimer) {
+                      hbBatchTimer = setTimeout(flushHbBadgeBatch, 80);
+                    } else {
+                      scanPhotoBadges();
+                    }
+                  }
+                }, 12000);
               }
 
               function flushHbBadgeBatch() {
@@ -699,25 +799,40 @@ class LiveStoreBrowserActivity : Activity() {
                     }
                   }
                 }
-                if (!payloadItems.length) return;
+                if (!payloadItems.length) {
+                  if (hbPendingQueue.length > 0 && !hbBatchTimer) {
+                    hbBatchTimer = setTimeout(flushHbBadgeBatch, 80);
+                  }
+                  return;
+                }
                 hbInFlightBatches++;
+                hbLastBatchSentAt = Date.now();
+                armBatchWatchdog();
                 postBridge({
                   kind: 'gridBatch',
+                  pageToken: hbPageToken,
                   items: payloadItems,
                   instacartSlug: detectInstacartSlug()
                 });
               }
 
               function processVisibleCard(cardEl) {
-                if (!cardEl || !cardEl.isConnected || isCartUrl()) return;
+                if (!cardEl || !cardEl.isConnected || isCartUrl()) return false;
                 var info = readCardInfo(cardEl);
-                if (!info || !info.anchor) return;
+                if (!info || !info.anchor) return false;
+                if (hbOwnerCardByImg && info.img) {
+                  var existingOwner = hbOwnerCardByImg.get(info.img);
+                  if (existingOwner && existingOwner !== cardEl && existingOwner.isConnected) {
+                    return true;
+                  }
+                  hbOwnerCardByImg.set(info.img, cardEl);
+                }
                 var prev = hbCardState ? hbCardState.get(cardEl) : null;
                 var now = Date.now();
                 if (prev && prev.sig === info.sig) {
-                  if (prev.suppressedEstimate) return;
-                  if (prev.retryAfter && now < prev.retryAfter) return;
-                  if (prev.badgeEl && prev.badgeEl.isConnected) return;
+                  if (prev.suppressedEstimate) return true;
+                  if (prev.retryAfter && now < prev.retryAfter) return false;
+                  if (prev.badgeEl && prev.badgeEl.isConnected) return true;
                 } else if (prev) {
                   removeCardBadgeState(cardEl, prev);
                 }
@@ -741,6 +856,7 @@ class LiveStoreBrowserActivity : Activity() {
                   sig: info.sig,
                   title: info.title,
                   anchor: info.anchor,
+                  img: info.img,
                   badgeEl: b,
                   resolved: false,
                   suppressedEstimate: false,
@@ -752,23 +868,35 @@ class LiveStoreBrowserActivity : Activity() {
                 hbOwnerCardById[cardId] = cardEl;
                 hbPendingQueue.push({ id: cardId, title: info.title, sig: info.sig, badgeEl: b, cardEl: cardEl });
                 if (!hbBatchTimer) {
-                  hbBatchTimer = setTimeout(flushHbBadgeBatch, 120);
+                  hbBatchTimer = setTimeout(flushHbBadgeBatch, 110);
                 }
+                return true;
               }
 
               function clearHbBadges() {
                 if (hbBatchTimer) { clearTimeout(hbBatchTimer); hbBatchTimer = null; }
+                if (hbBatchWatchdog) { clearTimeout(hbBatchWatchdog); hbBatchWatchdog = null; }
                 if (hbRetryTimer) { clearTimeout(hbRetryTimer); hbRetryTimer = null; }
                 hbPendingQueue = [];
                 hbInFlightBatches = 0;
                 hbPageToken = makePageToken();
                 hbOwnerCardById = {};
+                hbOwnerCardByImg = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
                 if (hbIntersectionObs) { hbIntersectionObs.disconnect(); hbIntersectionObs = null; }
                 hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
                 var old = document.querySelectorAll('.hb-photo-badge');
                 for (var i = 0; i < old.length; i++) {
                   if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
                 }
+              }
+
+              function nodeContains(anc, desc) {
+                if (!anc || !desc) return false;
+                if (typeof anc.contains === 'function') return anc.contains(desc);
+                for (var c = desc; c; c = c.parentElement) {
+                  if (c === anc) return true;
+                }
+                return false;
               }
 
               function scanPhotoBadges() {
@@ -784,17 +912,24 @@ class LiveStoreBrowserActivity : Activity() {
                   hbIntersectionObs = new IntersectionObserver(function(entries) {
                     for (var i = 0; i < entries.length; i++) {
                       if (!entries[i].isIntersecting) continue;
-                      hbIntersectionObs.unobserve(entries[i].target);
-                      processVisibleCard(entries[i].target);
+                      if (processVisibleCard(entries[i].target)) {
+                        hbIntersectionObs.unobserve(entries[i].target);
+                      }
                     }
-                  }, { rootMargin: '180px 0px' });
+                  }, { rootMargin: '220px 0px' });
                 }
                 var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
+                var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 412) + 32);
+                var vh = Math.max(400, window.innerHeight || 800);
                 var seen = [];
                 function addCand(el) {
                   if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer')) return;
+                  if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
+                  for (var ex = 0; ex < seen.length; ex++) {
+                    if (nodeContains(seen[ex], el) || nodeContains(el, seen[ex])) return;
+                  }
                   var r = el.getBoundingClientRect();
-                  if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 100 || r.height > 720)) return;
+                  if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 760)) return;
                   seen.push(el);
                 }
                 var direct = document.querySelectorAll(CARD_SEL);
@@ -806,10 +941,10 @@ class LiveStoreBrowserActivity : Activity() {
                     if (a.closest(CARD_SEL) || a.closest('header, nav, footer')) continue;
                     var cur = a;
                     var tile = null;
-                    for (var depth = 0; depth < 4 && cur && cur !== document.body; depth++) {
+                    for (var depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
                       if (cur.querySelector('img')) {
                         var cr = cur.getBoundingClientRect();
-                        if (cr.width >= 100 && cr.width <= 520 && cr.height >= 110 && cr.height <= 680) {
+                        if (cr.width >= 90 && cr.width <= maxCardW && cr.height >= 90 && cr.height <= 720) {
                           tile = cur;
                           if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
                         }
@@ -842,7 +977,11 @@ class LiveStoreBrowserActivity : Activity() {
                       continue;
                     }
                   }
-                  if (hbIntersectionObs) {
+                  var cardRect = card.getBoundingClientRect();
+                  var inNearViewport = cardRect.height > 0 && cardRect.bottom >= -140 && cardRect.top <= vh + 180;
+                  if (inNearViewport && processVisibleCard(card)) {
+                    if (hbIntersectionObs) hbIntersectionObs.unobserve(card);
+                  } else if (hbIntersectionObs) {
                     hbIntersectionObs.observe(card);
                   } else {
                     processVisibleCard(card);
@@ -850,8 +989,13 @@ class LiveStoreBrowserActivity : Activity() {
                 }
               }
 
-              window.__heybrocApplyCardBadges = function(badgeMap) {
+              window.__heybrocApplyCardBadges = function(badgeMap, respToken) {
+                if (respToken && respToken !== hbPageToken) return;
                 hbInFlightBatches = Math.max(0, hbInFlightBatches - 1);
+                if (hbInFlightBatches === 0 && hbBatchWatchdog) {
+                  clearTimeout(hbBatchWatchdog);
+                  hbBatchWatchdog = null;
+                }
                 if (hbPendingQueue.length > 0 && !hbBatchTimer) {
                   hbBatchTimer = setTimeout(flushHbBadgeBatch, 80);
                 }
@@ -1037,7 +1181,7 @@ class LiveStoreBrowserActivity : Activity() {
                       url: url
                     });
                   } else {
-                    postBridge({ kind: 'browse', url: url });
+                    postBridge({ kind: 'browse', url: url, instacartSlug: instacartSlug });
                   }
                   return;
                 }
@@ -1091,7 +1235,7 @@ class LiveStoreBrowserActivity : Activity() {
                     url: url
                   });
                 } else {
-                  postBridge({ kind: 'browse', url: url });
+                  postBridge({ kind: 'browse', url: url, instacartSlug: instacartSlug });
                 }
               }
 
@@ -1100,18 +1244,26 @@ class LiveStoreBrowserActivity : Activity() {
               var scrollTimer = null;
               function scheduleCheck(withSettle) {
                 if (timer) clearTimeout(timer);
-                timer = setTimeout(extractProductData, 260);
+                timer = setTimeout(extractProductData, 240);
                 if (withSettle) {
                   if (settleTimer) clearTimeout(settleTimer);
-                  settleTimer = setTimeout(extractProductData, 950);
+                  settleTimer = setTimeout(extractProductData, 900);
                 }
               }
               window.__heybrocScheduleCheck = scheduleCheck;
 
-              window.addEventListener('scroll', function() {
+              document.addEventListener('scroll', function() {
                 if (scrollTimer) clearTimeout(scrollTimer);
-                scrollTimer = setTimeout(extractProductData, 220);
-              }, { passive: true });
+                scrollTimer = setTimeout(extractProductData, 200);
+              }, { capture: true, passive: true });
+
+              document.addEventListener('load', function(e) {
+                var t = e && e.target;
+                if (t && t.tagName === 'IMG') {
+                  scheduleCheck(false);
+                }
+              }, true);
+
               window.addEventListener('popstate', function() { scheduleCheck(true); });
               window.addEventListener('hashchange', function() { scheduleCheck(true); });
               var origPush = history.pushState;
@@ -1141,9 +1293,18 @@ class LiveStoreBrowserActivity : Activity() {
                   subtree: true,
                   characterData: true,
                   attributes: true,
-                  attributeFilter: ['src', 'srcset', 'href']
+                  attributeFilter: ['src', 'srcset', 'data-src', 'href']
                 });
               }
+
+              if (typeof setInterval === 'function') {
+                setInterval(function() {
+                  if (!document.hidden) {
+                    scanPhotoBadges();
+                  }
+                }, 1800);
+              }
+
               dismissRetailerAppBanners();
               scheduleCheck(true);
             })();
@@ -1154,11 +1315,12 @@ class LiveStoreBrowserActivity : Activity() {
     private val ioExecutor = Executors.newFixedThreadPool(2)
     private lateinit var activeStore: LiveStoreConfig
 
+    private lateinit var headerBarView: LinearLayout
     private lateinit var webContainer: FrameLayout
     private var storeWebView: WebView? = null
     private lateinit var progressBar: ProgressBar
     private lateinit var pesticideButton: TextView
-    private val storeChipViews = LinkedHashMap<String, TextView>()
+    private val storeChipViews = LinkedHashMap<String, StoreBrandIcons.StoreChipHandle>()
 
     private lateinit var floatingBubble: LinearLayout
     private lateinit var bubbleBadgeLabel: TextView
@@ -1166,6 +1328,13 @@ class LiveStoreBrowserActivity : Activity() {
     private var isDockedLeft = false
     private var bubbleTopPx = 0
     private var lastSyncedBubbleY = -1
+    private var topSystemInsetPx = 0
+    private var bottomSystemInsetPx = 0
+    private var userDraggedBubble = false
+
+    private var currentBridgeSecret: String = ""
+    private var lastInjectedProgressUrl = ""
+    private var lastVisitedHistoryUrl = ""
 
     private var lastDetectedTitle = ""
     private var lastDetectedIngredients = ""
@@ -1228,9 +1397,16 @@ class LiveStoreBrowserActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.WHITE
+        window.navigationBarColor = Color.WHITE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            var flags = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                @Suppress("DEPRECATION")
+                flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            }
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = flags
         }
 
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
@@ -1240,18 +1416,20 @@ class LiveStoreBrowserActivity : Activity() {
         activeStore = STORES.firstOrNull { it.key == requestedKey } ?: STORES.first()
 
         val root = FrameLayout(this).apply {
-            setBackgroundColor(0xFFF8FAFC.toInt())
+            setBackgroundColor(Color.WHITE)
         }
 
         val mainColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFFF8FAFC.toInt())
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
 
-        mainColumn.addView(buildHeaderBar())
+        headerBarView = buildHeaderBar()
+        mainColumn.addView(headerBarView)
 
         webContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -1264,7 +1442,50 @@ class LiveStoreBrowserActivity : Activity() {
         root.addView(mainColumn)
 
         setupFloatingBubble(root)
+
+        // Respect Android 15/16 edge-to-edge status bar, camera cutout, and bottom navigation bar insets
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            val topInset: Int
+            val bottomInset: Int
+            val leftInset: Int
+            val rightInset: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+                )
+                topInset = bars.top
+                bottomInset = bars.bottom
+                leftInset = bars.left
+                rightInset = bars.right
+            } else {
+                @Suppress("DEPRECATION")
+                topInset = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                bottomInset = insets.systemWindowInsetBottom
+                @Suppress("DEPRECATION")
+                leftInset = insets.systemWindowInsetLeft
+                @Suppress("DEPRECATION")
+                rightInset = insets.systemWindowInsetRight
+            }
+            topSystemInsetPx = topInset
+            bottomSystemInsetPx = bottomInset
+            headerBarView.setPadding(leftInset, topInset, rightInset, 0)
+            mainColumn.setPadding(0, 0, 0, bottomInset)
+            if (!userDraggedBubble) {
+                val targetTop = dp(185) + topInset
+                bubbleTopPx = targetTop
+                (floatingBubble.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                    if (lp.topMargin != targetTop) {
+                        lp.topMargin = targetTop
+                        floatingBubble.layoutParams = lp
+                    }
+                }
+            }
+            insets
+        }
+
         setContentView(root)
+        root.post { root.requestApplyInsets() }
 
         updateStoreChipStyles()
         updatePesticideButtonStyle()
@@ -1282,7 +1503,7 @@ class LiveStoreBrowserActivity : Activity() {
         syncBackCallback()
     }
 
-    private fun buildHeaderBar(): View {
+    private fun buildHeaderBar(): LinearLayout {
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
@@ -1347,6 +1568,7 @@ class LiveStoreBrowserActivity : Activity() {
                         lastDetectedIngredients,
                         lastDetectedBarcode,
                         instacartSlug = lastDetectedInstacartSlug,
+                        isCardScan = lastDetectedIsCard,
                         force = true
                     )
                 } else {
@@ -1376,7 +1598,7 @@ class LiveStoreBrowserActivity : Activity() {
 
         val chipScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(dp(10), dp(2), dp(10), dp(6))
+            setPadding(dp(10), dp(2), dp(10), dp(7))
             clipToPadding = false
         }
         val chipRow = LinearLayout(this).apply {
@@ -1384,12 +1606,23 @@ class LiveStoreBrowserActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         STORES.forEachIndexed { idx, store ->
-            val chip = label(store.label, 12.5f, 0xFF334155.toInt(), bold = true).apply {
-                setPadding(dp(12), dp(6), dp(12), dp(6))
-                setOnClickListener { switchActiveStore(store) }
-            }
-            storeChipViews[store.key] = chip
-            chipRow.addView(chip, LinearLayout.LayoutParams(
+            val handle = StoreBrandIcons.buildStoreChip(
+                context = this,
+                storeKey = store.key,
+                labelText = store.label,
+                selected = store.key == activeStore.key,
+                iconSizeDp = 19,
+                textSizeSp = 12.5f,
+                padHdp = 10,
+                padVdp = 5,
+                selectedBgColor = 0xFF0F7A4A.toInt(),
+                unselectedBgColor = 0xFFF8FAFC.toInt(),
+                unselectedStrokeColor = 0xFFD9E2EC.toInt(),
+                unselectedTextColor = 0xFF334155.toInt()
+            )
+            handle.container.setOnClickListener { switchActiveStore(store) }
+            storeChipViews[store.key] = handle
+            chipRow.addView(handle.container, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
@@ -1426,10 +1659,10 @@ class LiveStoreBrowserActivity : Activity() {
     }
 
     private fun updateStoreChipStyles() {
-        for ((key, chip) in storeChipViews) {
+        for ((key, handle) in storeChipViews) {
             val selected = key == activeStore.key
-            chip.setTextColor(if (selected) Color.WHITE else 0xFF334155.toInt())
-            chip.background = GradientDrawable().apply {
+            handle.labelView.setTextColor(if (selected) Color.WHITE else 0xFF334155.toInt())
+            handle.container.background = GradientDrawable().apply {
                 setColor(if (selected) 0xFF0F7A4A.toInt() else 0xFFF8FAFC.toInt())
                 setStroke(dp(1), if (selected) 0xFF0F7A4A.toInt() else 0xFFD9E2EC.toInt())
                 cornerRadius = dp(999).toFloat()
@@ -1458,6 +1691,13 @@ class LiveStoreBrowserActivity : Activity() {
                 old.destroy()
             }
         }
+
+        val secBytes = ByteArray(16)
+        SecureRandom().nextBytes(secBytes)
+        currentBridgeSecret = secBytes.joinToString("") { "%02x".format(it) }
+        val detectorJs = buildDetectorJs(currentBridgeSecret)
+        lastInjectedProgressUrl = ""
+        lastVisitedHistoryUrl = ""
 
         val wv = WebView(this)
         wv.layoutParams = FrameLayout.LayoutParams(
@@ -1496,6 +1736,7 @@ class LiveStoreBrowserActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val uri = request?.url ?: return false
                 val scheme = uri.scheme?.lowercase().orEmpty()
+                val isMainFrame = request.isForMainFrame
                 if (scheme != "https" && scheme != "http" && scheme != "about" && scheme != "blob" && scheme != "data") {
                     // Block custom app schemes (walmart://, intent://, market://) so shopping stays inside HeyBroc
                     return true
@@ -1504,6 +1745,19 @@ class LiveStoreBrowserActivity : Activity() {
                 if (isBlockedAppRedirectHost(host)) {
                     return true
                 }
+                if (isMainFrame) {
+                    if (scheme == "http") {
+                        val upgraded = uri.buildUpon().scheme("https").build().toString()
+                        val safeUpgraded = validatedRetailerUrl(upgraded)
+                        if (safeUpgraded != null) {
+                            view?.loadUrl(safeUpgraded)
+                        }
+                        return true
+                    }
+                    if (scheme == "https" && !isAllowedNavigationHost(host)) {
+                        return true
+                    }
+                }
                 return false
             }
 
@@ -1511,10 +1765,25 @@ class LiveStoreBrowserActivity : Activity() {
                 super.onPageStarted(view, url, favicon)
                 if (isCleaningUp) return
                 scanGeneration++
+                badgeBatchGeneration++
+                cardJsonById.clear()
+                lastInjectedProgressUrl = ""
+                lastVisitedHistoryUrl = url.orEmpty()
                 syncBackCallback()
                 val host = runCatching { Uri.parse(url.orEmpty()).host }.getOrNull()
                 if (isAllowedRetailerHost(host)) {
                     view?.evaluateJavascript(EARLY_BANNER_CSS_JS, null)
+                }
+            }
+
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                super.onPageCommitVisible(view, url)
+                if (isCleaningUp) return
+                val host = runCatching { Uri.parse(url.orEmpty()).host }.getOrNull()
+                if (isAllowedRetailerHost(host)) {
+                    view?.evaluateJavascript(EARLY_BANNER_CSS_JS, null)
+                    view?.evaluateJavascript(detectorJs, null)
+                    syncBubbleYToWebView(triggerRescan = true)
                 }
             }
 
@@ -1526,19 +1795,26 @@ class LiveStoreBrowserActivity : Activity() {
                 val host = runCatching { Uri.parse(url.orEmpty()).host }.getOrNull()
                 if (isAllowedRetailerHost(host)) {
                     view?.evaluateJavascript(EARLY_BANNER_CSS_JS, null)
-                    view?.evaluateJavascript(DETECTOR_JS, null)
-                    syncBubbleYToWebView(triggerRescan = false)
+                    view?.evaluateJavascript(detectorJs, null)
+                    syncBubbleYToWebView(triggerRescan = true)
                 }
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 if (!isCleaningUp) {
+                    val curUrl = url.orEmpty()
+                    if (curUrl.isNotEmpty() && curUrl != lastVisitedHistoryUrl) {
+                        lastVisitedHistoryUrl = curUrl
+                        lastInjectedProgressUrl = ""
+                        badgeBatchGeneration++
+                        cardJsonById.clear()
+                    }
                     syncBackCallback()
-                    val host = runCatching { Uri.parse(url.orEmpty()).host }.getOrNull()
+                    val host = runCatching { Uri.parse(curUrl).host }.getOrNull()
                     if (isAllowedRetailerHost(host)) {
                         view?.evaluateJavascript(EARLY_BANNER_CSS_JS, null)
-                        view?.evaluateJavascript(DETECTOR_JS, null)
+                        view?.evaluateJavascript(detectorJs, null)
                     }
                 }
             }
@@ -1561,10 +1837,15 @@ class LiveStoreBrowserActivity : Activity() {
                 if (isCleaningUp) return
                 progressBar.progress = newProgress.coerceIn(0, 100)
                 progressBar.alpha = if (newProgress >= 99) 0f else 1f
-                if (newProgress in 45..95) {
-                    val host = runCatching { Uri.parse(view?.url.orEmpty()).host }.getOrNull()
+                if (newProgress in 40..98) {
+                    val curUrl = view?.url.orEmpty()
+                    val host = runCatching { Uri.parse(curUrl).host }.getOrNull()
                     if (isAllowedRetailerHost(host)) {
                         view?.evaluateJavascript(EARLY_BANNER_CSS_JS, null)
+                        if (newProgress >= 55 && curUrl.isNotEmpty() && curUrl != lastInjectedProgressUrl) {
+                            lastInjectedProgressUrl = curUrl
+                            view?.evaluateJavascript(detectorJs, null)
+                        }
                     }
                 }
             }
@@ -1583,7 +1864,21 @@ class LiveStoreBrowserActivity : Activity() {
                     view.loadUrl(safeUrl)
                     return false
                 }
-                return false
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                val tempWv = WebView(this@LiveStoreBrowserActivity)
+                tempWv.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
+                        val target = validatedRetailerUrl(req?.url?.toString())
+                        if (target != null && !isCleaningUp) {
+                            view.loadUrl(target)
+                        }
+                        runCatching { v?.destroy() }
+                        return true
+                    }
+                }
+                transport.webView = tempWv
+                resultMsg.sendToTarget()
+                return true
             }
         }
 
@@ -1594,7 +1889,7 @@ class LiveStoreBrowserActivity : Activity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupFloatingBubble(root: FrameLayout) {
-        bubbleTopPx = dp(185)
+        bubbleTopPx = dp(185) + topSystemInsetPx
         floatingBubble = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1657,11 +1952,12 @@ class LiveStoreBrowserActivity : Activity() {
                     val dy = e.rawY - downRawY
                     if (!moved && (abs(dx) > slop || abs(dy) > slop)) {
                         moved = true
+                        userDraggedBubble = true
                     }
                     if (moved) {
                         val parentH = root.height.coerceAtLeast(dp(360))
-                        val minTop = dp(96)
-                        val maxTop = (parentH - v.height - dp(24)).coerceAtLeast(minTop + dp(20))
+                        val minTop = dp(96) + topSystemInsetPx
+                        val maxTop = (parentH - v.height - dp(24) - bottomSystemInsetPx).coerceAtLeast(minTop + dp(20))
                         val curLp = v.layoutParams as FrameLayout.LayoutParams
                         curLp.topMargin = (startTop + dy.toInt()).coerceIn(minTop, maxTop)
                         bubbleTopPx = curLp.topMargin
@@ -1795,6 +2091,7 @@ class LiveStoreBrowserActivity : Activity() {
         ingredients: String,
         barcode: String,
         instacartSlug: String = "",
+        isCardScan: Boolean = false,
         force: Boolean = false
     ) {
         val wlSig = ScanApi.currentWatchlistSignature(this)
@@ -1802,7 +2099,9 @@ class LiveStoreBrowserActivity : Activity() {
         if (!force && dedupeKey == lastScannedKey) return
         lastScannedKey = dedupeKey
         val gen = ++scanGeneration
-        setBubbleScanningState()
+        if (!isCardScan || latestScanJson == null) {
+            setBubbleScanningState()
+        }
         val appCtx = applicationContext
         val apiStore = activeStore.apiStoreKey
         val bucket = activeStore.storeBucket
@@ -1825,8 +2124,12 @@ class LiveStoreBrowserActivity : Activity() {
             mainHandler.post {
                 if (isCleaningUp || isFinishing || isDestroyed || gen != scanGeneration) return@post
                 if (parsed != null && parsed.optBoolean("ok", false) && parsed.optJSONObject("result") != null) {
+                    if (isCardScan && parsed.optBoolean("isCategoryEstimate", false)) {
+                        if (latestScanJson == null) setBubbleIdleState()
+                        return@post
+                    }
                     ScanApi.applyLocalWatchlistToData(this, parsed)
-                    if (!lastDetectedIsCard) {
+                    if (!isCardScan) {
                         runCatching { ScanHistoryStore.recordScan(this, parsed, apiStore) }
                     }
                     applyJsonToBubble(parsed)
@@ -1842,16 +2145,30 @@ class LiveStoreBrowserActivity : Activity() {
         fun postMessage(rawJson: String?) {
             if (rawJson.isNullOrBlank() || rawJson.length > 64_000) return
             val obj = runCatching { JSONObject(rawJson) }.getOrNull() ?: return
+            val providedSec = obj.optString("_hbSec")
             val kind = obj.optString("kind")
-            if (kind.isEmpty()) return
+            if (kind.isEmpty() || providedSec.isEmpty()) return
 
             mainHandler.post {
                 if (isCleaningUp || isFinishing || isDestroyed) return@post
+                val expectedSec = currentBridgeSecret
+                if (
+                    expectedSec.isEmpty() ||
+                    !MessageDigest.isEqual(
+                        providedSec.toByteArray(Charsets.UTF_8),
+                        expectedSec.toByteArray(Charsets.UTF_8)
+                    )
+                ) {
+                    return@post
+                }
                 val activeUrl = storeWebView?.url.orEmpty()
                 val activeUri = runCatching { Uri.parse(activeUrl) }.getOrNull()
                 if (activeUri?.scheme?.lowercase() != "https" || !isAllowedRetailerHost(activeUri.host)) {
                     return@post
                 }
+                val isInstacartHost = activeUri.host?.lowercase()?.let {
+                    it == "instacart.com" || it.endsWith(".instacart.com")
+                } == true
 
                 when (kind) {
                     "product", "card" -> {
@@ -1859,13 +2176,25 @@ class LiveStoreBrowserActivity : Activity() {
                         if (title.isEmpty()) return@post
                         val ingredients = obj.optString("ingredients").trim()
                         val barcode = obj.optString("barcode").trim()
-                        val instacartSlug = obj.optString("instacartSlug").trim()
-                        lastDetectedIsCard = (kind == "card")
+                        val rawSlug = obj.optString("instacartSlug").trim()
+                        val effectiveSlug = when {
+                            rawSlug.isNotEmpty() -> rawSlug
+                            isInstacartHost -> lastDetectedInstacartSlug
+                            else -> ""
+                        }
+                        val isCard = (kind == "card")
+                        lastDetectedIsCard = isCard
                         lastDetectedTitle = title
                         lastDetectedIngredients = ingredients
                         lastDetectedBarcode = barcode
-                        lastDetectedInstacartSlug = instacartSlug
-                        runLiveScan(title, ingredients, barcode, instacartSlug = instacartSlug)
+                        lastDetectedInstacartSlug = effectiveSlug
+                        runLiveScan(
+                            title,
+                            ingredients,
+                            barcode,
+                            instacartSlug = effectiveSlug,
+                            isCardScan = isCard
+                        )
                     }
                     "browse" -> {
                         scanGeneration++
@@ -1873,33 +2202,48 @@ class LiveStoreBrowserActivity : Activity() {
                         lastDetectedTitle = ""
                         lastDetectedIngredients = ""
                         lastDetectedBarcode = ""
-                        lastDetectedInstacartSlug = ""
+                        val browseSlug = obj.optString("instacartSlug").trim()
+                        if (browseSlug.isNotEmpty()) {
+                            lastDetectedInstacartSlug = browseSlug
+                        } else if (!isInstacartHost) {
+                            lastDetectedInstacartSlug = ""
+                        }
                         lastScannedKey = ""
                         latestScanJson = null
                         setBubbleIdleState()
                     }
                     "gridBatch" -> {
+                        val pageToken = obj.optString("pageToken").trim()
+                        val quotedToken = JSONObject.quote(pageToken)
                         val arr = obj.optJSONArray("items")
                         if (arr == null) {
                             storeWebView?.evaluateJavascript(
-                                "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges({});",
+                                "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges({}, $quotedToken);",
                                 null
                             )
                             return@post
                         }
-                        val instacartSlug = obj.optString("instacartSlug").trim()
+                        val rawSlug = obj.optString("instacartSlug").trim()
+                        val instacartSlug = when {
+                            rawSlug.isNotEmpty() -> {
+                                lastDetectedInstacartSlug = rawSlug
+                                rawSlug
+                            }
+                            isInstacartHost -> lastDetectedInstacartSlug
+                            else -> ""
+                        }
                         val batchReq = ArrayList<ScanApi.BatchScanRequestItem>()
                         for (i in 0 until minOf(arr.length(), 8)) {
                             val it = arr.optJSONObject(i) ?: continue
                             val id = it.optString("id").trim()
                             val pTitle = it.optString("productTitle").trim()
-                            if (id.isNotEmpty() && pTitle.isNotEmpty()) {
+                            if (VALID_BATCH_ID_RE.matches(id) && pTitle.isNotEmpty()) {
                                 batchReq.add(ScanApi.BatchScanRequestItem(id, pTitle))
                             }
                         }
                         if (batchReq.isEmpty()) {
                             storeWebView?.evaluateJavascript(
-                                "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges({});",
+                                "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges({}, $quotedToken);",
                                 null
                             )
                             return@post
@@ -1920,7 +2264,7 @@ class LiveStoreBrowserActivity : Activity() {
                                 if (isCleaningUp || isFinishing || isDestroyed) return@post
                                 if (gen != badgeBatchGeneration) {
                                     storeWebView?.evaluateJavascript(
-                                        "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges({});",
+                                        "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges({}, $quotedToken);",
                                         null
                                     )
                                     return@post
@@ -1947,7 +2291,7 @@ class LiveStoreBrowserActivity : Activity() {
                                     }
                                 }
                                 storeWebView?.evaluateJavascript(
-                                    "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges(${jsMap});",
+                                    "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges($jsMap, $quotedToken);",
                                     null
                                 )
                             }
@@ -1956,8 +2300,13 @@ class LiveStoreBrowserActivity : Activity() {
                     "inspectCard" -> {
                         val cardId = obj.optString("cardId").trim()
                         val title = obj.optString("title").trim()
-                        val instacartSlug = obj.optString("instacartSlug").trim()
-                        val cached = if (cardId.isNotEmpty()) cardJsonById[cardId] else null
+                        val rawSlug = obj.optString("instacartSlug").trim()
+                        val instacartSlug = when {
+                            rawSlug.isNotEmpty() -> rawSlug
+                            isInstacartHost -> lastDetectedInstacartSlug
+                            else -> ""
+                        }
+                        val cached = if (VALID_BATCH_ID_RE.matches(cardId)) cardJsonById[cardId] else null
                         if (cached != null) {
                             ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, cached)
                             applyJsonToBubble(cached)
@@ -1985,7 +2334,7 @@ class LiveStoreBrowserActivity : Activity() {
                                     if (isCleaningUp || isFinishing || isDestroyed) return@post
                                     if (parsed != null && parsed.optBoolean("ok", false) && parsed.optJSONObject("result") != null) {
                                         ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, parsed)
-                                        if (cardId.isNotEmpty() && !parsed.optBoolean("isCategoryEstimate", false)) {
+                                        if (VALID_BATCH_ID_RE.matches(cardId) && !parsed.optBoolean("isCategoryEstimate", false)) {
                                             cardJsonById[cardId] = parsed
                                         }
                                         applyJsonToBubble(parsed)
@@ -2443,6 +2792,18 @@ class LiveStoreBrowserActivity : Activity() {
             return
         }
         super.onBackPressed()
+    }
+
+    override fun onPause() {
+        runCatching { CookieManager.getInstance().flush() }
+        storeWebView?.onPause()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        storeWebView?.onResume()
+        updatePesticideButtonStyle()
     }
 
     override fun onDestroy() {

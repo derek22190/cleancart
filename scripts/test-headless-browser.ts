@@ -1485,6 +1485,144 @@ async function main() {
       `   ✓ iOS Safari mobile Walmart search auto-alignment (${mobileSearchPill.ringVal}/100 · "${mobileSearchPill.subText}") + 1-tap zero-flicker drawer verified!`,
     );
 
+    // 4D. Verify Android In-App LiveStoreBrowserActivity DETECTOR_JS_TEMPLATE on nested Walmart Sponsored (/sp/track) + w_iUH7 mobile cards!
+    const androidLiveKt = fs.readFileSync(
+      path.join(
+        ROOT,
+        "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+      ),
+      "utf8",
+    );
+    const androidDetMatch = androidLiveKt.match(
+      /private const val DETECTOR_JS_TEMPLATE = """\n([\s\S]*?)\n        """/,
+    );
+    assert(androidDetMatch && androidDetMatch[1], "Could not extract Android DETECTOR_JS_TEMPLATE");
+    const androidBridgeSecret = "sec_e2e_android_bridge_987654";
+    const androidDetectorJS = androidDetMatch[1].replace(
+      "__HB_BRIDGE_SECRET__",
+      androidBridgeSecret,
+    );
+    const placeholderSvgDataUrl =
+      "data:image/svg+xml;utf8," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="160" height="160" fill="#f1f5f9"/></svg>',
+      );
+
+    await storePage.navigate("https://www.walmart.com/search?q=chips");
+    await storePage.eval(`
+      document.head.innerHTML = '<meta name="viewport" content="width=device-width, initial-scale=1">';
+      document.body.style.margin = "0";
+      document.body.innerHTML = \`
+        <header style="height:56px;background:#0071dc;color:#fff;">Walmart Mobile Browse</header>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px;">
+          <div data-item-id="wm-sp-1" style="border:1px solid #e2e8f0;border-radius:12px;padding:8px;">
+            <div class="mb0 ph1 pa0-xl bb b--near-white w-25" style="position:relative;">
+              <div style="position:relative;width:148px;height:148px;">
+                <img src=${JSON.stringify(placeholderSvgDataUrl)} width="148" height="148" style="display:block;width:148px;height:148px;" alt="" />
+              </div>
+              <div style="font-size:11px;color:#64748b;">Sponsored</div>
+              <a href="/sp/track?bt=1&amp;eventST=click&amp;rd=%2Fip%2FDoritos-Nacho-Cheese%2F1045" link-identifier="1045" style="display:block;position:absolute;inset:0;z-index:1;">
+                <span class="w_iUH7" style="position:absolute;width:1px;height:1px;overflow:hidden;">Doritos Nacho Cheese Flavored Tortilla Chips, 9.25 oz</span>
+              </a>
+              <div aria-hidden="true">Doritos Nacho Cheese Flavored Tortilla Chips, 9.25 oz</div>
+              <div>$3.98</div>
+            </div>
+          </div>
+          <div data-item-id="wm-org-2" style="border:1px solid #e2e8f0;border-radius:12px;padding:8px;">
+            <div class="mb0 ph1 pa0-xl bb b--near-white w-25" style="position:relative;">
+              <div style="position:relative;width:148px;height:148px;">
+                <img src=${JSON.stringify(placeholderSvgDataUrl)} width="148" height="148" style="display:block;width:148px;height:148px;" alt="" />
+              </div>
+              <a href="/ip/Boulder-Canyon-Avocado-Oil-Kettle-Chips/44391408" link-identifier="44391408" style="display:block;position:absolute;inset:0;z-index:1;">
+                <span class="w_iUH7" style="position:absolute;width:1px;height:1px;overflow:hidden;">Boulder Canyon Avocado Oil Kettle Chips</span>
+              </a>
+              <div aria-hidden="true">Boulder Canyon Avocado Oil Kettle Chips</div>
+              <div>$4.48</div>
+            </div>
+          </div>
+        </div>
+      \`;
+      window.__hbSecretChecks = { valid: 0, invalid: 0 };
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) {
+            window.__hbSecretChecks.invalid++;
+            return;
+          }
+          window.__hbSecretChecks.valid++;
+          if (msg.kind === "gridBatch" && Array.isArray(msg.items)) {
+            fetch(${JSON.stringify("https://www.heybroc.com/api/scan")}, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                surface: "android",
+                clientPlatform: "android",
+                store: "walmart",
+                format: "json",
+                items: msg.items
+              })
+            })
+              .then((r) => r.json())
+              .then((batchResp) => {
+                const out = {};
+                const results = batchResp.results || {};
+                for (const it of msg.items) {
+                  const r = results[it.id];
+                  if (r && r.ok && r.result) {
+                    out[it.id] = {
+                      ok: true,
+                      score: r.result.score,
+                      hasAlert: Array.isArray(r.dietaryAlerts) && r.dietaryAlerts.length > 0,
+                      alertSeverity: r.alertSeverity || "none",
+                      isCategoryEstimate: Boolean(r.isCategoryEstimate)
+                    };
+                  } else {
+                    out[it.id] = { ok: false, transient: false };
+                  }
+                }
+                if (typeof window.__heybrocApplyCardBadges === "function") {
+                  window.__heybrocApplyCardBadges(out, msg.pageToken || "");
+                }
+              });
+          }
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+
+    const androidWalmartBadges = await storePage.waitFor<{
+      count: number;
+      texts: string[];
+      zIndexes: string[];
+      validBridgeMsgs: number;
+      invalidBridgeMsgs: number;
+    }>(
+      `(() => {
+        const badges = [...document.querySelectorAll(".hb-photo-badge:not(.hb-photo-badge--loading)")];
+        if (badges.length < 2) return null;
+        return {
+          count: badges.length,
+          texts: badges.map((b) => (b.textContent || "").trim()),
+          zIndexes: badges.map((b) => window.getComputedStyle(b).zIndex),
+          validBridgeMsgs: window.__hbSecretChecks?.valid || 0,
+          invalidBridgeMsgs: window.__hbSecretChecks?.invalid || 0
+        };
+      })()`,
+      "Android LiveStoreBrowserActivity Walmart Sponsored + organic photo badges",
+      10000,
+    );
+    assert(
+      androidWalmartBadges.count === 2 &&
+        androidWalmartBadges.zIndexes.every((z) => Number(z) >= 20) &&
+        androidWalmartBadges.validBridgeMsgs >= 1 &&
+        androidWalmartBadges.invalidBridgeMsgs === 0,
+      `Expected exactly 2 non-duplicated Walmart photo badges (z-index >= 20) with valid bridge secret, got ${JSON.stringify(androidWalmartBadges)}`,
+    );
+    console.log(
+      `   ✓ Android LiveStoreBrowserActivity Walmart Sponsored + nested-card photo badges (${androidWalmartBadges.texts.join(" | ")}, z-index=${androidWalmartBadges.zIndexes[0]}) verified!`,
+    );
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");

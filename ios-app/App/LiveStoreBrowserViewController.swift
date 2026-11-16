@@ -96,12 +96,92 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var progressObservation: NSKeyValueObservation?
     private var lastSyncedBubbleY: Int = -1
 
+    private static let validBatchItemIdRegex = try? NSRegularExpression(pattern: "^[A-Za-z0-9_-]{1,40}$")
+
+    private static let allowedRetailerDomains: [String] = [
+        "walmart.com",
+        "target.com",
+        "instacart.com",
+        "amazon.com",
+        "wholefoodsmarket.com",
+        "costco.com",
+        "samsclub.com",
+        "kroger.com",
+        "ralphs.com",
+        "fredmeyer.com",
+        "frysfood.com",
+        "kingsoopers.com",
+        "smithsfoodanddrug.com",
+        "qfc.com",
+        "harristeeter.com",
+        "mariano.com",
+        "marianos.com",
+        "picknsave.com",
+        "metro-market.net",
+        "metromarket.net",
+        "dillons.com",
+        "citymarket.com",
+        "bakersplus.com",
+        "gerbes.com",
+        "jaycfoods.com",
+        "pay-less.com",
+        "food4less.com",
+        "foodscompany.com",
+        "aldi.us",
+        "bjs.com",
+        "shipt.com",
+        "doordash.com",
+        "ubereats.com",
+        "uber.com"
+    ]
+
+    private static let allowedSsoDomains: [String] = [
+        "accounts.google.com",
+        "appleid.apple.com",
+        "paypal.com",
+        "stripe.com",
+        "auth0.com",
+        "okta.com",
+        "affirm.com",
+        "klarna.com",
+        "b2clogin.com",
+        "microsoftonline.com"
+    ]
+
+    private static func isAllowedRetailerHost(_ rawHost: String) -> Bool {
+        let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !h.isEmpty else { return false }
+        return allowedRetailerDomains.contains { domain in
+            h == domain || h.hasSuffix(".\(domain)")
+        }
+    }
+
+    private static func isAllowedNavigationHost(_ rawHost: String) -> Bool {
+        if isAllowedRetailerHost(rawHost) { return true }
+        let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !h.isEmpty else { return false }
+        return allowedSsoDomains.contains { domain in
+            h == domain || h.hasSuffix(".\(domain)")
+        }
+    }
+
+    private static func isValidBatchItemId(_ id: String) -> Bool {
+        let lower = id.lowercased()
+        if lower == "__proto__" || lower == "constructor" || lower == "prototype" {
+            return false
+        }
+        let range = NSRange(id.startIndex..<id.endIndex, in: id)
+        return validBatchItemIdRegex?.firstMatch(in: id, options: [], range: range) != nil
+    }
+
     private static func validatedHTTPURL(_ raw: String?) -> URL? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty,
               let url = URL(string: trimmed),
               let scheme = url.scheme?.lowercased(),
-              (scheme == "https" || scheme == "http") else {
+              scheme == "https",
+              let host = url.host,
+              isAllowedRetailerHost(host) else {
             return nil
         }
         return url
@@ -692,10 +772,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
           function findAlignedSearchCardTitle() {
             if (isCartUrl()) return '';
-            var cardSel = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-qa*="product-card" i], [data-component-type="s-search-result"], article[class*="product" i], li[class*="product" i]';
+            var cardSel = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-qa*="product-card" i], [data-automation-id="product-tile"], [data-component-type="s-search-result"], article[class*="product" i], li[class*="product" i]';
             var rawCards = Array.prototype.slice.call(document.querySelectorAll(cardSel));
             if (!rawCards.length) {
-              var links = document.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"], a[href*="/product/"]');
+              var links = document.querySelectorAll('a[href*="/ip/"], a[link-identifier], a[href*="/sp/track"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"], a[href*="/product/"]');
               for (var k = 0; k < links.length && rawCards.length < 40; k++) {
                 var anc = links[k].closest('article, li, [role="group"], div');
                 if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
@@ -709,6 +789,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var bestDist = 999999;
             var titleSels = [
               '[data-automation-id="product-title"]',
+              'span.w_iUH7',
               '[data-test="product-title"]',
               '[data-testid*="product-title" i]',
               '[data-testid*="item-title" i]',
@@ -718,7 +799,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               'h3 a span',
               'h2',
               'h3',
+              'a[link-identifier]',
               'a[href*="/ip/"]',
+              'a[href*="/sp/track"]',
               'a[href*="/p/"]',
               'a[href*="/dp/"]',
               'a[href*="/gp/aw/d/"]',
@@ -737,13 +820,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
               var candTitle = '';
               for (var s = 0; s < titleSels.length; s++) {
-                var tel = card.querySelector(titleSels[s]);
-                if (!tel) continue;
-                var rawT = clean(tel.getAttribute('aria-label') || tel.textContent || '');
-                if (rawT && rawT.length >= 5 && rawT.length <= 210 && !NON_TITLE_RE.test(rawT) && !/^\\$\\d/.test(rawT)) {
-                  candTitle = rawT;
-                  break;
+                var tels = card.querySelectorAll(titleSels[s]);
+                for (var tIdx = 0; tIdx < tels.length; tIdx++) {
+                  var tel = tels[tIdx];
+                  if (tel.closest && tel.closest('.hb-photo-badge')) continue;
+                  var rawT = clean(tel.getAttribute('aria-label') || tel.textContent || '');
+                  if (rawT && rawT.length >= 5 && rawT.length <= 210 && !NON_TITLE_RE.test(rawT) && !/^\\$\\d/.test(rawT)) {
+                    candTitle = rawT;
+                    break;
+                  }
                 }
+                if (candTitle) break;
               }
               if (!candTitle) continue;
 
@@ -771,8 +858,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return NON_FOOD_GRID_RE.test(t);
           }
 
-          var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id*="product" i], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
-          var PRODUCT_LINK_SEL = 'a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+          var CARD_SEL = '[data-item-id], [data-testid="item-stack"] > div, [data-testid*="list-view" i], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
+          var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-qa*="product-card" i]';
+          var PRODUCT_LINK_SEL = 'a[href*="/ip/"], a[link-identifier], a[href*="/sp/track"], a[href*="/products/"], a[href*="/product/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
           var PLACEHOLDER_IMG_RE = /(?:^|[\\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank)(?:[\\/_.-]|$)|^data:image\\/gif/i;
 
           function makePageToken() {
@@ -784,10 +872,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           var hbPrefRev = 1;
           var hbCardSeq = 1;
           var hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+          var hbOwnerCardByImg = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
           var hbOwnerCardById = {};
           var hbPendingQueue = [];
           var hbBatchTimer = null;
           var hbRetryTimer = null;
+          var hbWatchdogTimer = null;
           var hbInFlightBatches = 0;
           var MAX_IN_FLIGHT_BATCHES = 2;
           var hbIntersectionObs = null;
@@ -796,7 +886,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (document.getElementById('hb-photo-badge-styles')) return;
             var st = document.createElement('style');
             st.id = 'hb-photo-badge-styles';
-            st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:2!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2px #fbbf24,0 4px 12px rgba(15,23,42,0.28)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.72)!important;opacity:0.85!important;}';
+            st.textContent = '.hb-photo-badge{position:absolute!important;bottom:8px!important;left:8px!important;z-index:20!important;display:inline-flex!important;align-items:center!important;gap:3px!important;padding:3px 8px!important;border-radius:999px!important;font:800 12px/1.15 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.01em!important;color:#fff!important;border:1.5px solid rgba(255,255,255,0.94)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.96)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.96)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.96)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2px #fbbf24,0 4px 12px rgba(15,23,42,0.28)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.72)!important;opacity:0.85!important;}';
             (document.head || document.documentElement).appendChild(st);
           }
 
@@ -841,7 +931,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           function readCardInfo(cardEl) {
             if (!cardEl || cardEl.closest('header, nav, footer')) return null;
             if (isCartDrawer(cardEl.closest('[role="dialog"], aside, section'))) return null;
-            var sels = ['[data-automation-id="product-title"]', '[data-test="product-title"]', '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'];
+            var sels = ['[data-automation-id="product-title"]', 'span.w_iUH7', '[data-test="product-title"]', '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'a[link-identifier]', 'a[href*="/ip/"]', 'a[href*="/sp/track"]', 'a[href*="/sams/shop/product/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'];
             var title = '';
             for (var s = 0; s < sels.length; s++) {
               var els = cardEl.querySelectorAll(sels[s]);
@@ -857,7 +947,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (title) break;
             }
             var linkEl = cardEl.querySelector(PRODUCT_LINK_SEL) || cardEl.querySelector('a[href]');
-            var hrefKey = linkEl ? String(linkEl.getAttribute('href') || '').split('#')[0].slice(0, 140) : '';
+            var rawHref = linkEl ? String(linkEl.getAttribute('href') || '') : '';
+            var hrefKey = rawHref ? rawHref.split('#')[0].split('?')[0].slice(0, 140) : String(cardEl.getAttribute('data-item-id') || '').slice(0, 60);
             var imgs = cardEl.querySelectorAll('img');
             var chosenImg = null;
             var imgKey = '';
@@ -876,16 +967,25 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
               var ew = Math.max(r.width, pr.width);
               var eh = Math.max(r.height, pr.height);
-              if (!chosenImg && ew >= 56 && eh >= 56 && ew <= 440 && eh <= 440) {
+              if (!chosenImg && ew >= 48 && eh >= 48 && ew <= 440 && eh <= 440) {
                 chosenImg = img;
                 imgKey = String(src).split('?')[0].slice(-90);
               }
             }
             if (!title || !chosenImg || isNonFoodGridTitle(title)) return null;
+            if (hbOwnerCardByImg) {
+              var existingImgOwner = hbOwnerCardByImg.get(chosenImg);
+              if (existingImgOwner && existingImgOwner !== cardEl && existingImgOwner.isConnected) {
+                var ownerSt = hbCardState ? hbCardState.get(existingImgOwner) : null;
+                if (ownerSt && ((ownerSt.badgeEl && ownerSt.badgeEl.isConnected) || ownerSt.suppressedEstimate)) {
+                  return null;
+                }
+              }
+            }
             var anchor = findSafeCardAnchor(chosenImg, cardEl);
             if (!anchor) return null;
             var sig = title.toLowerCase() + '|' + hrefKey + '|' + imgKey + '|' + detectInstacartSlug() + '|' + hbPrefRev;
-            return { title: title, anchor: anchor, sig: sig };
+            return { title: title, anchor: anchor, chosenImg: chosenImg, sig: sig };
           }
 
           function removeCardBadgeState(cardEl, st) {
@@ -893,10 +993,29 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (st.id && hbOwnerCardById[st.id] === cardEl) {
               delete hbOwnerCardById[st.id];
             }
+            if (st.chosenImg && hbOwnerCardByImg && hbOwnerCardByImg.get(st.chosenImg) === cardEl) {
+              hbOwnerCardByImg.delete(st.chosenImg);
+            }
             if (st.badgeEl && st.badgeEl.parentNode) {
               st.badgeEl.parentNode.removeChild(st.badgeEl);
             }
             st.badgeEl = null;
+          }
+
+          var hbLastBatchSentAt = 0;
+          function armBatchWatchdog() {
+            if (hbWatchdogTimer) clearTimeout(hbWatchdogTimer);
+            hbWatchdogTimer = setTimeout(function() {
+              hbWatchdogTimer = null;
+              if (hbInFlightBatches > 0 && (Date.now() - hbLastBatchSentAt >= 11000)) {
+                hbInFlightBatches = 0;
+                if (hbPendingQueue.length > 0 && !hbBatchTimer) {
+                  hbBatchTimer = setTimeout(flushHbBadgeBatch, 120);
+                } else {
+                  scanPhotoBadges();
+                }
+              }
+            }, 12000);
           }
 
           function flushHbBadgeBatch() {
@@ -928,8 +1047,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             if (!payloadItems.length) return;
             hbInFlightBatches++;
+            hbLastBatchSentAt = Date.now();
+            armBatchWatchdog();
             window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
               kind: 'gridBatch',
+              pageToken: hbPageToken,
               items: payloadItems,
               instacartSlug: detectInstacartSlug()
             });
@@ -968,6 +1090,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               sig: info.sig,
               title: info.title,
               anchor: info.anchor,
+              chosenImg: info.chosenImg,
               badgeEl: b,
               resolved: false,
               suppressedEstimate: false,
@@ -976,6 +1099,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               openOnResolve: false
             };
             if (hbCardState) hbCardState.set(cardEl, nextState);
+            if (hbOwnerCardByImg && info.chosenImg) hbOwnerCardByImg.set(info.chosenImg, cardEl);
             hbOwnerCardById[cardId] = cardEl;
             hbPendingQueue.push({ id: cardId, title: info.title, sig: info.sig, badgeEl: b, cardEl: cardEl });
             if (!hbBatchTimer) {
@@ -986,16 +1110,36 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           function clearHbBadges() {
             if (hbBatchTimer) { clearTimeout(hbBatchTimer); hbBatchTimer = null; }
             if (hbRetryTimer) { clearTimeout(hbRetryTimer); hbRetryTimer = null; }
+            if (hbWatchdogTimer) { clearTimeout(hbWatchdogTimer); hbWatchdogTimer = null; }
             hbPendingQueue = [];
             hbInFlightBatches = 0;
             hbPageToken = makePageToken();
             hbOwnerCardById = {};
             if (hbIntersectionObs) { hbIntersectionObs.disconnect(); hbIntersectionObs = null; }
             hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+            hbOwnerCardByImg = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
             var old = document.querySelectorAll('.hb-photo-badge');
             for (var i = 0; i < old.length; i++) {
               if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
             }
+          }
+
+          function inNearViewport(el) {
+            if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+            var r = el.getBoundingClientRect();
+            if (r.width < 80 || r.height < 80) return false;
+            var vh = Math.max(320, window.innerHeight || 720);
+            var vw = Math.max(320, window.innerWidth || 390);
+            return r.bottom >= -180 && r.top <= vh + 260 && r.right >= -80 && r.left <= vw + 80;
+          }
+
+          function nodeContains(anc, desc) {
+            if (!anc || !desc) return false;
+            if (typeof anc.contains === 'function') return anc.contains(desc);
+            for (var c = desc; c; c = c.parentElement) {
+              if (c === anc) return true;
+            }
+            return false;
           }
 
           function scanPhotoBadges() {
@@ -1014,14 +1158,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   hbIntersectionObs.unobserve(entries[i].target);
                   processVisibleCard(entries[i].target);
                 }
-              }, { rootMargin: '180px 0px' });
+              }, { rootMargin: '220px 0px' });
             }
             var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
             var seen = [];
             function addCand(el) {
               if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer')) return;
+              if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
               var r = el.getBoundingClientRect();
-              if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 100 || r.height > 720)) return;
+              if (r.width > 0 && (r.width < 88 || r.width > (onPdp ? 360 : 560) || r.height < 84 || r.height > 760)) return;
+              for (var s = 0; s < seen.length; s++) {
+                var ex = seen[s];
+                if (nodeContains(ex, el) || nodeContains(el, ex)) return;
+              }
               seen.push(el);
             }
             var direct = document.querySelectorAll(CARD_SEL);
@@ -1033,10 +1182,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 if (a.closest(CARD_SEL) || a.closest('header, nav, footer')) continue;
                 var cur = a;
                 var tile = null;
-                for (var depth = 0; depth < 4 && cur && cur !== document.body; depth++) {
+                for (var depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
                   if (cur.querySelector('img')) {
+                    if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
                     var cr = cur.getBoundingClientRect();
-                    if (cr.width >= 100 && cr.width <= 520 && cr.height >= 110 && cr.height <= 680) {
+                    if (cr.width >= 92 && cr.width <= 540 && cr.height >= 92 && cr.height <= 720) {
                       tile = cur;
                       if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
                     }
@@ -1069,7 +1219,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   continue;
                 }
               }
-              if (hbIntersectionObs) {
+              if (inNearViewport(card)) {
+                if (hbIntersectionObs) hbIntersectionObs.unobserve(card);
+                processVisibleCard(card);
+              } else if (hbIntersectionObs) {
                 hbIntersectionObs.observe(card);
               } else {
                 processVisibleCard(card);
@@ -1077,11 +1230,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
           }
 
-          window.__heybrocApplyCardBadges = function(badgeMap) {
-            hbInFlightBatches = Math.max(0, hbInFlightBatches - 1);
+          window.__heybrocApplyCardBadges = function(badgeMap, respPageToken) {
+            if (!respPageToken || respPageToken === hbPageToken) {
+              hbInFlightBatches = Math.max(0, hbInFlightBatches - 1);
+              if (hbInFlightBatches === 0 && hbWatchdogTimer) {
+                clearTimeout(hbWatchdogTimer);
+                hbWatchdogTimer = null;
+              }
+            }
             if (hbPendingQueue.length > 0 && !hbBatchTimer) {
               hbBatchTimer = setTimeout(flushHbBadgeBatch, 80);
             }
+            if (respPageToken && respPageToken !== hbPageToken) return;
             if (!badgeMap || typeof badgeMap !== 'object') return;
             var earliestRetryMs = 0;
             for (var id in badgeMap) {
@@ -1345,10 +1505,23 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           }
           window.__heybrocScheduleCheck = scheduleCheck;
 
-          window.addEventListener('scroll', function() {
+          document.addEventListener('scroll', function() {
             if (scrollTimer) clearTimeout(scrollTimer);
-            scrollTimer = setTimeout(extractProductData, 220);
-          }, { passive: true });
+            scrollTimer = setTimeout(extractProductData, 200);
+          }, true);
+          document.addEventListener('load', function(e) {
+            var t = e && e.target;
+            if (t && t.tagName === 'IMG') {
+              scheduleCheck(false);
+            }
+          }, true);
+          if (typeof setInterval === 'function') {
+            setInterval(function() {
+              if (!document.hidden && !isCartUrl()) {
+                scanPhotoBadges();
+              }
+            }, 1800);
+          }
           window.addEventListener('popstate', function() { scheduleCheck(true); });
           window.addEventListener('hashchange', function() { scheduleCheck(true); });
           var origPush = history.pushState;
@@ -1632,6 +1805,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 barcode: lastDetectedBarcode,
                 instacartRetailerSlug: lastDetectedInstacartSlug,
                 skipAnalytics: lastDetectedIsCard,
+                isPassiveCard: lastDetectedIsCard,
                 force: true
             )
         } else if let prev = latestSummary {
@@ -1707,6 +1881,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         barcode: String,
         instacartRetailerSlug: String = "",
         skipAnalytics: Bool = false,
+        isPassiveCard: Bool = false,
         force: Bool = false
     ) {
         let dedupeKey = "\(activeStore.apiStoreKey)|\(instacartRetailerSlug.lowercased())|\(title.lowercased())|\(barcode)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))|\(HeyBrocSharedPrefs.familyWatchlist.joined(separator: ","))"
@@ -1731,7 +1906,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             self.isScanning = false
             switch result {
             case .success(let summary):
-                self.applySummaryToBubble(summary)
+                if isPassiveCard && summary.isCategoryEstimate {
+                    if self.latestSummary == nil {
+                        self.setBubbleIdleState()
+                    }
+                } else {
+                    self.applySummaryToBubble(summary)
+                }
             case .failure:
                 if self.latestSummary == nil {
                     self.setBubbleIdleState()
@@ -1747,6 +1928,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             storeLabel: activeStore.label,
             onOpenSwapInStore: { [weak self] urlString in
                 guard let self = self, let u = Self.validatedHTTPURL(urlString) else { return }
+                HeyBrocNativeScannerAPI.recordSwapUnlock(productKey: summary.title)
                 self.storeWebView?.load(URLRequest(url: u))
             },
             onRescanScreenOCR: { [weak self] in
@@ -1784,6 +1966,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard !isCleaningUp,
               message.name == "heybrocStoreBridge",
+              message.frameInfo.isMainFrame,
+              message.frameInfo.securityOrigin.protocol.lowercased() == "https",
+              Self.isAllowedRetailerHost(message.frameInfo.securityOrigin.host),
               let body = message.body as? [String: Any],
               let kind = body["kind"] as? String else { return }
 
@@ -1792,6 +1977,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let barcode = (body["barcode"] as? String) ?? ""
         let instacartSlug = (body["instacartSlug"] as? String) ?? ""
         let cardId = (body["cardId"] as? String) ?? ""
+        let pageToken = (body["pageToken"] as? String) ?? ""
         let rawBatchItems = (body["items"] as? [[String: Any]]) ?? []
 
         DispatchQueue.main.async { [weak self] in
@@ -1811,7 +1997,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     ingredients: ingredients,
                     barcode: barcode,
                     instacartRetailerSlug: instacartSlug,
-                    skipAnalytics: isPassiveCard
+                    skipAnalytics: isPassiveCard,
+                    isPassiveCard: isPassiveCard
                 )
             } else if kind == "browse" {
                 self.scanGeneration += 1
@@ -1826,13 +2013,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             } else if kind == "gridBatch" {
                 var cleanItems: [[String: String]] = []
                 for item in rawBatchItems.prefix(8) {
-                    guard let id = item["id"] as? String, !id.isEmpty,
+                    guard let id = item["id"] as? String,
+                          Self.isValidBatchItemId(id),
                           let pTitle = item["productTitle"] as? String, !pTitle.isEmpty else { continue }
                     cleanItems.append(["id": id, "productTitle": pTitle])
                 }
                 guard !cleanItems.isEmpty else { return }
                 let gen = self.badgeBatchGeneration
                 let storeKey = self.activeStore.apiStoreKey
+                let safeToken = String(pageToken.prefix(64).filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" })
                 HeyBrocNativeScannerAPI.scanBatchWithOutcome(
                     items: cleanItems,
                     store: storeKey,
@@ -1866,7 +2055,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     if let jsonData = try? JSONSerialization.data(withJSONObject: jsMap),
                        let jsonStr = String(data: jsonData, encoding: .utf8) {
                         self.storeWebView?.evaluateJavaScript(
-                            "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges(\(jsonStr));",
+                            "window.__heybrocApplyCardBadges && window.__heybrocApplyCardBadges(\(jsonStr), \"\(safeToken)\");",
                             completionHandler: nil
                         )
                     }
@@ -1883,7 +2072,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                         self.presentInspectSheet(summary: summary)
                     }
                 }
-                if !cardId.isEmpty, let cachedSummary = self.cardSummariesById[cardId] {
+                if !cardId.isEmpty, Self.isValidBatchItemId(cardId), let cachedSummary = self.cardSummariesById[cardId] {
                     openSummarySheet(cachedSummary)
                 } else if !title.isEmpty {
                     self.setBubbleScanningState()
@@ -1894,7 +2083,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     ) { [weak self] res in
                         guard let self = self, !self.isCleaningUp else { return }
                         if case .success(let summary) = res {
-                            if !cardId.isEmpty {
+                            if !cardId.isEmpty, Self.isValidBatchItemId(cardId), !summary.isCategoryEstimate {
                                 if self.cardSummariesById.count > 300 {
                                     self.cardSummariesById.removeAll(keepingCapacity: true)
                                 }
@@ -1946,10 +2135,16 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             respond(.cancel)
             return
         }
+        if navigationAction.targetFrame?.isMainFrame == true && scheme != "about" {
+            guard scheme == "https", Self.isAllowedNavigationHost(host) else {
+                respond(.cancel)
+                return
+            }
+        }
         // Prevent iOS Universal Links from hijacking link taps out to installed Walmart / Target / Amazon native apps
         // using WebKit's native non-reentrant app-link suppression policy (avoids cancel+load re-entrancy crashes on iOS 26).
         if navigationAction.navigationType == .linkActivated,
-           (scheme == "https" || scheme == "http") {
+           scheme == "https" {
             let allowWithoutAppLink = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
             respond(allowWithoutAppLink)
             return
@@ -1977,9 +2172,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         if navigationAction.targetFrame == nil,
            let url = navigationAction.request.url,
            let scheme = url.scheme?.lowercased(),
-           (scheme == "http" || scheme == "https") {
+           scheme == "https" {
             let host = (url.host ?? "").lowercased()
-            if !Self.isBlockedAppRedirectHost(host) {
+            if !Self.isBlockedAppRedirectHost(host) && Self.isAllowedNavigationHost(host) {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self, !self.isCleaningUp else { return }
                     self.storeWebView?.load(URLRequest(url: url))
@@ -2164,8 +2359,9 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             swapHead.font = UIFont.systemFont(ofSize: 11.5, weight: .heavy)
             swapHead.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
 
+            let isSwapLocked = swap.locked || swap.webUrl == nil
             let swapTitle = UILabel()
-            swapTitle.text = swap.title
+            swapTitle.text = isSwapLocked ? "🔒 Clean Swap Available — Unlock to Reveal" : swap.title
             swapTitle.font = UIFont.systemFont(ofSize: 15.5, weight: .heavy)
             swapTitle.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
             swapTitle.numberOfLines = 0
@@ -2173,7 +2369,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             swapCard.addArrangedSubview(swapHead)
             swapCard.addArrangedSubview(swapTitle)
 
-            if swap.webUrl != nil {
+            if !isSwapLocked {
                 let openSwapBtn = UIButton(type: .system)
                 openSwapBtn.setTitle("🛒 View Clean Swap in \(storeLabel) →", for: .normal)
                 openSwapBtn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .heavy)
@@ -2185,7 +2381,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 swapCard.addArrangedSubview(openSwapBtn)
 
                 let alternates = summary.swapCandidates.filter { cand in
-                    cand.title.caseInsensitiveCompare(swap.title) != .orderedSame && cand.webUrl != nil
+                    !cand.locked && cand.title.caseInsensitiveCompare(swap.title) != .orderedSame && cand.webUrl != nil
                 }.prefix(2)
                 for (idx, alt) in alternates.enumerated() {
                     guard let altUrl = alt.webUrl else { continue }
@@ -2310,7 +2506,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
     }
 
     @objc private func tapOpenSwap() {
-        guard let url = summary.swap?.webUrl else { return }
+        guard let swap = summary.swap, !swap.locked, let url = swap.webUrl else { return }
         dismiss(animated: true) { [onOpenSwapInStore] in
             onOpenSwapInStore(url)
         }

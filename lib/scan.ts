@@ -1177,34 +1177,42 @@ export async function runBatchScan(
         });
         continue;
       }
-      const single = await runScan({
-        ...baseReq,
-        productTitle: target.productTitle,
-        barcode: target.barcode,
-        rawIngredients: undefined,
-        rawText: undefined,
-        deviceId: undefined,
-        clientPlatform,
-        format: "json",
-        skipAnalytics: true,
-      });
-      if (single.ok) {
-        const gated: ScanResponse = {
-          ...single,
-          entitlement,
-          ...(canAccessSwapLinks
-            ? {}
-            : {
-                swap: single.swap ? stripGatedSwapLinks(single.swap) : null,
-                ...(single.storeBrandSwap ? { storeBrandSwap: stripGatedSwapLinks(single.storeBrandSwap) } : {}),
-                ...(single.swapCandidates
-                  ? { swapCandidates: single.swapCandidates.map(stripGatedSwapLinks) }
-                  : {}),
-              }),
-        };
-        resolvedByNorm.set(normKey, gated);
-      } else {
-        resolvedByNorm.set(normKey, single);
+      try {
+        const single = await runScan({
+          ...baseReq,
+          productTitle: target.productTitle,
+          barcode: target.barcode,
+          rawIngredients: undefined,
+          rawText: undefined,
+          deviceId: undefined,
+          clientPlatform,
+          format: "json",
+          skipAnalytics: true,
+        });
+        if (single.ok) {
+          const gated: ScanResponse = {
+            ...single,
+            entitlement,
+            ...(canAccessSwapLinks
+              ? {}
+              : {
+                  swap: single.swap ? stripGatedSwapLinks(single.swap) : null,
+                  ...(single.storeBrandSwap ? { storeBrandSwap: stripGatedSwapLinks(single.storeBrandSwap) } : {}),
+                  ...(single.swapCandidates
+                    ? { swapCandidates: single.swapCandidates.map(stripGatedSwapLinks) }
+                    : {}),
+                }),
+          };
+          resolvedByNorm.set(normKey, gated);
+        } else {
+          resolvedByNorm.set(normKey, single);
+        }
+      } catch {
+        resolvedByNorm.set(normKey, {
+          ok: false,
+          status: 500,
+          error: "Batch item scan failed.",
+        });
       }
     }
   });

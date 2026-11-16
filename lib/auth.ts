@@ -801,11 +801,8 @@ async function verifyOidcJwtWithJwks(params: {
     let tokenEmail = "";
 
     if (payload.email) {
-      const emailExplicitlyUnverified =
-        payload.email_verified === false || payload.email_verified === "false";
-      const emailVerified = params.allowAppleSubFallback
-        ? !emailExplicitlyUnverified
-        : payload.email_verified === true || payload.email_verified === "true";
+      const emailVerified =
+        payload.email_verified === true || payload.email_verified === "true";
       if (!emailVerified) {
         return { ok: false, email: "" };
       }
@@ -888,6 +885,8 @@ async function verifyGoogleIdToken(
     new Set(
       [
         process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_ANDROID_CLIENT_ID,
+        process.env.GOOGLE_IOS_CLIENT_ID,
         process.env.GOOGLE_OAUTH_CLIENT_IDS,
         process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
       ]

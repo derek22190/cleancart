@@ -7330,6 +7330,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
           "utf8",
         );
+        const storeBrandIconsKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/StoreBrandIcons.kt",
+          "utf8",
+        );
         const scanApiKt = fsSync.readFileSync(
           "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
           "utf8",
@@ -7350,9 +7354,18 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           "android-app/app/src/main/AndroidManifest.xml",
           "utf8",
         );
+        const appleVerifyTs = fsSync.readFileSync(
+          "app/api/apple/verify/route.ts",
+          "utf8",
+        );
+        const authTs = fsSync.readFileSync("lib/auth.ts", "utf8");
+        const iosLiveVc = fsSync.readFileSync(
+          "ios-app/App/LiveStoreBrowserViewController.swift",
+          "utf8",
+        );
 
         const detMatch = liveBrowserKt.match(
-          /private const val DETECTOR_JS = """\n([\s\S]*?)\n        """/,
+          /private const val DETECTOR_JS_TEMPLATE = """\n([\s\S]*?)\n        """/,
         );
         const earlyCssMatch = liveBrowserKt.match(
           /private const val EARLY_BANNER_CSS_JS = """\n([\s\S]*?)\n        """/,
@@ -7368,54 +7381,115 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           }
         }
 
+        const iosDetMatch = iosLiveVc.match(/let detectorJS = """\n([\s\S]*?)\n        """/);
+        let iosDetectorSyntaxValid = false;
+        if (iosDetMatch && iosDetMatch[1]) {
+          try {
+            const unescapedIosJs = iosDetMatch[1]
+              .replace(/\\\\/g, "\\")
+              .replace(/\\"/g, '"');
+            new vmMod.Script(unescapedIosJs);
+            iosDetectorSyntaxValid = true;
+          } catch (e) {
+            console.error("iOS LiveStoreBrowserViewController JS syntax error:", e);
+          }
+        }
+
+        const { evaluateDietaryAlerts } = await import("../lib/dietary");
+        const nonOrgOatsAlerts = evaluateDietaryAlerts(
+          ["pesticide_risk"],
+          "Non-organic rolled oats",
+          "whole grain rolled oats",
+        );
+        const madeWithOrgSugarGranolaAlerts = evaluateDietaryAlerts(
+          ["pesticide_risk"],
+          "Conventional Honey Almond Granola",
+          "whole grain oats, organic cane sugar, canola oil, honey, almonds",
+        );
+        const usdaOrgOatsAlerts = evaluateDietaryAlerts(
+          ["pesticide_risk"],
+          "USDA Organic Old Fashioned Rolled Oats",
+          "organic whole grain rolled oats",
+        );
+
+        // Verify implicit egg/dairy guard on egg-free/dairy-free olive-oil vinaigrette & implicit sesame guard
+        const vinaigretteSwap = resolveSwap({
+          score: 38,
+          productTitle: "Wish-Bone Italian Dressing, 15 fl oz",
+          ingredients:
+            "Water, soybean oil, distilled vinegar, high fructose corn syrup, salt, garlic, onion, xanthan gum, potassium sorbate, calcium disodium edta",
+          store: "walmart",
+        });
+
         const androidDualModeMap = {
           manifestRegistered:
-            manifestXml.includes('.LiveStoreBrowserActivity') &&
-            manifestXml.includes('android:exported="false"'),
+            manifestXml.includes(".LiveStoreBrowserActivity") &&
+            manifestXml.includes('android:exported="false"') &&
+            manifestXml.includes('android:launchMode="singleTask"'),
           androidDetectorSyntaxValid,
-          reusedCardWeakMap:
+          iosDetectorSyntaxValid,
+          reusedCardWeakMapAndWalmartSponsored:
             Boolean(detMatch?.[1]?.includes("new WeakMap()")) &&
             Boolean(detMatch?.[1]?.includes("hbOwnerCardById")) &&
+            Boolean(detMatch?.[1]?.includes("hbOwnerCardByImg")) &&
+            Boolean(detMatch?.[1]?.includes("MULTI_CARD_UNIT_SEL")) &&
+            Boolean(detMatch?.[1]?.includes("a[link-identifier]")) &&
+            Boolean(detMatch?.[1]?.includes('/sp/track')) &&
+            Boolean(detMatch?.[1]?.includes("HB_BRIDGE_SECRET")) &&
             Boolean(detMatch?.[1]?.includes("SENSITIVE_BANNER_PATH_RE")) &&
             Boolean(detMatch?.[1]?.includes("isCategoryEstimate")) &&
             Boolean(detMatch?.[1]?.includes("hb-photo-badge--advisory")),
-          webviewHardened:
+          webviewAndWindowInsetsHardened:
             liveBrowserKt.includes("allowFileAccess = false") &&
             liveBrowserKt.includes("allowContentAccess = false") &&
             liveBrowserKt.includes("MIXED_CONTENT_NEVER_ALLOW") &&
             liveBrowserKt.includes("isAllowedRetailerHost") &&
-            liveBrowserKt.includes("isBlockedAppRedirectHost"),
-          scanBatchCapped8:
+            liveBrowserKt.includes("isAllowedNavigationHost") &&
+            liveBrowserKt.includes("isBlockedAppRedirectHost") &&
+            liveBrowserKt.includes("WindowInsets.Type.systemBars()"),
+          storeBrandIconsAndProminentInAppShop:
+            storeBrandIconsKt.includes("StoreEmblemDrawable") &&
+            storeBrandIconsKt.includes("buildStoreChip") &&
+            liveBrowserKt.includes("StoreBrandIcons.buildStoreChip") &&
+            mainActivityKt.includes("StoreBrandIcons.buildStoreChip") &&
+            mainActivityKt.includes("prefer_in_app_live_shop_v2") &&
+            mainActivityKt.includes("In-App Shop ·"),
+          nativeMiniBadgesCompletelyRemoved:
+            !overlayKt.includes("ACTION_SHOW_GRID_BADGES") &&
+            !overlayKt.includes("GridScoreBadgesView") &&
+            !readerKt.includes("scheduleVisibleGridBatchScan") &&
+            !readerKt.includes("extractVisibleGridFoodCards"),
+          scanApiAllergenAndPesticideParity:
             scanApiKt.includes("items.take(8)") &&
             scanApiKt.includes("VALID_BATCH_ITEM_ID_RE") &&
-            scanApiKt.includes("classifyAlertSeverity"),
-          smartDualModeRouting:
-            mainActivityKt.includes("LiveStoreBrowserActivity.createIntent") &&
-            mainActivityKt.includes("isPreferInAppShop") &&
-            mainActivityKt.includes("resolveInstalledStorePackage"),
-          zeroAllocPassThroughGridOverlay:
-            overlayKt.includes("drawnRectPool = Array(12) { RectF() }") &&
-            overlayKt.includes("FLAG_NOT_TOUCHABLE") &&
-            overlayKt.includes("ACTION_SHOW_GRID_BADGES") &&
-            readerKt.includes("if (res.isCategoryEstimate) continue") &&
-            readerKt.includes("scheduleVisibleGridBatchScan"),
-          iosNativeAlertPropertyValid:
-            (() => {
-              const iosLiveVc = fsSync.readFileSync(
-                "ios-app/App/LiveStoreBrowserViewController.swift",
-                "utf8",
-              );
-              return (
-                iosLiveVc.includes("advisoryKeys.contains(alert.id)") &&
-                !iosLiveVc.includes("alert.key")
-              );
-            })(),
+            scanApiKt.includes("classifyAlertSeverity") &&
+            scanApiKt.includes('"sesame"') &&
+            scanApiKt.includes("non[\\\\s-]*organic"),
+          iosNativeBridgeAndLockedSwapHardened:
+            iosLiveVc.includes("advisoryKeys.contains(alert.id)") &&
+            !iosLiveVc.includes("alert.key") &&
+            iosLiveVc.includes("message.frameInfo.isMainFrame") &&
+            iosLiveVc.includes("Self.isAllowedRetailerHost") &&
+            iosLiveVc.includes("Self.isValidBatchItemId") &&
+            iosLiveVc.includes("let isSwapLocked = swap.locked || swap.webUrl == nil"),
+          backendAuthAndAppleVerifyHardened:
+            appleVerifyTs.includes("APPLE_ALLOW_SANDBOX_IN_PRODUCTION") &&
+            appleVerifyTs.includes("allowedProductIds") &&
+            appleVerifyTs.includes("claims.expiresDate") &&
+            authTs.includes("email_verified") &&
+            authTs.includes("GOOGLE_ANDROID_CLIENT_ID"),
+          pesticideAndImplicitSwapSafety:
+            nonOrgOatsAlerts.some((a) => a.id === "pesticide_risk") &&
+            madeWithOrgSugarGranolaAlerts.some((a) => a.id === "pesticide_risk") &&
+            usdaOrgOatsAlerts.length === 0 &&
+            (!vinaigretteSwap ||
+              (!/\branch\b/i.test(vinaigretteSwap.title) && !/\begg/i.test(vinaigretteSwap.ingredients || ""))),
         };
         if (Object.values(androidDualModeMap).some((v) => !v)) {
           console.error("androidDualModeMap failure detail:", androidDualModeMap);
         }
         check(
-          "Android Dual-Mode Architecture & iOS/Android Parity: LiveStoreBrowserActivity hardened WebView + valid DETECTOR_JS (WeakMap sig invalidation, banner safety, category-estimate suppression), smart single-row store routing, zero-allocation pass-through GridScoreBadgesView, and iOS HeyBrocNativeAlert.id parity",
+          "Full-Stack Audit & Android v2.5.1 UX Parity: LiveStoreBrowserActivity WindowInsets + StoreBrandIcons + Walmart Sponsored/nested-card badges, native mini-badge removal, iOS bridge/swap-lock hardening, Apple/Google auth security, and pesticide/allergen swap guards",
           Object.values(androidDualModeMap).every(Boolean),
         );
       }

@@ -42,7 +42,7 @@ export function classifyDietaryAlertSeverity(alerts: readonly DietaryAlert[] | u
 }
 
 const CERTIFIED_ORGANIC_OR_CLEAN_CROP =
-  /\b(organic|organics|usda\s+organic|biodynamic|glyphosate[\s-]*residue[\s-]*free|pesticide[\s-]*free|herbicide[\s-]*free|regenerative\s+organic)\b/i;
+  /(?<!\bnon[\s-]+)\b(organic|organics|usda\s+organic|biodynamic|glyphosate[\s-]*residue[\s-]*free|pesticide[\s-]*free|herbicide[\s-]*free|regenerative\s+organic)\b/i;
 
 const NON_PRODUCE_BEVERAGE_OR_CANDY =
   /\b(sparkling\s+water|seltzer|club\s+soda|energy\s+drink|diet\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\s+gum|gummy|gummies|jelly\s+beans?|skittles|starburst|jolly\s+rancher|cough\s+drop|sunscreen|lotion|shampoo|conditioner|body\s+wash|soap|detergent|toothpaste|deodorant|lip\s+balm)\b/i;
@@ -65,18 +65,21 @@ export function detectPesticideRisk(
 ): PesticideRiskMatch | null {
   const combined = `${productTitle || ""} ${ingredients || ""}`.trim();
   if (!combined) return null;
-  if (nutrition?.isOrganic === true || CERTIFIED_ORGANIC_OR_CLEAN_CROP.test(productTitle || "")) {
+  const hasWholeProductOrganicClaim =
+    CERTIFIED_ORGANIC_OR_CLEAN_CROP.test(productTitle || "") &&
+    !/\b(?:made\s+with|contains)\s+organic\b/i.test(productTitle || "");
+  if (nutrition?.isOrganic === true || hasWholeProductOrganicClaim) {
     return null;
   }
   if (NON_PRODUCE_BEVERAGE_OR_CANDY.test(productTitle || "") && !/\b(oats?|oatmeal|wheat|flour)\b/i.test(ingredients || "")) {
     return null;
   }
 
-  // Strip explicitly organic sub-ingredients and flavor/pectin/vinegar trace terms so they don't trigger false positives
+  // Strip explicitly organic sub-ingredients (never "non-organic ...") and flavor/pectin/vinegar trace terms
   const stripOrganicAndFlavorNoise = (s: string) =>
     s
       .replace(
-        /\borganic\s+(?:whole\s+grain\s+|rolled\s+|steel[\s-]*cut\s+|sprouted\s+|gluten[\s-]*free\s+|unbleached\s+|enriched\s+|durum\s+|baby\s+|fresh\s+|frozen\s+|sweet\s+|red\s+|green\s+|black\s+|cane\s+|brown\s+|raw\s+)?[a-z]+(?:\s+(?:oats?|oatmeal|wheat|flour|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina|sugar|syrup))?/gi,
+        /(?<!\bnon[\s-]+)\borganic\s+(?:(?:whole\s+grain|rolled|steel[\s-]*cut|sprouted|gluten[\s-]*free|unbleached|enriched|durum|baby|fresh|frozen|sweet|red|green|black|cane|brown|raw|evaporated|unrefined)\s+){0,2}[a-z]+(?:\s+(?:oats?|oatmeal|wheat|flour|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina|sugar|syrup|juice))?/gi,
         " ",
       )
       .replace(

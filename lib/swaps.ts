@@ -3705,8 +3705,38 @@ function evaluateCandidateForSwap(
   if (candidateAllergens.has("shellfish_fish") && !sourceAllergens.has("shellfish_fish")) {
     return null;
   }
-  if (candidateAllergens.has("dairy") && PLANT_OR_DAIRY_FREE_SOURCE_RE.test(sourceTitle)) {
+  const isNaturallyDairyFreeFood =
+    PLANT_OR_DAIRY_FREE_SOURCE_RE.test(sourceTitle) ||
+    /\b(sorbet|italian\s+ice|ice\s+pops?|popsicles?|freezer\s+pops?|fruit\s+bars?|outshine|vinaigrette|italian\s+dressing|balsamic\s+(?:dressing|vinaigrette)|oil\s*(?:&|and)\s*vinegar|mayo|mayonnaise|hellmann'?s|best\s+foods|duke'?s|miracle\s+whip|aioli|ketchup|catsup|mustard|bbq\s+sauce|barbecue\s+sauce|hot\s+sauce|salsa|marinara|pasta\s+sauce|spaghetti\s+sauce|tomato\s+sauce|pizza\s+sauce|guacamole|hummus)\b/i.test(
+      sourceTitle
+    );
+  if (candidateAllergens.has("dairy") && isNaturallyDairyFreeFood && !sourceAllergens.has("dairy")) {
     return null;
+  }
+  if (candidateAllergens.has("egg")) {
+    if (hasSourceIng) {
+      if (!sourceAllergens.has("egg")) return null;
+    } else if (
+      /\b(egg[\s-]*free|no\s+eggs?|vegan|vinaigrette|italian\s+dressing|balsamic|oil\s*(?:&|and)\s*vinegar|sorbet|italian\s+ice|popsicles?|fruit\s+bars?|ketchup|mustard|bbq\s+sauce|barbecue\s+sauce|hot\s+sauce|salsa|marinara|pasta\s+sauce|tomato\s+sauce)\b/i.test(
+        sourceTitle
+      )
+    ) {
+      return null;
+    }
+  }
+  if (candidateAllergens.has("sesame")) {
+    if (/\b(sesame[\s-]*free|no\s+sesame)\b/i.test(sourceTitle)) {
+      return null;
+    }
+    if (
+      hasSourceIng &&
+      !sourceAllergens.has("sesame") &&
+      !/\b(bread|loaf|buns?|rolls?|bagels?|crackers?|cheez|goldfish|ritz|saltines?|triscuit|wheat\s+thins|pretzels?|chips|hummus)\b/i.test(
+        sourceTitle
+      )
+    ) {
+      return null;
+    }
   }
   if (candidateAllergens.has("wheat_gluten")) {
     if (hasSourceIng) {
@@ -3726,6 +3756,15 @@ function evaluateCandidateForSwap(
     } else if (/\bsoy[\s-]*free\b/i.test(sourceTitle)) {
       return null;
     }
+  }
+  // Never swap jarred/canned pasta or pizza sauce into dry pasta/noodles
+  if (
+    /\b(marinara|pasta\s+sauce|spaghetti\s+sauce|tomato\s+sauce|vodka\s+sauce|alfredo\s+sauce|pizza\s+sauce|arrabbiata|bolognese|meat\s+sauce)\b/i.test(
+      sourceTitle
+    ) &&
+    !/\b(sauce|marinara|salsa|puree|crushed\s+tomatoes?|diced\s+tomatoes?)\b/i.test(fullTitle)
+  ) {
+    return null;
   }
 
   if (params.productTitle) {
