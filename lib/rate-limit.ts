@@ -23,13 +23,13 @@ function incrementLocalBucket(
         if (oldest !== undefined) rateBuckets.delete(oldest);
       }
     }
-    const nextCount = remoteCount !== undefined ? Math.max(safeCost, remoteCount) : safeCost;
+    const nextCount = remoteCount !== undefined ? remoteCount : safeCost;
     rateBuckets.set(key, { count: nextCount, resetAt: now + windowMs });
     return nextCount;
   }
   existing.count =
     remoteCount !== undefined
-      ? Math.max(existing.count + safeCost, remoteCount)
+      ? remoteCount
       : existing.count + safeCost;
   return existing.count;
 }

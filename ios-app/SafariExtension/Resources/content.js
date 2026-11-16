@@ -1265,8 +1265,21 @@
   }
 
   /* ---------------- Multi-Product Grid Card Hover / Focus & Photo Badges ---------------- */
-  const NON_FOOD_GRID_TITLE_RE =
-    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|(?<!\b(?:dough|bread|food|meat|beer)\s+)conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+  const NON_FOOD_GRID_HARD_TITLE_RE =
+    /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+  const AMBIGUOUS_PACKAGING_GRID_TITLE_RE = /\b(?:storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|paper\s+cups?)\b/i;
+  const FOOD_CONTEXT_FOR_PACKAGING_RE =
+    /\b(?:chicken|beef|pork|turkey|salmon|tilapia|cod|tuna|fish|shrimp|scallops?|sausage|bacon|meatballs?|steak|burger|patties|nuggets?|tenders?|strips?|wings?|fries|tater|tots|hash\s*browns?|peas|corn|broccoli|spinach|vegetables?|veggies|berries|strawberries|blueberries|raspberries|mango|fruit|edamame|pizza|burritos?|taquitos?|dumplings?|potstickers?|ravioli|pierogies|waffles?|pancakes?|ice\s+cream|gelato|sorbet|peanut\s+butter|almond\s+butter|chocolate|reese'?s|candy|fudge|muffins?|cupcakes?|coffee|tea|k[- ]?cups?|oatmeal|soup|ramen|noodles|mac(?:aroni)?|cheese)\b/i;
+  const BAKING_OR_FOOD_CONDITIONER_RE = /\b(?:dough|bread|bakery|flour|wheat|baking|gluten|food|meat|beer|wort)\b/i;
+
+  function isNonFoodGridTitle(title) {
+    const s = String(title || "");
+    if (!s) return false;
+    if (NON_FOOD_GRID_HARD_TITLE_RE.test(s)) return true;
+    if (AMBIGUOUS_PACKAGING_GRID_TITLE_RE.test(s) && !FOOD_CONTEXT_FOR_PACKAGING_RE.test(s)) return true;
+    if (/\bconditioner\b/i.test(s) && !BAKING_OR_FOOD_CONDITIONER_RE.test(s)) return true;
+    return false;
+  }
 
   const PRODUCT_CARD_SEL = [
     '[data-item-id]',
@@ -2774,6 +2787,10 @@
           rawSwapImg && !isPlaceholderProductImage(rawSwapImg)
             ? resolveApiAssetUrl(rawSwapImg)
             : fallbackThumbUrl(activeSwap.title, activeSwap.brand);
+        const swapAdditivesNote =
+          !swapLocked && Array.isArray(activeSwap.flaggedAdditives) && activeSwap.flaggedAdditives.length > 0
+            ? `<span class="cc-meta-line" style="display:block;color:#92400e;font-size:11px;margin-top:2px;">Note: contains ${esc(activeSwap.flaggedAdditives.join(", "))}</span>`
+            : "";
         swapHtml = `<div class="cc-swap">
           ${buildThumbMarkup("cc-swap-thumb", swapThumb, null, false)}
           <div class="cc-swap-info">
@@ -2783,6 +2800,7 @@
             </div>
             <b>${esc(activeSwap.title)}</b>
             <span class="cc-swap-score">${esc(activeSwap.score)}/100 ${esc(swapRating)}${swapLocked ? " · Free swaps used" : ""}</span>
+            ${swapAdditivesNote}
           </div>
           <button class="cc-swap-btn" data-act="swap">${swapLocked ? "⚡ Unlock Pro ↗" : `Swap Item`}</button>
         </div>`;
@@ -3323,13 +3341,17 @@
         },
       },
       (resp) => {
-        if (resp?.ok) {
+        if (resp?.ok && !isTransientLockedSwap(resp)) {
           scanCache.set(cKey, resp);
         }
         if (seq !== scanSeq || !isProductPage() || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
         void applyScanResult(resp, domImage, seq);
       }
     );
+  }
+
+  function isTransientLockedSwap(resp) {
+    return Boolean(resp?.swap?.locked && !resp?.entitlement);
   }
 
   /* ---------------- Automatic On-Photo Score Badges (Search / Aisle Grids) ---------------- */
@@ -3346,6 +3368,7 @@
   const pendingPhotoBadgeQueue = new Map();
   let photoBadgeBatchTimer = null;
   let photoBadgeRetryTimer = null;
+  let photoBadgeRetryAt = 0;
   let nextPhotoBadgeSeq = 1;
   let photoBadgeGeneration = 1;
   let photoBadgePrefRev = 1;
@@ -3404,30 +3427,45 @@
   function computeCardSignature(cardEl, info) {
     const linkEl = cardEl?.querySelector?.(PRODUCT_LINK_FALLBACK_SEL) || cardEl?.querySelector?.("a[href]");
     const rawHref = (linkEl?.getAttribute("href") || "").split("#")[0].split("?")[0];
+    const normTitle = (info?.title || "").toLowerCase().trim();
+    if (normTitle) {
+      return `${normTitle}|${rawHref}|${activeBucket.bucketKey}|${photoBadgePrefRev}`;
+    }
     const rawImg = (
       info?.domImageUrl ||
       info?.image ||
       info?.imgEl?.currentSrc ||
       info?.imgEl?.getAttribute?.("src") ||
       ""
-    ).slice(0, 180);
-    return `${(info?.title || "").toLowerCase().trim()}|${rawHref}|${rawImg}|${activeBucket.bucketKey}|${photoBadgePrefRev}`;
+    )
+      .split("#")[0]
+      .split("?")[0]
+      .slice(0, 180);
+    return `|${rawHref}|${rawImg}|${activeBucket.bucketKey}|${photoBadgePrefRev}`;
   }
 
   function isPlaceholderCardImage(src, imgEl) {
     if (!src) return false;
-    if (imgEl && imgEl.naturalWidth > 48 && imgEl.naturalHeight > 48) return false;
-    return /(?:^data:image\/gif;base64,R0lGOD|(?:^|[/_.-])(?:1x1|spacer|spinner|pixel|blank|transparent)\.(?:gif|png|svg)|\/(?:icons?|sprites?)\/)/i.test(
+    if (imgEl && imgEl.naturalWidth > 64 && imgEl.naturalHeight > 64) return false;
+    return /(?:^data:image\/(?:gif;base64,R0lGOD|svg\+xml.*(?:feGaussianBlur|blur|shimmer|skeleton|spinner|spacer|1x1)|webp;base64|png;base64,iVBORw0KGgoAAAANSUhEUgAAAAE)|(?:^|[/_.-])(?:1x1|spacer|spinner|pixel|blank|transparent|placeholder|blur)\.(?:gif|png|svg|webp)|\/(?:icons?|sprites?)\/)/i.test(
       src
     );
   }
 
   function schedulePhotoBadgeRetry(delayMs) {
-    if (photoBadgeRetryTimer) return;
+    const clampedMs = Math.max(200, Number(delayMs) || 200);
+    const targetAt = Date.now() + clampedMs;
+    if (photoBadgeRetryTimer) {
+      if (photoBadgeRetryAt > 0 && targetAt >= photoBadgeRetryAt - 80) return;
+      clearTimeout(photoBadgeRetryTimer);
+      photoBadgeRetryTimer = null;
+    }
+    photoBadgeRetryAt = targetAt;
     photoBadgeRetryTimer = setTimeout(() => {
       photoBadgeRetryTimer = null;
+      photoBadgeRetryAt = 0;
       scanVisiblePhotoBadges();
-    }, Math.max(200, delayMs));
+    }, clampedMs);
   }
 
   function clearAllPhotoBadges() {
@@ -3436,6 +3474,7 @@
     photoBadgeBatchTimer = null;
     clearTimeout(photoBadgeRetryTimer);
     photoBadgeRetryTimer = null;
+    photoBadgeRetryAt = 0;
     pendingPhotoBadgeQueue.clear();
     if (photoBadgeObserver) {
       photoBadgeObserver.disconnect();
@@ -3582,7 +3621,7 @@
           },
         },
         (freshResp) => {
-          if (freshResp?.ok) {
+          if (freshResp?.ok && !isTransientLockedSwap(freshResp)) {
             gridScanCache.set(normCacheKey(liveInfo.title, ""), freshResp);
           }
           if (seq !== scanSeq || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
@@ -3641,6 +3680,8 @@
       for (const entry of batchEntries) {
         entry.badgeEl?.remove();
         if (!entry.cardEl?.isConnected) continue;
+        const curState = cardStateByEl.get(entry.cardEl);
+        if (curState && curState.badgeEl && curState.badgeEl !== entry.badgeEl) continue;
         const prevRetries = entry.retryCount || 0;
         if (allowRetry && prevRetries < 2) {
           cardStateByEl.set(entry.cardEl, {
@@ -3695,21 +3736,34 @@
             return;
           }
           for (const entry of batchEntries) {
+            const itemResp = Object.prototype.hasOwnProperty.call(map, entry.id) ? map[entry.id] : null;
+            if (itemResp?.ok && !isTransientLockedSwap(itemResp)) {
+              gridScanCache.set(normCacheKey(entry.info.title, ""), itemResp);
+            }
+            const keepOpen = Boolean(badgeDataByElement.get(entry.badgeEl)?.openOnResolve);
             if (!entry.cardEl?.isConnected) {
               entry.badgeEl?.remove();
+              if (keepOpen && itemResp?.ok) {
+                openBadgeScanInDrawer(itemResp, entry.info, entry.domImg);
+              }
               continue;
             }
             const liveInfo = readProductCardInfo(entry.cardEl);
             if (!liveInfo || computeCardSignature(entry.cardEl, liveInfo) !== entry.sig) {
               entry.badgeEl?.remove();
-              cardStateByEl.delete(entry.cardEl);
-              processVisiblePhotoBadgeCard(entry.cardEl);
+              const curState = cardStateByEl.get(entry.cardEl);
+              if (!curState || !curState.badgeEl || curState.badgeEl === entry.badgeEl) {
+                cardStateByEl.delete(entry.cardEl);
+                processVisiblePhotoBadgeCard(entry.cardEl);
+              }
               continue;
             }
-            const itemResp = Object.prototype.hasOwnProperty.call(map, entry.id) ? map[entry.id] : null;
+            const curState = cardStateByEl.get(entry.cardEl);
+            if (curState && curState.badgeEl && curState.badgeEl !== entry.badgeEl) {
+              entry.badgeEl?.remove();
+              continue;
+            }
             if (itemResp?.ok) {
-              gridScanCache.set(normCacheKey(entry.info.title, ""), itemResp);
-              const keepOpen = Boolean(badgeDataByElement.get(entry.badgeEl)?.openOnResolve);
               const shown = applyScoredPhotoBadgeState(
                 entry.badgeEl,
                 itemResp,
@@ -3725,8 +3779,12 @@
                 retryCount: 0,
                 nextRetryAt: 0,
               });
-              if (shown && keepOpen) {
-                handlePhotoBadgeActivate(entry.badgeEl);
+              if (keepOpen) {
+                if (shown) {
+                  handlePhotoBadgeActivate(entry.badgeEl);
+                } else {
+                  openBadgeScanInDrawer(itemResp, entry.info, entry.domImg);
+                }
               }
             } else {
               entry.badgeEl?.remove();
@@ -3737,6 +3795,31 @@
                 retryCount: 0,
                 nextRetryAt: 0,
               });
+              if (keepOpen) {
+                modalOpenedAt = Date.now();
+                const seq = ++scanSeq;
+                state.hoveredCardData = entry.info;
+                state.auditorOpen = false;
+                state.drawerTab = "product";
+                state.expanded = true;
+                chrome.runtime.sendMessage(
+                  {
+                    type: "CLEANCART_SCAN",
+                    payload: {
+                      productTitle: entry.info.title,
+                      store: reqBucket.store,
+                      instacartRetailerSlug: reqBucket.instacartRetailerSlug,
+                    },
+                  },
+                  (freshResp) => {
+                    if (freshResp?.ok && !isTransientLockedSwap(freshResp)) {
+                      gridScanCache.set(normCacheKey(entry.info.title, ""), freshResp);
+                    }
+                    if (seq !== scanSeq || resolveStoreBucket().bucketKey !== reqBucket.bucketKey) return;
+                    void applyScanResult(freshResp, entry.domImg, seq);
+                  }
+                );
+              }
             }
           }
         }
@@ -3768,7 +3851,7 @@
     const prevState = cardStateByEl.get(cardEl);
     const prevRetryCount = prevState && prevState.sig === sig ? prevState.retryCount || 0 : 0;
 
-    if (NON_FOOD_GRID_TITLE_RE.test(info.title)) {
+    if (isNonFoodGridTitle(info.title)) {
       removeCardPhotoBadges(cardEl);
       cardStateByEl.set(cardEl, { sig, status: "nonfood", badgeEl: null, retryCount: 0, nextRetryAt: 0 });
       return;
@@ -3914,6 +3997,7 @@
     const obs = ensurePhotoBadgeObserver();
     const cards = discoverPhotoBadgeCards();
     const now = Date.now();
+    let minRemainingRetryMs = Infinity;
     for (const card of cards) {
       const info = readProductCardInfo(card);
       const prev = cardStateByEl.get(card);
@@ -3933,7 +4017,11 @@
           obs?.unobserve(card);
           cardStateByEl.delete(card);
         } else if (prev.status === "retry") {
-          if (now < (prev.nextRetryAt || 0)) continue;
+          const retryAt = prev.nextRetryAt || 0;
+          if (now < retryAt) {
+            minRemainingRetryMs = Math.min(minRemainingRetryMs, retryAt - now);
+            continue;
+          }
         } else if (prev.status === "scored" && !prev.badgeEl?.isConnected) {
           cardStateByEl.delete(card);
         } else {
@@ -3952,6 +4040,9 @@
       } else {
         processVisiblePhotoBadgeCard(card);
       }
+    }
+    if (Number.isFinite(minRemainingRetryMs)) {
+      schedulePhotoBadgeRetry(minRemainingRetryMs + 40);
     }
   }
 
@@ -4163,9 +4254,9 @@
         },
       },
       (resp) => {
-        if (resp?.ok) {
+        if (resp?.ok && !isTransientLockedSwap(resp)) {
           gridScanCache.set(cKey, resp);
-        } else if (lastMobileAlignedTitle === info.title) {
+        } else if (!resp?.ok && lastMobileAlignedTitle === info.title) {
           lastMobileAlignedTitle = "";
         }
         if (
@@ -4248,7 +4339,7 @@
           },
         },
         (resp) => {
-          if (resp?.ok) gridScanCache.set(cKey, resp);
+          if (resp?.ok && !isTransientLockedSwap(resp)) gridScanCache.set(cKey, resp);
         }
       );
     },
@@ -4380,8 +4471,16 @@
           state.displayedAvg = calcCartAvg();
           render();
         }
-        // Live re-scoring of active product, photo badges, AND cached cart items when Watchlist toggles change
-        if (changes.watchlist || changes.familyWatchlist || changes.dietaryWatchlist || changes.preferStoreBrand) {
+        // Live re-scoring of active product, photo badges, AND cached cart items when Watchlist or auth credentials change
+        if (
+          changes.watchlist ||
+          changes.familyWatchlist ||
+          changes.dietaryWatchlist ||
+          changes.preferStoreBrand ||
+          changes.heybroc_auth_token ||
+          changes.heybroc_device_id ||
+          changes.heybroc_device_secret
+        ) {
           photoBadgePrefRev++;
           scanCache.clear();
           gridScanCache.clear();

@@ -762,6 +762,11 @@ export default function WeeklyOrderAuditModal({
                                 <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>
                                   {activeSwap.title}
                                 </div>
+                                {activeSwap.flaggedAdditives && activeSwap.flaggedAdditives.length > 0 && (
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: "#92400e", marginTop: 2 }}>
+                                    Note: contains {activeSwap.flaggedAdditives.join(", ")}
+                                  </div>
+                                )}
                               </div>
 
                               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>

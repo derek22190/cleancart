@@ -130,7 +130,24 @@ class LiveStoreBrowserActivity : Activity() {
             "accounts.google.com",
             "appleid.apple.com",
             "login.target.com",
-            "identity.walmart.com"
+            "identity.walmart.com",
+            "paypal.com",
+            "stripe.com",
+            "affirm.com",
+            "klarna.com",
+            "auth0.com",
+            "okta.com",
+            "b2clogin.com",
+            "microsoftonline.com"
+        )
+
+        private val EXTERNAL_AUTH_HOST_SUFFIXES = listOf(
+            "accounts.google.com",
+            "appleid.apple.com",
+            "login.microsoftonline.com",
+            "b2clogin.com",
+            "auth0.com",
+            "okta.com"
         )
 
         private val VALID_BATCH_ID_RE = Regex(
@@ -167,6 +184,14 @@ class LiveStoreBrowserActivity : Activity() {
             }
         }
 
+        fun isExternalAuthHost(rawHost: String?): Boolean {
+            val host = rawHost?.trim()?.lowercase().orEmpty()
+            if (host.isEmpty()) return false
+            return EXTERNAL_AUTH_HOST_SUFFIXES.any { suffix ->
+                host == suffix || host.endsWith(".$suffix")
+            }
+        }
+
         fun isBlockedAppRedirectHost(rawHost: String?): Boolean {
             val host = rawHost?.trim()?.lowercase().orEmpty()
             if (host.isEmpty()) return false
@@ -191,7 +216,35 @@ class LiveStoreBrowserActivity : Activity() {
             val scheme = uri.scheme?.lowercase().orEmpty()
             if (scheme != "https") return null
             val host = uri.host?.lowercase().orEmpty()
-            if (!isAllowedRetailerHost(host) || isBlockedAppRedirectHost(host)) return null
+            if (isBlockedAppRedirectHost(host)) return null
+            if (isAllowedRetailerHost(host)) return trimmed
+            // Safely unwrap Impact / affiliate /c/...?u=<retailerUrl> wrappers whose outer domain
+            // (e.g. instacart.oloiyb.net) is not a storefront domain, validating the inner destination.
+            if (uri.path?.lowercase()?.startsWith("/c/") == true) {
+                val inner = uri.getQueryParameter("u")?.trim().orEmpty()
+                if (inner.startsWith("https://", ignoreCase = true)) {
+                    val innerUri = runCatching { Uri.parse(inner) }.getOrNull()
+                    val innerHost = innerUri?.host?.lowercase().orEmpty()
+                    if (
+                        innerUri?.scheme?.lowercase() == "https" &&
+                        isAllowedRetailerHost(innerHost) &&
+                        !isBlockedAppRedirectHost(innerHost)
+                    ) {
+                        return inner
+                    }
+                }
+            }
+            return null
+        }
+
+        fun validatedNavigationUrl(rawUrl: String?): String? {
+            validatedRetailerUrl(rawUrl)?.let { return it }
+            val trimmed = rawUrl?.trim().orEmpty()
+            if (trimmed.isEmpty()) return null
+            val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return null
+            if (uri.scheme?.lowercase() != "https") return null
+            val host = uri.host?.lowercase().orEmpty()
+            if (!isAllowedNavigationHost(host) || isBlockedAppRedirectHost(host)) return null
             return trimmed
         }
 
@@ -301,7 +354,7 @@ class LiveStoreBrowserActivity : Activity() {
                 var vh = Math.max(400, window.innerHeight || 844);
                 for (var i = 0; i < ctas.length; i++) {
                   var cta = ctas[i];
-                  if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], header, nav, form, [role="dialog"], [aria-modal="true"]'))) continue;
+                  if (!cta || (cta.closest && cta.closest('[data-hb-app-banner-hidden="1"], header, nav, footer, [role="contentinfo"], form, [role="dialog"], [aria-modal="true"]'))) continue;
                   var ctaText = clean(cta.textContent || '');
                   var href = String((cta.getAttribute && cta.getAttribute('href')) || '');
                   var matchesCta = APP_INSTALL_CTA_RE.test(ctaText) || (cta.tagName === 'A' && APP_INSTALL_HREF_RE.test(href));
@@ -315,7 +368,7 @@ class LiveStoreBrowserActivity : Activity() {
                     var cid = String(cur.id || '');
                     var role = String((cur.getAttribute && cur.getAttribute('role')) || '').toLowerCase();
                     var ariaModal = String((cur.getAttribute && cur.getAttribute('aria-modal')) || '').toLowerCase();
-                    if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || tag === 'HEADER' || tag === 'NAV' || tag === 'FORM' || role === 'dialog' || ariaModal === 'true' || cid === '__next' || cid === 'root' || cid === 'app') {
+                    if (cur === document.body || cur === document.documentElement || tag === 'MAIN' || tag === 'HEADER' || tag === 'NAV' || tag === 'FOOTER' || tag === 'FORM' || role === 'dialog' || role === 'contentinfo' || ariaModal === 'true' || cid === '__next' || cid === 'root' || cid === 'app') {
                       break;
                     }
                     if (typeof cur.getBoundingClientRect === 'function') {
@@ -324,7 +377,7 @@ class LiveStoreBrowserActivity : Activity() {
                       var pos = cs ? cs.position : '';
                       var curText = clean(cur.textContent || '');
                       var txtLen = curText.length;
-                      var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
+                      var hasProtectedNodes = Boolean(cur.querySelector && cur.querySelector('header, nav, footer, [role="contentinfo"], form, input, select, textarea, h1, [role="dialog"], [aria-modal="true"]'));
                       var hasForbiddenCopy = BANNER_FORBIDDEN_TEXT_RE.test(curText);
                       var anchoredEdge = (pos === 'fixed' || pos === 'sticky' || r.bottom >= vh - 96 || r.top <= 96);
                       if (!hasProtectedNodes && !hasForbiddenCopy && txtLen <= 320 && r.height >= 36 && r.height <= 240 && r.width >= vw * 0.60 && anchoredEdge) {
@@ -594,18 +647,43 @@ class LiveStoreBrowserActivity : Activity() {
                 return bestDist <= 260 ? bestTitle : '';
               }
 
-              var NON_FOOD_GRID_RE = /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+              var NON_FOOD_GRID_RE = /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+              var HOUSEHOLD_BAG_CUP_BRAND_RE = /\b(?:ziploc|hefty|glad|reynolds|up\s*&\s*up|great\s+value|kirkland\s+signature|member'?s\s+mark|solimo|amazon\s+basics|boulder|if\s+you\s+care|stasher|dixie|solo|chinet|vanity\s+fair|sparkle|bounty|charmin|scott|cottonelle|kleenex|puff'?s|tide|gain|downy|cascade|dawn|lysol|clorox)\b/i;
+              var FOOD_CONTEXT_GUARD_RE = /\b(?:chicken|beef|pork|turkey|salmon|shrimp|fish|steak|meatball|nugget|strip|fillet|tender|wing|patty|sausage|bacon|ham|burrito|taquito|pizza|ravioli|pierogi|dumpling|gyoza|wonton|potsticker|vegetable|broccoli|pea|corn|berry|berries|strawberry|blueberry|mango|peach|fruit|fries|tot|waffle|pancake|oat|granola|cereal|chip|pretzel|popcorn|cracker|cookie|brownie|candy|chocolate|peanut\s+butter|reese'?s|butterfinger|snickers|m&m|gummy|yogurt|cheese|ice\s+cream|coffee|tea|k-cup|pod|broth|soup|rice|pasta|noodle|bean|dough|bread|flour|yeast|baking|seasoning|spice|sauce)\b/i;
 
               function isNonFoodGridTitle(t) {
-                if (/\b(?:dough|bread|food|meat|beer)\s+conditioner\b/i.test(t)) return false;
-                return NON_FOOD_GRID_RE.test(t);
+                var s = String(t || '');
+                if (NON_FOOD_GRID_RE.test(s)) return true;
+                if (/\bconditioner\b/i.test(s)) {
+                  if (!/\b(?:dough|bread|food|meat|beer|baking|flour)\b[\s\-]*conditioner\b/i.test(s)) return true;
+                }
+                if (/\b(?:storage|freezer|sandwich|quart|gallon|snack)\s+bags?\b/i.test(s)) {
+                  if (!/\b(?:in\s+a|resealable|zip(?:-|\s*)top)\b/i.test(s) && (HOUSEHOLD_BAG_CUP_BRAND_RE.test(s) || !FOOD_CONTEXT_GUARD_RE.test(s))) {
+                    return true;
+                  }
+                }
+                if (/\bpaper\s+cups?\b/i.test(s)) {
+                  if (HOUSEHOLD_BAG_CUP_BRAND_RE.test(s) || !FOOD_CONTEXT_GUARD_RE.test(s)) return true;
+                }
+                return false;
               }
 
               var CARD_SEL = '[data-item-id], [data-testid*="list-view" i], [data-testid*="item-stack" i] > div, div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
               var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-testid*="product-card" i], [data-testid*="item-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"]';
               var PRODUCT_LINK_SEL = 'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
-              var PLACEHOLDER_IMG_RE = /(?:^|[\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank)(?:[\/_.-]|$)|^data:image\/gif/i;
+              var PLACEHOLDER_IMG_RE = /(?:^|[\/_.-])(?:1x1|pixel|spacer|spinner|skeleton|shimmer|placeholder|transparent|blank|loading|lazyload|grey-pixel)(?:[\/_.-]|$)|^data:image\/gif|^data:image\/svg\+xml.*(?:feGaussianBlur|blur|shimmer|skeleton|spinner|spacer|1x1)/i;
               var CARD_CTA_NOISE_RE = /^(?:add(?:\s+to\s+(?:cart|bag|basket|order))?|options|choose\s+options|select\s+options|quick\s+add|view\s+details|sponsored|shop\s+now|\+|-|\d+\s*ct)$/i;
+
+              function isPlaceholderCardImg(img, src) {
+                var s = String(src || '').trim();
+                if (!s) return true;
+                if (PLACEHOLDER_IMG_RE.test(s)) return true;
+                if (/^data:image\/(?:webp|png|jpeg|jpg)/i.test(s) && s.length < 420 && (!img || !img.naturalWidth || img.naturalWidth <= 64)) return true;
+                if (img && img.complete && img.naturalWidth > 0 && img.naturalWidth <= 2 && img.naturalHeight > 0 && img.naturalHeight <= 2) {
+                  return true;
+                }
+                return false;
+              }
 
               function makePageToken() {
                 return 'p' + Math.random().toString(36).slice(2, 8);
@@ -618,13 +696,50 @@ class LiveStoreBrowserActivity : Activity() {
               var hbCardState = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
               var hbOwnerCardByImg = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
               var hbOwnerCardById = {};
+              var hbTitleScoreCache = {};
+              var hbTitleScoreKeys = [];
               var hbPendingQueue = [];
               var hbBatchTimer = null;
               var hbBatchWatchdog = null;
               var hbRetryTimer = null;
+              var hbRetryAt = 0;
               var hbInFlightBatches = 0;
               var MAX_IN_FLIGHT_BATCHES = 2;
               var hbIntersectionObs = null;
+
+              function makeTitleScoreKey(title) {
+                return String(title || '').toLowerCase().trim() + '|' + detectInstacartSlug() + '|' + hbPrefRev;
+              }
+
+              function cacheTitleBadgeScore(title, val) {
+                var k = makeTitleScoreKey(title);
+                if (!Object.prototype.hasOwnProperty.call(hbTitleScoreCache, k)) {
+                  hbTitleScoreKeys.push(k);
+                  while (hbTitleScoreKeys.length > 260) {
+                    var ev = hbTitleScoreKeys.shift();
+                    if (ev) delete hbTitleScoreCache[ev];
+                  }
+                }
+                hbTitleScoreCache[k] = val;
+              }
+
+              function scheduleHbRetry(delayMs) {
+                var d = Math.max(120, Math.round(Number(delayMs) || 0));
+                var targetAt = Date.now() + d;
+                if (hbRetryTimer && hbRetryAt > Date.now() && hbRetryAt <= targetAt + 40) {
+                  return;
+                }
+                if (hbRetryTimer) {
+                  clearTimeout(hbRetryTimer);
+                  hbRetryTimer = null;
+                }
+                hbRetryAt = targetAt;
+                hbRetryTimer = setTimeout(function() {
+                  hbRetryTimer = null;
+                  hbRetryAt = 0;
+                  scanPhotoBadges();
+                }, d);
+              }
 
               function ensureHbBadgeStyles() {
                 if (document.getElementById('hb-photo-badge-styles')) return;
@@ -635,6 +750,8 @@ class LiveStoreBrowserActivity : Activity() {
               }
 
               function findSafeCardAnchor(chosenImg, cardEl) {
+                var imgR = chosenImg.getBoundingClientRect();
+                var maxAnchorH = Math.min(420, Math.max(120, Math.round((imgR && imgR.height) || 200)) + 84);
                 var cur = chosenImg.parentElement;
                 if (cur && cur.tagName === 'PICTURE') cur = cur.parentElement;
                 var candidate = null;
@@ -643,7 +760,7 @@ class LiveStoreBrowserActivity : Activity() {
                   var cs = window.getComputedStyle(cur);
                   var disp = cs ? cs.display : '';
                   var cr = cur.getBoundingClientRect();
-                  if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 44 && cr.height >= 44 && cr.height <= 480) {
+                  if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 44 && cr.height >= 44 && cr.height <= maxAnchorH) {
                     candidate = cur;
                     break;
                   }
@@ -651,7 +768,12 @@ class LiveStoreBrowserActivity : Activity() {
                   cur = cur.parentElement;
                   steps++;
                 }
-                if (!candidate) candidate = cardEl;
+                if (!candidate && cardEl && cardEl !== document.body) {
+                  var cardR = cardEl.getBoundingClientRect();
+                  if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= maxAnchorH) {
+                    candidate = cardEl;
+                  }
+                }
                 if (!candidate || candidate === document.body) return null;
                 var candCs = window.getComputedStyle(candidate);
                 if (candCs && candCs.position === 'static') {
@@ -661,10 +783,13 @@ class LiveStoreBrowserActivity : Activity() {
                   if (beforeR.width >= 40 && (afterR.width < 24 || afterR.height < 24)) {
                     candidate.style.position = '';
                     if (cardEl && cardEl !== candidate) {
-                      if (window.getComputedStyle(cardEl).position === 'static') {
-                        cardEl.style.position = 'relative';
+                      var fbR = cardEl.getBoundingClientRect();
+                      if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= maxAnchorH) {
+                        if (window.getComputedStyle(cardEl).position === 'static') {
+                          cardEl.style.position = 'relative';
+                        }
+                        return cardEl;
                       }
-                      return cardEl;
                     }
                     return null;
                   }
@@ -673,7 +798,7 @@ class LiveStoreBrowserActivity : Activity() {
               }
 
               function readCardInfo(cardEl) {
-                if (!cardEl || cardEl.closest('header, nav, footer')) return null;
+                if (!cardEl || cardEl.closest('header, nav, footer, [role="contentinfo"]')) return null;
                 if (isCartDrawer(cardEl.closest('[role="dialog"], aside, section'))) return null;
                 var sels = [
                   '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-testid*="product-title" i]',
@@ -699,10 +824,9 @@ class LiveStoreBrowserActivity : Activity() {
                   if (title) break;
                 }
                 var linkEl = cardEl.querySelector(PRODUCT_LINK_SEL) || cardEl.querySelector('a[href]');
-                var hrefKey = linkEl ? String(linkEl.getAttribute('href') || '').split('#')[0].slice(0, 140) : '';
+                var hrefKey = linkEl ? String(linkEl.getAttribute('href') || '').split('#')[0].split('?')[0].slice(0, 140) : '';
                 var imgs = cardEl.querySelectorAll('img');
                 var chosenImg = null;
-                var imgKey = '';
                 for (var m = 0; m < imgs.length; m++) {
                   var img = imgs[m];
                   if (img.closest && img.closest('.hb-photo-badge')) continue;
@@ -713,14 +837,13 @@ class LiveStoreBrowserActivity : Activity() {
                     }
                   }
                   var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('srcset') || img.getAttribute('data-src') || '';
-                  if (src && PLACEHOLDER_IMG_RE.test(src)) continue;
+                  if (isPlaceholderCardImg(img, src)) continue;
                   var r = img.getBoundingClientRect();
                   var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
                   var ew = Math.max(r.width, pr.width);
                   var eh = Math.max(r.height, pr.height);
                   if (!chosenImg && ew >= 44 && eh >= 44 && ew <= 480 && eh <= 480) {
                     chosenImg = img;
-                    imgKey = String(src).split('?')[0].slice(-90);
                   }
                 }
                 if (!title) {
@@ -738,7 +861,7 @@ class LiveStoreBrowserActivity : Activity() {
                 if (!title || !chosenImg || isNonFoodGridTitle(title)) return null;
                 var anchor = findSafeCardAnchor(chosenImg, cardEl);
                 if (!anchor) return null;
-                var sig = title.toLowerCase() + '|' + hrefKey + '|' + imgKey + '|' + detectInstacartSlug() + '|' + hbPrefRev;
+                var sig = title.toLowerCase() + '|' + hrefKey + '|' + detectInstacartSlug() + '|' + hbPrefRev;
                 return { title: title, anchor: anchor, img: chosenImg, sig: sig };
               }
 
@@ -816,6 +939,18 @@ class LiveStoreBrowserActivity : Activity() {
                 });
               }
 
+              function applyResolvedBadgeAppearance(badge, title, entry) {
+                var sc = Math.max(0, Math.min(100, Math.round(Number(entry.score || 0))));
+                var hasAlert = Boolean(entry.hasAlert);
+                var severity = String(entry.alertSeverity || (hasAlert ? 'advisory' : 'none'));
+                var scoreTone = sc >= 75 ? 'green' : (sc >= 50 ? 'yellow' : 'red');
+                var tone = severity === 'allergen' ? 'red' : scoreTone;
+                var extraCls = (hasAlert && severity !== 'allergen') ? ' hb-photo-badge--advisory' : '';
+                badge.className = 'hb-photo-badge hb-photo-badge--' + tone + extraCls;
+                badge.textContent = (hasAlert ? '⚠️ ' : '🥦 ') + sc;
+                badge.setAttribute('aria-label', 'HeyBroc score ' + sc + ' out of 100' + (title ? ' for ' + title : ''));
+              }
+
               function processVisibleCard(cardEl) {
                 if (!cardEl || !cardEl.isConnected || isCartUrl()) return false;
                 var info = readCardInfo(cardEl);
@@ -831,7 +966,10 @@ class LiveStoreBrowserActivity : Activity() {
                 var now = Date.now();
                 if (prev && prev.sig === info.sig) {
                   if (prev.suppressedEstimate) return true;
-                  if (prev.retryAfter && now < prev.retryAfter) return false;
+                  if (prev.retryAfter && now < prev.retryAfter) {
+                    scheduleHbRetry((prev.retryAfter - now) + 80);
+                    return false;
+                  }
                   if (prev.badgeEl && prev.badgeEl.isConnected) return true;
                 } else if (prev) {
                   removeCardBadgeState(cardEl, prev);
@@ -840,15 +978,55 @@ class LiveStoreBrowserActivity : Activity() {
                 for (var sb = 0; sb < staleBadges.length; sb++) {
                   if (staleBadges[sb].parentNode) staleBadges[sb].parentNode.removeChild(staleBadges[sb]);
                 }
+                var cachedHit = hbTitleScoreCache[makeTitleScoreKey(info.title)];
+                if (cachedHit && cachedHit.suppressedEstimate) {
+                  if (hbCardState) {
+                    hbCardState.set(cardEl, {
+                      id: '',
+                      sig: info.sig,
+                      title: info.title,
+                      anchor: info.anchor,
+                      img: info.img,
+                      badgeEl: null,
+                      resolved: true,
+                      suppressedEstimate: true,
+                      retryCount: 0,
+                      retryAfter: 0,
+                      openOnResolve: false
+                    });
+                  }
+                  return true;
+                }
                 ensureHbBadgeStyles();
                 var cardId = hbPageToken + '_' + (hbCardSeq++);
                 var b = document.createElement('span');
-                b.className = 'hb-photo-badge hb-photo-badge--loading';
                 b.setAttribute('role', 'button');
                 b.setAttribute('tabindex', '0');
-                b.setAttribute('aria-label', 'Checking HeyBroc score for ' + info.title);
                 b.setAttribute('data-hb-card-id', cardId);
                 b.setAttribute('data-hb-sig', info.sig);
+                if (cachedHit && cachedHit.ok) {
+                  applyResolvedBadgeAppearance(b, info.title, cachedHit);
+                  info.anchor.appendChild(b);
+                  if (hbCardState) {
+                    hbCardState.set(cardEl, {
+                      id: cardId,
+                      sig: info.sig,
+                      title: info.title,
+                      anchor: info.anchor,
+                      img: info.img,
+                      badgeEl: b,
+                      resolved: true,
+                      suppressedEstimate: false,
+                      retryCount: 0,
+                      retryAfter: 0,
+                      openOnResolve: false
+                    });
+                  }
+                  hbOwnerCardById[cardId] = cardEl;
+                  return true;
+                }
+                b.className = 'hb-photo-badge hb-photo-badge--loading';
+                b.setAttribute('aria-label', 'Checking HeyBroc score for ' + info.title);
                 b.textContent = '🥦 …';
                 info.anchor.appendChild(b);
                 var nextState = {
@@ -877,6 +1055,7 @@ class LiveStoreBrowserActivity : Activity() {
                 if (hbBatchTimer) { clearTimeout(hbBatchTimer); hbBatchTimer = null; }
                 if (hbBatchWatchdog) { clearTimeout(hbBatchWatchdog); hbBatchWatchdog = null; }
                 if (hbRetryTimer) { clearTimeout(hbRetryTimer); hbRetryTimer = null; }
+                hbRetryAt = 0;
                 hbPendingQueue = [];
                 hbInFlightBatches = 0;
                 hbPageToken = makePageToken();
@@ -923,7 +1102,7 @@ class LiveStoreBrowserActivity : Activity() {
                 var vh = Math.max(400, window.innerHeight || 800);
                 var seen = [];
                 function addCand(el) {
-                  if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer')) return;
+                  if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer, [role="contentinfo"]')) return;
                   if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
                   for (var ex = 0; ex < seen.length; ex++) {
                     if (nodeContains(seen[ex], el) || nodeContains(el, seen[ex])) return;
@@ -938,7 +1117,7 @@ class LiveStoreBrowserActivity : Activity() {
                   var links = document.querySelectorAll(PRODUCT_LINK_SEL);
                   for (var l = 0; l < links.length; l++) {
                     var a = links[l];
-                    if (a.closest(CARD_SEL) || a.closest('header, nav, footer')) continue;
+                    if (a.closest(CARD_SEL) || a.closest('header, nav, footer, [role="contentinfo"]')) continue;
                     var cur = a;
                     var tile = null;
                     for (var depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
@@ -955,6 +1134,7 @@ class LiveStoreBrowserActivity : Activity() {
                   }
                 }
                 var now = Date.now();
+                var minRemainingRetryMs = 0;
                 for (var c = 0; c < seen.length; c++) {
                   var card = seen[c];
                   var st = hbCardState ? hbCardState.get(card) : null;
@@ -974,6 +1154,8 @@ class LiveStoreBrowserActivity : Activity() {
                     } else if (st.badgeEl && st.badgeEl.isConnected) {
                       continue;
                     } else if (st.retryAfter && now < st.retryAfter) {
+                      var remMs = st.retryAfter - now;
+                      if (!minRemainingRetryMs || remMs < minRemainingRetryMs) minRemainingRetryMs = remMs;
                       continue;
                     }
                   }
@@ -986,6 +1168,9 @@ class LiveStoreBrowserActivity : Activity() {
                   } else {
                     processVisibleCard(card);
                   }
+                }
+                if (minRemainingRetryMs > 0) {
+                  scheduleHbRetry(minRemainingRetryMs + 80);
                 }
               }
 
@@ -1023,6 +1208,8 @@ class LiveStoreBrowserActivity : Activity() {
                     if (badge.parentNode) badge.parentNode.removeChild(badge);
                     if (st) {
                       st.badgeEl = null;
+                      var shouldOpenFailed = Boolean(st.openOnResolve);
+                      st.openOnResolve = false;
                       if (entry && entry.transient && (st.retryCount || 0) < 2) {
                         st.retryCount = (st.retryCount || 0) + 1;
                         var delay = st.retryCount === 1 ? 2200 : 5000;
@@ -1030,6 +1217,15 @@ class LiveStoreBrowserActivity : Activity() {
                         if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
                       } else {
                         st.suppressedEstimate = true;
+                        if (st.title) cacheTitleBadgeScore(st.title, { suppressedEstimate: true });
+                      }
+                      if (shouldOpenFailed && st.title) {
+                        postBridge({
+                          kind: 'inspectCard',
+                          cardId: '',
+                          title: st.title,
+                          instacartSlug: detectInstacartSlug()
+                        });
                       }
                     }
                     continue;
@@ -1040,20 +1236,30 @@ class LiveStoreBrowserActivity : Activity() {
                     if (st) {
                       st.badgeEl = null;
                       st.suppressedEstimate = true;
+                      if (st.title) cacheTitleBadgeScore(st.title, { suppressedEstimate: true });
+                      if (st.openOnResolve && st.title) {
+                        st.openOnResolve = false;
+                        postBridge({
+                          kind: 'inspectCard',
+                          cardId: '',
+                          title: st.title,
+                          instacartSlug: detectInstacartSlug()
+                        });
+                      }
                     }
                     continue;
                   }
 
-                  var sc = Math.max(0, Math.min(100, Math.round(Number(entry.score || 0))));
-                  var hasAlert = Boolean(entry.hasAlert);
-                  var severity = String(entry.alertSeverity || (hasAlert ? 'advisory' : 'none'));
-                  var scoreTone = sc >= 75 ? 'green' : (sc >= 50 ? 'yellow' : 'red');
-                  var tone = severity === 'allergen' ? 'red' : scoreTone;
-                  var extraCls = (hasAlert && severity !== 'allergen') ? ' hb-photo-badge--advisory' : '';
-                  badge.className = 'hb-photo-badge hb-photo-badge--' + tone + extraCls;
-                  badge.textContent = (hasAlert ? '⚠️ ' : '🥦 ') + sc;
                   var labelTitle = st ? st.title : '';
-                  badge.setAttribute('aria-label', 'HeyBroc score ' + sc + ' out of 100' + (labelTitle ? ' for ' + labelTitle : ''));
+                  applyResolvedBadgeAppearance(badge, labelTitle, entry);
+                  if (labelTitle) {
+                    cacheTitleBadgeScore(labelTitle, {
+                      ok: true,
+                      score: entry.score,
+                      hasAlert: entry.hasAlert,
+                      alertSeverity: entry.alertSeverity
+                    });
+                  }
                   if (st) {
                     st.resolved = true;
                     if (st.openOnResolve) {
@@ -1067,16 +1273,35 @@ class LiveStoreBrowserActivity : Activity() {
                     }
                   }
                 }
-                if (earliestRetryMs > 0 && !hbRetryTimer) {
-                  hbRetryTimer = setTimeout(function() {
-                    hbRetryTimer = null;
-                    scanPhotoBadges();
-                  }, earliestRetryMs + 80);
+                if (earliestRetryMs > 0) {
+                  scheduleHbRetry(earliestRetryMs + 80);
                 }
+              };
+
+              window.__heybrocGetVisibleCardIds = function() {
+                var out = [];
+                var vh = Math.max(400, window.innerHeight || 800);
+                var vw = Math.max(280, window.innerWidth || 412);
+                var badges = document.querySelectorAll('.hb-photo-badge:not(.hb-photo-badge--loading)');
+                for (var i = 0; i < badges.length; i++) {
+                  var b = badges[i];
+                  if (!b || !b.isConnected) continue;
+                  var cid = b.getAttribute('data-hb-card-id') || '';
+                  if (!cid) continue;
+                  var owner = hbOwnerCardById[cid] || (b.closest ? b.closest(CARD_SEL) : null);
+                  var targetEl = (owner && owner.isConnected) ? owner : b;
+                  var r = targetEl.getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0 && r.bottom > 24 && r.top < vh - 16 && r.right > 0 && r.left < vw) {
+                    if (out.indexOf(cid) === -1) out.push(cid);
+                  }
+                }
+                return JSON.stringify(out);
               };
 
               window.__heybrocRefreshPhotoBadges = function() {
                 hbPrefRev++;
+                hbTitleScoreCache = {};
+                hbTitleScoreKeys = [];
                 clearHbBadges();
                 scanPhotoBadges();
               };
@@ -1754,8 +1979,16 @@ class LiveStoreBrowserActivity : Activity() {
                         }
                         return true
                     }
-                    if (scheme == "https" && !isAllowedNavigationHost(host)) {
-                        return true
+                    if (scheme == "https") {
+                        if (isExternalAuthHost(host)) {
+                            runCatching {
+                                startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            }
+                            return true
+                        }
+                        if (!isAllowedNavigationHost(host)) {
+                            return true
+                        }
                     }
                 }
                 return false
@@ -1767,6 +2000,9 @@ class LiveStoreBrowserActivity : Activity() {
                 scanGeneration++
                 badgeBatchGeneration++
                 cardJsonById.clear()
+                lastScannedKey = ""
+                latestScanJson = null
+                setBubbleIdleState()
                 lastInjectedProgressUrl = ""
                 lastVisitedHistoryUrl = url.orEmpty()
                 syncBackCallback()
@@ -1805,10 +2041,18 @@ class LiveStoreBrowserActivity : Activity() {
                 if (!isCleaningUp) {
                     val curUrl = url.orEmpty()
                     if (curUrl.isNotEmpty() && curUrl != lastVisitedHistoryUrl) {
+                        val prevBase = lastVisitedHistoryUrl.substringBefore('#')
+                        val nextBase = curUrl.substringBefore('#')
                         lastVisitedHistoryUrl = curUrl
                         lastInjectedProgressUrl = ""
                         badgeBatchGeneration++
                         cardJsonById.clear()
+                        if (nextBase != prevBase) {
+                            scanGeneration++
+                            lastScannedKey = ""
+                            latestScanJson = null
+                            setBubbleIdleState()
+                        }
                     }
                     syncBackCallback()
                     val host = runCatching { Uri.parse(curUrl).host }.getOrNull()
@@ -1856,29 +2100,82 @@ class LiveStoreBrowserActivity : Activity() {
                 isUserGesture: Boolean,
                 resultMsg: android.os.Message?
             ): Boolean {
-                if (!isUserGesture || view == null || resultMsg == null) return false
-                val hit = view.hitTestResult
-                val extra = hit.extra
-                val safeUrl = validatedRetailerUrl(extra)
-                if (safeUrl != null) {
-                    view.loadUrl(safeUrl)
-                    return false
-                }
-                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
-                val tempWv = WebView(this@LiveStoreBrowserActivity)
-                tempWv.webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
-                        val target = validatedRetailerUrl(req?.url?.toString())
-                        if (target != null && !isCleaningUp) {
-                            view.loadUrl(target)
+                if (!isUserGesture || view == null) return false
+
+                fun routePermittedPopupUrl(rawUrl: String?): Boolean {
+                    val trimmed = rawUrl?.trim().orEmpty()
+                    if (trimmed.isEmpty() || trimmed.equals("about:blank", ignoreCase = true)) return false
+                    val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return false
+                    if (uri.scheme?.lowercase() != "https") return false
+                    val host = uri.host?.lowercase().orEmpty()
+                    if (isBlockedAppRedirectHost(host)) return false
+                    if (isExternalAuthHost(host)) {
+                        if (!isCleaningUp) {
+                            runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                         }
-                        runCatching { v?.destroy() }
                         return true
                     }
+                    val navTarget = validatedNavigationUrl(trimmed) ?: return false
+                    if (!isCleaningUp) {
+                        view.loadUrl(navTarget)
+                    }
+                    return true
                 }
-                transport.webView = tempWv
-                resultMsg.sendToTarget()
-                return true
+
+                val transport = resultMsg?.obj as? WebView.WebViewTransport
+                if (transport != null && resultMsg != null) {
+                    val tempWv = WebView(this@LiveStoreBrowserActivity)
+                    tempWv.settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = false
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        setSupportMultipleWindows(false)
+                    }
+                    var cleanedUp = false
+                    fun cleanupTempWebView() {
+                        if (cleanedUp) return
+                        cleanedUp = true
+                        runCatching {
+                            tempWv.stopLoading()
+                            tempWv.webViewClient = WebViewClient()
+                            tempWv.destroy()
+                        }
+                    }
+                    tempWv.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
+                            val candidate = req?.url?.toString().orEmpty()
+                            if (candidate.isEmpty() || candidate.equals("about:blank", ignoreCase = true)) {
+                                return false
+                            }
+                            routePermittedPopupUrl(candidate)
+                            cleanupTempWebView()
+                            return true
+                        }
+
+                        override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                            val candidate = url.orEmpty()
+                            if (candidate.isEmpty() || candidate.equals("about:blank", ignoreCase = true)) {
+                                return
+                            }
+                            routePermittedPopupUrl(candidate)
+                            cleanupTempWebView()
+                        }
+                    }
+                    mainHandler.postDelayed({ cleanupTempWebView() }, 5000L)
+                    transport.webView = tempWv
+                    resultMsg.sendToTarget()
+                    return true
+                }
+
+                val hit = view.hitTestResult
+                if (
+                    hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                    hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                ) {
+                    routePermittedPopupUrl(hit.extra)
+                }
+                return false
             }
         }
 
@@ -2069,21 +2366,68 @@ class LiveStoreBrowserActivity : Activity() {
         wv.evaluateJavascript("window.__heybrocBubbleCenterY = $centerCssY; $rescanCall", null)
     }
 
+    private fun setBubbleFailureState(sub: String = "Tap to retry scan") {
+        floatingBubble.background = pillBackground(0xF2475569.toInt())
+        bubbleBadgeLabel.text = "Scan Unavailable"
+        bubbleSubLabel.text = sub
+    }
+
+    private fun showNoVisibleCardsToast() {
+        Toast.makeText(
+            this,
+            "Scroll to food cards (tap any 🥦 score badge!) or tap into a product on ${activeStore.label}.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     private fun onFloatingBubbleTapped() {
         val current = latestScanJson
         if (current != null && current.optBoolean("ok", false)) {
             presentInspectSheet(current)
             return
         }
-        if (cardJsonById.isNotEmpty()) {
-            presentVisibleGridDrawer()
+        if (lastDetectedTitle.isNotEmpty() && !lastDetectedIsCard) {
+            runLiveScan(
+                title = lastDetectedTitle,
+                ingredients = lastDetectedIngredients,
+                barcode = lastDetectedBarcode,
+                instacartSlug = lastDetectedInstacartSlug,
+                isCardScan = false,
+                force = true
+            )
             return
         }
-        Toast.makeText(
-            this,
-            "Scroll to food cards (tap any 🥦 score badge!) or tap into a product on ${activeStore.label}.",
-            Toast.LENGTH_SHORT
-        ).show()
+        val wv = storeWebView
+        if (wv != null && cardJsonById.isNotEmpty()) {
+            wv.evaluateJavascript("(window.__heybrocGetVisibleCardIds && window.__heybrocGetVisibleCardIds()) || '[]'") { rawEval ->
+                if (isCleaningUp || isFinishing || isDestroyed) return@evaluateJavascript
+                val visibleIds = LinkedHashSet<String>()
+                runCatching {
+                    val tok = if (!rawEval.isNullOrBlank() && rawEval != "null") {
+                        org.json.JSONTokener(rawEval).nextValue()
+                    } else null
+                    val arr = when (tok) {
+                        is JSONArray -> tok
+                        is String -> JSONArray(tok)
+                        else -> null
+                    }
+                    if (arr != null) {
+                        for (i in 0 until arr.length()) {
+                            val id = arr.optString(i).trim()
+                            if (VALID_BATCH_ID_RE.matches(id)) visibleIds.add(id)
+                        }
+                    }
+                }
+                val visibleItems = visibleIds.mapNotNull { cardJsonById[it] }
+                if (visibleItems.isNotEmpty()) {
+                    presentVisibleGridDrawer(visibleItems)
+                } else {
+                    showNoVisibleCardsToast()
+                }
+            }
+            return
+        }
+        showNoVisibleCardsToast()
     }
 
     private fun runLiveScan(
@@ -2099,7 +2443,10 @@ class LiveStoreBrowserActivity : Activity() {
         if (!force && dedupeKey == lastScannedKey) return
         lastScannedKey = dedupeKey
         val gen = ++scanGeneration
-        if (!isCardScan || latestScanJson == null) {
+        if (!isCardScan) {
+            latestScanJson = null
+            setBubbleScanningState()
+        } else if (latestScanJson == null) {
             setBubbleScanningState()
         }
         val appCtx = applicationContext
@@ -2115,7 +2462,8 @@ class LiveStoreBrowserActivity : Activity() {
                     store = apiStore,
                     storeBucket = bucket,
                     instacartRetailerSlug = instacartSlug,
-                    barcode = barcode.ifBlank { null }
+                    barcode = barcode.ifBlank { null },
+                    skipAnalytics = isCardScan
                 )
             }.getOrNull()
             val parsed = runCatching {
@@ -2125,7 +2473,8 @@ class LiveStoreBrowserActivity : Activity() {
                 if (isCleaningUp || isFinishing || isDestroyed || gen != scanGeneration) return@post
                 if (parsed != null && parsed.optBoolean("ok", false) && parsed.optJSONObject("result") != null) {
                     if (isCardScan && parsed.optBoolean("isCategoryEstimate", false)) {
-                        if (latestScanJson == null) setBubbleIdleState()
+                        latestScanJson = null
+                        setBubbleIdleState()
                         return@post
                     }
                     ScanApi.applyLocalWatchlistToData(this, parsed)
@@ -2133,8 +2482,16 @@ class LiveStoreBrowserActivity : Activity() {
                         runCatching { ScanHistoryStore.recordScan(this, parsed, apiStore) }
                     }
                     applyJsonToBubble(parsed)
-                } else if (latestScanJson == null) {
-                    setBubbleIdleState()
+                } else {
+                    if (lastScannedKey == dedupeKey) {
+                        lastScannedKey = ""
+                    }
+                    if (!isCardScan) {
+                        latestScanJson = null
+                        setBubbleFailureState()
+                    } else if (latestScanJson == null) {
+                        setBubbleIdleState()
+                    }
                 }
             }
         }
@@ -2183,6 +2540,11 @@ class LiveStoreBrowserActivity : Activity() {
                             else -> ""
                         }
                         val isCard = (kind == "card")
+                        val identityChanged = !title.equals(lastDetectedTitle, ignoreCase = true) || barcode != lastDetectedBarcode
+                        if (identityChanged) {
+                            latestScanJson = null
+                            lastScannedKey = ""
+                        }
                         lastDetectedIsCard = isCard
                         lastDetectedTitle = title
                         lastDetectedIngredients = ingredients
@@ -2273,7 +2635,7 @@ class LiveStoreBrowserActivity : Activity() {
                                 for (reqItem in batchReq) {
                                     val hit = outcome.results[reqItem.id]
                                     if (hit != null) {
-                                        if (!hit.isCategoryEstimate) {
+                                        if (!hit.isCategoryEstimate && !hit.isTransientLockedSwap) {
                                             cardJsonById[reqItem.id] = hit.fullJson
                                         }
                                         jsMap.put(reqItem.id, JSONObject().apply {
@@ -2306,12 +2668,24 @@ class LiveStoreBrowserActivity : Activity() {
                             isInstacartHost -> lastDetectedInstacartSlug
                             else -> ""
                         }
+                        if (title.isNotEmpty()) {
+                            lastDetectedIsCard = true
+                            lastDetectedTitle = title
+                            lastDetectedIngredients = ""
+                            lastDetectedBarcode = ""
+                            lastScannedKey = ""
+                            if (instacartSlug.isNotEmpty()) {
+                                lastDetectedInstacartSlug = instacartSlug
+                            }
+                        }
                         val cached = if (VALID_BATCH_ID_RE.matches(cardId)) cardJsonById[cardId] else null
                         if (cached != null) {
                             ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, cached)
                             applyJsonToBubble(cached)
                             presentInspectSheet(cached)
                         } else if (title.isNotEmpty()) {
+                            val gen = ++scanGeneration
+                            latestScanJson = null
                             setBubbleScanningState()
                             val apiStore = activeStore.apiStoreKey
                             val bucket = activeStore.storeBucket
@@ -2331,16 +2705,23 @@ class LiveStoreBrowserActivity : Activity() {
                                     if (raw != null && raw.startsWith("{")) JSONObject(raw) else null
                                 }.getOrNull()
                                 mainHandler.post {
-                                    if (isCleaningUp || isFinishing || isDestroyed) return@post
+                                    if (isCleaningUp || isFinishing || isDestroyed || gen != scanGeneration) return@post
                                     if (parsed != null && parsed.optBoolean("ok", false) && parsed.optJSONObject("result") != null) {
                                         ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, parsed)
-                                        if (VALID_BATCH_ID_RE.matches(cardId) && !parsed.optBoolean("isCategoryEstimate", false)) {
+                                        val isTransientLocked = parsed.optJSONObject("swap")?.optBoolean("locked", false) == true &&
+                                            parsed.optJSONObject("entitlement") == null
+                                        if (
+                                            VALID_BATCH_ID_RE.matches(cardId) &&
+                                            !parsed.optBoolean("isCategoryEstimate", false) &&
+                                            !isTransientLocked
+                                        ) {
                                             cardJsonById[cardId] = parsed
                                         }
                                         applyJsonToBubble(parsed)
                                         presentInspectSheet(parsed)
                                     } else {
-                                        setBubbleIdleState()
+                                        latestScanJson = null
+                                        setBubbleFailureState("Tap badge to retry")
                                     }
                                 }
                             }
@@ -2351,13 +2732,16 @@ class LiveStoreBrowserActivity : Activity() {
         }
     }
 
-    private fun presentVisibleGridDrawer() {
+    private fun presentVisibleGridDrawer(visibleItems: List<JSONObject>) {
         inspectDialog?.dismiss()
-        val sorted = cardJsonById.values
+        val sorted = visibleItems
             .filter { !it.optBoolean("isCategoryEstimate", false) && it.optJSONObject("result") != null }
             .distinctBy { it.optJSONObject("product")?.optString("title").orEmpty().lowercase().trim() }
             .sortedByDescending { it.optJSONObject("result")?.optInt("score", 0) ?: 0 }
-        if (sorted.isEmpty()) return
+        if (sorted.isEmpty()) {
+            showNoVisibleCardsToast()
+            return
+        }
 
         val dlg = Dialog(this)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -2611,6 +2995,17 @@ class LiveStoreBrowserActivity : Activity() {
             val canUnlockNow = swapUnlocked || (!serverLocked && ScanApi.canUseSwap(this) && rawSwapTitle.isNotBlank())
             val rem = ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
+            val isPaidLink = swapObj.optBoolean("isPaidLink", false)
+            val paidDisclosure = if (isPaidLink) " · paid link" else ""
+            val swapFlagNames = buildList {
+                val arr = swapObj.optJSONArray("flaggedAdditives")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val n = arr.optString(i).trim()
+                        if (n.isNotEmpty()) add(n)
+                    }
+                }
+            }
 
             val swapCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -2637,13 +3032,18 @@ class LiveStoreBrowserActivity : Activity() {
             val reason = swapObj.optString("why").ifBlank { swapObj.optString("reason") }
             if (swapUnlocked && reason.isNotBlank()) {
                 swapCard.addView(label(reason, 12f, 0xFF047857.toInt()).apply {
-                    setPadding(0, 0, 0, dp(8))
+                    setPadding(0, 0, 0, dp(4))
+                })
+            }
+            if (swapUnlocked && swapFlagNames.isNotEmpty()) {
+                swapCard.addView(label("Note: contains ${swapFlagNames.joinToString(", ")}", 11.5f, 0xFF92400E.toInt(), bold = true).apply {
+                    setPadding(0, 0, 0, dp(6))
                 })
             }
 
             val ctaText = when {
-                swapUnlocked -> "Shop Clean Swap on ${activeStore.label} →"
-                canUnlockNow -> "🔓 Unlock & Shop Clean Swap ($rem/$lim Free)"
+                swapUnlocked -> "Shop Clean Swap on ${activeStore.label} →$paidDisclosure"
+                canUnlockNow -> "🔓 Unlock & Shop Clean Swap ($rem/$lim Free)$paidDisclosure"
                 else -> "🔒 Unlock Unlimited Clean Swaps — Pro"
             }
             swapCard.addView(label(ctaText, 13.5f, Color.WHITE, bold = true).apply {

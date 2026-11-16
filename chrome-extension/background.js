@@ -23,10 +23,26 @@ chrome.runtime.onInstalled.addListener(() => {
   void getOrCreateDeviceCredentials();
 });
 
+async function persistRotatedDeviceSecret(secret) {
+  if (!secret || typeof secret !== "string") return;
+  try {
+    await chrome.storage.local.set({ heybroc_device_secret: secret });
+  } catch {
+    /* ignore */
+  }
+}
+
 async function getSettings() {
   const [syncData, localData, { deviceId, deviceSecret }] = await Promise.all([
     chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand"]),
-    chrome.storage.local.get(["watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand", "heybroc_creator_code"]),
+    chrome.storage.local.get([
+      "watchlist",
+      "familyWatchlist",
+      "dietaryWatchlist",
+      "preferStoreBrand",
+      "heybroc_creator_code",
+      "heybroc_auth_token",
+    ]),
     getOrCreateDeviceCredentials(),
   ]);
   const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
@@ -38,6 +54,7 @@ async function getSettings() {
     dietaryWatchlist: syncData.dietaryWatchlist || localData.dietaryWatchlist || undefined,
     preferStoreBrand: syncData.preferStoreBrand ?? localData.preferStoreBrand ?? undefined,
     creatorCode: localData.heybroc_creator_code || undefined,
+    authToken: localData.heybroc_auth_token || undefined,
     deviceId,
     deviceSecret,
   };
@@ -59,12 +76,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_SCAN") {
     (async () => {
       try {
-        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             ...msg.payload,
@@ -72,6 +90,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             familyWatchlist,
             dietaryWatchlist,
             ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+            ...(authToken ? { authToken } : {}),
             deviceId,
             deviceSecret,
             surface: "extension",
@@ -80,6 +99,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         const data = await res.json();
+        if (data?.issuedDeviceSecret) {
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
+        }
         sendResponse(data);
       } catch (err) {
         sendResponse({ ok: false, error: `HeyBroc API unreachable: ${err?.message || err}` });
@@ -93,13 +115,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const ctrl = new AbortController();
       const timeoutId = setTimeout(() => ctrl.abort(), 8500);
       try {
-        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, preferStoreBrand, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/scan`, {
           method: "POST",
           signal: ctrl.signal,
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             items: Array.isArray(msg.items) ? msg.items.slice(0, 8) : [],
@@ -109,6 +132,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             familyWatchlist,
             dietaryWatchlist,
             ...(preferStoreBrand !== undefined ? { preferStoreBrand } : {}),
+            ...(authToken ? { authToken } : {}),
             deviceId,
             deviceSecret,
             surface: "extension",
@@ -118,6 +142,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
         const retrySec = Number(res.headers.get("retry-after")) || 0;
         const data = await res.json().catch(() => null);
+        if (data?.issuedDeviceSecret) {
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
+        }
         if (!res.ok || !data) {
           sendResponse({
             ok: false,
@@ -146,18 +173,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_AUDIT") {
     (async () => {
       try {
-        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, watchlist, familyWatchlist, dietaryWatchlist, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/audit`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             ...msg.payload,
             watchlist,
             familyWatchlist,
             dietaryWatchlist,
+            ...(authToken ? { authToken } : {}),
             deviceId,
             deviceSecret,
             surface: "extension",
@@ -165,6 +194,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         const data = await res.json();
+        if (data?.issuedDeviceSecret) {
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
+        }
         sendResponse(data);
       } catch (err) {
         sendResponse({ ok: false, error: `HeyBroc Audit unreachable: ${err?.message || err}` });
@@ -176,12 +208,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_RECORD_SWAP") {
     (async () => {
       try {
-        const { apiBase, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/referral`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             action: "record_swap",
@@ -191,6 +224,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         const data = await res.json();
+        if (data?.issuedDeviceSecret) {
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
+        }
         sendResponse(data);
       } catch (err) {
         sendResponse({ ok: false, error: err?.message || String(err) });

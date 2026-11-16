@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { kvDel, kvGet, kvSet, kvSetNx } from "./storage";
+import { kvDel, kvGet, kvGetDel, kvSet, kvSetNx } from "./storage";
 import {
   getDevicePaidEntitlement,
   getEmailEntitlement,
@@ -709,20 +709,36 @@ export async function issueServerOAuthNonce(): Promise<string> {
   return nonce;
 }
 
-async function consumeServerOAuthNonceIfIssued(rawNonce: string): Promise<boolean> {
+async function hasIssuedServerOAuthNonce(rawNonce: string): Promise<boolean> {
   if (!rawNonce.startsWith("srvn_")) return true;
   const hash = crypto.createHash("sha256").update(rawNonce, "utf8").digest("hex");
   const key = `${OAUTH_SERVER_NONCE_PREFIX}${hash}`;
   const existing = await kvGet<{ issuedAt?: number }>(key).catch(() => null);
-  if (!existing) return false;
-  await kvDel(key).catch(() => {});
-  return true;
+  return Boolean(existing);
+}
+
+async function consumeServerOAuthNonceIfIssued(rawNonce: string): Promise<boolean> {
+  if (!rawNonce.startsWith("srvn_")) return true;
+  const hash = crypto.createHash("sha256").update(rawNonce, "utf8").digest("hex");
+  const key = `${OAUTH_SERVER_NONCE_PREFIX}${hash}`;
+  const existing = await kvGetDel<{ issuedAt?: number }>(key).catch(() => null);
+  return Boolean(existing);
 }
 
 function matchesExpectedOidcNonce(tokenNonce: string, expectedNonce: string): boolean {
   if (constantTimeStringEquals(tokenNonce, expectedNonce)) return true;
   const sha256Hex = crypto.createHash("sha256").update(expectedNonce, "utf8").digest("hex");
   return constantTimeStringEquals(tokenNonce.toLowerCase(), sha256Hex);
+}
+
+interface VerifiedOidcTokenResult {
+  ok: boolean;
+  email: string;
+  sub?: string;
+  name?: string;
+  tokenDigest?: string;
+  replayTtlSeconds?: number;
+  expectedNonce?: string;
 }
 
 async function verifyOidcJwtWithJwks(params: {
@@ -734,7 +750,7 @@ async function verifyOidcJwtWithJwks(params: {
   expectedNonce?: string;
   requireAzpInAllowedAudiences?: boolean;
   allowAppleSubFallback?: boolean;
-}): Promise<{ ok: boolean; email: string; sub?: string }> {
+}): Promise<VerifiedOidcTokenResult> {
   try {
     if (params.allowedAudiences.length === 0) {
       return { ok: false, email: "" };
@@ -789,8 +805,8 @@ async function verifyOidcJwtWithJwks(params: {
       if (!tokenNonce || !matchesExpectedOidcNonce(tokenNonce, cleanExpectedNonce)) {
         return { ok: false, email: "" };
       }
-    } else if (params.requireAzpInAllowedAudiences && tokenNonce) {
-      // Never allow a nonce-bound Google ID token to be replayed without supplying its matching nonce
+    } else if (tokenNonce) {
+      // Never allow a nonce-bound Google or Apple ID token to be replayed without supplying its matching nonce
       return { ok: false, email: "" };
     }
     if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
@@ -840,13 +856,13 @@ async function verifyOidcJwtWithJwks(params: {
     );
     if (!verified) return { ok: false, email: "" };
 
-    if (cleanExpectedNonce && !(await consumeServerOAuthNonceIfIssued(cleanExpectedNonce))) {
+    if (cleanExpectedNonce && !(await hasIssuedServerOAuthNonce(cleanExpectedNonce))) {
       return { ok: false, email: "" };
     }
     const tokenDigest = crypto.createHash("sha256").update(cleanToken, "utf8").digest("hex");
-    const ttlSeconds = Math.max(60, Math.min(7200, Math.ceil(payload.exp - Date.now() / 1000) + 60));
-    const firstUse = await kvSetNx(`${OIDC_TOKEN_REPLAY_PREFIX}${tokenDigest}`, "1", ttlSeconds).catch(() => true);
-    if (!firstUse) {
+    const replayTtlSeconds = Math.max(60, Math.min(7200, Math.ceil(payload.exp - Date.now() / 1000) + 60));
+    const alreadyRedeemed = await kvGet<string>(`${OIDC_TOKEN_REPLAY_PREFIX}${tokenDigest}`).catch(() => null);
+    if (alreadyRedeemed) {
       return { ok: false, email: "" };
     }
 
@@ -870,7 +886,14 @@ async function verifyOidcJwtWithJwks(params: {
       await kvSet(`${USER_APPLE_SUB_PREFIX}${tokenSub}`, tokenEmail).catch(() => {});
     }
 
-    return { ok: Boolean(tokenEmail), email: tokenEmail, sub: tokenSub || undefined };
+    return {
+      ok: Boolean(tokenEmail),
+      email: tokenEmail,
+      sub: tokenSub || undefined,
+      tokenDigest,
+      replayTtlSeconds,
+      expectedNonce: cleanExpectedNonce || undefined,
+    };
   } catch {
     return { ok: false, email: "" };
   }
@@ -880,7 +903,7 @@ async function verifyGoogleIdToken(
   idToken: string,
   expectedEmail: string,
   expectedNonce?: string
-): Promise<{ ok: boolean; email: string }> {
+): Promise<VerifiedOidcTokenResult> {
   const allowedAudiences = Array.from(
     new Set(
       [
@@ -912,7 +935,7 @@ async function verifyAppleIdToken(
   idToken: string,
   expectedEmail: string,
   expectedNonce?: string
-): Promise<{ ok: boolean; email: string; sub?: string }> {
+): Promise<VerifiedOidcTokenResult> {
   const rawConfigured = [
     process.env.APPLE_SERVICE_ID,
     process.env.APPLE_CLIENT_ID,
@@ -972,7 +995,7 @@ export async function loginWithOAuth(params: {
     };
   }
 
-  const verification: { ok: boolean; email: string; name?: string } =
+  const verification: VerifiedOidcTokenResult =
     params.provider === "google"
       ? await verifyGoogleIdToken(cleanIdToken, params.email, params.nonce)
       : await verifyAppleIdToken(cleanIdToken, params.email, params.nonce);
@@ -1031,7 +1054,9 @@ export async function loginWithOAuth(params: {
   };
 
   const wasPreviouslyUnverified = Boolean(existing && !existing.emailVerified);
+  let staleUnverifiedDevices: string[] = [];
   if (existing && wasPreviouslyUnverified) {
+    staleUnverifiedDevices = [...(existing.linkedDevices || [])].filter(Boolean);
     existing.provider = params.provider;
     delete existing.passwordHash;
     delete existing.passwordSalt;
@@ -1039,6 +1064,9 @@ export async function loginWithOAuth(params: {
     delete existing.verificationCode;
     delete existing.verificationExpiresAt;
     existing.verificationAttempts = 0;
+    delete existing.resetCode;
+    delete existing.resetExpiresAt;
+    existing.resetAttempts = 0;
     existing.linkedDevices = [];
     existing.tokenVersion = (existing.tokenVersion ?? 0) + 1;
     // Also re-derive referral code cleanly if an unverified caller had planted a device code
@@ -1059,18 +1087,65 @@ export async function loginWithOAuth(params: {
     user.updatedAt = new Date().toISOString();
   }
 
-  const linkRes = await linkDeviceToUser(user, cleanDeviceId, cleanDeviceSecret);
-  const verifiedDeviceId = linkRes.linked ? linkRes.deviceId : undefined;
-  const profile = await toPublicProfile(user, verifiedDeviceId, {
-    skipUserSave: true,
-  });
-  const token = createSessionToken(user);
-  await saveUser(user);
-  return {
-    ok: true,
-    token,
-    user: profile,
-  };
+  const replayKey = verification.tokenDigest
+    ? `${OIDC_TOKEN_REPLAY_PREFIX}${verification.tokenDigest}`
+    : "";
+  if (replayKey) {
+    const firstUse = await kvSetNx(
+      replayKey,
+      "1",
+      verification.replayTtlSeconds ?? 3600
+    ).catch(() => true);
+    if (!firstUse) {
+      return {
+        ok: false,
+        error:
+          params.provider === "google"
+            ? "Invalid or unverified Google identity token."
+            : "Invalid or unverified Apple identity token.",
+      };
+    }
+  }
+  if (
+    verification.expectedNonce &&
+    !(await consumeServerOAuthNonceIfIssued(verification.expectedNonce))
+  ) {
+    if (replayKey) await kvDel(replayKey).catch(() => {});
+    return {
+      ok: false,
+      error:
+        params.provider === "google"
+          ? "Invalid or unverified Google identity token."
+          : "Invalid or unverified Apple identity token.",
+    };
+  }
+
+  try {
+    if (staleUnverifiedDevices.length > 0) {
+      await Promise.all(
+        staleUnverifiedDevices.map((d) =>
+          kvDel(`${USER_BY_DEVICE_PREFIX}${d}`).catch(() => {})
+        )
+      );
+    }
+    const linkRes = await linkDeviceToUser(user, cleanDeviceId, cleanDeviceSecret);
+    const verifiedDeviceId = linkRes.linked ? linkRes.deviceId : undefined;
+    const profile = await toPublicProfile(user, verifiedDeviceId, {
+      skipUserSave: true,
+    });
+    const token = createSessionToken(user);
+    await saveUser(user);
+    return {
+      ok: true,
+      token,
+      user: profile,
+    };
+  } catch (err) {
+    if (replayKey) {
+      await kvDel(replayKey).catch(() => {});
+    }
+    throw err;
+  }
 }
 
 export async function resendVerificationCode(rawEmail: string): Promise<{

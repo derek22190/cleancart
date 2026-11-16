@@ -4257,9 +4257,15 @@ export function resolveSwapCandidates(params: {
     }
   }
 
-  // Prefer Yuka >= 85 candidates (plus the primary 1-for-1 clean match & verified store-brand picks);
-  // fall back to clean-additive (>=85 ingredient rubric) 1-for-1 swaps where Nutri-Score caps energy-dense foods < 85.
-  const highYuka = evaluated.filter((e) => e.swap.score >= 85 || e.isPrimary || e.swap.isStoreBrand);
+  // Prefer Yuka >= 85 0-additive candidates (plus store-brand picks when preferStoreBrand is enabled);
+  // fall back to <85 primary/store-brand picks only when no >=85 0-flag candidate exists.
+  const hasHighCleanCandidate = evaluated.some((e) => e.swap.score >= 85 && e.flagCount === 0);
+  const highYuka = evaluated.filter(
+    (e) =>
+      e.swap.score >= 85 ||
+      (params.preferStoreBrand && e.swap.isStoreBrand) ||
+      (!hasHighCleanCandidate && (e.isPrimary || e.swap.isStoreBrand)),
+  );
   const pool = highYuka.length > 0 ? highYuka : evaluated;
 
   pool.sort((a, b) => {
@@ -4271,8 +4277,11 @@ export function resolveSwapCandidates(params: {
     if (params.preferStoreBrand && Boolean(b.swap.isStoreBrand) !== Boolean(a.swap.isStoreBrand)) {
       return b.swap.isStoreBrand ? 1 : -1;
     }
-    if (b.tier !== a.tier) return b.tier - a.tier;
+    const aMajorTier = Math.floor(a.tier);
+    const bMajorTier = Math.floor(b.tier);
+    if (bMajorTier !== aMajorTier) return bMajorTier - aMajorTier;
     if ((a.flagCount === 0) !== (b.flagCount === 0)) return a.flagCount === 0 ? -1 : 1;
+    if (b.tier !== a.tier) return b.tier - a.tier;
     return b.swap.score - a.swap.score;
   });
 

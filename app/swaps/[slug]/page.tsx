@@ -285,6 +285,11 @@ export default async function SwapReportPage({
                 <p style={{ fontSize: 12, color: "#065f46", margin: 0, lineHeight: 1.4 }}>
                   {swap.ingredients}
                 </p>
+                {swap.flaggedAdditives && swap.flaggedAdditives.length > 0 && (
+                  <p style={{ fontSize: 11.5, fontWeight: 700, color: "#92400e", margin: "4px 0 0", lineHeight: 1.35 }}>
+                    Note: contains {swap.flaggedAdditives.join(", ")}
+                  </p>
+                )}
               </div>
             </div>
 

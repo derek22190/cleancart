@@ -48,7 +48,7 @@ export function isPersistentKvConfigured(): boolean {
 }
 
 export const CRITICAL_KV_KEY_PATTERN =
-  /^(?:ent:|heybroc:entitlement:|consent:|heybroc:consent:|stripe:webhook:|heybroc:stripe:|rc:webhook:|heybroc:rc:|inf:|heybroc:inf|heybroc:creator:|heybroc:creators:|heybroc:influencers|heybroc:device:|heybroc:refcode:|heybroc:auth:|heybroc:charge:|heybroc:user:|heybroc:referral:)/i;
+  /^(?:ent:|heybroc:entitlement:|consent:|heybroc:consent:|stripe:webhook:|heybroc:stripe:|rc:webhook:|heybroc:rc:|inf:|heybroc:inf|heybroc:creator:|heybroc:creators:|heybroc:influencers|heybroc:device:|heybroc:refcode:|heybroc:auth:|heybroc:oauth_nonce:|heybroc:oidc_replay:|heybroc:charge:|heybroc:user:|heybroc:referral:)/i;
 
 function ensureStorageReady(key?: string): RedisConfig | null {
   const cfg = getRedisConfig();
@@ -229,6 +229,43 @@ export async function kvDel(key: string): Promise<void> {
   }
 }
 
+export async function kvGetDel<T>(key: string): Promise<T | null> {
+  const cfg = ensureStorageReady(key);
+  if (cfg) {
+    const lua = [
+      'local v = redis.call("GET", KEYS[1])',
+      "if v then",
+      '  redis.call("DEL", KEYS[1])',
+      "end",
+      "return v",
+    ].join("\n");
+    const raw = await upstashCommand<string>(["EVAL", lua, 1, key], key);
+    if (raw === null || raw === undefined) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  const now = Date.now();
+  const localObj = readLocalDevStore();
+  const entry = memoryFallback.get(key) ?? localObj[key];
+  memoryFallback.delete(key);
+  if (key in localObj) {
+    delete localObj[key];
+    writeLocalDevStore(localObj);
+  }
+  if (!entry || (entry.expiresAt && entry.expiresAt <= now)) {
+    return null;
+  }
+  try {
+    return JSON.parse(entry.raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Atomic Redis INCR + PEXPIRE rate-limit counter.
  */
@@ -237,19 +274,20 @@ export async function kvIncrWithPExpire(
   windowMs = 60_000,
   delta = 1
 ): Promise<number> {
-  const safeDelta = Math.max(1, Math.floor(delta));
+  const safeDelta = Number.isFinite(delta) ? Math.max(1, Math.floor(delta)) : 1;
+  const safeWindowMs = Number.isFinite(windowMs) ? Math.max(1000, Math.floor(windowMs)) : 60_000;
   const cfg = getRedisConfig();
   if (cfg) {
     const lua = [
       'local d = tonumber(ARGV[2])',
       'local c = redis.call("INCRBY", KEYS[1], d)',
-      "if c == d then",
+      'if c == d or redis.call("PTTL", KEYS[1]) < 0 then',
       '  redis.call("PEXPIRE", KEYS[1], tonumber(ARGV[1]))',
       "end",
       "return c",
     ].join("\n");
     const res = await upstashCommand<number>(
-      ["EVAL", lua, 1, key, Math.max(1000, Math.floor(windowMs)), safeDelta],
+      ["EVAL", lua, 1, key, safeWindowMs, safeDelta],
       key
     );
     return Number(res ?? safeDelta);
@@ -259,7 +297,7 @@ export async function kvIncrWithPExpire(
   if (!existing || (existing.expiresAt && existing.expiresAt <= now)) {
     setBoundedMemoryFallback(key, {
       raw: String(safeDelta),
-      expiresAt: now + Math.max(1000, Math.floor(windowMs)),
+      expiresAt: now + safeWindowMs,
     });
     return safeDelta;
   }

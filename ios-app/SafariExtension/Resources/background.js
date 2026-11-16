@@ -23,7 +23,7 @@ chrome.runtime.onInstalled.addListener(() => {
   void getOrCreateDeviceCredentials();
 });
 
-async function readNativeAppGroupPrefs() {
+async function sendNativeAppGroupMessage(payload) {
   try {
     const rt = (typeof browser !== "undefined" && browser.runtime?.sendNativeMessage)
       ? browser.runtime
@@ -31,7 +31,7 @@ async function readNativeAppGroupPrefs() {
     if (typeof rt?.sendNativeMessage !== "function") return null;
     const reply = await new Promise((resolve) => {
       try {
-        const maybePromise = rt.sendNativeMessage("com.heybroc.app", { action: "getSharedPreferences" }, (res) => {
+        const maybePromise = rt.sendNativeMessage("com.heybroc.app", payload, (res) => {
           resolve(res || null);
         });
         if (maybePromise && typeof maybePromise.then === "function") {
@@ -47,6 +47,28 @@ async function readNativeAppGroupPrefs() {
   }
 }
 
+async function readNativeAppGroupPrefs() {
+  return sendNativeAppGroupMessage({ action: "getSharedPreferences" });
+}
+
+async function persistRotatedDeviceSecret(secret) {
+  if (!secret || typeof secret !== "string") return;
+  try {
+    await chrome.storage.local.set({ heybroc_device_secret: secret });
+  } catch {
+    /* ignore */
+  }
+  await sendNativeAppGroupMessage({ action: "setSharedPreferences", deviceSecret: secret });
+}
+
+function sameJsonValue(a, b) {
+  try {
+    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  } catch {
+    return false;
+  }
+}
+
 async function getSettings() {
   const [syncData, localData, { deviceId, deviceSecret }, nativePrefs] = await Promise.all([
     chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand"]),
@@ -54,43 +76,61 @@ async function getSettings() {
     getOrCreateDeviceCredentials(),
     readNativeAppGroupPrefs(),
   ]);
+  const hasNativePrefs = Boolean(nativePrefs && nativePrefs.ok);
   const resolvedDeviceId =
-    nativePrefs?.deviceId && String(nativePrefs.deviceId).length >= 8 ? String(nativePrefs.deviceId) : deviceId;
+    hasNativePrefs && nativePrefs.deviceId && String(nativePrefs.deviceId).length >= 8
+      ? String(nativePrefs.deviceId)
+      : deviceId;
   const resolvedDeviceSecret =
-    nativePrefs?.deviceSecret && String(nativePrefs.deviceSecret).length > 0
+    hasNativePrefs && nativePrefs.deviceSecret && String(nativePrefs.deviceSecret).length > 0
       ? String(nativePrefs.deviceSecret)
       : deviceSecret;
-  const resolvedAuthToken =
-    (nativePrefs?.authToken && String(nativePrefs.authToken)) || localData.heybroc_auth_token || undefined;
+  const resolvedAuthToken = hasNativePrefs
+    ? (nativePrefs.authToken && String(nativePrefs.authToken)) || undefined
+    : localData.heybroc_auth_token || undefined;
 
-  if (
-    resolvedDeviceId !== deviceId ||
-    resolvedDeviceSecret !== deviceSecret ||
-    (resolvedAuthToken && resolvedAuthToken !== localData.heybroc_auth_token)
-  ) {
-    try {
-      await chrome.storage.local.set({
-        heybroc_device_id: resolvedDeviceId,
-        heybroc_device_secret: resolvedDeviceSecret,
-        ...(resolvedAuthToken ? { heybroc_auth_token: resolvedAuthToken } : {}),
-      });
-    } catch {
-      /* ignore */
+  const resolvedDietary = hasNativePrefs && Array.isArray(nativePrefs.dietaryWatchlist)
+    ? nativePrefs.dietaryWatchlist
+    : syncData.dietaryWatchlist || localData.dietaryWatchlist || undefined;
+  const resolvedFamily = hasNativePrefs && Array.isArray(nativePrefs.familyWatchlist)
+    ? nativePrefs.familyWatchlist
+    : syncData.familyWatchlist || localData.familyWatchlist || undefined;
+  const resolvedPreferStoreBrand =
+    hasNativePrefs && typeof nativePrefs.preferStoreBrand === "boolean"
+      ? nativePrefs.preferStoreBrand
+      : syncData.preferStoreBrand ?? localData.preferStoreBrand ?? undefined;
+
+  const updates = {};
+  if (resolvedDeviceId !== deviceId) updates.heybroc_device_id = resolvedDeviceId;
+  if (resolvedDeviceSecret !== deviceSecret) updates.heybroc_device_secret = resolvedDeviceSecret;
+  if (resolvedAuthToken && resolvedAuthToken !== localData.heybroc_auth_token) {
+    updates.heybroc_auth_token = resolvedAuthToken;
+  }
+  if (hasNativePrefs) {
+    if (Array.isArray(nativePrefs.dietaryWatchlist) && !sameJsonValue(localData.dietaryWatchlist, nativePrefs.dietaryWatchlist)) {
+      updates.dietaryWatchlist = nativePrefs.dietaryWatchlist;
     }
+    if (Array.isArray(nativePrefs.familyWatchlist) && !sameJsonValue(localData.familyWatchlist, nativePrefs.familyWatchlist)) {
+      updates.familyWatchlist = nativePrefs.familyWatchlist;
+    }
+    if (typeof nativePrefs.preferStoreBrand === "boolean" && localData.preferStoreBrand !== nativePrefs.preferStoreBrand) {
+      updates.preferStoreBrand = nativePrefs.preferStoreBrand;
+    }
+  }
+
+  try {
+    if (Object.keys(updates).length > 0) {
+      await chrome.storage.local.set(updates);
+    }
+    if (hasNativePrefs && !resolvedAuthToken && localData.heybroc_auth_token) {
+      await chrome.storage.local.remove("heybroc_auth_token");
+    }
+  } catch {
+    /* ignore */
   }
 
   const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
   const normalizedBase = rawBase === "https://heybroc.com" ? "https://www.heybroc.com" : rawBase;
-  const resolvedDietary =
-    syncData.dietaryWatchlist ||
-    localData.dietaryWatchlist ||
-    (Array.isArray(nativePrefs?.dietaryWatchlist) && nativePrefs.dietaryWatchlist.length > 0 ? nativePrefs.dietaryWatchlist : undefined);
-  const resolvedFamily =
-    syncData.familyWatchlist ||
-    localData.familyWatchlist ||
-    (Array.isArray(nativePrefs?.familyWatchlist) && nativePrefs.familyWatchlist.length > 0 ? nativePrefs.familyWatchlist : undefined);
-  const resolvedPreferStoreBrand =
-    syncData.preferStoreBrand ?? localData.preferStoreBrand ?? nativePrefs?.preferStoreBrand ?? undefined;
   return {
     apiBase: normalizedBase,
     watchlist: syncData.watchlist || localData.watchlist || undefined,
@@ -144,7 +184,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         });
         const data = await res.json();
         if (data?.issuedDeviceSecret) {
-          await chrome.storage.local.set({ heybroc_device_secret: data.issuedDeviceSecret });
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
         }
         sendResponse(data);
       } catch (err) {
@@ -187,7 +227,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const retrySec = Number(res.headers.get("retry-after")) || 0;
         const data = await res.json().catch(() => null);
         if (data?.issuedDeviceSecret) {
-          await chrome.storage.local.set({ heybroc_device_secret: data.issuedDeviceSecret });
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
         }
         if (!res.ok || !data) {
           sendResponse({
@@ -230,6 +270,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             watchlist,
             familyWatchlist,
             dietaryWatchlist,
+            ...(authToken ? { authToken } : {}),
             deviceId,
             deviceSecret,
             surface: "extension",
@@ -237,6 +278,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         const data = await res.json();
+        if (data?.issuedDeviceSecret) {
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
+        }
         sendResponse(data);
       } catch (err) {
         sendResponse({ ok: false, error: `HeyBroc Audit unreachable: ${err?.message || err}` });
@@ -248,12 +292,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CLEANCART_RECORD_SWAP") {
     (async () => {
       try {
-        const { apiBase, deviceId, deviceSecret } = await getSettings();
+        const { apiBase, deviceId, deviceSecret, authToken } = await getSettings();
         const res = await fetch(`${apiBase}/api/referral`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Device-Secret": deviceSecret,
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
             action: "record_swap",
@@ -263,6 +308,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }),
         });
         const data = await res.json();
+        if (data?.issuedDeviceSecret) {
+          await persistRotatedDeviceSecret(data.issuedDeviceSecret);
+        }
         sendResponse(data);
       } catch (err) {
         sendResponse({ ok: false, error: err?.message || String(err) });

@@ -500,7 +500,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   {
     id: "naphosphate", name: "Sodium Phosphate", risk: "low", category: "preservatives",
     patterns: [
-      "(?:mono|di|tri|penta)?(?:sodium|potassium)(?: (?:dihydrogen|acid|aluminum|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)",
+      "(?:mono|di|tri|penta)?(?:sodium|potassium)(?: (?:dihydrogen|acid|aluminum|mono|di|tri|penta|sodium|potassium|disodium|trisodium|monosodium|dipotassium|tripotassium|monopotassium|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)",
     ],
     explanation: "FDA-gras inorganic sodium phosphate salt used for moisture retention and texture in processed foods.",
   },
@@ -634,22 +634,165 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
 
 const SEED_WORDS = "soybean|soy|canola|corn|cottonseed|sunflower|safflower|grapeseed|rapeseed|rice bran";
 
-const PRECAUTIONARY_ALLERGEN_TOKEN_SRC =
-  "(?:peanuts?|tree\\s+nuts?|nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|pistachios?|macadamia(?:\\s+nuts?)?|brazil\\s+nuts?|pine\\s+nuts?|coconuts?|milk|dairy(?:\\s+products?)?|eggs?|wheat|gluten|soy(?:a|beans?)?(?:\\s+lecithin)?|lecithin\\s+soy(?:a|bean)?|sesame(?:\\s+seeds?)?|shellfish|crustaceans?|fish|finfish|mustard|sulfites?|sulphites?|lupin|allergens?)(?:\\s+products?|\\s+traces?)?";
+const PRECAUTIONARY_PREFIX_RE =
+  /\b(?:may\s+contain(?:\s+traces\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\s+(?:in|on)\s+(?:a\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\s+equipment|lines?|machinery)\s+(?:that|which)\s+(?:also\s+)?(?:processes|handles|uses|manufactures|packages)|(?:(?:manufactured|processed|produced|packaged|made|prepared)\s+(?:on|in)\s+)?(?:shared\s+equipment|(?:a\s+)?(?:equipment|lines?|machinery|facility|plant)\s+shared)\s+with|facility\s+that\s+(?:also\s+)?(?:processes|handles|uses|manufactures|packages))(?:\s*:)?\s+(?:traces\s+of\s+)?(?:the\s+following\s*:?\s*)?/gi;
 
-const PRECAUTIONARY_PREFIX_SRC =
-  "\\b(?:may\\s+contain(?:\\s+traces\\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:in|on)\\s+(?:a\\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\\s+equipment|lines?|machinery)(?:\\s+(?:that|which)\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|\\s+with)?|shared\\s+equipment\\s+with|facility\\s+that\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages))(?:\\s*:)?\\s+(?:traces\\s+of\\s+)?(?:the\\s+following\\s*:?\\s*)?";
+const SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE =
+  /^(?:other\s+|various\s+|trace\s+|traces\s+of\s+)?(?:peanuts?|tree\s+nuts?|nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|filberts?|pistachios?|macadamia(?:\s+nuts?)?|brazil\s+nuts?|pine\s+nuts?|chestnuts?|coconuts?|milk|dairy|lactose|whey|casein|eggs?|wheat|gluten|barley|rye|oats?|triticale|spelt|soy|soya|soybeans?|soy\s+lecithin|soya\s+lecithin|lecithin\s+soy(?:a|bean)?|sesame(?:\s+seeds?)?|(?:crustacean\s+|molluscan\s+)?shellfish|crustaceans?|mollusks?|molluscs?|fish|finfish|anchov(?:y|ies)|salmon|tuna|cod|shrimp|crab|lobster|mustard|celery|sulfites?|sulphites?|sulfur\s+dioxide|lupin|lupine|allergens?)(?:\s+(?:products?|ingredients?|derivatives?|traces?|proteins?|sources?))?$/i;
 
-const PRECAUTIONARY_END_BOUNDARY_SRC =
-  "(?=\\s*(?:[.;:!)\\]\\n]|$|\\b(?:ingredients?|contains|distributed|manufactured|produced|packaged|questions|allergen)\\b))";
+const PRECAUTIONARY_SECTION_STOP_RE =
+  /^(?:,\s*)?(?:ingredients?|contains|distributed|manufactured|produced|packaged|questions|allergen)\b/i;
 
-const PRECAUTIONARY_CROSS_CONTACT_CLAUSE_RE = new RegExp(
-  `${PRECAUTIONARY_PREFIX_SRC}(?:${PRECAUTIONARY_ALLERGEN_TOKEN_SRC}(?:\\s*(?:,\\s*(?:and\\s+|or\\s+)?|\\s+(?:and|or)\\s+|\\s*[&/]\\s*)${PRECAUTIONARY_ALLERGEN_TOKEN_SRC})+${PRECAUTIONARY_END_BOUNDARY_SRC}|${PRECAUTIONARY_ALLERGEN_TOKEN_SRC}(?:\\s+(?:and|or)\\s+${PRECAUTIONARY_ALLERGEN_TOKEN_SRC})*)`,
-  "gi",
-);
+function splitPrecautionaryListItems(listText: string): string[] | null {
+  const items: string[] = [];
+  let cur = "";
+  let depth = 0;
+  for (let i = 0; i < listText.length; i++) {
+    const ch = listText[i];
+    if (ch === "(") {
+      depth += 1;
+      cur += ch;
+      continue;
+    }
+    if (ch === ")") {
+      if (depth === 0) return null;
+      depth -= 1;
+      cur += ch;
+      continue;
+    }
+    if (depth === 0) {
+      if (ch === "," || ch === "&" || ch === "/") {
+        const trimmed = cur.trim();
+        if (trimmed) items.push(trimmed);
+        cur = "";
+        let nextIdx = i + 1;
+        while (nextIdx < listText.length && /\s/.test(listText[nextIdx])) nextIdx += 1;
+        if (ch === ",") {
+          const conj = listText.slice(nextIdx).match(/^(?:and|or)\b\s+/i);
+          if (conj) nextIdx += conj[0].length;
+        }
+        i = nextIdx - 1;
+        continue;
+      }
+      if (/\s/.test(ch)) {
+        const conj = listText.slice(i).match(/^\s+(?:and(?:\s*\/\s*or)?|or)\s+/i);
+        if (conj) {
+          const trimmed = cur.trim();
+          if (trimmed) items.push(trimmed);
+          cur = "";
+          i += conj[0].length - 1;
+          continue;
+        }
+      }
+    }
+    cur += ch;
+  }
+  if (depth !== 0) return null;
+  const tail = cur.trim();
+  if (tail) items.push(tail);
+  return items.length > 0 ? items : null;
+}
 
+function isPrecautionaryAllergenSegment(segment: string): boolean {
+  const trimmed = segment.trim().replace(/^[:\-–—]+\s*/, "").trim();
+  if (!trimmed || trimmed.length > 160) return false;
+  const parenIdx = trimmed.indexOf("(");
+  if (parenIdx === -1) {
+    return !trimmed.includes(")") && SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE.test(trimmed);
+  }
+  if (!trimmed.endsWith(")")) return false;
+  const head = trimmed.slice(0, parenIdx).trim();
+  const inner = trimmed.slice(parenIdx + 1, -1).trim();
+  if (!head || !inner || inner.includes("(") || inner.includes(")")) return false;
+  if (!SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE.test(head)) return false;
+  const subItems = splitPrecautionaryListItems(inner);
+  if (!subItems) return false;
+  return subItems.every((sub) => SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE.test(sub.trim()));
+}
+
+function isStandalonePrecautionaryStart(text: string, matchStart: number): boolean {
+  let k = matchStart - 1;
+  while (k >= 0 && (text[k] === " " || text[k] === "\t")) k -= 1;
+  if (k < 0) return true;
+  if (/[.;!?\n(\[\-|/:]/.test(text[k])) return true;
+  const beforeSlice = text.slice(Math.max(0, matchStart - 48), matchStart);
+  const labelHeader = beforeSlice.match(
+    /(?:^|[.;!?\n(\[\-|/])\s*(?:allergen(?:\s+(?:information|warning|statement|advisory))?|allergy(?:\s+(?:information|warning|advisory))?|cross[\s-]*contact(?:\s+warning)?)\s*:?\s*$/i,
+  );
+  return Boolean(labelHeader);
+}
+
+/**
+ * Deterministic O(N) linear precautionary cross-contact clause stripper.
+ * Eliminates nested regex backtracking while preserving real inline/trailing allergens
+ * and compound foods (e.g. "Peanut Butter", "Made in a bakery with milk and eggs").
+ */
 export function stripPrecautionaryCrossContactClauses(raw: string): string {
-  return (raw || "").replace(PRECAUTIONARY_CROSS_CONTACT_CLAUSE_RE, " ");
+  const src = raw || "";
+  if (!src) return "";
+  PRECAUTIONARY_PREFIX_RE.lastIndex = 0;
+  let out = "";
+  let lastEmit = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = PRECAUTIONARY_PREFIX_RE.exec(src)) !== null) {
+    const matchStart = m.index;
+    const bodyStart = matchStart + m[0].length;
+    const isStandalone = isStandalonePrecautionaryStart(src, matchStart);
+
+    let depth = 0;
+    let clauseEnd = src.length;
+    let trailingCommaBeforeSection = false;
+    for (let i = bodyStart; i < src.length; i++) {
+      const ch = src[i];
+      if (ch === "(") {
+        depth += 1;
+        continue;
+      }
+      if (ch === ")") {
+        if (depth === 0) {
+          clauseEnd = i;
+          break;
+        }
+        depth -= 1;
+        continue;
+      }
+      if (depth === 0) {
+        if (ch === "." || ch === ";" || ch === "!" || ch === "?" || ch === "\n" || ch === "]") {
+          clauseEnd = i;
+          break;
+        }
+        if (!isStandalone && ch === ",") {
+          clauseEnd = i;
+          break;
+        }
+        if (
+          (ch === "," || i === bodyStart || /\s/.test(src[i - 1])) &&
+          PRECAUTIONARY_SECTION_STOP_RE.test(src.slice(i, i + 32))
+        ) {
+          clauseEnd = i;
+          trailingCommaBeforeSection = ch === ",";
+          break;
+        }
+      }
+    }
+
+    if (depth === 0 && clauseEnd > bodyStart) {
+      const candidateBody = src.slice(bodyStart, clauseEnd).trim();
+      const segments = splitPrecautionaryListItems(candidateBody);
+      if (segments && segments.every(isPrecautionaryAllergenSegment)) {
+        const stripEnd = trailingCommaBeforeSection ? clauseEnd + 1 : clauseEnd;
+        out += src.slice(lastEmit, matchStart) + " ";
+        lastEmit = stripEnd;
+        PRECAUTIONARY_PREFIX_RE.lastIndex = stripEnd;
+        continue;
+      }
+    }
+    PRECAUTIONARY_PREFIX_RE.lastIndex = bodyStart;
+  }
+
+  if (lastEmit === 0) return src;
+  return out + src.slice(lastEmit);
 }
 
 /**
@@ -779,12 +922,12 @@ export function scoreIngredients(
     const isPhosphateRule = rule.id === "naphosphate";
     const hasSodiumPhosphate =
       isPhosphateRule &&
-      /\b(?:mono|di|tri|penta)?sodium(?: (?:dihydrogen|acid|aluminum|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)\b/.test(
+      /\b(?:mono|di|tri|penta)?sodium(?: (?:dihydrogen|acid|aluminum|mono|di|tri|penta|potassium|dipotassium|tripotassium|monopotassium|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)\b/.test(
         normalized,
       );
     const hasPotassiumPhosphate =
       isPhosphateRule &&
-      /\b(?:mono|di|tri|penta)?potassium(?: (?:dihydrogen|acid|mono|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)\b/.test(
+      /\b(?:mono|di|tri|penta)?potassium(?: (?:dihydrogen|acid|mono|di|tri|penta|sodium|disodium|trisodium|monosodium|hexameta|tripoly|,|or|and))* (?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)\b/.test(
         normalized,
       );
     const resolvedName = isBenzenePrecursor
@@ -792,7 +935,7 @@ export function scoreIngredients(
       : isPhosphateRule && hasPotassiumPhosphate && !hasSodiumPhosphate
         ? "Potassium Phosphate"
         : isPhosphateRule && hasPotassiumPhosphate && hasSodiumPhosphate
-          ? "Sodium / Potassium Phosphate"
+          ? "Sodium and Potassium Phosphate"
           : rule.name;
     const resolvedExplanation = isBenzenePrecursor
       ? "Sodium or potassium benzoate combined with ascorbic acid (vitamin C) in acidic beverages can form trace benzene (an FDA-monitored carcinogen) under heat or light exposure."

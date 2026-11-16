@@ -513,22 +513,20 @@ async function resolveVerifiedProductMedia(
   rawBrand: string,
 ): Promise<ResolvedProductMedia> {
   const cacheKey = `${rawQuery.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
-  const cachedBytes =
-    imageBytesCache.get(cacheKey) ||
-    (rawQuery && !rawCode && !rawBrand ? imageBytesCache.get(rawQuery.toLowerCase()) : undefined);
+  const cachedBytes = imageBytesCache.get(cacheKey);
   if (cachedBytes) {
     return { kind: "remote", ...cachedBytes };
   }
 
   const storeInBytesCache = (entry: { bytes: ArrayBuffer; contentType: string; sourceUrl: string }) => {
-    if (imageBytesCache.size >= 350) {
-      const oldest = imageBytesCache.keys().next().value;
-      if (oldest !== undefined) imageBytesCache.delete(oldest);
+    if (!imageBytesCache.has(cacheKey)) {
+      while (imageBytesCache.size >= 350) {
+        const oldest = imageBytesCache.keys().next().value;
+        if (oldest === undefined) break;
+        imageBytesCache.delete(oldest);
+      }
     }
     imageBytesCache.set(cacheKey, entry);
-    if (rawQuery && !rawCode && !rawBrand) {
-      imageBytesCache.set(rawQuery.toLowerCase(), entry);
-    }
   };
 
   // 1. Curated verified matches (instant local swap studio photos or self-healing Open Food Facts URLs)
@@ -605,7 +603,7 @@ async function resolveVerifiedProductMedia(
     .replace(/\s+/g, " ")
     .trim();
 
-  const urlCacheKey = `${clean.toLowerCase()}|${rawBrand.toLowerCase()}`;
+  const urlCacheKey = `${clean.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
   const cachedUrl = imageUrlCache.get(urlCacheKey);
   if (cachedUrl) {
     const verifiedCached = await fetchAndVerifyImageBytes(cachedUrl);

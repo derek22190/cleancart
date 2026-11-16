@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Category } from "@/lib/rubric";
 import CancelRetentionModal from "./CancelRetentionModal";
 
@@ -225,6 +225,18 @@ export default function AuthModal({
     [deviceId, watchlist, onAuthSuccess, onClose]
   );
 
+  const serverOAuthNonceRef = useRef<string>("");
+  const takeFreshOAuthNonce = useCallback((fallbackBytesLen = 16) => {
+    if (serverOAuthNonceRef.current) {
+      const issued = serverOAuthNonceRef.current;
+      serverOAuthNonceRef.current = "";
+      return issued;
+    }
+    const bytes = new Uint8Array(fallbackBytesLen);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }, []);
+
   const launchWebAppleOAuth = useCallback(
     async (knownClientId?: string) => {
       let resolvedAppleId = (knownClientId ?? appleClientId).trim();
@@ -235,6 +247,9 @@ export default function AuthModal({
         if (cfg?.appleClientId) {
           resolvedAppleId = String(cfg.appleClientId).trim();
           setAppleClientId(resolvedAppleId);
+        }
+        if (cfg?.oauthNonce) {
+          serverOAuthNonceRef.current = String(cfg.oauthNonce).trim();
         }
       }
 
@@ -254,11 +269,12 @@ export default function AuthModal({
         return;
       }
 
-      const nonceBytes = new Uint8Array(16);
-      window.crypto.getRandomValues(nonceBytes);
-      const nonce = Array.from(nonceBytes, (b) => b.toString(16).padStart(2, "0")).join("");
-      const state = `hba_${nonce.slice(0, 20)}`;
+      const nonce = takeFreshOAuthNonce(16);
+      const stateBytes = new Uint8Array(12);
+      window.crypto.getRandomValues(stateBytes);
+      const state = `hba_${Array.from(stateBytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
       window.sessionStorage.setItem("heybroc_apple_oauth_state", state);
+      window.sessionStorage.setItem("heybroc_apple_oauth_nonce", nonce);
 
       const redirectUri = `${window.location.origin}/api/auth/apple-callback`;
       const authUrl = new URL("https://appleid.apple.com/auth/authorize");
@@ -291,7 +307,7 @@ export default function AuthModal({
         }
       }, 600);
     },
-    [appleClientId]
+    [appleClientId, takeFreshOAuthNonce]
   );
 
   // Fetch server-configured GOOGLE_CLIENT_ID / APPLE_SERVICE_ID and consume any pending mobile redirect token
@@ -303,13 +319,14 @@ export default function AuthModal({
     }
     let cancelled = false;
 
-    if (!googleClientId || !appleClientId) {
+    if (!googleClientId || !appleClientId || !serverOAuthNonceRef.current) {
       fetch("/api/auth?config=1")
         .then((r) => r.json())
-        .then((d: { googleClientId?: string; appleClientId?: string }) => {
+        .then((d: { googleClientId?: string; appleClientId?: string; oauthNonce?: string }) => {
           if (cancelled) return;
           if (d?.googleClientId) setGoogleClientId(d.googleClientId);
           if (d?.appleClientId) setAppleClientId(d.appleClientId);
+          if (d?.oauthNonce) serverOAuthNonceRef.current = String(d.oauthNonce).trim();
         })
         .catch(() => {});
     }
@@ -336,18 +353,21 @@ export default function AuthModal({
       const pendingAppleName = window.sessionStorage.getItem("heybroc_pending_apple_name") || "";
       const pendingAppleEmail = window.sessionStorage.getItem("heybroc_pending_apple_email") || "";
       const expectedAppleState = window.sessionStorage.getItem("heybroc_apple_oauth_state");
+      const expectedAppleNonce = window.sessionStorage.getItem("heybroc_apple_oauth_nonce") || undefined;
       if (pendingAppleToken) {
         window.sessionStorage.removeItem("heybroc_pending_apple_id_token");
         window.sessionStorage.removeItem("heybroc_pending_apple_state");
         window.sessionStorage.removeItem("heybroc_pending_apple_name");
         window.sessionStorage.removeItem("heybroc_pending_apple_email");
         window.sessionStorage.removeItem("heybroc_apple_oauth_state");
-        if (expectedAppleState && pendingAppleState && expectedAppleState === pendingAppleState) {
+        window.sessionStorage.removeItem("heybroc_apple_oauth_nonce");
+        if (expectedAppleState && pendingAppleState && expectedAppleState === pendingAppleState && expectedAppleNonce) {
           void exchangeOAuthIdToken(
             "apple",
             pendingAppleToken,
             pendingAppleEmail,
-            pendingAppleName
+            pendingAppleName,
+            expectedAppleNonce
           );
         } else {
           setError("Apple sign-in session expired or state mismatch. Please try again.");
@@ -425,8 +445,10 @@ export default function AuthModal({
         }
       } else if (payload.type === "heybroc-apple-oauth") {
         const expectedState = window.sessionStorage.getItem("heybroc_apple_oauth_state");
+        const expectedAppleNonce = window.sessionStorage.getItem("heybroc_apple_oauth_nonce") || undefined;
         window.sessionStorage.removeItem("heybroc_apple_oauth_state");
-        if (!expectedState || !payload.state || expectedState !== payload.state) {
+        window.sessionStorage.removeItem("heybroc_apple_oauth_nonce");
+        if (!expectedState || !payload.state || expectedState !== payload.state || !expectedAppleNonce) {
           setAppleBusy(false);
           setError("Apple sign-in state mismatch. Please try again.");
           return;
@@ -443,7 +465,8 @@ export default function AuthModal({
             "apple",
             payload.idToken,
             payload.email,
-            payload.displayName
+            payload.displayName,
+            expectedAppleNonce
           );
         }
       }
@@ -477,6 +500,9 @@ export default function AuthModal({
         resolvedClientId = String(cfg.googleClientId).trim();
         setGoogleClientId(resolvedClientId);
       }
+      if (cfg?.oauthNonce) {
+        serverOAuthNonceRef.current = String(cfg.oauthNonce).trim();
+      }
     }
 
     if (!resolvedClientId) {
@@ -486,11 +512,10 @@ export default function AuthModal({
       return;
     }
 
-    const randomBytes = new Uint8Array(32);
+    const randomBytes = new Uint8Array(16);
     window.crypto.getRandomValues(randomBytes);
-    const hex = Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    const nonce = hex.slice(0, 32);
-    const state = `hb_${hex.slice(32, 64)}`;
+    const state = `hb_${Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const nonce = takeFreshOAuthNonce(16);
     window.sessionStorage.setItem("heybroc_oauth_state", state);
     window.sessionStorage.setItem("heybroc_oauth_nonce", nonce);
 

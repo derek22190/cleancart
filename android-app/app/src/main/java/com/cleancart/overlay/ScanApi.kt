@@ -1172,7 +1172,7 @@ object ScanApi {
         if (!inFlightPrewarms.add(key)) return
         prewarmExecutor.execute {
             try {
-                scan(appCtx, clean, rawIngredients, store, storeBucket, instacartRetailerSlug)
+                scan(appCtx, clean, rawIngredients, store, storeBucket, instacartRetailerSlug, skipAnalytics = true)
             } catch (_: Exception) {
                 // ignore background prewarm failure
             } finally {
@@ -1189,7 +1189,8 @@ object ScanApi {
         store: String,
         storeBucket: String = "",
         instacartRetailerSlug: String = "",
-        barcode: String? = null
+        barcode: String? = null,
+        skipAnalytics: Boolean = false
     ): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val seedOilsOn = isSeedOilsEnabled(ctx)
@@ -1228,7 +1229,7 @@ object ScanApi {
                 }
             }
         }
-        val body = JSONObject().apply {
+        val bodyJson = JSONObject().apply {
             put("productTitle", productTitle)
             if (barcodeDigits.isNotEmpty()) put("barcode", barcodeDigits)
             if (!rawIngredients.isNullOrBlank()) put("rawIngredients", rawIngredients)
@@ -1255,12 +1256,17 @@ object ScanApi {
                 put("referredByCode", refCode)
             }
             put("format", "json")
-        }.toString()
-        val bodyCacheKey = "$effectiveBucket|$subSlug|$body"
+        }
+        val bodyCacheKey = "$effectiveBucket|$subSlug|$bodyJson"
 
         synchronized(responseCache) {
             responseCache[bodyCacheKey]?.let { return it }
         }
+
+        if (skipAnalytics) {
+            bodyJson.put("skipAnalytics", true)
+        }
+        val body = bodyJson.toString()
 
         var lastErr = """{"ok":false,"error":"Unable to reach HeyBroc server"}"""
         for (endpoint in ENDPOINTS) {
@@ -1268,12 +1274,17 @@ object ScanApi {
                 val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
                 if (res.startsWith("{") && (res.contains("\"ok\":true") || res.contains("\"ok\":false") || res.contains("\"result\""))) {
                     if (res.contains("\"ok\":true")) {
+                        val parsedObj = runCatching { JSONObject(res) }.getOrNull()
                         runCatching {
-                            saveEntitlementSnapshot(ctx, JSONObject(res).optJSONObject("entitlement"))
+                            saveEntitlementSnapshot(ctx, parsedObj?.optJSONObject("entitlement"))
                         }
-                        synchronized(responseCache) {
-                            responseCache[normKey] = res
-                            responseCache[bodyCacheKey] = res
+                        val swapLockedWithoutEntitlement = parsedObj?.optJSONObject("entitlement") == null &&
+                            (parsedObj?.optJSONObject("swap")?.optBoolean("locked", false) == true)
+                        if (!swapLockedWithoutEntitlement) {
+                            synchronized(responseCache) {
+                                responseCache[normKey] = res
+                                responseCache[bodyCacheKey] = res
+                            }
                         }
                     }
                     return res
@@ -1312,6 +1323,7 @@ object ScanApi {
         val dietaryAlerts: List<DietaryAlert>,
         val alertSeverity: String,
         val isCategoryEstimate: Boolean,
+        val isTransientLockedSwap: Boolean,
         val swapTitle: String?,
         val swapScore: Int,
         val fullJson: JSONObject,
@@ -1357,6 +1369,8 @@ object ScanApi {
         val severity = classifyAlertSeverity(alerts)
         val isCategoryEstimate = working.optBoolean("isCategoryEstimate", false)
         val swapObj = working.optJSONObject("swap")
+        val isTransientLockedSwap = working.optJSONObject("entitlement") == null &&
+            (swapObj?.optBoolean("locked", false) == true)
         val swapTitle = swapObj?.optString("title")?.trim()?.takeIf { it.isNotBlank() }
         val swapScore = swapObj?.optInt("score", 0) ?: 0
         return BatchBadgeResult(
@@ -1368,6 +1382,7 @@ object ScanApi {
             dietaryAlerts = alerts,
             alertSeverity = severity,
             isCategoryEstimate = isCategoryEstimate,
+            isTransientLockedSwap = isTransientLockedSwap,
             swapTitle = swapTitle,
             swapScore = swapScore,
             fullJson = working,
@@ -1476,13 +1491,13 @@ object ScanApi {
                 var savedEntitlement = false
                 for (u in uncached) {
                     val itemJson = resultsObj.optJSONObject(u.id) ?: continue
-                    if (!savedEntitlement && itemJson.has("entitlement")) {
+                    if (!savedEntitlement && itemJson.optJSONObject("entitlement") != null) {
                         runCatching { saveEntitlementSnapshot(ctx, itemJson.optJSONObject("entitlement")) }
                         savedEntitlement = true
                     }
                     if (itemJson.optBoolean("ok", false)) {
                         val isEstimate = itemJson.optBoolean("isCategoryEstimate", false)
-                        val swapLockedWithoutEntitlement = !itemJson.has("entitlement") &&
+                        val swapLockedWithoutEntitlement = itemJson.optJSONObject("entitlement") == null &&
                             (itemJson.optJSONObject("swap")?.optBoolean("locked", false) == true)
                         val cacheTitle = if (!u.barcode.isNullOrBlank()) "${u.productTitle}|upc:${u.barcode}" else u.productTitle
                         if (!isEstimate && !swapLockedWithoutEntitlement && cacheTitle.isNotBlank()) {

@@ -6487,9 +6487,9 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           "sesame",
         ] as const;
 
-        // P0-2: All 5 multi-part, UK soya, and unpunctuated OCR ingredient strings retain real allergens through runScan
+        // P0-2: All 5 multi-part, UK soya, and unpunctuated OCR ingredient strings retain real allergens through runScan (neutral titles so detection must come from rawIngredients)
         const p02Case1 = await runScan({
-          productTitle: "Dulce de Leche Pecan Ice Cream",
+          productTitle: "Artisan Frozen Dessert Swirl",
           rawIngredients: "Cream, Skim Milk, Sugar. Dulce de Leche Swirl: Milk, Sugar, Egg Yolks, Pecans.",
           dietaryWatchlist: [...ALL_7_ALLERGENS],
           skipAnalytics: true,
@@ -6501,19 +6501,19 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           skipAnalytics: true,
         });
         const p02Case3 = await runScan({
-          productTitle: "Milk Chocolate Hazelnut Bar",
+          productTitle: "Artisan Confectionery Bar",
           rawIngredients: "Sugar, Cocoa Butter, Cocoa Mass. Emulsifier: Soya Lecithin. Contains Milk, Hazelnuts.",
           dietaryWatchlist: [...ALL_7_ALLERGENS],
           skipAnalytics: true,
         });
         const p02Case4 = await runScan({
-          productTitle: "Crunchy Almond Oat Clusters",
+          productTitle: "Crunchy Breakfast Clusters",
           rawIngredients: "Oats, Sugar, Palm Oil, may contain peanuts, Almond Butter, Egg Whites, Salt",
           dietaryWatchlist: [...ALL_7_ALLERGENS],
           skipAnalytics: true,
         });
         const p02Case5 = await runScan({
-          productTitle: "Honey Almond Granola Bar",
+          productTitle: "Crunchy Breakfast Bar",
           rawIngredients: "May contain traces of peanuts and milk Ingredients - Oats, Almonds, Honey, Whey",
           dietaryWatchlist: [...ALL_7_ALLERGENS],
           skipAnalytics: true,
@@ -6648,13 +6648,14 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           productTitle: "Premier Protein Chocolate Shake",
           store: "walmart",
         });
-        const allSwapCandsClean = [...mochaCands, ...premierCands].every((cand) => {
-          const matchedAlt =
-            Object.values(CLEAN_ALTERNATIVES).find((a) => `${a.brand} ${a.name}` === cand.title) ||
-            EXACT_PRODUCT_ALTERNATIVES.map((e) => e.alt).find((a) => `${a.brand} ${a.name}` === cand.title);
-          if (!matchedAlt) return true;
-          return scoreIngredients(matchedAlt.ingredients).flagged.every((f) => f.risk === "low");
-        });
+        const allSwapCandsClean =
+          mochaCands.length > 0 &&
+          premierCands.length > 0 &&
+          [...mochaCands, ...premierCands].every((cand) => {
+            const ing = (cand.ingredients ?? "").trim();
+            if (!ing) return false;
+            return scoreIngredients(ing).flagged.every((f) => f.risk === "low");
+          });
 
         check(
           "Batch & Swap Hardening: isCategoryEstimate flags estimates, 'Dough Conditioner' grades as food while hair conditioner is skipped, __proto__ IDs cannot pollute Object.prototype, duplicate batch field is omitted, and resolveSwapCandidates matches resolveSwap eligibility",
@@ -6708,8 +6709,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         }
 
         check(
-          "P1-2 Weighted Batch Rate Limit: 8-item batches consume proportional tokens (throttling at 30 batches = 120 weighted units instead of allowing 120*8=960 scans/min) and emit Retry-After",
-          batchesSucceededBefore429 === 30 && batch429Status === 429 && Number(batch429RetryAfter) >= 1,
+          "P1-2 & P1-10 Weighted Batch Rate Limit: 8-item batches consume 1:1 per-item tokens (throttling at 15 batches = 120 items/min instead of allowing 120*8=960 scans/min) and emit Retry-After",
+          batchesSucceededBefore429 === 15 && batch429Status === 429 && Number(batch429RetryAfter) >= 1,
         );
 
         // Codex #5 + P2-8: Pre-created unverified password/session revoked upon verified Google OIDC claim + single-use OIDC token replay rejection
@@ -7491,6 +7492,243 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         check(
           "Full-Stack Audit & Android v2.5.1 UX Parity: LiveStoreBrowserActivity WindowInsets + StoreBrandIcons + Walmart Sponsored/nested-card badges, native mini-badge removal, iOS bridge/swap-lock hardening, Apple/Google auth security, and pesticide/allergen swap guards",
           Object.values(androidDualModeMap).every(Boolean),
+        );
+
+        // ==================== UNIFIED AUDIT (e0a7e85) + 12-HOUR AUDIT (a9e86be) REGRESSION SUITE ====================
+        const { stripPrecautionaryCrossContactClauses } = await import("../lib/rubric");
+        const { resetLookupRuntimeForTests } = await import("../lib/lookup");
+        const { isNonFoodGridItemTitle } = await import("../lib/scan");
+        const ALL_ALLERGEN_WATCH = [
+          "peanuts_nuts",
+          "dairy",
+          "wheat_gluten",
+          "soy",
+          "egg",
+          "shellfish_fish",
+          "sesame",
+        ] as const;
+        const extractAlertKeys = (res: Awaited<ReturnType<typeof runScan>>) =>
+          new Set((res.ok ? (res.dietaryAlerts ?? []) : []).map((a) => a.id));
+
+        // 1. P0-1 & P0-2: iOS HeyBrocPaddedButton (zero contentEdgeInsets) + Safari/Chrome lookbehind-free JS & byte parity
+        const chromeContentJs = fsSync.readFileSync("chrome-extension/content.js", "utf8");
+        const safariContentJs = fsSync.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+        const chromeOverlayCss = fsSync.readFileSync("chrome-extension/overlay.css", "utf8");
+        const safariOverlayCss = fsSync.readFileSync("ios-app/SafariExtension/Resources/overlay.css", "utf8");
+        const chromeBgJs = fsSync.readFileSync("chrome-extension/background.js", "utf8");
+        const safariBgJs = fsSync.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+        let extScriptsSyntaxValid = false;
+        try {
+          new vmMod.Script(chromeContentJs);
+          new vmMod.Script(chromeBgJs);
+          new vmMod.Script(safariBgJs);
+          extScriptsSyntaxValid = true;
+        } catch (err) {
+          console.error("Extension JS syntax error:", err);
+        }
+        check(
+          "P0-1 & P0-2: iOS removes deprecated contentEdgeInsets via HeyBrocPaddedButton; Chrome & Safari content.js/overlay.css are byte-identical, valid JS, and contain zero regex lookbehind (?<= / ?<!)",
+          !iosLiveVc.includes("contentEdgeInsets") &&
+            iosLiveVc.includes("HeyBrocPaddedButton") &&
+            extScriptsSyntaxValid &&
+            chromeContentJs === safariContentJs &&
+            chromeOverlayCss === safariOverlayCss &&
+            !chromeContentJs.includes("(?<=") &&
+            !chromeContentJs.includes("(?<!"),
+        );
+
+        // 2. P0-3 & P0-4: O(N) linear-time precautionary clause stripper (no ReDoS) + real allergen preservation
+        const adversarialCrossContact = Array.from(
+          { length: 34 },
+          () => "manufactured in a facility that also processes wheat and soy",
+        ).join(", ") + ", Whole Grain Rolled Oats.";
+        const tStartRedos = performance.now();
+        const redosStripped = stripPrecautionaryCrossContactClauses(adversarialCrossContact);
+        const redosElapsedMs = performance.now() - tStartRedos;
+
+        const midCommaAllergens = await runScan({
+          productTitle: "Artisan Granola Mix",
+          rawIngredients: "Oats, Sugar, Palm Oil, may contain peanuts, Almonds, Eggs.",
+          dietaryWatchlist: [...ALL_ALLERGEN_WATCH],
+          skipAnalytics: true,
+        });
+        const bakeryWithMilkEggs = await runScan({
+          productTitle: "Artisan Pastry",
+          rawIngredients: "Wheat Flour, Sugar. Made in a bakery with milk and eggs.",
+          dietaryWatchlist: [...ALL_ALLERGEN_WATCH],
+          skipAnalytics: true,
+        });
+        const crustaceanAndTreeNuts = await runScan({
+          productTitle: "Savory Cracker Assortment",
+          rawIngredients: "Enriched Flour, Tree Nuts (Almonds, Walnuts) and soy lecithin, crustacean shellfish; manufactured on equipment shared with sesame.",
+          dietaryWatchlist: [...ALL_ALLERGEN_WATCH],
+          skipAnalytics: true,
+        });
+        const midAlerts = extractAlertKeys(midCommaAllergens);
+        const bakAlerts = extractAlertKeys(bakeryWithMilkEggs);
+        const crustAlerts = extractAlertKeys(crustaceanAndTreeNuts);
+        check(
+          "P0-3 & P0-4: stripPrecautionaryCrossContactClauses runs in < 25ms on 34 facility clauses (zero ReDoS), strips shared-equipment sesame, and preserves mid-comma Almonds/Eggs, 'Made in a bakery with milk and eggs', Tree Nuts, soy lecithin, and crustacean shellfish",
+          redosElapsedMs < 25 &&
+            /\bwhole\s+grain\s+rolled\s+oats\b/i.test(redosStripped) &&
+            midAlerts.has("peanuts_nuts") &&
+            midAlerts.has("egg") &&
+            bakAlerts.has("wheat_gluten") &&
+            bakAlerts.has("dairy") &&
+            bakAlerts.has("egg") &&
+            crustAlerts.has("peanuts_nuts") &&
+            crustAlerts.has("soy") &&
+            crustAlerts.has("shellfish_fish") &&
+            !crustAlerts.has("sesame"),
+        );
+
+        // 3. P0-5 & 12h-#1: Temporary provider failures & throttling never poison negativeLookupCache, and search.openfoodfacts.org uses isolated off_search budget
+        resetLookupRuntimeForTests();
+        const prevFetchNeg = globalThis.fetch;
+        let transientMode = true;
+        let offProductCallsAfterSearchBurst = 0;
+        let transientFirst!: Awaited<ReturnType<typeof lookupIngredients>>;
+        let transientRecovered!: Awaited<ReturnType<typeof lookupIngredients>>;
+        let productAfterSearchBurst!: Awaited<ReturnType<typeof lookupIngredients>>;
+        try {
+          globalThis.fetch = async (input: RequestInfo | URL) => {
+            const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+            if (u.includes("9988776655441")) {
+              if (transientMode) {
+                return new Response("Service Unavailable", { status: 503 });
+              }
+              return Response.json({
+                product: {
+                  code: "9988776655441",
+                  product_name_en: "Recovered Pure Rolled Oats",
+                  countries_tags: ["en:united-states"],
+                  ingredients_text_en: "Whole grain rolled oats.",
+                },
+              });
+            }
+            if (u.includes("search.openfoodfacts.org/search")) {
+              return Response.json({ hits: [] });
+            }
+            if (u.includes("world.openfoodfacts.org/api/v2/product/9988776655442")) {
+              offProductCallsAfterSearchBurst++;
+              return Response.json({
+                product: {
+                  code: "9988776655442",
+                  product_name_en: "Budget Isolated Rolled Oats",
+                  countries_tags: ["en:united-states"],
+                  ingredients_text_en: "Whole grain rolled oats.",
+                },
+              });
+            }
+            return Response.json({ status: 0, hits: [], products: [], foods: [] });
+          };
+          transientFirst = await lookupIngredients({ barcode: "9988776655441" });
+          transientMode = false;
+          transientRecovered = await lookupIngredients({ barcode: "9988776655441" });
+
+          // Fire 22 unmatchable title lookups hitting search.openfoodfacts.org/search, then verify barcode product fetch still succeeds
+          for (let sIdx = 0; sIdx < 22; sIdx++) {
+            await lookupIngredients({ productTitle: `Unmatchable Search Burst Fixture ${sIdx} Zqxwv` });
+          }
+          productAfterSearchBurst = await lookupIngredients({ barcode: "9988776655442" });
+        } finally {
+          globalThis.fetch = prevFetchNeg;
+          resetLookupRuntimeForTests();
+        }
+        check(
+          "P0-5 & 12h-#1: HTTP 503 / temporary failures never poison negativeLookupCache (immediate recovery succeeds), and search.openfoodfacts.org traffic never starves off_product barcode lookups",
+          transientFirst === null &&
+            transientRecovered?.source === "openfoodfacts" &&
+            productAfterSearchBurst?.source === "openfoodfacts" &&
+            offProductCallsAfterSearchBurst >= 1,
+        );
+
+        // 4. P0-6: Bilingual spillover cutoff preserves English allergens after Spanish distributor notes while stripping French spillover
+        const spanishOriginWithAllergens = await runScan({
+          productTitle: "Artisan Mediterranean Tapenade",
+          rawIngredients: "Olives, Olive Oil, Capers. Hecho en México. Contains: Anchovies, Pine Nuts, Tahini, Ghee.",
+          dietaryWatchlist: [...ALL_ALLERGEN_WATCH],
+          skipAnalytics: true,
+        });
+        const frenchSpillover = await runScan({
+          productTitle: "PureSparkling Mineral Beverage",
+          rawIngredients: "Carbonated Water, Lemon Essence. Ingrédients : eau gazéifiée, farine de blé, arachides, lait.",
+          dietaryWatchlist: [...ALL_ALLERGEN_WATCH],
+          skipAnalytics: true,
+        });
+        const spAlerts = extractAlertKeys(spanishOriginWithAllergens);
+        const frAlerts = extractAlertKeys(frenchSpillover);
+        check(
+          "P0-6: findSafeForeignSpilloverCutoff preserves real allergens (Anchovies, Pine Nuts, Tahini, Ghee) after '. Hecho en México.' while stripping pure French 'Ingrédients :' spillover",
+          spAlerts.has("shellfish_fish") &&
+            spAlerts.has("peanuts_nuts") &&
+            spAlerts.has("sesame") &&
+            spAlerts.has("dairy") &&
+            frAlerts.size === 0,
+        );
+
+        // 5. P1-6 & 12h-#7: Partial organic marketing ('Granola Made With Organic Oats') still flags conventional pesticide risk
+        const granolaMadeWithOrgOats = evaluateDietaryAlerts(
+          ["pesticide_risk"],
+          "Granola Made With Organic Oats",
+          "Organic Rolled Oats, Whole Wheat, Cane Sugar, Salt",
+          { isOrganic: false },
+        );
+        const cerealWithOrgStrawberries = evaluateDietaryAlerts(
+          ["pesticide_risk"],
+          "Crispy Oat Cereal with Organic Strawberries",
+          "Whole Grain Oats, Organic Freeze-Dried Strawberries, Cane Sugar",
+          { isOrganic: false },
+        );
+        const certifiedOrgGranola = evaluateDietaryAlerts(
+          ["pesticide_risk"],
+          "USDA Organic Honey Granola",
+          "Organic Rolled Oats, Organic Whole Wheat, Organic Honey",
+          { isOrganic: true },
+        );
+        check(
+          "P1-6 & 12h-#7: 'Granola Made With Organic Oats' and 'Cereal with Organic Strawberries' trigger pesticide_risk on conventional wheat/oats, while certified isOrganic:true does not",
+          granolaMadeWithOrgOats.some((a) => a.id === "pesticide_risk") &&
+            cerealWithOrgStrawberries.some((a) => a.id === "pesticide_risk") &&
+            certifiedOrgGranola.length === 0,
+        );
+
+        // 6. P1-7: Narrowed non-food grid filter preserves food in freezer bags, candy paper cups, and dough-conditioner
+        check(
+          "P1-7: isNonFoodGridItemTitle preserves food in resealable freezer bags, candy in paper cups, and dough-conditioner while excluding household bags, paper cups, and hair conditioner",
+          !isNonFoodGridItemTitle("Tyson Grilled Chicken Breast Strips, Resealable Freezer Bag, 22 oz") &&
+            !isNonFoodGridItemTitle("Reese's Miniature Peanut Butter Cups, 12 Paper Cups") &&
+            !isNonFoodGridItemTitle("King Arthur Artisan Dough-Conditioner, 8 oz") &&
+            isNonFoodGridItemTitle("Hefty Slider Freezer Bags, Quart, 40 Ct") &&
+            isNonFoodGridItemTitle("Dixie Everyday Paper Cups, 10 oz, 100 Ct") &&
+            isNonFoodGridItemTitle("Pantene Pro-V Daily Moisture Renewal Conditioner, 12 fl oz"),
+        );
+
+        // 7. P2-1 & P2-2: Coordinated 'Sodium and Potassium Phosphate', high_sodium phosphate alerts, and flaggedAdditives disclosure
+        const coordPhos = scoreIngredients("Water, Sodium and Potassium Phosphate, Salt.");
+        const disodiumHighSodium = evaluateDietaryAlerts(
+          ["high_sodium"],
+          "Seasoned Broth",
+          "Chicken Stock, Disodium Phosphate, Trisodium Phosphate, Sodium Hexametaphosphate",
+        );
+        const coldBrewSwap = resolveSwap({
+          score: 30,
+          productTitle: "International Delight Iced Coffee Mocha",
+          store: "walmart",
+        });
+        check(
+          "P2-1 & P2-2: 'Sodium and Potassium Phosphate' is named accurately, disodium/trisodium/hexametaphosphate trigger high_sodium, and Android/iOS/Web/Extension render flaggedAdditives & paid-link disclosures",
+          coordPhos.flagged.some((f) => f.id === "naphosphate" && f.name === "Sodium and Potassium Phosphate") &&
+            disodiumHighSodium.some((a) => a.id === "high_sodium") &&
+            Boolean(coldBrewSwap) &&
+            liveBrowserKt.includes("setBubbleFailureState") &&
+            liveBrowserKt.includes("__heybrocGetVisibleCardIds") &&
+            liveBrowserKt.includes("skipAnalytics = isCardScan") &&
+            liveBrowserKt.includes("routePermittedPopupUrl") &&
+            liveBrowserKt.includes("isExternalAuthHost") &&
+            liveBrowserKt.includes("paidDisclosure") &&
+            liveBrowserKt.includes("flaggedAdditives") &&
+            overlayKt.includes("flaggedAdditives"),
         );
       }
     }

@@ -808,7 +808,11 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
     );
   const isAllLowerQuery = productTitle === productTitle.toLowerCase();
   const isCatalogPrefix = found.productTitle.toLowerCase().startsWith(productTitle.toLowerCase());
-  const isCategoryEstimate = Boolean(found.brand && /category estimate/i.test(found.brand));
+  const isCategoryEstimate = Boolean(
+    /category\s+estimate|representative(?:\s+category)?\s+formulation/i.test(
+      `${found.brand || ""} ${found.productTitle || ""} ${found.description || ""}`,
+    ),
+  );
   const baseTitle = (
     found.source === "screen" && callerWords.length >= 3 && !isAllLowerQuery && !isCatalogPrefix
       ? productTitle
@@ -1031,6 +1035,9 @@ export function toIosText(scan: ScanResponse): string {
     const paidLabel = scan.swap.isPaidLink ? " (paid link)" : "";
     const storeBrandTag = scan.swap.isStoreBrand ? " [💚 Store-Brand Value Pick]" : "";
     lines.push("", `🔁 Clean Swap at ${STORE_META[scan.store].label}${paidLabel}: ${scan.swap.title} (${scan.swap.score}/100)${storeBrandTag}`);
+    if (scan.swap.flaggedAdditives?.length) {
+      lines.push(`Note: contains ${scan.swap.flaggedAdditives.join(", ")}`);
+    }
     if (scan.swap.webUrl) lines.push(`${scan.swap.webUrl}${paidLabel}`);
   }
   return lines.join("\n");
@@ -1052,7 +1059,26 @@ const MAX_BATCH_SCAN_ITEMS = 8;
 const BATCH_ENTITLEMENT_TIMEOUT_MS = 900;
 
 export const NON_FOOD_GRID_ITEM_RE =
-  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|paper\s+cups?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|(?<!\b(?:dough|bread|food|meat|beer)\s+)conditioner|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+  /\b(?:paper\s+towels?|toilet\s+(?:paper|tissue)|bath\s+tissue|facial\s+tissues?|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|parchment\s+paper|plastic\s+wrap|paper\s+plates?|laundry\s+(?:detergent|pods?|sanitizer)|fabric\s+softener|dryer\s+sheets?|dish\s+(?:soap|detergent)|dishwasher\s+(?:pods?|pac?ks?|detergent)|disinfecting\s+wipes?|bleach|all[- ]purpose\s+cleaner|glass\s+cleaner|toilet\s+bowl\s+cleaner|air\s+freshener|diapers?|pull[- ]ups?|baby\s+wipes?|cat\s+litter|dog\s+(?:food|treats?|pads?)|cat\s+(?:food|treats?)|pet\s+food|alkaline\s+batteries|aa\s+batteries|aaa\s+batteries|motor\s+oil|windshield\s+washer|light\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\s+wash|deodorant|antiperspirant|razor\s+blades?|shaving\s+cream|sunscreen|tampons?|maxi\s+pads?|pantiliners?)\b/i;
+
+const PACKAGED_FOOD_CONTEXT_RE =
+  /\b(?:chicken|beef|pork|turkey|fish|shrimp|salmon|tuna|sausage|bacon|meatballs?|peas|corn|berries|strawberries|blueberries|raspberries|fruit|vegetables?|broccoli|fries|tots|nuggets?|strips?|tenders?|wings?|pizza|burritos?|waffles?|pancakes?|peanut\s+butter|almond\s+butter|reese'?s|hershey'?s|chocolate|candy|fudge|caramel|ice\s+cream|gelato|sorbet|yogurt|pudding|oatmeal|oats|granola|cereal|soup|broth|rice|pasta|ravioli|dumplings?|popcorn|pretzels?|crackers?|cookies?|chips)\b/i;
+
+const BAKING_CONDITIONER_CONTEXT_RE =
+  /\b(?:dough|bread|bakery|flour|wheat|baking|gluten|food|meat|beer|wort)\b/i;
+
+export function isNonFoodGridItemTitle(title: string): boolean {
+  const s = (title || "").trim();
+  if (!s) return false;
+  if (NON_FOOD_GRID_ITEM_RE.test(s)) return true;
+  if (/\b(?:storage\s+bags?|freezer\s+bags?|sandwich\s+bags?|paper\s+cups?)\b/i.test(s)) {
+    if (!PACKAGED_FOOD_CONTEXT_RE.test(s)) return true;
+  }
+  if (/\bconditioner\b/i.test(s) && !BAKING_CONDITIONER_CONTEXT_RE.test(s)) {
+    return true;
+  }
+  return false;
+}
 
 function stripGatedSwapLinks(s: SwapResult): SwapResult {
   return {
@@ -1131,17 +1157,22 @@ export async function runBatchScan(
         return { ok: true, value: undefined };
       }
     };
-    const raced = await Promise.race([
-      loadEntitlement(),
-      new Promise<{ ok: false }>((resolve) =>
-        setTimeout(() => resolve({ ok: false }), BATCH_ENTITLEMENT_TIMEOUT_MS),
-      ),
-    ]);
-    if (raced.ok) {
-      entitlement = raced.value;
-    } else {
-      entitlementTimedOut = true;
-      entitlement = undefined;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const raced = await Promise.race([
+        loadEntitlement(),
+        new Promise<{ ok: false }>((resolve) => {
+          timerId = setTimeout(() => resolve({ ok: false }), BATCH_ENTITLEMENT_TIMEOUT_MS);
+        }),
+      ]);
+      if (raced.ok) {
+        entitlement = raced.value;
+      } else {
+        entitlementTimedOut = true;
+        entitlement = undefined;
+      }
+    } finally {
+      if (timerId !== undefined) clearTimeout(timerId);
     }
   }
   if (baseReq.verifiedAccountPro && entitlement) {
@@ -1169,7 +1200,7 @@ export async function runBatchScan(
     while (cursor < entries.length) {
       const idx = cursor++;
       const [normKey, target] = entries[idx];
-      if (target.productTitle && !target.barcode && NON_FOOD_GRID_ITEM_RE.test(target.productTitle)) {
+      if (target.productTitle && !target.barcode && isNonFoodGridItemTitle(target.productTitle)) {
         resolvedByNorm.set(normKey, {
           ok: false,
           status: 422,

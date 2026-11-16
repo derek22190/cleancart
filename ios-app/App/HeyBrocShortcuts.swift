@@ -278,6 +278,7 @@ struct HeyBrocNativeSwap {
     let isStoreBrand: Bool
     let isOrganic: Bool
     let locked: Bool
+    let flaggedAdditives: [String]
 }
 
 struct HeyBrocNativeScanSummary {
@@ -290,6 +291,7 @@ struct HeyBrocNativeScanSummary {
     let store: String
     let alertSeverity: String
     let isCategoryEstimate: Bool
+    let isTransientLockedSwap: Bool
     let nutritionScore: Int?
     let additiveScore: Int?
     let organicScore: Int?
@@ -365,6 +367,7 @@ enum HeyBrocNativeScannerAPI {
         let isOrg = (nut?["isOrganic"] as? Bool) ?? false
         let isLocked = (sw["locked"] as? Bool) ?? false
         let rawUrl = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
+        let flaggedAdditives = (sw["flaggedAdditives"] as? [String]) ?? []
         return HeyBrocNativeSwap(
             title: swTitle,
             brand: (sw["brand"] as? String) ?? "",
@@ -372,7 +375,8 @@ enum HeyBrocNativeScannerAPI {
             webUrl: isLocked ? nil : rawUrl.flatMap { sanitizeRetailerURL($0) },
             isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
             isOrganic: isOrg,
-            locked: isLocked
+            locked: isLocked,
+            flaggedAdditives: flaggedAdditives
         )
     }
 
@@ -397,13 +401,20 @@ enum HeyBrocNativeScannerAPI {
         }
         let title = (prod["title"] as? String) ?? "Scanned Food"
         let brand = (prod["brand"] as? String) ?? ""
+        let prodDesc = (prod["description"] as? String) ?? ""
         let ingredients = (prod["ingredients"] as? String) ?? ""
         let score = (res["score"] as? Int) ?? Int((res["score"] as? Double) ?? 50)
         let rating = (res["rating"] as? String) ?? (score >= 75 ? "Excellent" : score >= 50 ? "Good" : "Poor")
         let color = (res["color"] as? String) ?? (score >= 75 ? "green" : score >= 50 ? "yellow" : "red")
         let store = (obj["store"] as? String) ?? HeyBrocSharedPrefs.activeStore
         let isCategoryEstimate = (obj["isCategoryEstimate"] as? Bool)
-            ?? (title.lowercased().contains("category estimate") || brand.lowercased().contains("category estimate"))
+            ?? (
+                title.lowercased().contains("category estimate")
+                || brand.lowercased().contains("category estimate")
+                || prodDesc.lowercased().contains("category estimate")
+                || prodDesc.lowercased().contains("representative formulation")
+                || prodDesc.lowercased().contains("representative category formulation")
+            )
 
         let nutritionScore = (yuka?["nutritionScore"] as? Int) ?? (yuka?["nutritionScore"] as? Double).map { Int($0.rounded()) }
         let additiveScore = (yuka?["additiveScore"] as? Int) ?? (yuka?["additiveScore"] as? Double).map { Int($0.rounded()) }
@@ -462,6 +473,7 @@ enum HeyBrocNativeScannerAPI {
         }
 
         let parsedSwap = (obj["swap"] as? [String: Any]).flatMap { parseSwapObject($0) }
+        let isTransientLockedSwap = (parsedSwap?.locked == true) && (obj["entitlement"] == nil)
         var candidates: [HeyBrocNativeSwap] = []
         if let rawCands = obj["swapCandidates"] as? [[String: Any]] {
             for rc in rawCands {
@@ -485,6 +497,7 @@ enum HeyBrocNativeScannerAPI {
                 store: store,
                 alertSeverity: alertSeverity,
                 isCategoryEstimate: isCategoryEstimate,
+                isTransientLockedSwap: isTransientLockedSwap,
                 nutritionScore: nutritionScore,
                 additiveScore: additiveScore,
                 organicScore: organicScore,

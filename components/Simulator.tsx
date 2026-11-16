@@ -3858,6 +3858,11 @@ export default function Simulator({
                               <span style={{ display: "inline-block", marginTop: 4, fontSize: 13.5, fontWeight: 800, color: "#15803d" }}>
                                 {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"}
                               </span>
+                              {swap.flaggedAdditives && swap.flaggedAdditives.length > 0 && (
+                                <span style={{ display: "block", marginTop: 3, fontSize: 11.5, fontWeight: 600, color: "#92400e" }}>
+                                  Note: contains {swap.flaggedAdditives.join(", ")}
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -5148,6 +5153,11 @@ export default function Simulator({
                               </span>
                             </span>
                             <strong className="pdp-swap-card-title">{swap.title}</strong>
+                            {swap.flaggedAdditives && swap.flaggedAdditives.length > 0 && (
+                              <span style={{ display: "block", marginTop: 2, fontSize: 10.5, fontWeight: 600, color: "#92400e" }}>
+                                Note: contains {swap.flaggedAdditives.join(", ")}
+                              </span>
+                            )}
                           </div>
                         </button>
                         <button
@@ -5580,6 +5590,11 @@ export default function Simulator({
                                     <span className="swap-score">
                                       {swap.score}/100 {swap.score >= 75 ? "Excellent" : swap.score >= 50 ? "Good" : "Mediocre"} · <em>Tap to inspect →</em>
                                     </span>
+                                    {swap.flaggedAdditives && swap.flaggedAdditives.length > 0 && (
+                                      <span style={{ display: "block", marginTop: 2, fontSize: 11, fontWeight: 600, color: "#92400e" }}>
+                                        Note: contains {swap.flaggedAdditives.join(", ")}
+                                      </span>
+                                    )}
                                   </div>
                                 </button>
                                 <button id="swap-item" className="swap-btn" onClick={doSwap}>

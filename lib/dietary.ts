@@ -58,6 +58,9 @@ export interface PesticideRiskMatch {
  * Never accuses a specific brand or lot of illegal contamination; strictly identifies non-organic
  * high-residue produce and conventional grain/legume crop categories vs. USDA Organic (7 CFR § 205.105).
  */
+const PARTIAL_ORGANIC_TITLE_RE =
+  /\b(?:made\s+with|crafted\s+with|baked\s+with|sweetened\s+with|topped\s+with|blended\s+with|seasoned\s+with|cooked\s+in|with|in|from|contains|and|plus)\s+organic\b|&\s*organic\b/i;
+
 export function detectPesticideRisk(
   productTitle: string,
   ingredients: string,
@@ -67,7 +70,7 @@ export function detectPesticideRisk(
   if (!combined) return null;
   const hasWholeProductOrganicClaim =
     CERTIFIED_ORGANIC_OR_CLEAN_CROP.test(productTitle || "") &&
-    !/\b(?:made\s+with|contains)\s+organic\b/i.test(productTitle || "");
+    !PARTIAL_ORGANIC_TITLE_RE.test(productTitle || "");
   if (nutrition?.isOrganic === true || hasWholeProductOrganicClaim) {
     return null;
   }
@@ -75,11 +78,11 @@ export function detectPesticideRisk(
     return null;
   }
 
-  // Strip explicitly organic sub-ingredients (never "non-organic ...") and flavor/pectin/vinegar trace terms
+  // Strip explicitly organic sub-ingredient clauses (never "non-organic ...") and flavor/pectin/vinegar trace terms
   const stripOrganicAndFlavorNoise = (s: string) =>
     s
       .replace(
-        /(?<!\bnon[\s-]+)\borganic\s+(?:(?:whole\s+grain|rolled|steel[\s-]*cut|sprouted|gluten[\s-]*free|unbleached|enriched|durum|baby|fresh|frozen|sweet|red|green|black|cane|brown|raw|evaporated|unrefined)\s+){0,2}[a-z]+(?:\s+(?:oats?|oatmeal|wheat|flour|strawberr\w*|blueberr\w*|spinach|kale|apples?|grapes?|peaches?|pears?|peppers?|cherries|beans?|potatoes?|celery|tomatoes?|chickpeas?|lentils?|semolina|sugar|syrup|juice))?/gi,
+        /(?<!\bnon[\s-]+)\b(?:100%\s+)?organic\s+[a-z0-9\s'’&-]+?(?=\s*(?:[,;():[\]]|\.|$|\bnon[\s-]+organic\b|\bconventional\b))/gi,
         " ",
       )
       .replace(
@@ -89,7 +92,11 @@ export function detectPesticideRisk(
 
   const cleanTitle = stripOrganicAndFlavorNoise(productTitle || "");
   const cleanIng = stripOrganicAndFlavorNoise(ingredients || "");
-  const cleanCombined = `${cleanTitle} ${cleanIng}`;
+  const rawIngTrimmed = (ingredients || "").trim();
+  const hasSpecificIngredientList =
+    rawIngTrimmed.length > 0 &&
+    !/^(?:single[\s-]*ingredient\b|100%\s+(?:fresh|whole|pure)\b|fresh\s+produce\b)/i.test(rawIngTrimmed);
+  const cleanCombined = hasSpecificIngredientList ? cleanIng : `${cleanTitle} ${cleanIng}`;
 
   // 1) USDA Pesticide Data Program (PDP) & EWG Dirty Dozen high-residue conventional produce categories
   const produceMatch = cleanCombined.match(
@@ -229,7 +236,7 @@ export function evaluateDietaryAlerts(
       " ",
     );
     const m = nutCleaned.match(
-      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|peanuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
+      /\b(peanut\s+butter|peanut\s+oil|peanut\s+flour|peanuts?|tree\s+nuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\s+nuts?|pine\s+nuts?|praline|marzipan|nougat|gianduja)\b/i,
     );
     if (m) {
       alerts.push({
@@ -279,7 +286,7 @@ export function evaluateDietaryAlerts(
     const titleClaimsFishFree = /\b(shellfish[\s-]*free|fish[\s-]*free|seafood[\s-]*free|vegan)\b/i.test(productTitle);
     const fishSource = titleClaimsFishFree ? ing : text;
     const m = fishSource.match(
-      /\b(shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\s+sauce|fish\s+oil)\b/i,
+      /\b((?:crustacean\s+|molluscan\s+)?shellfish|crustaceans?|mollusks?|molluscs?|shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\s+sauce|fish\s+oil)\b/i,
     );
     if (m) {
       alerts.push({
@@ -311,7 +318,7 @@ export function evaluateDietaryAlerts(
   if (selected.has("high_sodium")) {
     const sodiumMg = nutrition?.sodiumMg100g ?? 0;
     const sodiumAddMatch = ing.match(
-      /\b(monosodium\s+glutamate|sodium\s+phosphate|disodium\s+inosinate|disodium\s+guanylate|sodium\s+tripolyphosphate|sodium\s+nitrite|sodium\s+nitrate|sodium\s+benzoate|sodium\s+caseinate|brine|saline\s+solution)\b/i,
+      /\b(monosodium\s+glutamate|(?:di|tri|mono|penta)?sodium\s+(?:(?:dihydrogen|acid|aluminum|hexameta|tripoly|pyro|poly)\s+)?(?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)|disodium\s+inosinate|disodium\s+guanylate|sodium\s+nitrite|sodium\s+nitrate|sodium\s+benzoate|sodium\s+caseinate|brine|saline\s+solution)\b/i,
     );
     if (sodiumMg >= 400 || sodiumAddMatch) {
       const reasons: string[] = [];

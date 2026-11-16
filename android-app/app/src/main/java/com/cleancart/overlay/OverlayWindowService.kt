@@ -863,7 +863,7 @@ class OverlayWindowService : Service() {
                     tripCart[0].quantity = badgeCount
                 }
             }
-        } else if (keepMode) {
+        } else {
             consecutiveFullCartFrames = 0
         }
         // Enforce authoritative cart badge count ONLY against unseen offscreen items — never delete or decrement items visible on the current screen!
@@ -2272,7 +2272,16 @@ class OverlayWindowService : Service() {
             val cardCandidates = extractSwapCandidatesForItem(d, swap)
             val swapTitle = swap.optString("title", "Clean Alternative")
             val swapScore = swap.optInt("score", 0)
-            val swapFlagCount = swap.optJSONArray("flagged")?.length() ?: 0
+            val swapFlagNames = buildList {
+                val arr = swap.optJSONArray("flaggedAdditives")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val n = arr.optString(i).trim()
+                        if (n.isNotEmpty()) add(n)
+                    }
+                }
+            }
+            val swapFlagCount = swapFlagNames.size.coerceAtLeast(swap.optJSONArray("flagged")?.length() ?: 0)
             val swapRating = when {
                 swapScore >= 75 -> "Excellent"
                 swapScore >= 50 -> "Mediocre"
@@ -2316,7 +2325,7 @@ class OverlayWindowService : Service() {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
 
-                // Action button — auto-searches directly inside the store app & saves to Favorites
+                // Action button — auto-searches directly directly inside the store app & saves to Favorites
                 topRow.addView(text(swapBtnLabel, 11.5f, Color.WHITE, bold = true).apply {
                     setPadding(dp(12), dp(9), dp(12), dp(9))
                     background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
@@ -2325,8 +2334,15 @@ class OverlayWindowService : Service() {
                 })
                 swapBox.addView(topRow)
 
+                if (swapFlagNames.isNotEmpty()) {
+                    swapBox.addView(text("Note: contains ${swapFlagNames.joinToString(", ")}", 10.5f, 0xFF92400E.toInt(), bold = true).apply {
+                        setPadding(0, dp(4), 0, 0)
+                        setOnClickListener { showSwapPreviewModal(swap, candidates = cardCandidates, candidateIdx = 0) }
+                    })
+                }
                 if (swapIngredients.isNotBlank()) {
-                    swapBox.addView(text("✓ Clean Ingredients: $swapIngredients", 11f, 0xFF0B5E39.toInt()).apply {
+                    val ingPrefix = if (swapFlagNames.isEmpty()) "✓ Clean Ingredients" else "Ingredients"
+                    swapBox.addView(text("$ingPrefix: $swapIngredients", 11f, 0xFF0B5E39.toInt()).apply {
                         maxLines = 1
                         ellipsize = TextUtils.TruncateAt.END
                         setPadding(0, dp(5), 0, 0)
@@ -2538,7 +2554,16 @@ class OverlayWindowService : Service() {
         val safeIdx = if (effectiveCandidates.isNotEmpty()) candidateIdx.coerceIn(0, effectiveCandidates.size - 1) else 0
         val swapTitle = swap.optString("title", "Clean Alternative")
         val swapScore = swap.optInt("score", 0)
-        val swapFlagCount = swap.optJSONArray("flagged")?.length() ?: 0
+        val swapFlagNames = buildList {
+            val arr = swap.optJSONArray("flaggedAdditives")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val n = arr.optString(i).trim()
+                    if (n.isNotEmpty()) add(n)
+                }
+            }
+        }
+        val swapFlagCount = swapFlagNames.size.coerceAtLeast(swap.optJSONArray("flagged")?.length() ?: 0)
         val swapRating = when {
             swapScore >= 75 -> "Excellent"
             swapScore >= 50 -> "Mediocre"
@@ -2631,7 +2656,12 @@ class OverlayWindowService : Service() {
                 }
                 val flagTone = if (swapFlagCount == 0) 0xFF16A34A.toInt() else 0xFFCA8A04.toInt()
                 addView(text(flagHeadline, 14f, flagTone, bold = true))
-                addView(text("Clean 1-for-1 replacement with whole-food ingredients.", 12.5f, INK_2).apply {
+                val flagSubtext = if (swapFlagNames.isNotEmpty()) {
+                    "Note: contains ${swapFlagNames.joinToString(", ")}"
+                } else {
+                    "Clean 1-for-1 replacement with whole-food ingredients."
+                }
+                addView(text(flagSubtext, 12.5f, if (swapFlagNames.isNotEmpty()) 0xFF92400E.toInt() else INK_2, bold = swapFlagNames.isNotEmpty()).apply {
                     setPadding(0, dp(4), 0, 0)
                 })
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)

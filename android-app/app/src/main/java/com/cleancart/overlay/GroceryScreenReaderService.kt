@@ -105,11 +105,11 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CART_END_BOUNDARY = Regex(
-            """^(saved?\s+for\s+later.*|your\s+recently\s+viewed\s+items.*|recently\s+viewed(?:\s+items)?.*|items\s+you\s+may\s+like.*|picked\s+for\s+you.*|more\s+items\s+to\s+explore.*|buy\s+(?:it\s+)?again.*|featured\s+items.*|instant\s+savings.*|sponsored\s+products?.*|recommended\s+for\s+you.*|customers\s+also.*|similar\s+items.*|frequently\s+bought.*|people\s+also\s+bought.*|don'?t\s+forget.*|(?:your\s+)?usuals\b.*|items\s+to\s+add\s+next.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|last\s+chance.*|impulse\s+picks.*|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available.*|these\s+items\s+have\s+been\s+removed\s+from\s+your\s+cart.*)$""",
+            """^(saved?\s+for\s+later.*|your\s+recently\s+viewed\s+items.*|recently\s+viewed(?:\s+items)?.*|items\s+you\s+may\s+like.*|picked\s+for\s+you.*|more\s+items\s+to\s+explore.*|buy\s+(?:it\s+)?again.*|featured\s+items.*|sponsored\s+products?.*|recommended\s+for\s+you.*|customers\s+also.*|similar\s+items.*|frequently\s+bought.*|people\s+also\s+bought.*|don'?t\s+forget.*|(?:your\s+)?usuals\b.*|items\s+to\s+add\s+next.*|complete\s+your\s+cart.*|based\s+on\s+items\s+in\s+your\s+cart.*|last\s+chance.*|impulse\s+picks.*|\d+\s+items?\s+(?:are|is)\s+no\s+longer\s+available.*|these\s+items\s+have\s+been\s+removed\s+from\s+your\s+cart.*)$""",
             RegexOption.IGNORE_CASE,
         )
         private val AMBIGUOUS_PROMO_BOUNDARY = Regex(
-            """^(?:featured\s+items.*|instant\s+savings.*|sponsored\s+products?.*)$""",
+            """^(?:featured\s+items.*|sponsored\s+products?.*)$""",
             RegexOption.IGNORE_CASE,
         )
         private val SAVED_FOR_LATER_ROW_CTA = Regex(
@@ -153,7 +153,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             RegexOption.IGNORE_CASE,
         )
         private val CAROUSEL_BOUNDARY = Regex(
-            """^(your recently viewed items.*|recently viewed( items)?.*|items you may like.*|picked for you.*|more items to explore.*|buy it again.*|buy again.*|featured items.*|instant savings.*|items to add next|similar items?( to consider)?|customers also (bought|viewed|considered)|customers who (viewed|bought) this item also (viewed|bought)|what other items do customers buy after viewing this item\??|products related to this item|sponsored products related to this item|brands in this category( on amazon)?|4 stars and above|frequently bought together|often bought with|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar( items?)?|recommended for you|items that pair well together|complete your cart|based on items in your cart)$""",
+            """^(your recently viewed items.*|recently viewed( items)?.*|items you may like.*|picked for you.*|more items to explore.*|buy it again.*|buy again.*|featured items.*|items to add next|similar items?( to consider)?|customers also (bought|viewed|considered)|customers who (viewed|bought) this item also (viewed|bought)|what other items do customers buy after viewing this item\??|products related to this item|sponsored products related to this item|brands in this category( on amazon)?|4 stars and above|frequently bought together|often bought with|you might also like|you may also like|sponsored products?|sponsored items?|related items|more from this brand|more to consider|compare with similar( items?)?|recommended for you|items that pair well together|complete your cart|based on items in your cart)$""",
             RegexOption.IGNORE_CASE,
         )
         private val BRAND_OR_UNIT_ONLY = Regex(
@@ -837,6 +837,7 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private fun inspectCartScrollState(root: AccessibilityNodeInfo): CartScrollState {
         val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val screenH = resources.displayMetrics.heightPixels.coerceAtLeast(480)
         val minWidthPx = (180f * density).toInt()
         val minHeightPx = (160f * density).toInt()
         val rect = Rect()
@@ -845,21 +846,41 @@ class GroceryScreenReaderService : AccessibilityService() {
         var visited = 0
         var canBackward = false
         var canForward = false
-        while (queue.isNotEmpty() && visited < 220) {
+        while (queue.isNotEmpty() && visited < MAX_NODES) {
             val cur = queue.removeFirst()
             visited++
             if (cur.isVisibleToUser && cur.isScrollable) {
                 cur.getBoundsInScreen(rect)
                 if (rect.width() >= minWidthPx && rect.height() >= minHeightPx) {
+                    val cls = cur.className?.toString().orEmpty()
+                    val coll = cur.collectionInfo
                     val acts = cur.actionList
-                    if (acts.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id }) {
-                        canBackward = true
+                    val hasVerticalScrollAction = acts.any {
+                        it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id ||
+                            it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id
                     }
-                    if (acts.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id }) {
-                        canForward = true
+                    val hasHorizontalScrollAction = acts.any {
+                        it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT.id ||
+                            it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id
                     }
-                    if (canBackward && canForward) {
-                        break
+                    val isHorizontalCarousel =
+                        cls.contains("HorizontalScrollView", ignoreCase = true) ||
+                            cls.contains("ViewPager", ignoreCase = true) ||
+                            (coll != null && coll.rowCount == 1 && coll.columnCount > 1) ||
+                            (hasHorizontalScrollAction && !hasVerticalScrollAction && rect.height() < (screenH * 0.42f).toInt())
+                    if (!isHorizontalCarousel) {
+                        if (acts.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD.id || it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id }) {
+                            canBackward = true
+                        }
+                        if (acts.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id || it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id }) {
+                            canForward = true
+                        }
+                        if (canBackward && canForward) {
+                            if (cur !== root) {
+                                recycleNode(cur)
+                            }
+                            break
+                        }
                     }
                 }
             }
@@ -871,6 +892,10 @@ class GroceryScreenReaderService : AccessibilityService() {
             if (cur !== root) {
                 recycleNode(cur)
             }
+        }
+        if (visited >= MAX_NODES && queue.isNotEmpty()) {
+            // Fail closed: if BFS hits the node cap before exhausting the tree, assume more items may exist below.
+            canForward = true
         }
         while (queue.isNotEmpty()) {
             val rem = queue.removeFirst()
@@ -886,7 +911,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         for ((idx, node) in list.withIndex()) {
             val txt = node.text.trim()
             if (!sawActiveCartItemRowAbove) {
-                if (CART_ITEM_CONTROLS.matches(txt) || PRICE_PATTERN.containsMatchIn(txt)) {
+                if (CART_ITEM_CONTROLS.matches(txt)) {
                     sawActiveCartItemRowAbove = true
                 }
             }
@@ -2152,10 +2177,10 @@ class GroceryScreenReaderService : AccessibilityService() {
                 fun isPartiallyClippedInRow(rc: CarouselCandidate): Boolean {
                     if (rc.node.isEdgeClipped) return true
                     if (rc.node.left < edgeClipPx && rc.width < fullListTitleWidthPx) return true
-                    // If a card's right edge doesn't reach 34% of the screen width, it's a departing left-edge card.
-                    if (rc.node.right in 1 until (screenW * 0.34f).toInt()) return true
-                    // If a card's left edge starts past 62% of the screen width, it's a 3rd-column / right-edge card off to the side.
-                    if (rc.node.left > (screenW * 0.62f).toInt()) return true
+                    // Only treat narrow left/right positions as departing carousel cards when clipped against the screen edge;
+                    // unclipped 3-column grid cards sit cleanly inside [edgeClipPx, screenW - edgeClipPx].
+                    if (rc.node.left <= edgeClipPx && rc.node.right in 1 until (screenW * 0.34f).toInt()) return true
+                    if (rc.node.right >= screenW - edgeClipPx && rc.node.left > (screenW * 0.62f).toInt()) return true
                     if (rc.node.right > screenW - edgeClipPx && rc.width < fullListTitleWidthPx) return true
                     val maxW = maxWidthByBand[rc.rowBand] ?: 0
                     // When a card in a horizontal carousel slides partially off the left or right edge,

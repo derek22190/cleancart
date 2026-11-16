@@ -649,32 +649,46 @@ const NEGATIVE_LOOKUP_TTL_MS = 15 * 60_000;
 const MAX_NEGATIVE_LOOKUP_ENTRIES = 1000;
 const negativeLookupCache = new Map<string, number>();
 const providerRateWindows = new Map<string, { count: number; resetAt: number }>();
+const lookupAttemptContext = new AsyncLocalStorage<{ hadOperationalFailure: boolean }>();
 let trackedLookupFetchRef: unknown = globalThis.fetch;
 
+export function resetLookupRuntimeForTests(): void {
+  negativeLookupCache.clear();
+  providerRateWindows.clear();
+  usdaUnavailableUntil = 0;
+  dsldUnavailableUntil = 0;
+  trackedLookupFetchRef = globalThis.fetch;
+}
+
 function ensureLookupRuntimeFreshForFetch(): void {
-  if (trackedLookupFetchRef !== globalThis.fetch) {
-    trackedLookupFetchRef = globalThis.fetch;
-    negativeLookupCache.clear();
-    providerRateWindows.clear();
-    usdaUnavailableUntil = 0;
-    dsldUnavailableUntil = 0;
+  if (process.env.NODE_ENV !== "production" && trackedLookupFetchRef !== globalThis.fetch) {
+    resetLookupRuntimeForTests();
   }
+}
+
+function markLookupOperationalFailure(): void {
+  const ctx = lookupAttemptContext.getStore();
+  if (ctx) ctx.hadOperationalFailure = true;
 }
 
 function consumeOutboundProviderBudget(url: string): boolean {
   let bucket = "";
   let maxPerMin = 0;
   if (url.includes("openfoodfacts.org")) {
-    if (url.includes("/cgi/search.pl") || url.includes("/api/v2/search")) {
+    if (
+      url.includes("search.openfoodfacts.org") ||
+      url.includes("/cgi/search.pl") ||
+      url.includes("/api/v2/search")
+    ) {
       bucket = "off_search";
-      maxPerMin = 40;
+      maxPerMin = 90;
     } else {
       bucket = "off_product";
-      maxPerMin = 90;
+      maxPerMin = 160;
     }
-  } else if (url.includes("api.nal.usda.gov")) {
+  } else if (url.includes("api.nal.usda.gov") || url.includes("fdc.nal.usda.gov")) {
     bucket = "usda";
-    maxPerMin = 90;
+    maxPerMin = 120;
   }
   if (!bucket) return true;
   const now = Date.now();
@@ -690,12 +704,14 @@ function consumeOutboundProviderBudget(url: string): boolean {
 
 async function getJson<T>(url: string): Promise<T | null> {
   ensureLookupRuntimeFreshForFetch();
-  const isUsda = url.includes("api.nal.usda.gov");
+  const isUsda = url.includes("api.nal.usda.gov") || url.includes("fdc.nal.usda.gov");
   const isDsld = url.includes("api.ods.od.nih.gov");
   if ((isUsda && Date.now() < usdaUnavailableUntil) || (isDsld && Date.now() < dsldUnavailableUntil)) {
+    markLookupOperationalFailure();
     return null;
   }
   if (!consumeOutboundProviderBudget(url)) {
+    markLookupOperationalFailure();
     return null;
   }
   try {
@@ -705,6 +721,9 @@ async function getJson<T>(url: string): Promise<T | null> {
       cache: "no-store",
     });
     if (!res.ok) {
+      if (res.status === 429 || res.status >= 500) {
+        markLookupOperationalFailure();
+      }
       if (isDsld && (res.status === 429 || res.status >= 500)) dsldUnavailableUntil = Date.now() + 60_000;
       if (isUsda && (res.status === 429 || res.status >= 502)) {
         usdaUnavailableUntil = Date.now() + 60 * 1000;
@@ -713,10 +732,12 @@ async function getJson<T>(url: string): Promise<T | null> {
     }
     const type = res.headers.get("content-type") || "";
     if (!type.includes("json")) {
+      markLookupOperationalFailure();
       return null;
     }
     return (await res.json()) as T;
   } catch {
+    markLookupOperationalFailure();
     return null;
   }
 }
@@ -808,17 +829,48 @@ export function isPlausibleScreenIngredients(raw: string): boolean {
 const OCR_NUTRITION_GARBAGE =
   /\b(?:\d+\s*%\s*(?:fibre|fiber|vitamin|calcium|iron|daily\s+value)|\d+\s*%\s+\d+\s*%\b|(?<!\bin)gredients?\b|swingredients\b|itamin\s+[a-d]|alcium\s+\d)|(?:\b[a-z]{1,3}\s+\d+\s*%$)/i;
 
-const FOREIGN_DECLARATION_AFTER_PERIOD_RE =
-  /\.\s+(?:ingredientes\s*[:.-]?|ingr\u00e9dients?\s*[:.-]?|contiene\s*:|puede\s+contener\b|elaborado\s+(?:en|por)\b|hecho\s+en\b|distribuido\s+por\b|conservar\s+en\b)/i;
+const EXPLICIT_FOREIGN_INGREDIENTS_HEADER_RE =
+  /[.;/|]\s*(?:ingredientes\s*[:.-]?|ingr\u00e9dients?\s*[:.-]?|zutaten\s*[:.-]?)/i;
+
+const FOREIGN_ORIGIN_OR_DECLARATION_AFTER_PERIOD_RE =
+  /\.\s+(?:contiene\s*:|puede\s+contener\b|elaborado\s+(?:en|por)\b|hecho\s+en\b|distribuido\s+por\b|conservar\s+en\b)/i;
 
 const FOREIGN_OCR_GARBAGE_TOKEN_RE =
   /\b(?:entero|grano\s+entero|dtros|otros\s+alimentos|alimentos|az[u\u00fa]cares|grasas|calor[i\u00ed]as|colesterol|yodeterol|queden|pueden|porci[o\u00f3]n|sodio)\b/gi;
 
 const ENGLISH_ALLERGEN_OR_DECLARATION_IN_TAIL_RE =
-  /\b(?:ingredients?|contains|allergen|milk|cream|whey|casein|butter|cheese|yogurt|eggs?|yolks?|whites?|peanuts?|tree\s+nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|pistachios?|macadamia|sesame|wheat|gluten|barley|rye|oats?|soy|soya|soybeans?|lecithin|fish|shellfish|shrimp|crab|lobster)\b/i;
+  /\b(?:ingredients?|contains|allergen|milk|cream|whey|casein|caseinate|butter|buttermilk|cheese|yogurt|lactose|ghee|eggs?|yolks?|whites?|albumin|lysozyme|mayonnaise|peanuts?|tree\s+nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\s+nuts?|pine\s+nuts?|chestnuts?|praline|marzipan|nougat|sesame|tahini|wheat|gluten|barley|rye|oats?|spelt|farro|kamut|semolina|durum|triticale|malt|soy|soya|soybeans?|lecithin|tofu|tempeh|miso|edamame|tamari|fish|shellfish|shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill)\b/i;
+
+function stripCoveredBilingualCognates(prefix: string, tail: string): string {
+  let cleaned = tail;
+  if (/\b(?:wheat|flour|gluten|barley|rye|oats?|spelt|durum|semolina|malt|triticale)\b/i.test(prefix)) {
+    cleaned = cleaned.replace(/\b(?:gluten|farro|kamut|semolina|durum|triticale|malt)\b/gi, " ");
+  }
+  if (/\b(?:sesame|tahini)\b/i.test(prefix)) {
+    cleaned = cleaned.replace(/\bsesame\b/gi, " ");
+  }
+  if (/\b(?:soy|soya|soybeans?|tofu|tempeh|miso|edamame|tamari)\b/i.test(prefix)) {
+    cleaned = cleaned.replace(/\b(?:soy|soya|tofu|tempeh|miso|edamame|tamari)\b/gi, " ");
+  }
+  if (/\b(?:milk|cream|whey|casein|caseinate|butter|buttermilk|cheese|yogurt|lactose|ghee)\b/i.test(prefix)) {
+    cleaned = cleaned.replace(/\b(?:lactose|casein|caseinate)\b/gi, " ");
+  }
+  return cleaned;
+}
 
 function findSafeForeignSpilloverCutoff(s: string): number {
-  const declMatch = s.match(FOREIGN_DECLARATION_AFTER_PERIOD_RE);
+  const foreignHeaderMatch = s.match(EXPLICIT_FOREIGN_INGREDIENTS_HEADER_RE);
+  if (foreignHeaderMatch && typeof foreignHeaderMatch.index === "number" && foreignHeaderMatch.index >= 8) {
+    const prefix = s.slice(0, foreignHeaderMatch.index).trim();
+    const tail = s.slice(foreignHeaderMatch.index + 1);
+    if (isEnglishIngredientText(prefix) && !/\b(?:ingredients?|contains|allergen)\b/i.test(tail)) {
+      const tailWithoutCoveredCognates = stripCoveredBilingualCognates(prefix, tail);
+      if (!ENGLISH_ALLERGEN_OR_DECLARATION_IN_TAIL_RE.test(tailWithoutCoveredCognates)) {
+        return foreignHeaderMatch.index;
+      }
+    }
+  }
+  const declMatch = s.match(FOREIGN_ORIGIN_OR_DECLARATION_AFTER_PERIOD_RE);
   if (declMatch && typeof declMatch.index === "number" && declMatch.index >= 8) {
     const tail = s.slice(declMatch.index + 1);
     if (!ENGLISH_ALLERGEN_OR_DECLARATION_IN_TAIL_RE.test(tail)) {
@@ -849,7 +901,7 @@ export function sanitizeIngredientDisplay(raw: string): string {
   if (!s) return "";
   const cutoffIdx = findSafeForeignSpilloverCutoff(s);
   if (cutoffIdx >= 8) {
-    s = s.slice(0, cutoffIdx + 1).trim();
+    s = (s[cutoffIdx] === "." ? s.slice(0, cutoffIdx + 1) : s.slice(0, cutoffIdx)).trim();
   }
   const letters = s.replace(/[^A-Za-z]/g, "");
   if (letters.length >= 6) {
@@ -4711,12 +4763,17 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const ms = () => Math.round((performance.now() - t0) * 100) / 100;
   const rawTitle = (input.productTitle || "").trim();
 
+  const hasPackagedFoodNoun =
+    /\b(chicken|beef|pork|turkey|fish|shrimp|salmon|tuna|sausage|bacon|meatballs?|peas|corn|berries|strawberries|blueberries|raspberries|fruit|vegetables?|broccoli|fries|tots|nuggets?|strips?|tenders?|wings?|pizza|burritos?|waffles?|pancakes?|peanut\s+butter|almond\s+butter|reese'?s|hershey'?s|chocolate|candy|fudge|caramel|ice\s+cream|gelato|sorbet|yogurt|pudding|oatmeal|oats|granola|cereal|soup|broth|rice|pasta|ravioli|dumplings?|popcorn|pretzels?|crackers?|cookies?|chips)\b/i.test(
+      rawTitle,
+    );
   if (
     rawTitle &&
     (UI_NOISE_QUERY.test(rawTitle) ||
-      /\b(toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|cups?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|storage\s+bags?|freezer\s+bags?|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i.test(
+      /\b(toilet\s+paper|paper\s+towels?|bath\s+tissue|facial\s+tissue|disposable\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?)|plastic\s+(?:forks?|spoons?|knives|cutlery|utensils?|plates?|cups?|bowls?|straws?)|paper\s+(?:plates?|bowls?|napkins?)|trash\s+bags?|garbage\s+bags?|aluminum\s+foil|plastic\s+wrap|parchment\s+paper|topcare|pain\s*&\s*fever|oral\s+suspension|acetaminophen|ibuprofen|tylenol|advil|motrin|benadryl|mucinex|nyquil|dayquil|robitussin|pepto|tums|laxative|antacid|cough\s+syrup|nasal\s+spray|eye\s+drops)\b/i.test(
         rawTitle,
-      ))
+      ) ||
+      (!hasPackagedFoodNoun && /\b(paper\s+cups?|storage\s+bags?|freezer\s+bags?|sandwich\s+bags?)\b/i.test(rawTitle)))
   ) {
     return null;
   }
@@ -4801,8 +4858,9 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const negExpiresAt = negativeLookupCache.get(key);
   if (!negExpiresAt || Date.now() >= negExpiresAt) {
     if (negExpiresAt) negativeLookupCache.delete(key);
-    found = await lookupProviders(normalizedInput);
-    if (!found && !providerSignal.getStore()?.aborted) {
+    const attemptState = { hadOperationalFailure: false };
+    found = await lookupAttemptContext.run(attemptState, () => lookupProviders(normalizedInput));
+    if (!found && !providerSignal.getStore()?.aborted && !attemptState.hadOperationalFailure) {
       if (negativeLookupCache.size >= MAX_NEGATIVE_LOOKUP_ENTRIES) {
         const oldestKey = negativeLookupCache.keys().next().value;
         if (oldestKey !== undefined) negativeLookupCache.delete(oldestKey);

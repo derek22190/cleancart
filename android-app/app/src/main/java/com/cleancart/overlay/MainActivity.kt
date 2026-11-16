@@ -4504,7 +4504,7 @@ class MainActivity : Activity() {
             .apply()
 
         if (err.isNotBlank() || idToken.isBlank()) {
-            if (err.isNotBlank() && err != "access_denied" && err != "cancelled") {
+            if (err != "access_denied" && err != "cancelled") {
                 Toast.makeText(this, "Google sign-in could not be completed. Please try again.", Toast.LENGTH_LONG).show()
             }
             return true
