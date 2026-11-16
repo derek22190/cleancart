@@ -42,6 +42,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -808,10 +809,214 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun isPreferInAppShop(): Boolean {
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        return prefs.getBoolean("prefer_in_app_live_shop", false)
+    }
+
+    private fun setPreferInAppShop(preferInApp: Boolean) {
+        getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("prefer_in_app_live_shop", preferInApp)
+            .apply()
+    }
+
+    private fun resolveInstalledStorePackage(storeKey: String): String? {
+        val candidates = when (LiveStoreBrowserActivity.normalizeStoreKey(storeKey)) {
+            "walmart" -> listOf("com.walmart.android")
+            "instacart" -> listOf("com.instacart.client")
+            "target" -> listOf("com.target.ui")
+            "kroger" -> listOf("com.kroger.mobile")
+            "aldi" -> listOf("de.apptiv.business.android.aldi_us")
+            "costco" -> listOf("com.costco.app.android")
+            "sams" -> listOf("com.rfi.sams.android", "com.samsclub.app")
+            "bjs" -> listOf("com.bjs.mobile", "com.brandingbrand.reactnative.and.bjs")
+            "amazon" -> listOf("com.amazon.mShop.android.shopping")
+            "wholefoods" -> listOf("com.wholefoods.wholefoodsmarket", "com.amazon.mShop.android.shopping")
+            "shipt" -> listOf("com.shipt.groceries")
+            "doordash" -> listOf("com.dd.doordash")
+            "ubereats" -> listOf("com.ubercab.eats")
+            else -> emptyList()
+        }
+        return candidates.firstOrNull { pkg ->
+            runCatching { packageManager.getLaunchIntentForPackage(pkg) }.getOrNull() != null
+        }
+    }
+
+    private fun launchStoreSmart(storeKey: String, searchQuery: String? = null) {
+        val normKey = LiveStoreBrowserActivity.normalizeStoreKey(storeKey)
+        getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+            .edit()
+            .putString("preferredStore", normKey)
+            .apply()
+
+        val a11yOk = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
+        val nativePkg = resolveInstalledStorePackage(normKey)
+        if (a11yOk && !isPreferInAppShop() && nativePkg != null) {
+            runCatching {
+                startService(
+                    Intent(this, OverlayWindowService::class.java)
+                        .setAction(OverlayWindowService.ACTION_RESET_HIDDEN)
+                )
+            }
+            val launchIntent = runCatching { packageManager.getLaunchIntentForPackage(nativePkg) }.getOrNull()
+            if (launchIntent != null && runCatching {
+                    startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                }.isSuccess
+            ) {
+                if (!searchQuery.isNullOrBlank()) {
+                    GroceryScreenReaderService.requestInAppSearch(nativePkg, searchQuery)
+                }
+                return
+            }
+        }
+
+        startActivity(
+            LiveStoreBrowserActivity.createIntent(
+                context = this,
+                storeKey = normKey,
+                searchQuery = searchQuery
+            )
+        )
+    }
+
+    private fun buildLiveShopStoreStripCard(a11yServiceEnabled: Boolean, consentOk: Boolean): View {
+        val a11yOk = a11yServiceEnabled && consentOk
+        val preferInApp = isPreferInAppShop()
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val primaryPref = LiveStoreBrowserActivity.normalizeStoreKey(prefs.getString("preferredStore", "walmart"))
+        val csvOrder = prefs.getString("preferredStoresCsv", null)
+            ?.split(",")
+            ?.map { LiveStoreBrowserActivity.normalizeStoreKey(it) }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+        val orderedStores = LiveStoreBrowserActivity.STORES.sortedWith(
+            compareBy<LiveStoreBrowserActivity.LiveStoreConfig> { cfg ->
+                when {
+                    cfg.key == primaryPref -> -2
+                    cfg.key in csvOrder -> csvOrder.indexOf(cfg.key)
+                    else -> 100 + LiveStoreBrowserActivity.STORES.indexOf(cfg)
+                }
+            }
+        )
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(0xFFF0FDF4.toInt())
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), 0xFFBBF7D0.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(16), dp(4), dp(16), dp(10))
+            }
+
+            // Header Row: Title + Compact Mode Toggle Chip
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(label("🥦 Shop Live with 0–100 Scores", 14.5f, 0xFF14532D.toInt(), bold = true).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                val modeChipLabel = when {
+                    a11yOk && !preferInApp -> "✓ App Pill + Mini Scores"
+                    a11yOk && preferInApp -> "🌐 In-App Shop"
+                    else -> "🌐 Instant In-App"
+                }
+                addView(label(modeChipLabel, 11f, 0xFF065F46.toInt(), bold = true).apply {
+                    setPadding(dp(9), dp(4), dp(9), dp(4))
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        setStroke(dp(1), 0xFF86EFAC.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    setOnClickListener {
+                        if (a11yOk) {
+                            val next = !isPreferInAppShop()
+                            setPreferInAppShop(next)
+                            Toast.makeText(
+                                this@MainActivity,
+                                if (next) "Store buttons now open inside HeyBroc Live Shop" else "Store buttons now launch your native grocery apps + Pill",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            renderScreen()
+                        } else {
+                            runGuidedSetupStep()
+                        }
+                    }
+                })
+            })
+
+            val subDesc = if (a11yOk && !preferInApp) {
+                "Tap any store — opens your installed app with the floating Pill + per-item mini scores (or Live Shop if not installed)."
+            } else {
+                "Tap any store to shop right inside HeyBroc with live photo score badges & 1-tap Clean Swaps."
+            }
+            addView(label(subDesc, 11.5f, 0xFF166534.toInt()).apply {
+                setPadding(0, dp(3), 0, dp(9))
+            })
+
+            // Single Uncluttered Horizontal Store Row
+            val storeScroll = HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
+                clipToPadding = false
+            }
+            val storeRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            orderedStores.forEachIndexed { idx, store ->
+                val isPrimary = idx == 0
+                storeRow.addView(label(
+                    if (isPrimary) "🛒 ${store.label} →" else store.label,
+                    13f,
+                    if (isPrimary) Color.WHITE else 0xFF14532D.toInt(),
+                    bold = true
+                ).apply {
+                    setPadding(dp(14), dp(9), dp(14), dp(9))
+                    background = GradientDrawable().apply {
+                        setColor(if (isPrimary) 0xFF15803D.toInt() else Color.WHITE)
+                        setStroke(dp(1), if (isPrimary) 0xFF15803D.toInt() else 0xFF86EFAC.toInt())
+                        cornerRadius = dp(999).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        if (idx < orderedStores.lastIndex) marginEnd = dp(8)
+                    }
+                    setOnClickListener { launchStoreSmart(store.key) }
+                })
+            }
+            storeScroll.addView(storeRow)
+            addView(storeScroll)
+
+            if (!a11yOk) {
+                addView(label(
+                    "⚡ Prefer shopping inside the native Walmart / Target app? Enable Native App Pill →",
+                    11.5f,
+                    0xFF0F7A4A.toInt(),
+                    bold = true
+                ).apply {
+                    setPadding(0, dp(9), 0, dp(2))
+                    setOnClickListener { runGuidedSetupStep() }
+                })
+            }
+        }
+    }
+
     private fun renderHistoryTab() {
         val a11yServiceEnabled = isAccessibilityEnabled()
         val consentOk = AccessibilityConsent.granted(this)
-        val a11yOk = a11yServiceEnabled && consentOk
+
+        if (!historyFavoritesOnly) {
+            tabContentContainer.addView(buildLiveShopStoreStripCard(a11yServiceEnabled, consentOk))
+        }
 
         if (consentOk && !a11yServiceEnabled && !isInstalledFromPlayStore()) {
             tabContentContainer.addView(buildLiveBubbleSetupCard(a11yServiceEnabled, consentOk).apply {
@@ -819,41 +1024,8 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(dp(16), dp(4), dp(16), dp(10))
+                    setMargins(dp(16), dp(0), dp(16), dp(10))
                 }
-            })
-        } else if (!a11yOk) {
-            tabContentContainer.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-                background = GradientDrawable().apply {
-                    setColor(0xFFF0FDF4.toInt())
-                    cornerRadius = dp(16).toFloat()
-                    setStroke(dp(1), 0xFFBBF7D0.toInt())
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    setMargins(dp(16), dp(4), dp(16), dp(8))
-                }
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    addView(label("Enable Live Store Bubble (1-Switch Setup)", 13.5f, 0xFF14532D.toInt(), bold = true))
-                    addView(label("Auto-scan foods in Walmart, Target, Kroger, Shipt, DoorDash, Costco, Sam's, BJ's, Amazon Fresh, Instacart, ALDI & more", 12f, 0xFF166534.toInt()))
-                })
-                addView(label("Turn ON →", 12.5f, Color.WHITE, bold = true).apply {
-                    setPadding(dp(14), dp(8), dp(14), dp(8))
-                    background = GradientDrawable().apply {
-                        setColor(0xFF2E9E5B.toInt())
-                        cornerRadius = dp(999).toFloat()
-                    }
-                    setOnClickListener {
-                        runGuidedSetupStep()
-                    }
-                })
             })
         }
 
@@ -5993,13 +6165,14 @@ class MainActivity : Activity() {
                 !explicitDeepLink.contains("goto.") &&
                 !explicitDeepLink.contains("impact")
             )
-        if (explicitDeepLink.startsWith("http") && supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
+        val preferInApp = isPreferInAppShop()
+        if (!preferInApp && explicitDeepLink.startsWith("http") && supportsDirectUrlDeepLink && explicitPkg.isNotBlank()) {
             if (runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(explicitDeepLink)).setPackage(explicitPkg)) }.isSuccess) {
                 return
             }
         }
 
-        if (explicitPkg.isNotBlank() && effectiveQuery.isNotBlank()) {
+        if (!preferInApp && explicitPkg.isNotBlank() && effectiveQuery.isNotBlank()) {
             val searchIntent = Intent(Intent.ACTION_SEARCH)
                 .setPackage(explicitPkg)
                 .putExtra(android.app.SearchManager.QUERY, effectiveQuery)
@@ -6025,6 +6198,17 @@ class MainActivity : Activity() {
         }
 
         val targetWebUrl = explicitDeepLink.ifBlank { ScanHistoryStore.storeSearchUrl(storeKey, effectiveQuery) }
+        if (LiveStoreBrowserActivity.validatedRetailerUrl(targetWebUrl) != null) {
+            startActivity(
+                LiveStoreBrowserActivity.createIntent(
+                    context = this,
+                    storeKey = storeKey,
+                    initialUrl = explicitDeepLink.ifBlank { null },
+                    searchQuery = if (explicitDeepLink.isBlank()) effectiveQuery else null
+                )
+            )
+            return
+        }
         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(targetWebUrl))
         resolveExternalBrowserPackage()?.let { browserIntent.setPackage(it) }
         if (runCatching { startActivity(browserIntent) }.isFailure) {

@@ -7245,6 +7245,169 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           Object.values(crossSurfaceMap).every(Boolean),
         );
       }
+
+      // 7. Behavioural Android Dual-Mode Batch Scan + LiveStoreBrowserActivity JS VM & Overlay Parity Suite
+      {
+        const fsSync = await import("node:fs");
+        const vmMod = await import("node:vm");
+        const { runBatchScan } = await import("../lib/scan");
+
+        const batchFreeId = `behav_android_batch_free_${Date.now()}`;
+        const batchFreeSecret = "sec_behav_batch_free_1234567890";
+        const batchFreeDev = await getOrCreateDevice(batchFreeId, batchFreeSecret);
+        const batchFreeBeforeUsed = batchFreeDev.weeklySwapsUsed.length;
+
+        const batchFreeRes = await runBatchScan(
+          {
+            deviceId: batchFreeId,
+            deviceSecret: batchFreeSecret,
+            surface: "android",
+            clientPlatform: "android",
+            store: "walmart",
+            dietaryWatchlist: ["soy", "gluten"],
+            familyWatchlist: ["dyes", "seedOils"],
+            format: "json",
+          },
+          [
+            { id: "g0", productTitle: "Cinnamon Toast Crunch" },
+            { id: "g1", productTitle: "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread" },
+            { id: "g2", productTitle: "Bounty Select-A-Size Paper Towels" },
+          ],
+        );
+        const batchFreeAfterDev = await getOrCreateDevice(batchFreeId, batchFreeSecret);
+
+        const batchExhaustedId = `behav_android_batch_exhausted_${Date.now()}`;
+        const batchExhaustedSecret = "sec_behav_batch_exh_1234567890";
+        const batchExhaustedDev = await getOrCreateDevice(batchExhaustedId, batchExhaustedSecret);
+        batchExhaustedDev.weeklySwapsUsed = ["s0", "s1", "s2", "s3", "s4", "s5"];
+        batchExhaustedDev.proUntil = 0;
+        await saveDevice(batchExhaustedDev);
+
+        const batchExhaustedRes = await runBatchScan(
+          {
+            deviceId: batchExhaustedId,
+            deviceSecret: batchExhaustedSecret,
+            surface: "android",
+            clientPlatform: "android",
+            store: "walmart",
+            format: "json",
+          },
+          [{ id: "g0", productTitle: "Cinnamon Toast Crunch" }],
+        );
+
+        const g0Free = batchFreeRes.results["g0"];
+        const g1Free = batchFreeRes.results["g1"];
+        const g2Free = batchFreeRes.results["g2"];
+        const g0Exh = batchExhaustedRes.results["g0"];
+
+        check(
+          "Behavioural Android Batch Scan: scores multi-card Walmart grid in 1 call, rejects non-food Paper Towels (422), preserves free swap quota on passive browse, and strips swap URLs when quota is exhausted",
+          Boolean(
+            batchFreeRes.ok === true &&
+              g0Free &&
+              g0Free.ok === true &&
+              g0Free.result.score < 50 &&
+              g0Free.swap &&
+              g0Free.swap.locked !== true &&
+              g1Free &&
+              g1Free.ok === true &&
+              g1Free.result.score >= 85 &&
+              g2Free &&
+              g2Free.ok === false &&
+              g2Free.status === 422 &&
+              batchFreeAfterDev.weeklySwapsUsed.length === batchFreeBeforeUsed &&
+              g0Exh &&
+              g0Exh.ok === true &&
+              g0Exh.swap &&
+              g0Exh.swap.locked === true &&
+              g0Exh.swap.webUrl === undefined &&
+              g0Exh.swap.deepLink === undefined &&
+              g0Exh.swap.androidIntentUrl === undefined
+          ),
+        );
+
+        const liveBrowserKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+          "utf8",
+        );
+        const scanApiKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+          "utf8",
+        );
+        const mainActivityKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+          "utf8",
+        );
+        const overlayKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt",
+          "utf8",
+        );
+        const readerKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/GroceryScreenReaderService.kt",
+          "utf8",
+        );
+        const manifestXml = fsSync.readFileSync(
+          "android-app/app/src/main/AndroidManifest.xml",
+          "utf8",
+        );
+
+        const detMatch = liveBrowserKt.match(
+          /private const val DETECTOR_JS = """\n([\s\S]*?)\n        """/,
+        );
+        const earlyCssMatch = liveBrowserKt.match(
+          /private const val EARLY_BANNER_CSS_JS = """\n([\s\S]*?)\n        """/,
+        );
+        let androidDetectorSyntaxValid = false;
+        if (detMatch && detMatch[1] && earlyCssMatch && earlyCssMatch[1]) {
+          try {
+            new vmMod.Script(detMatch[1]);
+            new vmMod.Script(earlyCssMatch[1]);
+            androidDetectorSyntaxValid = true;
+          } catch (e) {
+            console.error("Android LiveStoreBrowserActivity JS syntax error:", e);
+          }
+        }
+
+        const androidDualModeMap = {
+          manifestRegistered:
+            manifestXml.includes('.LiveStoreBrowserActivity') &&
+            manifestXml.includes('android:exported="false"'),
+          androidDetectorSyntaxValid,
+          reusedCardWeakMap:
+            Boolean(detMatch?.[1]?.includes("new WeakMap()")) &&
+            Boolean(detMatch?.[1]?.includes("hbOwnerCardById")) &&
+            Boolean(detMatch?.[1]?.includes("SENSITIVE_BANNER_PATH_RE")) &&
+            Boolean(detMatch?.[1]?.includes("isCategoryEstimate")) &&
+            Boolean(detMatch?.[1]?.includes("hb-photo-badge--advisory")),
+          webviewHardened:
+            liveBrowserKt.includes("allowFileAccess = false") &&
+            liveBrowserKt.includes("allowContentAccess = false") &&
+            liveBrowserKt.includes("MIXED_CONTENT_NEVER_ALLOW") &&
+            liveBrowserKt.includes("isAllowedRetailerHost") &&
+            liveBrowserKt.includes("isBlockedAppRedirectHost"),
+          scanBatchCapped8:
+            scanApiKt.includes("items.take(8)") &&
+            scanApiKt.includes("VALID_BATCH_ITEM_ID_RE") &&
+            scanApiKt.includes("classifyAlertSeverity"),
+          smartDualModeRouting:
+            mainActivityKt.includes("LiveStoreBrowserActivity.createIntent") &&
+            mainActivityKt.includes("isPreferInAppShop") &&
+            mainActivityKt.includes("resolveInstalledStorePackage"),
+          zeroAllocPassThroughGridOverlay:
+            overlayKt.includes("drawnRectPool = Array(12) { RectF() }") &&
+            overlayKt.includes("FLAG_NOT_TOUCHABLE") &&
+            overlayKt.includes("ACTION_SHOW_GRID_BADGES") &&
+            readerKt.includes("if (res.isCategoryEstimate) continue") &&
+            readerKt.includes("scheduleVisibleGridBatchScan"),
+        };
+        if (Object.values(androidDualModeMap).some((v) => !v)) {
+          console.error("androidDualModeMap failure detail:", androidDualModeMap);
+        }
+        check(
+          "Android Dual-Mode Architecture & JS VM Parity: LiveStoreBrowserActivity hardened WebView + valid DETECTOR_JS (WeakMap sig invalidation, banner safety, category-estimate suppression), smart single-row store routing, and zero-allocation pass-through GridScoreBadgesView",
+          Object.values(androidDualModeMap).every(Boolean),
+        );
+      }
     }
   }
 

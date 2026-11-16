@@ -1197,6 +1197,235 @@ object ScanApi {
         return lastErr
     }
 
+    val ADVISORY_ALERT_IDS: Set<String> = setOf("pesticide_risk", "sugar_diabetes", "high_sodium")
+    private val VALID_BATCH_ITEM_ID_RE = Regex(
+        "^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$",
+        RegexOption.IGNORE_CASE
+    )
+
+    fun classifyAlertSeverity(alerts: List<DietaryAlert>): String {
+        if (alerts.isEmpty()) return "none"
+        return if (alerts.any { it.id !in ADVISORY_ALERT_IDS }) "allergen" else "advisory"
+    }
+
+    data class BatchScanRequestItem(
+        val id: String,
+        val productTitle: String,
+        val barcode: String? = null
+    )
+
+    data class BatchBadgeResult(
+        val id: String,
+        val title: String,
+        val score: Int,
+        val rating: String,
+        val color: String,
+        val dietaryAlerts: List<DietaryAlert>,
+        val alertSeverity: String,
+        val isCategoryEstimate: Boolean,
+        val swapTitle: String?,
+        val swapScore: Int,
+        val fullJson: JSONObject,
+        val rawJsonStr: String
+    )
+
+    data class BatchScanOutcome(
+        val results: Map<String, BatchBadgeResult>,
+        val transientFailure: Boolean
+    )
+
+    private fun parseBatchBadgeResult(
+        ctx: Context,
+        id: String,
+        fallbackTitle: String,
+        itemJson: JSONObject
+    ): BatchBadgeResult? {
+        if (!itemJson.optBoolean("ok", false)) return null
+        val working = JSONObject(itemJson.toString())
+        applyLocalWatchlistToData(ctx, working)
+        val prod = working.optJSONObject("product")
+        val res = working.optJSONObject("result") ?: return null
+        if (!res.has("score") || res.isNull("score")) return null
+        val score = res.optInt("score", 0).coerceIn(0, 100)
+        val resolvedTitle = prod?.optString("title").orEmpty().trim().ifBlank { fallbackTitle.trim() }
+        if (ScanHistoryStore.isPoisonedProduceEntry(resolvedTitle, working)) return null
+        val rating = res.optString("rating").orEmpty().ifBlank {
+            when {
+                score >= 75 -> "Excellent"
+                score >= 50 -> "Good"
+                score >= 25 -> "Mediocre"
+                else -> "Bad"
+            }
+        }
+        val color = res.optString("color").orEmpty().ifBlank {
+            when {
+                score >= 75 -> "green"
+                score >= 50 -> "yellow"
+                else -> "red"
+            }
+        }
+        val alerts = evaluateDietaryAlerts(ctx, prod, res, working)
+        val severity = classifyAlertSeverity(alerts)
+        val isCategoryEstimate = working.optBoolean("isCategoryEstimate", false)
+        val swapObj = working.optJSONObject("swap")
+        val swapTitle = swapObj?.optString("title")?.trim()?.takeIf { it.isNotBlank() }
+        val swapScore = swapObj?.optInt("score", 0) ?: 0
+        return BatchBadgeResult(
+            id = id,
+            title = resolvedTitle,
+            score = score,
+            rating = rating,
+            color = color,
+            dietaryAlerts = alerts,
+            alertSeverity = severity,
+            isCategoryEstimate = isCategoryEstimate,
+            swapTitle = swapTitle,
+            swapScore = swapScore,
+            fullJson = working,
+            rawJsonStr = working.toString()
+        )
+    }
+
+    /**
+     * Blocking call — scores up to 8 visible store cards in a single HTTP round-trip via POST /api/scan
+     * (`runBatchScan`, which sets `skipAnalytics: true` so passive scrolling never burns swap quota or rate limits)
+     * and hydrates `responseCache` so tapping any scored item opens instantaneously.
+     */
+    fun scanBatchOutcome(
+        ctx: Context,
+        items: List<BatchScanRequestItem>,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ): BatchScanOutcome {
+        if (items.isEmpty()) return BatchScanOutcome(emptyMap(), transientFailure = false)
+        val out = LinkedHashMap<String, BatchBadgeResult>()
+        val uncached = ArrayList<BatchScanRequestItem>()
+
+        for (item in items.take(8)) {
+            val cleanId = item.id.trim()
+            if (!VALID_BATCH_ITEM_ID_RE.matches(cleanId)) continue
+            val cleanTitle = item.productTitle.trim().take(300)
+            val cleanBarcode = item.barcode?.filter { it.isDigit() }?.takeIf { it.length in 8..14 }.orEmpty()
+            if (cleanTitle.isEmpty() && cleanBarcode.isEmpty()) continue
+            if (cleanBarcode.isEmpty() && cleanTitle.isNotEmpty()) {
+                val cachedStr = peekCachedScan(ctx, cleanTitle, null, store, storeBucket, instacartRetailerSlug)
+                if (cachedStr != null && cachedStr.contains("\"ok\":true")) {
+                    val parsed = runCatching {
+                        parseBatchBadgeResult(ctx, cleanId, cleanTitle, JSONObject(cachedStr))
+                    }.getOrNull()
+                    if (parsed != null) {
+                        out[cleanId] = parsed
+                        continue
+                    }
+                }
+            }
+            uncached.add(BatchScanRequestItem(cleanId, cleanTitle, cleanBarcode.ifEmpty { null }))
+        }
+
+        if (uncached.isEmpty()) return BatchScanOutcome(out, transientFailure = false)
+
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val seedOilsOn = isSeedOilsEnabled(ctx)
+        val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
+            .map { if (it == "nitrites") "nitrates" else it }
+            .filter { seedOilsOn || it != "seedOils" }
+            .toSet()
+        val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
+        val refCode = referredByCode(ctx)
+        val normStore = store.trim().lowercase()
+        val subSlug = resolveSubRetailerSlug(normStore, storeBucket, instacartRetailerSlug)
+        val effectiveRequestStore = when {
+            normStore == "amazon" && subSlug == "wholefoods" -> "amazon"
+            else -> store
+        }
+
+        val reqItemsArr = JSONArray()
+        for (u in uncached) {
+            reqItemsArr.put(JSONObject().apply {
+                put("id", u.id)
+                if (u.productTitle.isNotEmpty()) put("productTitle", u.productTitle)
+                if (!u.barcode.isNullOrBlank()) put("barcode", u.barcode)
+            })
+        }
+
+        val body = JSONObject().apply {
+            put("items", reqItemsArr)
+            put("store", effectiveRequestStore)
+            if (subSlug.isNotBlank() && (normStore == "instacart" || instacartRetailerSlug.isNotBlank())) {
+                put("instacartRetailerSlug", subSlug)
+            }
+            put("surface", "android")
+            if (isPreferStoreBrand(ctx)) {
+                put("preferStoreBrand", true)
+            }
+            if (!seedOilsOn) {
+                put("watchlist", JSONObject().put("seedOils", false))
+            }
+            if (familyWatchlist.isNotEmpty()) {
+                put("familyWatchlist", JSONArray(familyWatchlist.toList().sorted()))
+            }
+            if (dietaryWatchlist.isNotEmpty()) {
+                put("dietaryWatchlist", JSONArray(dietaryWatchlist.toList().sorted()))
+            }
+            put("deviceId", deviceId(ctx))
+            put("deviceSecret", deviceSecret(ctx))
+            if (!refCode.isNullOrBlank()) {
+                put("referredByCode", refCode)
+            }
+            put("format", "json")
+        }.toString()
+
+        var reachedServer = false
+        for (endpoint in ENDPOINTS) {
+            try {
+                val res = postFollowingRedirects(endpoint, body, maxRedirects = 4, readTimeoutMs = 10000)
+                if (!res.startsWith("{")) continue
+                val root = JSONObject(res)
+                val resultsObj = root.optJSONObject("results") ?: root.optJSONObject("batch") ?: continue
+                reachedServer = true
+                var savedEntitlement = false
+                for (u in uncached) {
+                    val itemJson = resultsObj.optJSONObject(u.id) ?: continue
+                    if (!savedEntitlement && itemJson.has("entitlement")) {
+                        runCatching { saveEntitlementSnapshot(ctx, itemJson.optJSONObject("entitlement")) }
+                        savedEntitlement = true
+                    }
+                    if (itemJson.optBoolean("ok", false)) {
+                        val rawItemStr = itemJson.toString()
+                        val cacheTitle = if (!u.barcode.isNullOrBlank()) "${u.productTitle}|upc:${u.barcode}" else u.productTitle
+                        if (cacheTitle.isNotBlank()) {
+                            val normKey = normalizedCacheKey(ctx, cacheTitle, null, store, storeBucket, instacartRetailerSlug)
+                            synchronized(responseCache) {
+                                responseCache[normKey] = rawItemStr
+                            }
+                        }
+                        val parsed = runCatching {
+                            parseBatchBadgeResult(ctx, u.id, u.productTitle, itemJson)
+                        }.getOrNull()
+                        if (parsed != null) {
+                            out[u.id] = parsed
+                        }
+                    }
+                }
+                break
+            } catch (_: Exception) {
+                // try next endpoint
+            }
+        }
+
+        return BatchScanOutcome(out, transientFailure = !reachedServer)
+    }
+
+    fun scanBatch(
+        ctx: Context,
+        items: List<BatchScanRequestItem>,
+        store: String,
+        storeBucket: String = "",
+        instacartRetailerSlug: String = ""
+    ): Map<String, BatchBadgeResult> =
+        scanBatchOutcome(ctx, items, store, storeBucket, instacartRetailerSlug).results
+
     /** Blocking call — posts raw order / receipt / grocery-list text to POST /api/audit. */
     fun auditOrder(
         ctx: Context,

@@ -21,6 +21,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -71,6 +72,8 @@ class OverlayWindowService : Service() {
         const val ACTION_SHOW_SETUP_GUIDE = "com.cleancart.overlay.SHOW_SETUP_GUIDE"
         const val ACTION_HIDE_SETUP_GUIDE = "com.cleancart.overlay.HIDE_SETUP_GUIDE"
         const val ACTION_REFRESH_PILL = "com.cleancart.overlay.REFRESH_PILL"
+        const val ACTION_SHOW_GRID_BADGES = "com.cleancart.overlay.SHOW_GRID_BADGES"
+        const val ACTION_HIDE_GRID_BADGES = "com.cleancart.overlay.HIDE_GRID_BADGES"
         const val EXTRA_SETUP_STEP = "setup_step"
         const val EXTRA_JSON = "json"
         const val EXTRA_TITLE = "title"
@@ -87,6 +90,7 @@ class OverlayWindowService : Service() {
         const val EXTRA_STORE_BUCKET = "store_bucket"
         const val EXTRA_KEEP_MODE = "keep_mode"
         const val EXTRA_ALL_CART_ROWS_VISIBLE = "all_cart_rows_visible"
+        const val EXTRA_GRID_BADGES_JSON = "grid_badges_json"
         @Volatile
         var currentPillCenterY: Int = -1
 
@@ -101,6 +105,7 @@ class OverlayWindowService : Service() {
         private const val LEGACY_KEY_TRIP_CART_V3_PREFIX = "trip_cart_v3_"
         private const val KEY_TRIP_CART_PREFIX = "trip_cart_v4_"
         private const val KEY_PILL_Y = "pill_y"
+        private const val KEY_GRID_MINI_BADGES_ENABLED = "native_grid_mini_badges_enabled"
         private val DEMO_SEED_TITLES = setOf(
             "berry swirl strawberry lowfat yogurt",
             "strawberry lowfat yogurt",
@@ -133,11 +138,27 @@ class OverlayWindowService : Service() {
         var isNonFood: Boolean = false,
     )
 
+    private data class GridBadgeItem(
+        val title: String,
+        var score: Int,
+        var rating: String,
+        var color: String,
+        var alertBadge: String?,
+        var alertSeverity: String,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+        val fullJson: JSONObject,
+    )
+
     private lateinit var wm: WindowManager
     private var climbAnimator: ValueAnimator? = null
     private var pill: View? = null
     private var pillTextView: TextView? = null
     private var pillDotView: View? = null
+    private var gridBadgesView: GridScoreBadgesView? = null
+    private val visibleGridBadges = mutableListOf<GridBadgeItem>()
     private var hideTarget: View? = null
     private var card: View? = null
     private var setupGuideView: View? = null
@@ -167,6 +188,16 @@ class OverlayWindowService : Service() {
     private val mainUiHandler = Handler(Looper.getMainLooper())
     private val imageExecutor = Executors.newFixedThreadPool(2)
     private val swapBitmapCache = LruCache<String, Bitmap>(24)
+
+    private fun isGridMiniBadgesEnabled(): Boolean =
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_GRID_MINI_BADGES_ENABLED, true)
+
+    private fun setGridMiniBadgesEnabled(enabled: Boolean) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_GRID_MINI_BADGES_ENABLED, enabled)
+            .apply()
+    }
 
     private fun syncPillCenterY() {
         currentPillCenterY = pillY + dp(21)
@@ -274,6 +305,8 @@ class OverlayWindowService : Service() {
             pendingSwapCandidates = emptyList()
             pendingSwapCandidateIdx = 0
             pendingSwapExplicitItem = null
+            visibleGridBadges.clear()
+            hideGridBadgesOverlay()
             removeCard()
             loadPersistedCart(currentStoreBucket)
             displayedCartAvg = calcCartAvg()
@@ -288,6 +321,8 @@ class OverlayWindowService : Service() {
         val maxH = (resources.displayMetrics.heightPixels - dp(80)).coerceAtLeast(dp(48))
         pillY = pillY.coerceIn(dp(24), maxH)
         pill?.let { p -> pillParams?.let { lp -> lp.y = pillY; updateOverlayView(p, lp) } }
+        visibleGridBadges.clear()
+        hideGridBadgesOverlay()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -324,6 +359,11 @@ class OverlayWindowService : Service() {
                 isTestMode = false
                 val incoming = runCatching { JSONObject(intent.getStringExtra(EXTRA_JSON) ?: "{}") }.getOrNull()
                 val pageOutOfStock = intent.getBooleanExtra(EXTRA_PAGE_OUT_OF_STOCK, false)
+                val incomingSinglePdp = intent.getBooleanExtra(EXTRA_IS_SINGLE_PDP, true)
+                if (incomingSinglePdp) {
+                    visibleGridBadges.clear()
+                    hideGridBadgesOverlay()
+                }
                 if (incoming?.optBoolean("ok") == true) {
                     val incomingTitle = cleanCartTitle(incoming.optJSONObject("product")?.optString("title").orEmpty())
                     if (pageOutOfStock && pendingSwapTitle != null && matchesPendingSwap(incomingTitle)) {
@@ -352,7 +392,7 @@ class OverlayWindowService : Service() {
                         }
                     }
                     data = incoming
-                    currentIsSinglePdp = intent.getBooleanExtra(EXTRA_IS_SINGLE_PDP, true)
+                    currentIsSinglePdp = incomingSinglePdp
                     isCartAvgMode = false
                     isPdpScrollHint = false
                     runCatching { ScanHistoryStore.recordScan(this, incoming, currentStoreKey) }
@@ -367,6 +407,7 @@ class OverlayWindowService : Service() {
                     // On a confirmed Single Product Detail Page, never switch to Cart Avg mode if a scan fails — prompt to scroll down slightly
                     data = null
                     openFlag = null
+                    currentIsSinglePdp = true
                     isCartAvgMode = false
                     isPdpScrollHint = true
                     if (!hiddenForCurrentScreen && card == null) {
@@ -376,6 +417,7 @@ class OverlayWindowService : Service() {
                     // Never keep a stale previous product (e.g. Oreo Puffs) if a scan fails — clear data and fall back to Cart Avg mode
                     data = null
                     openFlag = null
+                    currentIsSinglePdp = false
                     isPdpScrollHint = false
                     isCartAvgMode = true
                     if (!hiddenForCurrentScreen && card == null) {
@@ -385,12 +427,88 @@ class OverlayWindowService : Service() {
             }
             ACTION_PDP_SCROLL_HINT -> {
                 isTestMode = false
+                visibleGridBadges.clear()
+                hideGridBadgesOverlay()
                 if (!hiddenForCurrentScreen && card == null) {
                     data = null
                     openFlag = null
+                    currentIsSinglePdp = true
                     isCartAvgMode = false
                     isPdpScrollHint = true
                     showPill(loadingText = "Scroll down to grade item")
+                }
+            }
+            ACTION_SHOW_GRID_BADGES -> {
+                isTestMode = false
+                val rawArr = intent.getStringExtra(EXTRA_GRID_BADGES_JSON) ?: "[]"
+                val parsedArr = runCatching { JSONArray(rawArr) }.getOrNull()
+                visibleGridBadges.clear()
+                if (parsedArr != null) {
+                    for (i in 0 until parsedArr.length()) {
+                        val obj = parsedArr.optJSONObject(i) ?: continue
+                        val fullJson = runCatching { JSONObject(obj.optString("rawJson", "{}")) }.getOrNull()
+                            ?: continue
+                        if (fullJson.optBoolean("isCategoryEstimate", false)) continue
+                        ScanApi.applyLocalWatchlistToData(this, fullJson)
+                        val resObj = fullJson.optJSONObject("result")
+                        val prodObj = fullJson.optJSONObject("product")
+                        val effScore = if (resObj != null && resObj.has("score") && !resObj.isNull("score")) {
+                            resObj.optInt("score", obj.optInt("score", 0)).coerceIn(0, 100)
+                        } else {
+                            obj.optInt("score", 0).coerceIn(0, 100)
+                        }
+                        val effColor = resObj?.optString("color")?.takeIf { it.isNotBlank() }
+                            ?: colorNameForScore(effScore)
+                        val effRating = resObj?.optString("rating")?.takeIf { it.isNotBlank() }
+                            ?: when {
+                                effScore >= 75 -> "Excellent"
+                                effScore >= 50 -> "Mediocre"
+                                else -> "Poor"
+                            }
+                        val evalAlerts = ScanApi.evaluateDietaryAlerts(this, prodObj, resObj, fullJson)
+                        val alertShort = evalAlerts.firstOrNull()?.shortBadge
+                            ?: obj.optString("alertBadge").takeIf { it.isNotBlank() }
+                        val effSeverity = if (evalAlerts.isNotEmpty()) {
+                            ScanApi.classifyAlertSeverity(evalAlerts)
+                        } else {
+                            obj.optString("alertSeverity").takeIf { it.isNotBlank() }
+                                ?: if (!alertShort.isNullOrBlank()) "advisory" else "none"
+                        }
+                        val itemTitle = cleanCartTitle(
+                            prodObj?.optString("title").orEmpty().ifBlank { obj.optString("title") }
+                        )
+                        if (itemTitle.isBlank()) continue
+                        visibleGridBadges.add(
+                            GridBadgeItem(
+                                title = itemTitle,
+                                score = effScore,
+                                rating = effRating,
+                                color = effColor,
+                                alertBadge = alertShort,
+                                alertSeverity = effSeverity,
+                                left = obj.optInt("left", 0),
+                                top = obj.optInt("top", 0),
+                                right = obj.optInt("right", 0),
+                                bottom = obj.optInt("bottom", 0),
+                                fullJson = fullJson
+                            )
+                        )
+                    }
+                }
+                if (visibleGridBadges.isNotEmpty()) {
+                    currentIsSinglePdp = false
+                }
+                syncGridBadgesOverlayVisibility(fadeIn = true)
+                if (!hiddenForCurrentScreen && card == null && isCartAvgMode && displayedCartAvg == null) {
+                    showPill()
+                }
+            }
+            ACTION_HIDE_GRID_BADGES -> {
+                val hadBadges = visibleGridBadges.isNotEmpty()
+                visibleGridBadges.clear()
+                hideGridBadgesOverlay()
+                if (hadBadges && !hiddenForCurrentScreen && card == null && isCartAvgMode && displayedCartAvg == null) {
+                    showPill()
                 }
             }
             ACTION_SYNC_CART -> {
@@ -398,6 +516,8 @@ class OverlayWindowService : Service() {
                 val keepMode = intent.getBooleanExtra(EXTRA_KEEP_MODE, false)
                 if (!keepMode) {
                     isPdpScrollHint = false
+                    visibleGridBadges.clear()
+                    hideGridBadgesOverlay()
                 }
                 val prevSize = totalCartUnits()
                 val prevAvg = displayedCartAvg
@@ -491,6 +611,8 @@ class OverlayWindowService : Service() {
                 isCartAvgMode = false
                 isPdpScrollHint = false
                 isTestMode = true
+                visibleGridBadges.clear()
+                hideGridBadgesOverlay()
                 data = JSONObject(intent.getStringExtra(EXTRA_JSON) ?: ScanApi.SAMPLE_JSON)
                 openFlag = null
                 removeCard()
@@ -499,6 +621,8 @@ class OverlayWindowService : Service() {
             ACTION_HIDE_IF_TEST -> {
                 if (isTestMode) {
                     isTestMode = false
+                    visibleGridBadges.clear()
+                    removeGridBadgesOverlay()
                     removeCard()
                     removeHideTarget()
                     removePill()
@@ -507,6 +631,8 @@ class OverlayWindowService : Service() {
             ACTION_HIDE -> {
                 isTestMode = false
                 hiddenForCurrentScreen = false
+                visibleGridBadges.clear()
+                removeGridBadgesOverlay()
                 removeCard()
                 removeHideTarget()
                 removePill()
@@ -528,6 +654,20 @@ class OverlayWindowService : Service() {
                         cartChanged = true
                     }
                 }
+                for (badge in visibleGridBadges) {
+                    ScanApi.applyLocalWatchlistToData(this, badge.fullJson)
+                    val resObj = badge.fullJson.optJSONObject("result")
+                    val prodObj = badge.fullJson.optJSONObject("product")
+                    if (resObj != null && resObj.has("score") && !resObj.isNull("score")) {
+                        badge.score = resObj.optInt("score", badge.score).coerceIn(0, 100)
+                        badge.color = resObj.optString("color").ifBlank { colorNameForScore(badge.score) }
+                        badge.rating = resObj.optString("rating").ifBlank { badge.rating }
+                    }
+                    val evalAlerts = ScanApi.evaluateDietaryAlerts(this, prodObj, resObj, badge.fullJson)
+                    badge.alertBadge = evalAlerts.firstOrNull()?.shortBadge
+                    badge.alertSeverity = ScanApi.classifyAlertSeverity(evalAlerts)
+                }
+                syncGridBadgesOverlayVisibility(fadeIn = false)
                 if (cartChanged) {
                     displayedCartAvg = calcCartAvg()
                     persistCart()
@@ -551,6 +691,8 @@ class OverlayWindowService : Service() {
     override fun onDestroy() {
         climbAnimator?.cancel()
         runCatching { imageExecutor.shutdownNow() }
+        visibleGridBadges.clear()
+        removeGridBadgesOverlay()
         removeSetupGuide()
         removeCard()
         removeHideTarget()
@@ -1131,6 +1273,224 @@ class OverlayWindowService : Service() {
         hideTarget = null
     }
 
+    /* ---------------- Pass-Through Per-Item Mini Score Badges Overlay ---------------- */
+
+    private fun ensureGridBadgesOverlay(): GridScoreBadgesView? {
+        if (!canDisplayOverlay()) return null
+        gridBadgesView?.let { return it }
+        val view = GridScoreBadgesView(this).apply {
+            visibility = View.GONE
+        }
+        val usingA11yWindow = GroceryScreenReaderService.activeWindowManager() != null
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (usingA11yWindow) {
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            } else {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            },
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
+            // Android 12+ (API 31+) blocks pass-through touches on TYPE_APPLICATION_OVERLAY if alpha > 0.8f;
+            // TYPE_ACCESSIBILITY_OVERLAY is system-trusted at full 1.0f opacity.
+            if (!usingA11yWindow && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alpha = 0.78f
+            }
+        }
+        if (!addOverlayView(view, lp)) return null
+        // Re-ensure the interactive pill stays stacked above the non-touchable canvas in WindowManager z-order
+        pill?.let { existingPill ->
+            pillParams?.let { existingLp ->
+                removeOverlayView(existingPill)
+                addOverlayView(existingPill, existingLp)
+            }
+        }
+        gridBadgesView = view
+        return view
+    }
+
+    private fun syncGridBadgesOverlayVisibility(fadeIn: Boolean) {
+        val shouldShow = !hiddenForCurrentScreen &&
+            card == null &&
+            isGridMiniBadgesEnabled() &&
+            visibleGridBadges.isNotEmpty() &&
+            (isCartAvgMode || !currentIsSinglePdp)
+        if (!shouldShow) {
+            hideGridBadgesOverlay()
+            return
+        }
+        val view = ensureGridBadgesOverlay() ?: return
+        val wasHidden = view.visibility != View.VISIBLE
+        view.setBadges(visibleGridBadges)
+        if (wasHidden) {
+            if (fadeIn) {
+                view.alpha = 0f
+                view.visibility = View.VISIBLE
+                view.animate().alpha(1f).setDuration(140L).start()
+            } else {
+                view.alpha = 1f
+                view.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun hideGridBadgesOverlay() {
+        gridBadgesView?.let { v ->
+            v.animate().cancel()
+            v.visibility = View.GONE
+        }
+    }
+
+    private fun removeGridBadgesOverlay() {
+        gridBadgesView?.animate()?.cancel()
+        removeOverlayView(gridBadgesView)
+        gridBadgesView = null
+    }
+
+    private inner class GridScoreBadgesView(ctx: Context) : View(ctx) {
+        private var items: List<GridBadgeItem> = emptyList()
+        private val winLoc = IntArray(2)
+        private val drawnRectPool = Array(12) { RectF() }
+        private var drawnCount = 0
+        private val candidateRect = RectF()
+        private val pillExcludeRect = RectF()
+        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = 0xEA141A17.toInt()
+        }
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+        }
+        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        fun setBadges(next: List<GridBadgeItem>) {
+            items = next.toList()
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (items.isEmpty()) return
+            getLocationOnScreen(winLoc)
+            val offsetX = winLoc[0].toFloat()
+            val offsetY = winLoc[1].toFloat()
+            val screenW = resources.displayMetrics.widthPixels.toFloat().coerceAtLeast(720f)
+            val screenH = resources.displayMetrics.heightPixels.toFloat().coerceAtLeast(1200f)
+
+            val padH = dp(8).toFloat()
+            val badgeH = dp(23).toFloat()
+            val radius = badgeH / 2f
+            val dotR = dp(4).toFloat()
+            val dotGap = dp(5).toFloat()
+            strokePaint.strokeWidth = dp(1).coerceAtLeast(1).toFloat()
+            textPaint.textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                11.5f,
+                resources.displayMetrics
+            )
+            val minSafeTop = screenH * 0.115f - offsetY
+            val maxSafeBottom = screenH * 0.895f - offsetY
+
+            pillExcludeRect.set(
+                screenW - dp(210).toFloat() - offsetX,
+                (pillY - dp(10)).toFloat() - offsetY,
+                screenW - offsetX,
+                (pillY + dp(54)).toFloat() - offsetY
+            )
+            drawnCount = 0
+
+            for (item in items) {
+                if (drawnCount >= drawnRectPool.size) break
+                val hasAlert = !item.alertBadge.isNullOrBlank()
+                val labelText = if (hasAlert) "⚠️ ${item.score}" else "${item.score}"
+                val textW = textPaint.measureText(labelText)
+                val contentW = if (hasAlert) {
+                    padH * 2f + textW
+                } else {
+                    padH * 2f + dotR * 2f + dotGap + textW
+                }
+                val badgeW = contentW.coerceAtLeast(dp(42).toFloat())
+
+                var bx = (item.left.toFloat() - offsetX + dp(2)).coerceIn(dp(6).toFloat(), screenW - badgeW - dp(6))
+                var by = item.top.toFloat() - offsetY - badgeH - dp(4)
+                if (by < minSafeTop) {
+                    by = (item.top.toFloat() - offsetY + dp(2)).coerceAtLeast(minSafeTop)
+                }
+                if (by + badgeH > maxSafeBottom) continue
+
+                candidateRect.set(bx, by, bx + badgeW, by + badgeH)
+                if (RectF.intersects(candidateRect, pillExcludeRect)) {
+                    val shiftedLeft = pillExcludeRect.left - badgeW - dp(6)
+                    if (shiftedLeft >= item.left.toFloat() - offsetX - dp(24) && shiftedLeft >= dp(6).toFloat()) {
+                        bx = shiftedLeft
+                        candidateRect.set(bx, by, bx + badgeW, by + badgeH)
+                    } else {
+                        val shiftedAbove = pillExcludeRect.top - badgeH - dp(4)
+                        if (shiftedAbove >= minSafeTop) {
+                            by = shiftedAbove
+                            candidateRect.set(bx, by, bx + badgeW, by + badgeH)
+                        } else {
+                            continue
+                        }
+                    }
+                }
+
+                var overlapsExisting = false
+                for (i in 0 until drawnCount) {
+                    if (RectF.intersects(candidateRect, drawnRectPool[i])) {
+                        overlapsExisting = true
+                        break
+                    }
+                }
+                if (overlapsExisting) {
+                    continue
+                }
+                drawnRectPool[drawnCount].set(candidateRect)
+                drawnCount++
+
+                val isAllergen = hasAlert && item.alertSeverity == "allergen"
+                val scoreAccent = when {
+                    item.score >= 75 -> 0xFF22C55E.toInt()
+                    item.score >= 50 -> 0xFFEAB308.toInt()
+                    else -> 0xFFEF4444.toInt()
+                }
+                val strokeAccent = when {
+                    isAllergen -> 0xFFEF4444.toInt()
+                    hasAlert -> 0xFFF59E0B.toInt()
+                    else -> scoreAccent
+                }
+                strokePaint.color = (strokeAccent and 0x00FFFFFF) or (if (hasAlert) 0xDD000000.toInt() else 0xAA000000.toInt())
+                canvas.drawRoundRect(candidateRect, radius, radius, bgPaint)
+                canvas.drawRoundRect(candidateRect, radius, radius, strokePaint)
+
+                val fm = textPaint.fontMetrics
+                val textBaseline = candidateRect.centerY() - (fm.ascent + fm.descent) / 2f
+                if (hasAlert) {
+                    canvas.drawText(labelText, candidateRect.left + padH, textBaseline, textPaint)
+                } else {
+                    dotPaint.color = scoreAccent
+                    val dotCx = candidateRect.left + padH + dotR
+                    canvas.drawCircle(dotCx, candidateRect.centerY(), dotR, dotPaint)
+                    canvas.drawText(labelText, dotCx + dotR + dotGap, textBaseline, textPaint)
+                }
+            }
+        }
+    }
+
     /* ---------------- Dual-Mode Pill ---------------- */
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1151,17 +1511,22 @@ class OverlayWindowService : Service() {
         } else {
             emptyList()
         }
+        val pillSeverity = ScanApi.classifyAlertSeverity(dietaryAlerts)
         val tone = when {
             loadingText != null || isPdpScrollHint -> NEUTRAL_SLATE
+            isCartAvgMode && avg == null && visibleGridBadges.isNotEmpty() -> BRAND
             isCartAvgMode && avg == null -> NEUTRAL_SLATE
             isCartAvgMode && avg != null -> toneColor(colorNameForScore(avg))
             !ok -> NEUTRAL_SLATE
-            dietaryAlerts.isNotEmpty() -> 0xFFEF4444.toInt()
+            pillSeverity == "allergen" -> 0xFFEF4444.toInt()
+            pillSeverity == "advisory" -> 0xFFF59E0B.toInt()
             else -> toneColor(colorNameForScore(effectiveScore))
         }
         val label = when {
             loadingText != null -> loadingText
             isPdpScrollHint -> "Scroll down to grade item"
+            isCartAvgMode && avg == null && visibleGridBadges.isNotEmpty() ->
+                "🥦 ${visibleGridBadges.size} Scored • Tap to Compare"
             isCartAvgMode && avg == null -> "🛒 Cart Avg: --"
             isCartAvgMode && avg != null -> "🛒 Cart Avg: $avg/100 ($units)"
             ok && dietaryAlerts.isNotEmpty() -> {
@@ -1186,6 +1551,7 @@ class OverlayWindowService : Service() {
                 pillTextView?.text = label
             }
             (pillDotView?.background as? GradientDrawable)?.setColor(tone)
+            syncGridBadgesOverlayVisibility(fadeIn = false)
             return
         }
 
@@ -1253,6 +1619,7 @@ class OverlayWindowService : Service() {
                         overHide = e.rawY > curH * 0.80f && e.rawX > curW * 0.2f && e.rawX < curW * 0.8f
                         showHideTarget(overHide)
                         updateOverlayView(v, params)
+                        gridBadgesView?.invalidate()
                     }
                     true
                 }
@@ -1266,6 +1633,7 @@ class OverlayWindowService : Service() {
                         syncPillCenterY()
                         persistCart()
                         updateOverlayView(v, params)
+                        gridBadgesView?.invalidate()
                         if (moved && e.actionMasked == MotionEvent.ACTION_UP) {
                             GroceryScreenReaderService.requestRescanForPillPosition()
                         } else if (!moved) {
@@ -1296,9 +1664,11 @@ class OverlayWindowService : Service() {
         pillDotView = dotView
         pillTextView = labelView
         pillParams = params
+        syncGridBadgesOverlayVisibility(fadeIn = false)
     }
 
     private fun removePill() {
+        hideGridBadgesOverlay()
         removeOverlayView(pill)
         pill = null
         pillDotView = null
@@ -1393,26 +1763,236 @@ class OverlayWindowService : Service() {
             })
         })
 
-        if (avg == null) {
+        // Per-item Mini Score Badges toggle bar
+        val miniEnabled = isGridMiniBadgesEnabled()
+        sheet.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(11), dp(7), dp(11), dp(7))
+            background = GradientDrawable().apply {
+                setColor(if (miniEnabled) 0xFFF0FDF4.toInt() else 0xFFF8FAFC.toInt())
+                setStroke(dp(1), if (miniEnabled) 0xFFBBF7D0.toInt() else 0xFFE2E8F0.toInt())
+                cornerRadius = dp(999).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10); bottomMargin = dp(4) }
+            addView(text(
+                if (miniEnabled) "✨ Per-Item Mini Badges on Store Grid" else "Per-Item Mini Badges on Store Grid",
+                11.5f,
+                if (miniEnabled) 0xFF14532D.toInt() else INK_2,
+                bold = true
+            ).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(text(if (miniEnabled) "ON" else "OFF", 11f, Color.WHITE, bold = true).apply {
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                background = GradientDrawable().apply {
+                    setColor(if (miniEnabled) BRAND else NEUTRAL_SLATE)
+                    cornerRadius = dp(999).toFloat()
+                }
+            })
+            setOnClickListener {
+                setGridMiniBadgesEnabled(!miniEnabled)
+                showAuditorDrawer()
+            }
+        })
+
+        // Visible on Screen Now (Cleanest -> Worst) section when browsing a multi-item search/aisle grid
+        if (visibleGridBadges.isNotEmpty()) {
+            val sortedOnScreen = visibleGridBadges.sortedByDescending { it.score }
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 background = GradientDrawable().apply {
-                    setColor(0xFFF8FAFC.toInt())
-                    setStroke(dp(1), 0xFFE2E8F0.toInt())
-                    cornerRadius = dp(12).toFloat()
+                    setColor(0xFFF7FAF8.toInt())
+                    setStroke(dp(1), 0xFFD1FAE5.toInt())
+                    cornerRadius = dp(14).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(10); bottomMargin = dp(6) }
-                addView(text("💡 YOUR ${storeName.uppercase()} CART IS EMPTY", 11f, NEUTRAL_SLATE, bold = true))
+                ).apply { topMargin = dp(6); bottomMargin = dp(6) }
+
                 addView(text(
-                    "Open your $storeName Cart and scroll from top to bottom once — HeyBroc automatically scans every visible food item in this store's cart.",
-                    12.5f,
-                    INK_2
-                ).apply { setPadding(0, dp(3), 0, 0) })
+                    "📍 VISIBLE ON SCREEN NOW (${sortedOnScreen.size}) · CLEANEST → WORST",
+                    10.5f,
+                    BRAND,
+                    bold = true
+                ).apply {
+                    letterSpacing = 0.05f
+                    setPadding(0, 0, 0, dp(4))
+                })
+
+                for (badge in sortedOnScreen) {
+                    val swapObj = badge.fullJson.optJSONObject("swap")
+                    if (swapObj != null) upgradeCachedSwapObj(swapObj, badge.title)
+                    val swapServerLocked = swapObj?.optBoolean("locked", false) == true
+                    val swapTitle = ScanHistoryStore.cleanDisplayTitle(
+                        swapObj?.optString("title", "Clean Alternative").orEmpty()
+                    )
+                    val swapScore = swapObj?.optInt("score", 0) ?: 0
+                    val hasCleanSwap = badge.score < 75 && swapObj != null && (swapScore <= 0 || swapScore > badge.score)
+                    val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
+                    val swapUnlocked = hasCleanSwap && !swapServerLocked && ScanApi.isSwapUnlocked(this@OverlayWindowService, badge.title, swapTitle)
+                    val canUseSwapNow = swapUnlocked || (!swapServerLocked && ScanApi.canUseSwap(this@OverlayWindowService))
+                    val isAllergenRow = !badge.alertBadge.isNullOrBlank() && badge.alertSeverity == "allergen"
+                    val rowTone = if (isAllergenRow) 0xFFDC2626.toInt() else toneColor(colorNameForScore(badge.score))
+
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(10), dp(8), dp(10), dp(8))
+                        background = GradientDrawable().apply {
+                            setColor(Color.WHITE)
+                            setStroke(dp(1), 0x1815201B)
+                            cornerRadius = dp(11).toFloat()
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { topMargin = dp(5) }
+                        isClickable = true
+                        setOnClickListener {
+                            data = badge.fullJson
+                            openFlag = null
+                            openedCardFromAuditor = true
+                            showCard()
+                        }
+
+                        addView(text("${badge.score}", 12.5f, Color.WHITE, bold = true).apply {
+                            gravity = Gravity.CENTER
+                            setPadding(dp(8), dp(4), dp(8), dp(4))
+                            background = GradientDrawable().apply {
+                                setColor(rowTone)
+                                cornerRadius = dp(999).toFloat()
+                            }
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            ).apply { marginEnd = dp(9) }
+                        })
+
+                        addView(LinearLayout(context).apply {
+                            orientation = LinearLayout.VERTICAL
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                            addView(text(ScanHistoryStore.cleanDisplayTitle(badge.title), 12.5f, INK, bold = true).apply {
+                                maxLines = 2
+                                ellipsize = TextUtils.TruncateAt.END
+                            })
+                            val subText = when {
+                                !badge.alertBadge.isNullOrBlank() -> "⚠️ ${badge.alertBadge} · Tap to inspect"
+                                hasCleanSwap && swapUnlocked && swapTitle.isNotBlank() -> "↳ Clean Swap: $swapTitle$swapScoreSuffix"
+                                hasCleanSwap && canUseSwapNow -> "↳ 🔒 Clean Swap Available$swapScoreSuffix"
+                                hasCleanSwap -> "↳ 🔒 Clean Swap Locked$swapScoreSuffix"
+                                else -> "${badge.rating} · Tap to inspect ingredients"
+                            }
+                            val subColor = when {
+                                isAllergenRow -> 0xFFB91C1C.toInt()
+                                !badge.alertBadge.isNullOrBlank() -> 0xFF92400E.toInt()
+                                hasCleanSwap && !swapUnlocked && !canUseSwapNow -> 0xFF92400E.toInt()
+                                hasCleanSwap -> 0xFF0B5E39.toInt()
+                                else -> INK_2
+                            }
+                            addView(text(subText, 11f, subColor, bold = !badge.alertBadge.isNullOrBlank() || hasCleanSwap).apply {
+                                maxLines = 1
+                                ellipsize = TextUtils.TruncateAt.END
+                                setPadding(0, dp(1), 0, 0)
+                            })
+                        })
+
+                        if (hasCleanSwap && swapObj != null) {
+                            val btnText = when {
+                                swapUnlocked -> "Swap"
+                                canUseSwapNow -> "🔓 Reveal"
+                                else -> "🔒 Pro"
+                            }
+                            addView(text(btnText, 11f, Color.WHITE, bold = true).apply {
+                                setPadding(dp(9), dp(5), dp(9), dp(5))
+                                background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
+                                layoutParams = LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT
+                                ).apply { marginStart = dp(6) }
+                                setOnClickListener {
+                                    if (swapUnlocked) {
+                                        data = badge.fullJson
+                                        val candidates = extractSwapCandidatesForItem(badge.fullJson, swapObj)
+                                        showSwapPreviewModal(
+                                            swap = swapObj,
+                                            returnToAuditor = true,
+                                            candidates = candidates,
+                                            candidateIdx = 0
+                                        )
+                                    } else if (canUseSwapNow) {
+                                        if (ScanApi.unlockSwapForProduct(this@OverlayWindowService, badge.title, swapTitle)) {
+                                            data = badge.fullJson
+                                            val candidates = extractSwapCandidatesForItem(badge.fullJson, swapObj)
+                                            showSwapPreviewModal(
+                                                swap = swapObj,
+                                                returnToAuditor = true,
+                                                candidates = candidates,
+                                                candidateIdx = 0
+                                            )
+                                        }
+                                    } else {
+                                        val installer = runCatching {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                                packageManager.getInstallSourceInfo(packageName).installingPackageName
+                                            } else {
+                                                @Suppress("DEPRECATION")
+                                                packageManager.getInstallerPackageName(packageName)
+                                            }
+                                        }.getOrNull()
+                                        val fromPlay = installer == "com.android.vending" || installer == "com.google.android.feedback"
+                                        val i = if (fromPlay) {
+                                            Intent(this@OverlayWindowService, MainActivity::class.java).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                            }
+                                        } else {
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                        }
+                                        removeCard()
+                                        showPill()
+                                        runCatching { startActivity(i) }
+                                    }
+                                }
+                            })
+                        } else {
+                            addView(text("Inspect ›", 11f, BRAND, bold = true).apply {
+                                setPadding(dp(8), dp(5), dp(4), dp(5))
+                            })
+                        }
+                    })
+                }
             })
+        }
+
+        if (avg == null) {
+            if (visibleGridBadges.isEmpty()) {
+                sheet.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(0xFFF8FAFC.toInt())
+                        setStroke(dp(1), 0xFFE2E8F0.toInt())
+                        cornerRadius = dp(12).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(10); bottomMargin = dp(6) }
+                    addView(text("💡 YOUR ${storeName.uppercase()} CART IS EMPTY", 11f, NEUTRAL_SLATE, bold = true))
+                    addView(text(
+                        "Open your $storeName Cart and scroll from top to bottom once — HeyBroc automatically scans every visible food item in this store's cart.",
+                        12.5f,
+                        INK_2
+                    ).apply { setPadding(0, dp(3), 0, 0) })
+                })
+            }
         } else {
             sheet.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -2074,6 +2654,28 @@ class OverlayWindowService : Service() {
                         })
                     }
                 })
+            })
+        }
+
+        if (!currentIsSinglePdp && visibleGridBadges.size >= 2) {
+            sheet.addView(text(
+                "📍 Compare all ${visibleGridBadges.size} scored items on this screen →",
+                11.5f,
+                BRAND,
+                bold = true
+            ).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF0FDF4.toInt())
+                    setStroke(dp(1), 0xFFBBF7D0.toInt())
+                    cornerRadius = dp(999).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+                setOnClickListener { showAuditorDrawer() }
             })
         }
 

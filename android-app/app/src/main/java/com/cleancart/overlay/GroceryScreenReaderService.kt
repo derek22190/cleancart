@@ -278,9 +278,18 @@ class GroceryScreenReaderService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
+    private val gridBatchIo = Executors.newSingleThreadExecutor()
     private val rejectedTitles = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
     @Volatile
     private var scanGeneration: Int = 0
+    @Volatile
+    private var gridBatchGeneration: Int = 0
+    @Volatile
+    private var gridBadgesSentVisible: Boolean = false
+    @Volatile
+    private var lastGridBadgesSig: String = ""
+    @Volatile
+    private var lastAnyScrollAtMs: Long = 0L
     private var currentPackage = ""
     private var currentStoreBucket = ""
     private var lastKey = ""
@@ -310,6 +319,25 @@ class GroceryScreenReaderService : AccessibilityService() {
         val next = scanGeneration + 1
         scanGeneration = next
         return next
+    }
+
+    @Synchronized
+    private fun bumpGridBatchGeneration(): Int {
+        val next = gridBatchGeneration + 1
+        gridBatchGeneration = next
+        return next
+    }
+
+    private fun hideGridBadgesIfShown(
+        pkgOverride: String = currentPackage,
+        bucketOverride: String = currentStoreBucket
+    ) {
+        bumpGridBatchGeneration()
+        lastGridBadgesSig = ""
+        if (gridBadgesSentVisible) {
+            gridBadgesSentVisible = false
+            sendToOverlay(OverlayWindowService.ACTION_HIDE_GRID_BADGES, pkgOverride, bucketOverride)
+        }
     }
 
     private fun isTargetGroceryWindowActive(expectedPkg: String): Boolean {
@@ -369,6 +397,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         override fun run() {
             if (!AccessibilityConsent.granted(this@GroceryScreenReaderService) || !isDeviceInteractiveAndUnlocked()) {
                 bumpScanGeneration()
+                bumpGridBatchGeneration()
+                gridBadgesSentVisible = false
+                lastGridBadgesSig = ""
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
@@ -385,6 +416,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                 nullPkgCount++
                 if (overlayVisible && nullPkgCount >= 2) {
                     bumpScanGeneration()
+                    bumpGridBatchGeneration()
+                    gridBadgesSentVisible = false
+                    lastGridBadgesSig = ""
                     sendToOverlay(OverlayWindowService.ACTION_HIDE)
                     overlayVisible = false
                     lastKey = ""
@@ -396,6 +430,9 @@ class GroceryScreenReaderService : AccessibilityService() {
                 val isTransient = pkg in IGNORED_TRANSIENT_PACKAGES || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 if (overlayVisible && !isTransient && pkg !in STORE_PACKAGES && pkg != packageName) {
                     bumpScanGeneration()
+                    bumpGridBatchGeneration()
+                    gridBadgesSentVisible = false
+                    lastGridBadgesSig = ""
                     sendToOverlay(OverlayWindowService.ACTION_HIDE)
                     overlayVisible = false
                     lastKey = ""
@@ -413,6 +450,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         super.onServiceConnected()
         activeInstance = this
         bumpScanGeneration()
+        bumpGridBatchGeneration()
+        gridBadgesSentVisible = false
+        lastGridBadgesSig = ""
         // Always reset any dismissed state when the accessibility service connects or is toggled off/on in Settings.
         sendToOverlay(OverlayWindowService.ACTION_RESET_HIDDEN)
         lastKey = ""
@@ -441,6 +481,9 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (!AccessibilityConsent.granted(this) || !isDeviceInteractiveAndUnlocked()) {
             if (overlayVisible) {
                 bumpScanGeneration()
+                bumpGridBatchGeneration()
+                gridBadgesSentVisible = false
+                lastGridBadgesSig = ""
                 sendToOverlay(OverlayWindowService.ACTION_HIDE)
                 overlayVisible = false
                 lastKey = ""
@@ -451,6 +494,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         if (pkg !in STORE_PACKAGES) return
         nullPkgCount = 0
         if (pkg != currentPackage) {
+            hideGridBadgesIfShown(pkg, defaultBucketForPackage(pkg))
             bumpScanGeneration()
             currentPackage = pkg
             currentStoreBucket = defaultBucketForPackage(pkg)
@@ -467,13 +511,19 @@ class GroceryScreenReaderService : AccessibilityService() {
             rejectedTitles.clear()
         }
 
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            hideGridBadgesIfShown()
+        }
+
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            lastAnyScrollAtMs = System.currentTimeMillis()
+            hideGridBadgesIfShown()
             if (event.scrollDeltaX != 0) {
                 lastHorizontalScrollDir = if (event.scrollDeltaX > 0) 1 else -1
-                lastHorizontalScrollAtMs = System.currentTimeMillis()
+                lastHorizontalScrollAtMs = lastAnyScrollAtMs
             }
             handler.removeCallbacks(scrollSettleScanRunnable)
-            handler.postDelayed(scrollSettleScanRunnable, 300L)
+            handler.postDelayed(scrollSettleScanRunnable, 210L)
         }
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -791,6 +841,7 @@ class GroceryScreenReaderService : AccessibilityService() {
         sendToOverlay(OverlayWindowService.ACTION_HIDE)
         handler.removeCallbacksAndMessages(null)
         io.shutdownNow()
+        gridBatchIo.shutdownNow()
         super.onDestroy()
     }
 
@@ -897,6 +948,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             val pkg = root.packageName?.toString() ?: return
             if (pkg !in STORE_PACKAGES) return
             if (pkg != currentPackage) {
+                hideGridBadgesIfShown(pkg, defaultBucketForPackage(pkg))
                 bumpScanGeneration()
                 currentPackage = pkg
                 currentStoreBucket = defaultBucketForPackage(pkg)
@@ -1051,6 +1103,7 @@ class GroceryScreenReaderService : AccessibilityService() {
             val isCartScreen = !isConfirmedSinglePdp && hasDefinitiveCartScreenSignal
 
             if (isCartScreen) {
+                hideGridBadgesIfShown(pkg, bucketSig)
                 val isFirstCartFrame = !wasOnCartScreen
                 if (isFirstCartFrame) {
                     bumpScanGeneration()
@@ -1270,6 +1323,40 @@ class GroceryScreenReaderService : AccessibilityService() {
                 hasCarouselPricesOrStock = hasCarouselPricesOrStock,
             )
 
+            // 2b. Per-item Mini Score Badges over multi-card search/aisle/carousel grids (hidden on single PDP, Cart, keyboard search, or active scroll)
+            if (isConfirmedSinglePdp ||
+                isPdpMediaGallery ||
+                !isProductView ||
+                shouldSuppressAutomaticPopup(allNodes, totalTileAddCount, hasCarouselPricesOrStock)
+            ) {
+                hideGridBadgesIfShown(pkg, bucketSig)
+            } else {
+                val focusedInput = runCatching { root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+                val isTypingSearch = focusedInput != null &&
+                    focusedInput.isVisibleToUser &&
+                    (focusedInput.isEditable || focusedInput.className?.toString()?.contains("EditText", ignoreCase = true) == true)
+                if (focusedInput != null && focusedInput !== root) {
+                    recycleNode(focusedInput)
+                }
+                if (isTypingSearch) {
+                    hideGridBadgesIfShown(pkg, bucketSig)
+                } else if (System.currentTimeMillis() - lastAnyScrollAtMs >= 180L) {
+                    val gridSourceNodes = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
+                        nodes.subList(carouselIdx + 1, nodes.size)
+                    } else {
+                        nodes
+                    }
+                    scheduleVisibleGridBatchScan(
+                        pkg = pkg,
+                        bucketSig = bucketSig,
+                        searchNodes = gridSourceNodes,
+                        totalTileAddCount = totalTileAddCount,
+                        hasHomeOrAisleBanners = hasHomeOrAisleBanners,
+                        isViewingFullScreenCarousel = isViewingFullScreenCarousel
+                    )
+                }
+            }
+
             val candidates = if (isViewingFullScreenCarousel && carouselIdx + 1 < nodes.size) {
                 val carouselSlice = nodes.subList(carouselIdx + 1, nodes.size)
                 findCandidateTitles(carouselSlice, carouselSlice, isConfirmedSinglePdp = false, pkg = pkg)
@@ -1388,6 +1475,164 @@ class GroceryScreenReaderService : AccessibilityService() {
             )
         } finally {
             recycleNode(root)
+        }
+    }
+
+    private data class VisibleGridCard(
+        val title: String,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+        val width: Int
+    )
+
+    private fun extractVisibleGridFoodCards(searchNodes: List<TextNode>): List<VisibleGridCard> {
+        if (searchNodes.isEmpty()) return emptyList()
+        val dm = resources.displayMetrics
+        val density = dm.density.coerceAtLeast(1f)
+        val screenW = dm.widthPixels.coerceAtLeast(720)
+        val screenH = dm.heightPixels.coerceAtLeast(1200)
+        val minHeaderSafeTop = (screenH * 0.13f).toInt()
+        val maxBottomSafeY = (screenH * 0.87f).toInt()
+        val edgeClipPx = (3f * density).toInt()
+        val fullListTitleWidthPx = (screenW * 0.36f).toInt()
+        val minRightReachPx = (screenW * 0.28f).toInt()
+        val maxLeftStartPx = (screenW * 0.72f).toInt()
+        val sameCardDxPx = (68f * density).toInt()
+        val sameCardDyPx = (64f * density).toInt()
+
+        val collected = ArrayList<VisibleGridCard>()
+        for (n in searchNodes.take(260)) {
+            if (!n.isVisible || n.isEdgeClipped) continue
+            if (n.top < minHeaderSafeTop || n.top > maxBottomSafeY || n.bottom > (screenH * 0.92f).toInt()) continue
+            val w = (n.right - n.left).coerceAtLeast(0)
+            if (w < (54f * density).toInt()) continue
+            if (n.left < edgeClipPx && w < fullListTitleWidthPx) continue
+            if (n.right > screenW - edgeClipPx && w < fullListTitleWidthPx) continue
+            if (n.right < minRightReachPx || n.left > maxLeftStartPx) continue
+
+            val cleaned = cleanTitleCandidate(n.text)
+            if (!isCandidateProductTitle(cleaned)) continue
+            if (NON_FOOD_PRODUCT.containsMatchIn(cleaned)) continue
+            if (cleaned.lowercase() in rejectedTitles) continue
+            val isFood = (cleaned.split(' ').size >= 2 && looksLikeFoodTitle(cleaned)) ||
+                SINGLE_WORD_PRODUCE.matches(cleaned.trim())
+            if (!isFood) continue
+
+            val dupTitleIdx = collected.indexOfFirst { it.title.equals(cleaned, ignoreCase = true) }
+            if (dupTitleIdx >= 0) {
+                if (w > collected[dupTitleIdx].width) {
+                    collected[dupTitleIdx] = VisibleGridCard(cleaned, n.left, n.top, n.right, n.bottom, w)
+                }
+                continue
+            }
+            val spatialDupIdx = collected.indexOfFirst {
+                kotlin.math.abs(it.left - n.left) < sameCardDxPx &&
+                    kotlin.math.abs(it.top - n.top) < sameCardDyPx
+            }
+            if (spatialDupIdx >= 0) {
+                val prev = collected[spatialDupIdx]
+                if (cleaned.length > prev.title.length && w >= prev.width) {
+                    collected[spatialDupIdx] = VisibleGridCard(cleaned, n.left, n.top, n.right, n.bottom, w)
+                }
+                continue
+            }
+            collected.add(VisibleGridCard(cleaned, n.left, n.top, n.right, n.bottom, w))
+        }
+
+        return collected
+            .sortedWith(compareBy<VisibleGridCard> { it.top / (48f * density).toInt().coerceAtLeast(1) }.thenBy { it.left })
+            .take(8)
+    }
+
+    private fun scheduleVisibleGridBatchScan(
+        pkg: String,
+        bucketSig: String,
+        searchNodes: List<TextNode>,
+        totalTileAddCount: Int,
+        hasHomeOrAisleBanners: Boolean,
+        isViewingFullScreenCarousel: Boolean
+    ) {
+        val visibleCards = extractVisibleGridFoodCards(searchNodes)
+        val hasMultiCardBrowseSignals = visibleCards.size >= 2 ||
+            (visibleCards.size == 1 && (totalTileAddCount >= 2 || hasHomeOrAisleBanners || isViewingFullScreenCarousel))
+        if (!hasMultiCardBrowseSignals) {
+            hideGridBadgesIfShown(pkg, bucketSig)
+            return
+        }
+
+        val wlSig = ScanApi.currentWatchlistSignature(this)
+        val gridSig = "$pkg|$bucketSig|$wlSig|" + visibleCards.joinToString("|") {
+            "${it.title.lowercase()}@${it.left / 16},${it.top / 16}"
+        }
+        if (gridSig == lastGridBadgesSig && gridBadgesSentVisible) return
+        lastGridBadgesSig = gridSig
+
+        val batchGen = bumpGridBatchGeneration()
+        val capturedPkg = pkg
+        val capturedBucket = bucketSig
+        val store = ScanApi.storeForPackage(capturedPkg)
+        val appContext = applicationContext
+        val cardsSnapshot = visibleCards.toList()
+        val reqItems = cardsSnapshot.mapIndexed { idx, card ->
+            ScanApi.BatchScanRequestItem(id = "g$idx", productTitle = card.title)
+        }
+
+        gridBatchIo.execute {
+            if (batchGen != gridBatchGeneration) return@execute
+            val scoredMap = runCatching {
+                ScanApi.scanBatch(
+                    ctx = appContext,
+                    items = reqItems,
+                    store = store,
+                    storeBucket = capturedBucket
+                )
+            }.getOrDefault(emptyMap())
+            if (batchGen != gridBatchGeneration) return@execute
+
+            val arr = org.json.JSONArray()
+            for ((idx, card) in cardsSnapshot.withIndex()) {
+                val res = scoredMap["g$idx"] ?: continue
+                if (res.isCategoryEstimate) continue
+                if (card.title.lowercase() in rejectedTitles) continue
+                val alertShort = res.dietaryAlerts.firstOrNull()?.shortBadge
+                arr.put(org.json.JSONObject().apply {
+                    put("title", card.title)
+                    put("score", res.score)
+                    put("rating", res.rating)
+                    put("color", res.color)
+                    put("alertSeverity", res.alertSeverity)
+                    if (!alertShort.isNullOrBlank()) put("alertBadge", alertShort)
+                    put("left", card.left)
+                    put("top", card.top)
+                    put("right", card.right)
+                    put("bottom", card.bottom)
+                    put("rawJson", res.rawJsonStr)
+                })
+            }
+
+            handler.post {
+                if (batchGen != gridBatchGeneration) return@post
+                if (!AccessibilityConsent.granted(this@GroceryScreenReaderService) ||
+                    currentPackage != capturedPkg ||
+                    currentStoreBucket != capturedBucket ||
+                    wasOnCartScreen ||
+                    System.currentTimeMillis() - lastAnyScrollAtMs < 170L ||
+                    !isTargetGroceryWindowActive(capturedPkg)
+                ) {
+                    return@post
+                }
+                if (arr.length() > 0) {
+                    gridBadgesSentVisible = true
+                    markVisible()
+                    sendToOverlay(OverlayWindowService.ACTION_SHOW_GRID_BADGES, capturedPkg, capturedBucket) {
+                        putExtra(OverlayWindowService.EXTRA_GRID_BADGES_JSON, arr.toString())
+                    }
+                } else {
+                    hideGridBadgesIfShown(capturedPkg, capturedBucket)
+                }
+            }
         }
     }
 
