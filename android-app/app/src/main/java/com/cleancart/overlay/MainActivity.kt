@@ -748,8 +748,9 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
+            elevation = dp(1).toFloat()
             background = GradientDrawable().apply {
-                setColor(0xFFFAFAFA.toInt())
+                setColor(Color.WHITE)
                 cornerRadius = dp(20).toFloat()
                 setStroke(dp(1), 0xFFE5E7EB.toInt())
             }
@@ -760,7 +761,7 @@ class MainActivity : Activity() {
                 setMargins(dp(16), dp(4), dp(16), dp(10))
             }
 
-            // Header Row: Mascot + "Clean Cart Streak: Day X"
+            // Header Row: Mascot + "🔥 Clean Cart Streak: Day X"
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -773,12 +774,12 @@ class MainActivity : Activity() {
                 })
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(label("Clean Cart Streak: Day ${streak.streakDays}", 16f, 0xFF111814.toInt(), bold = true))
+                    addView(label("🔥 Clean Cart Streak: Day ${streak.streakDays}", 16f, 0xFF111827.toInt(), bold = true))
                     addView(label("${streak.cleanCount} clean items in your library · Scan or swap daily!", 11.5f, 0xFF6B7280.toInt()))
                 })
             })
 
-            // 5 Green Day Circles Row (matching Slide 5)
+            // 5 Day Circles Row: Warm Amber/Gold for Completed Days, Clean Neutral Gray for Upcoming Days
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -787,15 +788,26 @@ class MainActivity : Activity() {
                     addView(label(
                         dayNum.toString(),
                         13.5f,
-                        if (completed) Color.WHITE else 0xFF166534.toInt(),
+                        if (completed) Color.WHITE else 0xFF9CA3AF.toInt(),
                         bold = true
                     ).apply {
                         gravity = Gravity.CENTER
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(if (completed) 0xFF3E9B4F.toInt() else 0xFFE8F5EC.toInt())
-                            if (!completed) {
-                                setStroke(dp(1), 0xFFBBF7D0.toInt())
+                        if (completed) {
+                            elevation = dp(2).toFloat()
+                        }
+                        background = if (completed) {
+                            GradientDrawable(
+                                GradientDrawable.Orientation.TOP_BOTTOM,
+                                intArrayOf(0xFFF59E0B.toInt(), 0xFFEA580C.toInt())
+                            ).apply {
+                                shape = GradientDrawable.OVAL
+                                setStroke(dp(1), 0xFFD97706.toInt())
+                            }
+                        } else {
+                            GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(0xFFF3F4F6.toInt())
+                                setStroke(dp(1), 0xFFD1D5DB.toInt())
                             }
                         }
                         layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
@@ -815,12 +827,12 @@ class MainActivity : Activity() {
                     (if (activeAllergies > 0) "Allergy Guard ($activeAllergies)" else "Allergy Guard") to true
                 )
                 pills.forEachIndexed { idx, (pillText, opensAllergyModal) ->
-                    addView(label(pillText, 11f, 0xFF1F2937.toInt(), bold = true).apply {
+                    addView(label(pillText, 11f, 0xFF374151.toInt(), bold = true).apply {
                         setPadding(dp(10), dp(4), dp(10), dp(4))
                         background = GradientDrawable().apply {
-                            setColor(Color.WHITE)
+                            setColor(0xFFF9FAFB.toInt())
                             cornerRadius = dp(999).toFloat()
-                            setStroke(dp(1), 0xFFD1D5DB.toInt())
+                            setStroke(dp(1), 0xFFE5E7EB.toInt())
                         }
                         layoutParams = LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -920,10 +932,11 @@ class MainActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(13), dp(14), dp(13))
+            elevation = dp(2).toFloat()
             background = GradientDrawable().apply {
-                setColor(0xFFF0FDF4.toInt())
+                setColor(Color.WHITE)
                 cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), 0xFF86EFAC.toInt())
+                setStroke(dp(1), 0xFFE2E8F0.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -936,16 +949,16 @@ class MainActivity : Activity() {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(label("🥦 Shop Live with 0–100 Scores", 15f, 0xFF14532D.toInt(), bold = true).apply {
+                addView(label("🥦 Shop Live with 0–100 Scores", 15f, 0xFF111827.toInt(), bold = true).apply {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 if (a11yOk) {
                     val modeChipLabel = if (preferInApp) "📲 Native App Pill" else "✓ Native App Pill"
-                    addView(label(modeChipLabel, 11f, if (preferInApp) 0xFF065F46.toInt() else Color.WHITE, bold = true).apply {
+                    addView(label(modeChipLabel, 11f, if (preferInApp) 0xFF334155.toInt() else Color.WHITE, bold = true).apply {
                         setPadding(dp(9), dp(4), dp(9), dp(4))
                         background = GradientDrawable().apply {
-                            setColor(if (preferInApp) Color.WHITE else 0xFF0F7A4A.toInt())
-                            setStroke(dp(1), if (preferInApp) 0xFF86EFAC.toInt() else 0xFF0F7A4A.toInt())
+                            setColor(if (preferInApp) 0xFFF8FAFC.toInt() else 0xFF0F7A4A.toInt())
+                            setStroke(dp(1), if (preferInApp) 0xFFCBD5E1.toInt() else 0xFF0F7A4A.toInt())
                             cornerRadius = dp(999).toFloat()
                         }
                         setOnClickListener {
@@ -968,7 +981,7 @@ class MainActivity : Activity() {
             } else {
                 "Shop right inside HeyBroc with live 0–100 score badges on every food photo & 1-tap Clean Swaps."
             }
-            addView(label(subDesc, 11.5f, 0xFF166534.toInt()).apply {
+            addView(label(subDesc, 11.5f, 0xFF4B5563.toInt()).apply {
                 setPadding(0, dp(3), 0, dp(10))
             })
 
@@ -1033,9 +1046,9 @@ class MainActivity : Activity() {
                     padHdp = 12,
                     padVdp = 8,
                     selectedBgColor = 0xFF15803D.toInt(),
-                    unselectedBgColor = Color.WHITE,
-                    unselectedStrokeColor = 0xFF86EFAC.toInt(),
-                    unselectedTextColor = 0xFF14532D.toInt()
+                    unselectedBgColor = 0xFFF8FAFC.toInt(),
+                    unselectedStrokeColor = 0xFFCBD5E1.toInt(),
+                    unselectedTextColor = 0xFF1E293B.toInt()
                 )
                 chipHandle.container.layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,

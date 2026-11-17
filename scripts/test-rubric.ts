@@ -7515,7 +7515,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             mainActivityKt.includes("StoreBrandIcons.buildStoreChip") &&
             mainActivityKt.includes("prefer_in_app_live_shop_v2") &&
             mainActivityKt.includes("In-App Shop ·") &&
-            mainActivityKt.includes("orderedStores.filter { it.key != selectedStore.key }"),
+            mainActivityKt.includes("orderedStores.filter { it.key != selectedStore.key }") &&
+            mainActivityKt.includes("0xFFF59E0B.toInt()") &&
+            mainActivityKt.includes("0xFFEA580C.toInt()") &&
+            mainActivityKt.includes("🔥 Clean Cart Streak:"),
           nativeMiniBadgesCompletelyRemoved:
             !overlayKt.includes("ACTION_SHOW_GRID_BADGES") &&
             !overlayKt.includes("GridScoreBadgesView") &&
