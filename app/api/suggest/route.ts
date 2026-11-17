@@ -8,6 +8,7 @@ import {
 import { checkRateLimit } from "@/lib/scan";
 import { scoreProductYuka, type NutritionInput } from "@/lib/rubric";
 import { CLEAN_ALTERNATIVES, EXACT_PRODUCT_ALTERNATIVES } from "@/lib/swaps";
+import { resolveProductMediaFields } from "@/lib/curated-product-photos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -512,9 +513,18 @@ export async function GET(request: Request) {
       productTitle: entry.title,
       isOrganic,
     });
+    const media = resolveProductMediaFields({
+      title: entry.title,
+      brand: entry.brand,
+      explicitCategory: entry.category,
+    });
+    const resolvedImageUrl =
+      media.imageUrl ||
+      (media.categoryArtUrl ? `https://www.heybroc.com${media.categoryArtUrl}` : "");
     return {
       title: entry.title,
       brand: entry.brand,
+      barcode: media.barcode,
       category: entry.category || "Grocery",
       description: entry.description || "",
       ingredients: entry.ingredients,
@@ -525,7 +535,9 @@ export async function GET(request: Request) {
       score: res.score,
       rating: res.rating,
       color: res.color,
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(entry.title)}`,
+      imageUrl: resolvedImageUrl,
+      imageKind: media.imageKind,
+      categoryArtUrl: media.categoryArtUrl,
     };
   });
 

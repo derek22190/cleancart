@@ -32,6 +32,8 @@ import {
   matchDrinkCatalog,
   passesVariantGuard,
 } from "./drinks-catalog";
+import { lookupCuratedPhoto } from "./curated-product-photos";
+import { offBarcodeFolderPath } from "./off-photo-index";
 import {
   ENGLISH_INGREDIENT_ANCHORS,
   isEnglishIngredientText,
@@ -60,6 +62,7 @@ export interface LookupResult {
   barcode?: string;
   ingredients: string;
   imageUrl?: string;
+  offCategoriesTags?: string[];
   nutrition?: NutritionInput;
   source: LookupSource;
   /** Where the cached entry originally came from (when source === "cache"). */
@@ -567,11 +570,29 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
   }
 
   // If the query has >= 3 tokens (e.g. "Little Debbie Nutty Bars" or "Prego traditional pasta sauce"),
-  // the candidate (or its explicit OFF aisle category tag) MUST match at least one of the last 2 product noun tokens.
+  // the candidate (or its explicit OFF aisle category tag) MUST match at least one of the last 2 product noun tokens,
+  // unless the retailer appended a generic aisle noun ("Kellogg's Rice Krispies Original Breakfast Cereal")
+  // while the candidate title matches 100% of its tokens (>= 3 tokens, including >= 2 non-brand product tokens).
   if (pool.length >= 3) {
     const tail = pool.slice(-2);
     if (!tail.some((t) => hasIn(cWithCats, t))) {
-      return 0;
+      const AISLE_TAIL_SUFFIX = new Set([
+        "breakfast", "cereal", "cereals", "snack", "snacks", "toaster", "pastry", "pastries",
+        "tortilla", "potato", "chips", "chip", "sandwich", "cookies", "cookie", "crackers", "cracker",
+        "granola", "bars", "bar", "energy", "sports", "soft", "drink", "drinks", "beverage", "beverages",
+      ]);
+      const tailIsGenericAisle = tail.every((t) => AISLE_TAIL_SUFFIX.has(t));
+      const brandTokSet = new Set(tokens(detectQueryBrand(cleanQuery)));
+      const nonBrandCandMatches = c.filter((ct) => !GENERIC.has(ct) && !brandTokSet.has(ct) && hasIn(all, ct));
+      const distinctCandMatches = c.filter((ct) => !GENERIC.has(ct) && hasIn(all, ct));
+      const fullSubBrandMatch =
+        tailIsGenericAisle &&
+        distinctCandMatches.length >= 3 &&
+        c.every((ct) => GENERIC.has(ct) || hasIn(all, ct)) &&
+        nonBrandCandMatches.length >= 1;
+      if (!fullSubBrandMatch) {
+        return 0;
+      }
     }
   }
 
@@ -849,6 +870,13 @@ interface OffProduct {
   image_front_url?: string;
   image_url?: string;
   image_front_small_url?: string;
+  selected_images?: {
+    front?: {
+      display?: Record<string, string | undefined>;
+      small?: Record<string, string | undefined>;
+    };
+  };
+  images?: Record<string, { imgid?: string | number; rev?: string | number } | undefined>;
   nutriscore_grade?: string;
   labels_tags?: string[];
   last_modified_t?: number;
@@ -864,7 +892,7 @@ function normalizeOffBrand(brands?: string | string[]): string {
 }
 
 const OFF_FIELDS =
-  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,countries_tags,image_front_url,image_url,image_front_small_url,nutriscore_grade,labels_tags,categories_tags,last_modified_t,nutriments";
+  "product_name,product_name_en,brands,ingredients_text,ingredients_text_en,lang,code,countries_tags,image_front_url,image_url,image_front_small_url,selected_images,images,nutriscore_grade,labels_tags,categories_tags,last_modified_t,nutriments";
 
 /**
  * Ensures Open Food Facts records match US market formulations:
@@ -1032,9 +1060,64 @@ function englishIngredients(p: OffProduct): string {
   return "";
 }
 
-function bestOffImage(p?: OffProduct): string | undefined {
+const FOREIGN_NON_US_FRONT_RE =
+  /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
+const ES_OR_FR_FRONT_RE = /\/front_(?:es|fr)\./i;
+
+export function bestOffImage(p?: OffProduct): string | undefined {
   if (!p) return undefined;
-  return p.image_front_url || p.image_url || p.image_front_small_url || undefined;
+  const tags = Array.isArray(p.countries_tags)
+    ? p.countries_tags.map((t) => String(t).trim().toLowerCase())
+    : [];
+  const isNorthAmerica =
+    isUsMarketOffProduct(p) || tags.includes("en:united-states") || tags.includes("en:canada");
+
+  const enFront =
+    p.selected_images?.front?.display?.en || p.selected_images?.front?.small?.en;
+  if (enFront && enFront.startsWith("https://") && !FOREIGN_NON_US_FRONT_RE.test(enFront) && !ES_OR_FR_FRONT_RE.test(enFront)) {
+    return enFront;
+  }
+
+  const directCandidates = [p.image_front_url, p.image_url, p.image_front_small_url].filter(
+    (u): u is string => Boolean(u && u.startsWith("https://")),
+  );
+  for (const u of directCandidates) {
+    if (FOREIGN_NON_US_FRONT_RE.test(u)) continue;
+    if (ES_OR_FR_FRONT_RE.test(u) && !isNorthAmerica) continue;
+    return u;
+  }
+
+  if (isNorthAmerica) {
+    const naSecondaryFront =
+      p.selected_images?.front?.display?.es ||
+      p.selected_images?.front?.small?.es ||
+      p.selected_images?.front?.display?.fr ||
+      p.selected_images?.front?.small?.fr;
+    if (naSecondaryFront && naSecondaryFront.startsWith("https://")) {
+      return naSecondaryFront;
+    }
+  }
+
+  // Fallback to first raw uploaded photo (`images["1"]`, `images["2"]`, ...) not assigned to nutrition/ingredients panels
+  if (p.images && p.code) {
+    const folder = offBarcodeFolderPath(p.code);
+    if (folder) {
+      const panelImgIds = new Set<string>();
+      for (const [k, meta] of Object.entries(p.images)) {
+        if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
+          panelImgIds.add(String(meta.imgid));
+        }
+      }
+      const rawNumericKeys = Object.keys(p.images)
+        .filter((k) => /^\d+$/.test(k) && !panelImgIds.has(k))
+        .sort((a, b) => Number(a) - Number(b));
+      if (rawNumericKeys.length > 0) {
+        return `https://images.openfoodfacts.org/images/products/${folder}/${rawNumericKeys[0]}.400.jpg`;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function detectQueryBrand(query: string): string {
@@ -1358,17 +1441,16 @@ export function offToResult(p: OffProduct, fallbackTitle: string): Omit<LookupRe
         SUPPLEMENT_FORM.test(`${fullTitle} ${fallbackTitle}`)
       ? "supplement"
       : "food";
-  const directOffImage = bestOffImage(p);
-  const fallbackOffImage =
-    !directOffImage && inferredKind !== "non-food" && fullTitle
-      ? `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}${brandStr ? `&brand=${encodeURIComponent(brandStr)}` : ""}${p.code ? `&code=${encodeURIComponent(p.code)}` : ""}&v=6`
-      : undefined;
+  const directOffImage =
+    bestOffImage(p) ||
+    lookupCuratedPhoto({ brand: brandStr, title: fullTitle, barcode: p.code })?.imageUrl;
   const result: Omit<LookupResult, "ms"> = {
     productTitle: fullTitle,
     brand: brandStr,
     barcode: p.code,
     ingredients: englishIngredients(p),
-    imageUrl: directOffImage || fallbackOffImage,
+    imageUrl: directOffImage,
+    offCategoriesTags: p.categories_tags,
     nutrition: inferNutritionFromText(fullTitle, englishIngredients(p), {
       ...baseNut,
       productKind: inferredKind,
@@ -1717,19 +1799,29 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     .trim()
     .split(/\s+/)
     .filter((w) => (w.length >= 2 || SHORT_BRAND_TOKENS.has(w)) && !STOP.has(w) && !/^\d+$/.test(w) && !/^(?:naturally|fully|cooked|lightly|priced|per|pound|pounds)$/.test(w));
+  const compactSearchWords =
+    allSearchWords.length > 5
+      ? allSearchWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|delicious|toasted)$/.test(w))
+      : allSearchWords;
+  const effectiveSearchWords = compactSearchWords.length >= 2 ? compactSearchWords : allSearchWords;
   const searchWords =
-    allSearchWords.length <= 5
-      ? allSearchWords
-      : Array.from(new Set([...allSearchWords.slice(0, 2), ...allSearchWords.slice(-3)]));
+    effectiveSearchWords.length <= 6
+      ? effectiveSearchWords
+      : Array.from(new Set([...effectiveSearchWords.slice(0, 4), ...effectiveSearchWords.slice(-2)]));
 
   const usCompletedFilter = `countries_tags:"en:united-states" states_tags:"en:ingredients-completed"`;
   const andQuery = searchWords.length
     ? `${searchWords.join(" AND ")} AND countries_tags:"en:united-states" AND states_tags:"en:ingredients-completed"`
     : `${title} ${usCompletedFilter}`;
+  const compactBrandMods =
+    brandModifiers.length > 4
+      ? brandModifiers.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|delicious|toasted)$/.test(w))
+      : brandModifiers;
+  const effectiveBrandMods = compactBrandMods.length >= 1 ? compactBrandMods : brandModifiers;
   const trimmedBrandMods =
-    brandModifiers.length <= 4
-      ? brandModifiers
-      : Array.from(new Set([brandModifiers[0], ...brandModifiers.slice(-3)]));
+    effectiveBrandMods.length <= 5
+      ? effectiveBrandMods
+      : Array.from(new Set([...effectiveBrandMods.slice(0, 3), ...effectiveBrandMods.slice(-2)]));
   const brandModAndClause = [...trimmedBrandMods, hotDogBrandClause].filter(Boolean).join(" AND ");
   const brandQuery =
     brandSlug
@@ -1936,10 +2028,15 @@ function buildUsdaLuceneQuery(query: string): string {
     .trim()
     .split(/\s+/)
     .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
+  const compactWords =
+    allWords.length > 5
+      ? allWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|delicious|toasted)$/i.test(w))
+      : allWords;
+  const effectiveWords = compactWords.length >= 2 ? compactWords : allWords;
   const words =
-    allWords.length <= 5
-      ? allWords
-      : Array.from(new Set([...allWords.slice(0, 2), ...allWords.slice(-3)]));
+    effectiveWords.length <= 6
+      ? effectiveWords
+      : Array.from(new Set([...effectiveWords.slice(0, 4), ...effectiveWords.slice(-2)]));
   if (words.length < 2) return "";
   return words.map((w) => `+${w}`).join(" ");
 }
@@ -2104,10 +2201,11 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
 /* Fresh reference formulations; unmatched products can return null. */
 /* ------------------------------------------------------------------ */
 
-interface CatalogEntry {
+export interface CatalogEntry {
   match: RegExp;
   brand: string;
   title: string;
+  barcode?: string;
   keywords?: string[];
   ingredients: string;
   imageUrl?: string;
@@ -2134,7 +2232,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Member's Mark Fully Cooked Lightly Breaded Chicken Breast Bites",
     keywords: ["members mark", "fully cooked", "lightly breaded", "chicken breast bites", "frozen", "boneless"],
     ingredients: "White Meat Chicken, Water, Wheat Flour, Contains 2% or Less of: Modified Food Starch, Salt, Sugar, Spices, Garlic Powder, Onion Powder, Yeast Extract, Leavening (Cream of Tartar, Sodium Bicarbonate), Yeast, Natural Flavor. Breading Set in Vegetable Oil.",
-    imageUrl: "/swaps/nuggets.png",
     nutrition: { caloriesKcal100g: 226, sugarsG100g: 1.2, saturatedFatG100g: 1.8, sodiumMg100g: 571, fiberG100g: 0, proteinG100g: 20.2, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://www.samsclub.com/ip/members-mark-lightly-breaded-chicken-breast-bites-frozen-3-lbs/13626401534",
     verifiedAt: "2026-11-15",
@@ -2145,7 +2242,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Member's Mark Naturally Hickory Smoked Bacon",
     keywords: ["members mark", "naturally", "hickory smoked", "classic cut", "bacon", "pork"],
     ingredients: "Pork Cured With: Water, Salt, Sugar, Sodium Phosphates, Sodium Erythorbate, Sodium Nitrite.",
-    imageUrl: "/swaps/bacon.png",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 13.9, sodiumMg100g: 1722, fiberG100g: 0, proteinG100g: 33.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/2592451/nutrients",
     verifiedAt: "2026-11-15",
@@ -2155,7 +2251,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Simple Truth Organic",
     title: "Simple Truth Organic Whole Milk Plain Greek Yogurt",
     ingredients: "Cultured Pasteurized Organic Whole Milk. Live and Active Cultures: S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei.",
-    imageUrl: "/swaps/yogurt.jpg",
     nutrition: { caloriesKcal100g: 94, sugarsG100g: 3.5, saturatedFatG100g: 3.0, sodiumMg100g: 35, fiberG100g: 0, proteinG100g: 8.8, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
     sourceUrl: "https://www.kroger.com/p/simple-truth-organic-plain-whole-milk-greek-yogurt/0001111089910",
     verifiedAt: "2026-11-08",
@@ -2165,7 +2260,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Simple Truth Organic",
     title: "Simple Truth Organic Unsweetened Applesauce",
     ingredients: "Organic Apples, Water, Ascorbic Acid (Vitamin C) to Maintain Color.",
-    imageUrl: "/swaps/produce.png",
     nutrition: { caloriesKcal100g: 44, sugarsG100g: 9.7, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 1.8, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.kroger.com/p/simple-truth-organic-unsweetened-applesauce-cups/0001111085432",
     verifiedAt: "2026-11-08",
@@ -2184,7 +2278,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Good & Gather",
     title: "Good & Gather Organic Creamy Peanut Butter",
     ingredients: "Organic Dry Roasted Peanuts, Sea Salt.",
-    imageUrl: "/swaps/peanutbutter.png",
     nutrition: { caloriesKcal100g: 593, sugarsG100g: 6.2, saturatedFatG100g: 7.8, sodiumMg100g: 250, fiberG100g: 6.2, proteinG100g: 25.0, fruitsVegNutsPct: 99, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.target.com/p/organic-unsweetened-creamy-peanut-butter-16oz-good-38-gather-8482/-/A-54516890",
     verifiedAt: "2026-11-08",
@@ -2194,7 +2287,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Favorite Day",
     title: "Favorite Day Cookies & Cream Ice Cream",
     ingredients: "Milk, Cream, Skim Milk, Sugar, Corn Syrup, Chocolate Sandwich Cookie Pieces (Unbleached Enriched Flour [Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid], Sugar, Palm and/or Canola Oil, Cocoa Processed with Alkali, Invert Sugar, Leavening [Baking Soda, Calcium Phosphate], Soy Lecithin, Salt, Chocolate, Natural Flavor), Whey, Contains 1% or Less of Vanilla Extract, Mono and Diglycerides, Guar Gum, Calcium Sulfate, Carob Bean Gum, Carrageenan.",
-    imageUrl: "/swaps/icecream.png",
     nutrition: { caloriesKcal100g: 224, sugarsG100g: 21.3, saturatedFatG100g: 7.3, sodiumMg100g: 95, fiberG100g: 0.5, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://www.target.com/p/cookies-38-cream-ice-cream-48oz-favorite-day-8482/-/A-81502226",
     verifiedAt: "2026-11-08",
@@ -2204,7 +2296,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Favorite Day",
     title: "Favorite Day Classic Vanilla Ice Cream",
     ingredients: "Milk, Cream, Skim Milk, Sugar, Corn Syrup, Egg Yolks, Natural Flavor, Mono and Diglycerides, Guar Gum, Locust Bean Gum, Carrageenan, Annatto Extract (Color).",
-    imageUrl: "/swaps/icecream.png",
     nutrition: { caloriesKcal100g: 207, sugarsG100g: 20.7, saturatedFatG100g: 7.0, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://www.target.com/p/vanilla-bean-ice-cream-48oz-favorite-day-8482/-/A-81502235",
     verifiedAt: "2026-11-08",
@@ -2214,7 +2305,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Bakery Formulation",
     title: "Bakery Donuts and Filled Pastries (Representative Formulation)",
     ingredients: "Enriched Wheat Flour Bleached (Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Fruit Filling (High Fructose Corn Syrup, Water, Raspberries, Modified Food Starch, Sugar, Citric Acid, Salt, Potassium Sorbate, Sodium Benzoate, Red 40, Blue 1, Artificial Flavor), Palm and/or Soybean Oil, Sugar, Dextrose, Contains 2% or Less of: Yeast, Soy Flour, Whey, Salt, Mono- and Diglycerides, Sodium Acid Pyrophosphate, Baking Soda, Sodium Stearoyl Lactylate, Soy Lecithin, Calcium Propionate, DATEM, Artificial Flavor, Yellow 5, Yellow 6, Titanium Dioxide (Color).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/1750340/nutrients",
     verifiedAt: "2026-11-08",
@@ -2223,8 +2313,8 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /^(?=.*\bdoritos\b)(?=.*\b(?:simply\s+nkd|nkd)\b)(?=.*\bcool\s+ranch\b).*$/i,
     brand: "Doritos",
     title: "Doritos Simply NKD Cool Ranch Tortilla Chips",
+    barcode: "028400794732",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, Soybean, and/or Sunflower Oil), and Less than 2% of Corn Maltodextrin, Buttermilk, Salt, Tomato Powder, Potassium Salt, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Onion Powder, Whey, Garlic Powder, Sugar, Skim Milk, Natural Flavors, Citric Acid, Lactic Acid, and Spices.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Simply%20NKD%20Cool%20Ranch",
     nutrition: { caloriesKcal100g: 536, sugarsG100g: 1.8, saturatedFatG100g: 3.6, sodiumMg100g: 500, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://smartlabel.pepsico.info/028400794732-0001-en-US/index.html",
     verifiedAt: "2026-11-17",
@@ -2233,8 +2323,8 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /^(?=.*\bdoritos\b)(?=.*\b(?:simply\s+nkd|nkd)\b)(?!.*\bcool\s+ranch\b).*$/i,
     brand: "Doritos",
     title: "Doritos Simply NKD Nacho Cheese Tortilla Chips",
+    barcode: "028400794756",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, Soybean, and/or Sunflower Oil), Corn Maltodextrin, and Less than 2% of Salt, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey, Tomato Powder, Potassium Salt, Onion Powder, Buttermilk, Romano Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey Protein Concentrate, Natural Flavors, Spices, Citric Acid, Lactic Acid, Garlic Powder, Sugar, Red and Green Bell Peppers, and Yeast Extract.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Simply%20NKD%20Nacho%20Cheese",
     nutrition: { caloriesKcal100g: 536, sugarsG100g: 1.8, saturatedFatG100g: 3.6, sodiumMg100g: 536, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
     sourceUrl: "https://smartlabel.pepsico.info/028400794756-0001-en-US/index.html",
     verifiedAt: "2026-11-17",
@@ -2243,8 +2333,8 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(simply\s+doritos\s+organic|doritos\s+simply\s+organic|doritos.*organic\s+white\s+cheddar)\b/i,
     brand: "Simply",
     title: "Simply Doritos Organic White Cheddar Tortilla Chips",
+    barcode: "028400509503",
     ingredients: "Organic White Corn, Expeller-Pressed Sunflower Oil, Organic Whey, Organic Cheddar Cheese (Organic Milk, Cheese Cultures, Salt, Enzymes), Organic Maltodextrin (Made from Corn), Sea Salt, Organic Butter (Organic Cream, Salt), Organic Nonfat Milk, Natural Flavors, Organic Sour Cream (Organic Cultured Cream, Organic Nonfat Milk), Lactic Acid, Citric Acid.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Simply%20Doritos%20Organic%20White%20Cheddar",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 3.6, saturatedFatG100g: 3.6, sodiumMg100g: 640, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://smartlabel.pepsico.info/028400509503-0001-en-US/index.html",
     verifiedAt: "2026-11-08",
@@ -2254,7 +2344,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Doritos",
     title: "Cool Ranch Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Tomato Powder, Corn Starch, Lactose, Whey, Skim Milk, Corn Syrup Solids, Onion Powder, Sugar, Garlic Powder, Monosodium Glutamate, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Dextrose, Malic Acid, Buttermilk, Natural and Artificial Flavors, Sodium Acetate, Artificial Color (Red 40, Blue 1, Yellow 5), Spice, Citric Acid, Disodium Inosinate, and Disodium Guanylate.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Cool%20Ranch%20Tortilla%20Chips",
     nutrition: { caloriesKcal100g: 536, sugarsG100g: 1.8, saturatedFatG100g: 3.6, sodiumMg100g: 679, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.doritos.com/products/doritos-cool-ranch-flavored-tortilla-chips",
     verifiedAt: "2026-11-08",
@@ -2264,7 +2353,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Doritos",
     title: "Nacho Cheese Flavored Tortilla Chips",
     ingredients: "Corn, Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Maltodextrin (Made from Corn), Salt, Cheddar Cheese, Whey, Monosodium Glutamate, Buttermilk, Romano Cheese, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Artificial Color (Yellow 6, Yellow 5, Red 40), Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Disodium Inosinate, and Disodium Guanylate.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Nacho%20Cheese%20Tortilla%20Chips",
     nutrition: { caloriesKcal100g: 536, sugarsG100g: 1.8, saturatedFatG100g: 3.6, sodiumMg100g: 750, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.doritos.com/products/doritos-nacho-cheese-flavored-tortilla-chips",
     verifiedAt: "2026-11-08",
@@ -2274,7 +2362,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Cheez-It",
     title: "Original Baked Snack Crackers",
     ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1, Vitamin B2, Folic Acid), Vegetable Oil (High Oleic Soybean, Soybean, Palm, and/or Canola Oil with TBHQ for Freshness), Cheese Made with Skim Milk (Skim Milk, Whey Protein, Salt, Cheese Cultures, Enzymes, Annatto Extract Color), Contains 2% or Less of Salt, Paprika, Yeast, Paprika Extract Color, Soy Lecithin.",
-    imageUrl: "/products/crackers.jpg",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 5.0, sodiumMg100g: 767, fiberG100g: 1.7, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.cheezit.com/en_US/products/crackers/cheez-it-original-product.html",
     verifiedAt: "2026-11-08",
@@ -2284,7 +2371,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Martin's",
     title: "Martin's Famous Pastry Shoppe Potato Sandwich Rolls",
     ingredients: "Unbleached Enriched Wheat Flour (Flour, Ferrous Sulfate, Niacin, Thiamin, Riboflavin, Folic Acid), Nonfat Milk, Reconstituted Potatoes (from Potato Flour), Yeast, Sugar, Wheat Gluten, Sunflower Oil, Contains 2 Percent or Less of Each of the Following: Salt, Butter, Dough Conditioners (Sodium Stearoyl Lactylate, Monoglycerides and Diglycerides, Ascorbic Acid), Monocalcium Phosphate, Cultured Wheat Flour, Calcium Propionate (a Preservative), Guar Gum, Datem, Enzymes, Sesame Seeds, Turmeric Color, Annatto Color.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Martin's%20Potato%20Sandwich%20Rolls",
     nutrition: { caloriesKcal100g: 281, sugarsG100g: 6.2, saturatedFatG100g: 0.8, sodiumMg100g: 390, fiberG100g: 3.1, proteinG100g: 10.9, fruitsVegNutsPct: 12, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://potatorolls.com/products/sandwich-potato-rolls/",
     verifiedAt: "2026-11-08",
@@ -2294,7 +2380,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Category Formulation",
     title: "White Enriched Sandwich Bread (Representative Formulation)",
     ingredients: "Unbleached Enriched Wheat Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, High Fructose Corn Syrup, Yeast, Contains 2% or Less of: Soybean Oil, Salt, Wheat Gluten, Calcium Sulfate, Sodium Stearoyl Lactylate, Monoglycerides, Calcium Propionate (to Preserve Freshness), DATEM, Ascorbic Acid, Enzymes.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Great%20Value%20White%20Sandwich%20Bread",
     nutrition: { caloriesKcal100g: 259, sugarsG100g: 5.8, saturatedFatG100g: 0.7, sodiumMg100g: 480, fiberG100g: 1.9, proteinG100g: 7.8, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/174924/nutrients",
     verifiedAt: "2026-11-08",
@@ -2304,7 +2389,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Post",
     title: "Oreo O's Cereal",
     ingredients: "Corn Flour, Sugar, Whole Grain Oat Flour, Cocoa (Processed with Alkali), Canola and/or Soybean Oil, Corn Syrup, Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Salt, Degerminated Corn Meal, Natural and Artificial Flavor, Cornstarch, Palm Oil, Soy Lecithin, Chocolate, BHT Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.postconsumerbrands.com/brands/oreo-os/",
     verifiedAt: "2026-11-08",
@@ -2314,7 +2398,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Category Formulation",
     title: "Sweetened Breakfast Cereal (Representative Formulation)",
     ingredients: "Whole Grain Corn or Corn Flour, Sugar, Corn Syrup, Canola and/or Soybean Oil, Salt, Trisodium Phosphate, Natural and Artificial Flavor, Vitamin E (Mixed Tocopherols) Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 395, sugarsG100g: 36, saturatedFatG100g: 1.5, sodiumMg100g: 420, fiberG100g: 2.5, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/173884/nutrients",
     verifiedAt: "2026-11-08",
@@ -2325,7 +2408,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Chocolate Sandwich Cookies",
     keywords: ["nabisco"],
     ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Palm and/or Canola Oil, Cocoa (Processed with Alkali), High Fructose Corn Syrup, Leavening (Baking Soda and/or Calcium Phosphate), Salt, Soy Lecithin, Chocolate, Artificial Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 471, sugarsG100g: 41.2, saturatedFatG100g: 5.9, sodiumMg100g: 397, fiberG100g: 1.8, proteinG100g: 2.9, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.oreo.com/products/oreo-cookies",
     verifiedAt: "2026-11-08",
@@ -2335,7 +2417,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Cheetos",
     title: "Crunchy Cheese Flavored Snacks",
     ingredients: "Enriched Corn Meal (Corn Meal, Ferrous Sulfate, Niacin, Thiamin Mononitrate, Riboflavin, Folic Acid), Vegetable Oil (Corn, Canola, and/or Sunflower Oil), Cheese Seasoning (Whey, Cheddar Cheese, Canola Oil, Maltodextrin, Natural and Artificial Flavors, Salt, Whey Protein Concentrate, Monosodium Glutamate, Lactic Acid, Citric Acid, Artificial Color [Yellow 6]), and Salt.",
-    imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 571, sugarsG100g: 3.6, saturatedFatG100g: 5.4, sodiumMg100g: 893, fiberG100g: 1.8, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.cheetos.com/products/cheetos-crunchy-cheese-flavored-snacks",
     verifiedAt: "2026-11-08",
@@ -2345,7 +2426,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Takis",
     title: "Fuego Hot Chili Pepper & Lime Tortilla Chips",
     ingredients: "Corn Masa Flour, Vegetable Oil (Palm and/or Soybean and/or Canola Oil), Seasoning (Maltodextrin, Citric Acid, Sugar, Potassium Chloride, Salt, Monosodium Glutamate, Hydrolyzed Soy Protein, Natural and Artificial Flavors, Hydrolyzed Yeast, Soybean Oil, Onion Powder, Red 40 Lake, Yellow 6 Lake, Sodium Bicarbonate, Chili Pepper, Disodium Inosinate, Disodium Guanylate, TBHQ).",
-    imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 536, sugarsG100g: 3.6, saturatedFatG100g: 8.9, sodiumMg100g: 1393, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.barcel-usa.com/takis-fuego",
     verifiedAt: "2026-11-08",
@@ -2355,7 +2435,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Kellogg's",
     title: "Froot Loops Sweetened Multigrain Cereal",
     ingredients: "Corn Flour Blend, Sugar, Wheat Flour, Whole Grain Oat Flour, Modified Food Starch, Contains 2% or Less of Vegetable Oil (Hydrogenated Coconut, Soybean and/or Cottonseed), Oat Fiber, Maltodextrin, Salt, Soluble Corn Fiber, Natural Flavor, Red 40, Yellow 5, Blue 1, Yellow 6.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 385, sugarsG100g: 30.8, saturatedFatG100g: 1.3, sodiumMg100g: 538, fiberG100g: 5.1, proteinG100g: 5.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.wkkellogg.com/en_US/products/kellogg-s-froot-loops-cereal-product.html",
     verifiedAt: "2026-11-08",
@@ -2365,7 +2444,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "General Mills",
     title: "Lucky Charms Cereal with Marshmallows",
     ingredients: "Whole Grain Oats, Sugar, Whole Grain Corn, Corn Starch, Corn Syrup, Dextrose, Contains 2% or Less of: Salt, Modified Corn Starch, Gelatin, Trisodium Phosphate, Fruit and Vegetable Juice for Color, Spirulina Extract for Color, Turmeric Extract for Color, Annatto Extract for Color, Natural Flavor, Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 389, sugarsG100g: 33.3, saturatedFatG100g: 0, sodiumMg100g: 639, fiberG100g: 5.6, proteinG100g: 8.3, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.luckycharms.com/products/original-lucky-charms",
     verifiedAt: "2026-11-08",
@@ -2375,7 +2453,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "General Mills",
     title: "Cinnamon Toast Crunch Cereal",
     ingredients: "Whole Grain Wheat, Sugar, Rice Flour, Canola and/or Sunflower Oil, Fructose, Maltodextrin, Dextrose, Salt, Cinnamon, Trisodium Phosphate, Soy Lecithin, Caramel Color. BHT Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 415, sugarsG100g: 29.3, saturatedFatG100g: 1.2, sodiumMg100g: 561, fiberG100g: 4.9, proteinG100g: 4.9, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.cinnamontoastcrunch.com/products/cinnamon-toast-crunch",
     verifiedAt: "2026-11-08",
@@ -2385,7 +2462,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "General Mills",
     title: "General Mills Cinnamon Chex Gluten Free Cereal",
     ingredients: "Whole Grain Rice, Rice, Sugar, Canola and/or Sunflower Oil, Salt, Cinnamon, Molasses, Rosemary Extract. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 400, sugarsG100g: 20.0, saturatedFatG100g: 0, sodiumMg100g: 600, fiberG100g: 5.0, proteinG100g: 5.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.chex.com/products/cinnamon-chex",
     verifiedAt: "2026-11-15",
@@ -2395,7 +2471,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Food For Life",
     title: "Food For Life Ezekiel 4:9 Cinnamon Raisin Sprouted Whole Grain Cereal",
     ingredients: "Organic Sprouted Wheat, Organic Raisins, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Filtered Water, Sea Salt, Organic Cinnamon, Organic Rosemary Extract.",
-    imageUrl: "/swaps/cereal.jpg",
     nutrition: { caloriesKcal100g: 333, sugarsG100g: 14.0, saturatedFatG100g: 0, sodiumMg100g: 228, fiberG100g: 8.8, proteinG100g: 12.3, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.foodforlife.com/product/cereals/ezekiel-49-cinnamon-raisin-sprouted-whole-grain-cereal",
     verifiedAt: "2026-11-15",
@@ -2405,7 +2480,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Nature's Path",
     title: "Nature's Path Organic Sunrise Crunchy Cinnamon Gluten Free Cereal",
     ingredients: "Organic brown rice flour, organic whole grain corn meal, organic cane sugar, corn meal, organic yellow corn flour, organic inulin, organic quinoa, organic flax seeds, sea salt, organic buckwheat flour, organic amaranth, organic cinnamon, organic molasses, tocopherols (vitamin E).",
-    imageUrl: "/swaps/cereal.jpg",
     nutrition: { caloriesKcal100g: 375, sugarsG100g: 20.0, saturatedFatG100g: 0, sodiumMg100g: 375, fiberG100g: 10, proteinG100g: 7.5, fruitsVegNutsPct: 0, isOrganic: true, isWholeFood: false },
     sourceUrl: "https://naturespath.com/products/crunchy-sunrise-cinnamon-cold-cereal-np-us",
     verifiedAt: "2026-11-15",
@@ -2436,7 +2510,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Quaker Instant Oatmeal Maple & Brown Sugar",
     keywords: ["packets", "flavor", "flavored", "oats"],
     ingredients: "Whole Grain Oats, Sugar, Salt, Natural Flavor.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 372, sugarsG100g: 27.9, saturatedFatG100g: 1.2, sodiumMg100g: 605, fiberG100g: 7.0, proteinG100g: 9.3, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false, isOrganic: false },
     sourceUrl: "https://www.quakerfoods.com/products/instant-oatmeal/maple-and-brown-sugar",
     verifiedAt: "2026-11-15",
@@ -2457,7 +2530,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Bob's Red Mill Organic Old Fashioned Rolled Oats",
     keywords: ["whole grain", "oatmeal", "oats", "non", "gmo"],
     ingredients: "Organic Whole Grain Oats.",
-    imageUrl: "/swaps/cereal.jpg",
     nutrition: { caloriesKcal100g: 396, sugarsG100g: 0, saturatedFatG100g: 1.0, sodiumMg100g: 0, fiberG100g: 10.4, proteinG100g: 12.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
     sourceUrl: "https://www.bobsredmill.com/product/organic-old-fashioned-rolled-oats",
     verifiedAt: "2026-11-15",
@@ -2467,7 +2539,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "General Mills",
     title: "Honey Nut Cheerios Oats Cereal",
     ingredients: "Whole Grain Oats, Sugar, Corn Starch, Honey, Brown Sugar Syrup, Salt, Tripotassium Phosphate, Canola and/or Sunflower Oil, Natural Almond Flavor. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
-    imageUrl: "/products/cereal.jpg",
     nutrition: { caloriesKcal100g: 378, sugarsG100g: 32.4, saturatedFatG100g: 0, sodiumMg100g: 568, fiberG100g: 8.1, proteinG100g: 8.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.cheerios.com/products/honey-nut-cheerios",
     verifiedAt: "2026-11-08",
@@ -2477,7 +2548,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "General Mills",
     title: "Original Cheerios Toasted Whole Grain Oat Cereal",
     ingredients: "Whole Grain Oats, Corn Starch, Sugar, Salt, Tripotassium Phosphate. Vitamin E (mixed tocopherols) Added to Preserve Freshness.",
-    imageUrl: "/swaps/cereal.jpg",
     nutrition: { caloriesKcal100g: 359, sugarsG100g: 5.1, saturatedFatG100g: 1.3, sodiumMg100g: 487, fiberG100g: 10.3, proteinG100g: 12.8, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.cheerios.com/products/original-cheerios",
     verifiedAt: "2026-11-08",
@@ -2487,7 +2557,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Chobani",
     title: "Non-Fat Greek Yogurt Plain",
     ingredients: "Cultured Nonfat Milk. Live and Active Cultures: S. Thermophilus, L. Bulgaricus, L. Acidophilus, Bifidus, L. Casei, and L. Rhamnosus.",
-    imageUrl: "/swaps/yogurt.jpg",
     nutrition: { caloriesKcal100g: 53, sugarsG100g: 3.5, saturatedFatG100g: 0, sodiumMg100g: 38, fiberG100g: 0, proteinG100g: 9.4, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.chobani.com/products/greek/plain/non-fat-plain",
     verifiedAt: "2026-11-08",
@@ -2497,7 +2566,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Yoplait Go-GURT",
     title: "Go-GURT Portable Lowfat Yogurt Tubes",
     ingredients: "Cultured Grade A Low Fat Milk, Sugar, Modified Corn Starch, Kosher Gelatin, Tricalcium Phosphate, Natural Flavor, Colored with Vegetable Juice and Beta Carotene, Citric Acid, Vitamin A Acetate, Vitamin D3.",
-    imageUrl: "/products/yogurt.jpg",
     nutrition: { caloriesKcal100g: 78, sugarsG100g: 9.4, saturatedFatG100g: 0.8, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 3.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.yoplait.com/products/go-gurt",
     verifiedAt: "2026-11-08",
@@ -2507,7 +2575,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Yoplait",
     title: "Original Strawberry Lowfat Yogurt",
     ingredients: "Cultured Pasteurized Grade A Lowfat Milk, Sugar, Strawberries, Modified Corn Starch, Nonfat Milk, Kosher Gelatin, Citric Acid, Tricalcium Phosphate, Natural Flavor, Pectin, Colored with Carmine, Vitamin A Acetate, Vitamin D3.",
-    imageUrl: "/products/yogurt.jpg",
     nutrition: { caloriesKcal100g: 82, sugarsG100g: 10.6, saturatedFatG100g: 0.6, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 2.9, fruitsVegNutsPct: 5, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.yoplait.com/products/original-strawberry",
     verifiedAt: "2026-11-08",
@@ -2517,7 +2584,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Hidden Valley",
     title: "Original Ranch Salad Dressing & Topping",
     ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 433, sugarsG100g: 3.3, saturatedFatG100g: 6.7, sodiumMg100g: 867, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.hiddenvalley.com/products/ranch-condiments/classic-ranch/original-ranch/",
     verifiedAt: "2026-11-08",
@@ -2527,7 +2593,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Category Formulation",
     title: "Creamy Ranch Salad Dressing (Category Estimate)",
     ingredients: "Vegetable Oil (Soybean and/or Canola), Water, Egg Yolk, Sugar, Salt, Cultured Nonfat Buttermilk, Natural Flavors, Less than 1% of: Spices, Dried Garlic, Dried Onion, Vinegar, Phosphoric Acid, Xanthan Gum, Modified Food Starch, Monosodium Glutamate, Artificial Flavors, Disodium Phosphate, Sorbic Acid and Calcium Disodium EDTA Added to Preserve Freshness, Disodium Inosinate and Disodium Guanylate.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 433, sugarsG100g: 3.3, saturatedFatG100g: 6.7, sodiumMg100g: 867, fiberG100g: 0, proteinG100g: 1.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/173590/nutrients",
     verifiedAt: "2026-11-08",
@@ -2538,7 +2603,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Original Whole Grain Wheat Crackers",
     keywords: ["nabisco"],
     ingredients: "Whole Grain Wheat, Canola Oil, Sea Salt.",
-    imageUrl: "/swaps/crackers.jpg",
     nutrition: { caloriesKcal100g: 428, sugarsG100g: 0, saturatedFatG100g: 0.9, sodiumMg100g: 570, fiberG100g: 10.7, proteinG100g: 10.7, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.snackworks.com/products/triscuit-original-whole-grain-wheat-crackers/",
     verifiedAt: "2026-11-08",
@@ -2549,7 +2613,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Original Baked Crackers",
     keywords: ["nabisco"],
     ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soybean and/or Canola Oil, Palm Oil, Sugar, Salt, Leavening (Calcium Phosphate, Baking Soda), High Fructose Corn Syrup, Soy Lecithin, Natural Flavor.",
-    imageUrl: "/products/crackers.jpg",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 12.5, saturatedFatG100g: 6.3, sodiumMg100g: 813, fiberG100g: 1.5, proteinG100g: 6.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.snackworks.com/products/ritz-original-crackers/",
     verifiedAt: "2026-11-08",
@@ -2559,7 +2622,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Jif",
     title: "Creamy Peanut Butter",
     ingredients: "Made From Roasted Peanuts And Sugar, Contains 2% Or Less Of: Molasses, Fully Hydrogenated Vegetable Oils (Rapeseed And Soybean), Mono And Diglycerides, Salt.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 576, sugarsG100g: 9.1, saturatedFatG100g: 10.6, sodiumMg100g: 409, fiberG100g: 6.1, proteinG100g: 21.2, fruitsVegNutsPct: 90, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.jif.com/peanut-butter/creamy/creamy-peanut-butter",
     verifiedAt: "2026-11-10",
@@ -2569,7 +2631,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Quaker",
     title: "Chewy Chocolate Chip Granola Bars",
     ingredients: "Granola (Whole Grain Oats, Brown Sugar, Brown Rice Crisp [Whole Grain Brown Rice Flour, Sugar, Salt], Whole Grain Wheat, Soybean Oil, Coconut, Whole Wheat Flour, Baking Soda, Soy Lecithin, Nonfat Dry Milk), Semisweet Chocolate Chips (Sugar, Chocolate Liquor, Cocoa Butter, Soy Lecithin, Vanilla Extract), Corn Syrup, Brown Rice Crisp (Whole Grain Brown Rice Flour, Sugar, Salt), Invert Sugar, Sugar, Corn Syrup Solids, Glycerin, Soybean Oil, Contains 2% or Less of: Calcium Carbonate, Sorbitol, Salt, Soy Lecithin, Molasses, Tocopherols (to Preserve Freshness), Natural Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 417, sugarsG100g: 29.2, saturatedFatG100g: 6.3, sodiumMg100g: 292, fiberG100g: 4.2, proteinG100g: 4.2, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.quakerfoods.com/products/quaker-chewy-granola-bars/chocolate-chip",
     verifiedAt: "2026-11-10",
@@ -2579,7 +2640,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Lay's",
     title: "Classic Potato Chips",
     ingredients: "Potatoes, Vegetable Oil (Canola, Corn, Soybean, and/or Sunflower Oil), and Salt.",
-    imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 571, sugarsG100g: 3.6, saturatedFatG100g: 5.4, sodiumMg100g: 607, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 80, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.lays.com/products/lays-classic-potato-chips",
     verifiedAt: "2026-11-10",
@@ -2589,7 +2649,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Cracker Formulation",
     title: "Baked Snack Crackers (Representative Formulation)",
     ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soybean and/or Canola Oil, Sugar, Salt, Leavening (Calcium Phosphate, Baking Soda), Soy Lecithin.",
-    imageUrl: "/products/crackers.jpg",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 12.5, saturatedFatG100g: 6.3, sodiumMg100g: 813, fiberG100g: 1.5, proteinG100g: 6.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/175007/nutrients",
     verifiedAt: "2026-11-08",
@@ -2599,7 +2658,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Storck",
     title: "Knoppers Milk Chocolate & Hazelnut Wafers",
     ingredients: "Sugar, Vegetable Fats (Palm, Shea), Whole Milk Powder, Cocoa Butter, Wheat Flour, Hazelnuts, Cocoa Mass, Skim Milk Powder, Lactose, Butterfat, Low-Fat Cocoa, Soy Lecithin, Whey Product, Salt, Natural Flavors, Sodium Bicarbonate.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 535, sugarsG100g: 44, saturatedFatG100g: 16.5, sodiumMg100g: 160, fiberG100g: 2.0, proteinG100g: 6.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
     sourceUrl: "https://www.knoppers.com/en/products/knoppers",
     verifiedAt: "2026-11-08",
@@ -2609,7 +2667,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Tony's Chocolonely",
     title: "Milk Chocolate Caramel Sea Salt Bar",
     ingredients: "Sugar, Dry Whole Milk, Cocoa Butter, Chocolate Liquor, Caramel Pieces (Sugar, Corn Syrup, Cream, Butter), Sea Salt, Soy Lecithin.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Tony's%20Chocolonely%20Milk%20Caramel%20Sea%20Salt",
     nutrition: { caloriesKcal100g: 533, sugarsG100g: 50.0, saturatedFatG100g: 18.0, sodiumMg100g: 215, fiberG100g: 3.3, proteinG100g: 6.7, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://us.tonyschocolonely.com/products/milk-caramel-sea-salt-32",
     verifiedAt: "2026-11-08",
@@ -2619,7 +2676,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Lindt",
     title: "Lindt Lindor Milk Chocolate Candy Truffles",
     ingredients: "Milk Chocolate (Sugar, Cocoa Butter, Milk, Chocolate, Soya Lecithin (Emulsifier), Barley Malt Powder, Vanillin (Artificial Flavoring)), Vegetable Oil (Coconut, Palm Kernel), Sugar, Chocolate, Cocoa Butter, Milk, Soya Lecithin (Emulsifier), Barley Malt Powder, Artificial Flavors.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Lindt%20Lindor%20Milk%20Chocolate%20Candy%20Truffles",
     nutrition: { caloriesKcal100g: 611, sugarsG100g: 44.4, saturatedFatG100g: 33.3, sodiumMg100g: 83, fiberG100g: 2.8, proteinG100g: 5.6, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.lindtusa.com/lindor-milk-chocolate-truffles-bag-431922",
     verifiedAt: "2026-11-08",
@@ -2629,7 +2685,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Ferrero",
     title: "Ferrero Rocher Fine Hazelnut Milk Chocolates",
     ingredients: "Milk Chocolate (Sugar, Cocoa Butter, Cocoa Mass, Skim Milk Powder, Butteroil, Lecithin as Emulsifier (Soy), Vanillin: An Artificial Flavor), Hazelnuts, Sugar, Palm Oil, Wheat Flour, Whey (Milk), Lowfat Cocoa Powder, Lecithin as Emulsifier (Soy), Sodium Bicarbonate as Leavening Agent, Salt, Vanillin: An Artificial Flavor.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Ferrero%20Rocher%20Fine%20Hazelnut%20Milk%20Chocolate",
     nutrition: { caloriesKcal100g: 595, sugarsG100g: 40.5, saturatedFatG100g: 14.3, sodiumMg100g: 60, fiberG100g: 4.8, proteinG100g: 7.1, fruitsVegNutsPct: 28, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.ferrerorocher.com/us/en/our-products/ferrero-rocher",
     verifiedAt: "2026-11-08",
@@ -2639,7 +2694,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Reese's",
     title: "Reese's Milk Chocolate Peanut Butter Cups",
     ingredients: "Milk Chocolate (Sugar, Cocoa Butter, Chocolate, Skim Milk, Milk Fat, Lactose, Lecithin (Soy), PGPR), Peanuts, Sugar, Dextrose, Salt, TBHQ and Citric Acid, to Maintain Freshness.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Reese's%20Milk%20Chocolate%20Snack%20Size",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 52.4, saturatedFatG100g: 10.7, sodiumMg100g: 357, fiberG100g: 4.8, proteinG100g: 11.9, fruitsVegNutsPct: 25, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.hersheyland.com/products/reeses-milk-chocolate-peanut-butter-cups-1-5-oz.html",
     verifiedAt: "2026-11-08",
@@ -2649,7 +2703,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Hershey's",
     title: "Hershey's Milk Chocolate Candy Bar",
     ingredients: "Milk Chocolate (Sugar, Milk, Chocolate, Cocoa Butter, Milk Fat, Lecithin (Soy), PGPR, Natural Flavor).",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Hershey's%20Milk%20Chocolate%20Candy%20Bar",
     nutrition: { caloriesKcal100g: 535, sugarsG100g: 51, saturatedFatG100g: 18.0, sodiumMg100g: 75, fiberG100g: 3.0, proteinG100g: 7.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.hersheyland.com/products/hersheys-milk-chocolate-candy-bars-1-55-oz.html",
     verifiedAt: "2026-11-08",
@@ -2659,7 +2712,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Frank's RedHot",
     title: "Frank's RedHot Wings Buffalo Sauce",
     ingredients: "Distilled Vinegar, Aged Cayenne Red Peppers, Salt, Water, Canola Oil, Paprika, Xanthan Gum, Natural Butter Type Flavor and Garlic Powder.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Frank's%20RedHot%20Wings%20Buffalo%20Sauce",
     nutrition: { caloriesKcal100g: 33, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 3060, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 35, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.mccormick.com/franks-redhot/products/sauces/franks-redhot-buffalo-wings-sauce",
     verifiedAt: "2026-11-08",
@@ -2669,7 +2721,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Frank's RedHot",
     title: "Frank's RedHot Original Cayenne Pepper Hot Sauce",
     ingredients: "Aged Cayenne Red Peppers, Distilled Vinegar, Water, Salt and Garlic Powder.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Frank's%20RedHot%20Original%20Cayenne%20Pepper%20Sauce",
     nutrition: { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 3800, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 50, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.mccormick.com/franks-redhot/products/sauces/franks-redhot-original-cayenne-pepper-sauce",
     verifiedAt: "2026-11-08",
@@ -2679,7 +2730,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Confectionery Formulation",
     title: "Milk Chocolate Confectionery (Representative Formulation)",
     ingredients: "Sugar, Chocolate, Cocoa Butter, Milk, Skim Milk, Milkfat, Soy Lecithin, PGPR (Emulsifier), Natural Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 535, sugarsG100g: 51, saturatedFatG100g: 18.0, sodiumMg100g: 75, fiberG100g: 3.0, proteinG100g: 7.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/167587/nutrients",
     verifiedAt: "2026-11-08",
@@ -2689,7 +2739,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Velveeta",
     title: "Original Pasteurized Recipe Cheese Product",
     ingredients: "Milk, Water, Whey, Milk Protein Concentrate, Milkfat, Whey Protein Concentrate, Sodium Phosphate, Contains Less than 2% of Salt, Calcium Phosphate, Lactic Acid, Sorbic Acid as a Preservative, Sodium Citrate, Sodium Alginate, Enzymes, Apocarotenal and Annatto (Color), Cheese Culture.",
-    imageUrl: "/products/butter.jpg",
     nutrition: { caloriesKcal100g: 285, sugarsG100g: 7.0, saturatedFatG100g: 11.0, sodiumMg100g: 1460, fiberG100g: 0, proteinG100g: 14.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
     sourceUrl: "https://www.myfoodandfamily.com/brands/velveeta/product/00021000611614",
     verifiedAt: "2026-11-08",
@@ -2699,7 +2748,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Process Cheese Formulation",
     title: "Pasteurized Process Cheese and Queso Dip (Representative Formulation)",
     ingredients: "Milk, Water, Whey, Milkfat, Sodium Phosphate, Salt, Calcium Phosphate, Lactic Acid, Sorbic Acid (Preservative), Sodium Citrate, Enzymes, Annatto (Color), Cheese Culture.",
-    imageUrl: "/products/butter.jpg",
     nutrition: { caloriesKcal100g: 285, sugarsG100g: 7.0, saturatedFatG100g: 11.0, sodiumMg100g: 1460, fiberG100g: 0, proteinG100g: 14.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e" },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/170851/nutrients",
     verifiedAt: "2026-11-08",
@@ -2709,7 +2757,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Applegate Naturals",
     title: "Hickory Smoked Uncured Turkey Bacon",
     ingredients: "Turkey, Water, Contains Less than 2% of Sea Salt, Cane Sugar, Celery Powder, Rosemary Extract.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 215, sugarsG100g: 1.5, saturatedFatG100g: 2.8, sodiumMg100g: 760, fiberG100g: 0, proteinG100g: 17.0, fruitsVegNutsPct: 0, isWholeFood: false , nutriScoreGrade: "d"},
     sourceUrl: "https://applegate.com/products/natural-uncured-turkey-bacon",
     verifiedAt: "2026-11-08",
@@ -2719,7 +2766,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Natural Uncured",
     title: "Hickory Smoked Uncured Pork Bacon",
     ingredients: "Pork, Water, Sea Salt, Less than 2% of Cane Sugar, Celery Powder.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 410, sugarsG100g: 1.5, saturatedFatG100g: 13.5, sodiumMg100g: 920, fiberG100g: 0, proteinG100g: 24.0, fruitsVegNutsPct: 0, isWholeFood: false , nutriScoreGrade: "d"},
     sourceUrl: "https://applegate.com/products/natural-sunday-bacon",
     verifiedAt: "2026-11-08",
@@ -2729,7 +2775,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Cured Pork Bacon",
     title: "Hickory Smoked Cured Sliced Bacon",
     ingredients: "Pork, Water, Salt, Sugar, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 440, sugarsG100g: 1.5, saturatedFatG100g: 14.5, sodiumMg100g: 1080, fiberG100g: 0, proteinG100g: 26.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/168322/nutrients",
     verifiedAt: "2026-11-08",
@@ -2739,7 +2784,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Beyond Meat",
     title: "Plant-Based Burger Patties",
     ingredients: "Water, Pea Protein, Expeller-Pressed Canola Oil, Refined Coconut Oil, Rice Protein, Natural Flavors, Methylcellulose, Potato Starch, Apple Extract, Pomegranate Extract, Salt, Potassium Chloride, Vinegar, Lemon Juice Concentrate, Sunflower Lecithin, Beet Juice Extract (for Color).",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 204, sugarsG100g: 0, saturatedFatG100g: 4.4, sodiumMg100g: 345, fiberG100g: 1.8, proteinG100g: 17.7, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.beyondmeat.com/en-US/products/the-beyond-burger",
     verifiedAt: "2026-11-08",
@@ -2749,7 +2793,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Impossible Foods",
     title: "Plant-Based Burger Patties",
     ingredients: "Water, Soy Protein Concentrate, Sunflower Oil, Coconut Oil, 2% or Less of: Methylcellulose, Yeast Extract, Salt, Natural Flavors, Cultured Dextrose, Modified Food Starch, Soy Leghemoglobin, Mixed Tocopherols (Antioxidant), Soy Protein Isolate, Vitamins and Minerals.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 204, sugarsG100g: 0.9, saturatedFatG100g: 5.3, sodiumMg100g: 327, fiberG100g: 4.4, proteinG100g: 16.8, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://impossiblefoods.com/products/beef/impossible-burger-patties",
     verifiedAt: "2026-11-08",
@@ -2759,7 +2802,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Plant-Based Meat Formulation",
     title: "Plant-Based Patties and Tenders (Representative Formulation)",
     ingredients: "Water, Soy Protein Concentrate, Wheat Gluten, Vegetable Oil (Corn, Canola and/or Sunflower Oil), Soy Protein Isolate, Methylcellulose, Salt, Yeast Extract, Natural Flavors, Spices, Xanthan Gum, Onion Powder, Garlic Powder.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 209, sugarsG100g: 1.5, saturatedFatG100g: 0.7, sodiumMg100g: 582, fiberG100g: 4.5, proteinG100g: 19.4, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/175114/nutrients",
     verifiedAt: "2026-11-08",
@@ -2769,7 +2811,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Category Formulation",
     title: "Frozen Stuffed Sandwich and Entree (Representative Formulation)",
     ingredients: "Enriched Flour (Wheat Flour, Malted Barley Flour, Niacin, Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Cooked White Meat Chicken, Reduced Fat Cheddar Cheese, Soybean Oil, Bacon (Cured with Water, Salt, Sugar, Smoke Flavoring, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite), 2% or Less of Modified Food Starch, Sugar, Salt, Buttermilk, Potassium Chloride, Autolyzed Yeast Extract, Disodium Phosphate, Xanthan Gum, Monosodium Glutamate, Natural Flavors.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 244, sugarsG100g: 3.1, saturatedFatG100g: 3.9, sodiumMg100g: 465, fiberG100g: 1.6, proteinG100g: 7.9, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/167707/nutrients",
     verifiedAt: "2026-11-08",
@@ -2779,7 +2820,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Jimmy Dean",
     title: "Pork Breakfast Sausage (Representative Formulation)",
     ingredients: "Pork, Water, Contains 2% or Less of: Salt, Sugar, Spices, Dextrose, Monosodium Glutamate, Natural Flavorings, Citric Acid.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 375, sugarsG100g: 1.8, saturatedFatG100g: 10.7, sodiumMg100g: 732, fiberG100g: 0, proteinG100g: 16.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.jimmydean.com/products/fresh-sausage/roll-sausage/premium-pork-regular-sausage/",
     verifiedAt: "2026-11-08",
@@ -2789,7 +2829,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Smoked Sausage Formulation",
     title: "Smoked Sausage and Kielbasa (Representative Formulation)",
     ingredients: "Pork, Turkey, Beef, Water, Corn Syrup, Modified Food Starch, Contains 2% or Less of Salt, Dextrose, Sodium Citrate, Sodium Phosphate, Monosodium Glutamate, Sodium Diacetate, Sodium Erythorbate, Flavorings, Sodium Nitrite.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 304, sugarsG100g: 3.6, saturatedFatG100g: 8.9, sodiumMg100g: 857, fiberG100g: 0, proteinG100g: 12.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/174580/nutrients",
     verifiedAt: "2026-11-08",
@@ -2799,7 +2838,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Oscar Mayer",
     title: "Oscar Mayer Deli Fresh Oven Roasted Turkey Breast",
     ingredients: "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Vinegar, Salt, Cultured Dextrose, Sugar, Sodium Phosphates, Carrageenan, Caramel Color.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 89, sugarsG100g: 1.8, saturatedFatG100g: 0.4, sodiumMg100g: 890, fiberG100g: 0, proteinG100g: 16.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.oscarmayer.com/products/00044700030806-deli-fresh-oven-roasted-turkey-breast-sliced-lunch-meat",
     verifiedAt: "2026-11-08",
@@ -2809,7 +2847,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Tyson",
     title: "Tyson Grilled & Ready Fully Cooked Chicken Breast Strips",
     ingredients: "Chicken Breast with Rib Meat, Water, Seasoning (Salt, Sugar, Yeast Extract, Maltodextrin, Spices, Chicken Broth, Garlic Powder, Onion Powder, Natural Flavors), Potato Starch, Vinegar.",
-    imageUrl: "/swaps/turkey.jpg",
     nutrition: { caloriesKcal100g: 135, sugarsG100g: 0.8, saturatedFatG100g: 0.8, sodiumMg100g: 480, fiberG100g: 0, proteinG100g: 23.0, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.tyson.com/products/grilled-chicken-breast-strips/",
     verifiedAt: "2026-11-08",
@@ -2819,7 +2856,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Grilled Poultry",
     title: "Fully Cooked Grilled Chicken Breast Strips",
     ingredients: "Boneless, Skinless Chicken Breast with Rib Meat, Water, Contains 2% or Less of Salt, Vinegar, Natural Flavor, Garlic Powder, Onion Powder, Spices.",
-    imageUrl: "/swaps/turkey.jpg",
     nutrition: { caloriesKcal100g: 135, sugarsG100g: 0.5, saturatedFatG100g: 0.8, sodiumMg100g: 410, fiberG100g: 0, proteinG100g: 23.0, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
     verifiedAt: "2026-11-08",
@@ -2829,7 +2865,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Breaded Poultry",
     title: "Breaded Crispy Chicken Breast Patties",
     ingredients: "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Bleached Wheat Flour, Modified Food Starch, Vegetable Oil (Soybean and/or Canola Oil), Salt, Dextrose, Sodium Phosphates, Leavening (Sodium Acid Pyrophosphate, Sodium Bicarbonate), Yeast Extract, Onion Powder, Garlic Powder, Spice, Natural Flavor.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 265, sugarsG100g: 2.5, saturatedFatG100g: 4.8, sodiumMg100g: 620, fiberG100g: 1.5, proteinG100g: 13.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171502/nutrients",
     verifiedAt: "2026-11-08",
@@ -2839,7 +2874,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Gravy Formulation",
     title: "Homestyle Savory Gravy (Representative Formulation)",
     ingredients: "Turkey Broth, Water, Modified Corn Starch, Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Chicken Fat, Contains Less than 2% of Salt, Turkey Meat, Monosodium Glutamate, Autolyzed Yeast Extract, Caramel Color, Onion Powder, Disodium Inosinate, Disodium Guanylate, Natural Flavor.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 42, sugarsG100g: 1.7, saturatedFatG100g: 0.8, sodiumMg100g: 483, fiberG100g: 0, proteinG100g: 1.7, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171574/nutrients",
     verifiedAt: "2026-11-08",
@@ -2849,7 +2883,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Kettle & Fire",
     title: "Organic Slow-Simmered Bone Broth",
     ingredients: "Organic Bone Broth (Water, Organic Chicken Bones, Organic Onions, Organic Carrots, Organic Celery), Organic Apple Cider Vinegar, Sea Salt, Organic Rosemary, Organic Sage, Organic Thyme, Organic Black Pepper.",
-    imageUrl: "/swaps/turkey.jpg",
     nutrition: { caloriesKcal100g: 19, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 150, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 10, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.kettleandfire.com/products/chicken-bone-broth",
     verifiedAt: "2026-11-08",
@@ -2859,7 +2892,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Gatorade",
     title: "Thirst Quencher Fruit Punch Sports Drink",
     ingredients: "Water, Sugar, Dextrose, Citric Acid, Salt, Sodium Citrate, Monopotassium Phosphate, Gum Arabic, Natural Flavor, Sucrose Acetate Isobutyrate, Glycerol Ester of Rosin, Red 40.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 24, sugarsG100g: 6.0, saturatedFatG100g: 0, sodiumMg100g: 45, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.gatorade.com/powders-and-liquids/gatorade-thirst-quencher/fruit-punch",
     verifiedAt: "2026-11-08",
@@ -2869,7 +2901,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Capri Sun",
     title: "Fruit Punch Juice Drink Blend",
     ingredients: "Water, Sugar, Apple, Grape and Cherry Juice Concentrates, Citric Acid, Natural Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 30, sugarsG100g: 7.2, saturatedFatG100g: 0, sodiumMg100g: 8, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 10, nutriScoreGrade: "e" },
     sourceUrl: "https://www.myfoodandfamily.com/brands/capri-sun/product/00087684001035",
     verifiedAt: "2026-11-08",
@@ -2879,7 +2910,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Health-Ade",
     title: "Organic Raw Kombucha",
     ingredients: "Purified Water, Kombucha Culture (Yeast and Bacteria Cultures), Organic Black Tea, Organic Green Tea, Organic Cane Sugar, Organic Cold Pressed Juice.",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 15, sugarsG100g: 3.2, saturatedFatG100g: 0, sodiumMg100g: 5, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 20, nutriScoreGrade: "a", isOrganic: true },
     sourceUrl: "https://health-ade.com/collections/kombucha/products/kombucha-pink-lady-apple",
     verifiedAt: "2026-11-08",
@@ -2889,7 +2919,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Pepperidge Farm",
     title: "Goldfish Cheddar Baked Snack Crackers",
     ingredients: "Made With Smiles And Enriched Wheat Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Cheddar Cheese (Cultured Milk, Salt, Enzymes, Annatto), Vegetable Oils (Canola, Sunflower And/Or Soybean), Salt, Contains 2% Or Less Of: Yeast, Sugar, Autolyzed Yeast Extract, Paprika, Spices, Celery, Onion Powder, Monocalcium Phosphate, Baking Soda.",
-    imageUrl: "/products/crackers.jpg",
     nutrition: { caloriesKcal100g: 467, sugarsG100g: 1.7, saturatedFatG100g: 3.3, sodiumMg100g: 833, fiberG100g: 3.3, proteinG100g: 10.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.pepperidgefarm.com/product/goldfish-cheddar-crackers/",
     verifiedAt: "2026-11-08",
@@ -2899,7 +2928,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Ferrero",
     title: "Nutella Hazelnut Spread with Cocoa",
     ingredients: "Sugar, Palm Oil, Hazelnuts, Skim Milk, Cocoa, Soy Lecithin as Emulsifier, Vanillin: An Artificial Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 541, sugarsG100g: 56.8, saturatedFatG100g: 10.8, sodiumMg100g: 41, fiberG100g: 2.7, proteinG100g: 5.4, fruitsVegNutsPct: 13, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.nutella.com/us/en/products/nutella",
     verifiedAt: "2026-11-08",
@@ -2909,7 +2937,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Goodles",
     title: "Cheddy Mac Creamy Cheddar Macaroni & Cheese",
     ingredients: "Goodles Noodles (Wheat Flour, Chickpea Protein, Wheat Protein, Oat Fiber, Nutrient Extract Blend), Cheddar Cheese (Cultured Milk, Salt, Enzymes), Whey, Butter (Cream, Natural Flavor), Salt, Disodium Phosphate, Lactic Acid, Annatto Extract (For Color).",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 366, sugarsG100g: 5.6, saturatedFatG100g: 2.1, sodiumMg100g: 831, fiberG100g: 8.5, proteinG100g: 19.7, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.goodles.com/products/cheddy-mac/",
     verifiedAt: "2026-11-08",
@@ -2919,7 +2946,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Annie's Homegrown",
     title: "Organic Grass-Fed Shells & Real Aged Cheddar",
     ingredients: "Organic Wheat Pasta (Organic Wheat Flour), Organic Grass-Fed Cheddar Cheese (Cultured Pasteurized Organic Milk, Salt, Non-Animal Enzymes), Organic Whey, Organic Nonfat Milk, Organic Butter (Organic Cream, Salt), Salt, Cultured Whole Milk, Sodium Phosphate, Organic Annatto Extract (For Color).",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 386, sugarsG100g: 7.1, saturatedFatG100g: 3.6, sodiumMg100g: 757, fiberG100g: 2.9, proteinG100g: 14.3, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.annies.com/product/organic-grass-fed-shells-real-aged-cheddar-mac-cheese",
     verifiedAt: "2026-11-09",
@@ -2929,7 +2955,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Kraft",
     title: "Original Macaroni & Cheese Dinner",
     ingredients: "Enriched Macaroni Product (Wheat Flour, Durum Flour, Niacin, Ferrous Sulfate, Thiamin Mononitrate, Riboflavin, Folic Acid), Cheese Sauce Mix (Whey, Milkfat, Salt, Milk Protein Concentrate, Sodium Triphosphate, Contains Less than 2% of Tapioca Flour, Citric Acid, Lactic Acid, Sodium Phosphate, Calcium Phosphate, with Paprika, Turmeric, and Annatto Added for Color, Enzymes, Cheese Culture).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 357, sugarsG100g: 8.6, saturatedFatG100g: 2.1, sodiumMg100g: 800, fiberG100g: 2.9, proteinG100g: 12.9, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.myfoodandfamily.com/brands/kraft-mac-and-cheese/product/00021000658831",
     verifiedAt: "2026-11-08",
@@ -2939,7 +2964,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Organic Valley",
     title: "Organic Eggnog",
     ingredients: "Organic Grade A Milk, Organic Grade A Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Nutmeg.",
-    imageUrl: "/swaps/yogurt.jpg",
     nutrition: { caloriesKcal100g: 142, sugarsG100g: 14.2, saturatedFatG100g: 4.2, sodiumMg100g: 63, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.organicvalley.coop/products/eggnog/eggnog/eggnog-quart/",
     verifiedAt: "2026-11-08",
@@ -2949,7 +2973,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Dairy Eggnog Formulation",
     title: "Golden Vanilla Eggnog (Representative Formulation)",
     ingredients: "Milk, Cream, Sugar, Nonfat Milk, Egg Yolks, High Fructose Corn Syrup, Whey, Natural and Artificial Flavor, Nutmeg, Carrageenan, Guar Gum, Mono and Diglycerides, Annatto and Turmeric (Color).",
-    imageUrl: "/products/yogurt.jpg",
     nutrition: { caloriesKcal100g: 150, sugarsG100g: 16.7, saturatedFatG100g: 4.2, sodiumMg100g: 75, fiberG100g: 0, proteinG100g: 3.3, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171276/nutrients",
     verifiedAt: "2026-11-08",
@@ -2959,7 +2982,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Werther's Original",
     title: "Caramel Hard Candies",
     ingredients: "Sugar, Glucose Syrup (From Wheat or Corn), Cream (Milk), Condensed Whey (Milk), Butter (Milk), Cane Sugar Syrup, Salt, Soy Lecithin (Emulsifier), Artificial Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 420, sugarsG100g: 74, saturatedFatG100g: 5.5, sodiumMg100g: 260, fiberG100g: 0, proteinG100g: 0.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.werthers-original.us/en/products/hard-candies/caramel-hard-candies",
     verifiedAt: "2026-11-08",
@@ -2969,7 +2991,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Red Bird",
     title: "Peppermint Candy Puffs",
     ingredients: "Pure Cane Sugar, Invert Sugar, Corn Syrup, Natural Oil of Peppermint, Red 40 (Artificial Color).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 392, sugarsG100g: 93, saturatedFatG100g: 0, sodiumMg100g: 15, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://piedmontcandy.com/products/all-natural-peppermint-puffs",
     verifiedAt: "2026-11-08",
@@ -2979,7 +3000,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Sweetened Dried Fruit",
     title: "Sweetened Dried Berries",
     ingredients: "Berries (Blueberries and Cranberries), Cane Sugar, Refined Sunflower Oil (Used as a Processing Aid).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 325, sugarsG100g: 65, saturatedFatG100g: 0.2, sodiumMg100g: 5, fiberG100g: 5.3, proteinG100g: 0.4, fruitsVegNutsPct: 60, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171723/nutrients",
     verifiedAt: "2026-11-08",
@@ -2989,7 +3009,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Freeze-Dried",
     title: "Freeze-Dried Fruit Crisps",
     ingredients: "Freeze-Dried Fruit (Concentrated Natural Fruit Sugars).",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 345, sugarsG100g: 54, saturatedFatG100g: 0.2, sodiumMg100g: 8, fiberG100g: 7.5, proteinG100g: 2.5, fruitsVegNutsPct: 85, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/173946/nutrients",
     verifiedAt: "2026-11-08",
@@ -2999,7 +3018,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Kerrygold",
     title: "Pure Irish Salted Butter",
     ingredients: "Pasteurized Cream, Salt.",
-    imageUrl: "/products/butter.jpg",
     nutrition: { caloriesKcal100g: 717, sugarsG100g: 0.1, saturatedFatG100g: 51.0, sodiumMg100g: 640, fiberG100g: 0, proteinG100g: 0.9, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.kerrygoldusa.com/products/salted-butter/",
     verifiedAt: "2026-11-08",
@@ -3009,7 +3027,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Grade A Dairy",
     title: "Grade A Pasteurized Milk",
     ingredients: "Grade A Milk, Vitamin D3.",
-    imageUrl: "/swaps/yogurt.jpg",
     nutrition: { caloriesKcal100g: 61, sugarsG100g: 4.8, saturatedFatG100g: 2.0, sodiumMg100g: 43, fiberG100g: 0, proteinG100g: 3.2, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171265/nutrients",
     verifiedAt: "2026-11-08",
@@ -3019,7 +3036,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Coffee mate",
     title: "French Vanilla Liquid Coffee Creamer",
     ingredients: "Water, Sugar, Vegetable Oil (High Oleic Soybean and/or High Oleic Canola), and Less than 2% of Micellar Casein (a Milk Derivative), Mono- and Diglycerides, Dipotassium Phosphate, Natural and Artificial Flavor, Cellulose Gel, Cellulose Gum, Carrageenan.",
-    imageUrl: "/products/yogurt.jpg",
     nutrition: { caloriesKcal100g: 233, sugarsG100g: 33.3, saturatedFatG100g: 0, sodiumMg100g: 33, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.goodnes.com/coffeemate/products/french-vanilla-liquid-coffee-creamer-32-oz-bottle/",
     verifiedAt: "2026-11-08",
@@ -3029,7 +3045,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "International Delight",
     title: "Flavored Liquid Coffee Creamer (Representative Formulation)",
     ingredients: "Water, Sugar, Palm and/or Soybean Oil, Contains 2% or Less of: Sodium Caseinate (a Milk Derivative), Dipotassium Phosphate, Carrageenan, Mono and Diglycerides, Cellulose Gel, Cellulose Gum, Natural and Artificial Flavors.",
-    imageUrl: "/products/yogurt.jpg",
     nutrition: { caloriesKcal100g: 233, sugarsG100g: 33.3, saturatedFatG100g: 3.3, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.internationaldelight.com/products/coffee-creamers/flavor-faves/french-vanilla/",
     verifiedAt: "2026-11-08",
@@ -3039,7 +3054,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Blount Clam Shack",
     title: "New England Clam Chowder (Gluten Free)",
     ingredients: "Clam Broth (Water, Clam Juice Concentrate), Potatoes, Clams (Clams, Clam Juice, Salt), Light Cream (Milk, Cream), Onions, Butter (Cream, Salt), Corn Starch, Salt, Spice, Garlic Powder.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 110, sugarsG100g: 1.5, saturatedFatG100g: 3.5, sodiumMg100g: 330, fiberG100g: 0.8, proteinG100g: 4.8, fruitsVegNutsPct: 25, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.blountfinefoods.com/products/new-england-clam-chowder",
     verifiedAt: "2026-11-08",
@@ -3049,7 +3063,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Panera Bread",
     title: "Broccoli Cheddar Soup (Representative Formulation)",
     ingredients: "Water, Milk, Broccoli, Pasteurized Process Cheddar Cheese (Cheddar Cheese [Pasteurized Milk, Cheese Culture, Salt, Enzymes], Water, Sodium Phosphate, Milkfat, Salt, Apocarotenal [Color]), Heavy Cream, Carrots, Seasoning (Modified Corn Starch, Wheat Flour, Salt, Chicken Base [Chicken Meat Including Chicken Juices, Salt, Chicken Fat, Sugar, Maltodextrin, Hydrolyzed Corn Protein, Dried Whey, Natural Flavor, Turmeric], Spices, Paprika), Onions, Butter (Cream, Salt), Soybean Oil, Dijon Mustard (Water, Vinegar, Mustard Seed, Salt, White Wine, Fruit Pectin, Tartaric Acid, Citric Acid, Sugar, Spice), Nisin Preparation, Annatto Extract (Color).",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 135, sugarsG100g: 2.0, saturatedFatG100g: 5.5, sodiumMg100g: 430, fiberG100g: 1.0, proteinG100g: 4.5, fruitsVegNutsPct: 20, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.panerabreadathome.com/products/soups/broccoli-cheddar-soup",
     verifiedAt: "2026-11-08",
@@ -3059,7 +3072,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Deli Soup Formulation",
     title: "New England Style Clam Chowder (Representative Formulation)",
     ingredients: "Light Cream (Milk, Cream), Potatoes, Fish Stock (Water, Cod Bones, Haddock Bones, Onions, Celery, Black Pepper, Thyme, Mustard Seed, Bay Leaves), Sea Clams (Sea Clams, Water), Chopped Cockle (Clam Meat), Onions, Wheat Flour, Soybean Oil, Butter (Cream, Salt), Clam Broth (Dehydrated Clam Broth, Maltodextrin), Sea Salt, Celery, Salt Pork (Pork, Sea Salt), Black Pepper, Worcestershire Sauce (Distilled White Vinegar, Molasses, Sugar, Water, Salt, Onions, Anchovies, Garlic, Cloves, Tamarind Extract, Natural Flavorings, Chili Pepper Extract), Garlic.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 115, sugarsG100g: 1.5, saturatedFatG100g: 3.5, sodiumMg100g: 350, fiberG100g: 0.9, proteinG100g: 5.2, fruitsVegNutsPct: 25, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171599/nutrients",
     verifiedAt: "2026-11-08",
@@ -3069,7 +3081,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Maruchan",
     title: "Maruchan Ramen Noodle Soup Chicken Flavor",
     ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Vegetable Oil (Contains One or More of the Following: Canola, Cottonseed, Palm) Preserved by TBHQ, Salt, Monosodium Glutamate, Maltodextrin, Hydrolyzed Corn, Wheat and Soy Protein, Dehydrated Vegetables (Onion, Garlic, Chive), Sugar, Spices, Potassium Carbonate, Sodium (Mono, Hexameta, and/or Tripoly) Phosphate, Sodium Carbonate, Soy Sauce (Water, Wheat, Soybeans, Salt), Disodium Inosinate, Disodium Guanylate, Chicken Broth, Caramel Color, Yellow 5, Yellow 6, Silicon Dioxide (Anti-Caking Agent), Natural and Artificial Flavor, Citric Acid, Lactose.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 442, sugarsG100g: 2.3, saturatedFatG100g: 8.2, sodiumMg100g: 1830, fiberG100g: 2.3, proteinG100g: 9.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.maruchan.com/products/ramen/chicken-flavor/",
     verifiedAt: "2026-11-08",
@@ -3079,7 +3090,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Samyang",
     title: "Samyang Buldak Hot Chicken Flavor Ramen",
     ingredients: "Noodle: Wheat Flour, Modified Tapioca Starch, Refined Palm Oil, Wheat Gluten, Salt, Emulsifier (Soy Lecithin), Acidity Regulator (Potassium Carbonate, Sodium Carbonate, Sodium Phosphate Dibasic, Citric Acid), Thickener (Guar Gum), Green Tea Flavor Oil, Riboflavin. Soup: Water, Artificial Chicken Flavor Powder (Yeast Extract, Dextrin, Artificial Flavor, Sugar, Monosodium Glutamate), Soy Sauce, Sugar, Chili Pepper Powder, Soybean Oil, Onion, Red Pepper Powder, Red Pepper Seed Oil, Yeast Powder, Garlic, Modified Potato Starch, Decolorized Chili Extract, Paprika Extract, Black Pepper Powder, Curry Powder. Flake: Roasted Sesame, Roasted Laver.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 393, sugarsG100g: 5.0, saturatedFatG100g: 5.7, sodiumMg100g: 914, fiberG100g: 2.9, proteinG100g: 8.6, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://samyangamerica.com/buldak-original/",
     verifiedAt: "2026-11-08",
@@ -3089,7 +3099,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Ramen Formulation",
     title: "Instant Ramen Noodle Soup (Representative Formulation)",
     ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Vegetable Oil (Contains One or More of the Following: Canola, Cottonseed, Palm) Preserved by TBHQ, Salt, Monosodium Glutamate, Maltodextrin, Hydrolyzed Corn, Wheat and Soy Protein, Dehydrated Vegetables (Onion, Garlic, Chive), Sugar, Spices, Potassium Carbonate, Sodium (Mono, Hexameta, and/or Tripoly) Phosphate, Sodium Carbonate, Soy Sauce (Water, Wheat, Soybeans, Salt), Disodium Inosinate, Disodium Guanylate, Chicken Broth, Caramel Color, Yellow 5, Yellow 6, Silicon Dioxide (Anti-Caking Agent), Natural and Artificial Flavor, Citric Acid, Lactose.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 442, sugarsG100g: 2.3, saturatedFatG100g: 8.2, sodiumMg100g: 1830, fiberG100g: 2.3, proteinG100g: 9.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/168928/nutrients",
     verifiedAt: "2026-11-08",
@@ -3100,7 +3109,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Campbell's Condensed Chicken Noodle Soup",
     keywords: ["condensed", "soup"],
     ingredients: "Chicken Stock, Enriched Egg Noodles (Wheat Flour, Eggs, Egg Whites, Niacin, Ferrous Sulfate, Thiamine Mononitrate, Riboflavin, Folic Acid), Chicken Meat, Contains Less than 2% of: Salt, Vegetable Oil, Potato Starch, Chicken Fat, Monosodium Glutamate, Water, Beta Carotene for Color, Yeast Extract, Dehydrated Chicken Broth, Flavoring, Dehydrated Chicken, Soy Protein Isolate, Sodium Phosphate, Onion Extract, Dehydrated Garlic.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 50, sugarsG100g: 0.8, saturatedFatG100g: 0.4, sodiumMg100g: 742, fiberG100g: 0.8, proteinG100g: 2.5, fruitsVegNutsPct: 5, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.campbells.com/products/condensed/chicken-noodle-soup/",
     verifiedAt: "2026-11-12",
@@ -3110,7 +3118,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Soup Formulation",
     title: "Homestyle Canned Soup (Representative Formulation)",
     ingredients: "Chicken Stock, Enriched Egg Noodles (Wheat Flour, Egg Whites, Eggs, Niacin, Ferrous Sulfate, Thiamine Mononitrate, Riboflavin, Folic Acid), Cooked Chicken Meat, Carrots, Celery, Contains Less than 2% of: Modified Food Starch, Salt, Chicken Fat, Monosodium Glutamate, Yeast Extract, Soy Protein Isolate, Sodium Phosphate, Potassium Chloride, Natural Flavor, Beta Carotene for Color, Disodium Inosinate, Disodium Guanylate.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 55, sugarsG100g: 1.0, saturatedFatG100g: 0.6, sodiumMg100g: 390, fiberG100g: 0.6, proteinG100g: 2.5, fruitsVegNutsPct: 10, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171590/nutrients",
     verifiedAt: "2026-11-08",
@@ -3120,7 +3127,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Salad Kit Formulation",
     title: "Salad Kit with Dressing Packet (Representative Formulation)",
     ingredients: "Romaine Lettuce, Dressing (Soybean and/or Canola Oil, Water, Parmesan Cheese, Egg Yolk, Distilled Vinegar, Salt, Sugar, Garlic, Lemon Juice Concentrate, Natural Flavor, Xanthan Gum), Croutons (Enriched Wheat Flour, Sunflower Oil, Salt, Yeast, Garlic Powder), Parmesan Cheese.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 140, sugarsG100g: 3.0, saturatedFatG100g: 2.5, sodiumMg100g: 310, fiberG100g: 2.0, proteinG100g: 3.5, fruitsVegNutsPct: 65, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/173590/nutrients",
     verifiedAt: "2026-11-08",
@@ -3131,7 +3137,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "100% Fresh Washed Salad Greens",
     keywords: ["romaine", "iceberg", "spring", "mix", "baby", "spinach", "blend", "shredded", "lettuce", "hearts", "leaf", "butter", "arugula", "kale", "coleslaw", "slaw", "garden", "field", "mixed", "tri", "color", "sweet"],
     ingredients: "100% Fresh Whole Produce: Romaine Lettuce, Carrots, Red Cabbage.",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 18, sugarsG100g: 1.5, saturatedFatG100g: 0, sodiumMg100g: 18, fiberG100g: 2.2, proteinG100g: 1.3, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/169247/nutrients",
     verifiedAt: "2026-11-08",
@@ -3142,7 +3147,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Fresh Whole Sweet Potato",
     keywords: ["yams", "yam"],
     ingredients: "100% Fresh Whole Sweet Potato (Single-Ingredient Whole Produce).",
-    imageUrl: "/swaps/produce.png",
     nutrition: { caloriesKcal100g: 86, sugarsG100g: 4.2, saturatedFatG100g: 0, sodiumMg100g: 55, fiberG100g: 3.0, proteinG100g: 1.6, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true, isOrganic: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/168482/nutrients",
     verifiedAt: "2026-11-08",
@@ -3153,7 +3157,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Fresh Whole Potatoes",
     keywords: ["russet", "idaho", "yukon", "gold", "yellow", "red", "white", "baking", "butter"],
     ingredients: "100% Fresh Whole Potatoes (Single-Ingredient Whole Produce).",
-    imageUrl: "/swaps/produce.png",
     nutrition: { caloriesKcal100g: 77, sugarsG100g: 0.8, saturatedFatG100g: 0, sodiumMg100g: 6, fiberG100g: 2.2, proteinG100g: 2.0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true, isOrganic: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/170026/nutrients",
     verifiedAt: "2026-11-08",
@@ -3163,7 +3166,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Instant Potato Formulation",
     title: "Instant Mashed Potatoes (Representative Formulation)",
     ingredients: "Potatoes, Mono- and Diglycerides, Sodium Acid Pyrophosphate (Preservative), Sodium Bisulfite (Preservative), Citric Acid (Preservative).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 355, sugarsG100g: 2.5, saturatedFatG100g: 1.2, sodiumMg100g: 490, fiberG100g: 5.5, proteinG100g: 7.5, fruitsVegNutsPct: 60, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://idahoan.com/products/idahoan-original-mashed-potatoes/",
     verifiedAt: "2026-11-08",
@@ -3174,7 +3176,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Golden Crinkles French Fried Potatoes",
     keywords: ["fries", "crispy", "crowns"],
     ingredients: "Potatoes, Vegetable Oil (Canola, Soybean, and/or Sunflower Oil), Salt, Disodium Dihydrogen Pyrophosphate (to Retain Natural Color), Dextrose.",
-    imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 155, sugarsG100g: 0.8, saturatedFatG100g: 1.2, sodiumMg100g: 340, fiberG100g: 2.4, proteinG100g: 2.4, fruitsVegNutsPct: 75, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.myfoodandfamily.com/brands/ore-ida/product/00013120000836",
     verifiedAt: "2026-11-08",
@@ -3184,7 +3185,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Frozen Potato Formulation",
     title: "Frozen French Fried Potatoes and Tater Tots (Representative Formulation)",
     ingredients: "Potatoes, Vegetable Oil (Canola, Soybean, and/or Sunflower Oil), Salt, Disodium Dihydrogen Pyrophosphate (to Retain Natural Color), Dextrose.",
-    imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 155, sugarsG100g: 0.8, saturatedFatG100g: 1.2, sodiumMg100g: 340, fiberG100g: 2.4, proteinG100g: 2.4, fruitsVegNutsPct: 75, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/170437/nutrients",
     verifiedAt: "2026-11-08",
@@ -3194,7 +3194,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "French's",
     title: "Original Crispy Fried Onions",
     ingredients: "Onions, Palm Oil, Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soy Flour, Salt, Dextrose.",
-    imageUrl: "/products/chips.jpg",
     nutrition: { caloriesKcal100g: 571, sugarsG100g: 5.0, saturatedFatG100g: 15.5, sodiumMg100g: 800, fiberG100g: 2.8, proteinG100g: 5.2, fruitsVegNutsPct: 20, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.mccormick.com/frenchs/products/crispy-fried-veggies/original-crispy-fried-onions",
     verifiedAt: "2026-11-08",
@@ -3204,7 +3203,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "A.1.",
     title: "Original Steak Sauce",
     ingredients: "Tomato Puree (Water, Tomato Paste), Vinegar, Corn Syrup, Salt, Raisin Paste, Crushed Orange Puree, Spice, Dried Garlic, Caramel Color, Dried Onions, Potassium Sorbate (To Preserve Freshness), Xanthan Gum, Celery Seed.",
-    imageUrl: "/products/ranch.jpg",
     nutrition: { caloriesKcal100g: 88, sugarsG100g: 17.6, saturatedFatG100g: 0, sodiumMg100g: 1470, fiberG100g: 0.5, proteinG100g: 1.0, fruitsVegNutsPct: 30, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.myfoodandfamily.com/brands/a1/product/00054400000016",
     verifiedAt: "2026-11-08",
@@ -3214,7 +3212,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Steak-umm",
     title: "100% Beef Sliced Steaks",
     ingredients: "100% Beef.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 280, sugarsG100g: 0, saturatedFatG100g: 9.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 17.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.steakumm.com/products/100-beef/",
     verifiedAt: "2026-11-08",
@@ -3224,7 +3221,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Sliced Beef Formulation",
     title: "Seasoned Shaved Beef Steak (Representative Formulation)",
     ingredients: "Beef, Water, Salt, Sodium Phosphate.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 280, sugarsG100g: 0, saturatedFatG100g: 9.5, sodiumMg100g: 310, fiberG100g: 0, proteinG100g: 17.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/174036/nutrients",
     verifiedAt: "2026-11-08",
@@ -3235,7 +3231,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Sliced Peaches in Heavy Syrup",
     keywords: ["yellow", "cling", "canned"],
     ingredients: "Peaches, Water, High Fructose Corn Syrup, Corn Syrup, Sugar.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 74, sugarsG100g: 17.5, saturatedFatG100g: 0, sodiumMg100g: 6, fiberG100g: 1.2, proteinG100g: 0.4, fruitsVegNutsPct: 55, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.delmonte.com/products/fruits/peaches/sliced-yellow-cling-peaches-heavy-syrup",
     verifiedAt: "2026-11-08",
@@ -3245,7 +3240,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Bakery Formulation",
     title: "Bakery Cake Roll with Creme Filling (Representative Formulation)",
     ingredients: "Sugar, Enriched Wheat Flour Bleached (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Eggs, Water, Pumpkin or Fruit Puree, High Fructose Corn Syrup, Soybean Oil, Palm Oil, Corn Syrup, Contains 2% or Less of: Modified Corn Starch, Mono- and Diglycerides, Polysorbate 60, Sodium Propionate (Preservative), Potassium Sorbate (Preservative), Sodium Acid Pyrophosphate, Soy Lecithin, Natural and Artificial Flavor, Spices, Yellow 5, Yellow 6, Red 40.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 375, sugarsG100g: 36, saturatedFatG100g: 7.5, sodiumMg100g: 330, fiberG100g: 1.0, proteinG100g: 3.8, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/175021/nutrients",
     verifiedAt: "2026-11-08",
@@ -3255,7 +3249,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Ben & Jerry's",
     title: "Cherry Garcia Ice Cream",
     ingredients: "Cream, Skim Milk, Liquid Sugar (Sugar, Water), Water, Cherries, Sugar, Egg Yolks, Coconut Oil, Cocoa (Processed with Alkali), Fruit and Vegetable Concentrates (Color), Cocoa Powder, Guar Gum, Natural Flavors, Lemon Juice Concentrate, Carrageenan, Milk Fat, Soy Lecithin.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 256, sugarsG100g: 24.0, saturatedFatG100g: 10.0, sodiumMg100g: 60, fiberG100g: 0.9, proteinG100g: 4.1, fruitsVegNutsPct: 12, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.benjerry.com/flavors/cherry-garcia-ice-cream",
     verifiedAt: "2026-11-08",
@@ -3265,7 +3258,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Häagen-Dazs",
     title: "Vanilla Dairy Ice Cream",
     ingredients: "Cream, Skim Milk, Cane Sugar, Egg Yolks, Vanilla Extract.",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 250, sugarsG100g: 21.0, saturatedFatG100g: 11.0, sodiumMg100g: 55, fiberG100g: 0, proteinG100g: 4.5, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.icecream.com/us/en/brands/haagen-dazs/products/vanilla-ice-cream",
     verifiedAt: "2026-11-08",
@@ -3275,7 +3267,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Ben & Jerry's",
     title: "Half Baked Ice Cream",
     ingredients: "Cream, Skim Milk, Liquid Sugar (Sugar, Water), Water, Sugar, Wheat Flour, Brown Sugar, Egg Yolks, Butter, Soybean Oil, Coconut Oil, Cocoa (Processed with Alkali), Eggs, Guar Gum, Salt, Vanilla Extract, Carrageenan, Soy Lecithin, Natural Flavor.",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 270, sugarsG100g: 25, saturatedFatG100g: 10.5, sodiumMg100g: 85, fiberG100g: 0.9, proteinG100g: 4.2, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.benjerry.com/flavors/half-baked-ice-cream",
     verifiedAt: "2026-11-08",
@@ -3285,7 +3276,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Dairy Ice Cream Formulation",
     title: "Dairy Ice Cream (Representative Formulation)",
     ingredients: "Cream, Skim Milk, Sugar, Corn Syrup, Egg Yolks, Guar Gum, Locust Bean Gum, Carrageenan, Natural Flavor, Annatto (Color).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 235, sugarsG100g: 22, saturatedFatG100g: 9.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 3.8, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/167575/nutrients",
     verifiedAt: "2026-11-08",
@@ -3295,7 +3285,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Just Bare",
     title: "Lightly Breaded Chicken Breast Strips",
     ingredients: "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Contains 2% or Less of: Yellow Corn Flour, Sea Salt, Rice Starch, Spices, Dried Garlic, Dried Onion, Paprika, Yeast, Cream of Tartar, Sodium Bicarbonate.",
-    imageUrl: "/swaps/turkey.jpg",
     nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 1.5, sodiumMg100g: 380, fiberG100g: 1.0, proteinG100g: 18.5, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.justbarefoods.com/product/lightly-breaded-chicken-breast-strips/",
     verifiedAt: "2026-11-08",
@@ -3306,7 +3295,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "All Natural Whole Turkey (With Salt Solution)",
     keywords: ["frozen", "young"],
     ingredients: "Turkey, Contains up to 8% of a Solution of Water, Salt, Spices, and Natural Flavor for Tenderness and Juiciness.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 160, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 310, fiberG100g: 0, proteinG100g: 19.0, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.butterball.com/products/whole-turkeys/all-natural-frozen-whole-turkey",
     verifiedAt: "2026-11-08",
@@ -3316,7 +3304,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Canned Vegetables",
     title: "Golden Sweet Whole Kernel Corn",
     ingredients: "Corn, Water, Sugar, Salt.",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 71, sugarsG100g: 5.3, saturatedFatG100g: 0.2, sodiumMg100g: 230, fiberG100g: 1.8, proteinG100g: 2.4, fruitsVegNutsPct: 85, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.delmonte.com/products/vegetables/corn/golden-sweet-whole-kernel-corn",
     verifiedAt: "2026-11-08",
@@ -3326,7 +3313,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "100% Fruit Juice",
     title: "100% Pasteurized Orange Juice",
     ingredients: "100% Pasteurized Orange Juice (Concentrated Natural Liquid Fruit Sugars — 0g Fiber).",
-    imageUrl: "/swaps/drink.png",
     nutrition: { caloriesKcal100g: 45, sugarsG100g: 9.2, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0.2, proteinG100g: 0.7, fruitsVegNutsPct: 100, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/169098/nutrients",
     verifiedAt: "2026-11-08",
@@ -3336,7 +3322,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Siete",
     title: "Grain-Free Sea Salt Tortilla Chips",
     ingredients: "Cassava Flour, Avocado Oil, Coconut Flour, Chia Seed, Sea Salt.",
-    imageUrl: "/swaps/chips.jpg",
     nutrition: { caloriesKcal100g: 464, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 265, fiberG100g: 6.5, proteinG100g: 3.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://sietefoods.com/products/sea-salt-grain-free-tortilla-chips",
     verifiedAt: "2026-11-08",
@@ -3346,7 +3331,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Siete",
     title: "Almond Flour Tortillas",
     ingredients: "Almond Flour, Tapioca Flour, Water, Xanthan Gum, Sea Salt.",
-    imageUrl: "/swaps/bread.jpg",
     nutrition: { caloriesKcal100g: 290, sugarsG100g: 2.0, saturatedFatG100g: 1.5, sodiumMg100g: 330, fiberG100g: 5.0, proteinG100g: 9.0, fruitsVegNutsPct: 45, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://sietefoods.com/products/almond-flour-tortillas",
     verifiedAt: "2026-11-08",
@@ -3356,7 +3340,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Mission",
     title: "Mission Carb Balance Soft Taco Flour Tortillas",
     ingredients: "Water, Modified Wheat Starch, Wheat Flour, Vital Wheat Gluten, Wheat Gluten Isolate, Vegetable Shortening (Interesterified and Hydrogenated Soybean Oils), Salt, Calcium Propionate (to Maintain Freshness), Distilled Monoglycerides, Sodium Acid Pyrophosphate, Baking Soda, Sorbic Acid (to Maintain Freshness), Fumaric Acid, Cellulose Gum, Steviol Glycosides.",
-    imageUrl: "/swaps/tortillas.png",
     nutrition: { caloriesKcal100g: 163, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 767, fiberG100g: 34.9, proteinG100g: 14.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic: false },
     sourceUrl: "https://www.missionfoods.com/products/carb-balance-soft-taco-flour-tortillas/",
     verifiedAt: "2026-11-12",
@@ -3366,7 +3349,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Mission",
     title: "Mission Soft Taco Flour Tortillas",
     ingredients: "Enriched Bleached Flour (Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Vegetable Shortening (Interesterified and Hydrogenated Soybean Oils), Contains 2% or Less of: Salt, Sugar, Baking Soda, Sodium Acid Pyrophosphate, Distilled Monoglycerides, Enzymes, Fumaric Acid, and Calcium Propionate and Sorbic Acid (to Maintain Freshness).",
-    imageUrl: "/swaps/tortillas.png",
     nutrition: { caloriesKcal100g: 286, sugarsG100g: 4.1, saturatedFatG100g: 3.1, sodiumMg100g: 857, fiberG100g: 2.0, proteinG100g: 8.2, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false, isOrganic: false },
     sourceUrl: "https://www.missionfoods.com/products/soft-taco-flour-tortillas/",
     verifiedAt: "2026-11-12",
@@ -3376,7 +3358,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Mission",
     title: "Mission White Corn Tortillas",
     ingredients: "Corn Masa Flour, Water, Contains 2% or Less of: Cellulose Gum, Guar Gum, Amylase, and Propionic Acid, Benzoic Acid and Phosphoric Acid (to Maintain Freshness).",
-    imageUrl: "/swaps/tortillas.png",
     nutrition: { caloriesKcal100g: 200, sugarsG100g: 4.0, saturatedFatG100g: 0, sodiumMg100g: 40, fiberG100g: 4.0, proteinG100g: 4.0, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: false },
     sourceUrl: "https://www.missionfoods.com/products/white-corn-tortillas/",
     verifiedAt: "2026-11-12",
@@ -3386,7 +3367,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Simple Mills",
     title: "Almond Flour Fine Ground Sea Salt Crackers",
     ingredients: "Nut and Seed Flour Blend (Almonds, Sunflower Seeds, Flax Seeds), Tapioca Starch, Cassava Flour, Organic Sunflower Oil, Sea Salt, Organic Onion, Organic Garlic, Rosemary Extract (For Freshness).",
-    imageUrl: "/swaps/crackers.jpg",
     nutrition: { caloriesKcal100g: 500, sugarsG100g: 0, saturatedFatG100g: 3.3, sodiumMg100g: 600, fiberG100g: 6.7, proteinG100g: 10.0, fruitsVegNutsPct: 50, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.simplemills.com/Shop/Product/Almond-Flour-Crackers-Fine-Ground-Sea-Salt.aspx",
     verifiedAt: "2026-11-08",
@@ -3396,7 +3376,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Mary's Gone Crackers",
     title: "Organic Original Seed Crackers",
     ingredients: "Organic brown rice, organic quinoa, organic flax seeds, organic sesame seeds, organic tamari (water, organic soybeans, salt, organic vinegar), sea salt.",
-    imageUrl: "/swaps/crackers.jpg",
     nutrition: { caloriesKcal100g: 150 / 0.3, sugarsG100g: 0, saturatedFatG100g: 0.5 / 0.3, sodiumMg100g: 180 / 0.3, fiberG100g: 3 / 0.3, proteinG100g: 4 / 0.3, isWholeFood: false, isOrganic: true , nutriScoreGrade: "c"},
     sourceUrl: "https://www.marysgonecrackers.com/products/marys-gone-crackers-original-crackers",
     verifiedAt: "2026-11-09",
@@ -3406,7 +3385,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Crunchmaster",
     title: "6-Seed Multi-Grain Baked Crackers",
     ingredients: "Brown Rice Flour, Whole Grain Yellow Corn, Potato Starch, Safflower Oil, Oat Fiber, Cane Sugar, Sesame Seeds, Flax Seeds, Millet, Quinoa Seeds, Amaranth Seeds, Chia Seeds, Sea Salt, Tamari Soy Sauce Powder (Tamari Soy Sauce [Soybeans, Salt], Maltodextrin, Salt).",
-    imageUrl: "/swaps/crackers.jpg",
     nutrition: { caloriesKcal100g: 465, sugarsG100g: 3.5, saturatedFatG100g: 1.8, sodiumMg100g: 450, fiberG100g: 7.0, proteinG100g: 7.0, fruitsVegNutsPct: 25, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://crunchmaster.com/product/multi-seed-original/",
     verifiedAt: "2026-11-08",
@@ -3416,7 +3394,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Baked Crackers",
     title: "Enriched Baked Snack Crackers",
     ingredients: "Unbleached Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Soybean and/or Canola Oil, Palm Oil, Sugar, Salt, Leavening (Calcium Phosphate, Baking Soda), Soy Lecithin, Natural Flavor.",
-    imageUrl: "/products/crackers.jpg",
     nutrition: { caloriesKcal100g: 480, sugarsG100g: 6.5, saturatedFatG100g: 7.0, sodiumMg100g: 720, fiberG100g: 2.0, proteinG100g: 7.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/175007/nutrients",
     verifiedAt: "2026-11-08",
@@ -3426,7 +3403,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Birds Eye",
     title: "Sauced Frozen Vegetables",
     ingredients: "Vegetables (Broccoli, Carrots, Corn), Water, Cheddar Cheese (Cultured Milk, Salt, Enzymes, Annatto), Modified Corn Starch, Skim Milk, Whey, Butter (Cream, Salt), Soybean Oil, Salt, Sodium Phosphate, Xanthan Gum, Natural Flavor, Annatto and Paprika Extract (Color).",
-    imageUrl: "/products/snacks.jpg",
     nutrition: { caloriesKcal100g: 85, sugarsG100g: 3.0, saturatedFatG100g: 2.5, sodiumMg100g: 340, fiberG100g: 2.0, proteinG100g: 3.5, fruitsVegNutsPct: 70, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.birdseye.com/sauced-seasoned/sauced/steamfresh-cheddar-broccoli",
     verifiedAt: "2026-11-08",
@@ -3436,7 +3412,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Birds Eye Steamfresh",
     title: "Steamfresh Frozen Vegetables",
     ingredients: "100% Flash-Frozen Whole Vegetables: Broccoli, Carrots, Baby Cob Corn, Sugar Snap Peas.",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 42, sugarsG100g: 3.5, saturatedFatG100g: 0.1, sodiumMg100g: 20, fiberG100g: 2.8, proteinG100g: 2.0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true },
     sourceUrl: "https://www.birdseye.com/plain-vegetables/steamfresh-selects/mixed-vegetables",
     verifiedAt: "2026-11-08",
@@ -3446,7 +3421,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Nathan's Famous",
     title: "Skinless Beef Franks",
     ingredients: "Beef, Water, Contains 2% or Less of Salt, Sorbitol, Sodium Lactate, Natural Flavorings, Sodium Phosphate, Hydrolyzed Corn Protein, Paprika, Sodium Diacetate, Sodium Erythorbate, Sodium Nitrite.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 295, sugarsG100g: 0, saturatedFatG100g: 10.5, sodiumMg100g: 860, fiberG100g: 0, proteinG100g: 12.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://nathansfranks.sfdbrands.com/en-us/products/hot-dogs/skinless-beef-franks-12-oz/",
     verifiedAt: "2026-11-08",
@@ -3456,7 +3430,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Hebrew National",
     title: "All-Beef Kosher Franks",
     ingredients: "Beef, Water, Contains 2% or Less of: Salt, Spice, Potassium Lactate, Sodium Lactate, Garlic Powder, Paprika, Hydrolyzed Soy Protein, Sodium Diacetate, Sodium Erythorbate, Flavorings, Sodium Nitrite.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 305, sugarsG100g: 0, saturatedFatG100g: 11.5, sodiumMg100g: 910, fiberG100g: 0, proteinG100g: 12.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.hebrewnational.com/kosher-hot-dogs/beef-franks",
     verifiedAt: "2026-11-08",
@@ -3466,7 +3439,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Beef Franks Formulation",
     title: "Beef Franks and Hot Dogs (Representative Formulation)",
     ingredients: "Beef, Water, Corn Syrup, Contains 2% or Less of: Salt, Potassium Lactate, Hydrolyzed Beef Stock, Sodium Phosphate, Flavorings, Sodium Diacetate, Sodium Erythorbate, Sodium Nitrite, Extractives of Paprika.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 315, sugarsG100g: 3.8, saturatedFatG100g: 11.5, sodiumMg100g: 980, fiberG100g: 0, proteinG100g: 11.5, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/174576/nutrients",
     verifiedAt: "2026-11-08",
@@ -3476,7 +3448,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "McCormick",
     title: "Bac'n Pieces Bacon Flavored Bits",
     ingredients: "Textured Soy Flour, Canola Oil, Salt, Caramel Color, Maltodextrin, Natural and Artificial Flavor, Lactic Acid, Yeast Extract, Disodium Inosinate and Disodium Guanylate (Flavor Enhancers), Red 40.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 428, sugarsG100g: 0, saturatedFatG100g: 2.0, sodiumMg100g: 2280, fiberG100g: 14.0, proteinG100g: 42.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.mccormick.com/spices-and-flavors/other/bacn-pieces-bacon-flavored-bits",
     verifiedAt: "2026-11-08",
@@ -3486,7 +3457,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Rotisserie Deli",
     title: "Seasoned Rotisserie Whole Chicken",
     ingredients: "Whole Chicken, Water, Salt, Sodium Phosphate, Sugar, Spices, Garlic Powder, Onion Powder, Natural Flavor.",
-    imageUrl: "/products/turkey.jpg",
     nutrition: { caloriesKcal100g: 165, sugarsG100g: 0.5, saturatedFatG100g: 3.2, sodiumMg100g: 390, fiberG100g: 0, proteinG100g: 21.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/171481/nutrients",
     verifiedAt: "2026-11-08",
@@ -3496,7 +3466,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "De Cecco",
     title: "Potato Gnocchi Pasta",
     ingredients: "Potato Puree (Water, Dehydrated Potato Flakes), Wheat Flour, Potato Starch, Rice Flour, Salt, Acidity Regulator (Lactic Acid), Preservative (Potassium Sorbate).",
-    imageUrl: "/swaps/bread.jpg",
     nutrition: { caloriesKcal100g: 160, sugarsG100g: 1.0, saturatedFatG100g: 0.2, sodiumMg100g: 410, fiberG100g: 2.2, proteinG100g: 4.5, fruitsVegNutsPct: 65, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.dececco.com/us_us/product/gnocchi/",
     verifiedAt: "2026-11-08",
@@ -3505,9 +3474,9 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(hellmann'?s|best\s+foods)\b.*\b(olive\s+oil)\b.*\b(mayo|mayonnaise|dressing)\b|\b(hellmann'?s|best\s+foods)\b.*\b(mayo|mayonnaise)\b.*\b(olive\s+oil)\b/i,
     brand: "Hellmann's",
     title: "Mayonnaise Dressing with Olive Oil",
+    barcode: "0048001354531",
     keywords: ["best foods"],
     ingredients: "Water, Olive Oil, Canola Oil, Soybean Oil, Modified Potato Starch, Eggs, Sugar, Salt, Vinegar, Lemon Juice, Sorbic Acid and Calcium Disodium EDTA (Used to Protect Quality), Natural Flavor, Vitamin E.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Hellmann's%20Mayonnaise%20Dressing%20with%20Olive%20Oil",
     nutrition: { caloriesKcal100g: 400, sugarsG100g: 0, saturatedFatG100g: 5.0, sodiumMg100g: 600, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 15, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.hellmanns.com/us/en/p/mayonnaise-dressing-with-olive-oil.html/00048001354531",
     verifiedAt: "2026-11-08",
@@ -3516,8 +3485,8 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /\b(kraft)\b.*\b(olive\s+oil)\b.*\b(mayo|mayonnaise)\b|\b(kraft)\b.*\b(mayo|mayonnaise)\b.*\b(olive\s+oil)\b/i,
     brand: "Kraft",
     title: "Mayo with Olive Oil Reduced Fat Mayonnaise",
+    barcode: "0021000642236",
     ingredients: "Water, Olive Oil, Soybean Oil, Vinegar, Modified Food Starch, Sugar, Maltodextrin, Eggs, Contains Less than 2% of Salt, Natural Flavor, Mustard Flour, Potassium Sorbate and Calcium Disodium EDTA (to Protect Flavor), Dried Onions, Dried Garlic, Beta Carotene (Color).",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Kraft%20Mayo%20with%20Olive%20Oil",
     nutrition: { caloriesKcal100g: 333, sugarsG100g: 6.7, saturatedFatG100g: 3.3, sodiumMg100g: 633, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 15, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.kraftheinz.com/kraft-mayo/products/00021000642236-mayo-with-olive-oil-reduced-fat-mayonnaise",
     verifiedAt: "2026-11-08",
@@ -3527,7 +3496,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Primal Kitchen",
     title: "Real Mayonnaise Made with Avocado Oil",
     ingredients: "Avocado Oil, Organic Eggs, Organic Egg Yolks, Organic Vinegar, Sea Salt, Organic Rosemary Extract.",
-    imageUrl: "/swaps/mayo.png",
     nutrition: { caloriesKcal100g: 714, sugarsG100g: 0, saturatedFatG100g: 7.1, sodiumMg100g: 393, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 82, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.primalkitchen.com/products/avocado-oil-mayo",
     verifiedAt: "2026-11-10",
@@ -3537,7 +3505,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Primal Kitchen",
     title: "Ranch Dressing & Marinade Made with Avocado Oil",
     ingredients: "Avocado Oil, Water, Organic Apple Cider Vinegar, Organic Distilled Vinegar, Organic Egg Yolks, Sea Salt, Organic Lemon Juice Concentrate, Organic Onion Powder, Organic Garlic Powder, Organic Dill, Organic Parsley, Organic Chives, Organic Black Pepper, Organic Rosemary Extract.",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 433, sugarsG100g: 0, saturatedFatG100g: 5.0, sodiumMg100g: 667, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 75, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.primalkitchen.com/products/ranch-dressing",
     verifiedAt: "2026-11-10",
@@ -3547,7 +3514,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Chosen Foods",
     title: "Classic Avocado Oil Mayonnaise",
     ingredients: "Avocado Oil, Filtered Water, Whole Eggs, Egg Yolks, Organic Distilled White Vinegar, Organic Mustard (Distilled Vinegar, Water, Organic Mustard Seed, Salt, Organic Spices), Salt, Organic Rosemary Extract.",
-    imageUrl: "/swaps/mayo.png",
     nutrition: { caloriesKcal100g: 714, sugarsG100g: 0, saturatedFatG100g: 7.1, sodiumMg100g: 393, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 82, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://chosenfoods.com/products/classic-avocado-oil-mayo",
     verifiedAt: "2026-11-10",
@@ -3557,7 +3523,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Boulder Canyon",
     title: "Avocado Oil Classic Sea Salt Kettle Cooked Potato Chips",
     ingredients: "Potatoes, Avocado Oil, Sea Salt.",
-    imageUrl: "/swaps/chips.jpg",
     nutrition: { caloriesKcal100g: 535, sugarsG100g: 0, saturatedFatG100g: 5.3, sodiumMg100g: 392, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 80, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.utzsnacks.com/products/boulder-canyon-kettle-cooked-potato-chips-avocado-oil-classic-sea-salt",
     verifiedAt: "2026-11-08",
@@ -3567,7 +3532,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Chosen Foods",
     title: "100% Pure Avocado Oil",
     ingredients: "100% Pure Avocado Oil (Expeller-Pressed Single-Ingredient Fruit Oil).",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 884, sugarsG100g: 0, saturatedFatG100g: 14.0, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true },
     sourceUrl: "https://chosenfoods.com/products/100-pure-avocado-oil",
     verifiedAt: "2026-11-08",
@@ -3577,7 +3541,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Pompeian",
     title: "100% Extra Virgin Olive Oil",
     ingredients: "100% Extra Virgin Olive Oil (Cold-Pressed Single-Ingredient Fruit Oil).",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 884, sugarsG100g: 0, saturatedFatG100g: 14.0, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isWholeFood: true },
     sourceUrl: "https://www.pompeian.com/product/smooth-extra-virgin-olive-oil/",
     verifiedAt: "2026-11-10",
@@ -3587,7 +3550,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Extra Virgin Olive Oil",
     title: "100% Extra Virgin Olive Oil",
     ingredients: "100% Extra Virgin Olive Oil (Cold-Pressed Single-Ingredient Fruit Oil).",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 884, sugarsG100g: 0, saturatedFatG100g: 14.0, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "b", isWholeFood: true },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/748608/nutrients",
     verifiedAt: "2026-11-10",
@@ -3597,7 +3559,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Kellogg's Eggo",
     title: "Eggo Homestyle Waffles",
     ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola, and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Contains 2% or Less of Salt, Dextrose, Spice, Whey, Eggs, Soy Lecithin, Beta-Carotene for Color, Calcium Carbonate, Iron, Vitamin A Palmitate, Vitamin B6, Vitamin B12.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Kellogg's%20Eggo%20Homestyle%20Waffles",
     nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 514, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.eggo.com/en_US/products/waffles/kellogg-s-eggo-homestyle-waffles-product.html",
     verifiedAt: "2026-11-08",
@@ -3606,8 +3567,8 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /^(?!.*\b(strawberry|strawberries|blueberry|blueberries|pineapple|peach|brown\s+sugar|cinnamon|chive|onion|garlic|herb|jalapeno|spicy|salmon|garden\s+vegetable|veggie|whipped|reduced\s+fat|less\s+fat|1\/3|neufchatel|fat\s+free|lactose\s+free|plant[\s-]*based|cheesecake)\b).*\bphiladelphia\b.*\bcream\s+cheese\b/i,
     brand: "Philadelphia",
     title: "Original Cream Cheese",
+    barcode: "0021000612239",
     ingredients: "Pasteurized Milk and Cream, Salt, Carob Bean Gum, Cheese Culture.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Philadelphia%20Original%20Cream%20Cheese",
     nutrition: { caloriesKcal100g: 345, sugarsG100g: 3.6, saturatedFatG100g: 21.4, sodiumMg100g: 393, fiberG100g: 0, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.kraftheinz.com/philadelphia/products/00021000612239-original-cream-cheese-brick",
     verifiedAt: "2026-11-12",
@@ -3617,7 +3578,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Frozen Waffle Formulation",
     title: "Frozen Waffles (Representative Formulation)",
     ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, Vegetable Oil (Soybean and/or Canola), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Salt, Whey, Eggs, Soy Lecithin.",
-    imageUrl: "/products/bread.jpg",
     nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 514, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/175040/nutrients",
     verifiedAt: "2026-11-08",
@@ -3627,7 +3587,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Representative Cured Bacon Formulation",
     title: "100% Real Crumbled Bacon (Representative Formulation)",
     ingredients: "Bacon (Cured with Water, Salt, Sugar, Smoke Flavoring, Sodium Phosphate, Sodium Erythorbate, Sodium Nitrite).",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=100%25%20Real%20Crumbled%20Bacon",
     nutrition: { caloriesKcal100g: 428, sugarsG100g: 0, saturatedFatG100g: 12.5, sodiumMg100g: 1570, fiberG100g: 0, proteinG100g: 42.8, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.hormel.com/brands/hormel-real-bacon-toppings/product/real-crumbled-bacon/",
     verifiedAt: "2026-11-08",
@@ -3637,7 +3596,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Member's Mark",
     title: "Member's Mark USDA Choice Angus Beef Roast",
     ingredients: "100% USDA Choice Angus Beef.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Member's%20Mark%20USDA%20Choice%20Angus%20Beef%20Roast",
     nutrition: { caloriesKcal100g: 185, sugarsG100g: 0, saturatedFatG100g: 3.5, sodiumMg100g: 65, fiberG100g: 0, proteinG100g: 22.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/174032/nutrients",
     verifiedAt: "2026-11-08",
@@ -3647,7 +3605,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Purina",
     title: "Purina Dog Chow Complete Adult Dry Dog Food",
     ingredients: "Whole Grain Corn, Meat and Bone Meal, Corn Gluten Meal, Beef Fat Preserved with Mixed-Tocopherols, Soybean Meal, Poultry By-Product Meal, Egg and Chicken Flavor, Whole Grain Wheat, Animal Digest, Salt, Calcium Carbonate, Potassium Chloride, Mono and Dicalcium Phosphate, Choline Chloride, Minerals, Vitamins, Yellow 6, Yellow 5, Red 40, Blue 2, BHA (Preservative).",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Purina%20Dog%20Chow%20Complete%20Adult%20Dry%20Dog%20Food",
     nutrition: { caloriesKcal100g: 355, sugarsG100g: 2.0, saturatedFatG100g: 4.5, sodiumMg100g: 380, fiberG100g: 3.0, proteinG100g: 21.0, fruitsVegNutsPct: 0, isWholeFood: false },
     sourceUrl: "https://www.purina.com/dogs/dog-food/dry/dog-chow-complete-adult",
     verifiedAt: "2026-11-08",
@@ -3657,7 +3614,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "RXBAR",
     title: "Chocolate Sea Salt Whole Food Protein Bar",
     ingredients: "Dates, Egg Whites, Cashews, Almonds, Chocolate, Cocoa, Natural Flavors, Sea Salt.",
-    imageUrl: "/swaps/fruitbar.png",
     nutrition: { caloriesKcal100g: 404, sugarsG100g: 28.8, saturatedFatG100g: 3.8, sodiumMg100g: 500, fiberG100g: 9.6, proteinG100g: 23.1, fruitsVegNutsPct: 75, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.rxbar.com/en_US/shop/protein-bars/chocolate-sea-salt-box-of-12.html",
     verifiedAt: "2026-11-09",
@@ -3667,7 +3623,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "LÄRABAR",
     title: "Fruit & Nut Whole Food Bar",
     ingredients: "Dates, Peanuts, Unsweetened Chocolate, Sea Salt.",
-    imageUrl: "/swaps/snacks.jpg",
     nutrition: { caloriesKcal100g: 444, sugarsG100g: 35.5, saturatedFatG100g: 6.5, sodiumMg100g: 140, fiberG100g: 8.9, proteinG100g: 11.1, fruitsVegNutsPct: 90, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.larabar.com/our-products/larabar/peanut-butter-chocolate-chip",
     verifiedAt: "2026-11-08",
@@ -3677,7 +3632,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Bonne Maman",
     title: "Fruit Preserves",
     ingredients: "Strawberries, Sugar, Cane Sugar, Concentrated Lemon Juice, Fruit Pectin.",
-    imageUrl: "/swaps/jam.png",
     nutrition: { caloriesKcal100g: 250, sugarsG100g: 60.0, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 1.0, proteinG100g: 0.4, fruitsVegNutsPct: 50, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://bonnemaman.us/products/strawberry-preserves-13-oz",
     verifiedAt: "2026-11-08",
@@ -3687,7 +3641,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Wholly Guacamole",
     title: "Classic Hass Avocado Guacamole",
     ingredients: "Hass Avocados, Distilled Vinegar, Jalapeño Pepper, Sea Salt, Dehydrated Onion, Granulated Garlic.",
-    imageUrl: "/swaps/salsa.png",
     nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 2.5, sodiumMg100g: 370, fiberG100g: 6.5, proteinG100g: 2.0, fruitsVegNutsPct: 95, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.eatwholly.com/products/wholly-guacamole/classic-guacamole/",
     verifiedAt: "2026-11-08",
@@ -3697,7 +3650,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Claussen",
     title: "Refrigerated Kosher Dill Pickles",
     ingredients: "Fresh Cucumbers, Water, Salt, Distilled Vinegar, Fresh Garlic, Fresh Dill, Spices, Mustard Seed.",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 18, sugarsG100g: 1.0, saturatedFatG100g: 0, sodiumMg100g: 750, fiberG100g: 1.2, proteinG100g: 0.5, fruitsVegNutsPct: 90, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.myfoodandfamily.com/brands/claussen/product/00044700019559",
     verifiedAt: "2026-11-08",
@@ -3707,7 +3659,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Mediterranean Olives",
     title: "Pitted Olives in Brine",
     ingredients: "Olives, Water, Sea Salt, Red Wine Vinegar, Extra Virgin Olive Oil.",
-    imageUrl: "/swaps/produce.png",
     nutrition: { caloriesKcal100g: 145, sugarsG100g: 0, saturatedFatG100g: 2.0, sodiumMg100g: 1150, fiberG100g: 3.2, proteinG100g: 1.0, fruitsVegNutsPct: 95, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/169094/nutrients",
     verifiedAt: "2026-11-08",
@@ -3717,7 +3668,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Food for Life Ezekiel 4:9",
     title: "Organic Ezekiel 4:9 Sprouted Whole Grain Bread",
     ingredients: "Organic Sprouted Wheat, Filtered Water, Organic Sprouted Barley, Organic Sprouted Millet, Organic Malted Barley, Organic Sprouted Lentils, Organic Sprouted Soybeans, Organic Sprouted Spelt, Fresh Yeast, Organic Wheat Gluten, Sea Salt.",
-    imageUrl: "/swaps/bread.jpg",
     nutrition: { caloriesKcal100g: 235, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 220, fiberG100g: 8.8, proteinG100g: 14.7, fruitsVegNutsPct: 15, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.foodforlife.com/product/breads/ezekiel-49-sprouted-whole-grain-bread",
     verifiedAt: "2026-11-10",
@@ -3727,7 +3677,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Dave's Killer Bread",
     title: "Organic 21 Whole Grains and Seeds Bread",
     ingredients: "Organic Whole Wheat (Organic Whole Wheat Flour, Organic Cracked Whole Wheat), Water, Organic Cane Sugar, Organic 21 Whole Grains and Seeds Mix (Organic Whole Flax Seeds, Organic Sunflower Seeds, Organic Ground Whole Flax Seeds, Organic Unhulled Brown Sesame Seeds, Organic Triticale, Organic Pumpkin Seeds, Organic Rolled Barley, Organic Rolled Oats, Organic Rye, Organic Unhulled Black Sesame Seeds, Organic Blue Cornmeal, Organic Millet, Organic Rolled Spelt, Organic Brown Rice Flour, Organic Amaranth Flour, Organic Yellow Cornmeal, Organic Kamut Khorasan Wheat, Organic Sorghum Flour, Organic Buckwheat Flour, Organic Quinoa, Organic Poppy Seeds), Organic Wheat Gluten, Organic Oat Fiber, Organic Molasses, Sea Salt, Organic Cultured Wheat Flour, Yeast, Organic Vinegar, Organic Acerola Cherry Powder, Enzymes.",
-    imageUrl: "/swaps/bread.jpg",
     nutrition: { caloriesKcal100g: 244, sugarsG100g: 11.1, saturatedFatG100g: 0, sodiumMg100g: 378, fiberG100g: 11.1, proteinG100g: 11.1, fruitsVegNutsPct: 15, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.daveskillerbread.com/21-whole-grains-and-seeds",
     verifiedAt: "2026-11-09",
@@ -3737,7 +3686,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "KIND",
     title: "KIND Dark Chocolate Nuts & Sea Salt Bar",
     ingredients: "Almonds, Chicory Root Fiber, Honey, Palm Kernel Oil, Sugar, Glucose Syrup, Rice Flour, Unsweetened Chocolate, Alkalized Cocoa, Soy Lecithin, Sea Salt, Natural Flavor, Cocoa Butter.",
-    imageUrl: "/swaps/fruitbar.png",
     nutrition: { caloriesKcal100g: 450, sugarsG100g: 12.5, saturatedFatG100g: 7.5, sodiumMg100g: 310, fiberG100g: 17.5, proteinG100g: 15.0, fruitsVegNutsPct: 60, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.kindsnacks.com/products/dark-chocolate-nuts-sea-salt",
     verifiedAt: "2026-11-08",
@@ -3747,7 +3695,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Inglehoffer",
     title: "Inglehoffer Hot Creamy Wasabi Horseradish Sauce",
     ingredients: "Soybean Oil, Water, Horseradish, High Fructose Corn Syrup, White Distilled Vinegar, Egg Yolks, Corn Syrup, Modified Food Starch, Contains Less than 2% of Wasabi Powder, Salt, Mustard Seed, Citric Acid, Mustard Bran, Spices, Xanthan Gum, Sodium Benzoate and Calcium Disodium EDTA (to Preserve Freshness), Artificial Flavor, Yellow 5, Blue 1.",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 340, sugarsG100g: 12.0, saturatedFatG100g: 5.0, sodiumMg100g: 780, fiberG100g: 2.0, proteinG100g: 1.0, fruitsVegNutsPct: 20, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://beavertonfoods.com/product/inglehoffer-wasabi-horseradish-9-5-oz/",
     verifiedAt: "2026-11-08",
@@ -3777,7 +3724,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Wasabi-O",
     title: "Wasabi-O Real Prepared Wasabi Paste",
     ingredients: "Water, Wasabi Japonica, Horseradish, Rice Bran Oil, Salt, Sorbitol, Citric Acid, Xanthan Gum, Turmeric, Spirulina Extract.",
-    imageUrl: "/swaps/ranch.jpg",
     nutrition: { caloriesKcal100g: 240, sugarsG100g: 8.0, saturatedFatG100g: 1.5, sodiumMg100g: 1850, fiberG100g: 4.0, proteinG100g: 2.0, fruitsVegNutsPct: 45, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.wasabi-o.com/products/wasabi-paste",
     verifiedAt: "2026-11-08",
@@ -3787,7 +3733,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Wicked Cutz",
     title: "Wicked Cutz Thick Cut Bacon Jerky",
     ingredients: "Pork, Water, Brown Sugar, Sugar, Salt, Maple Syrup, Vinegar, Celery Powder, Sea Salt, Natural Smoke Flavor.",
-    imageUrl: "/swaps/bacon.png",
     nutrition: { caloriesKcal100g: 390, sugarsG100g: 14.0, saturatedFatG100g: 8.5, sodiumMg100g: 1250, fiberG100g: 0, proteinG100g: 35.0, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://wickedcutz.com/products/maple-bacon-jerky",
     verifiedAt: "2026-11-08",
@@ -3797,7 +3742,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Freshness Guaranteed",
     title: "Freshness Guaranteed Glazed Donuts",
     ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Sugar, Palm Oil, Soybean Oil, Dextrose, Yeast, Soy Flour, Salt, Mono- and Diglycerides, Sodium Stearoyl Lactylate, Calcium Propionate (to Preserve Freshness), Artificial Flavor, Yellow 5, Yellow 6.",
-    imageUrl: "/swaps/bread.jpg",
     nutrition: { caloriesKcal100g: 410, sugarsG100g: 24.5, saturatedFatG100g: 9.8, sodiumMg100g: 340, fiberG100g: 1.5, proteinG100g: 4.8, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.walmart.com/ip/Freshness-Guaranteed-Glazed-Donuts-12-oz-6-Count/425027592",
     verifiedAt: "2026-11-09",
@@ -3807,7 +3751,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Freshness Guaranteed",
     title: "Freshness Guaranteed Regular Raspberry Bismark",
     ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Raspberry Filling (High Fructose Corn Syrup, Water, Raspberries, Sugar, Modified Food Starch, Citric Acid, Sodium Benzoate, Potassium Sorbate, Red 40, Blue 1, Artificial Flavor), Palm Oil, Soybean Oil, Sugar, Dextrose, Yeast, Mono- and Diglycerides, Salt.",
-    imageUrl: "/swaps/cookies.png",
     nutrition: { caloriesKcal100g: 350, sugarsG100g: 26.0, saturatedFatG100g: 7.5, sodiumMg100g: 310, fiberG100g: 1.5, proteinG100g: 4.5, fruitsVegNutsPct: 5, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.walmart.com/ip/Freshness-Guaranteed-Regular-Raspberry-Bismark-Donuts-4-Count-11-oz/133163700",
     verifiedAt: "2026-11-09",
@@ -3817,7 +3760,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Freshness Guaranteed",
     title: "Freshness Guaranteed Raspberry Filled Bismark",
     ingredients: "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Raspberry Filling (High Fructose Corn Syrup, Water, Raspberries, Sugar, Modified Food Starch, Citric Acid, Sodium Benzoate, Potassium Sorbate, Red 40, Blue 1, Artificial Flavor), Palm Oil, Soybean Oil, Sugar, Dextrose, Yeast, Mono- and Diglycerides, Salt.",
-    imageUrl: "/swaps/cookies.png",
     nutrition: { caloriesKcal100g: 350, sugarsG100g: 26.0, saturatedFatG100g: 7.5, sodiumMg100g: 310, fiberG100g: 1.5, proteinG100g: 4.5, fruitsVegNutsPct: 5, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.walmart.com/ip/Freshness-Guaranteed-Raspberry-Filled-Bismark-Donuts-12-Count-33-oz/884122662",
     verifiedAt: "2026-11-09",
@@ -3837,7 +3779,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "My Cookie Dealer",
     title: "My Cookie Dealer Protein Toaster Pastry Powdered",
     ingredients: "Enriched Wheat Flour, Whey Protein Isolate, Milk Protein Isolate, Palm Oil, Sugar, Strawberry Filling (Sugar, Strawberries, Water, Pectin, Citric Acid, Potassium Sorbate, Red 40), Soluble Corn Fiber, Allulose, Glycerin, Egg Whites, Natural and Artificial Flavors, Soy Lecithin, Sucralose, Sodium Benzoate.",
-    imageUrl: "/swaps/cookies.png",
     nutrition: { caloriesKcal100g: 325, sugarsG100g: 11.0, saturatedFatG100g: 7.0, sodiumMg100g: 360, fiberG100g: 5.5, proteinG100g: 18.0, fruitsVegNutsPct: 5, nutriScoreGrade: "d", isWholeFood: false },
     sourceUrl: "https://www.walmart.com/ip/My-Cookie-Dealer-Protein-Toaster-Pastry-Powdered-Strawberry-3-88-oz/5470560138",
     verifiedAt: "2026-11-09",
@@ -3847,7 +3788,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Marketside Butcher",
     title: "Marketside Butcher Organic Grass-Fed 93% Lean 7% Fat Ground Beef",
     ingredients: "100% Organic Grass-Fed Beef.",
-    imageUrl: "/swaps/beef.png",
     nutrition: { caloriesKcal100g: 152, sugarsG100g: 0, saturatedFatG100g: 2.9, sodiumMg100g: 66, fiberG100g: 0, proteinG100g: 20.8, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
     sourceUrl: "https://www.walmart.com/ip/Marketside-Butcher-Organic-Grass-Fed-93-Lean-7-Fat-Ground-Beef-1-lb-Tray-Fresh-All-Natural/44391005",
     verifiedAt: "2026-11-10",
@@ -3857,7 +3797,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "USDA Organic Grass-Fed Beef",
     title: "Organic Grass-Fed Ground Beef",
     ingredients: "100% Organic Grass-Fed Beef.",
-    imageUrl: "/swaps/beef.png",
     nutrition: { caloriesKcal100g: 152, sugarsG100g: 0, saturatedFatG100g: 2.9, sodiumMg100g: 66, fiberG100g: 0, proteinG100g: 20.8, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
     sourceUrl: "https://fdc.nal.usda.gov/food-details/168652/nutrients",
     verifiedAt: "2026-11-10",
@@ -3867,7 +3806,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Stonyfield Organic",
     title: "Stonyfield Organic Whole Milk Plain Yogurt",
     ingredients: "Cultured Pasteurized Organic Whole Milk, Pectin, Vitamin D3. Live and Active Cultures: S. thermophilus, L. bulgaricus, L. acidophilus, Bifidus, L. paracasei, and L. rhamnosus.",
-    imageUrl: "/swaps/yogurt.jpg",
     nutrition: { caloriesKcal100g: 65, sugarsG100g: 4.1, saturatedFatG100g: 2.1, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.stonyfield.com/products/whole-milk-plain-32oz/",
     verifiedAt: "2026-11-10",
@@ -3877,7 +3815,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Organic Valley",
     title: "Organic Valley Organic Raw Sharp Cheddar Cheese",
     ingredients: "Organic Unpasteurized Cultured Milk, Salt, Vegetarian Enzymes.",
-    imageUrl: "/swaps/cheese.png",
     nutrition: { caloriesKcal100g: 393, sugarsG100g: 0, saturatedFatG100g: 21.4, sodiumMg100g: 643, fiberG100g: 0, proteinG100g: 25.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.organicvalley.coop/products/cheese/cheddar/raw-sharp-cheddar-cheese-8-oz/",
     verifiedAt: "2026-11-10",
@@ -3887,7 +3824,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Applegate Organics",
     title: "Applegate Organics Oven Roasted Turkey Breast",
     ingredients: "Organic Turkey Breast, Water. Contains Less Than 2% Of The Following: Salt, Organic Potato Starch, Organic Rosemary Extract.",
-    imageUrl: "/swaps/turkey.jpg",
     nutrition: { caloriesKcal100g: 89, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 607, fiberG100g: 0, proteinG100g: 19.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://applegate.com/products/applegate-organics-oven-roasted-turkey-breast",
     verifiedAt: "2026-11-10",
@@ -3897,7 +3833,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Lotus Foods",
     title: "Lotus Foods Organic Millet & Brown Rice Ramen",
     ingredients: "Organic Brown Rice Flour, Organic Millet Flour.",
-    imageUrl: "/swaps/soup.png",
     nutrition: { caloriesKcal100g: 371, sugarsG100g: 0, saturatedFatG100g: 0.7, sodiumMg100g: 0, fiberG100g: 4.3, proteinG100g: 8.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.lotusfoods.com/products/organic-millet-brown-rice-ramen-4-pack",
     verifiedAt: "2026-11-10",
@@ -3908,7 +3843,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Rao's Homemade Marinara Sauce",
     keywords: ["pasta"],
     ingredients: "Italian Whole Peeled Tomatoes, Olive Oil, Onions, Salt, Garlic, Basil, Black Pepper, Oregano.",
-    imageUrl: "/swaps/marinara.png",
     nutrition: { caloriesKcal100g: 80, sugarsG100g: 3.2, saturatedFatG100g: 0.8, sodiumMg100g: 336, fiberG100g: 1.6, proteinG100g: 1.6, fruitsVegNutsPct: 90, nutriScoreGrade: "a", isWholeFood: false, isOrganic: false },
     sourceUrl: "https://www.raos.com/products/marinara-sauce",
     verifiedAt: "2026-11-10",
@@ -3928,7 +3862,6 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     brand: "Kraft",
     title: "Kraft Real Mayo Creamy Smooth Mayonnaise",
     ingredients: "Soybean Oil, Water, Eggs, Vinegar, Contains Less Than 2% of Egg Yolks, Lemon Juice Concentrate, Salt, Sugar, Dried Onions, Dried Garlic, Paprika, Natural Flavor, Calcium Disodium EDTA (to Protect Flavor).",
-    imageUrl: "/swaps/mayo.png",
     nutrition: { caloriesKcal100g: 692, sugarsG100g: 0, saturatedFatG100g: 11.5, sodiumMg100g: 538, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
     sourceUrl: "https://www.kraftheinz.com/kraft-mayo/products/00021000642052-real-mayo-creamy-smooth-mayonnaise",
     verifiedAt: "2026-11-10",
@@ -4722,14 +4655,26 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     !isDietaryOrVariantMismatch(query, drinkHit.title, drinkHit.ingredients, drinkHit.nutrition)
   ) {
     const fullDrinkTitle = mergeBrandAndTitle(drinkHit.brand, drinkHit.title);
+    const curatedDrink = lookupCuratedPhoto({
+      brand: drinkHit.brand,
+      title: fullDrinkTitle,
+      barcode: drinkHit.barcode,
+    });
+    const directDrinkImg =
+      drinkHit.imageUrl?.startsWith("https://")
+        ? drinkHit.imageUrl
+        : curatedDrink?.imageUrl?.startsWith("https://")
+          ? curatedDrink.imageUrl
+          : undefined;
     return {
       sourceUrl: drinkHit.sourceUrl,
       productTitle: fullDrinkTitle,
       brand: drinkHit.brand,
+      barcode: drinkHit.barcode || curatedDrink?.barcode,
       category: drinkHit.category,
       description: drinkHit.description,
       ingredients: drinkHit.ingredients,
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullDrinkTitle)}&v=4`,
+      imageUrl: directDrinkImg,
       nutrition: { ...drinkHit.nutrition, isOrganic: drinkHit.nutrition?.isOrganic === true },
       source: "catalog",
       sourceUpdatedAt: drinkHit.verifiedAt,
@@ -4758,17 +4703,27 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       const resolvedTitle = NON_BRAND_CATEGORY_LABELS.test(entry.brand)
         ? entry.title
         : mergeBrandAndTitle(entry.brand, entry.title);
-      const catalogBrandParam =
-        entry.brand && !NON_BRAND_CATEGORY_LABELS.test(entry.brand)
-          ? `&brand=${encodeURIComponent(entry.brand)}`
-          : "";
+      const curatedGrocery =
+        lookupCuratedPhoto({
+          brand: entry.brand,
+          title: entry.title,
+          barcode: entry.barcode,
+        }) ??
+        lookupCuratedPhoto({
+          brand: NON_BRAND_CATEGORY_LABELS.test(entry.brand) ? "" : entry.brand,
+          title: resolvedTitle,
+          barcode: entry.barcode,
+        });
       const resolvedImageUrl = entry.imageUrl?.startsWith("https://images.openfoodfacts.org/")
         ? entry.imageUrl
-        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(resolvedTitle)}${catalogBrandParam}&v=4`;
+        : curatedGrocery?.imageUrl?.startsWith("https://")
+          ? curatedGrocery.imageUrl
+          : undefined;
       return {
         sourceUrl: entry.sourceUrl,
         productTitle: resolvedTitle,
         brand: entry.brand,
+        barcode: entry.barcode || curatedGrocery?.barcode,
         ingredients: entry.ingredients,
         imageUrl: resolvedImageUrl,
         nutrition: { ...entry.nutrition, isOrganic: entry.nutrition?.isOrganic === true },
@@ -4807,7 +4762,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
           description:
             "Representative category formulation shown because an exact product/UPC label was not returned by Open Food Facts or USDA. Formulations vary by brand and batch; always verify the physical package label.",
           ingredients: `${cat.ingredients} [Representative Category Formulation — Verify Physical Package Label]`,
-          imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
+          imageUrl: undefined,
           nutrition: { ...cat.nutrition, isOrganic: cat.nutrition.isOrganic === true },
           source: "catalog",
           sourceUpdatedAt: cat.verifiedAt,
@@ -4831,12 +4786,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const PRODUCE_NOUN_RE =
     /\b(romaine\s+(?:lettuce|hearts|salad)|butter(?:head)?\s+lettuce|lettuce\s*,?\s*butter(?:head)?|butter\s+potato(?:es)?|potato(?:es)?\s*,?\s*butter|spaghetti\s+squash|squash\s*,?\s*spaghetti|ambrosia\s+apples?|apples?\s*,?\s*ambrosia|cosmic\s+crisp\s+apples?|apples?\s*,?\s*cosmic\s+crisp|italian\s+(?:parsley|plums?|squash)|iceberg\s+lettuce|(?:red\s+|green\s+)?leaf\s+lettuce|(?:spinach|kale|arugula|spring|field|garden|mixed|baby)\s+(?:salad|greens)|salad\s+(?:greens|mix)|spring\s+mix|grape\s+tomato(?:es)?|cherry\s+tomato(?:es)?|plum\s+tomato(?:es)?|roma\s+tomato(?:es)?|orange\s+(?:bell\s+|sweet\s+)?peppers?|(?:(?:red|green|yellow)\s+)?bell\s+peppers?|sweet\s+peppers?|sweet\s+potato(?:es)?|green\s+onions?|spring\s+onions?|green\s+beans?|string\s+beans?|(?:sugar\s+)?snap\s+peas?|snow\s+peas?|brussels\s+sprouts?|bok\s+choy|ginger\s+gold\s+apples?|(?:fresh|organic)\s+(?:[a-z]+\s+)*mint|mint\s+(?:leaves|leaf|bunch|bunches|sprigs?|herb)|lettuce|romaine|spinach|kale|arugula|cabbage|broccoli|cauliflower|carrots?|celery|cucumbers?|tomato(?:es)?|potato(?:es)?|yams?|onions?|scallions?|shallots?|leeks?|garlic|ginger|parsley|cilantro|basil|rosemary|thyme|dill|sage|chives|oregano|peppers?|mushrooms?|avocados?|zucchini|squash|pumpkin|asparagus|beets?|radish\w*|turnips?|eggplants?|artichokes?|okra|fennel|chard|collards?|edamame|peas?|apples?|bananas?|strawberr(?:y|ies)|blueberr(?:y|ies)|raspberr(?:y|ies)|blackberr(?:y|ies)|cranberr(?:y|ies)|cherr(?:y|ies)|grapes?|oranges?|mandarins?|clementines?|tangerines?|grapefruits?|lemons?|limes?|peaches?|plums?|nectarines?|apricots?|pears?|kiwis?|mangos?|mangoes|pineapples?|watermelons?|cantaloupes?|honeydews?|papayas?|pomegranates?|figs?|dates?|berries|vegetables?|veggies|fresh\s+produce)\b/;
   if (PRODUCE_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, PRODUCE_NOUN_RE, { checkBefore: true, mode: "produce" })) {
+    const produceCurated = lookupCuratedPhoto({ brand: storeHouseBrandLabel || "Fresh Produce", title: cleanTitle });
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/169247/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Fresh Produce",
       ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
+      imageUrl: produceCurated?.imageUrl?.startsWith("https://") ? produceCurated.imageUrl : undefined,
       nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -4860,12 +4816,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
               : /\beggs?\b/i.test(s)
                 ? "100% Shell Eggs (Single-Ingredient Whole Food)."
                 : "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).";
+    const meatCurated = lookupCuratedPhoto({ brand: storeHouseBrandLabel || "Fresh Meat & Eggs", title: cleanTitle });
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Fresh Meat & Eggs",
       ingredients: wholeMeatIng,
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=4`,
+      imageUrl: meatCurated?.imageUrl?.startsWith("https://") ? meatCurated.imageUrl : undefined,
       nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -4876,12 +4833,13 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const NUTS_NOUN_RE =
     /\b(raw\s+almonds?|whole\s+almonds?|\balmonds?\b|walnuts?|pecans?|cashews?|pistachios?|macadamia\s+nuts?|macadamias?|hazelnuts?|brazil\s+nuts?|pine\s+nuts?|chia\s+seeds?|flax\s*seeds?|hemp\s+(?:seeds?|hearts?)|pumpkin\s+seeds?|pepitas|sunflower\s+seeds?|sesame\s+seeds?|quinoa|lentils?|chickpeas?|garbanzo\s+beans?|black\s+beans?|pinto\s+beans?|kidney\s+beans?|navy\s+beans?|cannellini\s+beans?|great\s+northern\s+beans?|lima\s+beans?|mung\s+beans?|fava\s+beans?|black[- ]?eyed\s+peas?|split\s+peas?)\b/;
   if (NUTS_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, NUTS_NOUN_RE, { checkBefore: true, mode: "nuts" })) {
+    const nutsCurated = lookupCuratedPhoto({ brand: storeHouseBrandLabel || "Whole Nuts, Seeds & Legumes", title: cleanTitle });
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/170567/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Whole Nuts, Seeds & Legumes",
       ingredients: "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
-      imageUrl: `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(cleanTitle)}&v=2`,
+      imageUrl: nutsCurated?.imageUrl?.startsWith("https://") ? nutsCurated.imageUrl : undefined,
       nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
@@ -4891,26 +4849,40 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   return null;
 }
 
+const RETAILER_SEO_COMMA_TAIL_RE =
+  /,\s*(?:high\s+(?:in\s+)?fiber|good\s+source\s+of\s+[^,]+|excellent\s+source\s+of\s+[^,]+|rich\s+in\s+[^,]+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staple|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+food|breakfast\s+food|(?:kids?|school|lunch\s*box|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+[^,]+|great\s+for\s+[^,]+|perfect\s+for\s+[^,]+|ideal\s+for\s+[^,]+|snap\s+ebt(?:\s+eligible)?|small|medium|large|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack)\s*$/i;
+
 /** Strips club-store pack counts, decimal weights, and Walmart/Amazon/Whole Foods promo suffixes for cleaner external API queries. */
-function cleanSearchQuery(title: string): string {
-  return title
+export function cleanSearchQuery(title: string): string {
+  let out = title
     .replace(/[®™©]/g, "")
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
+    .replace(/,\s*[^,]{1,28}(?:\.\.\.+|…)+\s*$/g, "")
+    .replace(/(?:\.\.\.+|…)+\s*$/g, "")
     .replace(/,?\s*\b(?:priced|price)\s+per\s+(?:pound|lb)\b.*$/i, "")
     .replace(/,?\s*\b(?:final\s+cost\s+by\s+weight|avg\.?\s+price|average\s+price)\b.*$/i, "")
     .replace(/\s+for\s+(?:sandwiches|sushi|sashimi|dipping|prime\s+rib|steak|salads?|marinades?)\b.*$/i, "")
     .replace(/\s*[-–—|]\s*pack\s+of\s+\d+.*$/i, "")
-    .replace(/\s*\(\d+(\.\d+)?\s*(?:oz|fl\s*oz|lb|lbs|ct|count|pk|pack|g|kg|ml)\)\s*[-–—|]?.*$/i, "")
-    .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:lbs?|oz|fl\s*oz|ct|count|pk|pack|g|kg)\b.*$/i, "")
-    .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\b).*$/i, "")
-    .replace(/\s+\d+(\.\d+)?\s*(oz|fl\s*oz|lb|lbs|ct|count|pk|pack|dozen)\b.*$/i, "")
-    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(pk|pack|ct|count|oz|fl\s*oz|lb|lbs|dozen)\b.*$/i, "")
+    .replace(/\s*\(\d+(\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml)\.?\)\s*[-–—|]?.*$/i, "")
+    .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:fl\.?\s*oz|lbs?|oz|ct|count|pk|pack|g|kg)\.?\b.*$/i, "")
+    .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?)\b.*$/i, "")
+    .replace(/\s+\d+(\.\d+)?\s*(fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?\b.*$/i, "")
+    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|dozen)\.?\b.*$/i, "")
     .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
-    .replace(/\s*,\s*\d+\s*\.\.\.+$/, "")
-    .replace(/\.\.\.+$/, "")
     .replace(/\s*[.,•|\-]+\s*$/, "")
     .trim();
+
+  for (let pass = 0; pass < 4; pass++) {
+    const commaIdx = out.lastIndexOf(",");
+    if (commaIdx <= 0) break;
+    const beforeWords = out.slice(0, commaIdx).trim().split(/\s+/).filter(Boolean);
+    if (beforeWords.length < 2) break;
+    const next = out.replace(RETAILER_SEO_COMMA_TAIL_RE, "").replace(/\s*[.,•|\-]+\s*$/, "").trim();
+    if (next === out || !next) break;
+    out = next;
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -4961,6 +4933,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   const normBarcode = normalizeBarcode(input.barcode);
   const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
+  const cleanedCatalogTitle = title ? cleanSearchQuery(title) : "";
   const normalizedInput: LookupInput = {
     ...input,
     barcode: normBarcode || undefined,
@@ -4980,7 +4953,9 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
 
   if (!normBarcode && title && (DIRECT_CATALOG_PRIORITY.test(title) || isPlainProduceDirectPriority)) {
     const directCat =
-      catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
+      catalogFallback(title) ??
+      (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null) ??
+      (cleanedCatalogTitle && cleanedCatalogTitle !== title ? catalogFallback(cleanedCatalogTitle) : null);
     if (
       directCat &&
       !directCat.productTitle.startsWith("Conventional Grocery") &&
@@ -5028,7 +5003,10 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     }
   }
   if (!found && title) {
-    found = catalogFallback(title) ?? (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null);
+    found =
+      catalogFallback(title) ??
+      (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null) ??
+      (cleanedCatalogTitle && cleanedCatalogTitle !== title ? catalogFallback(cleanedCatalogTitle) : null);
   }
   if (!found) return null;
 

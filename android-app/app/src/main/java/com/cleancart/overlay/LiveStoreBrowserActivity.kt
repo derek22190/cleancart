@@ -6,7 +6,10 @@ import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -16,11 +19,13 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
+import android.util.LruCache
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -44,6 +49,8 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.Executors
@@ -313,6 +320,8 @@ class LiveStoreBrowserActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor = Executors.newFixedThreadPool(2)
+    private val imageExecutor = Executors.newFixedThreadPool(2)
+    private val sheetBitmapCache = LruCache<String, Bitmap>(72)
     private lateinit var activeStore: LiveStoreConfig
 
     private lateinit var headerBarView: LinearLayout
@@ -339,6 +348,7 @@ class LiveStoreBrowserActivity : Activity() {
     private var lastDetectedTitle = ""
     private var lastDetectedIngredients = ""
     private var lastDetectedBarcode = ""
+    private var lastDetectedStoreImageUrl = ""
     private var lastDetectedInstacartSlug = ""
     private var lastDetectedIsCard = false
     private var lastScannedKey = ""
@@ -366,6 +376,170 @@ class LiveStoreBrowserActivity : Activity() {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
         setTextColor(color)
         if (bold) setTypeface(typeface, Typeface.BOLD)
+    }
+
+    private fun sanitizeDeviceStoreImageUrl(rawUrl: String?): String {
+        val trimmed = rawUrl?.trim().orEmpty()
+        if (trimmed.isEmpty() || trimmed.length > 900) return ""
+        val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return ""
+        if (uri.scheme?.lowercase() != "https") return ""
+        val host = uri.host?.lowercase().orEmpty()
+        if (
+            host.isEmpty() ||
+            host.contains("heybroc.com") ||
+            host.contains("cleancart") ||
+            isBlockedAppRedirectHost(host)
+        ) {
+            return ""
+        }
+        return trimmed
+    }
+
+    private fun attachDeviceStoreImage(scanJson: JSONObject?, storeImgUrl: String) {
+        val safeStoreImg = sanitizeDeviceStoreImageUrl(storeImgUrl)
+        if (safeStoreImg.isEmpty() || scanJson == null) return
+        val prod = scanJson.optJSONObject("product") ?: JSONObject().also { scanJson.put("product", it) }
+        prod.put("storeImageUrl", safeStoreImg)
+    }
+
+    private fun buildSheetThumbnailBox(
+        title: String,
+        brand: String = "",
+        barcode: String = "",
+        rawImageUrl: String = "",
+        storeImageUrl: String = "",
+        categoryArtUrl: String = "",
+        widthDp: Int = 54,
+        heightDp: Int = 62
+    ): FrameLayout {
+        val safeStoreImg = sanitizeDeviceStoreImageUrl(storeImageUrl)
+        val normalizedCatArt = ScanHistoryStore.normalizeCategoryArtUrl(categoryArtUrl)
+        val bestUrl = ScanHistoryStore.resolveBestImageUrl(title, rawImageUrl, brand, barcode)
+        val apiFallback = ScanHistoryStore.productImageApiFallbackUrl(title, brand, barcode)
+        val candidates = buildList {
+            if (safeStoreImg.isNotEmpty()) add(safeStoreImg)
+            if (bestUrl.isNotEmpty()) add(bestUrl)
+            if (apiFallback.isNotEmpty()) add(apiFallback)
+            if (normalizedCatArt.isNotEmpty()) add(normalizedCatArt)
+        }.distinct()
+
+        val radius = dp(12).toFloat()
+        val box = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                setColor(0xFFF1F5F9.toInt())
+                cornerRadius = radius
+                setStroke(dp(1), 0xFFE2E8F0.toInt())
+            }
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, radius)
+                }
+            }
+        }
+        val initialTv = label(ScanHistoryStore.brandInitial(title, brand), 15f, 0xFF334155.toInt(), bold = true).apply {
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        val iv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        val illustrationBadge = label("Illustration", 7f, 0xFF475569.toInt(), bold = true).apply {
+            setSingleLine(true)
+            setPadding(dp(3), dp(1), dp(3), dp(1))
+            background = GradientDrawable().apply {
+                setColor(0xEBFFFFFF.toInt())
+                cornerRadius = dp(999).toFloat()
+                setStroke(dp(1), 0xFFCBD5E1.toInt())
+            }
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply { bottomMargin = dp(2) }
+        }
+        box.addView(initialTv)
+        box.addView(iv)
+        box.addView(illustrationBadge)
+
+        for (cand in candidates) {
+            sheetBitmapCache.get(cand)?.let { cached ->
+                initialTv.visibility = View.GONE
+                iv.setImageBitmap(cached)
+                illustrationBadge.visibility =
+                    if (ScanHistoryStore.isCategoryArtUrl(cand)) View.VISIBLE else View.GONE
+                return box
+            }
+        }
+
+        val targetPx = dp(maxOf(widthDp, heightDp) * 2).coerceIn(96, 320)
+        imageExecutor.execute {
+            fun fetchBitmap(urlStr: String): Bitmap? = runCatching {
+                val parsed = URL(urlStr)
+                if (!parsed.protocol.equals("https", ignoreCase = true)) return@runCatching null
+                val conn = (parsed.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 4500
+                    readTimeout = 6500
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "HeyBroc-Android/2.5")
+                }
+                try {
+                    if (conn.responseCode in 200..299) {
+                        conn.inputStream.use { stream ->
+                            val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
+                            if (decoded.width > targetPx || decoded.height > targetPx) {
+                                val ratio = minOf(
+                                    targetPx.toFloat() / decoded.width.coerceAtLeast(1),
+                                    targetPx.toFloat() / decoded.height.coerceAtLeast(1)
+                                )
+                                Bitmap.createScaledBitmap(
+                                    decoded,
+                                    (decoded.width * ratio).toInt().coerceAtLeast(1),
+                                    (decoded.height * ratio).toInt().coerceAtLeast(1),
+                                    true
+                                )
+                            } else {
+                                decoded
+                            }
+                        }
+                    } else null
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrNull()
+
+            var resolvedBmp: Bitmap? = null
+            var resolvedUrl = ""
+            for (cand in candidates) {
+                if (isCleaningUp) return@execute
+                val bmp = fetchBitmap(cand)
+                if (bmp != null) {
+                    resolvedBmp = bmp
+                    resolvedUrl = cand
+                    break
+                }
+            }
+            if (resolvedBmp != null && resolvedUrl.isNotEmpty()) {
+                sheetBitmapCache.put(resolvedUrl, resolvedBmp)
+                val isIll = ScanHistoryStore.isCategoryArtUrl(resolvedUrl)
+                mainHandler.post {
+                    if (isCleaningUp || isFinishing || isDestroyed) return@post
+                    initialTv.visibility = View.GONE
+                    iv.setImageBitmap(resolvedBmp)
+                    illustrationBadge.visibility = if (isIll) View.VISIBLE else View.GONE
+                }
+            }
+        }
+        return box
     }
 
     private fun isInstalledFromPlayStore(): Boolean {
@@ -567,6 +741,7 @@ class LiveStoreBrowserActivity : Activity() {
                         lastDetectedTitle,
                         lastDetectedIngredients,
                         lastDetectedBarcode,
+                        storeImageUrl = lastDetectedStoreImageUrl,
                         instacartSlug = lastDetectedInstacartSlug,
                         isCardScan = lastDetectedIsCard,
                         force = true
@@ -649,6 +824,7 @@ class LiveStoreBrowserActivity : Activity() {
             .putString("preferredStore", chosen.key)
             .apply()
         updateStoreChipStyles()
+        lastDetectedStoreImageUrl = ""
         lastDetectedInstacartSlug = ""
         lastScannedKey = ""
         latestScanJson = null
@@ -770,6 +946,7 @@ class LiveStoreBrowserActivity : Activity() {
                 scanGeneration++
                 badgeBatchGeneration++
                 cardJsonById.clear()
+                lastDetectedStoreImageUrl = ""
                 lastScannedKey = ""
                 latestScanJson = null
                 setBubbleIdleState()
@@ -819,6 +996,7 @@ class LiveStoreBrowserActivity : Activity() {
                         cardJsonById.clear()
                         if (nextBase != prevBase) {
                             scanGeneration++
+                            lastDetectedStoreImageUrl = ""
                             lastScannedKey = ""
                             latestScanJson = null
                             setBubbleIdleState()
@@ -1161,6 +1339,7 @@ class LiveStoreBrowserActivity : Activity() {
                 title = lastDetectedTitle,
                 ingredients = lastDetectedIngredients,
                 barcode = lastDetectedBarcode,
+                storeImageUrl = lastDetectedStoreImageUrl,
                 instacartSlug = lastDetectedInstacartSlug,
                 isCardScan = false,
                 force = true
@@ -1204,13 +1383,20 @@ class LiveStoreBrowserActivity : Activity() {
         title: String,
         ingredients: String,
         barcode: String,
+        storeImageUrl: String = "",
         instacartSlug: String = "",
         isCardScan: Boolean = false,
         force: Boolean = false
     ) {
         val wlSig = ScanApi.currentWatchlistSignature(this)
+        val safeStoreImg = sanitizeDeviceStoreImageUrl(storeImageUrl)
         val dedupeKey = "${activeStore.apiStoreKey}|${activeStore.storeBucket}|$instacartSlug|${title.lowercase()}|$barcode|${ingredients.hashCode()}|$wlSig"
-        if (!force && dedupeKey == lastScannedKey) return
+        if (!force && dedupeKey == lastScannedKey) {
+            if (safeStoreImg.isNotEmpty()) {
+                attachDeviceStoreImage(latestScanJson, safeStoreImg)
+            }
+            return
+        }
         lastScannedKey = dedupeKey
         val gen = ++scanGeneration
         if (!isCardScan) {
@@ -1247,6 +1433,7 @@ class LiveStoreBrowserActivity : Activity() {
                         setBubbleIdleState()
                         return@post
                     }
+                    attachDeviceStoreImage(parsed, safeStoreImg)
                     ScanApi.applyLocalWatchlistToData(this, parsed)
                     if (!isCardScan) {
                         runCatching { ScanHistoryStore.recordScan(this, parsed, apiStore) }
@@ -1303,6 +1490,7 @@ class LiveStoreBrowserActivity : Activity() {
                         if (title.isEmpty()) return@post
                         val ingredients = obj.optString("ingredients").trim()
                         val barcode = obj.optString("barcode").trim()
+                        val storeImg = sanitizeDeviceStoreImageUrl(obj.optString("storeImageUrl"))
                         val rawSlug = obj.optString("instacartSlug").trim()
                         val effectiveSlug = when {
                             rawSlug.isNotEmpty() -> rawSlug
@@ -1319,11 +1507,13 @@ class LiveStoreBrowserActivity : Activity() {
                         lastDetectedTitle = title
                         lastDetectedIngredients = ingredients
                         lastDetectedBarcode = barcode
+                        lastDetectedStoreImageUrl = storeImg
                         lastDetectedInstacartSlug = effectiveSlug
                         runLiveScan(
                             title,
                             ingredients,
                             barcode,
+                            storeImageUrl = storeImg,
                             instacartSlug = effectiveSlug,
                             isCardScan = isCard
                         )
@@ -1334,6 +1524,7 @@ class LiveStoreBrowserActivity : Activity() {
                         lastDetectedTitle = ""
                         lastDetectedIngredients = ""
                         lastDetectedBarcode = ""
+                        lastDetectedStoreImageUrl = ""
                         val browseSlug = obj.optString("instacartSlug").trim()
                         if (browseSlug.isNotEmpty()) {
                             lastDetectedInstacartSlug = browseSlug
@@ -1365,12 +1556,15 @@ class LiveStoreBrowserActivity : Activity() {
                             else -> ""
                         }
                         val batchReq = ArrayList<ScanApi.BatchScanRequestItem>()
+                        val localStoreImgs = HashMap<String, String>()
                         for (i in 0 until minOf(arr.length(), 8)) {
                             val it = arr.optJSONObject(i) ?: continue
                             val id = it.optString("id").trim()
                             val pTitle = it.optString("productTitle").trim()
+                            val sImg = sanitizeDeviceStoreImageUrl(it.optString("storeImageUrl"))
                             if (VALID_BATCH_ID_RE.matches(id) && pTitle.isNotEmpty()) {
                                 batchReq.add(ScanApi.BatchScanRequestItem(id, pTitle))
+                                if (sImg.isNotEmpty()) localStoreImgs[id] = sImg
                             }
                         }
                         if (batchReq.isEmpty()) {
@@ -1405,6 +1599,9 @@ class LiveStoreBrowserActivity : Activity() {
                                 for (reqItem in batchReq) {
                                     val hit = outcome.results[reqItem.id]
                                     if (hit != null) {
+                                        localStoreImgs[reqItem.id]?.let { sImg ->
+                                            attachDeviceStoreImage(hit.fullJson, sImg)
+                                        }
                                         if (!hit.isCategoryEstimate && !hit.isTransientLockedSwap) {
                                             cardJsonById[reqItem.id] = hit.fullJson
                                         }
@@ -1432,6 +1629,7 @@ class LiveStoreBrowserActivity : Activity() {
                     "inspectCard" -> {
                         val cardId = obj.optString("cardId").trim()
                         val title = obj.optString("title").trim()
+                        val cardStoreImg = sanitizeDeviceStoreImageUrl(obj.optString("storeImageUrl"))
                         val rawSlug = obj.optString("instacartSlug").trim()
                         val instacartSlug = when {
                             rawSlug.isNotEmpty() -> rawSlug
@@ -1443,6 +1641,7 @@ class LiveStoreBrowserActivity : Activity() {
                             lastDetectedTitle = title
                             lastDetectedIngredients = ""
                             lastDetectedBarcode = ""
+                            lastDetectedStoreImageUrl = cardStoreImg
                             lastScannedKey = ""
                             if (instacartSlug.isNotEmpty()) {
                                 lastDetectedInstacartSlug = instacartSlug
@@ -1450,6 +1649,7 @@ class LiveStoreBrowserActivity : Activity() {
                         }
                         val cached = if (VALID_BATCH_ID_RE.matches(cardId)) cardJsonById[cardId] else null
                         if (cached != null) {
+                            attachDeviceStoreImage(cached, cardStoreImg)
                             ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, cached)
                             applyJsonToBubble(cached)
                             presentInspectSheet(cached)
@@ -1477,6 +1677,7 @@ class LiveStoreBrowserActivity : Activity() {
                                 mainHandler.post {
                                     if (isCleaningUp || isFinishing || isDestroyed || gen != scanGeneration) return@post
                                     if (parsed != null && parsed.optBoolean("ok", false) && parsed.optJSONObject("result") != null) {
+                                        attachDeviceStoreImage(parsed, cardStoreImg)
                                         ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, parsed)
                                         val isTransientLocked = parsed.optJSONObject("swap")?.optBoolean("locked", false) == true &&
                                             parsed.optJSONObject("entitlement") == null
@@ -1544,7 +1745,12 @@ class LiveStoreBrowserActivity : Activity() {
             val prod = item.optJSONObject("product")
             val res = item.optJSONObject("result") ?: continue
             val sc = res.optInt("score", 0).coerceIn(0, 100)
-            val title = prod?.optString("title").orEmpty().ifBlank { "Food Item" }
+            val title = ScanHistoryStore.cleanDisplayTitle(prod?.optString("title").orEmpty().ifBlank { "Food Item" })
+            val brand = prod?.optString("brand").orEmpty()
+            val barcode = prod?.optString("barcode").orEmpty()
+            val rawImg = prod?.optString("imageUrl").orEmpty()
+            val storeImg = prod?.optString("storeImageUrl").orEmpty()
+            val catArt = prod?.optString("categoryArtUrl").orEmpty()
             val dotColor = when {
                 sc >= 75 -> 0xFF16A34A.toInt()
                 sc >= 50 -> 0xFFD97706.toInt()
@@ -1553,7 +1759,7 @@ class LiveStoreBrowserActivity : Activity() {
             list.addView(LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setPadding(dp(10), dp(9), dp(12), dp(9))
                 background = GradientDrawable().apply {
                     setColor(0xFFF8FAFC.toInt())
                     setStroke(dp(1), 0xFFE2E8F0.toInt())
@@ -1563,6 +1769,19 @@ class LiveStoreBrowserActivity : Activity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(8) }
+                addView(
+                    buildSheetThumbnailBox(
+                        title = title,
+                        brand = brand,
+                        barcode = barcode,
+                        rawImageUrl = rawImg,
+                        storeImageUrl = storeImg,
+                        categoryArtUrl = catArt,
+                        widthDp = 42,
+                        heightDp = 48
+                    ),
+                    LinearLayout.LayoutParams(dp(42), dp(48)).apply { marginEnd = dp(10) }
+                )
                 addView(label("$sc", 13.5f, Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(9), dp(4), dp(9), dp(4))
@@ -1612,6 +1831,10 @@ class LiveStoreBrowserActivity : Activity() {
         val res = scanJson.optJSONObject("result") ?: return
         val title = ScanHistoryStore.cleanDisplayTitle(prod?.optString("title").orEmpty().ifBlank { "Food Item" })
         val brand = prod?.optString("brand").orEmpty()
+        val prodBarcode = prod?.optString("barcode").orEmpty()
+        val prodImageUrl = prod?.optString("imageUrl").orEmpty()
+        val prodStoreImageUrl = prod?.optString("storeImageUrl").orEmpty()
+        val prodCategoryArtUrl = prod?.optString("categoryArtUrl").orEmpty()
         val isCategoryEstimate = scanJson.optBoolean("isCategoryEstimate", false)
         val score = res.optInt("score", 0).coerceIn(0, 100)
         val rating = res.optString("rating").ifBlank {
@@ -1652,30 +1875,43 @@ class LiveStoreBrowserActivity : Activity() {
         val scroll = ScrollView(this)
         val stack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        // Header Row: Score Pill + Title/Brand + Close
+        // Header Row: Product Thumbnail + Score Pill + Title/Brand + Close
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        headerRow.addView(
+            buildSheetThumbnailBox(
+                title = title,
+                brand = brand,
+                barcode = prodBarcode,
+                rawImageUrl = prodImageUrl,
+                storeImageUrl = prodStoreImageUrl,
+                categoryArtUrl = prodCategoryArtUrl,
+                widthDp = 54,
+                heightDp = 62
+            ),
+            LinearLayout.LayoutParams(dp(54), dp(62)).apply { marginEnd = dp(10) }
+        )
         headerRow.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(11), dp(8), dp(11), dp(8))
             background = GradientDrawable().apply {
                 setColor(scoreColor)
                 cornerRadius = dp(16).toFloat()
             }
-            addView(label("$score", 22f, Color.WHITE, bold = true))
+            addView(label("$score", 21f, Color.WHITE, bold = true))
             addView(label("/100", 10f, 0xE6FFFFFF.toInt(), bold = true))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = dp(12) }
+            ).apply { marginEnd = dp(10) }
         })
         headerRow.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(label(title, 15.5f, 0xFF0F172A.toInt(), bold = true).apply {
+            addView(label(title, 15f, 0xFF0F172A.toInt(), bold = true).apply {
                 maxLines = 3
                 ellipsize = TextUtils.TruncateAt.END
             })
@@ -1796,19 +2032,50 @@ class LiveStoreBrowserActivity : Activity() {
             }
             val swapBadgeSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
             swapCard.addView(label("1-TAP CLEAN SWAP FOR ${activeStore.label.uppercase()}", 10.5f, 0xFF065F46.toInt(), bold = true))
-            swapCard.addView(label(
+
+            val swapTopRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(5), 0, dp(4))
+            }
+            if (swapUnlocked && rawSwapTitle.isNotBlank()) {
+                val swapBrand = swapObj.optString("brand")
+                val swapBarcode = swapObj.optString("barcode")
+                val swapRawImg = swapObj.optString("imageUrl").ifBlank { swapObj.optString("image") }
+                val swapCatArt = swapObj.optString("categoryArtUrl")
+                swapTopRow.addView(
+                    buildSheetThumbnailBox(
+                        title = rawSwapTitle,
+                        brand = swapBrand,
+                        barcode = swapBarcode,
+                        rawImageUrl = swapRawImg,
+                        storeImageUrl = "",
+                        categoryArtUrl = swapCatArt,
+                        widthDp = 46,
+                        heightDp = 52
+                    ),
+                    LinearLayout.LayoutParams(dp(46), dp(52)).apply { marginEnd = dp(10) }
+                )
+            }
+            val swapTextCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            swapTextCol.addView(label(
                 if (swapUnlocked) rawSwapTitle + swapBadgeSuffix else "🔒 Clean Swap Available$swapBadgeSuffix",
                 15f,
                 0xFF064E3B.toInt(),
                 bold = true
-            ).apply { setPadding(0, dp(3), 0, dp(2)) })
-
+            ))
             val reason = swapObj.optString("why").ifBlank { swapObj.optString("reason") }
             if (swapUnlocked && reason.isNotBlank()) {
-                swapCard.addView(label(reason, 12f, 0xFF047857.toInt()).apply {
-                    setPadding(0, 0, 0, dp(4))
+                swapTextCol.addView(label(reason, 12f, 0xFF047857.toInt()).apply {
+                    setPadding(0, dp(2), 0, 0)
                 })
             }
+            swapTopRow.addView(swapTextCol)
+            swapCard.addView(swapTopRow)
+
             if (swapUnlocked && swapFlagNames.isNotEmpty()) {
                 swapCard.addView(label("Note: contains ${swapFlagNames.joinToString(", ")}", 11.5f, 0xFF92400E.toInt(), bold = true).apply {
                     setPadding(0, 0, 0, dp(6))
@@ -1991,6 +2258,7 @@ class LiveStoreBrowserActivity : Activity() {
         }
         mainHandler.removeCallbacksAndMessages(null)
         ioExecutor.shutdownNow()
+        imageExecutor.shutdownNow()
         storeWebView?.let { wv ->
             runCatching {
                 wv.stopLoading()

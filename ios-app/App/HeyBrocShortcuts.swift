@@ -273,6 +273,10 @@ struct HeyBrocNativeFlag {
 struct HeyBrocNativeSwap {
     let title: String
     let brand: String
+    let barcode: String
+    let imageUrl: String?
+    let imageKind: String?
+    let categoryArtUrl: String?
     let score: Int
     let webUrl: String?
     let isStoreBrand: Bool
@@ -284,6 +288,11 @@ struct HeyBrocNativeSwap {
 struct HeyBrocNativeScanSummary {
     let title: String
     let brand: String
+    let barcode: String
+    let imageUrl: String?
+    let imageKind: String?
+    let categoryArtUrl: String?
+    var storeImageUrl: String?
     let ingredients: String
     let score: Int
     let rating: String
@@ -302,6 +311,15 @@ struct HeyBrocNativeScanSummary {
     let flagged: [HeyBrocNativeFlag]
     let swap: HeyBrocNativeSwap?
     let swapCandidates: [HeyBrocNativeSwap]
+
+    func withDeviceStoreImage(_ rawUrl: String?) -> HeyBrocNativeScanSummary {
+        guard let clean = rawUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !clean.isEmpty else {
+            return self
+        }
+        var copy = self
+        copy.storeImageUrl = clean
+        return copy
+    }
 }
 
 struct HeyBrocBatchScanOutcome {
@@ -361,6 +379,67 @@ enum HeyBrocNativeScannerAPI {
         return parseScanObject(obj)
     }
 
+    static func normalizeProductArtURL(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        if trimmed.hasPrefix("/") && !trimmed.hasPrefix("//") {
+            return "https://www.heybroc.com\(trimmed)"
+        }
+        guard let comps = URLComponents(string: trimmed),
+              comps.scheme?.lowercased() == "https",
+              comps.host != nil else {
+            return nil
+        }
+        return comps.url?.absoluteString
+    }
+
+    static func isCategoryStudioArtURL(_ raw: String?) -> Bool {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !trimmed.isEmpty else {
+            return false
+        }
+        return trimmed.hasPrefix("/swaps/") || trimmed.contains("heybroc.com/swaps/")
+    }
+
+    static func productImageEndpointURL(title: String, brand: String, barcode: String) -> String? {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBrand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanCode = barcode.filter { $0.isNumber }
+        guard !cleanTitle.isEmpty || cleanCode.count >= 8 else { return nil }
+        var comps = URLComponents(string: "https://www.heybroc.com/api/product-image")
+        var items: [URLQueryItem] = []
+        if cleanCode.count >= 8 {
+            items.append(URLQueryItem(name: "barcode", value: String(cleanCode.prefix(14))))
+        }
+        if !cleanTitle.isEmpty {
+            items.append(URLQueryItem(name: "title", value: String(cleanTitle.prefix(160))))
+        }
+        if !cleanBrand.isEmpty {
+            items.append(URLQueryItem(name: "brand", value: String(cleanBrand.prefix(80))))
+        }
+        items.append(URLQueryItem(name: "fallback", value: "404"))
+        items.append(URLQueryItem(name: "v", value: "7"))
+        comps?.queryItems = items
+        return comps?.url?.absoluteString
+    }
+
+    static func brandInitial(brand: String, title: String) -> String {
+        let skip: Set<String> = ["the", "a", "an", "organic", "fresh", "natural", "100%"]
+        for source in [brand, title] {
+            let tokens = source
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            for tok in tokens {
+                if skip.contains(tok.lowercased()) { continue }
+                if let first = tok.first(where: { $0.isLetter || $0.isNumber }) {
+                    return String(first).uppercased()
+                }
+            }
+        }
+        return "B"
+    }
+
     private static func parseSwapObject(_ sw: [String: Any]) -> HeyBrocNativeSwap? {
         guard let swTitle = sw["title"] as? String, !swTitle.isEmpty else { return nil }
         let nut = sw["nutrition"] as? [String: Any]
@@ -368,9 +447,17 @@ enum HeyBrocNativeScannerAPI {
         let isLocked = (sw["locked"] as? Bool) ?? false
         let rawUrl = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
         let flaggedAdditives = (sw["flaggedAdditives"] as? [String]) ?? []
+        let rawBarcode = ((sw["barcode"] as? String) ?? "").filter { $0.isNumber }
+        let normImg = isLocked ? nil : normalizeProductArtURL(sw["imageUrl"] as? String)
+        let normCatArt = isLocked ? nil : normalizeProductArtURL(sw["categoryArtUrl"] as? String)
+        let rawKind = isLocked ? nil : (sw["imageKind"] as? String)
         return HeyBrocNativeSwap(
             title: swTitle,
             brand: (sw["brand"] as? String) ?? "",
+            barcode: rawBarcode,
+            imageUrl: normImg,
+            imageKind: rawKind,
+            categoryArtUrl: normCatArt,
             score: (sw["score"] as? Int) ?? 90,
             webUrl: isLocked ? nil : rawUrl.flatMap { sanitizeRetailerURL($0) },
             isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
@@ -422,6 +509,10 @@ enum HeyBrocNativeScannerAPI {
         let nutriScoreGrade = yuka?["nutriScoreGrade"] as? String
 
         let lookupObj = obj["lookup"] as? [String: Any]
+        let prodBarcode = (((prod["barcode"] as? String) ?? (lookupObj?["barcode"] as? String)) ?? "").filter { $0.isNumber }
+        let prodImageUrl = normalizeProductArtURL(prod["imageUrl"] as? String)
+        let prodImageKind = prod["imageKind"] as? String
+        let prodCategoryArtUrl = normalizeProductArtURL(prod["categoryArtUrl"] as? String)
         let rawSource = ((lookupObj?["origin"] as? String) ?? (lookupObj?["source"] as? String) ?? "").lowercased()
         let sourceLabel: String? = {
             if isCategoryEstimate { return "Category Estimate — Verify Package Label" }
@@ -490,6 +581,11 @@ enum HeyBrocNativeScannerAPI {
             HeyBrocNativeScanSummary(
                 title: title,
                 brand: brand,
+                barcode: prodBarcode,
+                imageUrl: prodImageUrl,
+                imageKind: prodImageKind,
+                categoryArtUrl: prodCategoryArtUrl,
+                storeImageUrl: nil,
                 ingredients: ingredients,
                 score: score,
                 rating: rating,

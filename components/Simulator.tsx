@@ -33,6 +33,8 @@ import {
   type SwapResult,
 } from "@/lib/swaps";
 import type { PlanId } from "@/lib/pricing";
+import { brandLetterTileSpec, resolveCategoryStudioArt, type ImageKind } from "@/lib/category-art";
+import { resolveProductMediaFields } from "@/lib/curated-product-photos";
 import { evaluateDietaryAlerts } from "@/lib/dietary";
 import AuthModal, { type AuthenticatedUser } from "./AuthModal";
 import CancelRetentionModal from "./CancelRetentionModal";
@@ -74,6 +76,8 @@ interface Product {
   size?: string;
   barcode?: string;
   image?: string;
+  imageKind?: ImageKind;
+  categoryArtUrl?: string | null;
   ingredients: string;
   nutrition?: NutritionInput;
   category?: SwapCategory;
@@ -97,6 +101,8 @@ interface ApiScan {
     description?: string;
     barcode?: string;
     imageUrl?: string;
+    imageKind?: ImageKind;
+    categoryArtUrl?: string | null;
     ingredients: string;
     nutrition?: NutritionInput;
   };
@@ -217,17 +223,30 @@ type ViewMode = "product" | "search";
 
 const FREE_SCAN_LIMIT = 3;
 
-const presetToProduct = (p: (typeof PRESETS)[number]): Product => ({
-  key: p.id,
-  title: p.title,
-  brand: p.brand,
-  size: p.size,
-  image: p.image,
-  ingredients: p.ingredients,
-  category: p.category,
-  origin: "preset",
-  quantity: 1,
-});
+const presetToProduct = (p: (typeof PRESETS)[number]): Product => {
+  const media = resolveProductMediaFields({
+    brand: p.brand,
+    title: p.title,
+    rawImageUrl: p.image,
+    ingredients: p.ingredients,
+    explicitCategory: p.category,
+  });
+  return {
+    key: p.id,
+    title: p.title,
+    brand: p.brand,
+    size: p.size,
+    barcode: media.barcode,
+    image: media.imageUrl || p.image,
+    imageKind: media.imageKind,
+    categoryArtUrl: media.categoryArtUrl,
+    ingredients: p.ingredients,
+    nutrition: p.nutrition,
+    category: p.category,
+    origin: "preset",
+    quantity: 1,
+  };
+};
 
 const cleanToProduct = (
   cat: SwapCategory,
@@ -239,6 +258,14 @@ const cleanToProduct = (
     ? resolveCleanAlternative(`${replacedItem.brand} ${replacedItem.title}`, cat, store, preferStoreBrand)
     : resolveCleanAlternative(cat, cat, store, preferStoreBrand);
   const isOrganic = alt.nutrition?.isOrganic ?? alt.isOrganic === true;
+  const media = resolveProductMediaFields({
+    brand: alt.brand,
+    title: `${alt.brand} ${alt.name}`,
+    barcode: alt.barcode,
+    rawImageUrl: alt.image,
+    ingredients: alt.ingredients,
+    explicitCategory: cat,
+  });
   return {
     key: replacedItem
       ? `clean-${cat}-${replacedItem.key}-${store || "default"}${preferStoreBrand ? "-sb" : ""}`
@@ -246,7 +273,13 @@ const cleanToProduct = (
     title: alt.name,
     brand: alt.brand,
     size: alt.size,
-    image: `/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}`,
+    barcode: media.barcode,
+    image:
+      media.imageUrl ||
+      media.categoryArtUrl ||
+      `/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}`,
+    imageKind: media.imageKind,
+    categoryArtUrl: media.categoryArtUrl,
     ingredients: alt.ingredients,
     nutrition: { ...alt.nutrition, isOrganic },
     category: cat,
@@ -261,6 +294,14 @@ const swapResultToProduct = (sw: SwapResult, replacedItem?: Product, store: Stor
     new RegExp(`^${sw.brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*`, "i"),
     "",
   ) || sw.title;
+  const media = resolveProductMediaFields({
+    brand: sw.brand,
+    title: sw.title,
+    barcode: sw.barcode,
+    rawImageUrl: sw.image,
+    ingredients: sw.ingredients,
+    explicitCategory: sw.category,
+  });
   return {
     key: `swap-${sw.brand}-${cleanTitle}-${replacedItem?.key ?? "direct"}-${store}`
       .toLowerCase()
@@ -268,7 +309,10 @@ const swapResultToProduct = (sw: SwapResult, replacedItem?: Product, store: Stor
     title: cleanTitle,
     brand: sw.brand,
     size: sw.size,
-    image: sw.image || `/api/product-image?q=${encodeURIComponent(`${sw.brand} ${cleanTitle}`)}`,
+    barcode: sw.barcode || media.barcode,
+    image: sw.image || media.imageUrl || media.categoryArtUrl || `/api/product-image?q=${encodeURIComponent(`${sw.brand} ${cleanTitle}`)}`,
+    imageKind: sw.imageKind || media.imageKind,
+    categoryArtUrl: sw.categoryArtUrl ?? media.categoryArtUrl,
     ingredients: sw.ingredients,
     nutrition: sw.nutrition,
     category: sw.category,
@@ -570,13 +614,23 @@ function Gauge({ score, rating, color, size = 112 }: { score: number | null; rat
 
 function normalizeProductArtUrl(url?: string | null): string {
   if (!url) return "";
-  return url.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "");
+  const stripped = url.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "");
+  if (stripped.includes("/api/product-image") && !/[?&]fallback=/i.test(stripped)) {
+    return `${stripped}${stripped.includes("?") ? "&" : "?"}fallback=404`;
+  }
+  return stripped;
 }
 
 function isMissingProductPhotoUrl(url?: string | null): boolean {
   if (!url) return true;
   const lower = url.toLowerCase();
   return lower.includes("product-photo-unavailable") || lower.includes("placeholder");
+}
+
+function isStudioCategoryArtPath(url?: string | null): boolean {
+  if (!url) return false;
+  const norm = normalizeProductArtUrl(url);
+  return norm.startsWith("/swaps/") || norm.startsWith("/products/");
 }
 
 function ProductArt({
@@ -590,120 +644,102 @@ function ProductArt({
   showAttribution?: boolean;
   onSnapLabel?: () => void;
 }) {
-  const brandParam = product.brand ? `&brand=${encodeURIComponent(product.brand)}` : "";
-  const codeParam = product.barcode ? `&code=${encodeURIComponent(product.barcode)}` : "";
-  const apiFallbackSrc = `/api/product-image?q=${encodeURIComponent(`${product.brand} ${product.title}`.trim())}${brandParam}${codeParam}&v=6`;
+  const [failedSrcs, setFailedSrcs] = useState<Record<string, boolean>>({});
+
+  const fallbackMedia = useMemo(
+    () =>
+      resolveProductMediaFields({
+        brand: product.brand,
+        title: product.title,
+        barcode: product.barcode,
+        rawImageUrl: product.image,
+        ingredients: product.ingredients,
+        explicitCategory: product.category,
+      }),
+    [product.brand, product.title, product.barcode, product.image, product.ingredients, product.category],
+  );
+
+  const categoryStudioSrc = useMemo(() => {
+    const explicitStudio = normalizeProductArtUrl(product.categoryArtUrl);
+    if (explicitStudio) return explicitStudio;
+    if (fallbackMedia.categoryArtUrl) return normalizeProductArtUrl(fallbackMedia.categoryArtUrl);
+    return (
+      resolveCategoryStudioArt({
+        title: `${product.brand} ${product.title}`.trim(),
+        ingredients: product.ingredients,
+        explicitCategory: product.category,
+      }) || ""
+    );
+  }, [product.categoryArtUrl, product.brand, product.title, product.ingredients, product.category, fallbackMedia.categoryArtUrl]);
+
   const normalizedProductImg = normalizeProductArtUrl(product.image);
   const explicitMissing = Boolean(product.image) && isMissingProductPhotoUrl(normalizedProductImg);
-  const primarySrc = !explicitMissing && normalizedProductImg ? normalizedProductImg : apiFallbackSrc;
 
-  const [failedSrcs, setFailedSrcs] = useState<Record<string, boolean>>({});
-  const [placeholderSrcs, setPlaceholderSrcs] = useState<Record<string, boolean>>({});
-  const [imgLicense, setImgLicense] = useState<string | null>(null);
-  const [imgSource, setImgSource] = useState<string | null>(null);
-
-  const primaryUnusable =
-    explicitMissing || Boolean(failedSrcs[primarySrc]) || Boolean(placeholderSrcs[primarySrc]);
-  const fallbackUnusable =
-    Boolean(failedSrcs[apiFallbackSrc]) || Boolean(placeholderSrcs[apiFallbackSrc]);
-
-  const activeSrc = !primaryUnusable
-    ? primarySrc
-    : !fallbackUnusable
-      ? apiFallbackSrc
-      : "";
-
-  const isMissingPhoto = !activeSrc || isMissingProductPhotoUrl(activeSrc);
-
-  useEffect(() => {
-    const src = activeSrc;
-    if (!src || isMissingProductPhotoUrl(src)) {
-      setImgLicense(null);
-      setImgSource(null);
-      return;
+  let primaryPhotoSrc = "";
+  if (product.imageKind !== "none" && product.imageKind !== "category-art") {
+    if (!explicitMissing && normalizedProductImg && !isStudioCategoryArtPath(normalizedProductImg)) {
+      primaryPhotoSrc = normalizedProductImg;
+    } else if (fallbackMedia.imageKind === "photo" && fallbackMedia.imageUrl) {
+      primaryPhotoSrc = normalizeProductArtUrl(fallbackMedia.imageUrl);
     }
-    if (src.includes("openfoodfacts.org") || src.includes("openfoodfacts.net")) {
-      setImgLicense("CC BY-SA 3.0");
-      setImgSource(src);
-      return;
-    }
-    if (src.includes("/api/product-image")) {
-      let cancelled = false;
-      const probeUrl = normalizeProductArtUrl(src);
-      fetch(probeUrl, { method: "HEAD" })
-        .then((res) => {
-          if (cancelled) return;
-          const lic = res.headers.get("x-image-license");
-          const srcHeader = res.headers.get("x-image-source");
-          const contentType = res.headers.get("content-type") || "";
-          const isPlaceholder =
-            !res.ok ||
-            Boolean(srcHeader && srcHeader.toLowerCase().includes("placeholder")) ||
-            res.url.toLowerCase().includes("product-photo-unavailable") ||
-            contentType.toLowerCase().includes("image/svg+xml");
-          if (isPlaceholder) {
-            setImgLicense(null);
-            setImgSource(null);
-            setPlaceholderSrcs((prev) =>
-              prev[src] && prev[apiFallbackSrc]
-                ? prev
-                : { ...prev, [src]: true, [apiFallbackSrc]: true },
-            );
-            return;
-          }
-          if (lic && lic.includes("CC BY-SA")) {
-            setImgLicense(lic);
-            const urlMatch = srcHeader?.match(/https:\/\/[^\s)]+/);
-            setImgSource(urlMatch ? urlMatch[0] : srcHeader || "https://world.openfoodfacts.org");
-          } else {
-            setImgLicense(null);
-            setImgSource(null);
-          }
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }
-    setImgLicense(null);
-    setImgSource(null);
-  }, [activeSrc, apiFallbackSrc]);
+  }
 
-  if (isMissingPhoto) {
-    const isCompactThumb = /\b(swap-art|cart-art|yuka-history-img|yuka-rec-img)\b/.test(className);
-    const isHeroThumb = className.includes("yuka-hero-img");
+  let activeSrc = "";
+  let activeKind: ImageKind = "none";
+
+  if (primaryPhotoSrc && !failedSrcs[primaryPhotoSrc]) {
+    activeSrc = primaryPhotoSrc;
+    activeKind = product.imageKind === "store-photo" ? "store-photo" : "photo";
+  } else if (categoryStudioSrc && !failedSrcs[categoryStudioSrc] && product.imageKind !== "none") {
+    activeSrc = categoryStudioSrc;
+    activeKind = "category-art";
+  } else if (
+    !explicitMissing &&
+    normalizedProductImg &&
+    isStudioCategoryArtPath(normalizedProductImg) &&
+    !failedSrcs[normalizedProductImg]
+  ) {
+    activeSrc = normalizedProductImg;
+    activeKind = "category-art";
+  }
+
+  const isCompactThumb = /\b(swap-art|cart-art|yuka-history-img|yuka-rec-img)\b/.test(className);
+  const isHeroThumb = className.includes("yuka-hero-img");
+
+  if (!activeSrc || activeKind === "none") {
+    const tile = brandLetterTileSpec(product.title, product.brand);
+    const letterSize = isCompactThumb ? 18 : isHeroThumb ? 28 : 42;
     const boxStyle: React.CSSProperties = {
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: isHeroThumb ? 4 : 6,
+      gap: 2,
       width: "100%",
       height: "100%",
-      background: "#F4F5F7",
-      border: "1px solid #E5E7EB",
+      background: tile.bgHex,
+      border: `1px solid ${tile.borderHex}`,
       borderRadius: isCompactThumb ? 10 : 14,
-      color: "#6B7280",
-      padding: isCompactThumb ? 4 : isHeroThumb ? 6 : 12,
+      color: tile.fgHex,
+      padding: isCompactThumb ? 3 : 6,
       boxSizing: "border-box",
       textAlign: "center",
+      userSelect: "none",
       ...(onSnapLabel ? { cursor: "pointer" } : {}),
     };
-    const cameraIcon = (
-      <svg
-        viewBox="0 0 24 24"
-        width={isCompactThumb ? 18 : isHeroThumb ? 22 : 30}
-        height={isCompactThumb ? 18 : isHeroThumb ? 22 : 30}
-        fill="none"
-        stroke="#9CA3AF"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
+
+    const letterEl = (
+      <span
+        style={{
+          fontSize: letterSize,
+          fontWeight: 900,
+          lineHeight: 1,
+          letterSpacing: "-0.03em",
+          color: tile.fgHex,
+        }}
       >
-        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
-        <circle cx="12" cy="13" r="3.5" />
-      </svg>
+        {tile.letter}
+      </span>
     );
 
     if (onSnapLabel) {
@@ -716,20 +752,23 @@ function ProductArt({
             e.stopPropagation();
             onSnapLabel();
           }}
-          title="No photo · Snap label"
-          aria-label={`No verified package photo for ${product.brand} ${product.title} — tap to snap ingredient label`}
+          title="Snap ingredient label"
+          aria-label={`${product.brand} ${product.title} — tap to snap ingredient label`}
         >
-          {cameraIcon}
-          <span
-            style={{
-              fontSize: isHeroThumb ? 9.5 : 12,
-              fontWeight: 600,
-              lineHeight: 1.2,
-              color: "#6B7280",
-            }}
-          >
-            {isHeroThumb ? "No photo · Snap" : "No photo · Snap label"}
-          </span>
+          {letterEl}
+          {!isCompactThumb && (
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                color: tile.fgHex,
+                opacity: 0.82,
+              }}
+            >
+              Snap label
+            </span>
+          )}
         </button>
       );
     }
@@ -739,25 +778,75 @@ function ProductArt({
         className={`product-art product-art--missing-photo ${className}`.trim()}
         style={boxStyle}
         role="img"
-        aria-label="No verified package photo"
+        aria-label={`${product.brand} ${product.title}`}
       >
-        {cameraIcon}
-        {!isCompactThumb && (
-          <span style={{ fontSize: 11, fontWeight: 600, lineHeight: 1.2, color: "#9CA3AF" }}>
-            No photo
-          </span>
-        )}
+        {letterEl}
       </div>
     );
   }
 
-  const isCcBySa = Boolean(imgLicense && imgLicense.includes("CC BY-SA")) || product.lookup?.source === "openfoodfacts";
+  const isOffPhoto =
+    activeKind === "photo" &&
+    (activeSrc.includes("openfoodfacts.org") ||
+      activeSrc.includes("openfoodfacts.net") ||
+      product.lookup?.source === "openfoodfacts");
   const resolvedSourceUrl =
-    imgSource && imgSource.startsWith("https://")
-      ? imgSource
-      : activeSrc.includes("openfoodfacts.org") || activeSrc.includes("openfoodfacts.net")
-        ? activeSrc
-        : "https://world.openfoodfacts.org";
+    activeSrc.includes("openfoodfacts.org") || activeSrc.includes("openfoodfacts.net")
+      ? activeSrc
+      : "https://world.openfoodfacts.org";
+
+  if (activeKind === "category-art" || isStudioCategoryArtPath(activeSrc)) {
+    return (
+      <div
+        className={`product-art product-art--category ${className}`.trim()}
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          display: "block",
+          background: "#ffffff",
+          ...(onSnapLabel ? { cursor: "pointer" } : {}),
+        }}
+        onClick={
+          onSnapLabel
+            ? (e) => {
+                e.stopPropagation();
+                onSnapLabel();
+              }
+            : undefined
+        }
+        title={onSnapLabel ? "Category studio illustration · Tap to snap package label" : "Category studio illustration"}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={activeSrc}
+          alt={`${product.brand} ${product.title} illustration`}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          onError={() => setFailedSrcs((prev) => (prev[activeSrc] ? prev : { ...prev, [activeSrc]: true }))}
+        />
+        <span
+          className="product-art-illustration-badge"
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: isCompactThumb ? 2 : 4,
+            transform: "translateX(-50%)",
+            padding: isCompactThumb ? "0.5px 4px" : "1.5px 6px",
+            borderRadius: 999,
+            background: "rgba(15, 23, 42, 0.68)",
+            color: "#ffffff",
+            fontSize: isCompactThumb ? 7.5 : 9,
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+            lineHeight: 1.25,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          Illustration
+        </span>
+      </div>
+    );
+  }
 
   const imgEl = (
     /* eslint-disable-next-line @next/next/no-img-element */
@@ -765,21 +854,14 @@ function ProductArt({
       className={`product-art ${className}`}
       src={activeSrc}
       alt={`${product.brand} ${product.title}`}
-      title={isCcBySa ? `Image: Open Food Facts (${resolvedSourceUrl}) — CC BY-SA 3.0` : undefined}
+      title={isOffPhoto ? `Image: Open Food Facts (${resolvedSourceUrl}) — CC BY-SA 3.0` : undefined}
       onError={() =>
-        setFailedSrcs((prev) => {
-          if (srcIsProductImageEndpoint(activeSrc)) {
-            return prev[activeSrc] && prev[apiFallbackSrc]
-              ? prev
-              : { ...prev, [activeSrc]: true, [apiFallbackSrc]: true };
-          }
-          return prev[activeSrc] ? prev : { ...prev, [activeSrc]: true };
-        })
+        setFailedSrcs((prev) => (prev[activeSrc] ? prev : { ...prev, [activeSrc]: true }))
       }
     />
   );
 
-  if (showAttribution && isCcBySa) {
+  if (showAttribution && isOffPhoto) {
     return (
       <div className="product-art-attr-wrap" style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "center", maxWidth: 88 }}>
         {imgEl}
@@ -2384,7 +2466,9 @@ export default function Simulator({
           brand: data.product.brand || (rawIng ? "Scanned Label" : "Open data"),
           barcode: data.product.barcode || opts.barcode,
           description: data.product.description,
-          image: data.product.imageUrl || "/product-photo-unavailable.svg",
+          image: data.product.imageUrl || undefined,
+          imageKind: data.product.imageKind,
+          categoryArtUrl: data.product.categoryArtUrl,
           ingredients: data.product.ingredients,
           nutrition: data.product.nutrition,
           category: cat,
@@ -2719,7 +2803,10 @@ export default function Simulator({
             "",
           ) || prod.title,
         brand: prod.brand || "Order Item",
-        image: prod.imageUrl || "/product-photo-unavailable.svg",
+        barcode: prod.barcode,
+        image: prod.imageUrl || undefined,
+        imageKind: prod.imageKind,
+        categoryArtUrl: prod.categoryArtUrl,
         ingredients: prod.ingredients,
         nutrition: prod.nutrition,
         category: cat,

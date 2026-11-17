@@ -2961,8 +2961,14 @@ class OverlayWindowService : Service() {
         val swapBrand = swap.optString("brand", "")
         val swapBarcode = swap.optString("barcode", "")
         val rawImage = swap.optString("image", "").ifBlank { swap.optString("imageUrl", "") }
+        val categoryArtUrl = ScanHistoryStore.normalizeCategoryArtUrl(swap.optString("categoryArtUrl", ""))
         val fullUrl = ScanHistoryStore.resolveBestImageUrl(swapTitle, rawImage, swapBrand, swapBarcode)
         val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(swapTitle, swapBrand, swapBarcode)
+        val candidates = buildList {
+            if (fullUrl.isNotEmpty()) add(fullUrl)
+            if (fallbackApiUrl.isNotEmpty()) add(fallbackApiUrl)
+            if (categoryArtUrl.isNotEmpty()) add(categoryArtUrl)
+        }.distinct()
         val radius = dp(14).toFloat()
         val box = FrameLayout(this).apply {
             background = GradientDrawable().apply {
@@ -2977,7 +2983,7 @@ class OverlayWindowService : Service() {
                 }
             }
         }
-        val initialChar = swapTitle.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "•"
+        val initialChar = ScanHistoryStore.brandInitial(swapTitle, swapBrand)
         val placeholderTv = text(initialChar, 15f, NEUTRAL_SLATE, bold = true).apply {
             gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -2987,13 +2993,33 @@ class OverlayWindowService : Service() {
             setPadding(dp(2), dp(2), dp(2), dp(2))
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
+        val illustrationBadge = text("Illustration", 7f, 0xFF475569.toInt(), bold = true).apply {
+            setSingleLine(true)
+            setPadding(dp(3), dp(1), dp(3), dp(1))
+            background = GradientDrawable().apply {
+                setColor(0xEBFFFFFF.toInt())
+                cornerRadius = dp(999).toFloat()
+                setStroke(dp(1), 0xFFCBD5E1.toInt())
+            }
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply { bottomMargin = dp(2) }
+        }
         box.addView(placeholderTv)
         box.addView(iv)
+        box.addView(illustrationBadge)
 
-        swapBitmapCache.get(fullUrl)?.let { cached ->
-            placeholderTv.visibility = View.GONE
-            iv.setImageBitmap(cached)
-            return box
+        for (cand in candidates) {
+            swapBitmapCache.get(cand)?.let { cached ->
+                placeholderTv.visibility = View.GONE
+                iv.setImageBitmap(cached)
+                illustrationBadge.visibility =
+                    if (ScanHistoryStore.isCategoryArtUrl(cand)) View.VISIBLE else View.GONE
+                return box
+            }
         }
 
         imageExecutor.execute {
@@ -3018,21 +3044,23 @@ class OverlayWindowService : Service() {
                 }
             }.getOrNull()
 
-            var bmp = fetchSwapBitmap(fullUrl)
-            var cacheKey = fullUrl
-            if (bmp == null && fullUrl != fallbackApiUrl) {
-                bmp = fetchSwapBitmap(fallbackApiUrl)
-                cacheKey = fallbackApiUrl
-            }
-            if (bmp != null) {
-                swapBitmapCache.put(cacheKey, bmp)
-                if (cacheKey != fullUrl) {
-                    swapBitmapCache.put(fullUrl, bmp)
+            var bmp: Bitmap? = null
+            var cacheKey = ""
+            for (cand in candidates) {
+                bmp = fetchSwapBitmap(cand)
+                if (bmp != null) {
+                    cacheKey = cand
+                    break
                 }
+            }
+            if (bmp != null && cacheKey.isNotEmpty()) {
+                swapBitmapCache.put(cacheKey, bmp)
+                val isIllustration = ScanHistoryStore.isCategoryArtUrl(cacheKey)
                 mainUiHandler.post {
                     placeholderTv.visibility = View.GONE
                     iv.setPadding(0, 0, 0, 0)
                     iv.setImageBitmap(bmp)
+                    illustrationBadge.visibility = if (isIllustration) View.VISIBLE else View.GONE
                 }
             }
         }

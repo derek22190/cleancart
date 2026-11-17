@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { brandLetterTileSpec, type ImageKind } from "@/lib/category-art";
 
 export interface SwapDirectoryRow {
   slug: string;
@@ -10,8 +11,12 @@ export interface SwapDirectoryRow {
   category: string;
   score: number;
   flaggedNames: string[];
+  imageUrl: string | null;
+  imageKind: ImageKind;
   swapTitle: string | null;
   swapScore: number | null;
+  swapImageUrl: string | null;
+  swapImageKind: ImageKind | null;
 }
 
 export default function SwapsDirectoryClient({
@@ -114,6 +119,7 @@ export default function SwapsDirectoryClient({
             item.score >= 75 ? "#dcfce7" : item.score >= 50 ? "#fef3c7" : "#fee2e2";
           const pillFg =
             item.score >= 75 ? "#166534" : item.score >= 50 ? "#92400e" : "#991b1b";
+          const itemTile = brandLetterTileSpec(item.title, item.brand);
 
           return (
             <Link
@@ -134,22 +140,65 @@ export default function SwapsDirectoryClient({
             >
               {/* Left: Popular Grocery Item */}
               <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/product-image?title=${encodeURIComponent(item.title)}`}
-                  alt={item.title}
-                  loading="lazy"
-                  style={{
-                    width: 48,
-                    height: 48,
-                    objectFit: "contain",
-                    borderRadius: 10,
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    padding: 3,
-                    flexShrink: 0,
-                  }}
-                />
+                {item.imageUrl ? (
+                  <div style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      loading="lazy"
+                      style={{
+                        width: 48,
+                        height: 48,
+                        objectFit: item.imageKind === "category-art" ? "cover" : "contain",
+                        borderRadius: 10,
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        padding: item.imageKind === "category-art" ? 0 : 3,
+                        boxSizing: "border-box",
+                        display: "block",
+                      }}
+                    />
+                    {item.imageKind === "category-art" && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          bottom: 1.5,
+                          transform: "translateX(-50%)",
+                          padding: "0.5px 3.5px",
+                          borderRadius: 999,
+                          background: "rgba(15, 23, 42, 0.68)",
+                          color: "#ffffff",
+                          fontSize: 7,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Illustration
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 10,
+                      background: itemTile.bgHex,
+                      border: `1px solid ${itemTile.borderHex}`,
+                      color: itemTile.fgHex,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 18,
+                      fontWeight: 900,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {itemTile.letter}
+                  </div>
+                )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div
                     style={{
@@ -232,22 +281,46 @@ export default function SwapsDirectoryClient({
                     minWidth: 0,
                   }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`/api/product-image?title=${encodeURIComponent(item.swapTitle)}`}
-                    alt={item.swapTitle}
-                    loading="lazy"
-                    style={{
-                      width: 38,
-                      height: 38,
-                      objectFit: "contain",
-                      borderRadius: 8,
-                      background: "#ffffff",
-                      border: "1px solid #a7f3d0",
-                      padding: 2,
-                      flexShrink: 0,
-                    }}
-                  />
+                  {item.swapImageUrl && (
+                    <div style={{ position: "relative", width: 38, height: 38, flexShrink: 0 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.swapImageUrl}
+                        alt={item.swapTitle}
+                        loading="lazy"
+                        style={{
+                          width: 38,
+                          height: 38,
+                          objectFit: item.swapImageKind === "category-art" ? "cover" : "contain",
+                          borderRadius: 8,
+                          background: "#ffffff",
+                          border: "1px solid #a7f3d0",
+                          padding: item.swapImageKind === "category-art" ? 0 : 2,
+                          boxSizing: "border-box",
+                          display: "block",
+                        }}
+                      />
+                      {item.swapImageKind === "category-art" && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            bottom: 1,
+                            transform: "translateX(-50%)",
+                            padding: "0.5px 3px",
+                            borderRadius: 999,
+                            background: "rgba(15, 23, 42, 0.68)",
+                            color: "#ffffff",
+                            fontSize: 6.5,
+                            fontWeight: 700,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Illustration
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <span
                       style={{

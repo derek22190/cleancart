@@ -1,0 +1,75 @@
+name: Nightly Product Photo Verification & OFF Index Sync
+
+on:
+  schedule:
+    # Nightly 07:23 UTC (11:23 PM PT): verifies all curated photo URLs return HTTP 200, auto-heals rotated OFF revisions by barcode, and backfills missing curated photos
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+    inputs:
+      max_api_queries:
+        description: "Max rate-limited OFF API queries for uncached curated entries (1 req / 6.2s)"
+        required: false
+        default: "80"
+        type: string
+      rebuild_us_index:
+        description: "Stream full Open Food Facts nightly JSONL.gz export to refresh US/CA photo index"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: photo-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-sync:
+    name: Verify Curated Photos, Auto-Heal & Backfill OFF Index
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill uncached curated product photos (rate-limited <= 1 req / 6.2s)
+        env:
+          MAX_QUERIES: ${{ inputs.max_api_queries || '60' }}
+        run: npx tsx scripts/backfill-product-photos.ts --max-queries="$MAX_QUERIES"
+
+      - name: Verify HTTP 200 on all curated photo URLs & auto-heal by barcode
+        run: npx tsx scripts/verify-curated-photos.ts
+
+      - name: Refresh US/CA Open Food Facts JSONL photo index (when requested)
+        if: ${{ inputs.rebuild_us_index == true }}
+        env:
+          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
+        run: npx tsx scripts/build-off-photo-index.ts --max-entries=50000 --sync-kv
+
+      - name: Run Rubric & Curated Photo Coverage Gate
+        run: npm run test:rubric
+
+      - name: Commit & push updated photo manifests to main
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "derek22190"
+          git config user.email "53961265+derek22190@users.noreply.github.com"
+          if ! git diff --quiet data/ lib/lookup.ts lib/drinks-catalog.ts lib/seo-catalog.ts lib/swaps.ts; then
+            git add data/curated-product-photos.json data/off-us-photo-index.json lib/lookup.ts lib/drinks-catalog.ts lib/seo-catalog.ts lib/swaps.ts
+            git commit -m "Auto-sync verified Open Food Facts product photos & US/CA index"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

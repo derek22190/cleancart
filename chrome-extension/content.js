@@ -96,7 +96,7 @@
     const base = (clientInfo.apiBase || DEFAULT_API).replace(/\/+$/, "");
     const cleanBrand = String(brand || "").trim();
     const brandParam = cleanBrand ? `&brand=${encodeURIComponent(cleanBrand)}` : "";
-    return `${base}/api/product-image?q=${encodeURIComponent(String(title || "grocery"))}${brandParam}&v=6`;
+    return `${base}/api/product-image?q=${encodeURIComponent(String(title || "grocery"))}${brandParam}&fallback=404&v=7`;
   }
 
   function isPlaceholderProductImage(url) {
@@ -107,6 +107,16 @@
       trimmed.includes("product-photo-unavailable") ||
       trimmed.toLowerCase().includes("placeholder")
     );
+  }
+
+  function isStudioCategoryArtUrl(url) {
+    if (!url || typeof url !== "string") return false;
+    try {
+      const parsed = new URL(url, DEFAULT_API);
+      return parsed.pathname.startsWith("/swaps/") || parsed.pathname.startsWith("/products/");
+    } catch {
+      return url.includes("/swaps/") || url.includes("/products/");
+    }
   }
 
   function sanitizeDomImageUrl(rawUrl, imgEl = null) {
@@ -145,27 +155,25 @@
     return href;
   }
 
-  const NEUTRAL_THUMB_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>`;
+  const BRAND_TILE_PALETTES = [
+    ["#ECFDF5", "#065F46", "#A7F3D0"],
+    ["#EFF6FF", "#1E40AF", "#BFDBFE"],
+    ["#FEF3C7", "#92400E", "#FDE68A"],
+    ["#F3E8FF", "#5B21B6", "#DDD6FE"],
+    ["#FFE4E6", "#9F1239", "#FECDD3"],
+    ["#F1F5F9", "#334155", "#CBD5E1"],
+  ];
 
-  const apiImagePlaceholderCache = new Map();
-
-  async function checkApiImageIsPlaceholder(url) {
-    const fullUrl = resolveApiAssetUrl(url);
-    if (!fullUrl || !fullUrl.includes("/api/product-image")) return false;
-    if (apiImagePlaceholderCache.has(fullUrl)) return apiImagePlaceholderCache.get(fullUrl);
-    try {
-      const res = await fetch(fullUrl, { method: "HEAD" });
-      const imgSrcHeader = res.headers.get("x-image-source") || "";
-      const cType = res.headers.get("content-type") || "";
-      const isPh =
-        imgSrcHeader.toLowerCase().includes("placeholder") ||
-        res.url?.includes("product-photo-unavailable") ||
-        cType.includes("image/svg+xml");
-      apiImagePlaceholderCache.set(fullUrl, isPh);
-      return isPh;
-    } catch {
-      return false;
+  function computeBrandLetterTile(title, brand = "") {
+    const source = String(brand || "").trim() || String(title || "").trim() || "Grocery";
+    const alphaMatch = source.match(/[A-Za-z0-9]/);
+    const letter = (alphaMatch ? alphaMatch[0] : "G").toUpperCase();
+    let hash = 0;
+    for (let i = 0; i < source.length; i++) {
+      hash = (hash * 31 + source.charCodeAt(i)) | 0;
     }
+    const [bg, fg, border] = BRAND_TILE_PALETTES[Math.abs(hash) % BRAND_TILE_PALETTES.length];
+    return { letter, bg, fg, border };
   }
 
   /* ---------------- Per-Store & Per-Marketplace-Retailer Bucket Resolution ---------------- */
@@ -1569,8 +1577,9 @@
     if (isCartDrawerElement(cardEl.closest('[role="dialog"], aside, section'))) return null;
 
     const titleSelectors = [
-      '[data-automation-id="product-title"]',
       "span.w_iUH7",
+      '[class*="w_iUH7"]',
+      '[data-automation-id="product-title"]',
       '[data-test="product-title"]',
       '[data-testid*="product-title" i]',
       '[data-testid*="item-title" i]',
@@ -1581,8 +1590,8 @@
       "h2",
       "h3",
       "a[link-identifier]",
-      'a[href*="/ip/"]',
       'a[href*="/sp/track"]',
+      'a[href*="/ip/"]',
       'a[href*="/sams/shop/product/"]',
       'a[href*="/p/"]',
       'a[href*="/dp/"]',
@@ -1596,9 +1605,9 @@
     for (const sel of titleSelectors) {
       const els = cardEl.querySelectorAll(sel);
       for (const el of els) {
-        if (el.classList?.contains?.("cc-photo-badge") || el.closest?.(".cc-photo-badge")) continue;
+        if (el.classList?.contains?.("cc-photo-badge") || el.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
         const raw = cleanProductTitleText(el?.getAttribute?.("aria-label") || el?.textContent || "");
-        if (raw && raw.length >= 5 && raw.length <= 200 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
+        if (raw && raw.length >= 5 && raw.length <= 240 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
           title = raw;
           const linkEl = el.tagName === "A" ? el : el.closest?.("a[href]") || el.querySelector?.("a[href]");
           matchedHref = linkEl?.getAttribute?.("href") || "";
@@ -1607,11 +1616,33 @@
       }
       if (title) break;
     }
+    if (title && /(?:\.\.\.|…)\s*$/.test(title)) {
+      const stem = title.replace(/(?:\.\.\.|…)\s*$/, "").trim().toLowerCase().slice(0, 24);
+      for (const fullSel of ["span.w_iUH7", '[class*="w_iUH7"]', "a[link-identifier]", "a[aria-label]"]) {
+        for (const fel of cardEl.querySelectorAll(fullSel)) {
+          if (fel.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
+          const fullCand = cleanProductTitleText(fel?.getAttribute?.("aria-label") || fel?.textContent || "");
+          if (
+            fullCand &&
+            fullCand.length > title.length &&
+            fullCand.length <= 240 &&
+            !/(?:\.\.\.|…)\s*$/.test(fullCand) &&
+            !NON_TITLE_RE.test(fullCand) &&
+            !/^\$\d/.test(fullCand) &&
+            (!stem || fullCand.toLowerCase().startsWith(stem))
+          ) {
+            title = fullCand;
+            break;
+          }
+        }
+        if (!/(?:\.\.\.|…)\s*$/.test(title)) break;
+      }
+    }
     let domImageUrl = null;
     let primaryImgEl = null;
     const imgs = cardEl.querySelectorAll("img");
     for (const img of imgs) {
-      if (img.closest?.(".cc-photo-badge")) continue;
+      if (img.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
       if (!title) {
         const altCand = cleanProductTitleText(img.getAttribute("alt") || "");
         if (
@@ -2325,7 +2356,10 @@
         state.cartItems[liveIdx] = {
           ...cur,
           title: cur.title || scanRes.product?.title,
+          brand: scanRes.product?.brand || cur.brand || "",
           image: cur.image || serverVerifiedImg || null,
+          imageKind: scanRes.product?.imageKind || cur.imageKind || null,
+          categoryArtUrl: scanRes.product?.categoryArtUrl || cur.categoryArtUrl || null,
           domImageUrl: cur.domImageUrl || null,
           score: isNonFood ? null : scanRes.result.score,
           pending: false,
@@ -2429,6 +2463,7 @@
       const existing = state.cartItems[existingIdx];
       state.cartItems[existingIdx] = {
         ...existing,
+        brand: resp.product?.brand || existing.brand || "",
         itemId: resolvedItemId || existing.itemId || "",
         updatedAt: now,
         quantity: clampQty((existing.quantity || 1) + addQty),
@@ -2436,6 +2471,8 @@
         pending: false,
         isNonFood,
         image: existing.image || serverImgClean || null,
+        imageKind: resp.product?.imageKind || existing.imageKind || null,
+        categoryArtUrl: resp.product?.categoryArtUrl || existing.categoryArtUrl || null,
         domImageUrl: domImgClean || existing.domImageUrl || null,
         dietaryAlerts: Array.isArray(resp.dietaryAlerts) ? resp.dietaryAlerts : [],
         swapTitle: chosenSwap?.title || null,
@@ -2451,10 +2488,13 @@
       state.cartItems.unshift({
         key: itemKey,
         title: resp.product?.title || itemKey,
+        brand: resp.product?.brand || "",
         itemId: resolvedItemId,
         updatedAt: now,
         quantity: clampQty(addQty),
         image: serverImgClean || null,
+        imageKind: resp.product?.imageKind || null,
+        categoryArtUrl: resp.product?.categoryArtUrl || null,
         domImageUrl: domImgClean,
         score: isNonFood ? null : resp.result.score,
         pending: false,
@@ -2688,10 +2728,16 @@
     .cc-card { width: min(430px, calc(100vw - 20px)); max-height: min(78dvh, 560px); overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 10px 10px max(12px, calc(env(safe-area-inset-bottom, 0px) + 10px)); padding: 18px; border-radius: 24px; background: #fff; box-shadow: 0 24px 54px -12px rgba(15,23,42,.36); }
     .cc-hide-drop { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 2147483646; padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 800; background: rgba(15,23,20,.92); color: #fecaca; border: 1.5px dashed rgba(248,113,113,.75); pointer-events: none; }
     .cc-hide-drop.is-hot { background: #dc2626; color: #fff; border-style: solid; }
-    .cc-thumb-empty { background: #F4F5F7 !important; border: 1px solid #E5E7EB !important; display: inline-flex !important; align-items: center; justify-content: center; color: #9CA3AF; padding: 0 !important; flex: none; }
-    .cc-prod-thumb.cc-thumb-empty { width: 44px; height: 44px; border-radius: 10px; }
-    .cc-row-thumb.cc-thumb-empty, .cc-cart-thumb.cc-thumb-empty { width: 36px; height: 36px; border-radius: 8px; }
-    .cc-swap-thumb.cc-thumb-empty { width: 42px; height: 42px; border-radius: 10px; }
+    .cc-thumb-empty { display: inline-flex !important; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; line-height: 1; padding: 0 !important; flex: none; user-select: none; box-sizing: border-box; }
+    .cc-prod-thumb.cc-thumb-empty { width: 44px; height: 44px; border-radius: 10px; font-size: 18px; }
+    .cc-row-thumb.cc-thumb-empty, .cc-cart-thumb.cc-thumb-empty { width: 36px; height: 36px; border-radius: 8px; font-size: 14px; }
+    .cc-swap-thumb.cc-thumb-empty { width: 42px; height: 42px; border-radius: 10px; font-size: 16px; }
+    .cc-thumb-wrap { position: relative; display: inline-flex; flex: none; overflow: hidden; }
+    .cc-thumb-wrap.cc-prod-thumb { width: 44px; height: 44px; border-radius: 10px; }
+    .cc-thumb-wrap.cc-cart-thumb { width: 36px; height: 36px; border-radius: 8px; }
+    .cc-thumb-wrap.cc-swap-thumb { width: 42px; height: 42px; border-radius: 10px; }
+    .cc-thumb-wrap > img { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block; }
+    .cc-thumb-illus-badge { position: absolute; left: 50%; bottom: 1.5px; transform: translateX(-50%); padding: 0.5px 3.5px; border-radius: 999px; background: rgba(15,23,42,.72); color: #fff; font-size: 6.5px; font-weight: 700; line-height: 1.25; white-space: nowrap; pointer-events: none; }
   `;
 
   const host = document.createElement("div");
@@ -2748,52 +2794,111 @@
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  function buildThumbMarkup(className, verifiedUrl, domImageUrl, lazy = false) {
-    const resolvedVerified = resolveApiAssetUrl(verifiedUrl);
+  function buildBrandLetterTileMarkup(className, title = "", brand = "") {
+    const tile = computeBrandLetterTile(title, brand);
+    return `<div class="${className} cc-thumb-empty" style="background:${tile.bg} !important;border:1px solid ${tile.border} !important;color:${tile.fg} !important;" aria-hidden="true">${esc(tile.letter)}</div>`;
+  }
+
+  function buildCategoryArtMarkup(className, studioUrl, title = "", brand = "", lazy = false) {
+    return `<span class="cc-thumb-wrap ${className}"><img class="${className}" src="${esc(studioUrl)}" data-is-category-art="1" data-tile-title="${esc(title)}" data-tile-brand="${esc(brand)}" referrerpolicy="no-referrer" alt=""${lazy ? ' loading="lazy"' : ""} /><span class="cc-thumb-illus-badge">Illustration</span></span>`;
+  }
+
+  function ensureFallback404Param(rawUrl) {
+    if (!rawUrl || !rawUrl.includes("/api/product-image") || /[?&]fallback=/i.test(rawUrl)) return rawUrl;
+    return `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}fallback=404`;
+  }
+
+  function buildThumbMarkup(className, verifiedUrl, domImageUrl, lazy = false, meta = {}) {
+    const rawResolved = resolveApiAssetUrl(verifiedUrl);
+    const resolvedVerified = rawResolved ? ensureFallback404Param(rawResolved) : null;
     const hasVerified = Boolean(resolvedVerified && !isPlaceholderProductImage(resolvedVerified));
     const cleanDom = sanitizeDomImageUrl(domImageUrl);
-    if (hasVerified) {
+    const imageKind = String(meta?.imageKind || "");
+    const title = String(meta?.title || "");
+    const brand = String(meta?.brand || "");
+    const explicitCatArt = resolveApiAssetUrl(meta?.categoryArtUrl || "");
+    const verifiedIsStudio = hasVerified && (imageKind === "category-art" || isStudioCategoryArtUrl(resolvedVerified));
+    const studioFallback = explicitCatArt || (verifiedIsStudio ? resolvedVerified : "");
+
+    // 1. Real package photo (direct OFF or single-pass /api/product-image?fallback=404)
+    if (hasVerified && !verifiedIsStudio && imageKind !== "none") {
       return `<img class="${className}" src="${esc(resolvedVerified)}"${
         cleanDom ? ` data-dom-fallback="${esc(cleanDom)}"` : ""
-      } referrerpolicy="no-referrer" alt=""${lazy ? ' loading="lazy"' : ""} />`;
+      }${studioFallback ? ` data-cat-fallback="${esc(studioFallback)}"` : ""} data-tile-title="${esc(title)}" data-tile-brand="${esc(brand)}" referrerpolicy="no-referrer" alt=""${lazy ? ' loading="lazy"' : ""} />`;
     }
+
+    // 2. Device-local store DOM photo (preferred over studio bowl art when browsing live retailer pages)
     if (cleanDom) {
-      return `<img class="${className}" src="${esc(cleanDom)}" referrerpolicy="no-referrer" alt=""${
+      return `<img class="${className}" src="${esc(cleanDom)}"${
+        studioFallback ? ` data-cat-fallback="${esc(studioFallback)}"` : ""
+      } data-tile-title="${esc(title)}" data-tile-brand="${esc(brand)}" referrerpolicy="no-referrer" alt=""${
         lazy ? ' loading="lazy"' : ""
       } />`;
     }
-    return `<div class="${className} cc-thumb-empty" aria-hidden="true">${NEUTRAL_THUMB_SVG}</div>`;
+
+    // 3. Brand-neutral studio category art with explicit "Illustration" pill
+    if (studioFallback && imageKind !== "none") {
+      return buildCategoryArtMarkup(className, studioFallback, title, brand, lazy);
+    }
+
+    // 4. Crisp Brand-Letter Tile
+    return buildBrandLetterTileMarkup(className, title, brand);
   }
 
   function handleThumbFallback(imgEl) {
     if (!imgEl || !imgEl.isConnected) return;
     const domFallback = sanitizeDomImageUrl(imgEl.getAttribute("data-dom-fallback") || "");
+    const catFallback = imgEl.getAttribute("data-cat-fallback") || "";
+    const tileTitle = imgEl.getAttribute("data-tile-title") || "";
+    const tileBrand = imgEl.getAttribute("data-tile-brand") || "";
     const curSrc = imgEl.getAttribute("src") || "";
+
     if (domFallback && imgEl.dataset.triedDomFallback !== "1" && curSrc !== domFallback) {
       imgEl.dataset.triedDomFallback = "1";
       imgEl.setAttribute("referrerpolicy", "no-referrer");
       imgEl.setAttribute("src", domFallback);
       return;
     }
+
+    if (catFallback && imgEl.dataset.triedCatFallback !== "1" && curSrc !== catFallback && imgEl.dataset.isCategoryArt !== "1") {
+      imgEl.dataset.triedCatFallback = "1";
+      const cls = imgEl.className || "cc-prod-thumb";
+      const wrap = document.createElement("span");
+      wrap.className = `cc-thumb-wrap ${cls}`;
+      const studioImg = document.createElement("img");
+      studioImg.className = cls;
+      studioImg.src = catFallback;
+      studioImg.dataset.isCategoryArt = "1";
+      studioImg.setAttribute("data-tile-title", tileTitle);
+      studioImg.setAttribute("data-tile-brand", tileBrand);
+      studioImg.setAttribute("referrerpolicy", "no-referrer");
+      studioImg.alt = "";
+      studioImg.onerror = () => handleThumbFallback(studioImg);
+      const badge = document.createElement("span");
+      badge.className = "cc-thumb-illus-badge";
+      badge.textContent = "Illustration";
+      wrap.append(studioImg, badge);
+      imgEl.replaceWith(wrap);
+      return;
+    }
+
+    const tile = computeBrandLetterTile(tileTitle, tileBrand);
+    const cls = imgEl.className || "cc-prod-thumb";
     const neutralBox = document.createElement("div");
-    neutralBox.className = `${imgEl.className || "cc-prod-thumb"} cc-thumb-empty`;
+    neutralBox.className = `${cls} cc-thumb-empty`;
+    neutralBox.style.setProperty("background", tile.bg, "important");
+    neutralBox.style.setProperty("border", `1px solid ${tile.border}`, "important");
+    neutralBox.style.setProperty("color", tile.fg, "important");
     neutralBox.setAttribute("aria-hidden", "true");
-    neutralBox.innerHTML = NEUTRAL_THUMB_SVG;
-    imgEl.replaceWith(neutralBox);
+    neutralBox.textContent = tile.letter;
+    const replaceTarget = imgEl.parentElement?.classList?.contains("cc-thumb-wrap") ? imgEl.parentElement : imgEl;
+    replaceTarget.replaceWith(neutralBox);
   }
 
   function attachModalThumbHandlers() {
     const thumbs = modalSlot.querySelectorAll("img.cc-prod-thumb, img.cc-cart-thumb, img.cc-swap-thumb");
     for (const img of thumbs) {
       img.onerror = () => handleThumbFallback(img);
-      const src = img.getAttribute("src") || "";
-      if (src.includes("/api/product-image")) {
-        void checkApiImageIsPlaceholder(src).then((isPh) => {
-          if (isPh && img.isConnected && (img.getAttribute("src") || "") === src) {
-            handleThumbFallback(img);
-          }
-        });
-      }
     }
   }
 
@@ -2971,7 +3076,12 @@
             const itemHasAlert = Array.isArray(item.dietaryAlerts) && item.dietaryAlerts.length > 0;
             const rowTone = hasScore ? (itemHasAlert ? "red" : toneForScore(item.score)) : "gray";
             const chipLabel = item.pending ? "…" : item.isNonFood ? "N/A" : hasScore ? String(item.score) : "--";
-            const thumbHtml = buildThumbMarkup("cc-row-thumb cc-cart-thumb", item.image, item.domImageUrl, true);
+            const thumbHtml = buildThumbMarkup("cc-row-thumb cc-cart-thumb", item.image, item.domImageUrl, true, {
+              imageKind: item.imageKind,
+              categoryArtUrl: item.categoryArtUrl,
+              title: item.title,
+              brand: item.brand,
+            });
             const qty = clampQty(item.quantity);
             const alertBadges = itemHasAlert
               ? ` · ⚠️ ${item.dietaryAlerts.map((a) => esc(a.shortBadge)).join(", ")}`
@@ -3065,17 +3175,24 @@
     const safeScore = Math.max(0, Math.min(100, Math.round(Number(r.score ?? 0))));
     const C = 2 * Math.PI * 42;
     const rawProdImg = d.product?.imageUrl;
+    const prodImageKind = isNonFood ? "none" : d.product?.imageKind || "";
     const prodVerifiedImg =
       rawProdImg && !isPlaceholderProductImage(rawProdImg)
         ? resolveApiAssetUrl(rawProdImg)
-        : !isNonFood && d.product?.title
+        : !isNonFood && prodImageKind !== "none" && prodImageKind !== "category-art" && d.product?.title
           ? fallbackThumbUrl(d.product.title, d.product.brand)
           : null;
     const prodThumbHtml = buildThumbMarkup(
       "cc-prod-thumb",
       prodVerifiedImg,
       state.lastDomProductImageUrl,
-      false
+      false,
+      {
+        imageKind: prodImageKind,
+        categoryArtUrl: d.product?.categoryArtUrl,
+        title: d.product?.title,
+        brand: d.product?.brand,
+      }
     );
 
     const srcKey = d.lookup?.origin || d.lookup?.source || "catalog";
@@ -3140,7 +3257,12 @@
             ? `<span class="cc-meta-line" style="display:block;color:#92400e;font-size:11px;margin-top:2px;">Note: contains ${esc(activeSwap.flaggedAdditives.join(", "))}</span>`
             : "";
         swapHtml = `<div class="cc-swap">
-          ${buildThumbMarkup("cc-swap-thumb", swapThumb, null, false)}
+          ${buildThumbMarkup("cc-swap-thumb", swapThumb, null, false, {
+            imageKind: activeSwap.imageKind,
+            categoryArtUrl: activeSwap.categoryArtUrl,
+            title: activeSwap.title,
+            brand: activeSwap.brand,
+          })}
           <div class="cc-swap-info">
             <div class="cc-swap-badges">
               ${swapLocked ? `<span class="cc-eyebrow">🔒 Swap Locked</span>` : `<span class="cc-instock-badge">✓ In Stock</span>`}
@@ -3617,16 +3739,44 @@
       render();
       return;
     }
-    const rawIngredients = readIngredients(modalScope);
+    let rawIngredients = readIngredients(modalScope);
     const domImage = readProductImage(modalScope);
+    let walmartNextBarcode = "";
+    if (!modalScope && BASE_STORE === "walmart") {
+      try {
+        const nextEl = document.getElementById("__NEXT_DATA__");
+        if (nextEl && nextEl.textContent) {
+          const nd = JSON.parse(nextEl.textContent);
+          const idml = nd?.props?.pageProps?.initialData?.data?.idml;
+          const prod = nd?.props?.pageProps?.initialData?.data?.product;
+          if (!rawIngredients && idml) {
+            const wIng =
+              idml.ingredients?.ingredients?.value ||
+              idml.ingredients?.value ||
+              (typeof idml.ingredients === "string" ? idml.ingredients : "");
+            if (typeof wIng === "string" && wIng.trim().length > 3) {
+              rawIngredients = wIng.trim().slice(0, 4000);
+            }
+          }
+          if (prod) {
+            let rawCode = String(prod.upc || prod.gtin13 || "").replace(/\D/g, "");
+            if (rawCode.length === 14 && rawCode.startsWith("00")) rawCode = rawCode.slice(2);
+            else if (rawCode.length === 14 && rawCode.startsWith("0")) rawCode = rawCode.slice(1);
+            if (/^\d{8,14}$/.test(rawCode)) walmartNextBarcode = rawCode;
+          }
+        }
+      } catch {
+        // ignore Walmart Next.js hydration parse errors
+      }
+    }
     const key = `${activeBucket.bucketKey}|${location.pathname}|${modalScope ? "modal" : "pdp"}|${productTitle}|${rawIngredients}`;
     if (key === lastKey) return;
     lastKey = key;
 
     // Increment scanSeq BEFORE synchronous scanCache hits so any older in-flight network scan is immediately invalidated!
     const seq = ++scanSeq;
-    let pageBarcode = "";
-    if (!modalScope) {
+    let pageBarcode = walmartNextBarcode;
+    if (!modalScope && !pageBarcode) {
       try {
         const tokenizeForGtin = (s) =>
           String(s || "")
@@ -3740,6 +3890,18 @@
     const styleEl = document.createElement("style");
     styleEl.id = PHOTO_BADGE_STYLE_ID;
     styleEl.textContent = `
+      .cc-photo-badge-slot {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+        padding: 7px 2px 3px 2px !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        pointer-events: none !important;
+        position: relative !important;
+        z-index: 20 !important;
+      }
       .cc-photo-badge {
         position: absolute !important;
         bottom: 8px !important;
@@ -3747,15 +3909,16 @@
         z-index: 20 !important;
         display: inline-flex !important;
         align-items: center !important;
-        gap: 3px !important;
-        padding: 3px 8px !important;
+        gap: 6px !important;
+        padding: 6px 13px !important;
+        min-height: 33px !important;
         border-radius: 999px !important;
-        font: 800 12px/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font: 800 15.5px/1.12 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         font-variant-numeric: tabular-nums !important;
-        letter-spacing: -0.01em !important;
+        letter-spacing: -0.015em !important;
         color: #ffffff !important;
-        border: 1.5px solid rgba(255, 255, 255, 0.94) !important;
-        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28) !important;
+        border: 2px solid rgba(255, 255, 255, 0.96) !important;
+        box-shadow: 0 5px 14px rgba(15, 23, 42, 0.24) !important;
         cursor: pointer !important;
         user-select: none !important;
         -webkit-user-select: none !important;
@@ -3764,14 +3927,69 @@
         white-space: nowrap !important;
         transition: transform 0.14s ease, filter 0.14s ease !important;
       }
+      .cc-photo-badge--under {
+        position: relative !important;
+        bottom: auto !important;
+        left: auto !important;
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18) !important;
+      }
       .cc-photo-badge:hover { transform: scale(1.05) !important; filter: brightness(1.04) !important; }
-      .cc-photo-badge--green { background: rgba(22, 163, 74, 0.96) !important; }
-      .cc-photo-badge--yellow { background: rgba(217, 119, 6, 0.96) !important; }
-      .cc-photo-badge--red { background: rgba(220, 38, 38, 0.96) !important; }
-      .cc-photo-badge--advisory { box-shadow: 0 0 0 2px #fbbf24, 0 4px 12px rgba(15, 23, 42, 0.28) !important; }
-      .cc-photo-badge--loading { background: rgba(15, 23, 42, 0.72) !important; opacity: 0.85 !important; }
+      .cc-photo-badge--green { background: rgba(22, 163, 74, 0.97) !important; }
+      .cc-photo-badge--yellow { background: rgba(217, 119, 6, 0.97) !important; }
+      .cc-photo-badge--red { background: rgba(220, 38, 38, 0.97) !important; }
+      .cc-photo-badge--advisory { box-shadow: 0 0 0 2.5px #fbbf24, 0 5px 14px rgba(15, 23, 42, 0.26) !important; }
+      .cc-photo-badge--loading { background: rgba(15, 23, 42, 0.78) !important; opacity: 0.9 !important; }
     `;
     (document.head || document.documentElement)?.appendChild(styleEl);
+  }
+
+  function unmountPhotoBadgeEl(badgeEl) {
+    if (!badgeEl) return;
+    const parent = badgeEl.parentElement;
+    badgeEl.remove();
+    if (parent && parent.classList?.contains?.("cc-photo-badge-slot")) {
+      parent.remove();
+    }
+  }
+
+  function mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl) {
+    if (!anchor || !badgeEl) return false;
+    let slotTarget = anchor;
+    let p = anchor.parentElement;
+    while (p && p !== cardEl && cardEl.contains(p)) {
+      if (p.tagName === "A" || p.tagName === "PICTURE") {
+        const pr = p.getBoundingClientRect();
+        const ar = anchor.getBoundingClientRect();
+        if (pr.height <= ar.height + 36) {
+          slotTarget = p;
+          p = p.parentElement;
+          continue;
+        }
+      }
+      break;
+    }
+    const parent = slotTarget.parentElement;
+    if (parent && cardEl.contains(parent)) {
+      const pcs = window.getComputedStyle(parent);
+      const isRowFlex =
+        (pcs.display === "flex" || pcs.display === "inline-flex") &&
+        !/^column/i.test(pcs.flexDirection || "");
+      const isStrictSubGrid =
+        (pcs.display === "grid" || pcs.display === "inline-grid") &&
+        parent !== cardEl &&
+        (pcs.gridTemplateColumns || "").trim().split(/\s+/).length > 1;
+      if (!isRowFlex && !isStrictSubGrid) {
+        const slot = document.createElement("div");
+        slot.className = "cc-photo-badge-slot";
+        badgeEl.classList.add("cc-photo-badge--under");
+        slot.appendChild(badgeEl);
+        slotTarget.insertAdjacentElement("afterend", slot);
+        return true;
+      }
+    }
+    badgeEl.classList.remove("cc-photo-badge--under");
+    anchor.appendChild(badgeEl);
+    return true;
   }
 
   function isNonFoodScanResponse(resp) {
@@ -3842,7 +4060,7 @@
     }
     cardStateByEl = new WeakMap();
     ownerCardByImg = new WeakMap();
-    const existing = document.querySelectorAll(".cc-photo-badge");
+    const existing = document.querySelectorAll(".cc-photo-badge, .cc-photo-badge-slot");
     for (const el of existing) {
       el.remove();
     }
@@ -3864,7 +4082,7 @@
     let chosenImg = null;
     let imgRect = null;
     for (const img of imgs) {
-      if (!img || img.closest?.(".cc-photo-badge")) continue;
+      if (!img || img.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
       const src = img.currentSrc || img.getAttribute("src") || "";
       if (isPlaceholderCardImage(src, img)) continue;
       const r = img.getBoundingClientRect();
@@ -3914,7 +4132,7 @@
   function applyScoredPhotoBadgeState(badgeEl, resp, info, domImg, cardEl, sig) {
     if (!badgeEl || !badgeEl.isConnected) return false;
     if (!resp?.ok || isNonFoodScanResponse(resp)) {
-      badgeEl.remove();
+      unmountPhotoBadgeEl(badgeEl);
       return false;
     }
     const safeScore = Math.max(0, Math.min(100, Math.round(Number(resp.result.score ?? 0))));
@@ -3969,7 +4187,7 @@
       (computeCardSignature(liveCard, liveInfo) !== entry.sig ||
         liveInfo.title.toLowerCase().trim() !== entry.info.title.toLowerCase().trim())
     ) {
-      badgeEl.remove();
+      unmountPhotoBadgeEl(badgeEl);
       cardStateByEl.delete(liveCard);
       processVisiblePhotoBadgeCard(liveCard);
       const reqBucket = activeBucket;
@@ -4020,7 +4238,7 @@
       if (!entry.badgeEl?.isConnected || !entry.cardEl?.isConnected) continue;
       const liveInfo = readProductCardInfo(entry.cardEl);
       if (!liveInfo || computeCardSignature(entry.cardEl, liveInfo) !== entry.sig) {
-        entry.badgeEl.remove();
+        unmountPhotoBadgeEl(entry.badgeEl);
         cardStateByEl.delete(entry.cardEl);
         processVisiblePhotoBadgeCard(entry.cardEl);
         continue;
@@ -4047,7 +4265,7 @@
 
     const markBatchRetry = (backoffMs, allowRetry = true) => {
       for (const entry of batchEntries) {
-        entry.badgeEl?.remove();
+        unmountPhotoBadgeEl(entry.badgeEl);
         if (!entry.cardEl?.isConnected) continue;
         const curState = cardStateByEl.get(entry.cardEl);
         if (curState && curState.badgeEl && curState.badgeEl !== entry.badgeEl) continue;
@@ -4091,7 +4309,7 @@
           if (gen !== photoBadgeGeneration) return;
           if (resolveStoreBucket().bucketKey !== reqBucket.bucketKey) {
             for (const entry of batchEntries) {
-              entry.badgeEl?.remove();
+              unmountPhotoBadgeEl(entry.badgeEl);
               if (entry.cardEl?.isConnected) cardStateByEl.delete(entry.cardEl);
             }
             schedulePhotoBadgeRetry(250);
@@ -4111,7 +4329,7 @@
             }
             const keepOpen = Boolean(badgeDataByElement.get(entry.badgeEl)?.openOnResolve);
             if (!entry.cardEl?.isConnected) {
-              entry.badgeEl?.remove();
+              unmountPhotoBadgeEl(entry.badgeEl);
               if (keepOpen && itemResp?.ok) {
                 openBadgeScanInDrawer(itemResp, entry.info, entry.domImg);
               }
@@ -4119,7 +4337,7 @@
             }
             const liveInfo = readProductCardInfo(entry.cardEl);
             if (!liveInfo || computeCardSignature(entry.cardEl, liveInfo) !== entry.sig) {
-              entry.badgeEl?.remove();
+              unmountPhotoBadgeEl(entry.badgeEl);
               const curState = cardStateByEl.get(entry.cardEl);
               if (!curState || !curState.badgeEl || curState.badgeEl === entry.badgeEl) {
                 cardStateByEl.delete(entry.cardEl);
@@ -4129,7 +4347,7 @@
             }
             const curState = cardStateByEl.get(entry.cardEl);
             if (curState && curState.badgeEl && curState.badgeEl !== entry.badgeEl) {
-              entry.badgeEl?.remove();
+              unmountPhotoBadgeEl(entry.badgeEl);
               continue;
             }
             if (itemResp?.ok) {
@@ -4156,7 +4374,7 @@
                 }
               }
             } else {
-              entry.badgeEl?.remove();
+              unmountPhotoBadgeEl(entry.badgeEl);
               cardStateByEl.set(entry.cardEl, {
                 sig: entry.sig,
                 status: "nonfood",
@@ -4201,7 +4419,7 @@
 
   function removeCardPhotoBadges(cardEl) {
     if (!cardEl?.querySelectorAll) return;
-    for (const b of cardEl.querySelectorAll(".cc-photo-badge")) {
+    for (const b of cardEl.querySelectorAll(".cc-photo-badge, .cc-photo-badge-slot")) {
       b.remove();
     }
   }
@@ -4243,7 +4461,7 @@
       badgeEl.className = "cc-photo-badge";
       badgeEl.setAttribute("role", "button");
       badgeEl.setAttribute("tabindex", "0");
-      anchor.appendChild(badgeEl);
+      mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl);
       const shown = applyScoredPhotoBadgeState(badgeEl, cached, info, domImg, cardEl, sig);
       cardStateByEl.set(cardEl, {
         sig,
@@ -4262,7 +4480,7 @@
     badgeEl.setAttribute("aria-label", `Scoring ${info.title} with HeyBroc`);
     badgeEl.dataset.ccSig = sig;
     badgeEl.textContent = "🥦 …";
-    anchor.appendChild(badgeEl);
+    mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl);
     badgeDataByElement.set(badgeEl, {
       resp: null,
       info,
@@ -4647,7 +4865,7 @@
     (e) => {
       if (e.pointerType === "touch") return;
       if (isProductPage() || isCartPageUrl() || state.expanded || state.auditorOpen) return;
-      if (host?.contains(e.target) || e.target?.closest?.(".cc-photo-badge")) return;
+      if (host?.contains(e.target) || e.target?.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) return;
       const card = e.target?.closest?.(PRODUCT_CARD_SEL);
       if (card === lastHoveredCardEl) return;
       lastHoveredCardEl = card;
@@ -4672,7 +4890,7 @@
   document.addEventListener(
     "focusin",
     (e) => {
-      if (isProductPage() || isCartPageUrl() || host?.contains(e.target) || e.target?.closest?.(".cc-photo-badge")) return;
+      if (isProductPage() || isCartPageUrl() || host?.contains(e.target) || e.target?.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) return;
       const card = e.target?.closest?.(PRODUCT_CARD_SEL);
       if (card) triggerGridCardInspect(card);
     },
@@ -4741,7 +4959,8 @@
     return Boolean(
       el.id === PHOTO_BADGE_STYLE_ID ||
       el.classList?.contains?.("cc-photo-badge") ||
-      el.closest?.(".cc-photo-badge")
+      el.classList?.contains?.("cc-photo-badge-slot") ||
+      el.closest?.(".cc-photo-badge, .cc-photo-badge-slot")
     );
   }
 

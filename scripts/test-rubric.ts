@@ -1374,7 +1374,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         sweetPotatoScore?.score === 90 &&
         sweetPotatoScore?.rating === "Excellent" &&
         sweetPotatoScore?.flagged.length === 0 &&
-        sweetPotatoLookup.imageUrl?.includes("&v=4")
+        sweetPotatoLookup.imageUrl?.startsWith("https://images.openfoodfacts.org/images/products/")
     )
   );
 
@@ -1815,7 +1815,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         toasterPastryScan.result.score < 50 &&
         !prodImgRouteTs.includes("PROCESSED_FOOD_IMAGE_QUERY") &&
         prodImgRouteTs.includes("local:public/swaps/ranch.jpg") &&
-        (historyStoreKtSrc.includes("&v=6") || historyStoreKtSrc.includes("&v=4")) &&
+        (historyStoreKtSrc.includes("&v=7") || historyStoreKtSrc.includes("&v=6") || historyStoreKtSrc.includes("&v=4")) &&
         !mainActivityKtSrc.includes('"● Live"') &&
         mainActivityKtSrc.includes("includeWatchlist: Boolean = false") &&
         (readerKtSrc.includes("val shouldReplace = (isFirstCartFrame || allCartRowsVisible) && cartTitles.isNotEmpty()") ||
@@ -2390,10 +2390,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     "walmart",
   );
   check(
-    "Full Post-Commit Audit: zero duplicate swap photos (43/43 unique), Angus patties & NY strip 90/100, Distilled water 100/100, Purified water & Olive Oil 90/100, Egg Noodles -> Pasta, Beyond Burger -> Dr. Praeger's, no placeholder tiles, and safe Android swap browser routing",
+    "Full Post-Commit Audit: zero duplicate swap photos (61/61 unique), Angus patties & NY strip 90/100, Distilled water 100/100, Purified water & Olive Oil 90/100, Egg Noodles -> Pasta, Beyond Burger -> Dr. Praeger's, Brand-Letter Tile fallback (never 'No photo' camera), and safe Android swap browser routing",
     Boolean(
-      swapAssetFiles.length === 43 &&
-        swapAssetHashes.size === 43 &&
+      swapAssetFiles.length === 61 &&
+        swapAssetHashes.size === 61 &&
         beefPattyScan.ok &&
         beefPattyScan.result.score === 90 &&
         nyStripScan.ok &&
@@ -2410,6 +2410,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         eggNoodlesAlt.brand === "Barilla" &&
         eggNoodlesAlt.name.includes("Organic Spaghetti Pasta") &&
         beyondBurgerAlt.brand === "Dr. Praeger's" &&
+        !latestSimulatorTsx.includes("No photo") &&
+        latestSimulatorTsx.includes("brandLetterTileSpec") &&
         !latestSimulatorTsx.includes("product-art--tile") &&
         mainActivityKtSrc.includes("resolveExternalBrowserPackage") &&
         overlayKtSrc.includes("resolveExternalBrowserPackage") &&
@@ -6993,6 +6995,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             get parentNode() {
               return this.parentElement;
             }
+            get nextSibling(): MockElement | null {
+              if (!this.parentElement) return null;
+              const idx = this.parentElement.children.indexOf(this);
+              return idx !== -1 && idx + 1 < this.parentElement.children.length
+                ? this.parentElement.children[idx + 1]
+                : null;
+            }
             setAttribute(k: string, v: string) {
               this.attrs[k] = String(v);
               if (k === "class") this.className = String(v);
@@ -7007,6 +7016,18 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
               ch.parentElement = this;
               ch.isConnected = this.isConnected;
               this.children.push(ch);
+              return ch;
+            }
+            insertBefore(ch: MockElement, ref: MockElement | null) {
+              ch.parentElement = this;
+              ch.isConnected = this.isConnected;
+              if (!ref) {
+                this.children.push(ch);
+                return ch;
+              }
+              const idx = this.children.indexOf(ref);
+              if (idx === -1) this.children.push(ch);
+              else this.children.splice(idx, 0, ch);
               return ch;
             }
             removeChild(ch: MockElement) {
@@ -7044,6 +7065,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
               return {
                 contains(cls: string) {
                   return self.className.split(/\s+/).includes(cls);
+                },
+                add(cls: string) {
+                  if (!self.className.split(/\s+/).includes(cls)) {
+                    self.className = (self.className ? `${self.className} ` : "") + cls;
+                  }
                 },
               };
             }
@@ -7233,7 +7259,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             imgEl.setAttribute("src", "https://cdn.example.com/yogurt.jpg");
 
             // Even BEFORE a MutationObserver pass runs, tapping the stale badge on the mutated card must inspect the LIVE Yogurt title, NEVER Oatmeal!
-            const currentBadge = photoWrap.querySelector(".hb-photo-badge");
+            const currentBadge =
+              cardEl.querySelector(".hb-photo-badge") ?? photoWrap.querySelector(".hb-photo-badge");
             if (currentBadge && clickListeners[0]) {
               clickListeners[0]({
                 target: currentBadge,
@@ -8118,7 +8145,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         );
         const buildGradleKts = fsSync.readFileSync("android-app/app/build.gradle.kts", "utf8");
         check(
-          "P1-5, P1-6 & P2-Swaps/Cart/APK: sanitizeInstacartRetailerSlug blocks reserved/numeric slugs, ALDI & Amazon never leak cross-program/hardcoded tags, Android versionCode=44 strips precautionary may-contain clauses & removes roast-beef/ground-meat fabrications",
+          "P1-5, P1-6 & P2-Swaps/Cart/APK: sanitizeInstacartRetailerSlug blocks reserved/numeric slugs, ALDI & Amazon never leak cross-program/hardcoded tags, Android versionCode=45 strips precautionary may-contain clauses & removes roast-beef/ground-meat fabrications",
           swapsAuditMod.sanitizeInstacartRetailerSlug("checkout_v4") === "" &&
             swapsAuditMod.sanitizeInstacartRetailerSlug("your-items") === "" &&
             swapsAuditMod.sanitizeInstacartRetailerSlug("retailers") === "" &&
@@ -8127,7 +8154,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             swapsAuditMod.sanitizeInstacartRetailerSlug("sprouts?utm_source=x#top") === "sprouts" &&
             aldiDoesNotUseInstacartImpact &&
             unconfiguredAmazonHasNoHardcodedTag &&
-            buildGradleKts.includes("versionCode = 44") &&
+            buildGradleKts.includes("versionCode = 45") &&
             scanApiKt.includes("stripPrecautionaryCrossContactClauses") &&
             !scanHistoryKt.includes("Beef, water, salt, sodium phosphate, caramel color") &&
             !scanHistoryKt.includes("100% Pure Ground Meat (Beef, Turkey, Pork, or Chicken)") &&
@@ -8490,11 +8517,384 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     }
   }
 
+  // =========================================================================
+  // v2.5.4 Regression Gate: 8-Step Product Photo Pipeline, Walmart SEO Titles
+  // & Target 2.3x Under-Photo Broccoli Score Badge Parity
+  // =========================================================================
+  {
+    const fsNode = await import("node:fs");
+    const pathNode = await import("node:path");
+    const lookupMod = await import("../lib/lookup");
+    const drinksMod = await import("../lib/drinks-catalog");
+    const seoMod = await import("../lib/seo-catalog");
+    const swapsMod = await import("../lib/swaps");
+    const curatedPhotosMod = await import("../lib/curated-product-photos");
+    const offIndexMod = await import("../lib/off-photo-index");
+    const scanMod = await import("../lib/scan");
+    const imgRouteMod = await import("../app/api/product-image/route");
+
+    // Step 1 & Step 6: 100% curated product photo / studio art coverage gate + zero dead local imageUrl paths + all 18 new studio PNGs present
+    const requiredNewStudioAssets = [
+      "soda.png",
+      "water.png",
+      "energy-drink.png",
+      "coffee.png",
+      "tea.png",
+      "juice.png",
+      "protein-shake.png",
+      "creamer.png",
+      "candy.png",
+      "frozen-meal.png",
+      "bakery.png",
+      "spices.png",
+      "condiments.png",
+      "oil-vinegar.png",
+      "nuts-seeds.png",
+      "beans-grains.png",
+      "popcorn.png",
+      "baby-food.png",
+    ];
+    const allNewStudioExist = requiredNewStudioAssets.every((f) => {
+      const p = pathNode.resolve(process.cwd(), "public/swaps", f);
+      return fsNode.existsSync(p) && fsNode.statSync(p).size > 2048;
+    });
+
+    const hasDeadCuratedUrl = (u?: string | null): boolean => {
+      if (!u) return false;
+      return (
+        u.startsWith("/products/") ||
+        u.startsWith("/swaps/") ||
+        u.includes("/api/product-image")
+      );
+    };
+
+    const verifyMediaResolved = (params: {
+      brand?: string;
+      title: string;
+      barcode?: string;
+      imageUrl?: string;
+      ingredients?: string;
+      explicitCategory?: string;
+    }): boolean => {
+      if (hasDeadCuratedUrl(params.imageUrl)) return false;
+      const media = curatedPhotosMod.resolveProductMediaFields({
+        brand: params.brand,
+        title: params.title,
+        barcode: params.barcode,
+        rawImageUrl: params.imageUrl,
+        ingredients: params.ingredients,
+        explicitCategory: params.explicitCategory,
+      });
+      if (media.imageKind === "photo") {
+        return Boolean(media.imageUrl?.startsWith("https://images.openfoodfacts.org/images/products/"));
+      }
+      if (media.imageKind === "category-art" && media.imageUrl?.startsWith("/swaps/")) {
+        const diskPath = pathNode.resolve(process.cwd(), "public", media.imageUrl.replace(/^\/+/, ""));
+        return fsNode.existsSync(diskPath);
+      }
+      // Only explicit pet-food H4 regression entry (`Purina Dog Chow`) should use Brand-Letter Tile (`none`)
+      return /\bdog\s+chow\b/i.test(params.title) && media.imageKind === "none";
+    };
+
+    const mainCatalogOk = lookupMod.INSTANT_GROCERY_CATALOG.every((x) =>
+      verifyMediaResolved({
+        brand: x.brand,
+        title: x.title,
+        barcode: x.barcode,
+        imageUrl: x.imageUrl,
+        ingredients: x.ingredients,
+      }),
+    );
+    const drinksCatalogOk = drinksMod.DRINKS_CATALOG.every((x) =>
+      verifyMediaResolved({
+        brand: x.brand,
+        title: x.title,
+        barcode: x.barcode,
+        imageUrl: x.imageUrl,
+        ingredients: x.ingredients,
+      }),
+    );
+    const seoCatalogOk = seoMod.SEO_PRODUCTS.every((x) =>
+      verifyMediaResolved({
+        brand: x.brand,
+        title: x.title,
+        barcode: x.barcode,
+        imageUrl: x.imageUrl,
+        ingredients: x.ingredients,
+        explicitCategory: x.category,
+      }),
+    );
+    const allSwapsPool = [
+      ...Object.values(swapsMod.CLEAN_ALTERNATIVES),
+      ...swapsMod.EXACT_PRODUCT_ALTERNATIVES.map((e) => e.alt),
+      ...Object.values(swapsMod.STORE_SPECIFIC_OVERRIDES).flatMap((l) => (l || []).map((e) => e.alt)),
+      ...swapsMod.WALMART_STORE_BRAND_ALTERNATIVES.map((e) => e.alt),
+      ...swapsMod.SECONDARY_CLEAN_ALTERNATIVES.flatMap((e) => e.alts),
+    ];
+    const swapsCatalogOk = allSwapsPool.every((x) =>
+      verifyMediaResolved({
+        brand: x.brand,
+        title: swapsMod.formatSwapFullTitle(x),
+        barcode: x.barcode,
+        imageUrl: x.image,
+        ingredients: x.ingredients,
+      }),
+    );
+
+    check(
+      "Step 1 & Step 6 Coverage Gate: 100% of curated food & drink entries across INSTANT_GROCERY_CATALOG, DRINKS_CATALOG, SEO_PRODUCTS, and all Clean Swap pools resolve to verified OFF photos or on-disk studio art with zero dead local URLs",
+      allNewStudioExist && mainCatalogOk && drinksCatalogOk && seoCatalogOk && swapsCatalogOk,
+    );
+
+    // Step 2: Single-pass media classification (`imageKind` + `categoryArtUrl`) and zero HEAD placeholder probes
+    const scanMediaSample = await scanMod.runScan({
+      productTitle: "Doritos Nacho Cheese Tortilla Chips",
+      store: "target",
+    });
+    const simulatorTsx = fsNode.readFileSync("components/Simulator.tsx", "utf8");
+    const extContentJs = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariContentJs = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+
+    check(
+      "Step 2 Single-Pass Media: runScan emits imageKind + categoryArtUrl on product & swaps, and Simulator/extensions perform zero HEAD placeholder checks and never render gray 'No photo' camera",
+      Boolean(
+        scanMediaSample.ok &&
+          scanMediaSample.product?.imageKind === "photo" &&
+          scanMediaSample.product?.imageUrl?.startsWith("https://images.openfoodfacts.org/") &&
+          scanMediaSample.product?.categoryArtUrl?.endsWith("/swaps/chips.jpg") &&
+          scanMediaSample.swap?.imageKind &&
+          scanMediaSample.swap?.categoryArtUrl &&
+          !simulatorTsx.includes('method: "HEAD"') &&
+          !simulatorTsx.includes(">No photo<") &&
+          !extContentJs.includes("checkApiImageIsPlaceholder") &&
+          !safariContentJs.includes("checkApiImageIsPlaceholder") &&
+          simulatorTsx.includes("Illustration") &&
+          extContentJs.includes("Illustration"),
+      ),
+    );
+
+    // Step 3, Step 4 & Step 7: Prebuilt US/CA OFF index variant guard, transient no-store + X-Image-Retry header on OFF timeout, and US front_es / raw numeric photo acceptance
+    const idxExactHit = offIndexMod.lookupOffPhotoIndexSync({ barcode: "0044000047009" });
+    const idxNkdExactHit = offIndexMod.lookupOffPhotoIndexSync({
+      title: "Doritos Simply NKD Nacho Cheese Tortilla Chips",
+      brand: "Doritos",
+    });
+    const idxVariantGuardBlocksZeroSugar = offIndexMod.lookupOffPhotoIndexSync({
+      title: "Oreo Zero Sugar Chocolate Sandwich Cookies",
+      brand: "Oreo",
+    });
+
+    const prevFetchImgAudit = globalThis.fetch;
+    let transientRetryHeadersOk = false;
+    let spanishFrontAndRawNumericOk = false;
+    try {
+      try {
+        fsNode.rmSync(".cache/heybroc-kv.json", { force: true });
+      } catch {
+        /* ignore */
+      }
+      lookupMod.resetLookupRuntimeForTests();
+      // Simulate OFF network timeout -> must return 503 + Cache-Control: no-store + X-Image-Retry: 1 (never 1h browser cache)
+      globalThis.fetch = async () => {
+        throw new Error("Simulated OFF network timeout");
+      };
+      const transientRes = await imgRouteMod.GET(
+        new Request(
+          "https://www.heybroc.com/api/product-image?q=Uncached%20Artisanal%20Quinoa%20Crisps%2099182&fallback=404",
+          { headers: { "x-forwarded-for": "198.51.100.77" } },
+        ),
+      );
+      transientRetryHeadersOk =
+        transientRes.status === 503 &&
+        (transientRes.headers.get("cache-control") || "").includes("no-store") &&
+        transientRes.headers.get("x-image-retry") === "1";
+
+      try {
+        fsNode.rmSync(".cache/heybroc-kv.json", { force: true });
+      } catch {
+        /* ignore */
+      }
+      lookupMod.resetLookupRuntimeForTests();
+      // Simulate US Spanish-labeled product (`front_es` only, e.g. Goya) + raw numeric `images["1"]` fallback
+      const tinyJpeg = new Uint8Array(256);
+      tinyJpeg[0] = 0xff;
+      tinyJpeg[1] = 0xd8;
+      tinyJpeg[2] = 0xff;
+      tinyJpeg[3] = 0xe0;
+      tinyJpeg[254] = 0xff;
+      tinyJpeg[255] = 0xd9;
+      globalThis.fetch = async (input) => {
+        const u = String(input);
+        if (u.includes("/api/v2/product/0041331024655")) {
+          return Response.json({
+            status: 1,
+            product: {
+              code: "0041331024655",
+              product_name: "Goya Adobo All Purpose Seasoning",
+              brands: "Goya",
+              countries_tags: ["en:united-states"],
+              selected_images: {
+                front: {
+                  display: {
+                    es: "https://images.openfoodfacts.org/images/products/004/133/102/4655/front_es.5.400.jpg",
+                  },
+                },
+              },
+            },
+          });
+        }
+        if (u.includes("/api/v2/product/0079893401232")) {
+          return Response.json({
+            status: 1,
+            product: {
+              code: "0079893401232",
+              product_name: "Organic Sprouted Pumpkin Seeds",
+              brands: "Simple Truth Organic",
+              countries_tags: ["en:united-states"],
+              images: { "1": { rev: "2" } },
+            },
+          });
+        }
+        if (u.startsWith("https://images.openfoodfacts.org/images/products/")) {
+          return new Response(tinyJpeg, {
+            status: 200,
+            headers: { "content-type": "image/jpeg" },
+          });
+        }
+        return Response.json({ status: 0, products: [] });
+      };
+
+      const goyaEsRes = await imgRouteMod.GET(
+        new Request(
+          "https://www.heybroc.com/api/product-image?q=Goya%20Adobo%20All%20Purpose%20Seasoning&code=0041331024655&fallback=404",
+          { headers: { "x-forwarded-for": "198.51.100.78" } },
+        ),
+      );
+      const rawOneRes = await imgRouteMod.GET(
+        new Request(
+          "https://www.heybroc.com/api/product-image?q=Simple%20Truth%20Organic%20Sprouted%20Pumpkin%20Seeds&code=0079893401232&fallback=404",
+          { headers: { "x-forwarded-for": "198.51.100.79" } },
+        ),
+      );
+      spanishFrontAndRawNumericOk =
+        goyaEsRes.status === 200 &&
+        (goyaEsRes.headers.get("x-image-attribution") || "").includes("CC BY-SA") &&
+        rawOneRes.status === 200;
+    } finally {
+      globalThis.fetch = prevFetchImgAudit;
+    }
+
+    check(
+      "Step 3, Step 4 & Step 7: OFF photo index resolves barcodes with strict variant guard, transient OFF failures emit no-store + X-Image-Retry: 1, and US front_es + raw images['1'] photos resolve with CC BY-SA attribution",
+      Boolean(
+        idxExactHit?.imageUrl.includes("004/400/004/7009") &&
+          idxNkdExactHit?.barcode === "0028400794756" &&
+          idxVariantGuardBlocksZeroSugar === null &&
+          transientRetryHeadersOk &&
+          spanishFrontAndRawNumericOk,
+      ),
+    );
+
+    // Step 5 & Live Shop Regressions: Walmart verbose/truncated SEO titles resolve cleanly + 2.3x under-photo broccoli badge & device-only storeImageUrl parity
+    const cleanedMiniWheats = lookupMod.cleanSearchQuery(
+      "Kellogg's Frosted Mini-Wheats Original Breakfast Cereal, High Fiber, Family...",
+    );
+    const cleanedRiceKrispies = lookupMod.cleanSearchQuery(
+      "Kellogg's Rice Krispies Original Breakfast Cereal, Kids Snacks, Family Size, 18 oz",
+    );
+    const cleaned7Brew = lookupMod.cleanSearchQuery(
+      "7 Brew Energy Sugar Free Original Energy Drink, 12 fl oz. Can",
+    );
+    const cleanedOreoHouse = lookupMod.cleanSearchQuery(
+      "Holiday Create A Treat OREO® Chocolate Mini Cookie House, Small, 8.3 oz,...",
+    );
+
+    const prevFetchWalmartAudit = globalThis.fetch;
+    let walmartSeoLookupsOk = false;
+    try {
+      globalThis.fetch = async (input) => {
+        const u = String(input);
+        if (u.includes("openfoodfacts.org")) {
+          if (/mini[\s+%-]*wheats/i.test(decodeURIComponent(u))) {
+            return Response.json({
+              products: [
+                {
+                  code: "0038000199349",
+                  product_name: "Frosted Mini-Wheats Original",
+                  brands: "Kellogg's",
+                  countries_tags: ["en:united-states"],
+                  ingredients_text_en: "Whole grain wheat, sugar, contains 2% or less of brown rice syrup, gelatin, BHT for freshness.",
+                  nutriments: { "energy-kcal_100g": 350, sugars_100g: 20, "saturated-fat_100g": 0, sodium_100g: 0.008, fiber_100g: 10, proteins_100g: 8.3 },
+                },
+              ],
+            });
+          }
+          if (/rice[\s+%-]*krispies/i.test(decodeURIComponent(u))) {
+            return Response.json({
+              products: [
+                {
+                  code: "0038000200038",
+                  product_name: "Kellogg's Rice Krispies",
+                  brands: "Kellogg's",
+                  countries_tags: ["en:united-states"],
+                  ingredients_text_en: "Rice, sugar, contains 2% or less of salt, malt flavor.",
+                  nutriments: { "energy-kcal_100g": 375, sugars_100g: 10, "saturated-fat_100g": 0, sodium_100g: 0.475, fiber_100g: 0, proteins_100g: 7.5 },
+                },
+              ],
+            });
+          }
+        }
+        return Response.json({ status: 0, products: [], foods: [] });
+      };
+
+      const miniWheatsHit = await lookupMod.lookupIngredients({
+        productTitle: "Kellogg's Frosted Mini-Wheats Original Breakfast Cereal, High Fiber, Family...",
+      });
+      const riceKrispiesHit = await lookupMod.lookupIngredients({
+        productTitle: "Kellogg's Rice Krispies Original Breakfast Cereal, Kids Snacks, Family Size, 18 oz",
+      });
+      walmartSeoLookupsOk = Boolean(miniWheatsHit?.ingredients && riceKrispiesHit?.ingredients);
+    } finally {
+      globalThis.fetch = prevFetchWalmartAudit;
+    }
+
+    const androidDetectorJs = fsNode.readFileSync(
+      "android-app/app/src/main/assets/live_store_detector.js",
+      "utf8",
+    );
+    const androidLiveStoreKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt",
+      "utf8",
+    );
+    const iosLiveStoreSwift = fsNode.readFileSync(
+      "ios-app/App/LiveStoreBrowserViewController.swift",
+      "utf8",
+    );
+    const iosShortcutsSwift = fsNode.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+
+    check(
+      "Step 5, Walmart SEO Titles & Target 2.3x Under-Photo Broccoli Badge: Walmart verbose/ellipsis titles strip cleanly and resolve, on-card badge mounts in under-photo slot across Android/iOS/Extensions, and storeImageUrl stays strictly on-device",
+      cleanedMiniWheats === "Kellogg's Frosted Mini-Wheats Original Breakfast Cereal" &&
+        cleanedRiceKrispies === "Kellogg's Rice Krispies Original Breakfast Cereal" &&
+        cleaned7Brew === "7 Brew Energy Sugar Free Original Energy Drink" &&
+        cleanedOreoHouse === "Holiday Create A Treat OREO Chocolate Mini Cookie House" &&
+        walmartSeoLookupsOk &&
+        androidDetectorJs.includes("hb-photo-badge-slot") &&
+        androidDetectorJs.includes("mountBadgeUnderOrOnPhoto") &&
+        androidDetectorJs.includes("w_iUH7") &&
+        androidDetectorJs.includes("__NEXT_DATA__") &&
+        androidLiveStoreKt.includes("attachDeviceStoreImage") &&
+        iosLiveStoreSwift.includes("hb-photo-badge-slot") &&
+        iosLiveStoreSwift.includes("mountBadgeUnderOrOnPhoto") &&
+        iosLiveStoreSwift.includes("withDeviceStoreImage") &&
+        !iosShortcutsSwift.includes('"storeImageUrl":') &&
+        extContentJs.includes("cc-photo-badge-slot") &&
+        extContentJs.includes("mountPhotoBadgeUnderOrOnPhoto"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
   process.exit(fail ? 1 : 0);
 })();
-
-
-

@@ -1,3 +1,5 @@
+import { type ImageKind } from "./category-art";
+import { resolveProductMediaFields } from "./curated-product-photos";
 import { scoreProductYuka, type NutritionInput, type ScoreResult } from "./rubric";
 import { resolveSwap, type RetailerId, type SwapResult } from "./swaps";
 
@@ -10,6 +12,8 @@ export interface SeoProductEntry {
   ingredients: string;
   nutrition?: NutritionInput;
   isOrganic?: boolean;
+  barcode?: string;
+  imageUrl?: string;
   sourceUrl: string;
   verifiedAt: string;
 }
@@ -321,7 +325,9 @@ export interface EvaluatedSeoProduct {
   entry: SeoProductEntry;
   result: ScoreResult;
   swap: SwapResult | null;
-  imageUrl: string;
+  imageUrl: string | null;
+  imageKind: ImageKind;
+  categoryArtUrl: string | null;
 }
 
 export function evaluateSeoProduct(
@@ -345,10 +351,20 @@ export function evaluateSeoProduct(
     familyWatchlist: [],
     store,
   });
+  const media = resolveProductMediaFields({
+    brand: entry.brand,
+    title: fullTitle,
+    barcode: entry.barcode,
+    rawImageUrl: entry.imageUrl,
+    ingredients: entry.ingredients,
+    explicitCategory: entry.category,
+  });
   return {
     entry,
     result,
     swap,
-    imageUrl: `/api/product-image?q=${encodeURIComponent(entry.title)}`,
+    imageUrl: media.imageUrl,
+    imageKind: media.imageKind,
+    categoryArtUrl: media.categoryArtUrl,
   };
 }

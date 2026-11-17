@@ -2,7 +2,10 @@
  * Shared scan pipeline used by /api/scan and /api/audit.
  */
 import "server-only";
+import type { ImageKind } from "./category-art";
+import { resolveProductMediaFields } from "./curated-product-photos";
 import { isEnglishIngredientText, lookupIngredients, type LookupResult } from "./lookup";
+import { lookupOffPhotoIndex } from "./off-photo-index";
 import {
   applyOrActivateReferral,
   getOrCreateDevice,
@@ -113,6 +116,8 @@ export interface ScanResponse {
     description?: string;
     barcode?: string;
     imageUrl?: string;
+    imageKind?: ImageKind;
+    categoryArtUrl?: string | null;
     ingredients: string;
     nutrition?: NutritionInput;
   };
@@ -906,26 +911,77 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   const canAccessSwapLinks = isAnonDevice
     ? true
     : Boolean(req.verifiedAccountPro || (entitlement && (entitlement.isProActive || entitlement.swapsRemaining > 0)));
-  const effectiveBarcode = found.barcode || req.barcode?.replace(/\D/g, "") || "";
-  const resolvedImageUrl =
-    found.imageUrl && found.imageUrl.startsWith("http")
-      ? found.imageUrl
-      : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}${found.brand ? `&brand=${encodeURIComponent(found.brand)}` : ""}${effectiveBarcode ? `&code=${encodeURIComponent(effectiveBarcode)}` : ""}&v=6`;
-  const formatSwapWithAccess = (s: SwapResult): SwapResult => ({
-    ...s,
-    image:
-      s.image && s.image.startsWith("http")
-        ? s.image
-        : `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(s.title)}${s.brand ? `&brand=${encodeURIComponent(s.brand)}` : ""}&v=6`,
-    ...(canAccessSwapLinks
-      ? {}
-      : {
-          webUrl: undefined,
-          deepLink: undefined,
-          androidIntentUrl: undefined,
-          locked: true,
-        }),
+  const rawEffectiveBarcode = found.barcode || req.barcode?.replace(/\D/g, "") || "";
+  const curatedMedia = resolveProductMediaFields({
+    brand: found.brand,
+    title,
+    barcode: rawEffectiveBarcode,
+    rawImageUrl: found.imageUrl,
+    ingredients: found.ingredients,
+    offCategoriesTags: found.offCategoriesTags,
+    explicitCategory: found.category,
+    assetOrigin: "https://www.heybroc.com",
   });
+  let effectiveBarcode = curatedMedia.barcode || rawEffectiveBarcode;
+  let resolvedImageUrl: string | undefined = curatedMedia.imageUrl || undefined;
+  let resolvedImageKind: ImageKind = curatedMedia.imageKind;
+  const resolvedCategoryArtUrl: string | null = curatedMedia.categoryArtUrl;
+
+  if (resolvedImageKind !== "photo") {
+    const offIndexHit = await lookupOffPhotoIndex({
+      barcode: effectiveBarcode,
+      title,
+      brand: found.brand,
+    });
+    if (offIndexHit?.imageUrl) {
+      resolvedImageUrl = offIndexHit.imageUrl;
+      resolvedImageKind = "photo";
+      if (!effectiveBarcode && offIndexHit.barcode) {
+        effectiveBarcode = offIndexHit.barcode;
+      }
+    } else if (
+      found.source !== "catalog" &&
+      found.source !== "openfoodfacts" &&
+      !isCategoryEstimate &&
+      resolvedCategoryArtUrl !== null
+    ) {
+      resolvedImageUrl = `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(title)}${found.brand ? `&brand=${encodeURIComponent(found.brand)}` : ""}${effectiveBarcode ? `&code=${encodeURIComponent(effectiveBarcode)}` : ""}&fallback=404&v=7`;
+      resolvedImageKind = "photo";
+    }
+  }
+
+  const formatSwapWithAccess = (s: SwapResult): SwapResult => {
+    const swapMedia =
+      s.image && s.image.startsWith("http")
+        ? {
+            imageUrl: s.image,
+            imageKind: s.imageKind || (s.image.includes("/swaps/") ? ("category-art" as ImageKind) : ("photo" as ImageKind)),
+            categoryArtUrl: s.categoryArtUrl ?? (s.image.includes("/swaps/") ? s.image : null),
+          }
+        : resolveProductMediaFields({
+            brand: s.brand,
+            title: s.title,
+            barcode: s.barcode,
+            rawImageUrl: s.image,
+            ingredients: s.ingredients,
+            explicitCategory: s.category,
+            assetOrigin: "https://www.heybroc.com",
+          });
+    return {
+      ...s,
+      image: swapMedia.imageUrl || swapMedia.categoryArtUrl || "https://www.heybroc.com/swaps/snacks.jpg",
+      imageKind: swapMedia.imageKind === "none" ? "category-art" : swapMedia.imageKind,
+      categoryArtUrl: swapMedia.categoryArtUrl || "https://www.heybroc.com/swaps/snacks.jpg",
+      ...(canAccessSwapLinks
+        ? {}
+        : {
+            webUrl: undefined,
+            deepLink: undefined,
+            androidIntentUrl: undefined,
+            locked: true,
+          }),
+    };
+  };
   const resolvedSwap: SwapResult | null = swap ? formatSwapWithAccess(swap) : null;
   const resolvedSwapCandidates: SwapResult[] = rawSwapCandidates.map(formatSwapWithAccess);
   // Ensure primary swap is first in swapCandidates if present and not already included
@@ -989,8 +1045,10 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       brand: found.brand,
       category: found.category,
       description: found.description,
-      barcode: found.barcode,
+      barcode: effectiveBarcode || found.barcode,
       imageUrl: resolvedImageUrl,
+      imageKind: resolvedImageKind,
+      categoryArtUrl: resolvedCategoryArtUrl,
       ingredients: found.ingredients,
       nutrition: found.nutrition,
     },

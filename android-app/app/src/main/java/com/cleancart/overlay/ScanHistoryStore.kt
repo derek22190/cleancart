@@ -259,10 +259,15 @@ object ScanHistoryStore {
             put("scannedAtMs", now)
             put("favoritedAtMs", now)
             put("product", JSONObject().apply {
+                val swapBarcode = swap.optString("barcode").trim()
+                val rawSwapImg = swap.optString("imageUrl").ifBlank { swap.optString("image") }
+                val swapCatArt = normalizeCategoryArtUrl(swap.optString("categoryArtUrl"))
                 put("title", swapTitle)
                 put("brand", swapBrand)
                 put("category", "Clean Swaps")
-                put("imageUrl", productImageUrl(swapTitle))
+                if (swapBarcode.isNotEmpty()) put("barcode", swapBarcode)
+                put("imageUrl", resolveBestImageUrl(swapTitle, rawSwapImg, swapBrand, swapBarcode))
+                if (swapCatArt.isNotEmpty()) put("categoryArtUrl", swapCatArt)
                 put("ingredients", swapIngredients)
                 put("isOrganic", isOrg)
                 put("nutrition", JSONObject().apply {
@@ -475,6 +480,51 @@ object ScanHistoryStore {
         "/(?:10603499|468/112/060/0422|068/113/139/5502|084/013/430/8029|005/200/012/2022|001/111/000/5526|008/523/927/0233|004/450/020/1956|008/523/905/3218|077/185/646/5793|029/961/630/1971|003/800/031/6104|490/100/207/5484)/"
     )
 
+    private val NON_US_FOREIGN_OFF_FRONT_TOKENS = listOf(
+        "/front_de.",
+        "/front_it.",
+        "/front_nl.",
+        "/front_pl.",
+        "/front_pt.",
+        "/front_ru.",
+        "/front_ja.",
+        "/front_zh.",
+        "/front_ar."
+    )
+
+    fun isCategoryArtUrl(rawUrl: String): Boolean {
+        val low = rawUrl.trim().lowercase()
+        return low.startsWith("/swaps/") ||
+            low.contains("heybroc.com/swaps/") ||
+            low.contains("cleancart-teal.vercel.app/swaps/")
+    }
+
+    fun normalizeCategoryArtUrl(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty() || trimmed.equals("null", ignoreCase = true)) return ""
+        if (trimmed.startsWith("/swaps/")) return "https://www.heybroc.com$trimmed"
+        if (trimmed.startsWith("https://") && isCategoryArtUrl(trimmed)) return trimmed
+        return ""
+    }
+
+    fun brandInitial(title: String, brand: String = ""): String {
+        val cleanBrand = brand.trim()
+            .takeUnless {
+                it.equals("Generic", ignoreCase = true) ||
+                    it.equals("Unknown", ignoreCase = true) ||
+                    it.equals("Grocery", ignoreCase = true) ||
+                    it.equals("Fresh Produce", ignoreCase = true) ||
+                    it.contains("Category Estimate", ignoreCase = true)
+            }.orEmpty()
+        val source = cleanBrand.ifBlank { title.trim() }
+        val word = source
+            .replace(Regex("^(?:the|a|an|fresh|whole|raw|usda|organic|natural|pure)\\s+", RegexOption.IGNORE_CASE), "")
+            .trim()
+        return word.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString()
+            ?: source.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString()
+            ?: "B"
+    }
+
     fun verifiedDirectImageUrl(title: String): String? {
         val t = title.trim()
         if (t.isEmpty()) return null
@@ -492,7 +542,7 @@ object ScanHistoryStore {
         if (cleanCode.length >= 8) {
             sb.append("&code=").append(cleanCode)
         }
-        sb.append("&v=6")
+        sb.append("&fallback=404&v=7")
         return sb.toString()
     }
 
@@ -512,25 +562,41 @@ object ScanHistoryStore {
         }
         if (normalized.startsWith("http://", ignoreCase = true)) {
             normalized = "https://" + normalized.substring(7)
-        } else if (normalized.startsWith("/api/product-image")) {
+        } else if (normalized.startsWith("/api/product-image") || normalized.startsWith("/swaps/")) {
             normalized = "https://www.heybroc.com$normalized"
         }
         if (normalized.contains("/api/product-image")) {
-            normalized = normalized.replace("v=4", "v=6").replace("v=5", "v=6")
+            normalized = normalized.replace("v=4", "v=7").replace("v=5", "v=7").replace("v=6", "v=7")
             if (!normalized.contains("v=")) {
-                normalized += if (normalized.contains("?")) "&v=6" else "?v=6"
+                normalized += if (normalized.contains("?")) "&v=7" else "?v=7"
             }
+            if (!normalized.contains("fallback=")) {
+                normalized += "&fallback=404"
+            }
+        }
+        val isLegacyLocalBrandPackshot =
+            normalized.contains("heybroc.com/products/", ignoreCase = true) ||
+                normalized.contains("cleancart-teal.vercel.app/products/", ignoreCase = true) ||
+                normalized.startsWith("/products/")
+        val hasDisallowedForeignFront = NON_US_FOREIGN_OFF_FRONT_TOKENS.any { tok ->
+            normalized.contains(tok, ignoreCase = true)
         }
         if (
             normalized.startsWith("https://") &&
             !normalized.contains("product-photo-unavailable", ignoreCase = true) &&
-            !normalized.contains("/swaps/") &&
-            !normalized.contains("/products/") &&
-            !normalized.contains("/front_fr.") &&
-            !normalized.contains("/front_de.") &&
-            !normalized.contains("/front_es.") &&
+            !isLegacyLocalBrandPackshot &&
+            !hasDisallowedForeignFront &&
             !REVOKED_OFF_IMAGE_RE.containsMatchIn(normalized)
         ) {
+            // If rawImageUrl is category art (/swaps/), still prefer a verified direct OFF photo if we know one for this title
+            if (isCategoryArtUrl(normalized)) {
+                val lookupForArt = if (brand.isNotBlank() && !title.contains(brand, ignoreCase = true)) {
+                    "${brand.trim()} ${title.trim()}"
+                } else {
+                    title
+                }
+                verifiedDirectImageUrl(lookupForArt)?.let { return it }
+            }
             return normalized
         }
 
@@ -563,16 +629,25 @@ object ScanHistoryStore {
                 val curImg = prod.optString("imageUrl")
                 val prodBrand = prod.optString("brand")
                 val prodBarcode = prod.optString("barcode").ifBlank { lookupObj?.optString("barcode").orEmpty() }
-                prod.put("imageUrl", resolveBestImageUrl(rawTitle, curImg, prodBrand, prodBarcode))
+                val catArt = normalizeCategoryArtUrl(prod.optString("categoryArtUrl"))
+                if (catArt.isNotEmpty()) {
+                    prod.put("categoryArtUrl", catArt)
+                }
+                prod.put("imageUrl", resolveBestImageUrl(rawTitle, curImg.ifBlank { catArt }, prodBrand, prodBarcode))
             }
             val itemStore = item.optString("storeKey", "walmart").ifBlank { "walmart" }
             item.optJSONObject("swap")?.let { sw ->
                 upgradeSwapForStore(sw, rawTitle, itemStore)
                 val swTitle = sw.optString("title")
                 val swBrand = sw.optString("brand")
+                val swBarcode = sw.optString("barcode")
                 if (swTitle.isNotBlank()) {
-                    val curSwImg = sw.optString("imageUrl").ifBlank { sw.optString("image") }
-                    sw.put("imageUrl", resolveBestImageUrl(swTitle, curSwImg, swBrand))
+                    val swCatArt = normalizeCategoryArtUrl(sw.optString("categoryArtUrl"))
+                    if (swCatArt.isNotEmpty()) {
+                        sw.put("categoryArtUrl", swCatArt)
+                    }
+                    val curSwImg = sw.optString("imageUrl").ifBlank { sw.optString("image") }.ifBlank { swCatArt }
+                    sw.put("imageUrl", resolveBestImageUrl(swTitle, curSwImg, swBrand, swBarcode))
                 }
             }
             item.optJSONObject("storeSwapLink")?.let { sw ->

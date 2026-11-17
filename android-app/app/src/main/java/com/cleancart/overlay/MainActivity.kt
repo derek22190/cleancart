@@ -1151,6 +1151,8 @@ class MainActivity : Activity() {
         val barcode = prod?.optString("barcode").orEmpty()
             .ifBlank { item.optJSONObject("lookup")?.optString("barcode").orEmpty() }
         val imgUrl = prod?.optString("imageUrl").orEmpty().ifBlank { item.optString("imageUrl") }
+        val storeImgUrl = prod?.optString("storeImageUrl").orEmpty()
+        val catArtUrl = prod?.optString("categoryArtUrl").orEmpty()
         val score = res?.optInt("score") ?: item.optInt("score", 50)
         val rating = ratingForScore(score)
         val dotColor = yukaDotColor(score)
@@ -1166,7 +1168,7 @@ class MainActivity : Activity() {
         }
 
         // Left Product Bottle/Box Image (68dp x 82dp on clean white)
-        row.addView(buildProductImageBox(imgUrl, title, dp(68), dp(82), brand, barcode).apply {
+        row.addView(buildProductImageBox(imgUrl, title, dp(68), dp(82), brand, barcode, storeImgUrl, catArtUrl).apply {
             layoutParams = LinearLayout.LayoutParams(dp(68), dp(82)).apply { marginEnd = dp(16) }
         })
 
@@ -1288,7 +1290,10 @@ class MainActivity : Activity() {
         val res = badItem.optJSONObject("result")
         val badTitle = ScanHistoryStore.extractTitle(badItem)
         val badBrand = prod?.optString("brand").orEmpty().ifBlank { badItem.optString("brand") }
+        val badBarcode = prod?.optString("barcode").orEmpty()
         val badImg = prod?.optString("imageUrl").orEmpty().ifBlank { badItem.optString("imageUrl") }
+        val badStoreImg = prod?.optString("storeImageUrl").orEmpty()
+        val badCatArt = prod?.optString("categoryArtUrl").orEmpty()
         val badScore = res?.optInt("score") ?: 20
         val badRating = res?.optString("rating").orEmpty().ifBlank { ratingForScore(badScore) }
         val rawStoreKey = badItem.optString("storeKey", "")
@@ -1297,8 +1302,10 @@ class MainActivity : Activity() {
 
         val swapTitle = swapObj.optString("title", "Clean Swap")
         val swapBrand = swapObj.optString("brand", "Clean Pick")
+        val swapBarcode = swapObj.optString("barcode", "")
         val swapScore = swapObj.optInt("score", 0)
         val swapImg = swapObj.optString("imageUrl", "")
+        val swapCatArt = swapObj.optString("categoryArtUrl", "")
         val swapRating = ratingForScore(swapScore)
 
         val outerFrame = FrameLayout(this).apply {
@@ -1335,7 +1342,7 @@ class MainActivity : Activity() {
         val leftTopBox = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(104))
         }
-        leftTopBox.addView(buildProductImageBox(badImg, badTitle, dp(76), dp(96)).apply {
+        leftTopBox.addView(buildProductImageBox(badImg, badTitle, dp(76), dp(96), badBrand, badBarcode, badStoreImg, badCatArt).apply {
             layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
         })
         // Red ✕ circle badge in top-left of image
@@ -1409,7 +1416,9 @@ class MainActivity : Activity() {
                         put("product", JSONObject().apply {
                             put("title", swapTitle)
                             put("brand", swapBrand)
+                            put("barcode", swapBarcode)
                             put("imageUrl", swapImg)
+                            put("categoryArtUrl", swapCatArt)
                             put("ingredients", swapObj.optString("ingredients"))
                         })
                         put("result", JSONObject().apply {
@@ -1438,11 +1447,11 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(104))
         }
         if (swapUnlocked) {
-            rightTopBox.addView(buildProductImageBox(swapImg, swapTitle, dp(76), dp(96)).apply {
+            rightTopBox.addView(buildProductImageBox(swapImg, swapTitle, dp(76), dp(96), swapBrand, swapBarcode, "", swapCatArt).apply {
                 layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
             })
         } else {
-            rightTopBox.addView(buildNeutralPackagePlaceholder(dp(76), dp(96)).apply {
+            rightTopBox.addView(buildNeutralPackagePlaceholder(dp(76), dp(96), "🔒").apply {
                 layoutParams = FrameLayout.LayoutParams(dp(76), dp(96), Gravity.CENTER)
             })
         }
@@ -5399,11 +5408,13 @@ class MainActivity : Activity() {
         }
 
         // Top Product Header (Photo + Title + Brand + ★ Star)
+        val detailStoreImg = prod?.optString("storeImageUrl").orEmpty()
+        val detailCatArt = prod?.optString("categoryArtUrl").orEmpty()
         val topHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        topHeader.addView(buildProductImageBox(imgUrl, title, dp(64), dp(76), brand, barcode).apply {
+        topHeader.addView(buildProductImageBox(imgUrl, title, dp(64), dp(76), brand, barcode, detailStoreImg, detailCatArt).apply {
             layoutParams = LinearLayout.LayoutParams(dp(64), dp(76)).apply { marginEnd = dp(14) }
         })
         topHeader.addView(LinearLayout(this).apply {
@@ -5701,7 +5712,10 @@ class MainActivity : Activity() {
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(6), 0, dp(8))
                 }
-                swapHeaderRow.addView(buildProductImageBox(swapImg, swapTitle, dp(52), dp(62)).apply {
+                val swapBrandDetail = sw.optString("brand", "")
+                val swapBarcodeDetail = sw.optString("barcode", "")
+                val swapCatArtDetail = sw.optString("categoryArtUrl", "")
+                swapHeaderRow.addView(buildProductImageBox(swapImg, swapTitle, dp(52), dp(62), swapBrandDetail, swapBarcodeDetail, "", swapCatArtDetail).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(52), dp(62)).apply { marginEnd = dp(12) }
                 })
                 swapHeaderRow.addView(LinearLayout(this).apply {
@@ -6082,57 +6096,33 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun buildNeutralPackagePlaceholder(wPx: Int, hPx: Int): View {
-        return object : View(this) {
-            private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP,
-                    1.6f,
-                    resources.displayMetrics
-                ).coerceAtLeast(2f)
-                color = 0xFF94A3B8.toInt()
-                strokeCap = Paint.Cap.ROUND
-                strokeJoin = Paint.Join.ROUND
-            }
-            private val fillAccent = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.FILL
-                color = 0xFFE2E8F0.toInt()
-            }
-            private val boxRect = RectF()
-            private val badgeRect = RectF()
-
-            override fun onDraw(canvas: Canvas) {
-                super.onDraw(canvas)
-                val cx = width / 2f
-                val cy = height / 2f
-                val iconW = (width * 0.42f).coerceIn(dp(18).toFloat(), dp(32).toFloat())
-                val iconH = (height * 0.48f).coerceIn(dp(22).toFloat(), dp(38).toFloat())
-                val left = cx - iconW / 2f
-                val top = cy - iconH / 2f
-                val right = cx + iconW / 2f
-                val bottom = cy + iconH / 2f
-                val r = dp(4).toFloat()
-
-                boxRect.set(left, top + iconH * 0.14f, right, bottom)
-                canvas.drawRoundRect(boxRect, r, r, strokePaint)
-
-                badgeRect.set(left + iconW * 0.14f, top, right - iconW * 0.14f, top + iconH * 0.16f)
-                canvas.drawRoundRect(badgeRect, r * 0.6f, r * 0.6f, fillAccent)
-                canvas.drawRoundRect(badgeRect, r * 0.6f, r * 0.6f, strokePaint)
-
-                val lineLeft = left + iconW * 0.22f
-                val lineRight = right - iconW * 0.22f
-                val lineMidY = top + iconH * 0.50f
-                val lineLowY = top + iconH * 0.70f
-                canvas.drawLine(lineLeft, lineMidY, lineRight, lineMidY, strokePaint)
-                canvas.drawLine(lineLeft, lineLowY, lineLeft + (lineRight - lineLeft) * 0.68f, lineLowY, strokePaint)
-            }
-        }.apply {
+    private fun buildNeutralPackagePlaceholder(
+        wPx: Int,
+        hPx: Int,
+        initialText: String = "B"
+    ): View {
+        val palettes = arrayOf(
+            intArrayOf(0xFFECFDF5.toInt(), 0xFFA7F3D0.toInt(), 0xFF065F46.toInt()),
+            intArrayOf(0xFFEFF6FF.toInt(), 0xFFBFDBFE.toInt(), 0xFF1E40AF.toInt()),
+            intArrayOf(0xFFFFFBEB.toInt(), 0xFFFDE68A.toInt(), 0xFF92400E.toInt()),
+            intArrayOf(0xFFF5F3FF.toInt(), 0xFFDDD6FE.toInt(), 0xFF5B21B6.toInt()),
+            intArrayOf(0xFFF0FDFA.toInt(), 0xFF99F6E4.toInt(), 0xFF115E59.toInt()),
+            intArrayOf(0xFFF8FAFC.toInt(), 0xFFCBD5E1.toInt(), 0xFF334155.toInt())
+        )
+        val ch = initialText.trim().ifEmpty { "B" }
+        val idx = (ch[0].code and 0x7FFFFFFF) % palettes.size
+        val pal = palettes[idx]
+        val fontSp = ((minOf(wPx, hPx) / resources.displayMetrics.density) * 0.36f).coerceIn(13f, 24f)
+        return TextView(this).apply {
+            text = ch
+            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSp)
+            setTextColor(pal[2])
+            setTypeface(typeface, Typeface.BOLD)
             background = GradientDrawable().apply {
-                setColor(0xFFF8FAFC.toInt())
+                setColor(pal[0])
                 cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), 0xFFE2E8F0.toInt())
+                setStroke(dp(1), pal[1])
             }
             layoutParams = FrameLayout.LayoutParams(wPx, hPx)
         }
@@ -6144,10 +6134,13 @@ class MainActivity : Activity() {
         wPx: Int,
         hPx: Int,
         brand: String = "",
-        code: String = ""
+        code: String = "",
+        storeImageUrl: String = "",
+        categoryArtUrl: String = ""
     ): FrameLayout {
         val box = FrameLayout(this)
-        val fallback = buildNeutralPackagePlaceholder(wPx, hPx)
+        val initial = ScanHistoryStore.brandInitial(title, brand)
+        val fallback = buildNeutralPackagePlaceholder(wPx, hPx, initial)
         box.addView(fallback)
 
         val iv = ImageView(this).apply {
@@ -6156,9 +6149,38 @@ class MainActivity : Activity() {
         }
         box.addView(iv)
 
+        val illustrationBadge = TextView(this).apply {
+            text = "Illustration"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 7.5f)
+            setTextColor(0xFF475569.toInt())
+            setTypeface(typeface, Typeface.BOLD)
+            setSingleLine(true)
+            setPadding(dp(4), dp(1), dp(4), dp(1))
+            background = GradientDrawable().apply {
+                setColor(0xEBFFFFFF.toInt())
+                cornerRadius = dp(999).toFloat()
+                setStroke(dp(1), 0xFFCBD5E1.toInt())
+            }
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply { bottomMargin = dp(2) }
+        }
+        box.addView(illustrationBadge)
+
         val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(title, brand, code)
         val primaryUrl = ScanHistoryStore.resolveBestImageUrl(title, imgUrl, brand, code)
-        loadThumbnailAsync(primaryUrl, fallbackApiUrl, iv, fallback)
+        val safeStoreImg = storeImageUrl.trim().takeIf { it.startsWith("https://") && !it.contains("heybroc.com") }.orEmpty()
+        val normalizedCatArt = ScanHistoryStore.normalizeCategoryArtUrl(categoryArtUrl)
+        val candidates = buildList {
+            if (safeStoreImg.isNotEmpty()) add(safeStoreImg)
+            if (primaryUrl.isNotEmpty()) add(primaryUrl)
+            if (fallbackApiUrl.isNotEmpty()) add(fallbackApiUrl)
+            if (normalizedCatArt.isNotEmpty()) add(normalizedCatArt)
+        }.distinct()
+        loadThumbnailCandidatesAsync(candidates, iv, fallback, illustrationBadge)
         return box
     }
 
@@ -6353,33 +6375,40 @@ class MainActivity : Activity() {
         }
     }.getOrNull()
 
-    private fun loadThumbnailAsync(primaryUrl: String, fallbackApiUrl: String, target: ImageView, fallback: View) {
-        bmpCache.get(primaryUrl)?.let { cached ->
-            target.setImageBitmap(cached)
-            fallback.visibility = View.GONE
-            return
-        }
-        bmpCache.get(fallbackApiUrl)?.let { cached ->
-            target.setImageBitmap(cached)
-            fallback.visibility = View.GONE
-            return
+    private fun loadThumbnailCandidatesAsync(
+        candidates: List<String>,
+        target: ImageView,
+        fallback: View,
+        illustrationBadge: View? = null
+    ) {
+        if (candidates.isEmpty()) return
+        for (url in candidates) {
+            bmpCache.get(url)?.let { cached ->
+                target.setImageBitmap(cached)
+                fallback.visibility = View.GONE
+                illustrationBadge?.visibility =
+                    if (ScanHistoryStore.isCategoryArtUrl(url)) View.VISIBLE else View.GONE
+                return
+            }
         }
         imgExecutor.execute {
-            var bmp = fetchBitmapFromUrl(primaryUrl)
-            var resolvedKey = primaryUrl
-            if (bmp == null && primaryUrl != fallbackApiUrl) {
-                bmp = fetchBitmapFromUrl(fallbackApiUrl)
-                resolvedKey = fallbackApiUrl
-            }
-            if (bmp != null) {
-                bmpCache.put(resolvedKey, bmp)
-                if (resolvedKey != primaryUrl) {
-                    bmpCache.put(primaryUrl, bmp)
+            var bmp: Bitmap? = null
+            var resolvedKey = ""
+            for (url in candidates) {
+                bmp = fetchBitmapFromUrl(url)
+                if (bmp != null) {
+                    resolvedKey = url
+                    break
                 }
+            }
+            if (bmp != null && resolvedKey.isNotEmpty()) {
+                bmpCache.put(resolvedKey, bmp)
+                val isIllustration = ScanHistoryStore.isCategoryArtUrl(resolvedKey)
                 mainHandler.post {
                     if (!isDestroyed && !isFinishing) {
                         target.setImageBitmap(bmp)
                         fallback.visibility = View.GONE
+                        illustrationBadge?.visibility = if (isIllustration) View.VISIBLE else View.GONE
                     }
                 }
             }

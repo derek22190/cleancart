@@ -34,6 +34,8 @@ export interface DrinkCatalogEntry {
   ingredients: string;
   nutrition: NutritionInput;
   match: RegExp;
+  barcode?: string;
+  imageUrl?: string;
   sourceUrl?: string;
   verifiedAt?: string;
 }

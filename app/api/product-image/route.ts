@@ -9,7 +9,8 @@ import {
   normalizeBrandPhrase,
 } from "@/lib/brands";
 import { hasProductIdentityMatch, passesVariantGuard } from "@/lib/drinks-catalog";
-import { consumeSharedOffBudget, reportSharedOffRateLimited } from "@/lib/lookup";
+import { consumeSharedOffBudget, isUsMarketOffProduct, reportSharedOffRateLimited } from "@/lib/lookup";
+import { lookupOffPhotoIndex, offBarcodeFolderPath } from "@/lib/off-photo-index";
 import { checkRateLimitAsync } from "@/lib/scan";
 import { isPersistentKvConfigured, kvGet, kvSet } from "@/lib/storage";
 
@@ -17,21 +18,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const imageUrlCache = new Map<string, string>();
+const confirmedMissCache = new Map<string, number>();
 const imageBytesCache = new Map<string, { bytes: ArrayBuffer; contentType: string; sourceUrl: string }>();
 let trackedImgFetchRef: unknown = globalThis.fetch;
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const CONFIRMED_MISS_TTL_SECONDS = 24 * 60 * 60;
 const ALLOWED_IMAGE_HOST_SUFFIXES = [".openfoodfacts.org", ".openfoodfacts.net"];
 const PLACEHOLDER_SVG_REL_PATH = "public/product-photo-unavailable.svg";
 
-const NON_ENGLISH_OFF_FRONT_IMAGE_RE =
-  /\/front_(?:fr|de|es|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
+const FOREIGN_NON_NA_OFF_FRONT_IMAGE_RE =
+  /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
+const ES_OR_FR_OFF_FRONT_IMAGE_RE = /\/front_(?:es|fr)\./i;
 
-function isAllowedImageUrl(rawUrl: string): boolean {
+function isAllowedImageUrl(rawUrl: string, allowNorthAmericaEsFr = true): boolean {
   try {
     const parsed = new URL(rawUrl);
     if (parsed.protocol !== "https:") return false;
-    if (NON_ENGLISH_OFF_FRONT_IMAGE_RE.test(parsed.pathname)) return false;
+    if (FOREIGN_NON_NA_OFF_FRONT_IMAGE_RE.test(parsed.pathname)) return false;
+    if (!allowNorthAmericaEsFr && ES_OR_FR_OFF_FRONT_IMAGE_RE.test(parsed.pathname)) return false;
     const host = parsed.hostname.toLowerCase();
     return (
       host === "openfoodfacts.org" ||
@@ -242,21 +247,37 @@ function distinctiveTokens(s: string): string[] {
 const BLOCKED_ROTATED_OFF_IMAGE_RE =
   /\/10603499\/|\/468\/112\/060\/0422\/|\/009\/396\/600\/6469\/|\/022\/517\/201\/1436\/|\/002\/531\/700\/1106\/|\/002\/190\/811\/0110\/|\/074\/747\/900\/1199\/|\/019\/396\/833\/8879\/|\/007\/874\/226\/7043\/|\/007\/874\/200\/4709\//;
 
-function headersForLocalAsset(relPath: string, contentType: string): Record<string, string> {
+function headersForLocalAsset(
+  relPath: string,
+  contentType: string,
+  options?: { transientRetry?: boolean },
+): Record<string, string> {
   const isPlaceholder = relPath === PLACEHOLDER_SVG_REL_PATH;
-  return {
+  const isRetryable = Boolean(isPlaceholder && options?.transientRetry);
+  const headers: Record<string, string> = {
     "Content-Type": contentType,
-    "Cache-Control": isPlaceholder ? "public, max-age=3600" : "public, max-age=86400",
+    "Cache-Control": isRetryable
+      ? "no-store, no-cache, must-revalidate"
+      : "public, max-age=86400",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
+    "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Kind, X-Image-Retry",
     "X-Image-Source": isPlaceholder
       ? "HeyBroc Placeholder (No Verified Package Photo)"
       : "HeyBroc Verified Product Photo",
     "X-Image-License": "Proprietary",
+    "X-Image-Kind": isPlaceholder ? "none" : "photo",
   };
+  if (isRetryable) {
+    headers["X-Image-Retry"] = "1";
+  }
+  return headers;
 }
 
-async function serveLocalAsset(relPath: string, request: Request): Promise<NextResponse> {
+async function serveLocalAsset(
+  relPath: string,
+  request: Request,
+  options?: { transientRetry?: boolean },
+): Promise<NextResponse> {
   const contentType = relPath.endsWith(".svg")
     ? "image/svg+xml"
     : relPath.endsWith(".png")
@@ -267,7 +288,7 @@ async function serveLocalAsset(relPath: string, request: Request): Promise<NextR
     const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
     return new NextResponse(arrayBuffer, {
       status: 200,
-      headers: headersForLocalAsset(relPath, contentType),
+      headers: headersForLocalAsset(relPath, contentType, options),
     });
   } catch {
     const publicPath = relPath.replace(/^public/, "");
@@ -281,6 +302,7 @@ function ensureImageCachesFreshForFetch(): void {
   if (process.env.NODE_ENV !== "production" && trackedImgFetchRef !== globalThis.fetch) {
     imageBytesCache.clear();
     imageUrlCache.clear();
+    confirmedMissCache.clear();
     deadOffUrlSet.clear();
     trackedImgFetchRef = globalThis.fetch;
   }
@@ -515,21 +537,57 @@ interface OffImageProductRecord {
       small?: Record<string, string | undefined>;
     };
   };
+  images?: Record<string, { imgid?: string | number; rev?: string | number } | undefined>;
 }
 
 function pickCandidateImageUrls(p: OffImageProductRecord): string[] {
-  const rawList = [
+  const tags = Array.isArray(p.countries_tags)
+    ? p.countries_tags.map((t) => String(t).trim().toLowerCase())
+    : [];
+  const isNorthAmerica =
+    isUsMarketOffProduct(p) || tags.includes("en:united-states") || tags.includes("en:canada");
+
+  const rawList: Array<string | undefined> = [
     p.selected_images?.front?.display?.en,
     p.selected_images?.front?.small?.en,
     p.image_front_small_url,
     p.image_front_url,
     p.image_url,
   ];
+
+  if (isNorthAmerica) {
+    rawList.push(
+      p.selected_images?.front?.display?.es,
+      p.selected_images?.front?.small?.es,
+      p.selected_images?.front?.display?.fr,
+      p.selected_images?.front?.small?.fr,
+    );
+  }
+
+  // Fallback to first raw uploaded photo (`images["1"]`, `images["2"]`, ...) not assigned to nutrition/ingredients panels
+  if (p.images && p.code) {
+    const folder = offBarcodeFolderPath(p.code);
+    if (folder) {
+      const panelImgIds = new Set<string>();
+      for (const [k, meta] of Object.entries(p.images)) {
+        if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
+          panelImgIds.add(String(meta.imgid));
+        }
+      }
+      const rawNumericKeys = Object.keys(p.images)
+        .filter((k) => /^\d+$/.test(k) && !panelImgIds.has(k))
+        .sort((a, b) => Number(a) - Number(b));
+      for (const imgKey of rawNumericKeys.slice(0, 2)) {
+        rawList.push(`https://images.openfoodfacts.org/images/products/${folder}/${imgKey}.400.jpg`);
+      }
+    }
+  }
+
   const seen = new Set<string>();
   const out: string[] = [];
   for (const u of rawList) {
     if (!u || seen.has(u)) continue;
-    if (deadOffUrlSet.has(u) || BLOCKED_ROTATED_OFF_IMAGE_RE.test(u) || !isAllowedImageUrl(u)) continue;
+    if (deadOffUrlSet.has(u) || BLOCKED_ROTATED_OFF_IMAGE_RE.test(u) || !isAllowedImageUrl(u, isNorthAmerica)) continue;
     seen.add(u);
     out.push(u);
   }
@@ -538,8 +596,9 @@ function pickCandidateImageUrls(p: OffImageProductRecord): string[] {
 
 async function fetchAndVerifyImageBytes(
   candidateUrl: string,
+  onTransientError?: () => void,
 ): Promise<{ bytes: ArrayBuffer; contentType: string; sourceUrl: string } | null> {
-  if (!candidateUrl || deadOffUrlSet.has(candidateUrl) || !isAllowedImageUrl(candidateUrl)) {
+  if (!candidateUrl || deadOffUrlSet.has(candidateUrl) || !isAllowedImageUrl(candidateUrl, true)) {
     return null;
   }
   try {
@@ -551,6 +610,8 @@ async function fetchAndVerifyImageBytes(
       if (imgRes.status === 404 || imgRes.status === 410) {
         if (deadOffUrlSet.size >= 1000) deadOffUrlSet.clear();
         deadOffUrlSet.add(candidateUrl);
+      } else if (imgRes.status === 429 || imgRes.status >= 500) {
+        onTransientError?.();
       }
       return null;
     }
@@ -569,6 +630,7 @@ async function fetchAndVerifyImageBytes(
     }
     return { bytes, contentType, sourceUrl: candidateUrl };
   } catch {
+    onTransientError?.();
     return null;
   }
 }
@@ -631,9 +693,6 @@ function matchesPackagePhotoCandidate(
     return true;
   }
 
-  // Front-of-pack label match: Open Food Facts entries frequently transcribe only what is printed largest
-  // on the front bottle/box (e.g. brands="Hidden Valley", product_name="THE ORIGINAL Ranch", omitting
-  // trailing grocery category nouns like "Salad Dressing", "Tortilla Chips", or "Sandwich Cookies").
   const candAllTokens = new Set(brandTokensOf(candidateTitle));
   const candBrandToks = brandTokensOf(candidateBrands);
   const queryAllToks = brandTokensOf(cleanQuery || rawQuery);
@@ -652,7 +711,6 @@ function matchesPackagePhotoCandidate(
     return false;
   }
 
-  // Prevent cross-brand collisions: if OFF specifies a brand, its leading token must appear in the query or brand
   if (candBrandToks.length > 0) {
     const qBrandUnion = new Set([...queryAllToks, ...usableExplicitBrand]);
     if (!qBrandUnion.has(candBrandToks[0])) {
@@ -665,7 +723,6 @@ function matchesPackagePhotoCandidate(
   const coreProductToks = nonBrandDistinctive.filter((t) => !GENERIC_PACK_CATEGORY_WORDS.has(t));
 
   if (coreProductToks.length === 0) {
-    // Brand-iconic product whose remaining words are purely category nouns (e.g., "Oreo Chocolate Sandwich Cookies")
     if (usableExplicitBrand.length === 0 && candBrandToks.length === 0) return false;
     const anyCategoryOverlap = nonBrandDistinctive.some((t) => candAllTokens.has(t));
     return anyCategoryOverlap || (candBrandToks.length > 0 && requiredBrandToks.every((bt) => candBrandToks.includes(bt)));
@@ -680,11 +737,13 @@ async function fetchVerifiedImageByBarcodes(
   codes: string[],
   rawQuery: string,
   trustExactScannedCode = false,
+  onOperationalFailure?: () => void,
 ): Promise<{ bytes: ArrayBuffer; contentType: string; sourceUrl: string } | null> {
   const expanded = expandBarcodeCandidates(codes);
   for (const code of expanded) {
-    const v2Url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,product_name_en,brands,selected_images,image_front_url,image_front_small_url,image_url`;
+    const v2Url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,product_name_en,brands,countries_tags,selected_images,images,image_front_url,image_front_small_url,image_url`;
     if (!(await consumeSharedOffBudget(v2Url))) {
+      onOperationalFailure?.();
       break;
     }
     try {
@@ -694,8 +753,12 @@ async function fetchVerifiedImageByBarcodes(
       });
       if (!res.ok) {
         if (res.status === 429) {
+          onOperationalFailure?.();
           await reportSharedOffRateLimited();
           break;
+        }
+        if (res.status >= 500) {
+          onOperationalFailure?.();
         }
         continue;
       }
@@ -711,11 +774,11 @@ async function fetchVerifiedImageByBarcodes(
       }
       const urls = pickCandidateImageUrls(p);
       for (const candidateUrl of urls) {
-        const verified = await fetchAndVerifyImageBytes(candidateUrl);
+        const verified = await fetchAndVerifyImageBytes(candidateUrl, onOperationalFailure);
         if (verified) return verified;
       }
     } catch {
-      // Try next barcode variant
+      onOperationalFailure?.();
     }
   }
   return null;
@@ -724,7 +787,12 @@ async function fetchVerifiedImageByBarcodes(
 type ResolvedProductMedia =
   | { kind: "local"; relPath: string }
   | { kind: "remote"; bytes: ArrayBuffer; contentType: string; sourceUrl: string }
-  | { kind: "placeholder" };
+  | { kind: "confirmed-miss" }
+  | { kind: "transient-miss" };
+
+function shouldPersistImageKv(): boolean {
+  return isPersistentKvConfigured() || process.env.HEYBROC_TEST_IMAGE_KV === "1";
+}
 
 async function resolveVerifiedProductMedia(
   rawQuery: string,
@@ -737,6 +805,11 @@ async function resolveVerifiedProductMedia(
   if (cachedBytes) {
     return { kind: "remote", ...cachedBytes };
   }
+
+  let hadOperationalFailure = false;
+  const markFailure = () => {
+    hadOperationalFailure = true;
+  };
 
   const storeInBytesCache = (entry: { bytes: ArrayBuffer; contentType: string; sourceUrl: string }) => {
     if (!imageBytesCache.has(cacheKey)) {
@@ -758,7 +831,7 @@ async function resolveVerifiedProductMedia(
           return { kind: "local", relPath: verifiedUrl.slice("local:".length) };
         }
         if (!BLOCKED_ROTATED_OFF_IMAGE_RE.test(verifiedUrl)) {
-          const directBytes = await fetchAndVerifyImageBytes(verifiedUrl);
+          const directBytes = await fetchAndVerifyImageBytes(verifiedUrl, markFailure);
           if (directBytes) {
             storeInBytesCache(directBytes);
             return { kind: "remote", ...directBytes };
@@ -773,7 +846,7 @@ async function resolveVerifiedProductMedia(
             }
           }
           if (recoveryCodes.length > 0) {
-            const healed = await fetchVerifiedImageByBarcodes(recoveryCodes, rawQuery);
+            const healed = await fetchVerifiedImageByBarcodes(recoveryCodes, rawQuery, false, markFailure);
             if (healed) {
               storeInBytesCache(healed);
               return { kind: "remote", ...healed };
@@ -785,31 +858,6 @@ async function resolveVerifiedProductMedia(
     }
   }
 
-  // 2. Direct UPC / GTIN barcode lookup (USDA FoodData Central gtinUpc, Open Food Facts code, or hardware barcode scan)
-  const barcodeQueue: string[] = [];
-  if (rawCode.length >= 8 && rawCode.length <= 14) {
-    barcodeQueue.push(rawCode);
-  }
-  if (rawQuery) {
-    for (const upcEntry of KNOWN_CURATED_FALLBACK_UPCS) {
-      if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, upcEntry)) {
-        barcodeQueue.push(...upcEntry.upcs);
-      }
-    }
-  }
-  if (barcodeQueue.length > 0) {
-    const byCode = await fetchVerifiedImageByBarcodes(barcodeQueue, rawQuery, rawCode.length >= 8);
-    if (byCode) {
-      storeInBytesCache(byCode);
-      return { kind: "remote", ...byCode };
-    }
-  }
-
-  if (!rawQuery) {
-    return { kind: "placeholder" };
-  }
-
-  // 3. Clean title & query Open Food Facts Search v3 + v2 CGI fallback across 5M+ global/US foods
   const clean = rawQuery
     .replace(/\(category\s+estimate[^)]*\)/gi, " ")
     .replace(/\(representative\s+formulation[^)]*\)/gi, " ")
@@ -828,20 +876,35 @@ async function resolveVerifiedProductMedia(
 
   const urlCacheKey = `${clean.toLowerCase()}|${rawCode}|${rawBrand.toLowerCase()}`;
   const kvImgKey = `heybroc:img_url:v2:${urlCacheKey}`;
+  const kvMissKey = `heybroc:img_miss:v2:${urlCacheKey}`;
+
+  // 2. Check positive & 24-hour negative caches before touching index or live OFF quota
+  const memMissExpires = confirmedMissCache.get(urlCacheKey);
+  if (memMissExpires && Date.now() < memMissExpires) {
+    return { kind: "confirmed-miss" };
+  }
+  if (memMissExpires) confirmedMissCache.delete(urlCacheKey);
+
   let cachedUrl = imageUrlCache.get(urlCacheKey);
-  if (!cachedUrl && isPersistentKvConfigured()) {
+  if (!cachedUrl && shouldPersistImageKv()) {
     try {
       const fromKv = await kvGet<string>(kvImgKey);
-      if (typeof fromKv === "string" && fromKv && isAllowedImageUrl(fromKv)) {
+      if (typeof fromKv === "string" && fromKv && isAllowedImageUrl(fromKv, true)) {
         cachedUrl = fromKv;
         imageUrlCache.set(urlCacheKey, fromKv);
+      } else {
+        const missFromKv = await kvGet<{ miss?: boolean }>(kvMissKey);
+        if (missFromKv?.miss) {
+          confirmedMissCache.set(urlCacheKey, Date.now() + CONFIRMED_MISS_TTL_SECONDS * 1000);
+          return { kind: "confirmed-miss" };
+        }
       }
     } catch {
       // Best-effort KV read
     }
   }
   if (cachedUrl) {
-    const verifiedCached = await fetchAndVerifyImageBytes(cachedUrl);
+    const verifiedCached = await fetchAndVerifyImageBytes(cachedUrl, markFailure);
     if (verifiedCached) {
       storeInBytesCache(verifiedCached);
       return { kind: "remote", ...verifiedCached };
@@ -849,9 +912,70 @@ async function resolveVerifiedProductMedia(
     imageUrlCache.delete(urlCacheKey);
   }
 
+  // 3. Check prebuilt US/Canada Open Food Facts photo index (barcode first, then variant-guarded brand+title)
+  const indexHit = await lookupOffPhotoIndex({
+    barcode: rawCode,
+    title: rawQuery || clean,
+    brand: rawBrand,
+  });
+  if (indexHit?.imageUrl && !BLOCKED_ROTATED_OFF_IMAGE_RE.test(indexHit.imageUrl)) {
+    const indexBytes = await fetchAndVerifyImageBytes(indexHit.imageUrl, markFailure);
+    if (indexBytes) {
+      imageUrlCache.set(urlCacheKey, indexHit.imageUrl);
+      if (shouldPersistImageKv()) {
+        kvSet(kvImgKey, indexHit.imageUrl, 7 * 24 * 60 * 60).catch(() => {});
+      }
+      storeInBytesCache(indexBytes);
+      return { kind: "remote", ...indexBytes };
+    }
+  }
+
+  // 4. Direct UPC / GTIN barcode lookup against Open Food Facts Product v2
+  const barcodeQueue: string[] = [];
+  if (rawCode.length >= 8 && rawCode.length <= 14) {
+    barcodeQueue.push(rawCode);
+  }
+  if (rawQuery) {
+    for (const upcEntry of KNOWN_CURATED_FALLBACK_UPCS) {
+      if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, upcEntry)) {
+        barcodeQueue.push(...upcEntry.upcs);
+      }
+    }
+  }
+  if (barcodeQueue.length > 0) {
+    const byCode = await fetchVerifiedImageByBarcodes(barcodeQueue, rawQuery, rawCode.length >= 8, markFailure);
+    if (byCode) {
+      imageUrlCache.set(urlCacheKey, byCode.sourceUrl);
+      if (shouldPersistImageKv()) {
+        kvSet(kvImgKey, byCode.sourceUrl, 7 * 24 * 60 * 60).catch(() => {});
+      }
+      storeInBytesCache(byCode);
+      return { kind: "remote", ...byCode };
+    }
+  }
+
+  const recordConfirmedOrTransientMiss = (): ResolvedProductMedia => {
+    if (hadOperationalFailure) {
+      return { kind: "transient-miss" };
+    }
+    if (confirmedMissCache.size >= 1500) {
+      const oldest = confirmedMissCache.keys().next().value;
+      if (oldest !== undefined) confirmedMissCache.delete(oldest);
+    }
+    confirmedMissCache.set(urlCacheKey, Date.now() + CONFIRMED_MISS_TTL_SECONDS * 1000);
+    if (shouldPersistImageKv()) {
+      kvSet(kvMissKey, { miss: true, at: Date.now() }, CONFIRMED_MISS_TTL_SECONDS).catch(() => {});
+    }
+    return { kind: "confirmed-miss" };
+  };
+
+  if (!rawQuery) {
+    return recordConfirmedOrTransientMiss();
+  }
+
   const tokens = distinctiveTokens(clean);
   if (tokens.length < 1) {
-    return { kind: "placeholder" };
+    return recordConfirmedOrTransientMiss();
   }
 
   const conciseQuery = tokens.slice(0, 4).join(" ");
@@ -894,14 +1018,14 @@ async function resolveVerifiedProductMedia(
         continue;
       }
       for (const candidateUrl of urls) {
-        const verified = await fetchAndVerifyImageBytes(candidateUrl);
+        const verified = await fetchAndVerifyImageBytes(candidateUrl, markFailure);
         if (verified) {
           if (imageUrlCache.size >= 1000) {
             const oldest = imageUrlCache.keys().next().value;
             if (oldest !== undefined) imageUrlCache.delete(oldest);
           }
           imageUrlCache.set(urlCacheKey, candidateUrl);
-          if (isPersistentKvConfigured()) {
+          if (shouldPersistImageKv()) {
             kvSet(kvImgKey, candidateUrl, 7 * 24 * 60 * 60).catch(() => {});
           }
           storeInBytesCache(verified);
@@ -912,10 +1036,12 @@ async function resolveVerifiedProductMedia(
     return null;
   };
 
-  // OpenFoodFacts Search-a-licious v3 open-licensed product image lookup (ODbL / CC-BY-SA 3.0)
-  for (const searchQ of queriesToTry.slice(0, 2)) {
-    const offUrl = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(searchQ)}&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images`;
+  // 5. Last-resort live Open Food Facts Search-a-licious v3 (single primary search to conserve <= 9/min budget)
+  let searchV3Succeeded = false;
+  for (const searchQ of queriesToTry.slice(0, 1)) {
+    const offUrl = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(searchQ)}&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images,images`;
     if (!(await consumeSharedOffBudget(offUrl))) {
+      markFailure();
       break;
     }
     try {
@@ -924,24 +1050,28 @@ async function resolveVerifiedProductMedia(
         signal: AbortSignal.timeout(3800),
       });
       if (res.ok) {
+        searchV3Succeeded = true;
         const data = (await res.json()) as { hits?: OffImageProductRecord[] };
         const matched = await verifyMatchingHits(data.hits || []);
         if (matched) {
           return { kind: "remote", ...matched };
         }
       } else if (res.status === 429) {
+        markFailure();
         await reportSharedOffRateLimited();
         break;
+      } else if (res.status >= 500) {
+        markFailure();
       }
     } catch {
-      // Try next query or fall back to OFF v2 CGI search
+      markFailure();
     }
   }
 
-  // Fallback: Open Food Facts v2 CGI search (handles exact US brand + front-label phrases when Search v3 lags)
+  // Fallback to v2 CGI search ONLY if Search v3 failed operationally (not when Search v3 returned 200 with 0 matches)
   const cgiTerms = coreWithoutGenericCategory || conciseQuery;
-  if (cgiTerms) {
-    const cgiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cgiTerms)}&search_simple=1&action=process&json=1&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images`;
+  if (!searchV3Succeeded && cgiTerms) {
+    const cgiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(cgiTerms)}&search_simple=1&action=process&json=1&page_size=14&fields=code,product_name,product_name_en,brands,countries_tags,image_front_small_url,image_front_url,selected_images,images`;
     if (await consumeSharedOffBudget(cgiUrl)) {
       try {
         const res = await fetch(cgiUrl, {
@@ -949,21 +1079,27 @@ async function resolveVerifiedProductMedia(
           signal: AbortSignal.timeout(3800),
         });
         if (res.ok) {
+          hadOperationalFailure = false;
           const data = (await res.json()) as { products?: OffImageProductRecord[] };
           const matched = await verifyMatchingHits(data.products || []);
           if (matched) {
             return { kind: "remote", ...matched };
           }
         } else if (res.status === 429) {
+          markFailure();
           await reportSharedOffRateLimited();
+        } else if (res.status >= 500) {
+          markFailure();
         }
       } catch {
-        // Fall through to honest Yuka-style neutral missing-photo placeholder
+        markFailure();
       }
+    } else {
+      markFailure();
     }
   }
 
-  return { kind: "placeholder" };
+  return recordConfirmedOrTransientMiss();
 }
 
 function offAttributionHeaders(contentType: string, sourceUrl: string): Record<string, string> {
@@ -971,10 +1107,27 @@ function offAttributionHeaders(contentType: string, sourceUrl: string): Record<s
     "Content-Type": contentType,
     "Cache-Control": "public, max-age=604800, immutable",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License",
+    "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Attribution, X-Image-Kind, X-Image-Retry",
     "X-Image-Source": `Open Food Facts (${sourceUrl})`,
     "X-Image-License": "CC BY-SA 3.0 (https://world.openfoodfacts.org/terms-of-use)",
+    "X-Image-Attribution": "Open Food Facts contributors (CC BY-SA 3.0)",
+    "X-Image-Kind": "photo",
   };
+}
+
+function missingStatusResponse(transientRetry: boolean): NextResponse {
+  const headers: Record<string, string> = {
+    "Cache-Control": transientRetry ? "no-store, no-cache, must-revalidate" : "public, max-age=86400",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Kind, X-Image-Retry",
+    "X-Image-Source": "HeyBroc Placeholder (No Verified Package Photo)",
+    "X-Image-License": "Proprietary",
+    "X-Image-Kind": "none",
+  };
+  if (transientRetry) {
+    headers["X-Image-Retry"] = "1";
+  }
+  return new NextResponse(null, { status: transientRetry ? 503 : 404, headers });
 }
 
 export async function GET(request: Request) {
@@ -983,12 +1136,21 @@ export async function GET(request: Request) {
     request.headers.get("x-real-ip") ||
     "anon";
   if (!(await checkRateLimitAsync(`img:${ip}`, 300))) {
-    return new NextResponse("Too many requests", { status: 429 });
+    return new NextResponse("Too many requests", {
+      status: 429,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "X-Image-Retry",
+        "X-Image-Retry": "1",
+      },
+    });
   }
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || searchParams.get("title") || "").trim().slice(0, 160);
   const rawCode = (searchParams.get("code") || searchParams.get("barcode") || "").replace(/\D/g, "").slice(0, 14);
   const rawBrand = (searchParams.get("brand") || "").trim().slice(0, 80);
+  const wants404OnMiss = searchParams.get("fallback") === "404";
   if (!q && rawCode.length < 8) {
     return new NextResponse("Missing query", { status: 400 });
   }
@@ -1004,8 +1166,11 @@ export async function GET(request: Request) {
     });
   }
 
-  // Honest Yuka-style soft neutral rounded placeholder when no verified front-of-pack photo exists
-  return serveLocalAsset(PLACEHOLDER_SVG_REL_PATH, request);
+  const isTransient = resolved.kind === "transient-miss";
+  if (wants404OnMiss) {
+    return missingStatusResponse(isTransient);
+  }
+  return serveLocalAsset(PLACEHOLDER_SVG_REL_PATH, request, { transientRetry: isTransient });
 }
 
 export async function HEAD(request: Request) {
@@ -1014,12 +1179,21 @@ export async function HEAD(request: Request) {
     request.headers.get("x-real-ip") ||
     "anon";
   if (!(await checkRateLimitAsync(`img:${ip}`, 300))) {
-    return new NextResponse(null, { status: 429 });
+    return new NextResponse(null, {
+      status: 429,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "X-Image-Retry",
+        "X-Image-Retry": "1",
+      },
+    });
   }
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || searchParams.get("title") || "").trim().slice(0, 160);
   const rawCode = (searchParams.get("code") || searchParams.get("barcode") || "").replace(/\D/g, "").slice(0, 14);
   const rawBrand = (searchParams.get("brand") || "").trim().slice(0, 80);
+  const wants404OnMiss = searchParams.get("fallback") === "404";
   if (!q && rawCode.length < 8) {
     return new NextResponse(null, { status: 400 });
   }
@@ -1038,8 +1212,13 @@ export async function HEAD(request: Request) {
       headers: offAttributionHeaders(resolved.contentType, resolved.sourceUrl),
     });
   }
+
+  const isTransient = resolved.kind === "transient-miss";
+  if (wants404OnMiss) {
+    return missingStatusResponse(isTransient);
+  }
   return new NextResponse(null, {
     status: 200,
-    headers: headersForLocalAsset(PLACEHOLDER_SVG_REL_PATH, "image/svg+xml"),
+    headers: headersForLocalAsset(PLACEHOLDER_SVG_REL_PATH, "image/svg+xml", { transientRetry: isTransient }),
   });
 }

@@ -4,6 +4,7 @@ on:
   push:
     paths-ignore:
       - "public/heybroc.apk"
+      - "data/*.json"
   workflow_dispatch:
 
 permissions:

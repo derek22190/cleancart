@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { brandLetterTileSpec } from "@/lib/category-art";
 import { hasValidCatalogProvenance } from "@/lib/drinks-catalog";
 import { CATEGORY_LABELS, RISK_LABEL } from "@/lib/rubric";
 import { SEO_PRODUCTS, evaluateSeoProduct } from "@/lib/seo-catalog";
@@ -57,16 +58,24 @@ export default async function SwapReportPage({
   const entry = SEO_PRODUCTS.find((p) => p.slug === slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt));
   if (!entry) notFound();
 
-  const { result, swap } = evaluateSeoProduct(entry);
+  const { result, swap, imageUrl, imageKind } = evaluateSeoProduct(entry);
   const canonicalRating = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
   const yb = result.yukaBreakdown;
-  const productImgSrc = `/api/product-image?title=${encodeURIComponent(entry.title)}`;
+  const productImgSrc = imageUrl
+    ? imageUrl.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "")
+    : null;
+  const productTile = brandLetterTileSpec(entry.title, entry.brand);
+  const swapImgSrc = swap?.image
+    ? swap.image.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "")
+    : null;
 
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: entry.title,
-    image: `https://www.heybroc.com${productImgSrc}`,
+    ...(productImgSrc
+      ? { image: productImgSrc.startsWith("http") ? productImgSrc : `https://www.heybroc.com${productImgSrc}` }
+      : {}),
     brand: {
       "@type": "Brand",
       name: entry.brand,
@@ -169,21 +178,64 @@ export default async function SwapReportPage({
             marginBottom: 14,
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={productImgSrc}
-            alt={entry.title}
-            style={{
-              width: 76,
-              height: 76,
-              objectFit: "contain",
-              borderRadius: 14,
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              padding: 5,
-              flexShrink: 0,
-            }}
-          />
+          {productImgSrc ? (
+            <div style={{ position: "relative", width: 76, height: 76, flexShrink: 0 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={productImgSrc}
+                alt={entry.title}
+                style={{
+                  width: 76,
+                  height: 76,
+                  objectFit: imageKind === "category-art" ? "cover" : "contain",
+                  borderRadius: 14,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  padding: imageKind === "category-art" ? 0 : 5,
+                  boxSizing: "border-box",
+                  display: "block",
+                }}
+              />
+              {imageKind === "category-art" && (
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    bottom: 3,
+                    transform: "translateX(-50%)",
+                    padding: "1px 5px",
+                    borderRadius: 999,
+                    background: "rgba(15, 23, 42, 0.7)",
+                    color: "#ffffff",
+                    fontSize: 8.5,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Illustration
+                </span>
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                width: 76,
+                height: 76,
+                borderRadius: 14,
+                background: productTile.bgHex,
+                border: `1px solid ${productTile.borderHex}`,
+                color: productTile.fgHex,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 28,
+                fontWeight: 900,
+                flexShrink: 0,
+              }}
+            >
+              {productTile.letter}
+            </div>
+          )}
           <div style={{ flex: "1 1 220px", minWidth: 0 }}>
             <span
               style={{
@@ -252,22 +304,46 @@ export default async function SwapReportPage({
                 marginBottom: 10,
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/api/product-image?title=${encodeURIComponent(swap.title)}`}
-                alt={swap.title}
-                loading="lazy"
-                style={{
-                  width: 58,
-                  height: 58,
-                  objectFit: "contain",
-                  borderRadius: 11,
-                  background: "#ffffff",
-                  border: "1px solid #a7f3d0",
-                  padding: 3,
-                  flexShrink: 0,
-                }}
-              />
+              {swapImgSrc && (
+                <div style={{ position: "relative", width: 58, height: 58, flexShrink: 0 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={swapImgSrc}
+                    alt={swap.title}
+                    loading="lazy"
+                    style={{
+                      width: 58,
+                      height: 58,
+                      objectFit: swap.imageKind === "category-art" ? "cover" : "contain",
+                      borderRadius: 11,
+                      background: "#ffffff",
+                      border: "1px solid #a7f3d0",
+                      padding: swap.imageKind === "category-art" ? 0 : 3,
+                      boxSizing: "border-box",
+                      display: "block",
+                    }}
+                  />
+                  {swap.imageKind === "category-art" && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: "50%",
+                        bottom: 2,
+                        transform: "translateX(-50%)",
+                        padding: "0.5px 4px",
+                        borderRadius: 999,
+                        background: "rgba(15, 23, 42, 0.68)",
+                        color: "#ffffff",
+                        fontSize: 7.5,
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Illustration
+                    </span>
+                  )}
+                </div>
+              )}
               <div style={{ flex: "1 1 220px", minWidth: 0 }}>
                 <span
                   style={{

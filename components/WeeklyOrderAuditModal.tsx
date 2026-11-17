@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ImageKind } from "@/lib/category-art";
 import { SAMPLE_WEEKLY_FAMILY_ORDER } from "@/lib/order-parser";
 import type { Category, NutritionInput, ScoreResult, Watchlist } from "@/lib/rubric";
 import { STORE_META, STORES, type Store, type SwapResult } from "@/lib/swaps";
@@ -14,7 +15,10 @@ export interface AuditedOrderItem {
     title: string;
     brand?: string;
     category?: string;
+    barcode?: string;
     imageUrl?: string;
+    imageKind?: ImageKind;
+    categoryArtUrl?: string | null;
     ingredients: string;
     nutrition?: NutritionInput;
   };
