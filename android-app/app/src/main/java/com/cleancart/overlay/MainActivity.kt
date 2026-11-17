@@ -5712,9 +5712,9 @@ class MainActivity : Activity() {
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(6), 0, dp(8))
                 }
-                val swapBrandDetail = sw.optString("brand", "")
-                val swapBarcodeDetail = sw.optString("barcode", "")
-                val swapCatArtDetail = sw.optString("categoryArtUrl", "")
+                val swapBrandDetail = swap.optString("brand", "")
+                val swapBarcodeDetail = swap.optString("barcode", "")
+                val swapCatArtDetail = swap.optString("categoryArtUrl", "")
                 swapHeaderRow.addView(buildProductImageBox(swapImg, swapTitle, dp(52), dp(62), swapBrandDetail, swapBarcodeDetail, "", swapCatArtDetail).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(52), dp(62)).apply { marginEnd = dp(12) }
                 })
