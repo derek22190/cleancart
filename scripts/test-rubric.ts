@@ -7454,10 +7454,12 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             liveBrowserKt.includes("StoreBrandIcons.buildStoreChip") &&
             mainActivityKt.includes("StoreBrandIcons.buildStoreChip") &&
             mainActivityKt.includes("prefer_in_app_live_shop_v2") &&
-            mainActivityKt.includes("In-App Shop ·"),
+            mainActivityKt.includes("In-App Shop ·") &&
+            mainActivityKt.includes("orderedStores.filter { it.key != selectedStore.key }"),
           nativeMiniBadgesCompletelyRemoved:
             !overlayKt.includes("ACTION_SHOW_GRID_BADGES") &&
             !overlayKt.includes("GridScoreBadgesView") &&
+            !overlayKt.includes("GridBadgesOverlay") &&
             !readerKt.includes("scheduleVisibleGridBatchScan") &&
             !readerKt.includes("extractVisibleGridFoodCards"),
           scanApiAllergenAndPesticideParity:

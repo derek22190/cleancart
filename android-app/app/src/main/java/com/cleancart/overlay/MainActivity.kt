@@ -928,8 +928,9 @@ class MainActivity : Activity() {
                 }
             })
 
+            val useNativeForSelected = a11yOk && !preferInApp && resolveInstalledStorePackage(selectedStore.key) != null
             val subDesc = if (a11yOk && !preferInApp) {
-                "Native App Pill active — or tap the big In-App Shop button below for live on-photo scores."
+                "Native App Pill active — store buttons launch your grocery app + floating Pill (tap chip above to switch back to In-App Shop)."
             } else {
                 "Shop right inside HeyBroc with live 0–100 score badges on every food photo & 1-tap Clean Swaps."
             }
@@ -937,7 +938,12 @@ class MainActivity : Activity() {
                 setPadding(0, dp(3), 0, dp(10))
             })
 
-            // Prominent Primary Full-Width "In-App Shop" Hero CTA Button with Active Store Brand Symbol
+            // Prominent Primary Full-Width Hero CTA Button with Active Store Brand Symbol
+            val heroCtaLabel = if (useNativeForSelected) {
+                "Open ${selectedStore.label} + Pill →"
+            } else {
+                "In-App Shop · ${selectedStore.label} →"
+            }
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -958,17 +964,22 @@ class MainActivity : Activity() {
                 addView(StoreBrandIcons.createIconView(context, selectedStore.key, 24).apply {
                     (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(9)
                 })
-                addView(label("In-App Shop · ${selectedStore.label} →", 15f, Color.WHITE, bold = true).apply {
+                addView(label(heroCtaLabel, 15f, Color.WHITE, bold = true).apply {
                     setSingleLine(true)
                     ellipsize = TextUtils.TruncateAt.END
                 })
                 setOnClickListener {
-                    setPreferInAppShop(true)
-                    launchStoreSmart(selectedStore.key, forceInApp = true)
+                    if (useNativeForSelected) {
+                        launchStoreSmart(selectedStore.key, forceInApp = false)
+                    } else {
+                        setPreferInAppShop(true)
+                        launchStoreSmart(selectedStore.key, forceInApp = true)
+                    }
                 }
             })
 
-            // Horizontal Store Row — Every Store Button Has Its Corresponding Brand Symbol Next to the Font
+            // Horizontal Other-Stores Row — Excludes selectedStore so active store is never duplicated
+            val otherStores = orderedStores.filter { it.key != selectedStore.key }
             val storeScroll = HorizontalScrollView(context).apply {
                 isHorizontalScrollBarEnabled = false
                 clipToPadding = false
@@ -977,13 +988,12 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            orderedStores.forEachIndexed { idx, store ->
-                val isPrimary = idx == 0
+            otherStores.forEachIndexed { idx, store ->
                 val chipHandle = StoreBrandIcons.buildStoreChip(
                     context = context,
                     storeKey = store.key,
                     labelText = store.label,
-                    selected = isPrimary,
+                    selected = false,
                     iconSizeDp = 21,
                     textSizeSp = 13f,
                     padHdp = 12,
@@ -997,9 +1007,12 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    if (idx < orderedStores.lastIndex) marginEnd = dp(8)
+                    if (idx < otherStores.lastIndex) marginEnd = dp(8)
                 }
-                chipHandle.container.setOnClickListener { launchStoreSmart(store.key) }
+                chipHandle.container.setOnClickListener {
+                    launchStoreSmart(store.key)
+                    renderScreen()
+                }
                 storeRow.addView(chipHandle.container)
             }
             storeScroll.addView(storeRow)
