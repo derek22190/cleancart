@@ -172,7 +172,7 @@ export function parseStore(s?: unknown): Store {
   return "walmart";
 }
 
-export { checkRateLimit, checkRateLimitAsync } from "./rate-limit";
+export { checkRateLimit, checkRateLimitAsync, checkRateLimitDetailedAsync } from "./rate-limit";
 
 export function detectStoreFromUrl(text: string): Store | undefined {
   const m = text.match(/https?:\/\/(?:www\.|m\.|new\.|shop\.)?([a-z0-9.-]+)/i);

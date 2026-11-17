@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser, toPublicProfile } from "@/lib/auth";
 import {
-  checkRateLimitAsync,
+  checkRateLimitDetailedAsync,
   inferClientPlatform,
   runBatchScan,
   runScan,
@@ -100,10 +100,11 @@ export async function GET(request: Request) {
   const barcode = (searchParams.get("barcode") || "").trim();
   if (q || barcode) {
     const ip = extractClientIp(request);
-    if (!(await checkRateLimitAsync(`scan:${ip}`, 90))) {
+    const rl = await checkRateLimitDetailedAsync(`scan:${ip}`, 90, 60_000);
+    if (!rl.allowed) {
       return NextResponse.json(
         { ok: false, error: "Too many scan requests. Please wait a moment." },
-        { status: 429, headers: { ...CORS, "Retry-After": "15" } },
+        { status: 429, headers: { ...CORS, "Retry-After": String(rl.retryAfterSec) } },
       );
     }
     const format = (searchParams.get("format") || "ios_text").trim();
@@ -184,10 +185,11 @@ export async function POST(request: Request) {
   const isBatchRequest = Array.isArray(body.items);
   const batchItemCount = isBatchRequest ? Math.min(8, Math.max(1, body.items!.length)) : 0;
   const rateCost = batchItemCount > 0 ? batchItemCount : 1;
-  if (!(await checkRateLimitAsync(`scan:${ip}`, 120, 60_000, rateCost))) {
+  const rl = await checkRateLimitDetailedAsync(`scan:${ip}`, 120, 60_000, rateCost);
+  if (!rl.allowed) {
     return NextResponse.json(
       { ok: false, error: "Too many scan requests. Please wait a moment." },
-      { status: 429, headers: { ...CORS, "Retry-After": "15" } },
+      { status: 429, headers: { ...CORS, "Retry-After": String(rl.retryAfterSec) } },
     );
   }
 

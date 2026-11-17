@@ -15,14 +15,57 @@ const itemList = document.getElementById("item-list");
 const loginLink = document.getElementById("login-link");
 const upgradeLink = document.getElementById("upgrade-link");
 
+const CART_STALE_MS = 2 * 60 * 60 * 1000;
+
 const RESERVED_SLUGS = new Set([
   "s", "search", "cart", "checkout", "account", "hub", "referrals", "orders",
   "lists", "store", "stores", "items", "products", "product", "item", "help",
   "login", "signup", "categories", "collections", "shop", "convenience", "grocery",
+  "all", "deals", "promotions", "favorites", "saved", "your-items", "retailers",
+  "recipes", "partner-recipes", "partner_recipes", "gift-cards", "bookmarks",
+  "brands", "loyalty", "family", "instacart-plus", "settings", "savings",
+  "discover", "directory", "http", "https",
 ]);
 
 let currentBucketKey = null;
 let currentStoreLabel = "Grocery";
+
+function cleanSlug(raw) {
+  if (!raw) return null;
+  let s = "";
+  try {
+    s = decodeURIComponent(String(raw)).trim().toLowerCase();
+  } catch {
+    s = String(raw).trim().toLowerCase();
+  }
+  s = s.replace(/[^a-z0-9_-]/g, "");
+  if (!s || s.length < 2 || RESERVED_SLUGS.has(s)) return null;
+  if (/^checkout(?:[-_]|$)/i.test(s) || /^\d+$/.test(s)) return null;
+  return s;
+}
+
+function pruneStalePopupCartItems(bucketKey, items, bucketMeta) {
+  const rawList = Array.isArray(items) ? items : [];
+  if (rawList.length === 0) return [];
+  const now = Date.now();
+  const metaMatchesBucket = Boolean(bucketMeta && bucketKey && bucketMeta.bucketKey === bucketKey);
+  const metaUpdatedAt = metaMatchesBucket ? Number(bucketMeta.updatedAt) : 0;
+  const bucketExpired = Number.isFinite(metaUpdatedAt) && metaUpdatedAt > 0 && now - metaUpdatedAt > CART_STALE_MS;
+  const fresh = bucketExpired
+    ? []
+    : rawList.filter((item) => {
+        if (!item || typeof item !== "object") return false;
+        const ts = Number(item.updatedAt);
+        if (Number.isFinite(ts) && ts > 0) {
+          return now - ts <= CART_STALE_MS;
+        }
+        return true;
+      });
+  if (bucketKey && fresh.length !== rawList.length && typeof chrome !== "undefined" && chrome.storage?.local) {
+    void chrome.storage.local.set({ [`heybroc_cart_v2_${bucketKey}`]: fresh });
+  }
+  return fresh;
+}
 
 function clampQty(q) {
   if (q === undefined || q === null || q === "") return 1;
@@ -94,8 +137,8 @@ function inferBucketFromTabUrl(rawUrl) {
     const p = u.pathname;
     if (h.includes("instacart")) {
       const m = p.match(/\/store\/([^/?#]+)/i);
-      const slug = m?.[1]?.toLowerCase() || "";
-      if (slug && !RESERVED_SLUGS.has(slug)) {
+      const slug = cleanSlug(m?.[1]);
+      if (slug) {
         return { bucketKey: `instacart:${slug}`, label: `Instacart · ${prettySlug(slug)}` };
       }
       return { bucketKey: "instacart", label: "Instacart" };
@@ -113,24 +156,24 @@ function inferBucketFromTabUrl(rawUrl) {
     }
     if (h.includes("doordash")) {
       const m = p.match(/\/(?:convenience|grocery|retail)?\/?store\/([^/?#]+)/i);
-      const slug = m?.[1]?.toLowerCase() || "";
-      if (slug && !RESERVED_SLUGS.has(slug)) {
+      const slug = cleanSlug(m?.[1]);
+      if (slug) {
         return { bucketKey: `doordash:${slug}`, label: `DoorDash · ${prettySlug(slug)}` };
       }
       return { bucketKey: "doordash", label: "DoorDash" };
     }
     if (h.includes("ubereats")) {
       const m = p.match(/\/store\/([^/?#]+)/i);
-      const slug = m?.[1]?.toLowerCase() || "";
-      if (slug && !RESERVED_SLUGS.has(slug)) {
+      const slug = cleanSlug(m?.[1]);
+      if (slug) {
         return { bucketKey: `ubereats:${slug}`, label: `Uber Eats · ${prettySlug(slug)}` };
       }
       return { bucketKey: "ubereats", label: "Uber Eats" };
     }
     if (h.includes("shipt")) {
       const m = p.match(/\/(?:shop\/)?stores\/([^/?#]+)/i);
-      const slug = m?.[1]?.toLowerCase() || "";
-      if (slug && !RESERVED_SLUGS.has(slug)) {
+      const slug = cleanSlug(m?.[1]);
+      if (slug) {
         return { bucketKey: `shipt:${slug}`, label: `Shipt · ${prettySlug(slug)}` };
       }
       return { bucketKey: "shipt", label: "Shipt" };
@@ -229,6 +272,33 @@ function renderPopupCart(label, items) {
   });
 }
 
+function sanitizeBucketKey(rawKey) {
+  const key = String(rawKey || "").trim();
+  if (!key) return "";
+  const idx = key.indexOf(":");
+  if (idx === -1) return key;
+  const prefix = key.slice(0, idx);
+  const rest = key.slice(idx + 1);
+  if (prefix === "instacart" || prefix === "doordash" || prefix === "ubereats" || prefix === "shipt") {
+    const valid = cleanSlug(rest);
+    return valid ? `${prefix}:${valid}` : prefix;
+  }
+  return key;
+}
+
+function buildUpgradeOrLoginUrl(flag, { resolvedBase, deviceId, creatorCode, isIosSafari }) {
+  const cleanCode = String(creatorCode || "").trim();
+  if (isIosSafari) {
+    const schemeBase = flag === "upgrade" ? "heybroc://upgrade" : "heybroc://login";
+    return cleanCode ? `${schemeBase}?code=${encodeURIComponent(cleanCode)}` : schemeBase;
+  }
+  const p = new URLSearchParams();
+  p.set(flag, "1");
+  if (deviceId) p.set("deviceId", deviceId);
+  if (cleanCode) p.set("code", cleanCode);
+  return `${resolvedBase}/?${p.toString()}`;
+}
+
 async function initPopup() {
   const [{ apiBase }, localData] = await Promise.all([
     chrome.storage.sync.get("apiBase"),
@@ -239,28 +309,19 @@ async function initPopup() {
 
   const deviceId = localData.heybroc_device_id || "";
   const creatorCode = localData.heybroc_creator_code || "";
+  const activeMeta = localData.heybroc_active_bucket_meta || null;
 
   const isIosSafari =
     typeof navigator !== "undefined" &&
     (/iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
-  const makeAuthHref = (flag) => {
-    if (isIosSafari) {
-      return flag === "upgrade" ? "heybroc://upgrade" : "heybroc://login";
-    }
-    const p = new URLSearchParams();
-    p.set(flag, "1");
-    if (deviceId) p.set("deviceId", deviceId);
-    if (creatorCode) p.set("code", creatorCode);
-    return `${resolvedBase}/?${p.toString()}`;
-  };
   if (loginLink) {
-    loginLink.href = makeAuthHref("login");
+    loginLink.href = buildUpgradeOrLoginUrl("login", { resolvedBase, deviceId, creatorCode, isIosSafari });
     if (isIosSafari) loginLink.removeAttribute("target");
   }
   if (upgradeLink) {
-    upgradeLink.href = makeAuthHref("upgrade");
+    upgradeLink.href = buildUpgradeOrLoginUrl("upgrade", { resolvedBase, deviceId, creatorCode, isIosSafari });
     if (isIosSafari) upgradeLink.removeAttribute("target");
   }
 
@@ -291,19 +352,22 @@ async function initPopup() {
     /* ignore */
   }
 
-  if (!tabState && localData.heybroc_active_bucket_meta?.bucketKey) {
-    const meta = localData.heybroc_active_bucket_meta;
-    const storedCart = await chrome.storage.local.get(`heybroc_cart_v2_${meta.bucketKey}`);
-    tabState = {
-      bucketKey: meta.bucketKey,
-      label: meta.label || "Grocery",
-      cartItems: storedCart?.[`heybroc_cart_v2_${meta.bucketKey}`] || [],
-    };
+  if (!tabState && activeMeta?.bucketKey) {
+    const cleanKey = sanitizeBucketKey(activeMeta.bucketKey);
+    if (cleanKey) {
+      const storedCart = await chrome.storage.local.get(`heybroc_cart_v2_${cleanKey}`);
+      tabState = {
+        bucketKey: cleanKey,
+        label: cleanKey === activeMeta.bucketKey ? (activeMeta.label || "Grocery") : prettySlug(cleanKey),
+        cartItems: storedCart?.[`heybroc_cart_v2_${cleanKey}`] || [],
+      };
+    }
   }
 
   if (tabState) {
-    currentBucketKey = tabState.bucketKey;
-    renderPopupCart(tabState.label, tabState.cartItems);
+    currentBucketKey = sanitizeBucketKey(tabState.bucketKey) || tabState.bucketKey;
+    const freshItems = pruneStalePopupCartItems(currentBucketKey, tabState.cartItems, activeMeta);
+    renderPopupCart(tabState.label, freshItems);
   } else {
     renderPopupCart("No Store Open", []);
   }
@@ -394,7 +458,9 @@ document.getElementById("manage-sub")?.addEventListener("click", async () => {
 if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && currentBucketKey && changes[`heybroc_cart_v2_${currentBucketKey}`]) {
-      renderPopupCart(currentStoreLabel, changes[`heybroc_cart_v2_${currentBucketKey}`].newValue || []);
+      const incoming = changes[`heybroc_cart_v2_${currentBucketKey}`].newValue || [];
+      const freshItems = pruneStalePopupCartItems(currentBucketKey, incoming, null);
+      renderPopupCart(currentStoreLabel, freshItems);
     }
   });
 }

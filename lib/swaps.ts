@@ -173,6 +173,7 @@ export const CLEAN_ALTERNATIVES: Record<SwapCategory, CleanAlternative> = {
     isOrganic: true,
     image: "/swaps/turkey.jpg",
     ingredients: "Organic turkey breast, water. Contains 2% or less of: sea salt, organic potato starch, organic chicken broth, rosemary extract.",
+    nutrition: { caloriesKcal100g: 89, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 607, fiberG100g: 0, proteinG100g: 19.6 },
     sourceUrl: "https://www.applegate.com/products/organic-roasted-turkey-breast",
     verifiedAt: "2026-11-09",
     itemIds: { walmart: "15610519" },
@@ -3029,7 +3030,7 @@ export function impactClickId(): string {
 export function amazonPartnerTag(): string {
   return (
     (typeof process !== "undefined" && (process.env?.NEXT_PUBLIC_AMAZON_TAG || process.env?.AMAZON_PARTNER_TAG)) ||
-    "heybroc-20"
+    ""
   ).trim();
 }
 
@@ -3041,10 +3042,11 @@ function impactRedirectBase(store: Store): string {
     case "target":
       return (process.env.NEXT_PUBLIC_IMPACT_TARGET_BASE_URL || process.env.IMPACT_TARGET_BASE_URL || "").trim();
     case "instacart":
-    case "aldi":
       return (process.env.NEXT_PUBLIC_IMPACT_INSTACART_BASE_URL || process.env.IMPACT_INSTACART_BASE_URL || "").trim();
+    case "aldi":
+      return (process.env.NEXT_PUBLIC_IMPACT_ALDI_BASE_URL || process.env.IMPACT_ALDI_BASE_URL || "").trim();
     default:
-      return (process.env.NEXT_PUBLIC_IMPACT_DEFAULT_BASE_URL || process.env.IMPACT_DEFAULT_BASE_URL || "").trim();
+      return "";
   }
 }
 
@@ -3139,18 +3141,63 @@ const RESERVED_INSTACART_SEGMENTS = new Set([
   "signup",
   "categories",
   "collections",
+  "your-items",
+  "retailers",
+  "deals",
+  "promotions",
+  "favorites",
+  "saved",
+  "all",
+  "shop",
+  "convenience",
+  "grocery",
+  "brands",
+  "loyalty",
+  "family",
+  "instacart-plus",
+  "partner_recipes",
+  "partner-recipes",
+  "recipes",
+  "gift-cards",
+  "bookmarks",
+  "settings",
+  "savings",
+  "discover",
+  "directory",
+  "http",
+  "https",
+  "www",
+  "instacart",
 ]);
 
 export function sanitizeInstacartRetailerSlug(slug?: string): string {
   if (!slug || typeof slug !== "string") return "";
-  const cleaned = slug
+  let raw = slug.trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      if (!/(?:^|\.)instacart\.(?:com|ca)$/i.test(u.hostname)) return "";
+      raw = u.pathname;
+    } catch {
+      return "";
+    }
+  }
+  const withoutQueryOrHash = raw.split(/[?#]/)[0] || "";
+  const cleaned = withoutQueryOrHash
     .trim()
     .toLowerCase()
     .replace(/^\/+|\/+$/g, "")
-    .replace(/^store\//, "")
+    .replace(/^(?:store|stores)\//, "")
     .split("/")[0]
     .replace(/[^a-z0-9_-]/g, "");
-  if (!cleaned || cleaned.length < 2 || RESERVED_INSTACART_SEGMENTS.has(cleaned)) {
+  if (
+    !cleaned ||
+    cleaned.length < 2 ||
+    /^\d+$/.test(cleaned) ||
+    /^checkout(?:_|-|$)/.test(cleaned) ||
+    RESERVED_INSTACART_SEGMENTS.has(cleaned)
+  ) {
     return "";
   }
   return cleaned;

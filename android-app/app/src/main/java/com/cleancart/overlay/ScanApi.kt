@@ -1,6 +1,7 @@
 package com.cleancart.overlay
 
 import android.content.Context
+import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -269,10 +270,10 @@ object ScanApi {
 
     fun upgradeUrl(ctx: Context): String {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val id = URLEncoder.encode(deviceId(ctx), "UTF-8")
-        val ref = referredByCode(ctx)?.let { "&code=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
+        val id = Uri.encode(deviceId(ctx))
+        val ref = referredByCode(ctx)?.takeIf { it.isNotBlank() }?.let { "&code=${Uri.encode(it)}" }.orEmpty()
         val email = prefs.getString("auth_email", null)?.trim()?.takeIf { it.isNotBlank() }
-            ?.let { "&email=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
+            ?.let { "&email=${Uri.encode(it)}" }.orEmpty()
         return "https://heybroc.com/?upgrade=1&deviceId=$id$ref$email"
     }
 
@@ -302,19 +303,29 @@ object ScanApi {
         return prefs.getString("referredByCode", null)?.takeIf { it.isNotBlank() }
     }
 
+    fun getReferredByCode(ctx: Context): String? = referredByCode(ctx)
+
     fun saveReferredByCode(ctx: Context, rawCode: String): String {
-        val clean = rawCode.trim().uppercase()
-            .substringAfterLast("/R/")
-            .substringAfterLast("REF=")
-            .replace(Regex("[^A-Z0-9-]"), "")
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString("referredByCode", clean).apply()
+        val trimmed = rawCode.trim()
+        val extracted = Regex("""(?:[?&](?:code|ref)=|/r/)([A-Za-z0-9_-]+)""", RegexOption.IGNORE_CASE)
+            .find(trimmed)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: trimmed
+        val clean = extracted.uppercase()
+            .replace(Regex("[^A-Z0-9_-]"), "")
+            .take(40)
+        if (clean.isNotBlank()) {
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString("referredByCode", clean).apply()
+        }
         return clean
     }
 
     /** Blocking call — claims a friend's invite code on /api/referral. */
     fun claimReferral(ctx: Context, rawCode: String): String {
         val clean = saveReferredByCode(ctx, rawCode)
+        if (clean.isBlank()) return """{"ok":false,"error":"Invalid referral code"}"""
         val secret = deviceSecret(ctx)
         val body = JSONObject().apply {
             put("action", "claim")
@@ -484,6 +495,193 @@ object ScanApi {
      * Evaluates the user's opt-in Personal Allergy & Diabetes Watchlist against a scanned product.
      * Returns an empty list when no boxes are checked (all unchecked by default).
      */
+    private val PRECAUTIONARY_PREFIX_RE = Regex(
+        "\\b(?:may\\s+contain(?:\\s+traces\\s+of)?|(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:in|on)\\s+(?:a\\s+)?(?:facility|plant|bakery|kitchen|equipment|shared\\s+equipment|lines?|machinery)\\s+(?:that|which)\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|(?:(?:manufactured|processed|produced|packaged|made|prepared)\\s+(?:on|in)\\s+)?(?:shared\\s+equipment|(?:a\\s+)?(?:equipment|lines?|machinery|facility|plant)\\s+shared)\\s+with|facility\\s+that\\s+(?:also\\s+)?(?:processes|handles|uses|manufactures|packages)|(?:contain(?:s)?\\s+)?traces\\s+of)(?:\\s*:)?\\s+(?:traces\\s+of\\s+)?(?:the\\s+following\\s*:?\\s*)?",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE = Regex(
+        "^(?:other\\s+|various\\s+|trace\\s+|traces\\s+of\\s+)?(?:peanuts?|tree\\s+nuts?|nuts?|almonds?|walnuts?|pecans?|cashews?|hazelnuts?|filberts?|pistachios?|macadamia(?:\\s+nuts?)?|brazil\\s+nuts?|pine\\s+nuts?|chestnuts?|coconuts?|milk|dairy|lactose|whey|casein|eggs?|wheat|gluten|barley|rye|oats?|triticale|spelt|soy|soya|soybeans?|soy\\s+lecithin|soya\\s+lecithin|lecithin\\s+soy(?:a|bean)?|sesame(?:\\s+seeds?)?|(?:crustacean\\s+|molluscan\\s+)?shellfish|crustaceans?|mollusks?|molluscs?|fish|finfish|anchov(?:y|ies)|salmon|tuna|cod|shrimp|crab|lobster|mustard|celery|sulfites?|sulphites?|sulfur\\s+dioxide|lupin|lupine|allergens?)(?:\\s+(?:products?|ingredients?|derivatives?|traces?|proteins?|sources?))?$",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val PRECAUTIONARY_SECTION_STOP_RE = Regex(
+        "^(?:,\\s*)?(?:ingredients?|contains|distributed|manufactured|produced|packaged|questions|allergen)\\b",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val PRECAUTIONARY_HEADER_BEFORE_RE = Regex(
+        "(?:^|[.;!?\\n(\\[\\-|/])\\s*(?:allergen(?:\\s+(?:information|warning|statement|advisory))?|allergy(?:\\s+(?:information|warning|advisory))?|cross[\\s-]*contact(?:\\s+warning)?)\\s*:?\\s*$",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val CONJ_AFTER_COMMA_RE = Regex("^(?:and|or)\\b\\s+", RegexOption.IGNORE_CASE)
+    private val CONJ_INLINE_RE = Regex("^\\s+(?:and(?:\\s*/\\s*or)?|or)\\s+", RegexOption.IGNORE_CASE)
+
+    private fun splitPrecautionaryListItems(listText: String): List<String>? {
+        val items = ArrayList<String>()
+        val cur = StringBuilder()
+        var depth = 0
+        var i = 0
+        while (i < listText.length) {
+            val ch = listText[i]
+            if (ch == '(') {
+                depth += 1
+                cur.append(ch)
+                i += 1
+                continue
+            }
+            if (ch == ')') {
+                if (depth == 0) return null
+                depth -= 1
+                cur.append(ch)
+                i += 1
+                continue
+            }
+            if (depth == 0) {
+                if (ch == ',' || ch == '&' || ch == '/') {
+                    val trimmed = cur.toString().trim()
+                    if (trimmed.isNotEmpty()) items.add(trimmed)
+                    cur.setLength(0)
+                    var nextIdx = i + 1
+                    while (nextIdx < listText.length && listText[nextIdx].isWhitespace()) nextIdx += 1
+                    if (ch == ',') {
+                        val conj = CONJ_AFTER_COMMA_RE.find(listText.substring(nextIdx))
+                        if (conj != null) nextIdx += conj.value.length
+                    }
+                    i = nextIdx
+                    continue
+                }
+                if (ch.isWhitespace()) {
+                    val conj = CONJ_INLINE_RE.find(listText.substring(i))
+                    if (conj != null) {
+                        val trimmed = cur.toString().trim()
+                        if (trimmed.isNotEmpty()) items.add(trimmed)
+                        cur.setLength(0)
+                        i += conj.value.length
+                        continue
+                    }
+                }
+            }
+            cur.append(ch)
+            i += 1
+        }
+        if (depth != 0) return null
+        val tail = cur.toString().trim()
+        if (tail.isNotEmpty()) items.add(tail)
+        return items.takeIf { it.isNotEmpty() }
+    }
+
+    private fun isPrecautionaryAllergenSegment(segment: String): Boolean {
+        val trimmed = segment.trim().replace(Regex("^[:\\-–—]+\\s*"), "").trim()
+        if (trimmed.isEmpty() || trimmed.length > 160) return false
+        val parenIdx = trimmed.indexOf('(')
+        if (parenIdx == -1) {
+            return !trimmed.contains(')') && SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE.matches(trimmed)
+        }
+        if (!trimmed.endsWith(')')) return false
+        val head = trimmed.substring(0, parenIdx).trim()
+        val inner = trimmed.substring(parenIdx + 1, trimmed.length - 1).trim()
+        if (head.isEmpty() || inner.isEmpty() || inner.contains('(') || inner.contains(')')) return false
+        if (!SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE.matches(head)) return false
+        val subItems = splitPrecautionaryListItems(inner) ?: return false
+        return subItems.all { sub -> SINGLE_PRECAUTIONARY_ALLERGEN_HEAD_RE.matches(sub.trim()) }
+    }
+
+    private fun isStandalonePrecautionaryStart(text: String, matchStart: Int): Boolean {
+        var k = matchStart - 1
+        while (k >= 0 && (text[k] == ' ' || text[k] == '\t')) k -= 1
+        if (k < 0) return true
+        if (text[k] in ".;!?\n([-|/:") return true
+        val beforeSlice = text.substring((matchStart - 48).coerceAtLeast(0), matchStart)
+        return PRECAUTIONARY_HEADER_BEFORE_RE.containsMatchIn(beforeSlice)
+    }
+
+    fun stripPrecautionaryCrossContactClauses(text: String): String {
+        if (text.isEmpty()) return ""
+        val out = StringBuilder()
+        var lastEmit = 0
+        var searchIdx = 0
+        while (searchIdx < text.length) {
+            val m = PRECAUTIONARY_PREFIX_RE.find(text, searchIdx) ?: break
+            val matchStart = m.range.first
+            val bodyStart = m.range.last + 1
+            val isStandalone = isStandalonePrecautionaryStart(text, matchStart)
+            var depth = 0
+            var clauseEnd = text.length
+            var trailingCommaBeforeSection = false
+            for (i in bodyStart until text.length) {
+                val ch = text[i]
+                if (ch == '(') {
+                    depth += 1
+                    continue
+                }
+                if (ch == ')') {
+                    if (depth == 0) {
+                        clauseEnd = i
+                        break
+                    }
+                    depth -= 1
+                    continue
+                }
+                if (depth == 0) {
+                    if (ch == '.' || ch == ';' || ch == '!' || ch == '?' || ch == '\n' || ch == ']') {
+                        clauseEnd = i
+                        break
+                    }
+                    if (!isStandalone && ch == ',') {
+                        clauseEnd = i
+                        break
+                    }
+                    if (
+                        (ch == ',' || i == bodyStart || text[i - 1].isWhitespace()) &&
+                        PRECAUTIONARY_SECTION_STOP_RE.containsMatchIn(
+                            text.substring(i, (i + 32).coerceAtMost(text.length))
+                        )
+                    ) {
+                        clauseEnd = i
+                        trailingCommaBeforeSection = ch == ','
+                        break
+                    }
+                }
+            }
+            if (depth == 0 && clauseEnd > bodyStart) {
+                val candidateBody = text.substring(bodyStart, clauseEnd).trim()
+                val segments = splitPrecautionaryListItems(candidateBody)
+                if (segments != null && segments.all { isPrecautionaryAllergenSegment(it) }) {
+                    val stripEnd = if (trailingCommaBeforeSection) clauseEnd + 1 else clauseEnd
+                    out.append(text, lastEmit, matchStart).append(' ')
+                    lastEmit = stripEnd
+                    searchIdx = stripEnd.coerceAtLeast(matchStart + 1)
+                    continue
+                }
+            }
+            searchIdx = bodyStart.coerceAtLeast(matchStart + 1)
+        }
+        if (lastEmit == 0) return text
+        out.append(text, lastEmit, text.length)
+        return out.toString()
+    }
+
+    fun stripFreeFromClaims(text: String): String {
+        if (text.isBlank()) return ""
+        return text
+            .replace(
+                Regex(
+                    "\\b(?:peanuts?|tree\\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy|sesame|wheat|gluten|grains?|shellfish|fish|allergens?)(?:\\s*(?:,|&|and|or|/)\\s*(?:peanuts?|tree\\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy|sesame|wheat|gluten|grains?|shellfish|fish|allergens?))*\\s*[\\s-]+free\\b",
+                    RegexOption.IGNORE_CASE
+                ),
+                " "
+            )
+            .replace(
+                Regex(
+                    "\\b(?:free\\s+(?:from|of)|without|no)\\s+(?:peanuts?|tree\\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy(?:\\s+lecithin)?|sesame|wheat|gluten)(?:\\s*(?:,|&|and|or|/)\\s*(?:peanuts?|tree\\s+nuts?|nuts?|eggs?|dairy|milk|lactose|soy(?:\\s+lecithin)?|sesame|wheat|gluten))*\\b",
+                    RegexOption.IGNORE_CASE
+                ),
+                " "
+            )
+    }
+
     fun evaluateDietaryAlerts(
         ctx: Context,
         productJson: JSONObject?,
@@ -494,53 +692,84 @@ object ScanApi {
         val selected = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
         if (selected.isEmpty()) return emptyList()
 
+        val activeWatchlistSig = selected.sorted().joinToString(",")
+        val serverArr = rootDataJson?.optJSONArray("dietaryAlerts") ?: resultJson?.optJSONArray("dietaryAlerts")
+        val serverDietarySig = when {
+            rootDataJson?.has("_serverDietaryWatchlistSig") == true -> rootDataJson.optString("_serverDietaryWatchlistSig")
+            resultJson?.has("_serverDietaryWatchlistSig") == true -> resultJson.optString("_serverDietaryWatchlistSig")
+            else -> null
+        }
+
+        fun parseServerAlerts(arr: JSONArray): List<DietaryAlert> {
+            val parsed = ArrayList<DietaryAlert>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("id")
+                if (id in selected && parsed.none { it.id == id }) {
+                    parsed.add(
+                        DietaryAlert(
+                            id = id,
+                            label = o.optString("label", "⚠️ Dietary Alert"),
+                            shortBadge = o.optString("shortBadge", "ALERT"),
+                            reason = o.optString("reason", "Flagged by your personal watchlist")
+                        )
+                    )
+                }
+            }
+            return parsed
+        }
+
+        if (serverArr != null && serverDietarySig != null && serverDietarySig == activeWatchlistSig) {
+            return parseServerAlerts(serverArr)
+        }
+
         val title = productJson?.optString("title").orEmpty()
         val ingredients = productJson?.optString("ingredients").orEmpty()
         val nutrition = productJson?.optJSONObject("nutrition")
         val hasIngredients = ingredients.isNotBlank()
-        val combined = "$title $ingredients"
+        val ing = stripFreeFromClaims(stripPrecautionaryCrossContactClauses(ingredients).lowercase())
+        val cleanTitleForAlerts = stripFreeFromClaims(title.lowercase())
+        val text = "$cleanTitleForAlerts $ing".trim()
+
+        if (title.isBlank() && ingredients.isBlank()) {
+            return if (serverArr != null) parseServerAlerts(serverArr) else emptyList()
+        }
+
         val alerts = ArrayList<DietaryAlert>()
 
-        fun mergeServerAlerts() {
-            val serverArr = rootDataJson?.optJSONArray("dietaryAlerts") ?: resultJson?.optJSONArray("dietaryAlerts")
-            if (serverArr != null && serverArr.length() > 0) {
-                for (i in 0 until serverArr.length()) {
-                    val o = serverArr.optJSONObject(i) ?: continue
-                    val id = o.optString("id")
-                    if (id in selected && alerts.none { it.id == id }) {
-                        alerts.add(
-                            DietaryAlert(
-                                id = id,
-                                label = o.optString("label", "⚠️ Dietary Alert"),
-                                shortBadge = o.optString("shortBadge", "ALERT"),
-                                reason = o.optString("reason", "Flagged by your personal watchlist")
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        if (combined.isBlank()) {
-            mergeServerAlerts()
-            return alerts
-        }
-
-        if ("sugar_diabetes" in selected &&
-            (hasIngredients || !Regex("\\b(zero\\s+sugar|sugar[\\s-]*free|unsweetened|\\bdiet\\b)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title))
-        ) {
+        if ("sugar_diabetes" in selected) {
             val sugarsG = nutrition?.optDouble("sugarsG100g", 0.0) ?: 0.0
+            val ingCleanedForSugar = ing.replace(
+                Regex(
+                    "\\b(no\\s+(?:added\\s+)?sugars?|sugar[\\s-]*free|zero\\s+sugar|unsweetened|without\\s+(?:added\\s+)?sugar|0\\s*g\\s+sugar|sugar\\s+alcohols?|sugar\\s+snap(?:\\s+peas?)?|sugar\\s+kelp|sugar\\s+pumpkin)\\b",
+                    RegexOption.IGNORE_CASE
+                ),
+                " "
+            )
             val sugarMatch = Regex(
                 "\\b(high\\s+fructose\\s+corn\\s+syrup|corn\\s+syrup|cane\\s+sugar|brown\\s+sugar|sugar|sucrose|dextrose|maltose|fructose|glucose\\s+syrup|honey|maple\\s+syrup|molasses|agave|invert\\s+sugar|fruit\\s+juice\\s+concentrate)\\b",
                 RegexOption.IGNORE_CASE
-            ).find(ingredients)
+            ).find(ingCleanedForSugar)
             val refinedCarbMatch = Regex(
                 "\\b(enriched\\s+(?:wheat\\s+)?flour|bleached\\s+(?:wheat\\s+)?flour|maltodextrin|modified\\s+(?:corn|food)\\s+starch|instant\\s+mashed|white\\s+rice\\s+flour)\\b",
                 RegexOption.IGNORE_CASE
-            ).find(ingredients)
-            if (sugarsG >= 10.0 || sugarMatch != null || refinedCarbMatch != null) {
+            ).find(ing)
+            val titleClaimsSugarFreeOrUnsweetened = Regex(
+                "\\b(zero\\s+sugar|sugar[\\s-]*free|unsweetened|\\bdiet\\b)\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(title)
+            val triggersIntrinsicSugar =
+                sugarsG >= 10.0 &&
+                    !(titleClaimsSugarFreeOrUnsweetened &&
+                        Regex("\\bunsweetened\\b", RegexOption.IGNORE_CASE).containsMatchIn(title) &&
+                        sugarMatch == null &&
+                        refinedCarbMatch == null &&
+                        sugarsG <= 12.0)
+            if ((hasIngredients || !titleClaimsSugarFreeOrUnsweetened) &&
+                (triggersIntrinsicSugar || sugarMatch != null || refinedCarbMatch != null)
+            ) {
                 val reasons = ArrayList<String>()
-                if (sugarsG >= 10.0) reasons.add("${sugarsG.toInt()}g sugar/100g")
+                if (sugarsG >= 10.0) reasons.add("${sugarsG.toInt()}g sugar per 100g")
                 if (sugarMatch != null) {
                     reasons.add("Added sweetener (${sugarMatch.value.lowercase()})")
                 } else if (refinedCarbMatch != null) {
@@ -560,20 +789,21 @@ object ScanApi {
         // Never let front-of-pack "Non-Dairy" / "Plant-Based" / "Gluten-Free" / "Vegan" claims suppress
         // actual ingredient-list scanning (e.g. Coffee-mate "Non-Dairy" containing sodium caseinate).
         if ("dairy" in selected) {
-            val dairySource = if (hasIngredients) {
-                ingredients
-            } else if (!Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|plant[\\s-]*based|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
-                title
-            } else {
-                ""
-            }
+            val titleClaimsDairyFree = Regex(
+                "\\b(dairy[\\s-]*free|non[\\s-]*dairy|milk[\\s-]*free|plant[\\s-]*based|vegan)\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(title)
+            val dairySource = if (titleClaimsDairyFree) ing else text
             if (dairySource.isNotBlank()) {
                 val cleanedDairyText = dairySource.replace(
-                    Regex("\\b(dairy[\\s-]*free|non[\\s-]*dairy|lactic\\s+acid|calcium\\s+lactate|sodium\\s+lactate|sodium\\s+stearoyl\\s+lactylate|coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|rice\\s+milk|cashew\\s+milk|milk\\s+thistle|peanut\\s+butter|cocoa\\s+butter|shea\\s+butter|apple\\s+butter|almond\\s+butter|cashew\\s+butter|sunflower\\s+butter|butter\\s+beans?|butternut|cream\\s+of\\s+tartar)\\b", RegexOption.IGNORE_CASE),
+                    Regex(
+                        "\\b(dairy[\\s-]*free|non[\\s-]*dairy|milk[\\s-]*free|lactose[\\s-]*free|butter[\\s-]*free|whey[\\s-]*free|casein[\\s-]*free|no\\s+(?:dairy|milk|lactose|butter|whey|casein)|plant\\s+(?:milk|butter|cream\\w*|cheese|yogurt)|vegan\\s+(?:milk|butter|cream\\w*|cheese|yogurt)|coconut\\s+milk|almond\\s+milk|oat\\s+milk|soy\\s+milk|soymilk|almondmilk|oatmilk|rice\\s+milk|cashew\\s*milk|walnut\\s*milk|hazelnut\\s*milk|pistachio\\s*milk|pecan\\s*milk|macadamia\\s*milk|hemp\\s*milk|pea\\s*milk|flax\\s*milk|banana\\s*milk|oat\\s+beverage|almond\\s+beverage|soy\\s+beverage|coconut\\s+beverage|milked\\s+\\w+|milk\\s+thistle|peanut\\s+butter|almond\\s+butter|cashew\\s+butter|hazelnut\\s+butter|walnut\\s+butter|pecan\\s+butter|pistachio\\s+butter|macadamia\\s+butter|sunflower\\s+(?:seed\\s+)?butter|sunbutter|pumpkin\\s+seed\\s+butter|sesame\\s+butter|cocoa\\s+butter|shea\\s+butter|mango\\s+butter|apple\\s+butter|pumpkin\\s+butter|cookie\\s+butter|fruit\\s+butter|butter\\s+beans?|butter\\s+lettuce|butter\\s+potato\\w*|butternut(?:\\s+squash)?|cream\\s+of\\s+(?:tartar|coconut|rice|wheat)|cream\\s+soda|coconut\\s+cream\\w*|oat\\s+cream\\w*|almond\\s+cream\\w*|soy\\s+cream\\w*|plant\\s+cream\\w*|lactic\\s+acid|calcium\\s+lactate|sodium\\s+lactate|sodium\\s+stearoyl\\s+lactylate)\\b",
+                        RegexOption.IGNORE_CASE
+                    ),
                     " "
                 )
                 val m = Regex(
-                    "\\b(milk|cream|butter|buttermilk|whey|casein|caseinate|sodium\\s+caseinate|calcium\\s+caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|sour\\s+cream|half\\s+and\\s+half|lactalbumin|lactoglobulin)\\b",
+                    "\\b(buttermilk|sour\\s+cream|half\\s+and\\s+half|milk|milkfat|butterfat|butteroil|cream|butter|whey|casein|caseinate|sodium\\s+caseinate|calcium\\s+caseinate|lactose|cheese|cheddar|mozzarella|parmesan|provolone|gouda|swiss|ricotta|yogurt|ghee|lactalbumin|lactoglobulin)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedDairyText)
                 if (m != null) {
@@ -590,20 +820,21 @@ object ScanApi {
         }
 
         if ("wheat_gluten" in selected) {
-            val glutenSource = if (hasIngredients) {
-                ingredients
-            } else if (!Regex("\\b(gluten[\\s-]*free|grain[\\s-]*free|celiac)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
-                title
-            } else {
-                ""
-            }
+            val titleClaimsGlutenFree = Regex(
+                "\\b(gluten[\\s-]*free|grain[\\s-]*free|wheat[\\s-]*free|celiac)\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(title)
+            val glutenSource = if (titleClaimsGlutenFree) ing else text
             if (glutenSource.isNotBlank()) {
                 val cleanedGlutenText = glutenSource.replace(
-                    Regex("\\b(gluten[\\s-]*free(?:\\s+oats?)?|buckwheat)\\b", RegexOption.IGNORE_CASE),
+                    Regex(
+                        "\\b(buckwheat|wheat\\s*grass|wheat[\\s-]*free|gluten[\\s-]*free(?:\\s+oats?)?|no\\s+(?:wheat|gluten)|corn\\s+gluten)\\b",
+                        RegexOption.IGNORE_CASE
+                    ),
                     " "
                 )
                 val m = Regex(
-                    "\\b(wheat|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale|graham\\s+flour|vital\\s+wheat\\s+gluten)\\b",
+                    "\\b(vital\\s+wheat\\s+gluten|graham\\s+flour|enriched\\s+flour|bleached\\s+flour|unbleached\\s+flour|wheat|durum|semolina|spelt|farro|kamut|bulgur|couscous|seitan|barley|malt|malted|rye|triticale)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedGlutenText)
                 if (m != null) {
@@ -620,13 +851,20 @@ object ScanApi {
         }
 
         if ("peanuts_nuts" in selected) {
-            val nutSource = if (hasIngredients) ingredients else combined
+            val titleClaimsNutFree = Regex(
+                "\\b(nut[\\s-]*free|peanut[\\s-]*free|tree\\s+nut[\\s-]*free|no\\s+(?:peanuts?|tree\\s+nuts?|nuts?))\\b",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(title)
+            val nutSource = if (titleClaimsNutFree) ing else text
             val cleanedNutText = nutSource.replace(
-                Regex("\\b(peanut[\\s-]*free|nut[\\s-]*free|tree[\\s-]*nut[\\s-]*free|butternut|nutmeg|water\\s+chestnuts?|coconut(?:\\s+(?:oil|milk|water|sugar|flour|cream))?)\\b", RegexOption.IGNORE_CASE),
+                Regex(
+                    "\\b(nutmeg|butternut|water\\s+chestnuts?|coconuts?|nut[\\s-]*free|peanut[\\s-]*free|tree[\\s-]*nut[\\s-]*free)\\b",
+                    RegexOption.IGNORE_CASE
+                ),
                 " "
             )
             val m = Regex(
-                "\\b(peanuts?|peanut\\s+butter|peanut\\s+oil|peanut\\s+flour|almonds?|cashews?|walnuts?|pecans?|hazelnuts?|filberts?|pistachios?|macadamia|brazil\\s+nuts?|pine\\s+nuts?|praline|marzipan|nougat|gianduja)\\b",
+                "\\b(peanut\\s+butter|peanut\\s+oil|peanut\\s+flour|peanuts?|tree\\s+nuts?|almonds?|almondmilk|cashews?|cashewmilk|walnuts?|walnutmilk|pecans?|pecanmilk|hazelnuts?|hazelnutmilk|filberts?|pistachios?|pistachiomilk|macadamias?|macadamiamilk|chestnuts?|brazil\\s+nuts?|pine\\s+nuts?|praline|marzipan|nougat|gianduja)\\b",
                 RegexOption.IGNORE_CASE
             ).find(cleanedNutText)
             if (m != null) {
@@ -642,17 +880,15 @@ object ScanApi {
         }
 
         if ("soy" in selected) {
-            val soySource = if (hasIngredients) {
-                ingredients
-            } else if (!Regex("\\bsoy[\\s-]*free\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
-                title
-            } else {
-                ""
-            }
+            val titleClaimsSoyFree = Regex("\\b(soy[\\s-]*free|no\\s+soy)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+            val soySource = if (titleClaimsSoyFree) ing else text
             if (soySource.isNotBlank()) {
-                val cleanedSoyText = soySource.replace(Regex("\\b(soy[\\s-]*free|no\\s+soy)\\b", RegexOption.IGNORE_CASE), " ")
+                val cleanedSoyText = soySource.replace(
+                    Regex("\\b(soy[\\s-]*free|no\\s+soy(?:\\s+lecithin)?|without\\s+soy|free\\s+of\\s+soy)\\b", RegexOption.IGNORE_CASE),
+                    " "
+                )
                 val m = Regex(
-                    "\\b(soy|soya|soybeans?|soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|tamari|tofu|tempeh|edamame|miso|textured\\s+vegetable\\s+protein)\\b",
+                    "\\b(soybean\\s+oil|soy\\s+lecithin|soy\\s+protein|soy\\s+flour|soy\\s+sauce|textured\\s+vegetable\\s+protein|soybeans?|soymilk|soy|soya|tamari|tofu|tempeh|edamame|miso)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedSoyText)
                 if (m != null) {
@@ -669,20 +905,15 @@ object ScanApi {
         }
 
         if ("egg" in selected) {
-            val eggSource = if (hasIngredients) {
-                ingredients
-            } else if (!Regex("\\b(egg[\\s-]*free|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
-                title
-            } else {
-                ""
-            }
+            val titleClaimsEggFree = Regex("\\b(egg[\\s-]*free|no\\s+eggs?|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+            val eggSource = if (titleClaimsEggFree) ing else text
             if (eggSource.isNotBlank()) {
                 val cleanedEggText = eggSource.replace(
-                    Regex("\\b(eggplants?|egg[\\s-]*free(?:\\s+vegan)?(?:\\s+mayonnaise)?|vegan\\s+mayonnaise|eggless(?:\\s+mayonnaise)?)\\b", RegexOption.IGNORE_CASE),
+                    Regex("\\b(eggplants?|egg[\\s-]*free(?:\\s+vegan)?(?:\\s+mayo(?:nnaise)?)?|no\\s+eggs?|vegan\\s+mayo(?:nnaise)?|eggless(?:\\s+mayonnaise)?)\\b", RegexOption.IGNORE_CASE),
                     " "
                 )
                 val m = Regex(
-                    "\\b(eggs?|egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
+                    "\\b(egg\\s+whites?|egg\\s+yolks?|dried\\s+egg|powdered\\s+egg|eggs?|albumin|ovalbumin|ovomucoid|lysozyme|mayonnaise|aioli|meringue)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedEggText)
                 if (m != null) {
@@ -699,9 +930,10 @@ object ScanApi {
         }
 
         if ("shellfish_fish" in selected) {
-            val fishSource = if (hasIngredients) ingredients else combined
+            val titleClaimsFishFree = Regex("\\b(shellfish[\\s-]*free|fish[\\s-]*free|seafood[\\s-]*free|vegan)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+            val fishSource = if (titleClaimsFishFree) ing else text
             val m = Regex(
-                "\\b(shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\\s+sauce|fish\\s+oil)\\b",
+                "\\b((?:crustacean\\s+|molluscan\\s+)?shellfish|crustaceans?|mollusks?|molluscs?|shrimp|prawns?|crab|lobster|crawfish|crayfish|clams?|mussels?|oysters?|scallops?|calamari|squid|octopus|anchov(?:y|ies)|sardines?|salmon|tuna|cod|tilapia|halibut|haddock|trout|mahi|pollock|catfish|krill|fish\\s+sauce|fish\\s+oil)\\b",
                 RegexOption.IGNORE_CASE
             ).find(fishSource)
             if (m != null) {
@@ -717,27 +949,22 @@ object ScanApi {
         }
 
         if ("sesame" in selected) {
-            val sesameSource = if (hasIngredients) {
-                ingredients
-            } else if (!Regex("\\b(sesame[\\s-]*free|no\\s+sesame)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) {
-                title
-            } else {
-                ""
-            }
+            val titleClaimsSesameFree = Regex("\\b(sesame[\\s-]*free|no\\s+sesame)\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)
+            val sesameSource = if (titleClaimsSesameFree) ing else text
             if (sesameSource.isNotBlank()) {
                 val cleanedSesameText = sesameSource.replace(
-                    Regex("\\b(sesame[\\s-]*free|no\\s+sesame)\\b", RegexOption.IGNORE_CASE),
+                    Regex("\\b(sesame[\\s-]*free|no\\s+sesame|without\\s+sesame|free\\s+of\\s+sesame)\\b", RegexOption.IGNORE_CASE),
                     " "
                 )
                 val m = Regex(
-                    "\\b(sesame(?:\\s+(?:seeds?|oil|flour|paste))?|tahini|halvah|halva|benne\\s+seeds?|gingelly|gomasio|sesamol|sesamolin)\\b",
+                    "\\b(sesame\\s+seeds?|sesame\\s+oil|sesame\\s+flour|sesame\\s+paste|tahini|sesame|benne\\s+seeds?|gingelly|gomasio|halvah|halva|sesamol|sesamolin)\\b",
                     RegexOption.IGNORE_CASE
                 ).find(cleanedSesameText)
                 if (m != null) {
                     alerts.add(
                         DietaryAlert(
                             id = "sesame",
-                            label = "🥯 Sesame Alert",
+                            label = "🌱 Sesame Alert",
                             shortBadge = "SESAME",
                             reason = "Contains ${m.value.lowercase()}"
                         )
@@ -749,12 +976,12 @@ object ScanApi {
         if ("high_sodium" in selected) {
             val sodiumMg = nutrition?.optDouble("sodiumMg100g", 0.0) ?: 0.0
             val sodiumAddMatch = Regex(
-                "\\b(monosodium\\s+glutamate|sodium\\s+phosphate|disodium\\s+inosinate|disodium\\s+guanylate|sodium\\s+tripolyphosphate|sodium\\s+nitrite|sodium\\s+nitrate|sodium\\s+benzoate|sodium\\s+caseinate|brine|saline\\s+solution)\\b",
+                "\\b(monosodium\\s+glutamate|(?:di|tri|mono|penta)?sodium\\s+(?:(?:dihydrogen|acid|aluminum|hexameta|tripoly|pyro|poly)\\s+)?(?:phosphates?|triphosphate|tripolyphosphate|pyrophosphate|hexametaphosphate|polyphosphates?)|disodium\\s+inosinate|disodium\\s+guanylate|sodium\\s+nitrite|sodium\\s+nitrate|sodium\\s+benzoate|sodium\\s+caseinate|brine|saline\\s+solution)\\b",
                 RegexOption.IGNORE_CASE
-            ).find(ingredients)
+            ).find(ing)
             if (sodiumMg >= 400.0 || sodiumAddMatch != null) {
                 val reasons = ArrayList<String>()
-                if (sodiumMg >= 400.0) reasons.add("${sodiumMg.toInt()}mg sodium/100g")
+                if (sodiumMg >= 400.0) reasons.add("${sodiumMg.toInt()}mg sodium per 100g")
                 if (sodiumAddMatch != null) reasons.add("Contains ${sodiumAddMatch.value.lowercase()}")
                 alerts.add(
                     DietaryAlert(
@@ -783,10 +1010,10 @@ object ScanApi {
             val isBeverageOrCandy = Regex(
                 "\\b(sparkling\\s+water|seltzer|club\\s+soda|energy\\s+drink|diet\\s+soda|cola|sprite|fanta|gatorade|powerade|chewing\\s+gum|gummy|gummies|skittles|starburst|sunscreen|lotion|shampoo|soap|detergent|toothpaste)\\b",
                 RegexOption.IGNORE_CASE
-            ).containsMatchIn(title) && !Regex("\\b(oats?|oatmeal|wheat|flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ingredients)
+            ).containsMatchIn(title) && !Regex("\\b(oats?|oatmeal|wheat|flour)\\b", RegexOption.IGNORE_CASE).containsMatchIn(ing)
 
             if (!isCertifiedProductOrganic && !isBeverageOrCandy) {
-                val riskSource = if (hasIngredients) ingredients else title
+                val riskSource = if (hasIngredients) ing else cleanTitleForAlerts
                 val cleaned = riskSource
                     .replace(Regex("\\bnon[\\s-]*organic\\b", RegexOption.IGNORE_CASE), "conventional")
                     .replace(
@@ -828,7 +1055,13 @@ object ScanApi {
             }
         }
 
-        mergeServerAlerts()
+        if (serverArr != null && serverDietarySig == null) {
+            for (srv in parseServerAlerts(serverArr)) {
+                if (alerts.none { it.id == srv.id }) {
+                    alerts.add(srv)
+                }
+            }
+        }
         return alerts
     }
 
@@ -913,11 +1146,51 @@ object ScanApi {
         }
     }
 
+    private fun buildCombinedAdditiveSnapshot(result: JSONObject, currentFlagged: JSONArray): String {
+        val skipped = result.optJSONArray("skipped")
+        if (skipped == null || skipped.length() == 0) return currentFlagged.toString()
+        val combined = JSONArray(currentFlagged.toString())
+        val existingIds = HashSet<String>()
+        for (i in 0 until combined.length()) {
+            combined.optJSONObject(i)?.optString("id")?.takeIf { it.isNotEmpty() }?.let { existingIds.add(it) }
+        }
+        for (i in 0 until skipped.length()) {
+            val sObj = skipped.optJSONObject(i) ?: continue
+            val sId = sObj.optString("id")
+            if (sId.isEmpty() || existingIds.add(sId)) {
+                combined.put(JSONObject(sObj.toString()))
+            }
+        }
+        return combined.toString()
+    }
+
+    private fun stampServerScanSnapshots(data: JSONObject, watchlistSig: String, dietarySig: String) {
+        if (data.has("dietaryAlerts") && !data.has("_serverDietaryWatchlistSig")) {
+            data.put("_serverDietaryWatchlistSig", dietarySig)
+        }
+        val result = data.optJSONObject("result") ?: return
+        if (!result.has("_serverWatchlistSig")) {
+            result.put("_serverWatchlistSig", watchlistSig)
+            result.put("_serverScore", result.optInt("score", 50))
+            result.put("_serverRating", result.optString("rating", ""))
+            result.put("_serverColor", result.optString("color", ""))
+            val flagged = result.optJSONArray("flagged")
+            if (flagged != null) {
+                result.put("_serverFlaggedExact", flagged.toString())
+                result.put("_serverFlaggedSnapshot", buildCombinedAdditiveSnapshot(result, flagged))
+            }
+            result.optJSONObject("yukaBreakdown")?.let { yuka ->
+                result.put("_serverAdditiveScore", yuka.optInt("additiveScore", 30))
+                result.put("_serverHighRiskCapped", yuka.optBoolean("highRiskCapped", false))
+            }
+        }
+    }
+
     /**
-     * Re-evaluates a scan JSONObject in-place against the user's current Seed Oil toggle and familyWatchlist (2x strictness)
-     * so toggling checkboxes in the app immediately updates the active floating pill, My Scans, and drawer score.
+     * Re-evaluates a scan JSONObject in-place against the user's current Seed Oil toggle and familyWatchlist (2x strictness).
+     * When the local watchlist signature matches `_serverWatchlistSig`, restores the canonical server score untouched.
      */
-    fun applyLocalWatchlistToData(ctx: Context, data: JSONObject?) {
+    fun applyLocalWatchlistScoring(ctx: Context, data: JSONObject?) {
         val result = data?.optJSONObject("result") ?: return
         val yuka = result.optJSONObject("yukaBreakdown")
         if (yuka != null && yuka.optString("nutriScoreGrade") == "N/A") return
@@ -926,88 +1199,61 @@ object ScanApi {
         val seedOilsOn = isSeedOilsEnabled(ctx)
         val familySet = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
             .map { if (it == "nitrites") "nitrates" else it }
+            .filter { seedOilsOn || it != "seedOils" }
             .toSet()
+        val activeWatchlistSig = "$seedOilsOn|${familySet.sorted().joinToString(",")}"
 
-        // Snapshot original flagged array & 1x baseline score on first pass so repeated toggles are 100% reversible
-        val origFlaggedStr = if (result.has("_origFlaggedJson")) {
-            result.optString("_origFlaggedJson", "[]")
-        } else {
-            val snap = currentFlagged.toString()
-            result.put("_origFlaggedJson", snap)
-            snap
+        if (!result.has("_serverWatchlistSig")) {
+            result.put("_serverWatchlistSig", activeWatchlistSig)
+            result.put("_serverScore", result.optInt("score", 50))
+            result.put("_serverRating", result.optString("rating", ""))
+            result.put("_serverColor", result.optString("color", ""))
+            result.put("_serverFlaggedExact", currentFlagged.toString())
+            result.put("_serverFlaggedSnapshot", buildCombinedAdditiveSnapshot(result, currentFlagged))
+            if (yuka != null) {
+                result.put("_serverAdditiveScore", yuka.optInt("additiveScore", 30))
+                result.put("_serverHighRiskCapped", yuka.optBoolean("highRiskCapped", false))
+            }
         }
+
+        val serverWatchlistSig = result.optString("_serverWatchlistSig", activeWatchlistSig)
+        if (activeWatchlistSig == serverWatchlistSig) {
+            result.put("score", result.optInt("_serverScore", result.optInt("score", 50)))
+            val srvRating = result.optString("_serverRating", "")
+            if (srvRating.isNotBlank()) result.put("rating", srvRating)
+            val srvColor = result.optString("_serverColor", "")
+            if (srvColor.isNotBlank()) result.put("color", srvColor)
+            val exactFlaggedStr = result.optString("_serverFlaggedExact", result.optString("_serverFlaggedSnapshot", currentFlagged.toString()))
+            runCatching { JSONArray(exactFlaggedStr) }.getOrNull()?.let { result.put("flagged", it) }
+            if (yuka != null && result.has("_serverAdditiveScore")) {
+                yuka.put("additiveScore", result.optInt("_serverAdditiveScore", yuka.optInt("additiveScore", 30)))
+                yuka.put("highRiskCapped", result.optBoolean("_serverHighRiskCapped", yuka.optBoolean("highRiskCapped", false)))
+            }
+            return
+        }
+
+        val origFlaggedStr = result.optString("_serverFlaggedSnapshot", currentFlagged.toString())
         val origFlagged = runCatching { JSONArray(origFlaggedStr) }.getOrDefault(currentFlagged)
-
-        val baseScore1x = if (result.has("_baseScore1x")) {
-            result.optInt("_baseScore1x", result.optInt("score", 50))
-        } else {
-            var initial2xDeduction = 0
-            var initialBasePenaltySum = 0
-            var initialNonNutriCount = 0
-            var initialHasHighRisk = false
-            var initialSeedOilCount = 0
-            var hasBevSugarCap = false
-            for (i in 0 until origFlagged.length()) {
-                val item = origFlagged.optJSONObject(i) ?: continue
-                val idStr = item.optString("id")
-                if (idStr == "nutri_beverage_sugar") hasBevSugarCap = true
-                if (idStr.startsWith("nutri_")) continue
-                val risk = item.optString("risk", "low")
-                val basePen = defaultBasePenalty1x(idStr, item.optString("name"), risk)
-                val pen = item.optInt("penalty", basePen)
-                val cat = resolveAdditiveCategory(item)
-                initialBasePenaltySum += basePen
-                initialNonNutriCount++
-                if (risk == "high") initialHasHighRisk = true
-                if (cat == "seedOils") initialSeedOilCount++
-                val was2x = pen >= basePen * 2
-                if (was2x) {
-                    initial2xDeduction += when (risk) {
-                        "high" -> 12
-                        "moderate" -> 10
-                        else -> 6
-                    }
-                }
-            }
-            val recovered = if (yuka != null) {
-                val nutriScore = yuka.optInt("nutritionScore", 36)
-                val orgScore = yuka.optInt("organicScore", 0)
-                val multiDed = (initialNonNutriCount - 1).coerceAtLeast(0) * 3
-                val addDed = (Math.round(initialBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
-                val addScore1x = if (initialHasHighRisk) 0 else (30 - addDed).coerceAtLeast(0)
-                var pillar = (nutriScore + addScore1x + orgScore).coerceIn(0, 100)
-                if (initialHasHighRisk || initialSeedOilCount >= 2 || hasBevSugarCap) {
-                    pillar = pillar.coerceAtMost(49)
-                } else if (initialSeedOilCount == 1) {
-                    pillar = pillar.coerceAtMost(59)
-                }
-                pillar
-            } else if (result.optString("scoringBasis") == "ingredient-only") {
-                val raw = (100 - initialBasePenaltySum).coerceIn(0, 100)
-                if (initialHasHighRisk) raw.coerceAtMost(49) else raw
-            } else {
-                val raw = (result.optInt("score", 50) + initial2xDeduction).coerceIn(0, 100)
-                if (initialHasHighRisk) raw.coerceAtMost(49) else raw
-            }
-            result.put("_baseScore1x", recovered)
-            recovered
-        }
+        val serverFamilySet = serverWatchlistSig
+            .substringAfter('|', "")
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
 
         val activeFlagged = JSONArray()
         var strictnessDeduction = 0
         var hasHighOrMod2x = false
-        var hadSeedOilRemoved = false
         var remainingBasePenaltySum = 0
+        var totalActivePenalty = 0
         var remainingNonNutriCount = 0
         var remainingHighRisk = false
         var remainingSeedOilCount = 0
-        var hasBevSugarCap = false
 
         for (i in 0 until origFlagged.length()) {
             val rawItem = origFlagged.optJSONObject(i) ?: continue
             val item = JSONObject(rawItem.toString())
             val idStr = item.optString("id")
-            if (idStr == "nutri_beverage_sugar") hasBevSugarCap = true
             if (idStr.startsWith("nutri_")) {
                 activeFlagged.put(item)
                 continue
@@ -1015,16 +1261,25 @@ object ScanApi {
             val risk = item.optString("risk", "low")
             val cat = resolveAdditiveCategory(item)
             if (cat == "seedOils" && !seedOilsOn) {
-                hadSeedOilRemoved = true
                 continue
             }
+            val defaultBase = defaultBasePenalty1x(idStr, item.optString("name"), risk)
+            val origPen = item.optInt("penalty", defaultBase)
+            val origMult = when {
+                item.has("watchlistMultiplier") -> item.optInt("watchlistMultiplier", 1)
+                cat.isNotEmpty() && cat in serverFamilySet -> 2
+                defaultBase > 0 && origPen >= defaultBase * 2 -> 2
+                else -> 1
+            }
+            val basePen = if (origMult >= 2) origPen / 2 else origPen
             val is2x = cat.isNotEmpty() && cat in familySet
-            val basePen = defaultBasePenalty1x(idStr, item.optString("name"), risk)
+            val effectivePen = if (is2x) basePen * 2 else basePen
+            item.put("penalty", effectivePen)
             remainingBasePenaltySum += basePen
+            totalActivePenalty += effectivePen
             remainingNonNutriCount++
             if (risk == "high") remainingHighRisk = true
             if (cat == "seedOils") remainingSeedOilCount++
-            item.put("penalty", if (is2x) basePen * 2 else basePen)
             if (is2x) {
                 strictnessDeduction += when (risk) {
                     "high" -> 12
@@ -1039,37 +1294,38 @@ object ScanApi {
         }
         result.put("flagged", activeFlagged)
 
-        var effectiveBaseScore = baseScore1x
-        if (yuka != null) {
-            val nutriScore = yuka.optInt("nutritionScore", 36)
-            val orgScore = yuka.optInt("organicScore", 0)
+        val isIngredientOnly = result.optString("scoringBasis") == "ingredient-only" || yuka == null
+        var nextScore: Int
+        if (isIngredientOnly) {
+            nextScore = (100 - totalActivePenalty).coerceIn(0, 100)
+            if (remainingHighRisk) {
+                nextScore = nextScore.coerceAtMost(49)
+            }
+        } else {
+            val yukaObj = yuka!!
+            val nutriScore = yukaObj.optInt("nutritionScore", 36)
+            val orgScore = yukaObj.optInt("organicScore", 0)
+            val hasBevSugarCap = yukaObj.optBoolean("beverageCapApplied", false)
             val multiDed = (remainingNonNutriCount - 1).coerceAtLeast(0) * 3
             val addDed = (Math.round(remainingBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
             val newAddScore = if (remainingHighRisk || hasHighOrMod2x) 0 else (30 - addDed).coerceAtLeast(0)
-            yuka.put("additiveScore", newAddScore)
-            yuka.put("highRiskCapped", remainingHighRisk)
+            yukaObj.put("additiveScore", newAddScore)
+            yukaObj.put("highRiskCapped", remainingHighRisk)
             var pillarSum = (nutriScore + newAddScore + orgScore).coerceIn(0, 100)
             if (remainingHighRisk || remainingSeedOilCount >= 2 || hasBevSugarCap) {
                 pillarSum = pillarSum.coerceAtMost(49)
             } else if (remainingSeedOilCount == 1) {
                 pillarSum = pillarSum.coerceAtMost(59)
             }
-            effectiveBaseScore = pillarSum
-        } else if (!seedOilsOn && hadSeedOilRemoved) {
-            effectiveBaseScore = if (remainingHighRisk) {
-                (baseScore1x + 26).coerceIn(0, 49)
-            } else {
-                (baseScore1x + 26).coerceIn(0, 88)
+            nextScore = pillarSum
+            if (strictnessDeduction > 0) {
+                if (hasHighOrMod2x) {
+                    nextScore = nextScore.coerceAtMost(39)
+                }
+                nextScore = (nextScore - strictnessDeduction).coerceIn(0, 100)
             }
         }
 
-        var nextScore = effectiveBaseScore
-        if (strictnessDeduction > 0) {
-            if (hasHighOrMod2x) {
-                nextScore = nextScore.coerceAtMost(39)
-            }
-            nextScore = (nextScore - strictnessDeduction).coerceIn(0, 100)
-        }
         val nextRating = when {
             nextScore >= 75 -> "Excellent"
             nextScore >= 50 -> "Mediocre"
@@ -1084,6 +1340,8 @@ object ScanApi {
         result.put("rating", nextRating)
         result.put("color", nextColor)
     }
+
+    fun applyLocalWatchlistToData(ctx: Context, data: JSONObject?) = applyLocalWatchlistScoring(ctx, data)
 
     private fun resolveSubRetailerSlug(
         store: String,
@@ -1267,14 +1525,24 @@ object ScanApi {
             bodyJson.put("skipAnalytics", true)
         }
         val body = bodyJson.toString()
+        val reqWatchlistSig = "$seedOilsOn|${familyWatchlist.toList().sorted().joinToString(",")}"
+        val reqDietarySig = dietaryWatchlist.toList().sorted().joinToString(",")
 
         var lastErr = """{"ok":false,"error":"Unable to reach HeyBroc server"}"""
         for (endpoint in ENDPOINTS) {
             try {
-                val res = postFollowingRedirects(endpoint, body, maxRedirects = 4)
+                val http = postFollowingRedirectsDetailed(endpoint, body, maxRedirects = 4)
+                val res = http.body
+                if (http.statusCode == 429) {
+                    return res
+                }
                 if (res.startsWith("{") && (res.contains("\"ok\":true") || res.contains("\"ok\":false") || res.contains("\"result\""))) {
                     if (res.contains("\"ok\":true")) {
                         val parsedObj = runCatching { JSONObject(res) }.getOrNull()
+                        if (parsedObj != null) {
+                            stampServerScanSnapshots(parsedObj, reqWatchlistSig, reqDietarySig)
+                        }
+                        val finalRes = parsedObj?.toString() ?: res
                         runCatching {
                             saveEntitlementSnapshot(ctx, parsedObj?.optJSONObject("entitlement"))
                         }
@@ -1282,10 +1550,11 @@ object ScanApi {
                             (parsedObj?.optJSONObject("swap")?.optBoolean("locked", false) == true)
                         if (!swapLockedWithoutEntitlement) {
                             synchronized(responseCache) {
-                                responseCache[normKey] = res
-                                responseCache[bodyCacheKey] = res
+                                responseCache[normKey] = finalRes
+                                responseCache[bodyCacheKey] = finalRes
                             }
                         }
+                        return finalRes
                     }
                     return res
                 }
@@ -1302,6 +1571,8 @@ object ScanApi {
         "^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$",
         RegexOption.IGNORE_CASE
     )
+    @Volatile
+    private var batchRateLimitUntilMs: Long = 0L
 
     fun classifyAlertSeverity(alerts: List<DietaryAlert>): String {
         if (alerts.isEmpty()) return "none"
@@ -1332,7 +1603,8 @@ object ScanApi {
 
     data class BatchScanOutcome(
         val results: Map<String, BatchBadgeResult>,
-        val transientFailure: Boolean
+        val transientFailure: Boolean,
+        val retryAfterSec: Int? = null
     )
 
     private fun parseBatchBadgeResult(
@@ -1343,7 +1615,7 @@ object ScanApi {
     ): BatchBadgeResult? {
         if (!itemJson.optBoolean("ok", false)) return null
         val working = JSONObject(itemJson.toString())
-        applyLocalWatchlistToData(ctx, working)
+        applyLocalWatchlistScoring(ctx, working)
         val prod = working.optJSONObject("product")
         val res = working.optJSONObject("result") ?: return null
         if (!res.has("score") || res.isNull("score")) return null
@@ -1353,9 +1625,8 @@ object ScanApi {
         val rating = res.optString("rating").orEmpty().ifBlank {
             when {
                 score >= 75 -> "Excellent"
-                score >= 50 -> "Good"
-                score >= 25 -> "Mediocre"
-                else -> "Bad"
+                score >= 50 -> "Mediocre"
+                else -> "Poor"
             }
         }
         val color = res.optString("color").orEmpty().ifBlank {
@@ -1429,6 +1700,12 @@ object ScanApi {
 
         if (uncached.isEmpty()) return BatchScanOutcome(out, transientFailure = false)
 
+        val nowMs = System.currentTimeMillis()
+        if (nowMs < batchRateLimitUntilMs) {
+            val remSec = ((batchRateLimitUntilMs - nowMs + 999L) / 1000L).toInt().coerceAtLeast(1)
+            return BatchScanOutcome(out, transientFailure = false, retryAfterSec = remSec)
+        }
+
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val seedOilsOn = isSeedOilsEnabled(ctx)
         val familyWatchlist = prefs.getStringSet("familyWatchlist", emptySet()).orEmpty()
@@ -1436,6 +1713,8 @@ object ScanApi {
             .filter { seedOilsOn || it != "seedOils" }
             .toSet()
         val dietaryWatchlist = prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty().toSet()
+        val reqWatchlistSig = "$seedOilsOn|${familyWatchlist.toList().sorted().joinToString(",")}"
+        val reqDietarySig = dietaryWatchlist.toList().sorted().joinToString(",")
         val refCode = referredByCode(ctx)
         val normStore = store.trim().lowercase()
         val subSlug = resolveSubRetailerSlug(normStore, storeBucket, instacartRetailerSlug)
@@ -1481,11 +1760,24 @@ object ScanApi {
         }.toString()
 
         var reachedServer = false
+        var lastRetryAfterSec: Int? = null
         for (endpoint in ENDPOINTS) {
             try {
-                val res = postFollowingRedirects(endpoint, body, maxRedirects = 4, readTimeoutMs = 10000)
+                val http = postFollowingRedirectsDetailed(endpoint, body, maxRedirects = 4, readTimeoutMs = 10000)
+                if (http.statusCode == 429) {
+                    val waitSec = http.retryAfterSec ?: 15
+                    lastRetryAfterSec = waitSec
+                    batchRateLimitUntilMs = System.currentTimeMillis() + waitSec * 1000L
+                    reachedServer = true
+                    break
+                }
+                val res = http.body
                 if (!res.startsWith("{")) continue
                 val root = JSONObject(res)
+                if (root.has("ok") && !root.optBoolean("ok", true)) {
+                    reachedServer = true
+                    break
+                }
                 val resultsObj = root.optJSONObject("results") ?: root.optJSONObject("batch") ?: continue
                 reachedServer = true
                 var savedEntitlement = false
@@ -1496,6 +1788,7 @@ object ScanApi {
                         savedEntitlement = true
                     }
                     if (itemJson.optBoolean("ok", false)) {
+                        stampServerScanSnapshots(itemJson, reqWatchlistSig, reqDietarySig)
                         val isEstimate = itemJson.optBoolean("isCategoryEstimate", false)
                         val swapLockedWithoutEntitlement = itemJson.optJSONObject("entitlement") == null &&
                             (itemJson.optJSONObject("swap")?.optBoolean("locked", false) == true)
@@ -1521,7 +1814,7 @@ object ScanApi {
             }
         }
 
-        return BatchScanOutcome(out, transientFailure = !reachedServer)
+        return BatchScanOutcome(out, transientFailure = !reachedServer, retryAfterSec = lastRetryAfterSec)
     }
 
     fun scanBatch(
@@ -1570,13 +1863,17 @@ object ScanApi {
         var lastErr = JSONObject().put("ok", false).put("error", "Unable to reach HeyBroc audit server")
         for (endpoint in AUDIT_ENDPOINTS) {
             try {
-                val res = postFollowingRedirects(
+                val http = postFollowingRedirectsDetailed(
                     endpoint,
                     body,
                     maxRedirects = 4,
                     extraHeaders = mapOf("X-Device-Secret" to secret),
                     readTimeoutMs = 18000
                 )
+                val res = http.body
+                if (http.statusCode == 429 && res.startsWith("{")) {
+                    return JSONObject(res)
+                }
                 if (res.startsWith("{")) {
                     val json = JSONObject(res)
                     if (json.has("ok")) return json
@@ -1588,13 +1885,33 @@ object ScanApi {
         return lastErr
     }
 
+    private data class HttpPostResponse(
+        val statusCode: Int,
+        val body: String,
+        val retryAfterSec: Int? = null
+    )
+
     private fun postFollowingRedirects(
         urlStr: String,
         jsonBody: String,
         maxRedirects: Int,
         extraHeaders: Map<String, String> = emptyMap(),
         readTimeoutMs: Int = 8000
-    ): String {
+    ): String = postFollowingRedirectsDetailed(
+        urlStr = urlStr,
+        jsonBody = jsonBody,
+        maxRedirects = maxRedirects,
+        extraHeaders = extraHeaders,
+        readTimeoutMs = readTimeoutMs
+    ).body
+
+    private fun postFollowingRedirectsDetailed(
+        urlStr: String,
+        jsonBody: String,
+        maxRedirects: Int,
+        extraHeaders: Map<String, String> = emptyMap(),
+        readTimeoutMs: Int = 8000
+    ): HttpPostResponse {
         var currentUrl = urlStr
         var remaining = maxRedirects
         while (true) {
@@ -1629,10 +1946,18 @@ object ScanApi {
                         continue
                     }
                 }
+                val retryAfterSec = conn.getHeaderField("Retry-After")
+                    ?.trim()
+                    ?.toIntOrNull()
+                    ?.coerceIn(1, 300)
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val text = stream?.bufferedReader()?.use(BufferedReader::readText)?.trim().orEmpty()
-                if (text.isNotEmpty()) return text
-                return """{"ok":false,"error":"HTTP $code from $currentUrl"}"""
+                val resolvedBody = if (text.isNotEmpty()) {
+                    text
+                } else {
+                    """{"ok":false,"error":"HTTP $code from $currentUrl"}"""
+                }
+                return HttpPostResponse(statusCode = code, body = resolvedBody, retryAfterSec = retryAfterSec)
             } finally {
                 conn.disconnect()
             }
@@ -1655,6 +1980,84 @@ object ScanApi {
         else -> "walmart"
     }
 
+    data class LabelVerifyOutcome(
+        val ok: Boolean,
+        val verified: Boolean,
+        val message: String,
+        val report: JSONObject? = null
+    )
+
+    /** Calls /api/label-report and returns structured verification status without false ✓ claims. */
+    fun autoVerifyLabelOutcome(
+        productTitle: String,
+        currentIngredients: String = "",
+        store: String = "walmart",
+        onResult: (LabelVerifyOutcome) -> Unit
+    ) {
+        val labelReportEndpoint = (customBase.takeIf { it.isNotBlank() } ?: "https://www.heybroc.com") + "/api/label-report"
+        Thread {
+            val outcome = try {
+                val payload = JSONObject().apply {
+                    put("productTitle", productTitle)
+                    put("currentIngredients", currentIngredients)
+                    put("issueType", "reformulated")
+                    put("store", store)
+                }.toString()
+                val http = postFollowingRedirectsDetailed(
+                    labelReportEndpoint,
+                    payload,
+                    maxRedirects = 4
+                )
+                val obj = runCatching { JSONObject(http.body) }.getOrNull()
+                if (http.statusCode !in 200..299 || obj == null || !obj.optBoolean("ok", false)) {
+                    val serverErr = obj?.optString("error")?.trim()?.takeIf { it.isNotBlank() }
+                        ?.replace(Regex("^[✓✔⏳⚠\\s]+"), "")
+                    LabelVerifyOutcome(
+                        ok = false,
+                        verified = false,
+                        message = "⚠ ${serverErr ?: "Could not verify label right now — tap to retry."}",
+                        report = obj?.optJSONObject("report")
+                    )
+                } else {
+                    val rep = obj.optJSONObject("report")
+                    val status = rep?.optString("status").orEmpty().trim()
+                    val resolutionSource = rep?.optString("resolutionSource").orEmpty().trim()
+                        .ifBlank { obj.optString("resolutionSource").trim() }
+                    val verified = status == "auto_updated" ||
+                        (status != "flagged_for_review" && resolutionSource in setOf("usda", "openfoodfacts"))
+                    val rawSummary = rep?.optString("summary")?.trim().orEmpty()
+                    val cleanSummary = rawSummary
+                        .replace(Regex("^[✓✔⏳⚠\\s]+"), "")
+                        .trim()
+                        .ifBlank {
+                            if (verified) {
+                                "Cross-checked against USDA FoodData Central & Open Food Facts."
+                            } else {
+                                "Queued for manual label review."
+                            }
+                        }
+                    val prefix = if (verified) "✓" else "⏳"
+                    LabelVerifyOutcome(
+                        ok = true,
+                        verified = verified,
+                        message = "$prefix $cleanSummary",
+                        report = rep
+                    )
+                }
+            } catch (_: Exception) {
+                LabelVerifyOutcome(
+                    ok = false,
+                    verified = false,
+                    message = "⚠ Network error checking USDA & Open Food Facts — tap to retry.",
+                    report = null
+                )
+            }
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                onResult(outcome)
+            }
+        }.start()
+    }
+
     /** Calls /api/label-report to auto-verify a product label against USDA & Open Food Facts. */
     fun autoVerifyLabel(
         productTitle: String,
@@ -1662,30 +2065,9 @@ object ScanApi {
         store: String = "walmart",
         onResult: (summary: String) -> Unit
     ) {
-        Thread {
-            val summary = try {
-                val payload = JSONObject().apply {
-                    put("productTitle", productTitle)
-                    put("currentIngredients", currentIngredients)
-                    put("issueType", "reformulated")
-                    put("store", store)
-                }.toString()
-                val raw = postFollowingRedirects(
-                    "https://www.heybroc.com/api/label-report",
-                    payload,
-                    maxRedirects = 4
-                )
-                val obj = JSONObject(raw)
-                val rep = obj.optJSONObject("report")
-                rep?.optString("summary")?.takeIf { it.isNotBlank() }
-                    ?: "✓ Cross-checked against USDA FoodData Central & Open Food Facts."
-            } catch (_: Exception) {
-                "✓ Queued for automatic USDA & Open Food Facts label verification."
-            }
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                onResult(summary)
-            }
-        }.start()
+        autoVerifyLabelOutcome(productTitle, currentIngredients, store) { outcome ->
+            onResult(outcome.message)
+        }
     }
 
     /** Offline sample used by "Launch Test Overlay Pill" if the API isn't reachable. */

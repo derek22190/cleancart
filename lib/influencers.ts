@@ -24,6 +24,7 @@ import {
   kvSMembers,
   kvSRem,
   kvSet,
+  kvSetNx,
 } from "./storage";
 
 export type CreatorPayoutMethod =
@@ -48,7 +49,7 @@ export interface Creator {
   commissionEarned: number;
   /** Lifetime commissions already paid out to the creator. */
   commissionPaid: number;
-  /** Current unpaid commission balance owed to the creator. */
+  /** Current unpaid commission balance owed to the creator (may be negative after post-payout clawbacks). */
   commissionOwed: number;
   /** Net revenue retained by HeyBroc after creator commissions. */
   netRevenue: number;
@@ -70,11 +71,25 @@ export interface CreatorPayoutRecord {
   amount: number;
   currency: "usd";
   method: CreatorPayoutMethod;
-  status: "paid" | "pending" | "failed";
+  status: "paid" | "pending" | "pending_reconciliation" | "failed";
   destination?: string;
   stripeTransferId?: string;
   note?: string;
   createdAt: string;
+}
+
+export interface PendingCreatorPayout {
+  payoutId: string;
+  code: string;
+  effectiveAmount: number;
+  method: CreatorPayoutMethod;
+  destination?: string;
+  connectAcct?: string;
+  idempotencyHeaderKey: string;
+  status: "pending_reconciliation";
+  note?: string;
+  createdAt: string;
+  lastError?: string;
 }
 
 export type CreatorEvent =
@@ -88,9 +103,12 @@ const LEGACY_CREATORS_KV_KEY = "heybroc:creators:v1";
 const CREATOR_CODES_SET_KEY = "heybroc:creators:codes";
 const CREATOR_HASH_PREFIX = "heybroc:creator:item:";
 const CREATOR_PAYOUTS_PREFIX = "heybroc:creator:payouts:";
+const PENDING_PAYOUT_PREFIX = "heybroc:creator:pending_payout:";
+const SUB_FIRST_PAID_PREFIX = "heybroc:creator:sub_first_paid:";
 const RECENT_PAYOUTS_KEY = "heybroc:creator:payouts:__recent__";
 const CREATORS_SEEDED_KEY = "heybroc:creators:seeded:v2";
 const PAYOUT_TTL_SECONDS = 5 * 365 * 86400; // Retain payout tax/audit records for 5 years
+const CONV_META_TTL_SECONDS = 400 * 24 * 60 * 60; // 400-day conversion & first-cycle ledger retention
 const CREATOR_TOKEN_TTL_SEC = 30 * 24 * 60 * 60; // 30-day bounded creator token lifetime
 
 const SEED: Array<Pick<Creator, "code" | "name">> = [
@@ -109,7 +127,10 @@ const VALID_PAYOUT_METHODS = new Set<CreatorPayoutMethod>([
   "manual",
 ]);
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+const round2 = (n: number) => {
+  const r = Math.round(n * 100) / 100;
+  return Object.is(r, -0) ? 0 : r;
+};
 
 function getCreatorSigningSecret(): string {
   const secret = (
@@ -243,14 +264,15 @@ function hashToCreator(
   if (!fields || !fields.code) return null;
   const grossRevenue = Math.max(0, round2(Number(fields.grossRevenue ?? 0)));
   const commissionPaid = Math.max(0, round2(Number(fields.commissionPaid ?? 0)));
-  const commissionOwed = Math.max(0, round2(Number(fields.commissionOwed ?? 0)));
+  const rawOwed = Number(fields.commissionOwed ?? 0);
+  const commissionOwed = Number.isFinite(rawOwed) ? round2(rawOwed) : 0;
   const rawEarned =
     fields.commissionEarned !== undefined
       ? Number(fields.commissionEarned)
       : commissionOwed + commissionPaid;
   const commissionEarned = Math.max(
-    commissionPaid,
-    Math.max(0, round2(rawEarned))
+    0,
+    Number.isFinite(rawEarned) ? round2(rawEarned) : 0
   );
   const active =
     fields.active === undefined
@@ -521,13 +543,123 @@ export async function deleteCreator(code: string): Promise<void> {
   const norm = normalizeCode(code);
   if (!norm) return;
   const existing = await getCreator(norm);
-  if (existing && (existing.grossRevenue > 0 || existing.commissionPaid > 0 || existing.commissionOwed > 0)) {
-    // Preserve financial audit ledger by deactivating instead of wiping historical revenue/payouts
+  if (
+    existing &&
+    (existing.grossRevenue > 0 ||
+      existing.commissionPaid > 0 ||
+      existing.commissionOwed !== 0)
+  ) {
+    // Preserve financial audit ledger (including post-payout negative clawback balances) by deactivating
     await updateCreator(norm, { active: false });
     return;
   }
   await kvSRem(CREATOR_CODES_SET_KEY, norm);
   await kvDel(creatorKey(norm));
+}
+
+export interface CreatorConversionMeta {
+  code: string;
+  blockedSelfDeal: boolean;
+  commissionCents: number;
+  grossUsd: number;
+  plan?: PlanId;
+  clawedBackCents?: number;
+  clawedBackGrossUsd?: number;
+  paidSubDecremented?: boolean;
+  buyerEmail?: string;
+  creditedInvoiceId?: string;
+  creditedTransactionId?: string;
+  creditedEventId?: string;
+}
+
+export interface CreatorConversionOptions {
+  creditedInvoiceId?: string;
+  creditedTransactionId?: string;
+  creditedEventId?: string;
+  /** Subscription-level key (`stripe_sub:sub_...`, `rc_orig:...`, `apple_orig:...`) enforcing first-paid-billing-cycle-only commissions. */
+  subscriptionKey?: string;
+}
+
+export interface CreatorRefundOptions {
+  buyerEmail?: string;
+  originalConversionKey?: string;
+  fallbackConversionKeys?: string[];
+  refundedInvoiceId?: string;
+  refundedTransactionId?: string;
+  otoOffer?: string;
+  originalPreTaxUsd?: number;
+  refundRatio?: number;
+}
+
+export async function claimFirstSubscriptionCreatorCredit(
+  subscriptionKey: string
+): Promise<boolean> {
+  const clean = (subscriptionKey || "").trim();
+  if (!clean) return false;
+  return kvSetNx(`${SUB_FIRST_PAID_PREFIX}${clean}`, "1", CONV_META_TTL_SECONDS);
+}
+
+export async function hasSubscriptionFirstPaidCredit(
+  subscriptionKey: string
+): Promise<boolean> {
+  const clean = (subscriptionKey || "").trim();
+  if (!clean) return false;
+  const val = await kvGet<string | number>(
+    `${SUB_FIRST_PAID_PREFIX}${clean}`
+  ).catch(() => null);
+  return val !== null && val !== undefined;
+}
+
+async function resolveCreatorConversionMetaInternal(
+  candidates: Array<string | undefined | null>
+): Promise<{ meta: CreatorConversionMeta; metaKey: string } | null> {
+  const seen = new Set<string>();
+  for (const raw of candidates) {
+    const clean = (raw || "").trim();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+
+    const directKey = `heybroc:creator:conv_meta:${clean}`;
+    const direct = await kvGet<CreatorConversionMeta>(directKey).catch(
+      () => null
+    );
+    if (direct && typeof direct === "object") {
+      return { meta: direct, metaKey: directKey };
+    }
+
+    const aliasTarget = await kvGet<string>(
+      `heybroc:creator:conv_alias:${clean}`
+    ).catch(() => null);
+    if (typeof aliasTarget === "string" && aliasTarget.trim()) {
+      const targetKey = `heybroc:creator:conv_meta:${aliasTarget.trim()}`;
+      const viaAlias = await kvGet<CreatorConversionMeta>(targetKey).catch(
+        () => null
+      );
+      if (viaAlias && typeof viaAlias === "object") {
+        return { meta: viaAlias, metaKey: targetKey };
+      }
+    }
+  }
+  return null;
+}
+
+export async function getCreatorConversionMeta(
+  conversionKey: string
+): Promise<CreatorConversionMeta | null> {
+  const res = await resolveCreatorConversionMetaInternal([conversionKey]);
+  return res ? res.meta : null;
+}
+
+export async function getPendingCreatorPayout(
+  code: string
+): Promise<PendingCreatorPayout | null> {
+  await ensureInitialized();
+  const norm = normalizeCode(code);
+  if (!norm) return null;
+  const pending = await kvGet<PendingCreatorPayout>(
+    `${PENDING_PAYOUT_PREFIX}${norm}`
+  ).catch(() => null);
+  return pending && pending.status === "pending_reconciliation" ? pending : null;
 }
 
 /**
@@ -550,6 +682,20 @@ export async function trackEvent(
     await kvHIncrByFloat(key, "grossRevenue", price);
     await kvHIncrByFloat(key, "commissionEarned", comm);
     await kvHIncrByFloat(key, "commissionOwed", comm);
+    const trackMetaKey = `heybroc:creator:conv_meta:track_${norm}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
+    await kvSet<CreatorConversionMeta>(
+      trackMetaKey,
+      {
+        code: norm,
+        blockedSelfDeal: false,
+        commissionCents: Math.round(comm * 100),
+        grossUsd: price,
+        plan,
+        clawedBackCents: 0,
+        clawedBackGrossUsd: 0,
+      },
+      CONV_META_TTL_SECONDS
+    ).catch(() => {});
   };
 
   if (event === "click") {
@@ -571,22 +717,6 @@ export async function trackEvent(
   const updated = await getCreator(norm);
   if (!updated) throw new Error("Failed to reload creator after event.");
   return updated;
-}
-
-interface CreatorConversionMeta {
-  code: string;
-  blockedSelfDeal: boolean;
-  commissionCents: number;
-  grossUsd: number;
-  buyerEmail?: string;
-}
-
-export interface CreatorRefundOptions {
-  buyerEmail?: string;
-  originalConversionKey?: string;
-  otoOffer?: string;
-  originalPreTaxUsd?: number;
-  refundRatio?: number;
 }
 
 const ALLOWED_CONNECT_ORIGINS = new Set([
@@ -613,23 +743,43 @@ export function resolveSafeConnectOrigin(raw?: string | null): string {
 }
 
 /**
- * Idempotently records a creator conversion from a verified Stripe/RevenueCat webhook event.
- * Uses `kvAtomicHashUpdateOnce` so concurrent webhook deliveries cannot double-credit the ledger.
+ * Idempotently records a creator conversion from a verified Stripe, RevenueCat, or Apple App Store event.
+ * Enforces first-paid-billing-cycle-only commission when `options.subscriptionKey` is supplied, and never
+ * consumes first-cycle credit on `$0` free-trial events.
  */
 export async function recordStripeCreatorConversionOnce(
   idempotencyKey: string,
   code: string,
   event: CreatorEvent,
   amountPaidUsd?: number,
-  buyerEmail?: string
+  buyerEmail?: string,
+  options?: CreatorConversionOptions
 ): Promise<Creator | null> {
   const norm = normalizeCode(code);
   if (!norm) return null;
   const creator = await getCreator(norm);
   if (!creator || !creator.active) return null;
 
+  const isPaidEvent =
+    event === "paid_annual" ||
+    event === "checkout_annual" ||
+    event === "paid_monthly";
+
+  // Never credit a paid conversion or consume first-paid-cycle subscription lock when $0 was collected
+  if (
+    isPaidEvent &&
+    amountPaidUsd !== undefined &&
+    (!Number.isFinite(amountPaidUsd) || amountPaidUsd <= 0)
+  ) {
+    return creator;
+  }
+
   const cleanBuyerEmail = buyerEmail?.trim().toLowerCase() || undefined;
   const metaKey = `heybroc:creator:conv_meta:${idempotencyKey}`;
+  const creditedInvoiceId = options?.creditedInvoiceId?.trim() || undefined;
+  const creditedTransactionId =
+    options?.creditedTransactionId?.trim() || undefined;
+  const creditedEventId = options?.creditedEventId?.trim() || undefined;
 
   // Anti-self-dealing guard: creators cannot earn affiliate commission on their own personal email purchase
   if (
@@ -644,10 +794,28 @@ export async function recordStripeCreatorConversionOnce(
         blockedSelfDeal: true,
         commissionCents: 0,
         grossUsd: 0,
+        clawedBackCents: 0,
         buyerEmail: cleanBuyerEmail,
+        ...(creditedInvoiceId ? { creditedInvoiceId } : {}),
+        ...(creditedTransactionId ? { creditedTransactionId } : {}),
+        ...(creditedEventId ? { creditedEventId } : {}),
       },
-      400 * 24 * 60 * 60
+      CONV_META_TTL_SECONDS
     ).catch(() => {});
+    if (creditedInvoiceId) {
+      await kvSet(
+        `heybroc:creator:conv_alias:invoice:${creditedInvoiceId}`,
+        idempotencyKey,
+        CONV_META_TTL_SECONDS
+      ).catch(() => {});
+    }
+    if (creditedTransactionId) {
+      await kvSet(
+        `heybroc:creator:conv_alias:tx:${creditedTransactionId}`,
+        idempotencyKey,
+        CONV_META_TTL_SECONDS
+      ).catch(() => {});
+    }
     return creator;
   }
 
@@ -656,6 +824,7 @@ export async function recordStripeCreatorConversionOnce(
   const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
   let recordedGross = 0;
   let recordedComm = 0;
+  let resolvedPlan: PlanId | undefined;
 
   const resolveGrossAndComm = (plan: PlanId) => {
     const gross =
@@ -680,6 +849,7 @@ export async function recordStripeCreatorConversionOnce(
   } else if (event === "trial") {
     deltas.push({ field: "trials", delta: 1 });
   } else if (event === "paid_annual") {
+    resolvedPlan = "annual";
     const { gross, comm } = resolveGrossAndComm("annual");
     recordedGross = gross;
     recordedComm = comm;
@@ -690,6 +860,7 @@ export async function recordStripeCreatorConversionOnce(
       { field: "commissionOwed", delta: comm, isFloat: true }
     );
   } else if (event === "checkout_annual") {
+    resolvedPlan = "annual";
     const { gross, comm } = resolveGrossAndComm("annual");
     recordedGross = gross;
     recordedComm = comm;
@@ -701,6 +872,7 @@ export async function recordStripeCreatorConversionOnce(
       { field: "commissionOwed", delta: comm, isFloat: true }
     );
   } else if (event === "paid_monthly") {
+    resolvedPlan = "monthly";
     const { gross, comm } = resolveGrossAndComm("monthly");
     recordedGross = gross;
     recordedComm = comm;
@@ -712,12 +884,73 @@ export async function recordStripeCreatorConversionOnce(
     );
   }
 
-  const applied = await kvAtomicHashUpdateOnce(
-    markerKey,
-    key,
-    deltas,
-    60 * 60 * 24 * 365
-  );
+  const subKey =
+    isPaidEvent && options?.subscriptionKey?.trim()
+      ? `${SUB_FIRST_PAID_PREFIX}${options.subscriptionKey.trim()}`
+      : "";
+
+  let applied = false;
+  if (!subKey) {
+    applied = await kvAtomicHashUpdateOnce(
+      markerKey,
+      key,
+      deltas,
+      CONV_META_TTL_SECONDS
+    );
+  } else {
+    const convLua = [
+      'if redis.call("EXISTS", KEYS[1]) == 1 then return 0 end',
+      'if redis.call("EXISTS", KEYS[3]) == 1 then return 0 end',
+      'redis.call("SET", KEYS[1], \'"1"\', "EX", tonumber(ARGV[1]))',
+      'redis.call("SET", KEYS[3], \'"1"\', "EX", tonumber(ARGV[1]))',
+      "for i = 2, #ARGV, 3 do",
+      "  local f = ARGV[i]",
+      "  local d = ARGV[i + 1]",
+      "  local k = ARGV[i + 2]",
+      '  if k == "float" then',
+      '    redis.call("HINCRBYFLOAT", KEYS[2], f, d)',
+      "  else",
+      '    redis.call("HINCRBY", KEYS[2], f, tonumber(d))',
+      "  end",
+      "end",
+      "return 1",
+    ].join("\n");
+
+    const luaArgs: (string | number)[] = [Math.floor(CONV_META_TTL_SECONDS)];
+    for (const item of deltas) {
+      luaArgs.push(
+        item.field,
+        item.isFloat
+          ? String(round2(item.delta))
+          : String(Math.trunc(item.delta)),
+        item.isFloat ? "float" : "int"
+      );
+    }
+
+    const evalRes = await kvEvalLua<number>(
+      convLua,
+      [markerKey, key, subKey],
+      luaArgs,
+      async () => {
+        const existingMarker = await kvGet<string | number>(markerKey);
+        if (existingMarker !== null) return 0;
+        const existingSub = await kvGet<string | number>(subKey);
+        if (existingSub !== null) return 0;
+        for (const item of deltas) {
+          if (item.isFloat) {
+            await kvHIncrByFloat(key, item.field, item.delta);
+          } else {
+            await kvHIncrBy(key, item.field, item.delta);
+          }
+        }
+        await kvSet(markerKey, "1", CONV_META_TTL_SECONDS);
+        await kvSet(subKey, "1", CONV_META_TTL_SECONDS);
+        return 1;
+      }
+    );
+    applied = Number(evalRes) === 1;
+  }
+
   if (applied && (recordedGross > 0 || recordedComm > 0)) {
     await kvSet<CreatorConversionMeta>(
       metaKey,
@@ -726,10 +959,31 @@ export async function recordStripeCreatorConversionOnce(
         blockedSelfDeal: false,
         commissionCents: Math.round(recordedComm * 100),
         grossUsd: recordedGross,
+        plan: resolvedPlan,
+        clawedBackCents: 0,
+        clawedBackGrossUsd: 0,
+        paidSubDecremented: false,
         buyerEmail: cleanBuyerEmail,
+        ...(creditedInvoiceId ? { creditedInvoiceId } : {}),
+        ...(creditedTransactionId ? { creditedTransactionId } : {}),
+        ...(creditedEventId ? { creditedEventId } : {}),
       },
-      400 * 24 * 60 * 60
+      CONV_META_TTL_SECONDS
     ).catch(() => {});
+    if (creditedInvoiceId) {
+      await kvSet(
+        `heybroc:creator:conv_alias:invoice:${creditedInvoiceId}`,
+        idempotencyKey,
+        CONV_META_TTL_SECONDS
+      ).catch(() => {});
+    }
+    if (creditedTransactionId) {
+      await kvSet(
+        `heybroc:creator:conv_alias:tx:${creditedTransactionId}`,
+        idempotencyKey,
+        CONV_META_TTL_SECONDS
+      ).catch(() => {});
+    }
   }
   return getCreator(norm);
 }
@@ -737,18 +991,27 @@ export async function recordStripeCreatorConversionOnce(
 export const recordCreatorConversion = recordStripeCreatorConversionOnce;
 
 /**
- * Idempotently claws back creator revenue & commission when a charge is refunded or disputed.
- * Never subtracts phantom commission when the original conversion was blocked for self-dealing
- * (`commissionCents === 0`), and enforces pre-tax plan/OTO price caps on proportional clawbacks.
+ * Idempotently claws back creator revenue & proportional commission when a credited first-cycle charge
+ * is refunded or disputed. Uses recorded `convMeta.commissionCents` so creator rate changes (`30% -> 10%`
+ * or `10% -> 30%`) never skew clawbacks, guards against renewal #2+ false clawbacks, and allows
+ * `commissionOwed` to carry forward negative balances after post-payout refunds.
  */
 export async function recordStripeCreatorRefundOnce(
   idempotencyKey: string,
   code: string,
   plan: PlanId,
   refundAmountUsd?: number,
-  isFullRefundOverride?: boolean,
-  options?: CreatorRefundOptions
+  isFullRefundOrOptions?: boolean | CreatorRefundOptions,
+  maybeOptions?: CreatorRefundOptions
 ): Promise<Creator | null> {
+  const isFullRefundOverride =
+    typeof isFullRefundOrOptions === "boolean"
+      ? isFullRefundOrOptions
+      : undefined;
+  const options =
+    typeof isFullRefundOrOptions === "object" && isFullRefundOrOptions !== null
+      ? isFullRefundOrOptions
+      : maybeOptions;
   const norm = normalizeCode(code);
   if (!norm) return null;
   const creator = await getCreator(norm);
@@ -763,23 +1026,57 @@ export async function recordStripeCreatorRefundOnce(
     return creator;
   }
 
-  let convMeta: CreatorConversionMeta | null = null;
-  if (options?.originalConversionKey) {
-    convMeta = await kvGet<CreatorConversionMeta>(
-      `heybroc:creator:conv_meta:${options.originalConversionKey}`
-    ).catch(() => null);
-    if (convMeta && (convMeta.blockedSelfDeal || convMeta.commissionCents <= 0)) {
+  const markerKey = `heybroc:creator:refund:${idempotencyKey}`;
+  const alreadyRefunded = await kvGet<string | number>(markerKey).catch(
+    () => null
+  );
+  if (alreadyRefunded !== null) {
+    return creator;
+  }
+
+  const refundedInvoiceId = options?.refundedInvoiceId?.trim() || undefined;
+  const refundedTransactionId =
+    options?.refundedTransactionId?.trim() || undefined;
+
+  const metaCandidates: Array<string | undefined> = [
+    options?.originalConversionKey,
+    ...(options?.fallbackConversionKeys ?? []),
+    refundedInvoiceId ? `invoice:${refundedInvoiceId}` : undefined,
+    refundedTransactionId ? `tx:${refundedTransactionId}` : undefined,
+  ];
+  const resolvedMeta = await resolveCreatorConversionMetaInternal(metaCandidates);
+  const convMeta = resolvedMeta?.meta ?? null;
+  const convMetaKey = resolvedMeta?.metaKey ?? null;
+
+  if (convMeta) {
+    if (convMeta.blockedSelfDeal || convMeta.commissionCents <= 0) {
+      return creator;
+    }
+    // Renewal #2+ false-clawback guard: if a later uncredited renewal invoice/transaction is refunded,
+    // never claw back the first billing cycle's commission.
+    if (
+      convMeta.creditedInvoiceId &&
+      refundedInvoiceId &&
+      convMeta.creditedInvoiceId !== refundedInvoiceId
+    ) {
+      return creator;
+    }
+    if (
+      convMeta.creditedTransactionId &&
+      refundedTransactionId &&
+      convMeta.creditedTransactionId !== refundedTransactionId
+    ) {
       return creator;
     }
   }
 
-  const markerKey = `heybroc:creator:refund:${idempotencyKey}`;
+  const effectivePlan: PlanId = convMeta?.plan ?? plan;
   const planPriceCap =
     options?.otoOffer === "oto_gift_year"
       ? PRICING.otoExtraYearPass
       : options?.otoOffer === "oto_annual"
         ? PRICING.otoAnnualLockIn
-        : plan === "annual"
+        : effectivePlan === "annual"
           ? PRICING.annual
           : PRICING.monthly;
   const effectiveCap =
@@ -792,40 +1089,95 @@ export async function recordStripeCreatorRefundOnce(
   const hasValidRatio =
     typeof options?.refundRatio === "number" &&
     Number.isFinite(options.refundRatio) &&
-    options.refundRatio > 0 &&
-    options.refundRatio <= 1;
+    options.refundRatio >= 0;
+
+  if (hasValidRatio && options!.refundRatio! <= 0) {
+    return creator;
+  }
+
+  const normalizedExplicitRatio = hasValidRatio
+    ? Math.max(0, Math.min(1, options!.refundRatio!))
+    : undefined;
 
   const requestedGross =
-    hasValidRatio &&
+    normalizedExplicitRatio !== undefined &&
     (refundAmountUsd === undefined || round2(refundAmountUsd) > effectiveCap)
-      ? round2(effectiveCap * options!.refundRatio!)
+      ? round2(effectiveCap * normalizedExplicitRatio)
       : refundAmountUsd !== undefined && refundAmountUsd > 0
         ? Math.min(effectiveCap, round2(refundAmountUsd))
         : effectiveCap;
 
-  const grossDelta = Math.min(creator.grossRevenue, requestedGross);
-  const rawCommDelta = round2(grossDelta * (creator.commissionPct / 100));
-  const maxConvCommUsd =
-    convMeta && convMeta.commissionCents > 0
-      ? round2(convMeta.commissionCents / 100)
-      : rawCommDelta;
-  const cappedCommDelta = Math.min(rawCommDelta, maxConvCommUsd);
+  const ratio = Math.max(
+    0,
+    Math.min(
+      1,
+      normalizedExplicitRatio ??
+        (convMeta && convMeta.grossUsd > 0
+          ? requestedGross / convMeta.grossUsd
+          : effectiveCap > 0
+            ? requestedGross / effectiveCap
+            : 1)
+    )
+  );
+
+  let grossDelta: number;
+  let cappedCommDelta: number;
+  let nextClawedBackCents = convMeta?.clawedBackCents ?? 0;
+  let nextClawedBackGrossUsd = convMeta?.clawedBackGrossUsd ?? 0;
+
+  if (convMeta && convMeta.commissionCents > 0) {
+    const remainingCommCents = Math.max(
+      0,
+      convMeta.commissionCents - (convMeta.clawedBackCents ?? 0)
+    );
+    const targetClawbackCents = Math.round(convMeta.commissionCents * ratio);
+    const actualClawbackCents = Math.min(remainingCommCents, targetClawbackCents);
+    cappedCommDelta = round2(actualClawbackCents / 100);
+    nextClawedBackCents = (convMeta.clawedBackCents ?? 0) + actualClawbackCents;
+
+    const remainingConvGross = Math.max(
+      0,
+      round2(convMeta.grossUsd - (convMeta.clawedBackGrossUsd ?? 0))
+    );
+    const targetGross = round2(convMeta.grossUsd * ratio);
+    grossDelta = Math.min(
+      creator.grossRevenue,
+      Math.min(remainingConvGross, targetGross)
+    );
+    nextClawedBackGrossUsd = round2(
+      (convMeta.clawedBackGrossUsd ?? 0) + grossDelta
+    );
+  } else {
+    // Legacy fallback ONLY when convMeta does not exist
+    grossDelta = Math.min(creator.grossRevenue, requestedGross);
+    cappedCommDelta = round2(grossDelta * (creator.commissionPct / 100));
+  }
+
   const earnedDelta = Math.min(
-    Math.max(0, creator.commissionEarned - creator.commissionPaid),
+    Math.max(0, creator.commissionEarned),
     cappedCommDelta
   );
-  const owedDelta = Math.min(creator.commissionOwed, cappedCommDelta);
+  // Unconditional owedDelta so post-payout refunds carry forward as a negative commissionOwed balance
+  const owedDelta = cappedCommDelta;
 
-  const isFullRefund =
-    isFullRefundOverride ??
-    (grossDelta >= effectiveCap * 0.99 ||
-      requestedGross >= PRICING.otoExtraYearPass * 0.99);
-  const planField = plan === "annual" ? "paidAnnual" : "paidMonthly";
+  const cumulativeRefundComplete = convMeta
+    ? nextClawedBackCents >= convMeta.commissionCents ||
+      nextClawedBackGrossUsd >= convMeta.grossUsd * 0.99
+    : grossDelta >= effectiveCap * 0.99 ||
+      requestedGross >= PRICING.otoExtraYearPass * 0.99;
+
+  const isFullRefund = isFullRefundOverride ?? cumulativeRefundComplete;
+  const planField = effectivePlan === "annual" ? "paidAnnual" : "paidMonthly";
   const currentPlanCount =
-    plan === "annual" ? creator.paidAnnual : creator.paidMonthly;
+    effectivePlan === "annual" ? creator.paidAnnual : creator.paidMonthly;
+  const shouldDecrementPaidSub =
+    isFullRefund &&
+    currentPlanCount > 0 &&
+    !convMeta?.paidSubDecremented &&
+    (grossDelta > 0 || cappedCommDelta > 0);
 
   const deltas: Array<{ field: string; delta: number; isFloat?: boolean }> = [];
-  if (isFullRefund && currentPlanCount > 0 && grossDelta > 0) {
+  if (shouldDecrementPaidSub) {
     deltas.push({ field: planField, delta: -1 });
   }
   if (grossDelta > 0) {
@@ -842,8 +1194,30 @@ export async function recordStripeCreatorRefundOnce(
     deltas.push({ field: "commissionOwed", delta: -owedDelta, isFloat: true });
   }
 
+  if (deltas.length === 0) {
+    return creator;
+  }
+
   const key = creatorKey(norm);
-  await kvAtomicHashUpdateOnce(markerKey, key, deltas, 60 * 60 * 24 * 365);
+  const applied = await kvAtomicHashUpdateOnce(
+    markerKey,
+    key,
+    deltas,
+    CONV_META_TTL_SECONDS
+  );
+  if (applied && convMeta && convMetaKey) {
+    await kvSet<CreatorConversionMeta>(
+      convMetaKey,
+      {
+        ...convMeta,
+        clawedBackCents: nextClawedBackCents,
+        clawedBackGrossUsd: nextClawedBackGrossUsd,
+        paidSubDecremented:
+          Boolean(convMeta.paidSubDecremented) || shouldDecrementPaidSub,
+      },
+      CONV_META_TTL_SECONDS
+    ).catch(() => {});
+  }
   return getCreator(norm);
 }
 
@@ -869,7 +1243,8 @@ export async function listCreatorPayouts(
 /**
  * Executes an affiliate payout (optionally creating a live Stripe Connect `/v1/transfers` transfer)
  * by atomically reserving `commissionOwed` via `kvEvalLua` BEFORE calling Stripe `/v1/transfers`,
- * and atomically rolling back the reservation if the Stripe transfer fails.
+ * persisting a `pending_reconciliation` lock so ambiguous network/5xx/429 failures can be safely retried
+ * with the identical Stripe `Idempotency-Key`, and rolling back ONLY on definitive 4xx rejections.
  */
 export async function executeCreatorPayout(params: {
   code: string;
@@ -906,16 +1281,18 @@ export async function executeCreatorPayout(params: {
   );
 
   const stripeKey = (process.env.STRIPE_SECRET_KEY || "").trim();
-  const connectAcct = (
-    params.destination?.trim() ||
-    creator.stripeConnectAccountId ||
-    ""
-  ).trim();
+  const storedConnectAcct = (creator.stripeConnectAccountId || "").trim();
+  const rawDest = (params.destination || "").trim();
 
   if (willExecuteStripeTransfer) {
-    if (!connectAcct || !connectAcct.startsWith("acct_")) {
+    if (!storedConnectAcct || !storedConnectAcct.startsWith("acct_")) {
       throw new Error(
-        `Creator ${norm} does not have a connected Stripe Express account (acct_...) yet. Ask them to connect on /creators or record a PayPal/Venmo/manual payout.`
+        `Creator ${norm} does not have a connected Stripe Express account (acct_...) yet. Ask them to connect on /creators or record a PayPal/Venmo/ACH/manual payout.`
+      );
+    }
+    if (rawDest.startsWith("acct_") && rawDest !== storedConnectAcct) {
+      throw new Error(
+        `Destination Stripe account (${rawDest}) does not match creator ${norm}'s linked Stripe Connect account (${storedConnectAcct}).`
       );
     }
     if (!stripeKey) {
@@ -925,116 +1302,195 @@ export async function executeCreatorPayout(params: {
     }
   }
 
-  const payoutId =
-    params.idempotencyKey?.trim() ||
-    `po_${norm}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
-  const markerKey = `heybroc:creator:payout_once:${payoutId}`;
   const key = creatorKey(norm);
-  const requestedArg =
-    params.amount !== undefined ? String(round2(Number(params.amount))) : "";
+  const pendingPayoutKey = `${PENDING_PAYOUT_PREFIX}${norm}`;
+  const existingPending = await kvGet<PendingCreatorPayout>(
+    pendingPayoutKey
+  ).catch(() => null);
 
-  const reserveLua = [
-    'if redis.call("EXISTS", KEYS[1]) == 1 then',
-    '  return {"DUPLICATE", redis.call("GET", KEYS[1]) or "1"}',
-    "end",
-    'local owedRaw = redis.call("HGET", KEYS[2], "commissionOwed")',
-    'local owed = tonumber(owedRaw or "0") or 0',
-    "owed = math.floor(owed * 100 + 0.5) / 100",
-    "if owed <= 0 then",
-    '  return {"NO_BALANCE", "0"}',
-    "end",
-    "local reqStr = ARGV[1]",
-    "local amt = owed",
-    'if reqStr ~= "" then',
-    "  amt = tonumber(reqStr) or 0",
-    "  amt = math.floor(amt * 100 + 0.5) / 100",
-    "  if amt <= 0 then",
-    '    return {"INVALID_AMOUNT", "0"}',
-    "  end",
-    "  if amt > owed + 0.005 then",
-    '    return {"EXCEEDS_BALANCE", tostring(owed)}',
-    "  end",
-    "  if amt > owed then",
-    "    amt = owed",
-    "  end",
-    "end",
-    'redis.call("SET", KEYS[1], "reserved", "EX", tonumber(ARGV[2]))',
-    'redis.call("HINCRBYFLOAT", KEYS[2], "commissionOwed", -amt)',
-    'redis.call("HINCRBYFLOAT", KEYS[2], "commissionPaid", amt)',
-    'return {"OK", tostring(amt)}',
-  ].join("\n");
+  let payoutId: string;
+  let markerKey: string;
+  let effectiveAmount: number;
+  let connectAcct = willExecuteStripeTransfer ? storedConnectAcct : "";
+  let destination: string | undefined;
+  let idempotencyHeaderKey: string;
 
-  const reserveResult = await kvEvalLua<[string, string]>(
-    reserveLua,
-    [markerKey, key],
-    [requestedArg, Math.floor(PAYOUT_TTL_SECONDS)],
-    async () => {
-      const existingMarker = await kvGet<string>(markerKey);
-      if (existingMarker !== null) {
-        return ["DUPLICATE", existingMarker];
-      }
-      const latest = await getCreator(norm);
-      const owed = round2(latest?.commissionOwed ?? 0);
-      if (owed <= 0) {
-        return ["NO_BALANCE", "0"];
-      }
-      let amt = owed;
-      if (requestedArg !== "") {
-        amt = round2(Number(requestedArg));
-        if (!Number.isFinite(amt) || amt <= 0) {
-          return ["INVALID_AMOUNT", "0"];
-        }
-        if (amt > round2(owed + 0.005)) {
-          return ["EXCEEDS_BALANCE", String(owed)];
-        }
-        if (amt > owed) {
-          amt = owed;
-        }
-      }
-      await kvSet(markerKey, "reserved", PAYOUT_TTL_SECONDS);
-      await kvHIncrByFloat(key, "commissionOwed", -amt);
-      await kvHIncrByFloat(key, "commissionPaid", amt);
-      return ["OK", String(amt)];
+  if (existingPending && existingPending.status === "pending_reconciliation") {
+    if (!willExecuteStripeTransfer) {
+      throw new Error(
+        `Creator ${norm} has a pending Stripe Connect payout ($${existingPending.effectiveAmount.toFixed(2)}, ID ${existingPending.payoutId}) awaiting reconciliation. Retry the Stripe Connect payout first so Stripe's Idempotency-Key reconciles whether the transfer already succeeded.`
+      );
     }
-  );
+    payoutId = existingPending.payoutId;
+    markerKey = `heybroc:creator:payout_once:${payoutId}`;
 
-  const [reserveStatus, reserveVal] = reserveResult ?? ["NO_BALANCE", "0"];
-
-  if (reserveStatus === "DUPLICATE") {
+    // Check if a concurrent retry already finalized this pending payout
     const existingPayouts = await listCreatorPayouts(norm);
     const matchedPayout = existingPayouts.find((p) => p.id === payoutId);
     const reloaded = await getCreator(norm);
     if (matchedPayout && reloaded) {
+      await kvDel(pendingPayoutKey).catch(() => {});
       return { creator: reloaded, payout: matchedPayout };
     }
-    throw new Error(`Payout ${payoutId} is already in progress or completed.`);
-  }
-  if (reserveStatus === "NO_BALANCE") {
-    throw new Error(`No unpaid commission balance owed for ${norm}.`);
-  }
-  if (reserveStatus === "INVALID_AMOUNT") {
-    throw new Error("Payout amount must be greater than $0.00.");
-  }
-  if (reserveStatus === "EXCEEDS_BALANCE") {
-    const currentOwed = Number(reserveVal) || 0;
-    const attempted = round2(Number(params.amount ?? 0));
-    throw new Error(
-      `Payout amount ($${attempted.toFixed(2)}) exceeds unpaid balance owed ($${currentOwed.toFixed(2)}).`
-    );
-  }
 
-  const effectiveAmount = round2(Number(reserveVal));
-  const destination =
-    params.destination?.trim() ||
-    (method === "stripe_connect"
-      ? creator.stripeConnectAccountId
-      : creator.payoutHandle || creator.payoutEmail);
+    effectiveAmount = round2(existingPending.effectiveAmount);
+    connectAcct = existingPending.connectAcct || storedConnectAcct;
+    destination = existingPending.destination || connectAcct;
+    idempotencyHeaderKey =
+      existingPending.idempotencyHeaderKey || `heybroc_payout_${payoutId}`;
+  } else {
+    const requestedAmount =
+      params.amount !== undefined
+        ? round2(Number(params.amount))
+        : round2(Math.max(0, creator.commissionOwed));
+
+    payoutId =
+      params.idempotencyKey?.trim() ||
+      `po_${norm}_paid${Math.round(creator.commissionPaid * 100)}_owed${Math.round(creator.commissionOwed * 100)}_amt${Math.round(requestedAmount * 100)}`;
+    markerKey = `heybroc:creator:payout_once:${payoutId}`;
+    idempotencyHeaderKey = `heybroc_payout_${payoutId}`;
+
+    const requestedArg =
+      params.amount !== undefined ? String(round2(Number(params.amount))) : "";
+
+    const reserveLua = [
+      'if redis.call("EXISTS", KEYS[1]) == 1 then',
+      '  return {"DUPLICATE", redis.call("GET", KEYS[1]) or \'"1"\'}',
+      "end",
+      'local owedRaw = redis.call("HGET", KEYS[2], "commissionOwed")',
+      'local owed = tonumber(owedRaw or "0") or 0',
+      "owed = math.floor(owed * 100 + 0.5) / 100",
+      "if owed <= 0 then",
+      '  return {"NO_BALANCE", "0"}',
+      "end",
+      "local reqStr = ARGV[1]",
+      "local amt = owed",
+      'if reqStr ~= "" then',
+      "  amt = tonumber(reqStr) or 0",
+      "  amt = math.floor(amt * 100 + 0.5) / 100",
+      "  if amt <= 0 then",
+      '    return {"INVALID_AMOUNT", "0"}',
+      "  end",
+      "  if amt > owed + 0.005 then",
+      '    return {"EXCEEDS_BALANCE", tostring(owed)}',
+      "  end",
+      "  if amt > owed then",
+      "    amt = owed",
+      "  end",
+      "end",
+      'redis.call("SET", KEYS[1], \'"reserved"\', "EX", tonumber(ARGV[2]))',
+      'redis.call("HINCRBYFLOAT", KEYS[2], "commissionOwed", -amt)',
+      'redis.call("HINCRBYFLOAT", KEYS[2], "commissionPaid", amt)',
+      'return {"OK", tostring(amt)}',
+    ].join("\n");
+
+    const reserveResult = await kvEvalLua<[string, string]>(
+      reserveLua,
+      [markerKey, key],
+      [requestedArg, Math.floor(PAYOUT_TTL_SECONDS)],
+      async () => {
+        const existingMarker = await kvGet<string>(markerKey);
+        if (existingMarker !== null) {
+          return ["DUPLICATE", existingMarker];
+        }
+        const latest = await getCreator(norm);
+        const owed = round2(latest?.commissionOwed ?? 0);
+        if (owed <= 0) {
+          return ["NO_BALANCE", "0"];
+        }
+        let amt = owed;
+        if (requestedArg !== "") {
+          amt = round2(Number(requestedArg));
+          if (!Number.isFinite(amt) || amt <= 0) {
+            return ["INVALID_AMOUNT", "0"];
+          }
+          if (amt > round2(owed + 0.005)) {
+            return ["EXCEEDS_BALANCE", String(owed)];
+          }
+          if (amt > owed) {
+            amt = owed;
+          }
+        }
+        await kvSet(markerKey, "reserved", PAYOUT_TTL_SECONDS);
+        await kvHIncrByFloat(key, "commissionOwed", -amt);
+        await kvHIncrByFloat(key, "commissionPaid", amt);
+        return ["OK", String(amt)];
+      }
+    );
+
+    const [reserveStatus, reserveVal] = reserveResult ?? ["NO_BALANCE", "0"];
+
+    if (reserveStatus === "DUPLICATE") {
+      const existingPayouts = await listCreatorPayouts(norm);
+      const matchedPayout = existingPayouts.find((p) => p.id === payoutId);
+      const reloaded = await getCreator(norm);
+      if (matchedPayout && reloaded) {
+        return { creator: reloaded, payout: matchedPayout };
+      }
+      throw new Error(
+        `Payout ${payoutId} is already in progress or completed.`
+      );
+    }
+    if (reserveStatus === "NO_BALANCE") {
+      throw new Error(`No unpaid commission balance owed for ${norm}.`);
+    }
+    if (reserveStatus === "INVALID_AMOUNT") {
+      throw new Error("Payout amount must be greater than $0.00.");
+    }
+    if (reserveStatus === "EXCEEDS_BALANCE") {
+      const currentOwed = Number(reserveVal) || 0;
+      const attempted = round2(Number(params.amount ?? 0));
+      throw new Error(
+        `Payout amount ($${attempted.toFixed(2)}) exceeds unpaid balance owed ($${currentOwed.toFixed(2)}).`
+      );
+    }
+
+    effectiveAmount = round2(Number(reserveVal));
+    destination =
+      method === "stripe_connect"
+        ? connectAcct || undefined
+        : rawDest || creator.payoutHandle || creator.payoutEmail || undefined;
+
+    if (willExecuteStripeTransfer) {
+      const pendingRecord: PendingCreatorPayout = {
+        payoutId,
+        code: norm,
+        effectiveAmount,
+        method,
+        destination,
+        connectAcct,
+        idempotencyHeaderKey,
+        status: "pending_reconciliation",
+        note: params.note?.trim().slice(0, 200) || undefined,
+        createdAt: new Date().toISOString(),
+      };
+      await kvSet<PendingCreatorPayout>(
+        pendingPayoutKey,
+        pendingRecord,
+        PAYOUT_TTL_SECONDS
+      );
+      const markPendingLua = [
+        'redis.call("SET", KEYS[1], \'"pending_reconciliation"\', "EX", tonumber(ARGV[1]))',
+        "return 1",
+      ].join("\n");
+      await kvEvalLua<number>(
+        markPendingLua,
+        [markerKey],
+        [Math.floor(PAYOUT_TTL_SECONDS)],
+        async () => {
+          await kvSet(markerKey, "pending_reconciliation", PAYOUT_TTL_SECONDS);
+          return 1;
+        }
+      );
+    }
+  }
 
   const rollbackReservation = async () => {
     const rollbackLua = [
-      'if redis.call("GET", KEYS[1]) == "reserved" then',
+      'local cur = redis.call("GET", KEYS[1])',
+      'if cur == "reserved" or cur == \'"reserved"\' or cur == "pending_reconciliation" or cur == \'"pending_reconciliation"\' then',
       '  redis.call("DEL", KEYS[1])',
-      '  local amt = tonumber(ARGV[1]) or 0',
+      "  local amt = tonumber(ARGV[1]) or 0",
       '  redis.call("HINCRBYFLOAT", KEYS[2], "commissionOwed", amt)',
       '  redis.call("HINCRBYFLOAT", KEYS[2], "commissionPaid", -amt)',
       "  return 1",
@@ -1048,7 +1504,7 @@ export async function executeCreatorPayout(params: {
       [String(effectiveAmount)],
       async () => {
         const cur = await kvGet<string>(markerKey);
-        if (cur === "reserved") {
+        if (cur === "reserved" || cur === "pending_reconciliation") {
           await kvDel(markerKey);
           await kvHIncrByFloat(key, "commissionOwed", effectiveAmount);
           await kvHIncrByFloat(key, "commissionPaid", -effectiveAmount);
@@ -1057,51 +1513,149 @@ export async function executeCreatorPayout(params: {
         return 0;
       }
     );
+    await kvDel(pendingPayoutKey).catch(() => {});
   };
 
   let stripeTransferId: string | undefined;
   if (willExecuteStripeTransfer) {
-    try {
-      const transferParams = new URLSearchParams();
-      transferParams.set("amount", String(Math.round(effectiveAmount * 100)));
-      transferParams.set("currency", "usd");
-      transferParams.set("destination", connectAcct);
-      transferParams.set(
-        "description",
-        `HeyBroc Creator Affiliate Commission Payout (${norm})`
-      );
-      transferParams.set("metadata[creator_code]", norm);
-      transferParams.set("metadata[payout_id]", payoutId);
+    const transferParams = new URLSearchParams();
+    transferParams.set("amount", String(Math.round(effectiveAmount * 100)));
+    transferParams.set("currency", "usd");
+    transferParams.set("destination", connectAcct);
+    transferParams.set(
+      "description",
+      `HeyBroc Creator Affiliate Commission Payout (${norm})`
+    );
+    transferParams.set("metadata[creator_code]", norm);
+    transferParams.set("metadata[payout_id]", payoutId);
 
-      const res = await fetch("https://api.stripe.com/v1/transfers", {
+    let res: Response;
+    try {
+      res = await fetch("https://api.stripe.com/v1/transfers", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${stripeKey}`,
           "Content-Type": "application/x-www-form-urlencoded",
-          "Idempotency-Key": `heybroc_payout_${payoutId}`,
+          "Idempotency-Key": idempotencyHeaderKey,
         },
         body: transferParams.toString(),
       });
-      const transferData = (await res.json().catch(() => ({}))) as {
-        id?: string;
-        error?: { message?: string };
-      };
-      if (!res.ok || !transferData.id) {
-        throw new Error(
-          transferData.error?.message ||
-            `Stripe Connect transfer failed with HTTP ${res.status}.`
-        );
-      }
-      stripeTransferId = transferData.id;
-    } catch (err) {
-      await rollbackReservation();
-      throw err;
+    } catch (networkErr) {
+      const errMsg =
+        networkErr instanceof Error
+          ? networkErr.message
+          : "network or timeout failure";
+      await kvSet<PendingCreatorPayout>(
+        pendingPayoutKey,
+        {
+          payoutId,
+          code: norm,
+          effectiveAmount,
+          method,
+          destination,
+          connectAcct,
+          idempotencyHeaderKey,
+          status: "pending_reconciliation",
+          note: params.note?.trim().slice(0, 200) || undefined,
+          createdAt: existingPending?.createdAt || new Date().toISOString(),
+          lastError: errMsg,
+        },
+        PAYOUT_TTL_SECONDS
+      ).catch(() => {});
+      throw new Error(
+        `Stripe Connect transfer outcome is ambiguous (${errMsg}). Balance reservation ($${effectiveAmount.toFixed(2)}) remains safely locked in pending_reconciliation (${payoutId}); click Pay / retry to reconcile via Stripe Idempotency-Key without risking a duplicate payout.`
+      );
     }
+
+    const rawBody = await res.text().catch(() => null);
+    let transferData: {
+      id?: string;
+      error?: { message?: string; type?: string };
+    } | null = null;
+    if (typeof rawBody === "string" && rawBody.trim().length > 0) {
+      try {
+        transferData = JSON.parse(rawBody) as {
+          id?: string;
+          error?: { message?: string; type?: string };
+        };
+      } catch {
+        transferData = null;
+      }
+    }
+
+    const isDefinitiveClientRejection =
+      res.status >= 400 &&
+      res.status < 500 &&
+      res.status !== 429 &&
+      res.status !== 409;
+
+    if (isDefinitiveClientRejection) {
+      await rollbackReservation();
+      throw new Error(
+        transferData?.error?.message ||
+          `Stripe Connect transfer rejected with HTTP ${res.status}.`
+      );
+    }
+
+    if (!res.ok) {
+      const errMsg =
+        transferData?.error?.message ||
+        `Stripe Connect returned HTTP ${res.status}`;
+      await kvSet<PendingCreatorPayout>(
+        pendingPayoutKey,
+        {
+          payoutId,
+          code: norm,
+          effectiveAmount,
+          method,
+          destination,
+          connectAcct,
+          idempotencyHeaderKey,
+          status: "pending_reconciliation",
+          note: params.note?.trim().slice(0, 200) || undefined,
+          createdAt: existingPending?.createdAt || new Date().toISOString(),
+          lastError: errMsg,
+        },
+        PAYOUT_TTL_SECONDS
+      ).catch(() => {});
+      throw new Error(
+        `${errMsg}. Balance reservation ($${effectiveAmount.toFixed(2)}) remains safely locked in pending_reconciliation (${payoutId}); retry safely to reconcile via Stripe Idempotency-Key.`
+      );
+    }
+
+    if (
+      !transferData ||
+      typeof transferData.id !== "string" ||
+      !transferData.id.trim()
+    ) {
+      await kvSet<PendingCreatorPayout>(
+        pendingPayoutKey,
+        {
+          payoutId,
+          code: norm,
+          effectiveAmount,
+          method,
+          destination,
+          connectAcct,
+          idempotencyHeaderKey,
+          status: "pending_reconciliation",
+          note: params.note?.trim().slice(0, 200) || undefined,
+          createdAt: existingPending?.createdAt || new Date().toISOString(),
+          lastError: `Unparseable or incomplete HTTP ${res.status} response`,
+        },
+        PAYOUT_TTL_SECONDS
+      ).catch(() => {});
+      throw new Error(
+        `Stripe Connect returned HTTP ${res.status} with an incomplete or unparseable JSON payload. Balance reservation ($${effectiveAmount.toFixed(2)}) remains safely locked in pending_reconciliation (${payoutId}); retry safely to reconcile via Stripe Idempotency-Key.`
+      );
+    }
+
+    stripeTransferId = transferData.id.trim();
   }
 
-  // Finalize reservation marker so subsequent retries return the completed payout record
+  // Finalize reservation marker and clear pending_payout lock so subsequent retries return the completed payout record
   const finalizeLua = [
-    'redis.call("SET", KEYS[1], "paid", "EX", tonumber(ARGV[1]))',
+    'redis.call("SET", KEYS[1], \'"paid"\', "EX", tonumber(ARGV[1]))',
     "return 1",
   ].join("\n");
   await kvEvalLua<number>(
@@ -1113,6 +1667,7 @@ export async function executeCreatorPayout(params: {
       return 1;
     }
   );
+  await kvDel(pendingPayoutKey).catch(() => {});
 
   const nowIso = new Date().toISOString();
   const payoutRecord: CreatorPayoutRecord = {

@@ -58,6 +58,8 @@ export interface YukaBreakdown {
   organicScore: number;
   /** True when a High-Risk (Red) additive capped the total score at <= 49/100. */
   highRiskCapped: boolean;
+  /** True when added-sugar beverage ceiling (isBeverage && hasTop3AddedSugar && sugars >= 5) capped score at <= 49/100. */
+  beverageCapApplied?: boolean;
   /** Sugar & refined-carb impact tier. */
   glucoseImpact?:
     | "Low Sugar / Carb"
@@ -407,7 +409,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
     patterns: [
       "(?<!esters of |esters |ethoxylated )mono ?(and|or)? ?di ?glycerides",
       "(?<!esters of |esters |ethoxylated )mono ?glycerides",
-      "(?<!and |or )di ?glycerides",
+      "(?<!and |or |mono |ethoxylated |esters of |esters )di ?glycerides",
       "e ?471",
     ],
     explanation: "FDA-gras lipid emulsifiers used to blend fats and water in packaged foods.",
@@ -563,7 +565,7 @@ export const ADDITIVE_RULES: AdditiveRule[] = [
   },
   {
     id: "carmine", name: "Carmine", risk: "low", category: "dyes",
-    patterns: ["carmine", "cochineal( extract)?", "e ?120"],
+    patterns: ["(?<!indigo )carmine", "cochineal( extract)?", "e ?120"],
     explanation: "An insect-derived red pigment that can trigger allergic reactions in sensitive individuals.",
   },
   {
@@ -1025,12 +1027,41 @@ export function estimateNutritionFromProduct(productTitle = "", rawIngredients =
   if (/\b(bismark|bismarks|donut|donuts|doughnut|doughnuts|fritter|danish|cinnamon roll|honey bun|eclair|strudel|turnover|cupcake|frosting|icing|glazed|cake|brownie|pie|pastry|pastries|pop[- ]?tart|toaster strudel|muffin|muffins|croissant)\b/.test(combined) && !/\b(sausage|bacon|ham|egg)\b/.test(combined)) {
     return { caloriesKcal100g: 405, sugarsG100g: 25, saturatedFatG100g: 9.0, sodiumMg100g: 340, fiberG100g: 1.2, proteinG100g: 4.5, fruitsVegNutsPct: 0 };
   }
-  // 2b. Diet / Zero-Sugar Sodas, Sparkling Waters, Pre-Workouts & Sugar-Free Beverages (must run BEFORE candy/caramel checks so "caramel color" in Diet Coke never matches candy!)
+  // 2a. Plain, Mineral-Enhanced & Unsweetened Flavored Bottled Waters (from water-only / trace-mineral ingredient list)
+  const strippedWaterIng = rawIngredients
+    .toLowerCase()
+    .replace(/^ingredients?\s*:\s*/i, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(?:contains\s+)?less\s+than\s+\d+(?:\.\d+)?%\s+of\s*:?/g, ",")
+    .replace(/\b(?:added\s+for\s+taste|for\s+taste|minerals?\s+added\s+for\s+taste|electrolytes?\s+added\s+for\s+taste)\b/g, " ");
+  const waterClauses = strippedWaterIng
+    .split(/[,;]+/)
+    .map((c) => c.replace(/\.\s*$/, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const WATER_BASE_CLAUSE_RE =
+    /^(?:100%\s+)?(?:natural\s+|pure\s+)*(?:purified|spring|mineral|artesian|drinking|distilled|vapor[\s-]*distilled|filtered|reverse\s+osmosis|mountain|alkaline|ionized|electrolyte|carbonated|sparkling|seltzer|club\s+soda|deionized|glacial|well)(?:\s+(?:drinking|mineral|spring|sparkling|carbonated))*\s+water$|^water$|^carbonated\s+water$|^sparkling\s+water$/;
+  const WATER_TRACE_CLAUSE_RE =
+    /^(?:and\s+)?(?:carbon\s+dioxide|co2|calcium\s+chloride|sodium\s+bicarbonate|magnesium\s+sulfate|potassium\s+bicarbonate|potassium\s+chloride|magnesium\s+chloride|calcium\s+carbonate|dipotassium\s+phosphate|monopotassium\s+phosphate|magnesium\s+oxide|calcium\s+lactate|zinc\s+gluconate|electrolytes?|minerals?|mineral\s+salts?|trace\s+minerals?|sea\s+salt|salt|natural\s+(?:[a-z]+\s+){0,2}flavou?rs?(?:\s+with\s+other\s+natural\s+flavou?rs?)?|natural\s+essences?|fruit\s+essences?|citric\s+acid|malic\s+acid)$/;
+  const isUnsweetenedWaterByIngredients =
+    waterClauses.length >= 1 &&
+    WATER_BASE_CLAUSE_RE.test(waterClauses[0]) &&
+    waterClauses.slice(1).every((c) => WATER_BASE_CLAUSE_RE.test(c) || WATER_TRACE_CLAUSE_RE.test(c)) &&
+    !/\b(sugar|syrup|juice|milk|cream|protein|whey|collagen|broth|stock|tea|coffee|cocoa|chocolate|lemonade|limeade)\b/.test(
+      productTitle.toLowerCase(),
+    );
+  if (isUnsweetenedWaterByIngredients) {
+    return { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0 };
+  }
+  // 2b. Diet / Zero-Sugar Sodas, Bottled & Sparkling Waters, Pre-Workouts & Sugar-Free Beverages (must run BEFORE candy/caramel checks so "caramel color" in Diet Coke never matches candy!)
   if (
-    /\b(diet\s+coke|coke\s+zero|pepsi\s+zero|diet\s+pepsi|diet\s+dr\.?\s*pepper|dr\.?\s*pepper\s+zero|diet\s+mountain\s+dew|mtn\s+dew\s+zero|sprite\s+zero|zero\s+sugar|sugar[- ]?free|monster\s+(?:energy\s+)?(?:zero|ultra)|white\s+monster|red\s*bull\s+(?:sugar\s*free|sugarfree|zero)|celsius|alani(?:\s+nu)?|ghost\s+(?:energy|legend|pre)|c4\s+(?:energy|performance|smart|pre|original|ultimate)|bang\s+energy|reign|rockstar\s+pure\s+zero|prime\s+(?:energy|hydration)|5[- ]?hour\s+energy|zoa|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|gatorade\s+zero|powerade\s+zero|propel|vitamin\s*water\s+zero|sparkling\s+ice|zevia|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|waterloo|bubly|polar\s+seltzer|nixie|ito\s+en|unsweetened\s+(?:tea|green\s+tea|black\s+tea|iced\s+tea|cold\s+brew|yerba\s+mate)|yerba\s+mate\s+unsweetened|stok.*unsweetened|lmnt|carbonated\s+water|sparkling\s+water|seltzer|club\s+soda|la\s*croix|spindrift|hint\s+water)\b/.test(combined) &&
-    !/\b(cane\s+sugar|high\s+fructose\s+corn\s+syrup|corn\s+syrup|liquid\s+sugar)\b/.test(combined)
+    /\b(diet\s+coke|coke\s+zero|pepsi\s+zero|diet\s+pepsi|diet\s+dr\.?\s*pepper|dr\.?\s*pepper\s+zero|diet\s+mountain\s+dew|mtn\s+dew\s+zero|sprite\s+zero|zero\s+sugar|sugar[- ]?free|monster\s+(?:energy\s+)?(?:zero|ultra)|white\s+monster|red\s*bull\s+(?:sugar\s*free|sugarfree|zero)|celsius|alani(?:\s+nu)?|ghost\s+(?:energy|legend|pre)|c4\s+(?:energy|performance|smart|pre|original|ultimate)|bang\s+energy|reign|rockstar\s+pure\s+zero|prime\s+(?:energy|hydration)|5[- ]?hour\s+energy|zoa|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|gatorade\s+zero|powerade\s+zero|propel|vitamin\s*water\s+zero|sparkling\s+ice|zevia|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|pure\s+life|poland\s+spring|deer\s+park|ice\s+mountain|zephyrhills|ozarka|arrowhead|crystal\s+geyser|waiakea|san\s+pellegrino|perrier|topo\s+chico|saratoga|waterloo|bubly|polar\s+seltzer|nixie|ito\s+en|unsweetened\s+(?:tea|green\s+tea|black\s+tea|iced\s+tea|cold\s+brew|yerba\s+mate|flavored\s+water)|yerba\s+mate\s+unsweetened|stok.*unsweetened|lmnt|purified\s+(?:drinking\s+)?water|spring\s+water|drinking\s+water|distilled\s+water|artesian\s+water|alkaline\s+water|electrolyte\s+water|mountain\s+water|mineral\s+water|filtered\s+water|carbonated\s+water|sparkling\s+water|seltzer|club\s+soda|la\s*croix|spindrift|hint\s+water)\b/.test(combined) &&
+    !/\b(cane\s+sugar|high\s+fructose\s+corn\s+syrup|corn\s+syrup|liquid\s+sugar|lemonade|juice\s+drink)\b/.test(combined)
   ) {
-    return { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 12, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0 };
+    return { caloriesKcal100g: 0, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 2, fiberG100g: 0, proteinG100g: 0, fruitsVegNutsPct: 0 };
+  }
+  // 2b-eggnog. Dairy & Plant Eggnog (~14g sugar/100ml, 140 kcal/100ml unless zero-sugar)
+  if (/\b(eggnog|egg\s+nog)\b/.test(combined) && !/\b(zero\s+sugar|sugar[- ]?free|unsweetened)\b/.test(combined)) {
+    return { caloriesKcal100g: 142, sugarsG100g: 14.2, saturatedFatG100g: 4.2, sodiumMg100g: 63, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 0 };
   }
   // 2c. Clean Low-Sugar Functional Beverages & Cold-Pressed Green Juices (NOOMA, OLIPOP, Poppi, Culture Pop, Kombucha, Coconut Water, Guayakí, Ora Organic, Suja Uber Greens)
   if (
@@ -1293,19 +1324,60 @@ export function scoreProductYuka(
       afterSolidBase,
     );
   const SOLID_TITLE_EXCLUSION_RE =
-    /\b(gummies|gummy|bars?|chews?|crisps?|cookies?|cakes?|pies?|crackers?|wafers?|brownies?|muffins?|donuts?|doughnuts?|breads?|rolls?|buns?|pastries|pastry|pancakes?|waffles?|pretzels?|chips|popcorn|cereal|oatmeal|sauce|apple\s*sauce|puree|fruit\s+cups?|marinade|glaze|dressing|vinaigrette|vanilla\s+extract|almond\s+extract|lemon\s+extract|fruit\s+spread|jam|jelly|preserves|syrup|powder|ice\s+cream|gelato|sorbet|mochi|trail\s+mix|steak|ribeye|sirloin|jerky)\b/i;
+    /\b(yogurts?|yoghurts?|skyr|go[- ]?gurt|parfait|gummies|gummy|bars?|chews?|crisps?|cookies?|cakes?|pies?|crackers?|wafers?|brownies?|muffins?|donuts?|doughnuts?|breads?|rolls?|buns?|pastries|pastry|pancakes?|waffles?|pretzels?|chips|popcorn|cereal|oatmeal|sauce|apple\s*sauce|puree|fruit\s+cups?|marinade|glaze|dressing|vinaigrette|vanilla\s+extract|almond\s+extract|lemon\s+extract|fruit\s+spread|jam|jelly|preserves|syrup|powder|ice\s+cream|gelato|sorbet|mochi|trail\s+mix|steak|ribeye|sirloin|jerky)\b/i;
+  const EXPLICIT_LIQUID_YOGURT_TITLE_RE =
+    /\b(yogurt\s+drinks?|drinkable\s+yogurts?|drinking\s+yogurts?|yogurt\s+smoothies?|smoothies?|kefir|lassi|probiotic\s+(?:yogurt\s+|dairy\s+|cultured\s+)?drinks?)\b/i;
   const EXPLICIT_BEVERAGE_TITLE_RE =
-    /\b(juices?|lemonade|limeade|smoothies?|(?<!baking\s+)soda(?!\s+crackers?)|cola|iced\s+tea|sweet\s+tea|green\s+tea|black\s+tea|cold\s+brew|frappuccino|latte|oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk|cashew\s*milk|kombucha|seltzers?|sparkling\s+water|cider|nectar|fruit\s+punch|sports?\s+drinks?|energy\s+drinks?|electrolyte\s+drinks?)\b/i;
+    /\b(juices?|lemonade|limeade|smoothies?|kefir|lassi|eggnog|egg\s+nog|yogurt\s+drinks?|drinkable\s+yogurts?|drinking\s+yogurts?|probiotic\s+(?:yogurt\s+|dairy\s+|cultured\s+)?drinks?|(?<!baking\s+)soda(?!\s+crackers?)|cola|iced\s+tea|sweet\s+tea|green\s+tea|black\s+tea|cold\s+brew|frappuccino|latte|oat\s*milk|almond\s*milk|soy\s*milk|coconut\s*milk|cashew\s*milk|kombucha|seltzers?|sparkling\s+water|purified\s+water|spring\s+water|drinking\s+water|mineral\s+water|distilled\s+water|artesian\s+water|alkaline\s+water|electrolyte\s+water|mountain\s+water|flavored\s+water|cider|nectar|fruit\s+punch|sports?\s+drinks?|energy\s+drinks?|electrolyte\s+drinks?)\b/i;
+  const productTitleText = nutrition.productTitle || "";
+  const isSolidTitleExcluded =
+    SOLID_TITLE_EXCLUSION_RE.test(productTitleText) &&
+    !EXPLICIT_LIQUID_YOGURT_TITLE_RE.test(productTitleText);
   const hasExplicitBeverageTitle =
-    EXPLICIT_BEVERAGE_TITLE_RE.test(nutrition.productTitle || "") &&
-    !SOLID_TITLE_EXCLUSION_RE.test(nutrition.productTitle || "");
+    EXPLICIT_BEVERAGE_TITLE_RE.test(productTitleText) && !isSolidTitleExcluded;
   const isSolidBaseFirstIngredient =
     isWholeFoodPlaceholder || (solidFirstMatch !== null && !isSolidLiquidBase && !hasExplicitBeverageTitle);
 
+  const hasJuiceBeverageCue =
+    /\bjuices?\b/i.test(productTitleText) ||
+    (/\bjuices?\b/i.test(firstClauseOuter) &&
+      !/\b(?:for\s+colou?r|colou?r\s+added|lemon\s+juice|lime\s+juice)\b/i.test(firstClause));
+
+  const strippedWaterCheck = rawIngredients
+    .toLowerCase()
+    .replace(/^ingredients?\s*:\s*/i, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(?:contains\s+)?less\s+than\s+\d+(?:\.\d+)?%\s+of\s*:?/g, ",")
+    .replace(/\b(?:added\s+for\s+taste|for\s+taste|minerals?\s+added\s+for\s+taste|electrolytes?\s+added\s+for\s+taste)\b/g, " ");
+  const waterCheckClauses = strippedWaterCheck
+    .split(/[,;]+/)
+    .map((c) => c.replace(/\.\s*$/, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const PURE_WATER_CLAUSE_RE =
+    /^(?:100%\s+)?(?:natural\s+|pure\s+)*(?:purified|spring|mineral|artesian|drinking|distilled|vapor[\s-]*distilled|filtered|reverse\s+osmosis|mountain|alkaline|ionized|electrolyte|carbonated|sparkling|seltzer|club\s+soda|deionized|glacial|well)(?:\s+(?:drinking|mineral|spring|sparkling|carbonated))*\s+water$|^water$|^carbonated\s+water$|^sparkling\s+water$/;
+  const PURE_MINERAL_ONLY_CLAUSE_RE =
+    /^(?:and\s+)?(?:carbon\s+dioxide|co2|calcium\s+chloride|sodium\s+bicarbonate|magnesium\s+sulfate|potassium\s+bicarbonate|potassium\s+chloride|magnesium\s+chloride|calcium\s+carbonate|dipotassium\s+phosphate|monopotassium\s+phosphate|magnesium\s+oxide|calcium\s+lactate|electrolytes?|minerals?|mineral\s+salts?|trace\s+minerals?)$/;
+  const UNSWEETENED_FLAVOR_WATER_CLAUSE_RE =
+    /^(?:and\s+)?(?:sea\s+salt|salt|natural\s+(?:[a-z]+\s+){0,2}flavou?rs?(?:\s+with\s+other\s+natural\s+flavou?rs?)?|natural\s+essences?|fruit\s+essences?|citric\s+acid|malic\s+acid)$/;
+  const isPureOrMineralWaterOnly =
+    waterCheckClauses.length >= 1 &&
+    PURE_WATER_CLAUSE_RE.test(waterCheckClauses[0]) &&
+    waterCheckClauses.slice(1).every((c) => PURE_WATER_CLAUSE_RE.test(c) || PURE_MINERAL_ONLY_CLAUSE_RE.test(c)) &&
+    !isSolidTitleExcluded;
+  const isUnsweetenedWaterIngredients =
+    waterCheckClauses.length >= 1 &&
+    PURE_WATER_CLAUSE_RE.test(waterCheckClauses[0]) &&
+    waterCheckClauses
+      .slice(1)
+      .every((c) => PURE_WATER_CLAUSE_RE.test(c) || PURE_MINERAL_ONLY_CLAUSE_RE.test(c) || UNSWEETENED_FLAVOR_WATER_CLAUSE_RE.test(c)) &&
+    !isSolidTitleExcluded;
+
   const isBeverage =
     !isSolidBaseFirstIngredient &&
-    /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|juices?|tropicana|simply\s+orange|simply\s+lemonade|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|suja|v8|nature'?s\s+nectar|lemonade|limeade|smoothies?|sweet\s+tea|iced\s+tea|green\s+tea|black\s+tea|yerba\s+mate|guayaki|guayakí|clean\s+cause|guru|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|ito\s+en|just\s+ice\s+tea|cold\s+brew|stok|frappuccino|doubleshot|dunkin|la\s+colombe|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|almond\s+beverage|oat\s+beverage|soy\s+beverage|coconut\s+beverage|(?<!baking\s+)soda(?!\s+crackers?)|cola|pepsi|coke|coca[- ]?cola|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|zevia|culture\s+pop|gatorade|gatorlyte|powerade|bodyarmor|prime|red\s*bull|monster|celsius|alani|ghost\s+(?:energy|legend)|c4\s+(?:energy|performance|smart|original|ultimate|pre)|bang\s+energy|reign|rockstar|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|sports?\s+drink|energy\s+drink|electrolyte|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sparkling\s+ice|bai|kombucha|olipop|poppi|spindrift|la\s*croix|waterloo|bubly|polar\s+seltzer|nixie|hint\s+water|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|san\s+pellegrino|perrier|topo\s+chico|saratoga|spring\s+water|mineral\s+water|artesian\s+water|purified\s+water|distilled\s+water|alkaline\s+water|coconut\s+water|harmless\s+harvest|vita\s+coco|sparkling\s+water|seltzer|club\s+soda)\b/i.test(titleAndIng) &&
-    !SOLID_TITLE_EXCLUSION_RE.test(nutrition.productTitle || "");
+    (hasJuiceBeverageCue ||
+      isUnsweetenedWaterIngredients ||
+      /\b(capri\s*sun|hi-?c|kool-?aid|hawaiian\s+punch|sunny\s*d|tang|tampico|fruit\s+punch|juice\s+pouch\w*|juice\s+drink|orange\s+juice|apple\s+juice|grape\s+juice|cranberry\s+juice|pineapple\s+juice|grapefruit\s+juice|pomegranate\s+juice|tart\s+cherry\s+juice|tropicana|simply\s+orange|simply\s+lemonade|minute\s+maid|uncle\s+matt'?s|mott'?s|martinelli'?s|welch'?s|ocean\s+spray|pom\s+wonderful|lakewood|knudsen|honest\s+kids|naked\s+juice|bolthouse|suja|v8|nature'?s\s+nectar|lemonade|limeade|smoothies?|kefir|lassi|eggnog|egg\s+nog|yogurt\s+drinks?|drinkable\s+yogurts?|drinking\s+yogurts?|probiotic\s+(?:yogurt\s+|dairy\s+|cultured\s+)?drinks?|sweet\s+tea|iced\s+tea|green\s+tea|black\s+tea|yerba\s+mate|guayaki|guayakí|clean\s+cause|guru|arizona|arnold\s+palmer|mucho\s+mango|pure\s+leaf|gold\s+peak|snapple|brisk|milo'?s|ito\s+en|just\s+ice\s+tea|cold\s+brew|stok|frappuccino|doubleshot|dunkin|la\s+colombe|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|almond\s+beverage|oat\s+beverage|soy\s+beverage|coconut\s+beverage|(?<!baking\s+)soda(?!\s+crackers?)|cola|pepsi|coke|coca[- ]?cola|mountain\s+dew|mtn\s+dew|baja\s+blast|sprite|dr\.?\s*pepper|fanta|root\s+beer|a\s*&\s*w|barq'?s|mug\s+root\s+beer|ginger\s+ale|canada\s+dry|schweppes|seagram'?s|7\s*up|crush|sunkist|starry|squirt|fresca|jarritos|zevia|culture\s+pop|gatorade|gatorlyte|powerade|bodyarmor|prime|red\s*bull|monster|celsius|alani|ghost\s+(?:energy|legend)|c4\s+(?:energy|performance|smart|original|ultimate|pre)|bang\s+energy|reign|rockstar|5[- ]?hour\s+energy|zoa|nos\s+energy|full\s+throttle|pre[- ]?workout|preworkout|gorilla\s+mode|ryse|bucked\s+up|total\s+war|sports?\s+drink|energy\s+drink|electrolyte|liquid\s+i\.?v\.?|lmnt|pedialyte|electrolit|biolyte|nuun|propel|vitamin\s*water|sparkling\s+ice|bai|kombucha|olipop|poppi|spindrift|la\s*croix|waterloo|bubly|polar\s+seltzer|nixie|hint\s+water|fiji|evian|smart\s*water|dasani|aquafina|essentia|core\s+hydration|liquid\s+death|pure\s+life|poland\s+spring|deer\s+park|ice\s+mountain|zephyrhills|ozarka|arrowhead|crystal\s+geyser|waiakea|san\s+pellegrino|perrier|topo\s+chico|saratoga|spring\s+water|mineral\s+water|artesian\s+water|purified\s+water|drinking\s+water|filtered\s+water|mountain\s+water|electrolyte\s+water|flavored\s+water|distilled\s+water|alkaline\s+water|coconut\s+water|harmless\s+harvest|vita\s+coco|sparkling\s+water|seltzer|club\s+soda)\b/i.test(titleAndIng)) &&
+    !isSolidTitleExcluded;
 
   const isFirstIngredientCaloricSweetener =
     /(?<!no\s+)\b(corn\s+syrup|high\s+fructose\s+corn\s+syrup|glucose\s+syrup|(?:brown\s+)?rice\s+syrup|tapioca\s+syrup|oat\s+syrup|sorghum\s+syrup|date\s+syrup|malt\s+syrup|barley\s+malt\s+syrup|cane\s+syrup|golden\s+syrup|invert\s+sugar|liquid\s+sugar|powdered\s+sugar|confectioners'?\s+sugar|cane\s+sugar|brown\s+sugar|coconut\s+sugar|dextrose|fructose|sucrose|maltose|maple\s+syrup|honey|agave(?!\s+inulin)|molasses|sugar(?!\s+snap|\s+kelp|[\s-]+free|\s+added|\s+alcohol))\b/.test(
@@ -1341,7 +1413,7 @@ export function scoreProductYuka(
     /^\s*100%\s+(?:usda\s+\w+\s+|organic\s+|grass[- ]?fed\s+|angus\s+)*beef\.?\s*$/i.test(rawIngredients);
 
   const NON_WHOLE_FOOD =
-    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|lactaid|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|corned|pastrami|deli\s+meat|lunch\s*meat|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|creme|ice\s+cream|gelato|chips|(?<!cosmic\s+|honey\s*)crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|cupcake|pie|pies|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|biscuit|bread|bagel|tortilla|tostada|wrap|burrito|burritos|taco|tacos|quesadilla|tamale|enchilada|burgers?|patties|patty|meatloaf|meatballs?|nuggets|tenders|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips(?!\s+steak)|hot\s*pocket|pizza|lasagna|ravioli|dumplings?|casserole|(?<!romaine\s+|spinach\s+|kale\s+|arugula\s+|spring\s+|field\s+|garden\s+|mixed\s+|baby\s+)salads?(?!\s+(?:greens|mix)\b)|stews?(?!\s+(?:meat|beef)\b)|curr(?:y|ies)|chili(?!\s+peppers?\b)|tempura|soup|chowder|spaghetti(?!\s+squash\b)|pasta|noodles?|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
+    /\b(wipes?|disinfect\w*|detergent|laundry|bleach|cleaner|toilet\s*paper|paper\s*towels?|shampoo|conditioner|body\s*wash|lotion|moisturizer|sunscreen|deodorant|antiperspirant|toothpaste|mouthwash|cleanser|serum|soap|diapers?|kibble|dog\s*food|cat\s*food|(?!butter\s+(?:potato\w*|lettuce|beans?|squash))\bbutter\b(?!.*potato\w*)|ghee|margarine|shortening|lard|milk|oatmilk|almondmilk|soymilk|coconutmilk|cashewmilk|lactaid|eggnog|egg\s+nog|bacon|sausage|kielbasa|hot\s*dog|frankfurter|salami|pepperoni|bologna|prosciutto|pancetta|chorizo|corned|pastrami|deli\s+meat|deli\s+(?:turkey|chicken|ham|beef|sliced)|lunch\s*meat|cold\s*cuts?|oven\s+roasted\s+(?:turkey|chicken|ham)|sliced\s+(?:turkey|chicken|ham|roast\s+beef)|smoked\s+(?:turkey|chicken|ham)|roast\s+beef|gravy|bouillon|cheese|cheddar|mozzarella|parmesan|provolone|swiss|gouda|brie|feta|velveeta|cream\s+cheese|sour\s+cream|heavy\s+cream|whipping\s+cream|creme|ice\s+cream|gelato|chips|(?<!cosmic\s+|honey\s*)crisps|crispy|fried|battered|breaded|instant\s+mashed|potato\s+flakes|freeze[- ]?dried|powder|dried|dehydrated|auspitee|craisins|ritz|crackers|pretzels|popcorn|cookie|cookies|wafer|wafers|knoppers|storck|merci|kinder|ferrero|chocolate|candy|gummies|truffle|praline|cake|cupcake|pie|pies|pastry|pastries|donut|doughnut|bismark|muffin|croissant|waffle|pancake|biscuit|bread|bagel|tortilla|tostada|wrap|burrito|burritos|taco|tacos|quesadilla|tamale|enchilada|burgers?|patties|patty|meatloaf|meatballs?|nuggets|tenders|(?<!new\s+york\s+|ny\s+|kansas\s+city\s+)strips(?!\s+steak)|hot\s*pocket|pizza|lasagna|ravioli|dumplings?|casserole|(?<!romaine\s+|spinach\s+|kale\s+|arugula\s+|spring\s+|field\s+|garden\s+|mixed\s+|baby\s+)salads?(?!\s+(?:greens|mix)\b)|stews?(?!\s+(?:meat|beef)\b)|curr(?:y|ies)|chili(?!\s+peppers?\b)|tempura|soup|chowder|spaghetti(?!\s+squash\b)|pasta|noodles?|fries|ramen|macaroni|juice|soda|cola|capri\s*sun|lemonade|maple\s+syrup|honey|agave|molasses|cane\s+sugar)\b/i;
 
   const isWholeProduceIngredient = /100% (pure |fresh )?whole (food|produce)|^whole food:/i.test(rawIngredients);
 
@@ -1355,8 +1427,14 @@ export function scoreProductYuka(
       titleAndIng,
     );
 
+  const isSaltedMultiIngredientMeat =
+    clauses.length >= 2 &&
+    /\b(turkey|chicken|ham|beef|pork)\b/i.test(productTitleText) &&
+    /\b(salt|potato\s+starch|carrageenan|phosphate|dextrose|sugar)\b/i.test(rawIngredients);
+
   const isWholeFood =
     nutrition.isWholeFood !== false &&
+    !isSaltedMultiIngredientMeat &&
     (isWholeProduceIngredient || isPureCleanCulinaryOil || isSingleIngredientBeefPatty || !NON_WHOLE_FOOD.test(titleAndIng)) &&
     !isBeverage &&
     !hasTop3AddedSugar &&
@@ -1470,7 +1548,7 @@ export function scoreProductYuka(
   const isFlavoredDairyMilk =
     !isNonFoodItem &&
     !isPlantMilk &&
-    /\b((?:chocolate|strawberry|vanilla|banana|cookies?\s*(?:&|and)\s*cream)\s+(?:whole\s+|low\s*fat\s+|lowfat\s+|reduced[- ]?fat\s+|fat[- ]?free\s+|skim\s+|1%\s+|2%\s+|ultra[- ]?filtered\s+|organic\s+|grass[- ]?fed\s+)*(?:milk|grassmilk)|(?:milk|grassmilk).*\b(?:chocolate|strawberry)|nesquik|trumoo|yoo[- ]?hoo|fairlife.*chocolate|lactaid.*chocolate|organic\s+valley.*chocolate|horizon.*chocolate|promised\s+land.*chocolate|darigold.*chocolate)\b/i.test(
+    /\b((?:chocolate|strawberry|vanilla|banana|cookies?\s*(?:&|and)\s*cream)\s+(?:whole\s+|low\s*fat\s+|lowfat\s+|reduced[- ]?fat\s+|fat[- ]?free\s+|skim\s+|1%\s+|2%\s+|ultra[- ]?filtered\s+|organic\s+|grass[- ]?fed\s+)*(?:milk|grassmilk)|(?:milk|grassmilk).*\b(?:chocolate|strawberry)|eggnog|egg\s+nog|nesquik|trumoo|yoo[- ]?hoo|fairlife.*chocolate|lactaid.*chocolate|organic\s+valley.*chocolate|horizon.*chocolate|promised\s+land.*chocolate|darigold.*chocolate)\b/i.test(
       titleAndIng,
     ) &&
     !/\b(protein\s+shake|core\s+power|orgain|muscle\s+milk|premier\s+protein|nurri|nutrition\s+shake|meal\s+replacement|protein\s+powder|whey\s+protein|ice\s+cream|yogurt|yoghurt|kefir|pudding|creamer|candy|bar|bars|cookie|cookies|cereal|chocolate\s+syrup|powder\s+mix)\b/i.test(
@@ -1481,7 +1559,7 @@ export function scoreProductYuka(
     !isPlantMilk &&
     !isFlavoredDairyMilk &&
     /\b(milk|lactaid|fairlife)\b/i.test(titleAndIng) &&
-    !/\b(yogurt|yoghurt|kefir|skyr|cheese|butter|cream|creamer|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|low[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
+    !/\b(yogurt|yoghurt|kefir|skyr|eggnog|egg\s+nog|cheese|butter|cream|creamer|ice cream|skim|nonfat|fat[- ]?free|1%|2%|reduced[- ]?fat|low[- ]?fat|coconut|almond|oat|soy|chocolate|condensed|evaporated|buttermilk|wafer|candy|clam|chowder|soup|bisque)\b/i.test(titleAndIng);
 
   const hasArtificialSweetener = base.flagged.some(
     (f) => f.category === "sweeteners" && f.id !== "erythritol" && f.id !== "sugar_alcohols",
@@ -1554,18 +1632,19 @@ export function scoreProductYuka(
       kcal === 0 &&
       base.flagged.length === 0 &&
       /^\s*(?:100%\s+)?(?:natural\s+)?(?:mountain|spring|artesian|purified|filtered|drinking|mineral|distilled|vapor[- ]distilled)\s+water(?:\s*\([^)]*\))?\.?\s*$/i.test(
-        rawIngredients
+        rawIngredients,
       )
     ) {
       // Pure single-ingredient water cannot be certified USDA Organic by law (water is a mineral),
-      // so it receives the full 70-point non-additive baseline to reach 100/100 without an organic claim.
+      // so it receives the full 70-point non-additive baseline to reach 100/100 without an organic claim;
+      // mineral-enhanced purified water falls through to 60/60 nutrition + 30/30 additives = 90/100 Excellent.
       nutritionScore = 70;
     } else {
       nutritionScore = 60;
     }
   } else if (isBeverage && sugars > 3.5 && sugars < 5) {
     nutritionScore = sugars >= 4.5 && hasTop3AddedSugar ? 14 : hasTop3AddedSugar ? 34 : 45;
-  } else if (/\byogurt\b/i.test(titleAndIng) && hasTop3AddedSugar) {
+  } else if (/\b(?:yogurts?|yoghurts?|go[- ]?gurt)\b/i.test(titleAndIng) && hasTop3AddedSugar) {
     nutritionScore = 28;
   } else if (isCleanFruitOilCondiment) {
     // Seed-oil-free, sugar-free avocado/extra-virgin-olive-oil mayonnaise & dressings earn Tier-3 fruit-oil nutrition credit (50/60)
@@ -1640,9 +1719,10 @@ export function scoreProductYuka(
   // so the 0-100 gauge score always equals the sum of the 3 pillars (capped by high-risk / seed-oil caps).
   // When the user explicitly activates 2x Family Watchlist strictness on a category, apply an extra
   // strictness deduction per matched 2x additive so toggling Family Watchlist preferences visibly updates the score and pill.
-  const yukaPillarScore = Math.max(0, nutritionScore + additiveScore + organicScore);
+  const yukaPillarScore = Math.min(100, Math.max(0, nutritionScore + additiveScore + organicScore));
+  const beverageCapApplied = Boolean(isBeverage && hasTop3AddedSugar && sugars >= 5);
   let finalScore = yukaPillarScore;
-  if (hasHighRisk || seedOilHits.length >= 2 || (isBeverage && hasTop3AddedSugar && sugars >= 5)) {
+  if (hasHighRisk || seedOilHits.length >= 2 || beverageCapApplied) {
     finalScore = Math.max(0, Math.min(HIGH_RISK_SCORE_CAP, finalScore));
   } else if (seedOilHits.length === 1) {
     // Tier 2 Seed Oil Cap (Sunflower / Safflower Oil): capped at <= 59/100 (Mediocre / Orange) — never Green
@@ -1837,6 +1917,7 @@ export function scoreProductYuka(
       additiveScore,
       organicScore,
       highRiskCapped: hasHighRisk,
+      beverageCapApplied,
       glucoseImpact,
       glucoseColor,
       glucoseNote,

@@ -261,6 +261,7 @@ class MainActivity : Activity() {
         renderScreen()
         syncDynamicHomeScreenShortcuts()
 
+        handleIncomingReferralIntent(intent)
         val handledAuth = handleIncomingAuthRedirect(intent)
         val handledShortcut = if (!handledAuth) handleIncomingShortcutIntent(intent) else false
         val handledShare = if (!handledAuth && !handledShortcut) handleIncomingShareIntent(intent) else false
@@ -290,9 +291,42 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         syncDynamicHomeScreenShortcuts()
+        handleIncomingReferralIntent(intent)
         if (handleIncomingAuthRedirect(intent)) return
         if (!handleIncomingShortcutIntent(intent)) {
             handleIncomingShareIntent(intent)
+        }
+    }
+
+    private fun handleIncomingReferralIntent(incoming: Intent?) {
+        if (incoming == null || incoming.getBooleanExtra("_heybroc_ref_handled", false)) return
+        val data = incoming.data ?: return
+        val scheme = data.scheme?.lowercase().orEmpty()
+        val host = data.host?.lowercase().orEmpty()
+        val isHeyBrocUri = scheme == "heybroc" ||
+            host == "heybroc.com" ||
+            host == "www.heybroc.com" ||
+            host.endsWith(".heybroc.com") ||
+            host == "cleancart-teal.vercel.app"
+        if (!isHeyBrocUri) return
+
+        val rawCode = data.getQueryParameter("code")?.trim()?.takeIf { it.isNotBlank() }
+            ?: data.getQueryParameter("ref")?.trim()?.takeIf { it.isNotBlank() }
+            ?: Regex("""(?i)^/r/([A-Za-z0-9_-]+)""").find(data.path.orEmpty())?.groupValues?.getOrNull(1)
+            ?: if (scheme == "heybroc" && (host == "r" || host == "invite" || host == "referral")) {
+                data.lastPathSegment?.trim()
+            } else {
+                null
+            }
+        if (rawCode.isNullOrBlank()) return
+
+        incoming.putExtra("_heybroc_ref_handled", true)
+        val clean = ScanApi.saveReferredByCode(this, rawCode)
+        if (clean.isNotBlank()) {
+            val appCtx = applicationContext
+            io.execute {
+                runCatching { ScanApi.claimReferral(appCtx, clean) }
+            }
         }
     }
 
@@ -4303,10 +4337,52 @@ class MainActivity : Activity() {
         return Pair(claimEmail, claimName)
     }
 
-    private fun openGoogleOAuthCustomTab(clientId: String): Boolean {
+    private data class OAuthServerConfig(
+        val clientId: String,
+        val oauthNonce: String
+    )
+
+    private fun authApiEndpoint(): String {
+        val base = BuildConfig.API_BASE.trim().trimEnd('/').ifBlank { "https://www.heybroc.com" }
+        return "$base/api/auth"
+    }
+
+    private fun fetchServerOAuthConfig(prefs: android.content.SharedPreferences): OAuthServerConfig {
+        val cachedClientId = prefs.getString("cached_google_client_id", "").orEmpty().trim()
+        var resolvedClientId = cachedClientId
+        var resolvedNonce = ""
+        runCatching {
+            val conn = (URL("${authApiEndpoint()}?config=1&oauthNonce=1").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 3500
+                readTimeout = 3500
+                setRequestProperty("Accept", "application/json")
+            }
+            try {
+                if (conn.responseCode in 200..299) {
+                    val raw = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(raw)
+                    val fetchedId = json.optString("googleClientId", "").trim()
+                    if (fetchedId.isNotBlank()) {
+                        resolvedClientId = fetchedId
+                        prefs.edit().putString("cached_google_client_id", fetchedId).apply()
+                    }
+                    resolvedNonce = json.optString("oauthNonce", "").trim()
+                }
+            } finally {
+                conn.disconnect()
+            }
+        }
+        return OAuthServerConfig(
+            clientId = resolvedClientId,
+            oauthNonce = resolvedNonce.ifBlank { generateSecureHex(16) }
+        )
+    }
+
+    private fun openGoogleOAuthCustomTab(clientId: String, serverNonce: String = ""): Boolean {
         val cleanClientId = clientId.trim()
         if (cleanClientId.isBlank()) return false
-        val nonce = generateSecureHex(16)
+        val nonce = serverNonce.trim().ifBlank { generateSecureHex(16) }
         val state = "android_${generateSecureHex(16)}"
         getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             .edit()
@@ -4339,15 +4415,17 @@ class MainActivity : Activity() {
 
     private fun launchGoogleCredentialManager(
         clientId: String,
-        onFallback: () -> Unit,
+        serverNonce: String,
+        onLocalFallback: () -> Unit,
+        onServerExchangeFallback: () -> Unit = onLocalFallback,
         onSuccess: (() -> Unit)?
     ) {
         val cleanClientId = clientId.trim()
         if (cleanClientId.isBlank()) {
-            onFallback()
+            onLocalFallback()
             return
         }
-        val nonce = generateSecureHex(16)
+        val nonce = serverNonce.trim().ifBlank { generateSecureHex(16) }
         val googleIdOption = runCatching {
             GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
@@ -4356,7 +4434,7 @@ class MainActivity : Activity() {
                 .build()
         }.getOrNull()
         if (googleIdOption == null) {
-            onFallback()
+            onLocalFallback()
             return
         }
         val request = GetCredentialRequest.Builder()
@@ -4364,7 +4442,7 @@ class MainActivity : Activity() {
             .build()
         val credentialManager = runCatching { CredentialManager.create(this) }.getOrNull()
         if (credentialManager == null) {
-            onFallback()
+            onLocalFallback()
             return
         }
         val callbackExecutor = Executor { runnable -> mainHandler.post(runnable) }
@@ -4391,10 +4469,10 @@ class MainActivity : Activity() {
                             idToken = idToken,
                             nonce = nonce,
                             onSuccess = onSuccess,
-                            onServerExchangeFailure = onFallback
+                            onServerExchangeFailure = onServerExchangeFallback
                         )
                     } else {
-                        onFallback()
+                        onLocalFallback()
                     }
                 }
 
@@ -4403,7 +4481,7 @@ class MainActivity : Activity() {
                     if (e is GetCredentialCancellationException) {
                         return
                     }
-                    onFallback()
+                    onLocalFallback()
                 }
             }
         )
@@ -4414,52 +4492,33 @@ class MainActivity : Activity() {
         onSuccess: (() -> Unit)? = null
     ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
-        val cachedClientId = prefs.getString("cached_google_client_id", "").orEmpty().trim()
-        if (cachedClientId.isNotBlank()) {
-            launchGoogleCredentialManager(
-                clientId = cachedClientId,
-                onFallback = {
-                    if (!openGoogleOAuthCustomTab(cachedClientId)) {
-                        onFallbackToEmail()
-                    }
-                },
-                onSuccess = onSuccess
-            )
-            return
-        }
-
         io.execute {
-            val fetchedClientId = runCatching {
-                val conn = (URL("https://www.heybroc.com/api/auth?config=1").openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 3500
-                    readTimeout = 3500
-                }
-                try {
-                    if (conn.responseCode in 200..299) {
-                        val raw = conn.inputStream.bufferedReader().use { it.readText() }
-                        JSONObject(raw).optString("googleClientId", "").trim()
-                    } else ""
-                } finally {
-                    conn.disconnect()
-                }
-            }.getOrDefault("")
-
-            if (fetchedClientId.isNotBlank()) {
-                prefs.edit().putString("cached_google_client_id", fetchedClientId).apply()
-            }
-
+            val cfg = fetchServerOAuthConfig(prefs)
             mainHandler.post {
                 if (isDestroyed || isFinishing) return@post
-                if (fetchedClientId.isBlank()) {
+                if (cfg.clientId.isBlank()) {
                     onFallbackToEmail()
                     return@post
                 }
                 launchGoogleCredentialManager(
-                    clientId = fetchedClientId,
-                    onFallback = {
-                        if (!openGoogleOAuthCustomTab(fetchedClientId)) {
+                    clientId = cfg.clientId,
+                    serverNonce = cfg.oauthNonce,
+                    onLocalFallback = {
+                        // Nonce has not been sent to /api/auth yet, safe to reuse directly
+                        if (!openGoogleOAuthCustomTab(cfg.clientId, cfg.oauthNonce)) {
                             onFallbackToEmail()
+                        }
+                    },
+                    onServerExchangeFallback = {
+                        // Previous nonce may have been consumed; mint a fresh server nonce before Custom Tab fallback
+                        io.execute {
+                            val freshCfg = fetchServerOAuthConfig(prefs)
+                            mainHandler.post {
+                                if (isDestroyed || isFinishing) return@post
+                                if (!openGoogleOAuthCustomTab(cfg.clientId, freshCfg.oauthNonce)) {
+                                    onFallbackToEmail()
+                                }
+                            }
                         }
                     },
                     onSuccess = onSuccess
@@ -4578,7 +4637,7 @@ class MainActivity : Activity() {
         Toast.makeText(this, "Completing Google sign-in…", Toast.LENGTH_SHORT).show()
         io.execute {
             runCatching {
-                val conn = (URL("https://www.heybroc.com/api/auth").openConnection() as HttpURLConnection).apply {
+                val conn = (URL(authApiEndpoint()).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json")
@@ -5817,9 +5876,19 @@ class MainActivity : Activity() {
             label(provenanceLine, 11f, 0xFF0F7A4A.toInt(), bold = true).apply {
                 setPadding(dp(4), dp(10), dp(4), dp(2))
                 setOnClickListener {
+                    isEnabled = false
+                    setTextColor(0xFF0F7A4A.toInt())
                     text = "🤖 Checking USDA & Open Food Facts…"
-                    ScanApi.autoVerifyLabel(title, ingredients, itemStoreKey) { summary ->
-                        text = "✓ $summary"
+                    ScanApi.autoVerifyLabelOutcome(title, ingredients, itemStoreKey) { outcome ->
+                        text = outcome.message
+                        setTextColor(
+                            when {
+                                outcome.verified -> 0xFF15803D.toInt()
+                                outcome.ok -> 0xFFB45309.toInt()
+                                else -> 0xFFB91C1C.toInt()
+                            }
+                        )
+                        isEnabled = !outcome.ok
                     }
                 }
             }

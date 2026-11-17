@@ -13,6 +13,7 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { extractOffNutrition as readOffNutrition, extractUsdaNutrition as readUsdaNutrition, classifyWholeFood, type UsdaFood } from "./nutrition";
 import { lookupDsld, SUPPLEMENT_FORM } from "./dsld";
+import { isPersistentKvConfigured, kvGet, kvIncrWithPExpire, kvSet } from "./storage";
 import { promises as fs } from "fs";
 import path from "path";
 import {
@@ -78,7 +79,7 @@ const CACHE_FILE = path.join(CACHE_DIR, "lookup-cache.json");
 const TIMEOUT_MS = 1800;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 1000;
-const offBarcodeCache = new Map<string, { product: OffProduct; cachedAt: number }>();
+const offBarcodeCache = new Map<string, { product: OffProduct | null; cachedAt: number }>();
 
 let memory: Map<string, CacheEntry> | null = null;
 let loading: Promise<Map<string, CacheEntry>> | null = null;
@@ -647,16 +648,25 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
 
 const NEGATIVE_LOOKUP_TTL_MS = 15 * 60_000;
 const MAX_NEGATIVE_LOOKUP_ENTRIES = 1000;
+export const OFF_SEARCH_MAX_PER_MIN = 9;
+export const OFF_PRODUCT_MAX_PER_MIN = 14;
 const negativeLookupCache = new Map<string, number>();
 const providerRateWindows = new Map<string, { count: number; resetAt: number }>();
 const lookupAttemptContext = new AsyncLocalStorage<{ hadOperationalFailure: boolean }>();
 let trackedLookupFetchRef: unknown = globalThis.fetch;
+let offRateTestEpoch = 0;
+let offUnavailableUntil = 0;
+let offConsecutive429s = 0;
 
 export function resetLookupRuntimeForTests(): void {
   negativeLookupCache.clear();
   providerRateWindows.clear();
+  offBarcodeCache.clear();
   usdaUnavailableUntil = 0;
   dsldUnavailableUntil = 0;
+  offUnavailableUntil = 0;
+  offConsecutive429s = 0;
+  offRateTestEpoch += 1;
   trackedLookupFetchRef = globalThis.fetch;
 }
 
@@ -671,26 +681,7 @@ function markLookupOperationalFailure(): void {
   if (ctx) ctx.hadOperationalFailure = true;
 }
 
-function consumeOutboundProviderBudget(url: string): boolean {
-  let bucket = "";
-  let maxPerMin = 0;
-  if (url.includes("openfoodfacts.org")) {
-    if (
-      url.includes("search.openfoodfacts.org") ||
-      url.includes("/cgi/search.pl") ||
-      url.includes("/api/v2/search")
-    ) {
-      bucket = "off_search";
-      maxPerMin = 90;
-    } else {
-      bucket = "off_product";
-      maxPerMin = 160;
-    }
-  } else if (url.includes("api.nal.usda.gov") || url.includes("fdc.nal.usda.gov")) {
-    bucket = "usda";
-    maxPerMin = 120;
-  }
-  if (!bucket) return true;
+function consumeLocalWindowBudget(bucket: string, maxPerMin: number): boolean {
   const now = Date.now();
   const win = providerRateWindows.get(bucket);
   if (!win || now >= win.resetAt) {
@@ -702,15 +693,107 @@ function consumeOutboundProviderBudget(url: string): boolean {
   return true;
 }
 
+export async function reportSharedOffRateLimited(): Promise<void> {
+  offUnavailableUntil = Date.now() + 60_000;
+  if (isPersistentKvConfigured()) {
+    try {
+      const cbKey =
+        process.env.NODE_ENV === "production"
+          ? "heybroc:cb:off"
+          : `heybroc:cb:off:${offRateTestEpoch}`;
+      await kvSet(cbKey, String(offUnavailableUntil), 60_000);
+    } catch {
+      // Best-effort KV circuit breaker write
+    }
+  }
+}
+
+/**
+ * Shared Open Food Facts / Open*Facts budget enforced across serverless instances via KV
+ * strictly at or below OFF's published IP limits (<= 10 searches/min, <= 15 product reads/min).
+ */
+export async function consumeSharedOffBudget(urlOrKind: string): Promise<boolean> {
+  ensureLookupRuntimeFreshForFetch();
+  let bucket: "off_search" | "off_product" | "off_sister_search" | "off_sister_product" | "" = "";
+  if (urlOrKind === "off_search") {
+    bucket = "off_search";
+  } else if (urlOrKind === "off_product") {
+    bucket = "off_product";
+  } else if (
+    /openfoodfacts\.org/i.test(urlOrKind) &&
+    !/images\.openfoodfacts\.(?:org|net)/i.test(urlOrKind)
+  ) {
+    if (
+      urlOrKind.includes("search.openfoodfacts.org") ||
+      urlOrKind.includes("/cgi/search.pl") ||
+      urlOrKind.includes("/api/v2/search")
+    ) {
+      bucket = "off_search";
+    } else {
+      bucket = "off_product";
+    }
+  } else if (/open(?:beauty|products|petfood)facts\.org/i.test(urlOrKind)) {
+    bucket =
+      urlOrKind.includes("/cgi/search.pl") || urlOrKind.includes("/api/v2/search")
+        ? "off_sister_search"
+        : "off_sister_product";
+  }
+  if (!bucket) return true;
+  if (Date.now() < offUnavailableUntil) return false;
+  const maxPerMin =
+    bucket === "off_search" || bucket === "off_sister_search"
+      ? OFF_SEARCH_MAX_PER_MIN
+      : OFF_PRODUCT_MAX_PER_MIN;
+  if (isPersistentKvConfigured()) {
+    try {
+      const cbKey =
+        process.env.NODE_ENV === "production"
+          ? "heybroc:cb:off"
+          : `heybroc:cb:off:${offRateTestEpoch}`;
+      const cbVal = await kvGet(cbKey);
+      if (cbVal && Number(cbVal) > Date.now()) {
+        offUnavailableUntil = Number(cbVal);
+        return false;
+      }
+      const kvKey =
+        process.env.NODE_ENV === "production"
+          ? `heybroc:ratelimit:off_global:${bucket}`
+          : `heybroc:ratelimit:off_global:${bucket}:${offRateTestEpoch}`;
+      const count = await kvIncrWithPExpire(kvKey, 60_000, 1);
+      return count <= maxPerMin;
+    } catch {
+      // Fall back to bounded in-memory window if KV experiences transient error
+    }
+  }
+  return consumeLocalWindowBudget(bucket, maxPerMin);
+}
+
+async function consumeOutboundProviderBudget(url: string): Promise<boolean> {
+  if (/open(?:food|beauty|products|petfood)facts\.org/i.test(url)) {
+    return consumeSharedOffBudget(url);
+  }
+  if (url.includes("api.nal.usda.gov") || url.includes("fdc.nal.usda.gov")) {
+    return consumeLocalWindowBudget("usda", 120);
+  }
+  return true;
+}
+
 async function getJson<T>(url: string): Promise<T | null> {
   ensureLookupRuntimeFreshForFetch();
   const isUsda = url.includes("api.nal.usda.gov") || url.includes("fdc.nal.usda.gov");
   const isDsld = url.includes("api.ods.od.nih.gov");
-  if ((isUsda && Date.now() < usdaUnavailableUntil) || (isDsld && Date.now() < dsldUnavailableUntil)) {
+  const isOff =
+    /open(?:food|beauty|products|petfood)facts\.org/i.test(url) &&
+    !/images\.openfoodfacts\.(?:org|net)/i.test(url);
+  if (
+    (isUsda && Date.now() < usdaUnavailableUntil) ||
+    (isDsld && Date.now() < dsldUnavailableUntil) ||
+    (isOff && Date.now() < offUnavailableUntil)
+  ) {
     markLookupOperationalFailure();
     return null;
   }
-  if (!consumeOutboundProviderBudget(url)) {
+  if (!(await consumeOutboundProviderBudget(url))) {
     markLookupOperationalFailure();
     return null;
   }
@@ -724,11 +807,20 @@ async function getJson<T>(url: string): Promise<T | null> {
       if (res.status === 429 || res.status >= 500) {
         markLookupOperationalFailure();
       }
+      if (isOff && res.status === 429) {
+        offConsecutive429s += 1;
+        if (offConsecutive429s >= 3) {
+          await reportSharedOffRateLimited();
+        }
+      }
       if (isDsld && (res.status === 429 || res.status >= 500)) dsldUnavailableUntil = Date.now() + 60_000;
       if (isUsda && (res.status === 429 || res.status >= 502)) {
         usdaUnavailableUntil = Date.now() + 60 * 1000;
       }
       return null;
+    }
+    if (isOff) {
+      offConsecutive429s = 0;
     }
     const type = res.headers.get("content-type") || "";
     if (!type.includes("json")) {
@@ -1330,23 +1422,39 @@ function withSingleIngredientWholeFood<T extends Omit<LookupResult, "ms">>(resul
 const NON_FOOD_VERTICAL_QUERY =
   /\b(shampoo|(?<!dough\s+)conditioner|body\s*wash|shower\s*gel|soap|hand\s*wash|lotion|moisturizer|(?:face|hand|eye|night|day|shaving|diaper|foot|skin|body)\s*cream|cleanser|face\s*wash|(?<!milk\s+|whey\s+)serum|(?:face|facial|skin)\s*toner|sunscreen|spf|deodorant|antiperspirant|toothpaste|mouthwash|lip\s*balm|mascara|(?:makeup|liquid)\s+foundation|concealer|lipstick|makeup|cosmetic|perfume|cologne|body\s*spray|hair\s*spray|hair\s*gel|hair\s*mousse|pomade|shaving|aftershave|diapers?|wipes?|detergent|laundry|cleaner|disinfect\w*|bleach|dish\s*soap|dishwashing|dog\s*food|cat\s*food|pet\s*food|puppy|kitten|kibble|purina|pedigree|friskies|blue\s*buffalo|fancy\s*feast|cesar|iams|rachael\s*ray\s*nutrish|cerave|cetaphil|neutrogena|aveeno|olay|dove\s+(?:soap|wash|shampoo|conditioner|deodorant|lotion|beauty|men)|pantene|tresemme|herbal\s*essences|head\s*&\s*shoulders|garnier|l'?oreal|maybelline|nyx|revlon|covergirl|e\.?l\.?f\.?|old\s*spice|(?:degree|secret|axe|native)\s+(?:deodorant|antiperspirant|body\s*wash|spray)|schmidt'?s|tom'?s\s*of\s*maine|colgate|crest|sensodyne|listerine|thera\s*breath|vaseline|aquaphor|eucerin|nivea|jergens|lubriderm|gold\s*bond|coppertone|banana\s*boat|sun\s*bum|la\s*roche|vichy|the\s+ordinary|dr\s*bronner|method\s+(?:soap|cleaner|wash|detergent)|mrs\.?\s*meyer'?s|seventh\s*generation|ecos)\b/i;
 
+const OFF_KV_TTL_SECONDS = 7 * 24 * 60 * 60;
+
 async function fetchOffProductByCode(
   code: string,
   host = "https://world.openfoodfacts.org",
 ): Promise<OffProduct | null> {
   const cacheKey = `${host}|${code}`;
   const cached = offBarcodeCache.get(cacheKey);
-  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.product;
+  if (cached) {
+    const ttl = cached.product ? CACHE_TTL_MS : 10 * 60 * 1000;
+    if (Date.now() - cached.cachedAt < ttl) return cached.product;
+    offBarcodeCache.delete(cacheKey);
+  }
 
-  let data =
-    host === "https://world.openfoodfacts.org"
-      ? await getJson<{ status?: number; product?: OffProduct }>(
-          `${host}/api/v0/product/${code}.json?fields=${OFF_FIELDS}`,
-        )
-      : null;
-  if (!data?.product) {
+  const kvKey = `heybroc:off_upc:v1:${cacheKey}`;
+  if (isPersistentKvConfigured()) {
+    try {
+      const kvHit = await kvGet<OffProduct>(kvKey);
+      if (kvHit?.code) {
+        offBarcodeCache.set(cacheKey, { product: kvHit, cachedAt: Date.now() });
+        return kvHit;
+      }
+    } catch {
+      // Ignore transient KV read error and query OFF directly
+    }
+  }
+
+  let data = await getJson<{ status?: number; product?: OffProduct }>(
+    `${host}/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+  );
+  if (!data && host === "https://world.openfoodfacts.org") {
     data = await getJson<{ status?: number; product?: OffProduct }>(
-      `${host}/api/v2/product/${code}?fields=${OFF_FIELDS}`,
+      `${host}/api/v0/product/${code}.json?fields=${OFF_FIELDS}`,
     );
   }
   if (data?.product) {
@@ -1355,7 +1463,17 @@ async function fetchOffProductByCode(
       if (oldest) offBarcodeCache.delete(oldest);
     }
     offBarcodeCache.set(cacheKey, { product: data.product, cachedAt: Date.now() });
+    if (isPersistentKvConfigured()) {
+      void kvSet(kvKey, data.product, OFF_KV_TTL_SECONDS).catch(() => {});
+    }
     return data.product;
+  }
+  if (data) {
+    if (offBarcodeCache.size >= MAX_CACHE_ENTRIES) {
+      const oldest = offBarcodeCache.keys().next().value;
+      if (oldest) offBarcodeCache.delete(oldest);
+    }
+    offBarcodeCache.set(cacheKey, { product: null, cachedAt: Date.now() });
   }
   return null;
 }
@@ -1370,12 +1488,18 @@ async function offByBarcode(barcode: string): Promise<Omit<LookupResult, "ms"> |
       ...(code.length === 12 ? [`0${code}`] : []),
     ]),
   );
-  const hosts = ["https://world.openfoodfacts.org", "https://world.openbeautyfacts.org", "https://world.openproductsfacts.org", "https://world.openpetfoodfacts.org"];
-  return firstAvailable(codes.flatMap(c => hosts.map(async host => {
+  const foodHost = "https://world.openfoodfacts.org";
+  for (const c of codes) {
+    const p = await fetchOffProductByCode(c, foodHost);
+    if (p?.code && p.code.replace(/^0+/, "") === code.replace(/^0+/, "") && isUsMarketOffProduct(p) && englishIngredients(p)) {
+      return offToResult(p, c);
+    }
+  }
+  const sisterHosts = ["https://world.openbeautyfacts.org", "https://world.openproductsfacts.org", "https://world.openpetfoodfacts.org"];
+  return firstAvailable(codes.flatMap(c => sisterHosts.map(async host => {
     const p = await fetchOffProductByCode(c, host);
     if (!p?.code || p.code.replace(/^0+/, "") !== code.replace(/^0+/, "")) return null;
     if (!isUsMarketOffProduct(p)) return null;
-    if (host === "https://world.openfoodfacts.org") return englishIngredients(p) ? offToResult(p, c) : null;
     return (p.ingredients_text_en || p.ingredients_text || "").trim() ? verticalResult(p, c, host) : null;
   })));
 }
@@ -1516,17 +1640,8 @@ async function lookupProviders(input: LookupInput): Promise<ProviderResult | nul
   finally { clearTimeout(timer); controller.abort(); }
 }
 
-interface OffSearchHit {
-  code?: string;
-  product_name?: string;
-  product_name_en?: string;
-  brands?: string | string[];
-  categories_tags?: string[];
+interface OffSearchHit extends OffProduct {
   states_tags?: string[];
-  countries_tags?: string[];
-  image_front_url?: string;
-  image_url?: string;
-  image_front_small_url?: string;
 }
 
 const BRAND_SEARCH_AISLE_NOUNS = new Set([
@@ -1542,13 +1657,33 @@ const BRAND_SEARCH_AISLE_NOUNS = new Set([
 ]);
 
 async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null> {
+  const kvSearchKey = `heybroc:off_search:v1:${title.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 120)}`;
+  if (isPersistentKvConfigured()) {
+    try {
+      const kvHit = await kvGet<Omit<LookupResult, "ms">>(kvSearchKey);
+      if (kvHit?.ingredients && isEnglishIngredientText(kvHit.ingredients)) {
+        return kvHit;
+      }
+    } catch {
+      // Ignore transient KV read error
+    }
+  }
+  const cacheSearchResult = (res: Omit<LookupResult, "ms"> | null): Omit<LookupResult, "ms"> | null => {
+    if (res && isPersistentKvConfigured()) {
+      void kvSet(kvSearchKey, res, OFF_KV_TTL_SECONDS).catch(() => {});
+    }
+    return res;
+  };
+
+  const vertical = await openFactsVerticalSearch(title);
+  if (vertical) return cacheSearchResult(vertical);
+
   const toks = tokens(title);
   const firstTok = toks[0] || "";
   const detectedBrandRaw = detectQueryBrand(title);
   const brandSlug = detectedBrandRaw
     ? detectedBrandRaw.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
     : firstTok;
-  // Open Food Facts tags possessive brands as "trader-joe-s"; older records use "trader-joes". Query both.
   const possessiveSlug =
     detectedBrandRaw && /['’]s\b/i.test(detectedBrandRaw)
       ? detectedBrandRaw.toLowerCase().replace(/['’]s\b/g, " s").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
@@ -1602,68 +1737,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
       : `${title} ${usCompletedFilter}`;
   const brandAnchor = detectedBrandRaw ? detectedBrandRaw.toLowerCase() : firstTok;
 
-  // 1. Run Open Food Facts Search-a-licious v3 (US+completed AND query + US+completed brand query) and vertical search concurrently
-  const searchFields =
-    "code,product_name,product_name_en,brands,categories_tags,states_tags,countries_tags,image_front_url,image_url,image_front_small_url";
-  const [v3And, v3Brand, vertical] = await Promise.all([
-    getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(andQuery)}&page_size=16&fields=${searchFields}`,
-    ),
-    getJson<{ hits?: OffSearchHit[] }>(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=24&fields=${searchFields}`,
-    ),
-    openFactsVerticalSearch(title),
-  ]);
-  if (vertical) return vertical;
-
-  const combinedHits: OffSearchHit[] = [];
-  const seenCodes = new Set<string>();
-  for (const h of [...(v3And?.hits || []), ...(v3Brand?.hits || [])]) {
-    const code = (h.code || "").trim();
-    if (!code || seenCodes.has(code)) continue;
-    seenCodes.add(code);
-    combinedHits.push(h);
-  }
-
-  const ranked = combinedHits
-    .filter(
-      (h) =>
-        h.code &&
-        isUsMarketOffProduct(h) &&
-        (!Array.isArray(h.states_tags) || h.states_tags.includes("en:ingredients-completed")),
-    )
-    .map((h) => {
-      const rawProdName = (h.product_name_en || h.product_name || "").trim();
-      if (!rawProdName) return { h, score: 0 };
-      const brandStr = normalizeOffBrand(h.brands);
-      const name = mergeBrandAndTitle(brandStr.split(",")[0]?.trim(), rawProdName);
-      if (!matchesRequestedBrand(title, brandStr, name)) return { h, score: 0 };
-      if (!passesVariantGuard(title, name)) return { h, score: 0 };
-      const r = relevance(title, name, h.categories_tags);
-      if (r < 0.5) return { h, score: 0 };
-      const brandBonus =
-        brandAnchor.length >= 3 &&
-        (brandStr.toLowerCase().includes(brandAnchor) || name.toLowerCase().startsWith(brandAnchor))
-          ? 0.08
-          : 0;
-      const hasImg = Boolean(h.image_front_url || h.image_url || h.image_front_small_url);
-      const codeStr = (h.code || "").trim();
-      const isUsCountry =
-        Array.isArray(h.countries_tags) && h.countries_tags.includes("en:united-states");
-      const isNorthAmericanUpc = /^(?:00?\d{11}|\d{11,12}|0\d{7})$/.test(codeStr);
-      const usMarketBonus =
-        isUsCountry && isNorthAmericanUpc
-          ? 0.25
-          : isNorthAmericanUpc
-            ? 0.14
-            : isUsCountry
-              ? 0.10
-              : 0;
-      return { h, score: r + brandBonus + usMarketBonus + (hasImg ? 0.03 : 0) };
-    })
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4);
+  const searchFields = `${OFF_FIELDS},states_tags`;
 
   const validateFetchedProduct = (p: OffProduct | null, h?: OffSearchHit): Omit<LookupResult, "ms"> | null => {
     if (!p || !isUsMarketOffProduct(p)) return null;
@@ -1684,24 +1758,109 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     return offToResult(p, title);
   };
 
-  if (ranked.length > 0 && !providerSignal.getStore()?.aborted) {
-    const fetched = await Promise.all(
-      ranked.map(({ h }) => (h.code ? fetchOffProductByCode(h.code, "https://world.openfoodfacts.org") : Promise.resolve(null))),
-    );
-    for (let i = 0; i < ranked.length; i++) {
-      const res = validateFetchedProduct(fetched[i], ranked[i].h);
-      if (res) return res;
+  const evaluateHits = async (rawHits: OffSearchHit[] | undefined): Promise<Omit<LookupResult, "ms"> | null> => {
+    if (!rawHits?.length || providerSignal.getStore()?.aborted) return null;
+    const deduped: OffSearchHit[] = [];
+    const seenCodes = new Set<string>();
+    for (const h of rawHits) {
+      const code = (h.code || "").trim();
+      if (!code || seenCodes.has(code)) continue;
+      seenCodes.add(code);
+      deduped.push(h);
     }
+    const ranked = deduped
+      .filter(
+        (h) =>
+          h.code &&
+          isUsMarketOffProduct(h) &&
+          (!Array.isArray(h.states_tags) || h.states_tags.includes("en:ingredients-completed")),
+      )
+      .map((h) => {
+        const rawProdName = (h.product_name_en || h.product_name || "").trim();
+        if (!rawProdName) return { h, score: 0 };
+        const brandStr = normalizeOffBrand(h.brands);
+        const name = mergeBrandAndTitle(brandStr.split(",")[0]?.trim(), rawProdName);
+        if (!matchesRequestedBrand(title, brandStr, name)) return { h, score: 0 };
+        if (!passesVariantGuard(title, name)) return { h, score: 0 };
+        const r = relevance(title, name, h.categories_tags);
+        if (r < 0.5) return { h, score: 0 };
+        const brandBonus =
+          brandAnchor.length >= 3 &&
+          (brandStr.toLowerCase().includes(brandAnchor) || name.toLowerCase().startsWith(brandAnchor))
+            ? 0.08
+            : 0;
+        const hasImg = Boolean(h.image_front_url || h.image_url || h.image_front_small_url);
+        const codeStr = (h.code || "").trim();
+        const isUsCountry =
+          Array.isArray(h.countries_tags) && h.countries_tags.includes("en:united-states");
+        const isNorthAmericanUpc = /^(?:00?\d{11}|\d{11,12}|0\d{7})$/.test(codeStr);
+        const usMarketBonus =
+          isUsCountry && isNorthAmericanUpc
+            ? 0.25
+            : isNorthAmericanUpc
+              ? 0.14
+              : isUsCountry
+                ? 0.10
+                : 0;
+        return { h, score: r + brandBonus + usMarketBonus + (hasImg ? 0.03 : 0) };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    if (!ranked.length) return null;
+
+    // Validate inline hits first (zero product-read requests when Search-a-licious returns inline ingredients)
+    const missingInline: Array<{ idx: number; code: string; h: OffSearchHit }> = [];
+    const results: Array<Omit<LookupResult, "ms"> | null> = new Array(ranked.length).fill(null);
+    for (let i = 0; i < ranked.length; i++) {
+      const { h } = ranked[i];
+      if (englishIngredients(h)) {
+        results[i] = validateFetchedProduct(h, h);
+      } else if (h.code) {
+        missingInline.push({ idx: i, code: h.code, h });
+      }
+    }
+    if (results[0]) return results[0];
+
+    if (missingInline.length > 0 && !providerSignal.getStore()?.aborted) {
+      const fetched = await Promise.all(
+        missingInline.map((m) => fetchOffProductByCode(m.code, "https://world.openfoodfacts.org")),
+      );
+      for (let j = 0; j < missingInline.length; j++) {
+        results[missingInline[j].idx] = validateFetchedProduct(fetched[j], missingInline[j].h);
+      }
+    }
+    for (const r of results) {
+      if (r) return r;
+    }
+    return null;
+  };
+
+  // 1. Primary US Search-a-licious AND query (single search request in the common case)
+  const v3And = await getJson<{ hits?: OffSearchHit[] }>(
+    `https://search.openfoodfacts.org/search?q=${encodeURIComponent(andQuery)}&page_size=20&fields=${searchFields}`,
+  );
+  const fromAnd = await evaluateHits(v3And?.hits);
+  if (fromAnd) return cacheSearchResult(fromAnd);
+
+  // 2. Secondary brand-tag query only if primary AND query returned no validated match
+  if (brandQuery !== andQuery && !providerSignal.getStore()?.aborted) {
+    const v3Brand = await getJson<{ hits?: OffSearchHit[] }>(
+      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=20&fields=${searchFields}`,
+    );
+    const fromBrand = await evaluateHits(v3Brand?.hits);
+    if (fromBrand) return cacheSearchResult(fromBrand);
   }
 
-  // Single-hop fallback to Open Food Facts US CGI search only when Search-a-licious yields no validated match
+  // 3. Single-hop fallback to Open Food Facts US CGI search only when Search-a-licious yields no validated match
   if (providerSignal.getStore()?.aborted) return null;
   const cgiTerms = encodeURIComponent(title.replace(/-/g, " "));
   const cgiRes = await getJson<{ products?: OffProduct[] }>(
     `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${cgiTerms}&search_simple=1&action=process&json=1&page_size=12&tagtype_0=countries&tag_contains_0=contains&tag_0=united-states&fields=${OFF_FIELDS}`,
   );
   const cgiBest = pickBestOff(title, cgiRes?.products);
-  return cgiBest ? offToResult(cgiBest, title) : null;
+  return cacheSearchResult(cgiBest ? offToResult(cgiBest, title) : null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2007,7 +2166,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Simple Truth Organic Unsweetened Applesauce",
     ingredients: "Organic Apples, Water, Ascorbic Acid (Vitamin C) to Maintain Color.",
     imageUrl: "/swaps/produce.png",
-    nutrition: { caloriesKcal100g: 44, sugarsG100g: 9.7, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 1.8, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
+    nutrition: { caloriesKcal100g: 44, sugarsG100g: 9.7, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 1.8, proteinG100g: 0, fruitsVegNutsPct: 100, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.kroger.com/p/simple-truth-organic-unsweetened-applesauce-cups/0001111085432",
     verifiedAt: "2026-11-08",
   },
@@ -2026,7 +2185,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Good & Gather Organic Creamy Peanut Butter",
     ingredients: "Organic Dry Roasted Peanuts, Sea Salt.",
     imageUrl: "/swaps/peanutbutter.png",
-    nutrition: { caloriesKcal100g: 593, sugarsG100g: 6.2, saturatedFatG100g: 7.8, sodiumMg100g: 250, fiberG100g: 6.2, proteinG100g: 25.0, fruitsVegNutsPct: 99, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
+    nutrition: { caloriesKcal100g: 593, sugarsG100g: 6.2, saturatedFatG100g: 7.8, sodiumMg100g: 250, fiberG100g: 6.2, proteinG100g: 25.0, fruitsVegNutsPct: 99, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.target.com/p/organic-unsweetened-creamy-peanut-butter-16oz-good-38-gather-8482/-/A-54516890",
     verifiedAt: "2026-11-08",
   },
@@ -2064,21 +2223,21 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /^(?=.*\bdoritos\b)(?=.*\b(?:simply\s+nkd|nkd)\b)(?=.*\bcool\s+ranch\b).*$/i,
     brand: "Doritos",
     title: "Doritos Simply NKD Cool Ranch Tortilla Chips",
-    ingredients: "Whole Corn, Corn and/or Sunflower Oil, Maltodextrin (Made from Corn), Salt, Tomato Powder, Corn Starch, Lactose, Whey, Skim Milk, Onion Powder, Sugar, Garlic Powder, Monosodium Glutamate, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Dextrose, Malic Acid, Buttermilk, Natural and Artificial Flavors, Sodium Acetate, Spice, Citric Acid, Disodium Inosinate, and Disodium Guanylate.",
+    ingredients: "Corn, Vegetable Oil (Corn, Canola, Soybean, and/or Sunflower Oil), and Less than 2% of Corn Maltodextrin, Buttermilk, Salt, Tomato Powder, Potassium Salt, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Onion Powder, Whey, Garlic Powder, Sugar, Skim Milk, Natural Flavors, Citric Acid, Lactic Acid, and Spices.",
     imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Simply%20NKD%20Cool%20Ranch",
-    nutrition: { caloriesKcal100g: 500, sugarsG100g: 3.6, saturatedFatG100g: 3.6, sodiumMg100g: 607, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
-    sourceUrl: "https://www.target.com/p/doritos-simply-nkd-cool-ranch-flavored-tortilla-chips-8-oz/-/A-94994023",
-    verifiedAt: "2026-11-08",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 1.8, saturatedFatG100g: 3.6, sodiumMg100g: 500, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://smartlabel.pepsico.info/028400794732-0001-en-US/index.html",
+    verifiedAt: "2026-11-17",
   },
   {
     match: /^(?=.*\bdoritos\b)(?=.*\b(?:simply\s+nkd|nkd)\b)(?!.*\bcool\s+ranch\b).*$/i,
     brand: "Doritos",
     title: "Doritos Simply NKD Nacho Cheese Tortilla Chips",
-    ingredients: "Whole Corn, Corn and/or Sunflower Oil, Maltodextrin (Made from Corn), Salt, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey, Monosodium Glutamate, Buttermilk, Romano Cheese (Part-Skim Cow's Milk, Cheese Cultures, Salt, Enzymes), Whey Protein Concentrate, Onion Powder, Corn Flour, Natural and Artificial Flavor, Dextrose, Tomato Powder, Lactose, Spices, Lactic Acid, Citric Acid, Sugar, Garlic Powder, Skim Milk, Red and Green Bell Pepper Powder, Yeast Extract, Disodium Inosinate, and Disodium Guanylate.",
-    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Simply%20NKD",
-    nutrition: { caloriesKcal100g: 500, sugarsG100g: 3.6, saturatedFatG100g: 3.6, sodiumMg100g: 640, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
-    sourceUrl: "https://www.target.com/p/doritos-simply-nkd-nacho-cheese-flavored-tortilla-chips-8-oz/-/A-94994022",
-    verifiedAt: "2026-11-08",
+    ingredients: "Corn, Vegetable Oil (Corn, Canola, Soybean, and/or Sunflower Oil), Corn Maltodextrin, and Less than 2% of Salt, Cheddar Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey, Tomato Powder, Potassium Salt, Onion Powder, Buttermilk, Romano Cheese (Milk, Cheese Cultures, Salt, Enzymes), Whey Protein Concentrate, Natural Flavors, Spices, Citric Acid, Lactic Acid, Garlic Powder, Sugar, Red and Green Bell Peppers, and Yeast Extract.",
+    imageUrl: "https://www.heybroc.com/api/product-image?q=Doritos%20Simply%20NKD%20Nacho%20Cheese",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 1.8, saturatedFatG100g: 3.6, sodiumMg100g: 536, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://smartlabel.pepsico.info/028400794756-0001-en-US/index.html",
+    verifiedAt: "2026-11-17",
   },
   {
     match: /\b(simply\s+doritos\s+organic|doritos\s+simply\s+organic|doritos.*organic\s+white\s+cheddar)\b/i,
@@ -2691,7 +2850,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Organic Slow-Simmered Bone Broth",
     ingredients: "Organic Bone Broth (Water, Organic Chicken Bones, Organic Onions, Organic Carrots, Organic Celery), Organic Apple Cider Vinegar, Sea Salt, Organic Rosemary, Organic Sage, Organic Thyme, Organic Black Pepper.",
     imageUrl: "/swaps/turkey.jpg",
-    nutrition: { caloriesKcal100g: 19, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 150, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 10, nutriScoreGrade: "a", isOrganic: true, isWholeFood: true },
+    nutrition: { caloriesKcal100g: 19, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 150, fiberG100g: 0, proteinG100g: 4.2, fruitsVegNutsPct: 10, nutriScoreGrade: "a", isOrganic: true, isWholeFood: false },
     sourceUrl: "https://www.kettleandfire.com/products/chicken-bone-broth",
     verifiedAt: "2026-11-08",
   },
@@ -2776,7 +2935,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(organic|alexandre|kalona|maple hill)\b.*\b(eggnog|egg nog)\b/i,
+    match: /\b(organic\s+valley)\b.*\b(eggnog|egg\s+nog)\b|\b(eggnog|egg\s+nog)\b.*\b(organic\s+valley)\b/i,
     brand: "Organic Valley",
     title: "Organic Eggnog",
     ingredients: "Organic Grade A Milk, Organic Grade A Cream, Organic Cane Sugar, Organic Egg Yolks, Organic Vanilla Extract, Organic Nutmeg.",
@@ -2806,7 +2965,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(red bird|peppermint\s+(candy|puffs?|mints?|bark|stick|canes?)|candy\s+(puffs?|canes?)|starlight\s+mints?|butter\s+mints?|dinner\s+mints?|hard\s+cand(y|ies)|lifesavers|jolly\s+rancher)\b/i,
+    match: /\b(red bird|peppermint\s+(candy|puffs?|mints?|bark|stick|canes?)|candy\s+(puffs?|canes?)|starlight\s+mints?|butter\s+mints?|dinner\s+mints?|hard\s+cand(y|ies))\b/i,
     brand: "Red Bird",
     title: "Peppermint Candy Puffs",
     ingredients: "Pure Cane Sugar, Invert Sugar, Corn Syrup, Natural Oil of Peppermint, Red 40 (Artificial Color).",
@@ -3142,7 +3301,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(butterball)\b.*\b(turkey|whole\s+turkey|young\s+turkey|breast)\b/i,
+    match: /^(?!.*\b(bacon|ground|burger|burgers|patty|patties|sausage|meatball|meatballs|deli|sliced|franks?|hot\s+dogs?|jerky|smoked|tenderloin|cutlets?)\b).*\b(butterball)\b.*\b(turkey|whole\s+turkey|young\s+turkey|breast)\b/i,
     brand: "Butterball",
     title: "All Natural Whole Turkey (With Salt Solution)",
     keywords: ["frozen", "young"],
@@ -3263,7 +3422,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(birds\s+eye|green\s+giant|steamfresh|frozen\s+vegetables?)\b.*\b(sauced|cheesy|cheese\s+sauce|alfredo|garlic\s+butter|butter\s+sauce|teriyaki|glaze|seasoned\s+asian)\b/i,
+    match: /\b(birds\s+eye|steamfresh|frozen\s+vegetables?)\b.*\b(sauced|cheesy|cheese\s+sauce|alfredo|garlic\s+butter|butter\s+sauce|teriyaki|glaze|seasoned\s+asian)\b/i,
     brand: "Birds Eye",
     title: "Sauced Frozen Vegetables",
     ingredients: "Vegetables (Broccoli, Carrots, Corn), Water, Cheddar Cheese (Cultured Milk, Salt, Enzymes, Annatto), Modified Corn Starch, Skim Milk, Whey, Butter (Cream, Salt), Soybean Oil, Salt, Sodium Phosphate, Xanthan Gum, Natural Flavor, Annatto and Paprika Extract (Color).",
@@ -3273,7 +3432,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(birds\s+eye|green\s+giant|steamfresh|asian\s+medley|stir[- ]?fry\s+vegetables?|california\s+blend|normandy\s+blend|mixed\s+vegetables?|frozen\s+vegetables?|peas\s+and\s+carrots|broccoli\s+florets)\b/i,
+    match: /\b(birds\s+eye|steamfresh|asian\s+medley|stir[- ]?fry\s+vegetables?|california\s+blend|normandy\s+blend|mixed\s+vegetables?|frozen\s+vegetables?|peas\s+and\s+carrots|broccoli\s+florets)\b/i,
     brand: "Birds Eye Steamfresh",
     title: "Steamfresh Frozen Vegetables",
     ingredients: "100% Flash-Frozen Whole Vegetables: Broccoli, Carrots, Baby Cob Corn, Sugar Snap Peas.",
@@ -3499,7 +3658,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Chocolate Sea Salt Whole Food Protein Bar",
     ingredients: "Dates, Egg Whites, Cashews, Almonds, Chocolate, Cocoa, Natural Flavors, Sea Salt.",
     imageUrl: "/swaps/fruitbar.png",
-    nutrition: { caloriesKcal100g: 404, sugarsG100g: 28.8, saturatedFatG100g: 3.8, sodiumMg100g: 500, fiberG100g: 9.6, proteinG100g: 23.1, fruitsVegNutsPct: 75, nutriScoreGrade: "a", isWholeFood: true },
+    nutrition: { caloriesKcal100g: 404, sugarsG100g: 28.8, saturatedFatG100g: 3.8, sodiumMg100g: 500, fiberG100g: 9.6, proteinG100g: 23.1, fruitsVegNutsPct: 75, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.rxbar.com/en_US/shop/protein-bars/chocolate-sea-salt-box-of-12.html",
     verifiedAt: "2026-11-09",
   },
@@ -3509,7 +3668,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Fruit & Nut Whole Food Bar",
     ingredients: "Dates, Peanuts, Unsweetened Chocolate, Sea Salt.",
     imageUrl: "/swaps/snacks.jpg",
-    nutrition: { caloriesKcal100g: 444, sugarsG100g: 35.5, saturatedFatG100g: 6.5, sodiumMg100g: 140, fiberG100g: 8.9, proteinG100g: 11.1, fruitsVegNutsPct: 90, nutriScoreGrade: "c", isWholeFood: true },
+    nutrition: { caloriesKcal100g: 444, sugarsG100g: 35.5, saturatedFatG100g: 6.5, sodiumMg100g: 140, fiberG100g: 8.9, proteinG100g: 11.1, fruitsVegNutsPct: 90, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.larabar.com/our-products/larabar/peanut-butter-chocolate-chip",
     verifiedAt: "2026-11-08",
   },
@@ -3529,7 +3688,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Classic Hass Avocado Guacamole",
     ingredients: "Hass Avocados, Distilled Vinegar, Jalapeño Pepper, Sea Salt, Dehydrated Onion, Granulated Garlic.",
     imageUrl: "/swaps/salsa.png",
-    nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 2.5, sodiumMg100g: 370, fiberG100g: 6.5, proteinG100g: 2.0, fruitsVegNutsPct: 95, nutriScoreGrade: "a", isWholeFood: true },
+    nutrition: { caloriesKcal100g: 175, sugarsG100g: 1.0, saturatedFatG100g: 2.5, sodiumMg100g: 370, fiberG100g: 6.5, proteinG100g: 2.0, fruitsVegNutsPct: 95, nutriScoreGrade: "a", isWholeFood: false },
     sourceUrl: "https://www.eatwholly.com/products/wholly-guacamole/classic-guacamole/",
     verifiedAt: "2026-11-08",
   },
@@ -3614,7 +3773,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(wasabi[- ]?o|s\s*&\s*b.*wasabi|real\s+wasabi\s+paste|authentic\s+japanese.*wasabi|wasabi\s+paste)\b/i,
+    match: /\b(wasabi[- ]?o|real\s+wasabi\s+paste|authentic\s+japanese.*wasabi|wasabi\s+paste)\b/i,
     brand: "Wasabi-O",
     title: "Wasabi-O Real Prepared Wasabi Paste",
     ingredients: "Water, Wasabi Japonica, Horseradish, Rice Bran Oil, Salt, Sorbitol, Citric Acid, Xanthan Gum, Turmeric, Spirulina Extract.",
@@ -3709,7 +3868,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Stonyfield Organic Whole Milk Plain Yogurt",
     ingredients: "Cultured Pasteurized Organic Whole Milk, Pectin, Vitamin D3. Live and Active Cultures: S. thermophilus, L. bulgaricus, L. acidophilus, Bifidus, L. paracasei, and L. rhamnosus.",
     imageUrl: "/swaps/yogurt.jpg",
-    nutrition: { caloriesKcal100g: 65, sugarsG100g: 4.1, saturatedFatG100g: 2.1, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    nutrition: { caloriesKcal100g: 65, sugarsG100g: 4.1, saturatedFatG100g: 2.1, sodiumMg100g: 47, fiberG100g: 0, proteinG100g: 3.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.stonyfield.com/products/whole-milk-plain-32oz/",
     verifiedAt: "2026-11-10",
   },
@@ -3719,7 +3878,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Organic Valley Organic Raw Sharp Cheddar Cheese",
     ingredients: "Organic Unpasteurized Cultured Milk, Salt, Vegetarian Enzymes.",
     imageUrl: "/swaps/cheese.png",
-    nutrition: { caloriesKcal100g: 393, sugarsG100g: 0, saturatedFatG100g: 21.4, sodiumMg100g: 643, fiberG100g: 0, proteinG100g: 25.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: true, isOrganic: true },
+    nutrition: { caloriesKcal100g: 393, sugarsG100g: 0, saturatedFatG100g: 21.4, sodiumMg100g: 643, fiberG100g: 0, proteinG100g: 25.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.organicvalley.coop/products/cheese/cheddar/raw-sharp-cheddar-cheese-8-oz/",
     verifiedAt: "2026-11-10",
   },
@@ -3729,7 +3888,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Applegate Organics Oven Roasted Turkey Breast",
     ingredients: "Organic Turkey Breast, Water. Contains Less Than 2% Of The Following: Salt, Organic Potato Starch, Organic Rosemary Extract.",
     imageUrl: "/swaps/turkey.jpg",
-    nutrition: { caloriesKcal100g: 89, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 607, fiberG100g: 0, proteinG100g: 19.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    nutrition: { caloriesKcal100g: 89, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 607, fiberG100g: 0, proteinG100g: 19.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://applegate.com/products/applegate-organics-oven-roasted-turkey-breast",
     verifiedAt: "2026-11-10",
   },
@@ -3739,7 +3898,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     title: "Lotus Foods Organic Millet & Brown Rice Ramen",
     ingredients: "Organic Brown Rice Flour, Organic Millet Flour.",
     imageUrl: "/swaps/soup.png",
-    nutrition: { caloriesKcal100g: 371, sugarsG100g: 0, saturatedFatG100g: 0.7, sodiumMg100g: 0, fiberG100g: 4.3, proteinG100g: 8.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: true, isOrganic: true },
+    nutrition: { caloriesKcal100g: 371, sugarsG100g: 0, saturatedFatG100g: 0.7, sodiumMg100g: 0, fiberG100g: 4.3, proteinG100g: 8.6, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isWholeFood: false, isOrganic: true },
     sourceUrl: "https://www.lotusfoods.com/products/organic-millet-brown-rice-ramen-4-pack",
     verifiedAt: "2026-11-10",
   },
@@ -3750,7 +3909,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     keywords: ["pasta"],
     ingredients: "Italian Whole Peeled Tomatoes, Olive Oil, Onions, Salt, Garlic, Basil, Black Pepper, Oregano.",
     imageUrl: "/swaps/marinara.png",
-    nutrition: { caloriesKcal100g: 80, sugarsG100g: 3.2, saturatedFatG100g: 0.8, sodiumMg100g: 336, fiberG100g: 1.6, proteinG100g: 1.6, fruitsVegNutsPct: 90, nutriScoreGrade: "a", isWholeFood: true, isOrganic: false },
+    nutrition: { caloriesKcal100g: 80, sugarsG100g: 3.2, saturatedFatG100g: 0.8, sodiumMg100g: 336, fiberG100g: 1.6, proteinG100g: 1.6, fruitsVegNutsPct: 90, nutriScoreGrade: "a", isWholeFood: false, isOrganic: false },
     sourceUrl: "https://www.raos.com/products/marinara-sauce",
     verifiedAt: "2026-11-10",
   },

@@ -226,16 +226,38 @@ export default function AuthModal({
   );
 
   const serverOAuthNonceRef = useRef<string>("");
-  const takeFreshOAuthNonce = useCallback((fallbackBytesLen = 16) => {
-    if (serverOAuthNonceRef.current) {
+  const pendingNativeAppleNonceRef = useRef<string>("");
+
+  const replenishServerOAuthNonce = useCallback(() => {
+    fetch("/api/auth?oauthNonce=1")
+      .then((r) => r.json())
+      .then((d: { oauthNonce?: string }) => {
+        if (d?.oauthNonce && String(d.oauthNonce).trim().startsWith("srvn_")) {
+          serverOAuthNonceRef.current = String(d.oauthNonce).trim();
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const ensureFreshOAuthNonce = useCallback(async (): Promise<string> => {
+    if (serverOAuthNonceRef.current && serverOAuthNonceRef.current.startsWith("srvn_")) {
       const issued = serverOAuthNonceRef.current;
       serverOAuthNonceRef.current = "";
+      replenishServerOAuthNonce();
       return issued;
     }
-    const bytes = new Uint8Array(fallbackBytesLen);
-    window.crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  }, []);
+    try {
+      const cfg = await fetch("/api/auth?oauthNonce=1").then((r) => r.json());
+      if (cfg?.oauthNonce && String(cfg.oauthNonce).trim().startsWith("srvn_")) {
+        const issued = String(cfg.oauthNonce).trim();
+        replenishServerOAuthNonce();
+        return issued;
+      }
+    } catch {
+      // Handled by caller if empty
+    }
+    return "";
+  }, [replenishServerOAuthNonce]);
 
   const launchWebAppleOAuth = useCallback(
     async (knownClientId?: string) => {
@@ -269,7 +291,12 @@ export default function AuthModal({
         return;
       }
 
-      const nonce = takeFreshOAuthNonce(16);
+      const nonce = await ensureFreshOAuthNonce();
+      if (!nonce) {
+        setAppleBusy(false);
+        setError("Could not initialize secure Sign in with Apple session. Please check your connection and try again.");
+        return;
+      }
       const stateBytes = new Uint8Array(12);
       window.crypto.getRandomValues(stateBytes);
       const state = `hba_${Array.from(stateBytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
@@ -307,7 +334,7 @@ export default function AuthModal({
         }
       }, 600);
     },
-    [appleClientId, takeFreshOAuthNonce]
+    [appleClientId, ensureFreshOAuthNonce]
   );
 
   // Fetch server-configured GOOGLE_CLIENT_ID / APPLE_SERVICE_ID and consume any pending mobile redirect token
@@ -379,6 +406,7 @@ export default function AuthModal({
         window as unknown as {
           __heybrocNativeAppleAuth?: (res: {
             idToken?: string;
+            nonce?: string;
             email?: string;
             displayName?: string;
             canceled?: boolean;
@@ -388,6 +416,8 @@ export default function AuthModal({
         }
       ).__heybrocNativeAppleAuth = (res) => {
         if (cancelled) return;
+        const issuedNativeNonce = res?.nonce || pendingNativeAppleNonceRef.current || undefined;
+        pendingNativeAppleNonceRef.current = "";
         if (res?.canceled) {
           setAppleBusy(false);
           return;
@@ -402,7 +432,7 @@ export default function AuthModal({
           return;
         }
         if (res?.idToken) {
-          void exchangeOAuthIdToken("apple", res.idToken, res.email, res.displayName);
+          void exchangeOAuthIdToken("apple", res.idToken, res.email, res.displayName, issuedNativeNonce);
         } else {
           setAppleBusy(false);
         }
@@ -512,10 +542,14 @@ export default function AuthModal({
       return;
     }
 
+    const nonce = await ensureFreshOAuthNonce();
+    if (!nonce) {
+      setError("Could not initialize secure Google Sign-In session. Please check your connection and try again.");
+      return;
+    }
     const randomBytes = new Uint8Array(16);
     window.crypto.getRandomValues(randomBytes);
     const state = `hb_${Array.from(randomBytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
-    const nonce = takeFreshOAuthNonce(16);
     window.sessionStorage.setItem("heybroc_oauth_state", state);
     window.sessionStorage.setItem("heybroc_oauth_nonce", nonce);
 
@@ -572,18 +606,24 @@ export default function AuthModal({
       const nativeBridge = win.webkit?.messageHandlers?.heybrocNative;
       if (win.__HEYBROC_NATIVE_APPLE_AUTH__ && typeof controllerBridge?.postMessage === "function") {
         setAppleBusy(true);
+        const nonce = await ensureFreshOAuthNonce();
+        pendingNativeAppleNonceRef.current = nonce;
         try {
-          controllerBridge.postMessage({ action: "apple-sign-in" });
+          controllerBridge.postMessage({ action: "apple-sign-in", ...(nonce ? { nonce } : {}) });
           return;
         } catch {
+          pendingNativeAppleNonceRef.current = "";
           setAppleBusy(false);
         }
       } else if (win.__HEYBROC_NATIVE_APPLE_AUTH__ && typeof nativeBridge?.postMessage === "function") {
         setAppleBusy(true);
+        const nonce = await ensureFreshOAuthNonce();
+        pendingNativeAppleNonceRef.current = nonce;
         try {
-          nativeBridge.postMessage({ action: "apple-sign-in" });
+          nativeBridge.postMessage({ action: "apple-sign-in", ...(nonce ? { nonce } : {}) });
           return;
         } catch {
+          pendingNativeAppleNonceRef.current = "";
           setAppleBusy(false);
         }
       }

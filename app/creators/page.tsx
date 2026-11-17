@@ -9,6 +9,7 @@ type CreatorPayoutMethod =
   | "paypal"
   | "venmo"
   | "zelle"
+  | "ach"
   | "manual";
 
 interface CreatorSummary {
@@ -35,7 +36,12 @@ interface CreatorPayoutRecord {
   code: string;
   amount: number;
   method: CreatorPayoutMethod;
-  status: "paid" | "recorded";
+  status:
+    | "paid"
+    | "recorded"
+    | "pending"
+    | "pending_reconciliation"
+    | "failed";
   destination?: string;
   stripeTransferId?: string;
   note?: string;
@@ -333,10 +339,17 @@ export default function SelfServeCreatorsPage() {
           >
             Earn{" "}
             <b>
-              {usd(annualPayout)} ({PRICING.defaultCommissionPct}%)
+              {PRICING.defaultCommissionPct}% commission on every new paid Pro
+              signup&apos;s first billing cycle
             </b>{" "}
-            on every annual Pro signup across{" "}
-            <b>iPhone (App Store), Android (Google Play), and Web</b> — plus give
+            (
+            <b>
+              {usd(commissionFor("annual", PRICING.defaultCommissionPct))} on
+              annual or{" "}
+              {usd(commissionFor("monthly", PRICING.defaultCommissionPct))} on
+              monthly
+            </b>
+            ) across <b>iPhone (App Store), Android, and Web</b> — plus give
             your followers a <b>7-Day Free Family Pro Trial ($0 Today)</b>.
           </p>
         </div>
@@ -553,7 +566,8 @@ export default function SelfServeCreatorsPage() {
                   borderRadius: 999,
                 }}
               >
-                {creator.commissionPct}% Commission ({usd(annualPayout)}/yr sub)
+                {creator.commissionPct}% First-Cycle Commission ({usd(annualPayout)}{" "}
+                annual / {usd(monthlyPayout)} monthly)
               </span>
             </div>
 
@@ -870,6 +884,7 @@ export default function SelfServeCreatorsPage() {
                         <option value="stripe_connect">
                           Stripe Express (Direct Bank)
                         </option>
+                        <option value="ach">ACH Bank Transfer</option>
                         <option value="paypal">PayPal</option>
                         <option value="venmo">Venmo</option>
                         <option value="zelle">Zelle</option>
@@ -886,7 +901,7 @@ export default function SelfServeCreatorsPage() {
                           marginBottom: 4,
                         }}
                       >
-                        PayPal / Venmo / Zelle Handle
+                        PayPal / Venmo / Zelle / ACH Handle
                       </label>
                       <input
                         type="text"
@@ -1053,8 +1068,10 @@ export default function SelfServeCreatorsPage() {
                 <b>{creator?.code || "YOURCODE"}</b> inside HeyBroc to get 7
                 days of Family Pro free!&rdquo;
               </i>{" "}
-              (Earns {usd(annualPayout)} on annual or {usd(monthlyPayout)}/mo on
-              monthly across Apple, Google Play &amp; Web.)
+              (Earns {creator?.commissionPct ?? PRICING.defaultCommissionPct}%
+              commission on every new paid Pro signup&apos;s first billing cycle
+              — {usd(annualPayout)} on annual or {usd(monthlyPayout)} on monthly
+              across iPhone (App Store), Android, and Web.)
             </li>
           </ol>
 

@@ -710,7 +710,7 @@ export async function issueServerOAuthNonce(): Promise<string> {
 }
 
 async function hasIssuedServerOAuthNonce(rawNonce: string): Promise<boolean> {
-  if (!rawNonce.startsWith("srvn_")) return true;
+  if (!rawNonce || !rawNonce.startsWith("srvn_")) return false;
   const hash = crypto.createHash("sha256").update(rawNonce, "utf8").digest("hex");
   const key = `${OAUTH_SERVER_NONCE_PREFIX}${hash}`;
   const existing = await kvGet<{ issuedAt?: number }>(key).catch(() => null);
@@ -718,7 +718,7 @@ async function hasIssuedServerOAuthNonce(rawNonce: string): Promise<boolean> {
 }
 
 async function consumeServerOAuthNonceIfIssued(rawNonce: string): Promise<boolean> {
-  if (!rawNonce.startsWith("srvn_")) return true;
+  if (!rawNonce || !rawNonce.startsWith("srvn_")) return false;
   const hash = crypto.createHash("sha256").update(rawNonce, "utf8").digest("hex");
   const key = `${OAUTH_SERVER_NONCE_PREFIX}${hash}`;
   const existing = await kvGetDel<{ issuedAt?: number }>(key).catch(() => null);
@@ -801,12 +801,10 @@ async function verifyOidcJwtWithJwks(params: {
     }
     const cleanExpectedNonce = (params.expectedNonce || "").trim();
     const tokenNonce = typeof payload.nonce === "string" ? payload.nonce.trim() : "";
-    if (cleanExpectedNonce) {
-      if (!tokenNonce || !matchesExpectedOidcNonce(tokenNonce, cleanExpectedNonce)) {
-        return { ok: false, email: "" };
-      }
-    } else if (tokenNonce) {
-      // Never allow a nonce-bound Google or Apple ID token to be replayed without supplying its matching nonce
+    if (!cleanExpectedNonce || !cleanExpectedNonce.startsWith("srvn_")) {
+      return { ok: false, email: "" };
+    }
+    if (!tokenNonce || !matchesExpectedOidcNonce(tokenNonce, cleanExpectedNonce)) {
       return { ok: false, email: "" };
     }
     if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {

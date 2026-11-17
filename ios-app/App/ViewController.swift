@@ -3,6 +3,52 @@ import WebKit
 import AVFoundation
 import AuthenticationServices
 import StoreKit
+import CryptoKit
+import Security
+
+extension HeyBrocSharedPrefs {
+    private static let creatorCodeKey = "heybroc_creator_code"
+
+    static func normalizeCreatorCode(_ raw: String?) -> String {
+        let trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let cleaned = String(trimmed.filter { ch in
+            (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "_" || ch == "-"
+        }.prefix(32))
+        return cleaned.count >= 2 ? cleaned : ""
+    }
+
+    static var creatorCode: String {
+        get {
+            let group = UserDefaults(suiteName: appGroupSuite)
+            if let grouped = group?.string(forKey: creatorCodeKey) {
+                let norm = normalizeCreatorCode(grouped)
+                if !norm.isEmpty {
+                    if UserDefaults.standard.string(forKey: creatorCodeKey) != norm {
+                        UserDefaults.standard.set(norm, forKey: creatorCodeKey)
+                    }
+                    return norm
+                }
+            }
+            let std = normalizeCreatorCode(UserDefaults.standard.string(forKey: creatorCodeKey))
+            if !std.isEmpty {
+                group?.set(std, forKey: creatorCodeKey)
+                return std
+            }
+            return ""
+        }
+        set {
+            let norm = normalizeCreatorCode(newValue)
+            let group = UserDefaults(suiteName: appGroupSuite)
+            if norm.isEmpty {
+                UserDefaults.standard.removeObject(forKey: creatorCodeKey)
+                group?.removeObject(forKey: creatorCodeKey)
+            } else {
+                UserDefaults.standard.set(norm, forKey: creatorCodeKey)
+                group?.set(norm, forKey: creatorCodeKey)
+            }
+        }
+    }
+}
 
 private final class WeakHostScriptMessageProxy: NSObject, WKScriptMessageHandler {
     weak var delegate: WKScriptMessageHandler?
@@ -29,6 +75,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var isShowingOfflineFallback = false
     private var storeUpdatesTask: Task<Void, Never>?
     private var didRunSmokeTest = false
+    private var pendingAppleOAuthNonce: String?
 
     deinit {
         storeUpdatesTask?.cancel()
@@ -233,6 +280,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         guard (url.scheme ?? "").lowercased() == "heybroc" else { return }
         let host = (url.host ?? "").lowercased()
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        if let rawCode = comps?.queryItems?.first(where: { $0.name == "code" || $0.name == "ref" })?.value {
+            let normCode = HeyBrocSharedPrefs.normalizeCreatorCode(rawCode)
+            if !normCode.isEmpty {
+                HeyBrocSharedPrefs.creatorCode = normCode
+                syncCreatorCodeToWebView(normCode)
+            }
+        }
         switch host {
         case "upgrade", "pro":
             presentNativeProSheet()
@@ -477,6 +531,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let devId = jsEscapeSingleQuoted(HeyBrocSharedPrefs.deviceId)
         let devSec = jsEscapeSingleQuoted(HeyBrocSharedPrefs.deviceSecret ?? "")
         let storeVal = jsEscapeSingleQuoted(HeyBrocSharedPrefs.activeStore)
+        let rawCreator = HeyBrocSharedPrefs.creatorCode
+        let creatorVal = jsEscapeSingleQuoted(rawCreator)
         let preferSB = HeyBrocSharedPrefs.preferStoreBrand ? "true" : "false"
         let isProVal = HeyBrocSharedPrefs.isPro ? "true" : "false"
         let shouldWritePrefs = (forceOverwriteWatchlist || HeyBrocSharedPrefs.hasSavedPreferences) ? "true" : "false"
@@ -490,6 +546,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
             if ('\(devSec)'.length > 0) {
               localStorage.setItem('heybroc_device_secret', '\(devSec)');
+            }
+            if ('\(creatorVal)'.length >= 2 && !'\(creatorVal)'.startsWith('BROC-') && localStorage.getItem('cleancart_creator_v1') === null) {
+              localStorage.setItem('cleancart_creator_v1', JSON.stringify({ code: '\(creatorVal)', name: '\(creatorVal)' }));
             }
             if (\(isProVal)) {
               localStorage.setItem('heybroc_is_pro', '1');
@@ -520,6 +579,48 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private func syncNativePrefsToWebView(forceOverwrite: Bool = true) {
         let js = buildPrefsSeedJS(dispatchEvent: true, forceOverwriteWatchlist: forceOverwrite)
         webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func syncCreatorCodeToWebView(_ code: String) {
+        let norm = HeyBrocSharedPrefs.normalizeCreatorCode(code)
+        let escaped = jsEscapeSingleQuoted(norm)
+        let js: String
+        if norm.isEmpty {
+            js = "try { localStorage.removeItem('cleancart_creator_v1'); } catch (_) {}"
+        } else if !norm.hasPrefix("BROC-") {
+            js = "try { localStorage.setItem('cleancart_creator_v1', JSON.stringify({ code: '\(escaped)', name: '\(escaped)' })); } catch (_) {}"
+        } else {
+            return
+        }
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func syncCreatorCodeFromWebView(completion: ((String) -> Void)? = nil) {
+        guard let webView = self.webView else {
+            completion?(HeyBrocSharedPrefs.creatorCode)
+            return
+        }
+        let js = """
+        (function() {
+          try {
+            var raw = localStorage.getItem('cleancart_creator_v1');
+            if (!raw) return '';
+            var parsed = JSON.parse(raw);
+            return (parsed && typeof parsed.code === 'string') ? parsed.code : '';
+          } catch (_) {
+            return '';
+          }
+        })();
+        """
+        webView.evaluateJavaScript(js) { result, _ in
+            if let raw = result as? String {
+                let norm = HeyBrocSharedPrefs.normalizeCreatorCode(raw)
+                if !norm.isEmpty && HeyBrocSharedPrefs.creatorCode.isEmpty {
+                    HeyBrocSharedPrefs.creatorCode = norm
+                }
+            }
+            completion?(HeyBrocSharedPrefs.creatorCode)
+        }
     }
 
     private func presentLiveStoreBrowser(initialStoreKey: String? = nil, initialURLString: String? = nil) {
@@ -670,6 +771,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let devSec = payloadDict?["deviceSecret"] as? String
         let token = payloadDict?["authToken"] as? String
         let isPro = payloadDict?["isPro"] as? Bool
+        let incomingCreator = (payloadDict?["creatorCode"] as? String) ?? (payloadDict?["code"] as? String)
+        let incomingOAuthNonce = (payloadDict?["nonce"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if action == "sync-preferences" {
             if let dietary = dietary {
@@ -693,6 +796,12 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             if let pro = isPro {
                 HeyBrocSharedPrefs.isPro = pro
             }
+            if let incomingCreator = incomingCreator {
+                let norm = HeyBrocSharedPrefs.normalizeCreatorCode(incomingCreator)
+                if !norm.isEmpty {
+                    HeyBrocSharedPrefs.creatorCode = norm
+                }
+            }
             return
         }
 
@@ -706,8 +815,14 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             case "open-live-shop", "openStoreBrowser":
                 self.presentLiveStoreBrowser(initialStoreKey: storeKey, initialURLString: targetURL)
             case "apple-sign-in":
-                self.startNativeAppleSignIn()
+                self.startNativeAppleSignIn(providedNonce: incomingOAuthNonce)
             case "upgrade-pro", "managePro", "manage-pro":
+                if let incomingCreator = incomingCreator {
+                    let norm = HeyBrocSharedPrefs.normalizeCreatorCode(incomingCreator)
+                    if !norm.isEmpty {
+                        HeyBrocSharedPrefs.creatorCode = norm
+                    }
+                }
                 self.presentNativeProSheet()
             case "open-barcode-scanner":
                 self.presentBarcodeScanner()
@@ -725,14 +840,63 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         return view.window ?? UIWindow()
     }
 
-    private func startNativeAppleSignIn() {
+    private static func sha256Hex(_ input: String) -> String {
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func generateFallbackOAuthNonce() -> String {
+        var randomBytes = [UInt8](repeating: 0, count: 18)
+        let status = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+        if status == errSecSuccess {
+            return randomBytes.map { String(format: "%02x", $0) }.joined()
+        }
+        return UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+
+    private func fetchServerOAuthNonce() async -> String {
+        guard let nonceURL = URL(string: "https://www.heybroc.com/api/auth?oauthNonce=1") else {
+            return Self.generateFallbackOAuthNonce()
+        }
+        var req = URLRequest(url: nonceURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3.5)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+               let rawNonce = (json["oauthNonce"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !rawNonce.isEmpty {
+                return rawNonce
+            }
+        } catch {
+            // Fall back to local cryptographic nonce if offline; server enforces srvn_ on token exchange
+        }
+        return Self.generateFallbackOAuthNonce()
+    }
+
+    private func performAppleSignInRequest(rawNonce: String) {
+        self.pendingAppleOAuthNonce = rawNonce
         let provider = ASAuthorizationAppleIDProvider()
         let request = provider.createRequest()
         request.requestedScopes = [.fullName, .email]
+        request.nonce = Self.sha256Hex(rawNonce)
         let authController = ASAuthorizationController(authorizationRequests: [request])
         authController.delegate = self
         authController.presentationContextProvider = self
         authController.performRequests()
+    }
+
+    private func startNativeAppleSignIn(providedNonce: String? = nil) {
+        if let provided = providedNonce, !provided.isEmpty {
+            performAppleSignInRequest(rawNonce: provided)
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let rawNonce = await self.fetchServerOAuthNonce()
+            self.performAppleSignInRequest(rawNonce: rawNonce)
+        }
     }
 
     private func deliverAppleAuthPayload(_ dict: [String: Any]) {
@@ -745,6 +909,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        let issuedNonce = self.pendingAppleOAuthNonce
+        self.pendingAppleOAuthNonce = nil
+
         guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8),
@@ -779,6 +946,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         var payload: [String: Any] = ["idToken": idToken]
+        if let issuedNonce = issuedNonce, !issuedNonce.isEmpty {
+            payload["nonce"] = issuedNonce
+        }
         if !resolvedEmail.isEmpty {
             payload["email"] = resolvedEmail
         }
@@ -789,6 +959,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        self.pendingAppleOAuthNonce = nil
         if let authErr = error as? ASAuthorizationError {
             if authErr.code == .canceled {
                 deliverAppleAuthPayload(["canceled": true])
@@ -824,19 +995,39 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     ) async {
         var deviceId = ""
         var authToken = ""
+        var webCreatorCode = ""
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { [weak self] in
                 guard let webView = self?.webView else {
                     continuation.resume()
                     return
                 }
-                let readJS = "JSON.stringify({ deviceId: localStorage.getItem('heybroc_device_id') || '', token: localStorage.getItem('heybroc_auth_token') || '' })"
+                let readJS = """
+                (function() {
+                  var creatorCode = '';
+                  try {
+                    var rawCreator = localStorage.getItem('cleancart_creator_v1');
+                    if (rawCreator) {
+                      var parsedCreator = JSON.parse(rawCreator);
+                      if (parsedCreator && typeof parsedCreator.code === 'string') {
+                        creatorCode = parsedCreator.code;
+                      }
+                    }
+                  } catch (_) {}
+                  return JSON.stringify({
+                    deviceId: localStorage.getItem('heybroc_device_id') || '',
+                    token: localStorage.getItem('heybroc_auth_token') || '',
+                    creatorCode: creatorCode
+                  });
+                })()
+                """
                 webView.evaluateJavaScript(readJS) { result, _ in
                     if let str = result as? String,
                        let data = str.data(using: .utf8),
                        let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: String] {
                         deviceId = parsed["deviceId"] ?? ""
                         authToken = parsed["token"] ?? ""
+                        webCreatorCode = parsed["creatorCode"] ?? ""
                     }
                     continuation.resume()
                 }
@@ -847,6 +1038,14 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
         if authToken.isEmpty {
             authToken = HeyBrocSharedPrefs.authToken ?? ""
+        }
+        var creatorCode = HeyBrocSharedPrefs.creatorCode
+        if creatorCode.isEmpty {
+            let normWeb = HeyBrocSharedPrefs.normalizeCreatorCode(webCreatorCode)
+            if !normWeb.isEmpty {
+                HeyBrocSharedPrefs.creatorCode = normWeb
+                creatorCode = normWeb
+            }
         }
         HeyBrocSharedPrefs.isPro = true
 
@@ -863,6 +1062,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             }
             if !authToken.isEmpty {
                 body["token"] = authToken
+            }
+            if !creatorCode.isEmpty {
+                body["creatorCode"] = creatorCode
             }
             req.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [])
             _ = try? await URLSession.shared.data(for: req)
@@ -912,6 +1114,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 }
                 """
                 self?.webView.evaluateJavaScript(js, completionHandler: nil)
+            },
+            onCreatorCodeChanged: { [weak self] updatedCode in
+                self?.syncCreatorCodeToWebView(updatedCode)
             }
         )
         if #available(iOS 15.0, *), let pres = sheet.sheetPresentationController {
@@ -920,6 +1125,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             pres.preferredCornerRadius = 24
         }
         presenter.present(sheet, animated: true)
+        syncCreatorCodeFromWebView { [weak sheet] resolved in
+            sheet?.syncExternalCreatorCodeIfEmpty(resolved)
+        }
     }
 
     // MARK: - WKNavigationDelegate
@@ -928,7 +1136,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         hideLoadingOverlay()
         if HeyBrocSharedPrefs.hasSavedPreferences {
             syncNativePrefsToWebView(forceOverwrite: true)
+        } else if !HeyBrocSharedPrefs.creatorCode.isEmpty {
+            syncCreatorCodeToWebView(HeyBrocSharedPrefs.creatorCode)
         }
+        syncCreatorCodeFromWebView()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -1175,11 +1386,11 @@ private final class SafariSetupSheetViewController: UIViewController {
         liveCard.addArrangedSubview(storesRow3)
         content.addArrangedSubview(liveCard)
 
-        // 2. Optional: Apple Safari Browser Extension (Single All-Websites Switch)
+        // 2. Optional: Apple Safari Browser Extension (Scoped to Supported Grocery Domains)
         let safariCard = makeCard()
         safariCard.addArrangedSubview(makeBadge("OPTIONAL • FOR APPLE SAFARI BROWSER"))
-        safariCard.addArrangedSubview(makeHeading("2. 🧭 Safari Extension (1-Switch Setup)"))
-        safariCard.addArrangedSubview(makeBody("Prefer browsing inside Safari? Open the iPhone Settings app manually → Apps → Safari → Extensions → HeyBroc:\n• Turn Allow Extension ON\n• Tap All Websites (or Other Websites at the bottom) → Allow (1 tap covers every grocery store)\n\nTip: If iOS jumps from Safari into the Walmart app, long-press the store link in Safari and tap \"Open in Tab\" — or just use 🛒 Live Shop above!"))
+        safariCard.addArrangedSubview(makeHeading("2. 🧭 Safari Extension (Grocery Store Domains)"))
+        safariCard.addArrangedSubview(makeBody("Prefer browsing inside Safari? Open the iPhone Settings app → Apps → Safari → Extensions → HeyBroc:\n• Turn Allow Extension ON\n• Set supported grocery store websites (walmart.com, target.com, instacart.com, amazon.com, kroger.com, etc.) to Allow\n\nTip: If iOS jumps from Safari into a store app, long-press the store link in Safari and tap \"Open in Tab\" — or just use 🛒 Live Shop above!"))
         content.addArrangedSubview(safariCard)
 
         NSLayoutConstraint.activate([
@@ -1496,18 +1707,21 @@ private final class NativeBarcodeScannerViewController: UIViewController, AVCapt
 
 // MARK: - Native StoreKit 2 Family Pro Paywall Sheet (Guideline 3.1.1 Compliant)
 
-private final class NativeProPaywallSheetViewController: UIViewController {
+private final class NativeProPaywallSheetViewController: UIViewController, UITextFieldDelegate {
     private static let annualProductID = "com.heybroc.pro.annual"
     private static let monthlyProductID = "com.heybroc.pro.monthly"
 
     private let onVerifiedPurchase: (String, String, Bool) async -> Void
     private let onOpenAccountAuth: (String) -> Void
+    private let onCreatorCodeChanged: ((String) -> Void)?
 
     private var annualProduct: StoreKit.Product?
     private var monthlyProduct: StoreKit.Product?
 
     private let statusLabel = UILabel()
     private let spinner = UIActivityIndicatorView(style: .medium)
+    private let creatorCodeField = UITextField()
+    private let creatorAppliedBadge = UILabel()
     private let annualButton = UIButton(type: .system)
     private let monthlyButton = UIButton(type: .system)
     private let createAccountButton = UIButton(type: .system)
@@ -1516,15 +1730,27 @@ private final class NativeProPaywallSheetViewController: UIViewController {
 
     init(
         onVerifiedPurchase: @escaping (String, String, Bool) async -> Void,
-        onOpenAccountAuth: @escaping (String) -> Void
+        onOpenAccountAuth: @escaping (String) -> Void,
+        onCreatorCodeChanged: ((String) -> Void)? = nil
     ) {
         self.onVerifiedPurchase = onVerifiedPurchase
         self.onOpenAccountAuth = onOpenAccountAuth
+        self.onCreatorCodeChanged = onCreatorCodeChanged
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func syncExternalCreatorCodeIfEmpty(_ code: String) {
+        let norm = HeyBrocSharedPrefs.normalizeCreatorCode(code)
+        guard !norm.isEmpty else { return }
+        let current = HeyBrocSharedPrefs.normalizeCreatorCode(creatorCodeField.text)
+        if current.isEmpty {
+            creatorCodeField.text = norm
+            updateCreatorBadge(norm)
+        }
     }
 
     override func viewDidLoad() {
@@ -1533,6 +1759,7 @@ private final class NativeProPaywallSheetViewController: UIViewController {
 
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.keyboardDismissMode = .interactive
         view.addSubview(scroll)
 
         let stack = UIStackView()
@@ -1601,6 +1828,52 @@ private final class NativeProPaywallSheetViewController: UIViewController {
         }
         stack.addArrangedSubview(card)
 
+        // Compact Creator / Promo Code Input
+        let creatorContainer = UIStackView()
+        creatorContainer.axis = .vertical
+        creatorContainer.spacing = 4
+
+        let creatorHeaderRow = UIStackView()
+        creatorHeaderRow.axis = .horizontal
+        creatorHeaderRow.alignment = .center
+        creatorHeaderRow.distribution = .equalSpacing
+
+        let creatorTitle = UILabel()
+        creatorTitle.text = "CREATOR OR PROMO CODE (OPTIONAL)"
+        creatorTitle.font = UIFont.systemFont(ofSize: 10.5, weight: .heavy)
+        creatorTitle.textColor = UIColor(red: 0.392, green: 0.455, blue: 0.545, alpha: 1.0)
+
+        creatorAppliedBadge.font = UIFont.systemFont(ofSize: 11, weight: .bold)
+        creatorAppliedBadge.textColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
+        creatorAppliedBadge.isHidden = true
+
+        creatorHeaderRow.addArrangedSubview(creatorTitle)
+        creatorHeaderRow.addArrangedSubview(creatorAppliedBadge)
+        creatorContainer.addArrangedSubview(creatorHeaderRow)
+
+        let initialCreator = HeyBrocSharedPrefs.creatorCode
+        creatorCodeField.delegate = self
+        creatorCodeField.text = initialCreator
+        creatorCodeField.placeholder = "Enter creator or promo code (e.g. SARAH)"
+        creatorCodeField.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        creatorCodeField.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+        creatorCodeField.backgroundColor = .white
+        creatorCodeField.autocapitalizationType = .allCharacters
+        creatorCodeField.autocorrectionType = .no
+        creatorCodeField.spellCheckingType = .no
+        creatorCodeField.returnKeyType = .done
+        creatorCodeField.clearButtonMode = .whileEditing
+        creatorCodeField.layer.cornerRadius = 11
+        creatorCodeField.layer.borderWidth = 1
+        creatorCodeField.layer.borderColor = UIColor(red: 0.796, green: 0.835, blue: 0.882, alpha: 1.0).cgColor
+        creatorCodeField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 12, height: 38))
+        creatorCodeField.leftViewMode = .always
+        creatorCodeField.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        creatorCodeField.addTarget(self, action: #selector(creatorCodeEditingChanged(_:)), for: .editingChanged)
+        updateCreatorBadge(initialCreator)
+        creatorContainer.addArrangedSubview(creatorCodeField)
+        stack.addArrangedSubview(creatorContainer)
+
         let loadingRow = UIStackView(arrangedSubviews: [spinner, statusLabel])
         loadingRow.axis = .horizontal
         loadingRow.alignment = .center
@@ -1663,6 +1936,54 @@ private final class NativeProPaywallSheetViewController: UIViewController {
         ])
 
         loadStoreKitProducts()
+    }
+
+    private func updateCreatorBadge(_ norm: String) {
+        if norm.count >= 2 {
+            creatorAppliedBadge.text = "✓ \(norm) saved"
+            creatorAppliedBadge.isHidden = false
+        } else {
+            creatorAppliedBadge.text = ""
+            creatorAppliedBadge.isHidden = true
+        }
+    }
+
+    @discardableResult
+    private func commitCreatorCodeInput(normalizeFieldText: Bool = false) -> String {
+        let raw = creatorCodeField.text ?? ""
+        let trimmedUpper = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if trimmedUpper.isEmpty {
+            HeyBrocSharedPrefs.creatorCode = ""
+            updateCreatorBadge("")
+            onCreatorCodeChanged?("")
+            return ""
+        }
+        let norm = HeyBrocSharedPrefs.normalizeCreatorCode(trimmedUpper)
+        if normalizeFieldText && !norm.isEmpty && creatorCodeField.text != norm {
+            creatorCodeField.text = norm
+        }
+        if !norm.isEmpty {
+            HeyBrocSharedPrefs.creatorCode = norm
+            updateCreatorBadge(norm)
+            onCreatorCodeChanged?(norm)
+        } else {
+            updateCreatorBadge("")
+        }
+        return norm
+    }
+
+    @objc private func creatorCodeEditingChanged(_ sender: UITextField) {
+        _ = commitCreatorCodeInput(normalizeFieldText: false)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        _ = commitCreatorCodeInput(normalizeFieldText: true)
+        textField.resignFirstResponder()
+        return true
+    }
+
+    func textFieldDidEndEditing(_ textField: UITextField) {
+        _ = commitCreatorCodeInput(normalizeFieldText: true)
     }
 
     private func stylePrimaryCTA(_ btn: UIButton, title: String) {
@@ -1735,6 +2056,8 @@ private final class NativeProPaywallSheetViewController: UIViewController {
     }
 
     private func purchase(_ product: StoreKit.Product) {
+        creatorCodeField.resignFirstResponder()
+        _ = commitCreatorCodeInput(normalizeFieldText: true)
         spinner.startAnimating()
         statusLabel.text = "Confirming with Apple Face ID…"
         annualButton.isEnabled = false
@@ -1784,6 +2107,7 @@ private final class NativeProPaywallSheetViewController: UIViewController {
     }
 
     @objc private func tapAccountAuth() {
+        _ = commitCreatorCodeInput(normalizeFieldText: true)
         let callback = onOpenAccountAuth
         dismiss(animated: true) {
             callback("signup")
@@ -1791,6 +2115,8 @@ private final class NativeProPaywallSheetViewController: UIViewController {
     }
 
     @objc private func tapRestore() {
+        creatorCodeField.resignFirstResponder()
+        _ = commitCreatorCodeInput(normalizeFieldText: true)
         spinner.startAnimating()
         statusLabel.text = "Restoring Apple subscriptions…"
         Task { @MainActor [weak self] in
@@ -1825,6 +2151,7 @@ private final class NativeProPaywallSheetViewController: UIViewController {
     }
 
     @objc private func tapClose() {
+        _ = commitCreatorCodeInput(normalizeFieldText: true)
         dismiss(animated: true)
     }
 }

@@ -136,6 +136,14 @@ class GroceryScreenReaderService : AccessibilityService() {
             """(\byour\s+(?:[a-z]+\s+){0,2}(?:cart|bag|basket)\s+(?:is\s+)?(?:currently\s+)?empty\b|\btime\s+to\s+start\s+shopping\b|\blet'?s\s+get\s+shopping\b|\badd\s+items\s+to\s+(?:get\s+started|start\s+a\s+basket)\b|\bnothing\s+in\s+your\s+(?:cart|bag|basket)\b|\b(?:cart|subtotal)\s*\(\s*0(?:\s+items?)?\s*\)|\b0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)\b)""",
             RegexOption.IGNORE_CASE,
         )
+        private val ORDER_CONFIRMATION_SIGNALS = Regex(
+            """\b(order\s+placed|thank\s+you\s+for\s+your\s+order|thanks\s+for\s+your\s+order|your\s+order\s+is\s+confirmed|order\s+confirmation|we'?ve\s+received\s+your\s+order)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        private val ORDER_HISTORY_EXCLUSIONS = Regex(
+            """\b(order\s+history|past\s+orders|your\s+orders|all\s+orders|reorder|buy\s+(?:it\s+)?again|track\s+order\s+history)\b""",
+            RegexOption.IGNORE_CASE,
+        )
         private val SINGLE_PDP_CTA = Regex(
             """\b(add to cart|add to bag|add to basket|add to order|add to box|add item|buy now|add \d+ to (cart|order|bag|basket)|add \(\$\d+(\.\d{2})?\)|choose options|select options|\d+\s+in\s+cart|added to cart)\b""",
             RegexOption.IGNORE_CASE,
@@ -304,6 +312,7 @@ class GroceryScreenReaderService : AccessibilityService() {
     private var lastRowLeadLeftX: Int = -1
     private var lastHorizontalScrollDir: Int = 0
     private var lastHorizontalScrollAtMs: Long = 0L
+    private var lastOrderConfirmClearAtMs: Long = 0L
 
     @Synchronized
     private fun bumpScanGeneration(): Int {
@@ -962,6 +971,28 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
             updateStoreBucketFromNodes(pkg, nodes)
             val bucketSig = currentStoreBucket.ifEmpty { defaultBucketForPackage(pkg) }
+            val topScreenNodes = nodes.take(40)
+            val hasOrderConfirmation = topScreenNodes.any { ORDER_CONFIRMATION_SIGNALS.containsMatchIn(it.text.trim()) }
+            val hasOrderHistoryContext = topScreenNodes.any { ORDER_HISTORY_EXCLUSIONS.containsMatchIn(it.text.trim()) } ||
+                nodes.any { ORDER_HISTORY_EXCLUSIONS.containsMatchIn(it.text.trim()) }
+            if (hasOrderConfirmation && !hasOrderHistoryContext) {
+                val nowConfirm = System.currentTimeMillis()
+                if (nowConfirm - lastOrderConfirmClearAtMs > 2500L) {
+                    lastOrderConfirmClearAtMs = nowConfirm
+                    bumpScanGeneration()
+                    lastCartTitleNodes = emptyList()
+                    lastCartAuthoritativeCount = 0
+                    wasOnCartScreen = false
+                    OverlayWindowService.clearCartForActiveStore()
+                    sendToOverlay(OverlayWindowService.ACTION_SYNC_CART, pkg, bucketSig) {
+                        putExtra(OverlayWindowService.EXTRA_CART_ARRAY, "[]")
+                        putExtra(OverlayWindowService.EXTRA_CART_BADGE_COUNT, 0)
+                        putExtra(OverlayWindowService.EXTRA_REPLACE_CART, true)
+                        putExtra(OverlayWindowService.EXTRA_KEEP_MODE, false)
+                    }
+                }
+                return
+            }
             // Slice off "Items to add next / Similar items / Customers also bought / Recommended for you / Your recently viewed items" bottom carousels BEFORE
             // extracting ingredients so a collapsed "Ingredients v" pill never reads carousel cards below!
             val carouselIdx = nodes.indexOfFirst { CAROUSEL_BOUNDARY.containsMatchIn(it.text.trim()) }
@@ -2450,28 +2481,43 @@ class GroceryScreenReaderService : AccessibilityService() {
             }
         }
         val out = HashMap<String, Int>()
+        val consumedQtyIndices = HashSet<Int>()
+        var prevRowLastConsumedIdx = -1
         for ((rowPos, title) in cartTitles.withIndex()) {
             val anchorIdx = anchorIndices[rowPos]
             if (anchorIdx < 0) {
                 out[title] = 1
                 continue
             }
+            val prevAnchorIdx = (rowPos - 1 downTo 0)
+                .map { anchorIndices[it] }
+                .firstOrNull { it in 0 until anchorIdx } ?: -1
+            val prevAnchor = if (prevAnchorIdx >= 0) cartNodes[prevAnchorIdx] else null
             val nextRowAnchorIdx = anchorIndices.drop(rowPos + 1).firstOrNull { it > anchorIdx } ?: cartNodes.size
             val anchor = cartNodes[anchorIdx]
+            val minBackwardTop = if (anchor.top > 0) anchor.top - (12f * density).toInt() else Int.MIN_VALUE
             var qty = 1
+            var consumedIdxForRow = -1
             // Check raw node text prefix first (e.g. "2 in cart, Organic Whole Milk" or "Qty: 3 ...")
             explicitQtyRe.find(anchor.text.trim())?.let { m ->
                 val parsed = (m.groupValues.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: m.groupValues.getOrNull(2))
                     ?.toIntOrNull()
-                if (parsed != null && parsed in 1..99) qty = parsed
+                if (parsed != null && parsed in 1..99) {
+                    qty = parsed
+                    consumedIdxForRow = anchorIdx
+                }
             }
             if (qty == 1) {
-                val start = (anchorIdx - 4).coerceAtLeast(0)
+                val start = maxOf(0, anchorIdx - 4, prevAnchorIdx + 1, prevRowLastConsumedIdx + 1)
                 val end = minOf(nextRowAnchorIdx - 1, anchorIdx + 24, cartNodes.size - 1)
                 for (i in start..end) {
-                    if (i == anchorIdx) continue
+                    if (i == anchorIdx || i in consumedQtyIndices) continue
                     val near = cartNodes[i]
                     if (anchor.top > 0 && near.top > 0 && kotlin.math.abs(near.top - anchor.top) > maxRowDistPx) continue
+                    if (i < anchorIdx) {
+                        if (anchor.top > 0 && near.top > 0 && near.top < minBackwardTop) continue
+                        if (prevAnchor != null && prevAnchor.bottom > 0 && near.top > 0 && near.top <= prevAnchor.bottom) continue
+                    }
                     val rawTxt = near.text.trim()
                     val expMatch = explicitQtyRe.find(rawTxt)
                     if (expMatch != null) {
@@ -2479,6 +2525,7 @@ class GroceryScreenReaderService : AccessibilityService() {
                             ?.toIntOrNull()
                         if (parsed != null && parsed in 1..99) {
                             qty = parsed
+                            consumedIdxForRow = i
                             break
                         }
                     }
@@ -2495,11 +2542,18 @@ class GroceryScreenReaderService : AccessibilityService() {
                             val parsed = bareMatch.groupValues[1].toIntOrNull()
                             if (parsed != null && parsed in 1..99) {
                                 qty = parsed
+                                consumedIdxForRow = i
                                 break
                             }
                         }
                     }
                 }
+            }
+            if (consumedIdxForRow >= 0) {
+                consumedQtyIndices.add(consumedIdxForRow)
+                prevRowLastConsumedIdx = maxOf(prevRowLastConsumedIdx, consumedIdxForRow)
+            } else {
+                prevRowLastConsumedIdx = maxOf(prevRowLastConsumedIdx, anchorIdx)
             }
             out[title] = qty.coerceIn(1, 99)
         }

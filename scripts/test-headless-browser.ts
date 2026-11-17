@@ -1485,7 +1485,7 @@ async function main() {
       `   ✓ iOS Safari mobile Walmart search auto-alignment (${mobileSearchPill.ringVal}/100 · "${mobileSearchPill.subText}") + 1-tap zero-flicker drawer verified!`,
     );
 
-    // 4D. Verify Android In-App LiveStoreBrowserActivity DETECTOR_JS_TEMPLATE on nested Walmart Sponsored (/sp/track) + w_iUH7 mobile cards!
+    // 4D. Verify Android In-App LiveStoreBrowserActivity live_store_detector.js asset on nested Walmart Sponsored (/sp/track) + w_iUH7 mobile cards!
     const androidLiveKt = fs.readFileSync(
       path.join(
         ROOT,
@@ -1493,17 +1493,22 @@ async function main() {
       ),
       "utf8",
     );
-    const androidDetPartsBlock = androidLiveKt.match(
-      /private val DETECTOR_JS_PARTS = arrayOf\(([\s\S]*?)\n        \)/,
+    assert(
+      androidLiveKt.includes('"live_store_detector.js"') &&
+        !androidLiveKt.includes("private const val DETECTOR_JS_TEMPLATE") &&
+        !androidLiveKt.includes("DETECTOR_JS_PARTS"),
+      "Expected LiveStoreBrowserActivity.kt to load live_store_detector.js from assets",
     );
-    const androidDetParts = androidDetPartsBlock
-      ? [...androidDetPartsBlock[1].matchAll(/"""\n([\s\S]*?)\n            """/g)].map((m) => m[1])
-      : [];
-    assert(androidDetParts.length >= 2, "Could not extract Android DETECTOR_JS_PARTS");
+    const androidDetTemplate = fs.readFileSync(
+      path.join(ROOT, "android-app/app/src/main/assets/live_store_detector.js"),
+      "utf8",
+    );
+    assert(androidDetTemplate.includes("__HB_BRIDGE_SECRET__"), "Missing __HB_BRIDGE_SECRET__ placeholder in live_store_detector.js");
     const androidBridgeSecret = "sec_e2e_android_bridge_987654";
-    const androidDetectorJS = androidDetParts
-      .join("\n")
-      .replace("__HB_BRIDGE_SECRET__", androidBridgeSecret);
+    const androidDetectorJS = androidDetTemplate.replace(
+      "__HB_BRIDGE_SECRET__",
+      androidBridgeSecret,
+    );
     const placeholderSvgDataUrl =
       "data:image/svg+xml;utf8," +
       encodeURIComponent(

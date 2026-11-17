@@ -22,6 +22,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -91,6 +92,19 @@ class OverlayWindowService : Service() {
         @Volatile
         var currentPillCenterY: Int = -1
 
+        @Volatile
+        private var activeInstance: OverlayWindowService? = null
+
+        fun clearCartForActiveStore() {
+            val svc = activeInstance ?: return
+            svc.mainUiHandler.post {
+                svc.clearActiveStoreCartInternal()
+            }
+        }
+
+        fun clearCartForCurrentStore() = clearCartForActiveStore()
+
+        private const val CART_TTL_MS = 2 * 60 * 60 * 1000L
         private const val INK = 0xFF15201B.toInt()
         private const val INK_2 = 0xFF4A5550.toInt()
         private const val INK_3 = 0xFF85908A.toInt()
@@ -119,6 +133,45 @@ class OverlayWindowService : Service() {
             """(?i)(?:,\s*|\s+-\s+|\s*\()?\b\d+(?:\.\d+)?\s*(?:fl\s*oz|oz|lb|lbs|ct|count|pk|pack|gal|gallon|qt|pt|ml|l|kg|ea)\)?$"""
         )
         private val IDENTITY_CONNECTOR_WORDS = setOf("the", "and", "with", "for", "of", "in", "a", "an")
+        private val NON_ORGANIC_RE = Regex("""\bnon[\s-]*organic\b""", RegexOption.IGNORE_CASE)
+        private val ORGANIC_RE = Regex("""\borganic\b""", RegexOption.IGNORE_CASE)
+        private val WHOLE_MILK_TIER_RE = Regex("""\bwhole(?:\s+milk)?\b""", RegexOption.IGNORE_CASE)
+        private val WHOLE_NON_FAT_CONTEXT_RE = Regex("""\bwhole\s+(?:grain|wheat|oat|food|bean|kernel|berry|almond|cashew|pecan|walnut|peeled|leaf)\w*\b""", RegexOption.IGNORE_CASE)
+        private val TWO_PCT_TIER_RE = Regex("""(?:\b2%\s*(?:milk|reduced\s*fat)?\b|\breduced[\s-]*fat\b)""", RegexOption.IGNORE_CASE)
+        private val ONE_PCT_TIER_RE = Regex("""(?:\b1%\s*(?:milk|low\s*fat)?\b|\blow[\s-]*fat\b)""", RegexOption.IGNORE_CASE)
+        private val ZERO_PCT_TIER_RE = Regex("""(?:\b0%\b|\bskim\b|\bfat[\s-]*free\b|\bnon[\s-]*fat\b)""", RegexOption.IGNORE_CASE)
+        private val UNSWEETENED_RE = Regex("""\bunsweetened\b""", RegexOption.IGNORE_CASE)
+        private val SWEETENED_RE = Regex("""\bsweetened\b""", RegexOption.IGNORE_CASE)
+        private val LIGHTLY_SWEETENED_RE = Regex("""\blightly\s+sweetened\b""", RegexOption.IGNORE_CASE)
+        private val ZERO_SUGAR_DIET_RE = Regex("""\b(?:zero[\s-]*sugar|sugar[\s-]*free|no\s+(?:added\s+)?sugar(?:\s+added)?|diet)\b""", RegexOption.IGNORE_CASE)
+        private val DECAF_RE = Regex("""\b(?:decaf|decaffeinated|caffeine[\s-]*free)\b""", RegexOption.IGNORE_CASE)
+        private val LACTOSE_FREE_RE = Regex("""\blactose[\s-]*free\b""", RegexOption.IGNORE_CASE)
+        private val EXTRA_CREAMY_RE = Regex("""\bextra\s+creamy\b""", RegexOption.IGNORE_CASE)
+        private val UNSALTED_RE = Regex("""\b(?:unsalted|no\s+salt(?:\s+added)?)\b""", RegexOption.IGNORE_CASE)
+        private val LIGHTLY_SALTED_RE = Regex("""\blightly\s+salted\b""", RegexOption.IGNORE_CASE)
+        private val SIMPLY_NKD_RE = Regex("""\b(?:simply\s+nkd|nkd)\b""", RegexOption.IGNORE_CASE)
+        private val CART_FLAVOR_TOKENS: List<Pair<String, Regex>> = listOf(
+            "plain" to Regex("""\b(?:plain|unflavored)\b""", RegexOption.IGNORE_CASE),
+            "vanilla" to Regex("""\bvanilla\b""", RegexOption.IGNORE_CASE),
+            "strawberry" to Regex("""\bstrawberr(?:y|ies)\b""", RegexOption.IGNORE_CASE),
+            "chocolate" to Regex("""\bchocolate\b""", RegexOption.IGNORE_CASE),
+            "blueberry" to Regex("""\bblueberr(?:y|ies)\b""", RegexOption.IGNORE_CASE),
+            "peach" to Regex("""\bpeach(?:es)?\b""", RegexOption.IGNORE_CASE),
+            "mango" to Regex("""\bmango(?:es)?\b""", RegexOption.IGNORE_CASE),
+            "cherry" to Regex("""\bcherr(?:y|ies)\b""", RegexOption.IGNORE_CASE),
+            "raspberry" to Regex("""\braspberr(?:y|ies)\b""", RegexOption.IGNORE_CASE),
+            "mixed_berry" to Regex("""\bmixed\s+berr(?:y|ies)\b""", RegexOption.IGNORE_CASE),
+            "banana" to Regex("""\bbananas?\b""", RegexOption.IGNORE_CASE),
+            "lemon" to Regex("""\blemon\b""", RegexOption.IGNORE_CASE),
+            "lime" to Regex("""\blime\b""", RegexOption.IGNORE_CASE),
+            "cinnamon" to Regex("""\bcinnamon\b""", RegexOption.IGNORE_CASE),
+            "honey" to Regex("""\bhoney\b""", RegexOption.IGNORE_CASE),
+            "maple" to Regex("""\bmaple\b""", RegexOption.IGNORE_CASE),
+            "caramel" to Regex("""\bcaramel\b""", RegexOption.IGNORE_CASE),
+            "mocha" to Regex("""\bmocha\b""", RegexOption.IGNORE_CASE),
+            "cool_ranch" to Regex("""\bcool\s+ranch\b""", RegexOption.IGNORE_CASE),
+            "nacho_cheese" to Regex("""\bnacho\s+cheese\b""", RegexOption.IGNORE_CASE),
+        )
     }
 
     private data class TripCartItem(
@@ -184,6 +237,7 @@ class OverlayWindowService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        activeInstance = this
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val staleKeys = prefs.all.keys.filter {
@@ -198,6 +252,24 @@ class OverlayWindowService : Service() {
         syncPillCenterY()
         loadPersistedCart(currentStoreBucket)
         displayedCartAvg = calcCartAvg()
+    }
+
+    private fun clearActiveStoreCartInternal() {
+        climbAnimator?.cancel()
+        tripCart.clear()
+        consecutiveFullCartFrames = 0
+        displayedCartAvg = null
+        pendingSwapFromKey = null
+        pendingSwapTitle = null
+        pendingSwapCandidates = emptyList()
+        pendingSwapCandidateIdx = 0
+        pendingSwapExplicitItem = null
+        persistCart()
+        if (card != null && isAuditorOpen) {
+            showAuditorDrawer()
+        } else if (!hiddenForCurrentScreen && card == null && pill != null) {
+            showPill()
+        }
     }
 
     private fun retailerSlugDisplayName(slug: String): String = when (slug.lowercase()) {
@@ -561,6 +633,9 @@ class OverlayWindowService : Service() {
     }
 
     override fun onDestroy() {
+        if (activeInstance === this) {
+            activeInstance = null
+        }
         climbAnimator?.cancel()
         runCatching { imageExecutor.shutdownNow() }
         removeSetupGuide()
@@ -628,7 +703,7 @@ class OverlayWindowService : Service() {
 
     private fun normalizeCartKey(raw: String): String =
         cleanCartTitle(raw).lowercase()
-            .replace(Regex("^(conventional grocery|organic|natural)\\s+"), "")
+            .replace(Regex("^conventional grocery\\s+"), "")
             .replace(Regex("\\b93%\\s*lean/7%\\s*fat\\b"), "93 7 lean fat")
             .replace(Regex("\\b80%\\s*lean/20%\\s*fat\\b"), "80 20 lean fat")
             .replace(Regex("\\b85%\\s*lean/15%\\s*fat\\b"), "85 15 lean fat")
@@ -636,6 +711,61 @@ class OverlayWindowService : Service() {
             .replace(Regex("[,•|\\-–—.…*]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+    private fun fatTierTokens(s: String): Set<String> {
+        val cleanedWholeCtx = s.replace(WHOLE_NON_FAT_CONTEXT_RE, " ")
+        val out = LinkedHashSet<String>(2)
+        if (WHOLE_MILK_TIER_RE.containsMatchIn(cleanedWholeCtx)) out.add("whole")
+        if (TWO_PCT_TIER_RE.containsMatchIn(s)) out.add("2pct")
+        if (ONE_PCT_TIER_RE.containsMatchIn(s)) out.add("1pct")
+        if (ZERO_PCT_TIER_RE.containsMatchIn(s)) out.add("0pct")
+        return out
+    }
+
+    private fun flavorTokens(s: String): Set<String> {
+        val out = LinkedHashSet<String>(2)
+        for ((key, re) in CART_FLAVOR_TOKENS) {
+            if (re.containsMatchIn(s)) out.add(key)
+        }
+        return out
+    }
+
+    private fun hasConflictingCartVariantTokens(rawA: String, rawB: String): Boolean {
+        val a = cleanCartTitle(rawA).lowercase()
+        val b = cleanCartTitle(rawB).lowercase()
+        if (a.isEmpty() || b.isEmpty()) return false
+
+        val aNonOrg = NON_ORGANIC_RE.containsMatchIn(a)
+        val bNonOrg = NON_ORGANIC_RE.containsMatchIn(b)
+        val aOrg = ORGANIC_RE.containsMatchIn(a.replace(NON_ORGANIC_RE, " "))
+        val bOrg = ORGANIC_RE.containsMatchIn(b.replace(NON_ORGANIC_RE, " "))
+        if (aOrg != bOrg || aNonOrg != bNonOrg) return true
+
+        val fatA = fatTierTokens(a)
+        val fatB = fatTierTokens(b)
+        if (fatA != fatB) return true
+
+        if (UNSWEETENED_RE.containsMatchIn(a) != UNSWEETENED_RE.containsMatchIn(b)) return true
+        if (LIGHTLY_SWEETENED_RE.containsMatchIn(a) != LIGHTLY_SWEETENED_RE.containsMatchIn(b)) return true
+        if (SWEETENED_RE.containsMatchIn(a) != SWEETENED_RE.containsMatchIn(b)) return true
+        if (ZERO_SUGAR_DIET_RE.containsMatchIn(a) != ZERO_SUGAR_DIET_RE.containsMatchIn(b)) return true
+        if (DECAF_RE.containsMatchIn(a) != DECAF_RE.containsMatchIn(b)) return true
+        if (LACTOSE_FREE_RE.containsMatchIn(a) != LACTOSE_FREE_RE.containsMatchIn(b)) return true
+        if (EXTRA_CREAMY_RE.containsMatchIn(a) != EXTRA_CREAMY_RE.containsMatchIn(b)) return true
+        if (UNSALTED_RE.containsMatchIn(a) != UNSALTED_RE.containsMatchIn(b)) return true
+        if (LIGHTLY_SALTED_RE.containsMatchIn(a) != LIGHTLY_SALTED_RE.containsMatchIn(b)) return true
+        if (SIMPLY_NKD_RE.containsMatchIn(a) != SIMPLY_NKD_RE.containsMatchIn(b)) return true
+
+        val flavA = flavorTokens(a)
+        val flavB = flavorTokens(b)
+        if (flavA != flavB) {
+            if (flavA.isNotEmpty() && flavB.isNotEmpty()) return true
+            val eitherTruncated = rawA.trim().let { it.endsWith("...") || it.endsWith("…") } ||
+                rawB.trim().let { it.endsWith("...") || it.endsWith("…") }
+            if (!eitherTruncated) return true
+        }
+        return false
+    }
 
     private fun normalizeTitleForIdentity(raw: String): String {
         var stripped = cleanCartTitle(raw)
@@ -659,6 +789,7 @@ class OverlayWindowService : Service() {
             .toSet()
 
     private fun matchesCartRemovalTarget(candidateTitle: String, targetTitle: String): Boolean {
+        if (hasConflictingCartVariantTokens(candidateTitle, targetTitle)) return false
         val normCand = normalizeTitleForIdentity(candidateTitle)
         val normTarget = normalizeTitleForIdentity(targetTitle)
         if (normCand.isEmpty() || normTarget.isEmpty()) return false
@@ -675,6 +806,7 @@ class OverlayWindowService : Service() {
 
     private fun isSameCartItem(a: String, b: String): Boolean {
         if (a.equals(b, ignoreCase = true)) return true
+        if (hasConflictingCartVariantTokens(a, b)) return false
         val na = normalizeCartKey(a)
         val nb = normalizeCartKey(b)
         if (na == nb) return true
@@ -687,6 +819,7 @@ class OverlayWindowService : Service() {
     private fun matchesPendingSwap(rawTitle: String): Boolean {
         val pending = pendingSwapTitle ?: return false
         if (isSameCartItem(rawTitle, pending)) return true
+        if (hasConflictingCartVariantTokens(rawTitle, pending)) return false
         val words = normalizeCartKey(pending).split(" ").filter { it.length >= 3 }
         val lower = normalizeCartKey(rawTitle)
         return words.size >= 2 && words.take(2).all { lower.contains(it) }
@@ -735,7 +868,7 @@ class OverlayWindowService : Service() {
                         it.title.lowercase() in DEMO_SEED_TITLES ||
                         VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
                         ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) ||
-                        (now - it.lastSeenAtMs > 2 * 60 * 60 * 1000L)
+                        (it.lastSeenAtMs <= 0L || now - it.lastSeenAtMs > CART_TTL_MS)
                 }
             }
         } else {
@@ -746,7 +879,7 @@ class OverlayWindowService : Service() {
                     it.title.lowercase() in DEMO_SEED_TITLES ||
                     VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
                     ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) ||
-                    (!keepMode && arr.length() > 0 && now - it.lastSeenAtMs > 2 * 60 * 60 * 1000L)
+                    (!keepMode && arr.length() > 0 && (it.lastSeenAtMs <= 0L || now - it.lastSeenAtMs > CART_TTL_MS))
             }
         }
         if (remArr != null) {
@@ -909,7 +1042,8 @@ class OverlayWindowService : Service() {
                 NON_FOOD_CART_ITEM.containsMatchIn(it.title) ||
                 it.title.lowercase() in DEMO_SEED_TITLES ||
                 VARIANT_NOISE_TITLE.matches(it.title.trim()) ||
-                ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson)
+                ScanHistoryStore.isPoisonedProduceEntry(it.title, it.fullJson) ||
+                (it.lastSeenAtMs <= 0L || now - it.lastSeenAtMs > CART_TTL_MS)
         }
         if (matchesPendingSwap(rawTitle)) {
             val fromKey = pendingSwapFromKey
@@ -994,10 +1128,17 @@ class OverlayWindowService : Service() {
         tripCart.clear()
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString("$KEY_TRIP_CART_PREFIX$bucketKey", null) ?: return
+        val now = System.currentTimeMillis()
+        var prunedExpired = false
         runCatching {
             val arr = JSONArray(raw)
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val lastSeen = o.optLong("lastSeenAtMs", 0L)
+                if (lastSeen <= 0L || now - lastSeen > CART_TTL_MS) {
+                    prunedExpired = true
+                    continue
+                }
                 val title = cleanCartTitle(o.optString("title"))
                 if (title.isBlank() || title.lowercase() in DEMO_SEED_TITLES || VARIANT_NOISE_TITLE.matches(title.trim())) continue
                 val fj = o.optJSONObject("fullJson")
@@ -1030,12 +1171,15 @@ class OverlayWindowService : Service() {
                         isSeed = false,
                         fullJson = fj,
                         fromCartScreen = o.optBoolean("fromCartScreen", false),
-                        lastSeenAtMs = o.optLong("lastSeenAtMs", 0L),
+                        lastSeenAtMs = lastSeen,
                         quantity = o.optInt("quantity", 1).coerceIn(1, 99),
                         isNonFood = false,
                     )
                 )
             }
+        }
+        if (prunedExpired && bucketKey == currentStoreBucket) {
+            persistCart()
         }
     }
 
@@ -1545,7 +1689,8 @@ class OverlayWindowService : Service() {
                     setPadding(dp(6), dp(4), dp(6), dp(4))
                 })
                 if (hasCleanSwap && swapObj != null) {
-                    val itemPaid = swapObj.optBoolean("isPaidLink", false)
+                    upgradeCachedSwapObj(swapObj, item.title)
+                    val itemPaid = resolveTrackedPaidSwapUrl(swapObj) != null
                     val btnLabel = when {
                         swapUnlocked -> if (itemPaid) "Preview · paid" else "Preview Swap"
                         canUseSwapNow -> "🔓 Reveal"
@@ -1622,7 +1767,7 @@ class OverlayWindowService : Service() {
             val anyUnlocked = dirtyWithSwaps.any {
                 ScanApi.isSwapUnlocked(this, it.title, it.swapObj?.optString("title").orEmpty())
             }
-            val anyPaidLink = dirtyWithSwaps.any { it.swapObj?.optBoolean("isPaidLink", false) == true }
+            val anyPaidLink = dirtyWithSwaps.any { resolveTrackedPaidSwapUrl(it.swapObj) != null }
             val paidSuffix = if (anyPaidLink && (ScanApi.isProActive(this) || rem > 0 || anyUnlocked)) " · paid link" else ""
             val ctaText = when {
                 count == 1 -> {
@@ -1785,7 +1930,7 @@ class OverlayWindowService : Service() {
             val swapTitle = ScanHistoryStore.cleanDisplayTitle(swapObj.optString("title", "Clean Alternative"))
             val swapScore = swapObj.optInt("score", 0)
             val swapScoreSuffix = if (swapScore > 0) " ($swapScore/100)" else ""
-            val swapPaid = swapObj.optBoolean("isPaidLink", false)
+            val swapPaid = resolveTrackedPaidSwapUrl(swapObj) != null
             val swapUnlocked = ScanApi.isSwapUnlocked(this, item.title, swapTitle)
             val canUseRowSwap = swapUnlocked || ScanApi.canUseSwap(this)
             sheet.addView(LinearLayout(this).apply {
@@ -1890,7 +2035,8 @@ class OverlayWindowService : Service() {
             ScanApi.isSwapUnlocked(this, it.title, st) || ScanApi.canUseSwap(this)
         }
         if (worstItem?.swapObj != null) {
-            val worstPaid = worstItem.swapObj?.optBoolean("isPaidLink", false) == true
+            upgradeCachedSwapObj(worstItem.swapObj!!, worstItem.title)
+            val worstPaid = resolveTrackedPaidSwapUrl(worstItem.swapObj) != null
             val worstSuffix = if (worstPaid) " · paid link" else ""
             sheet.addView(text("⚡ Find Lowest-Score Swap (${worstItem.score}/100) in $storeName ↗$worstSuffix", 13.5f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER
@@ -2293,7 +2439,7 @@ class OverlayWindowService : Service() {
             val swapUnlocked = !serverLocked && ScanApi.isSwapUnlocked(this, prodTitle, swapTitle)
             val rem = if (serverLocked) 0 else ScanApi.swapsRemaining(this)
             val lim = ScanApi.weeklySwapsLimit(this)
-            val isPaidLink = swap.optBoolean("isPaidLink", false)
+            val isPaidLink = resolveTrackedPaidSwapUrl(swap) != null
             val storeName = storeDisplayName(currentStoreBucket)
             val baseSwapCta = "Find in $storeName ↗"
             val swapBtnLabel = if (isPaidLink) "$baseSwapCta · paid link" else baseSwapCta
@@ -2480,9 +2626,19 @@ class OverlayWindowService : Service() {
             text(provenanceLine, 9.5f, BRAND, bold = true).apply {
                 setPadding(dp(2), dp(6), dp(2), 0)
                 setOnClickListener {
+                    isEnabled = false
+                    setTextColor(BRAND)
                     text = "🤖 Checking USDA & Open Food Facts…"
-                    ScanApi.autoVerifyLabel(prodTitle, prodIngredients, currentStoreKey) { summary ->
-                        text = "✓ $summary"
+                    ScanApi.autoVerifyLabelOutcome(prodTitle, prodIngredients, currentStoreKey) { outcome ->
+                        text = outcome.message
+                        setTextColor(
+                            when {
+                                outcome.verified -> 0xFF15803D.toInt()
+                                outcome.ok -> 0xFFB45309.toInt()
+                                else -> 0xFFB91C1C.toInt()
+                            }
+                        )
+                        isEnabled = !outcome.ok
                     }
                 }
             }
@@ -2572,7 +2728,7 @@ class OverlayWindowService : Service() {
         val swapSize = swap.optString("size")
         val swapIngredients = swap.optString("ingredients").trim()
         val storeName = storeDisplayName(currentStoreBucket)
-        val isPaidLink = swap.optBoolean("isPaidLink", false)
+        val isPaidLink = resolveTrackedPaidSwapUrl(swap) != null
         val baseModalCta = "🔍 Find in $storeName ↗"
         val modalSwapCta = if (isPaidLink) "$baseModalCta · paid link" else baseModalCta
         val goBack: () -> Unit = {
@@ -2939,10 +3095,28 @@ class OverlayWindowService : Service() {
         ScanHistoryStore.upgradeSwapForStore(swap, prodTitle, currentStoreKey)
     }
 
+    private fun resolveTrackedPaidSwapUrl(swap: JSONObject?): String? {
+        if (swap == null || !swap.optBoolean("isPaidLink", false)) return null
+        val instacartSlug = if (currentStoreBucket.startsWith("instacart:")) {
+            currentStoreBucket.substringAfter("instacart:").trim()
+        } else {
+            ""
+        }
+        val candidateRaw = swap.optString("webUrl").trim()
+            .ifBlank { swap.optString("deepLink").trim() }
+        if (candidateRaw.isBlank()) return null
+        val normalized = normalizeStoreUrl(candidateRaw).let {
+            if (it.startsWith("http://", ignoreCase = true)) "https://" + it.substring(7) else it
+        }
+        if (!normalized.startsWith("https://", ignoreCase = true)) return null
+        if (!ScanHistoryStore.urlMatchesStore(normalized, currentStoreKey)) return null
+        return rewriteInstacartRetailerUrl(normalized, instacartSlug)
+    }
+
     /**
-     * Fires the Clean Swap search inside the store's native app (via direct product deep link when a verified
-     * retailer itemId is present, or via in-app accessibility search bar automation) and saves the Clean Swap
-     * to Favorites & Scan History.
+     * Fires the Clean Swap search inside the store's native app (via tracked affiliate link when `isPaidLink`
+     * is active, direct product deep link when a verified retailer itemId is present, or in-app accessibility
+     * search bar automation) and saves the Clean Swap to Favorites & Scan History.
      * Does NOT mutate tripCart or animate Cart Avg until the next screen scan detects the new item in cart.
      */
     private fun openSwap(
@@ -3013,10 +3187,35 @@ class OverlayWindowService : Service() {
         }
         val pkg = storePackageForKey(currentStoreKey).ifBlank { swap.optString("androidPackage") }
         val storeName = storeDisplayName(currentStoreBucket)
+        val trackedPaidUrl = resolveTrackedPaidSwapUrl(swap)
 
         openedCardFromAuditor = false
         removeCard()
         showPill()
+
+        // 0. When a tracked affiliate link is active (`isPaidLink == true`), open the tracked URL directly
+        //    so partner attribution is preserved instead of discarded by plain-text in-app search typing.
+        if (trackedPaidUrl != null) {
+            Toast.makeText(
+                this,
+                "🔍 Opening $swapTitle in $storeName… (Saved to ♥ Favorites)",
+                Toast.LENGTH_LONG
+            ).show()
+            val paidIntent = Intent(Intent.ACTION_VIEW, Uri.parse(trackedPaidUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtras(Bundle().apply {
+                    putBinder("android.support.customtabs.extra.SESSION", null)
+                })
+                putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", BRAND)
+                resolveExternalBrowserPackage()?.let { setPackage(it) }
+            }
+            val openedPaid = runCatching { startActivity(paidIntent) }.isSuccess || runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trackedPaidUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.isSuccess
+            if (openedPaid) {
+                return
+            }
+        }
 
         val preferNativeInAppSearch =
             GroceryScreenReaderService.activeWindowManager() != null &&
@@ -3087,11 +3286,7 @@ class OverlayWindowService : Service() {
                 }
             }
             if (!launchedInNativeApp) {
-                val safeWebUrl = if (currentStoreKey == "walmart" && rawWebUrl.contains("/ip/")) {
-                    fallbackStoreSearchUrl
-                } else {
-                    rawWebUrl.ifBlank { fallbackStoreSearchUrl }
-                }
+                val safeWebUrl = rawWebUrl.ifBlank { fallbackStoreSearchUrl }
                 if (safeWebUrl.isNotBlank()) {
                     val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(safeWebUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     // Bind explicitly to an external browser when opening a search URL so Android App Links never routes

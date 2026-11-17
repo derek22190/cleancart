@@ -14,6 +14,7 @@ export type CreatorPayoutMethod =
   | "paypal"
   | "venmo"
   | "zelle"
+  | "ach"
   | "manual";
 
 export interface CreatorRow {
@@ -55,7 +56,12 @@ export interface CreatorPayoutItem {
   code: string;
   amount: number;
   method: CreatorPayoutMethod;
-  status: "paid" | "recorded";
+  status:
+    | "paid"
+    | "recorded"
+    | "pending"
+    | "pending_reconciliation"
+    | "failed";
   destination?: string;
   stripeTransferId?: string;
   note?: string;
@@ -99,6 +105,9 @@ export default function InfluencerEngine({
   const [newPct, setNewPct] = useState<number>(PRICING.defaultCommissionPct);
   const [busy, setBusy] = useState(false);
   const [payoutBusyCode, setPayoutBusyCode] = useState<string | null>(null);
+  const [payoutIdempotencyKeys, setPayoutIdempotencyKeys] = useState<
+    Record<string, string>
+  >({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -236,14 +245,15 @@ export default function InfluencerEngine({
 
   const handlePayCreator = async (c: CreatorRow) => {
     if (c.commissionOwed <= 0) return;
-    const hasConnect = Boolean(c.stripeConnectAccountId);
+    const connectAccountId = (c.stripeConnectAccountId || "").trim();
+    const hasConnect = connectAccountId.startsWith("acct_");
     const method: CreatorPayoutMethod = hasConnect
       ? "stripe_connect"
       : c.payoutMethod && c.payoutMethod !== "stripe_connect"
         ? c.payoutMethod
         : "manual";
     const destinationLabel = hasConnect
-      ? `Stripe Connect (${c.stripeConnectAccountId})`
+      ? `Stripe Connect (${connectAccountId})`
       : c.payoutHandle || c.payoutEmail || "manual payout";
     if (
       typeof window !== "undefined" &&
@@ -254,6 +264,19 @@ export default function InfluencerEngine({
       )
     ) {
       return;
+    }
+
+    const paidCents = Math.round((c.commissionPaid ?? 0) * 100);
+    const owedCents = Math.round(c.commissionOwed * 100);
+    const balanceStateKey = `${c.code}:${paidCents}:${owedCents}`;
+    const deterministicKey =
+      payoutIdempotencyKeys[balanceStateKey] ||
+      `po_${c.code}_paid${paidCents}_owed${owedCents}_amt${owedCents}`;
+    if (!payoutIdempotencyKeys[balanceStateKey]) {
+      setPayoutIdempotencyKeys((prev) => ({
+        ...prev,
+        [balanceStateKey]: deterministicKey,
+      }));
     }
 
     setPayoutBusyCode(c.code);
@@ -268,13 +291,21 @@ export default function InfluencerEngine({
           amount: c.commissionOwed,
           payoutMethod: method,
           executeStripeTransfer: hasConnect,
-          destination: c.payoutHandle || c.payoutEmail || undefined,
+          destination: hasConnect
+            ? connectAccountId
+            : c.payoutHandle || c.payoutEmail || undefined,
+          idempotencyKey: deterministicKey,
           note: hasConnect ? "Admin Stripe Connect payout" : `Admin ${method} payout`,
         }),
       });
       const data = await res.json();
       applySnapshot(res.status, data);
       if (res.ok && data.ok && data.payout) {
+        setPayoutIdempotencyKeys((prev) => {
+          const next = { ...prev };
+          delete next[balanceStateKey];
+          return next;
+        });
         setNotice(
           `Paid ${usd(data.payout.amount)} to ${c.code} (${data.payout.stripeTransferId || data.payout.method}).`
         );
@@ -343,7 +374,7 @@ export default function InfluencerEngine({
           <strong>{totals.trials}</strong>
         </div>
         <div className="kpi-box">
-          <span>Paid Subscriptions</span>
+          <span>Paid Subs</span>
           <strong>{totals.paidAnnual + totals.paidMonthly}</strong>
         </div>
         <div className="kpi-box kpi-box--warn">
@@ -384,7 +415,7 @@ export default function InfluencerEngine({
         </div>
         <div className="form-field form-field--short">
           <label htmlFor="new-creator-pct">
-            Split % ({usd(perAnnualPayout)}/yr)
+            Split % ({usd(perAnnualPayout)} 1st yr)
           </label>
           <input
             id="new-creator-pct"
@@ -462,7 +493,7 @@ export default function InfluencerEngine({
                       />
                       <span>%</span>
                     </div>
-                    <small className="creator-sub">{usd(payoutPerSub)} / yr sub</small>
+                    <small className="creator-sub">{usd(payoutPerSub)} / 1st yr</small>
                   </td>
                   <td>{c.clicks}</td>
                   <td>{c.trials}</td>
@@ -531,9 +562,11 @@ export default function InfluencerEngine({
 
       <div className="table-foot">
         <span>
-          Default split: <b>35% = {usd(commissionFor("annual", 35))}</b> creator
-          payout + <b>{usd(PRICING.annual - commissionFor("annual", 35))}</b> net
-          to you per $49.99 annual conversion.
+          Default split:{" "}
+          <b>35% commission on every new paid Pro signup&apos;s first billing cycle</b>{" "}
+          (<b>{usd(commissionFor("annual", 35))}</b> on annual or{" "}
+          <b>{usd(commissionFor("monthly", 35))}</b> on monthly) across iPhone (App
+          Store), Android, and Web.
         </span>
         <button type="button" className="link-btn" onClick={resetAll}>
           Reset test counters
@@ -577,7 +610,9 @@ export default function InfluencerEngine({
         <div className="card-head">
           <h2>1,000-Influencer Outreach Math Simulator</h2>
           <span className="hint">
-            Adjust assumptions to model annual recurring revenue
+            Models 35% commission on every new paid Pro signup&apos;s first billing
+            cycle ($17.50 annual / $3.50 monthly) across iPhone (App Store),
+            Android &amp; Web
           </span>
         </div>
         <div className="outreach-inputs">

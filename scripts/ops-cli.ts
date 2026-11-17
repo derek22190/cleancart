@@ -26,6 +26,7 @@ import {
 import {
   createCreator,
   executeCreatorPayout,
+  getPendingCreatorPayout,
   listCreatorPayouts,
   listCreators,
   type CreatorPayoutMethod,
@@ -324,7 +325,7 @@ async function main() {
     const code = getFlag("code");
     if (!code) {
       console.error(
-        "✖ Usage: npm run ops payout -- --code=SARAHHAULS [--amount=17.50] [--method=stripe_connect|paypal|venmo|zelle|manual] [--stripe-transfer] [--destination=...] [--note=...]"
+        "✖ Usage: npm run ops payout -- --code=SARAHHAULS [--amount=17.50] [--method=stripe_connect|ach|paypal|venmo|zelle|manual] [--stripe-transfer] [--destination=acct_...] [--idempotency-key=...] [--note=...]"
       );
       process.exit(1);
     }
@@ -332,6 +333,7 @@ async function main() {
     const methodRaw = getFlag("method") as CreatorPayoutMethod | undefined;
     const executeStripeTransfer = args.includes("--stripe-transfer");
     const destination = getFlag("destination");
+    const idempotencyKey = getFlag("idempotency-key");
     const note = getFlag("note");
     const result = await executeCreatorPayout({
       code,
@@ -339,6 +341,7 @@ async function main() {
       method: methodRaw,
       executeStripeTransfer,
       destination,
+      idempotencyKey,
       note,
     });
     console.log("✓ Creator Payout Completed:");
@@ -469,8 +472,12 @@ async function main() {
 
   console.log("3. CREATOR / AFFILIATE LEDGER & PAYOUTS:");
   for (const c of creators) {
+    const pending = await getPendingCreatorPayout(c.code);
+    const pendingBadge = pending
+      ? ` | ⚠ PENDING RECONCILIATION: $${pending.effectiveAmount.toFixed(2)} (payoutId=${pending.payoutId})`
+      : "";
     console.log(
-      `   - ${c.code.padEnd(12)} | Split: ${c.commissionPct}% | Clicks: ${c.clicks} | Trials: ${c.trials} | Paid: ${c.paidAnnual} yr + ${c.paidMonthly} mo | Earned: $${c.commissionEarned.toFixed(2)} | PaidOut: $${c.commissionPaid.toFixed(2)} | Owed: $${c.commissionOwed.toFixed(2)} | Net: $${c.netRevenue.toFixed(2)}`
+      `   - ${c.code.padEnd(12)} | Split: ${c.commissionPct}% | Clicks: ${c.clicks} | Trials: ${c.trials} | Paid: ${c.paidAnnual} yr + ${c.paidMonthly} mo | Earned: $${c.commissionEarned.toFixed(2)} | PaidOut: $${c.commissionPaid.toFixed(2)} | Owed: $${c.commissionOwed.toFixed(2)} | Net: $${c.netRevenue.toFixed(2)}${pendingBadge}`
     );
   }
   if (payouts.length > 0) {

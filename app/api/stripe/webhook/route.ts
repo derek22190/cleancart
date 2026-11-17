@@ -15,8 +15,11 @@ import {
   type EntitlementStatus,
 } from "@/lib/entitlements";
 import {
+  hasSubscriptionFirstPaidCredit,
+  normalizeCode,
   recordStripeCreatorConversionOnce,
   recordStripeCreatorRefundOnce,
+  type CreatorConversionMeta,
 } from "@/lib/influencers";
 import { PRICING, TERMS_VERSION, type PlanId } from "@/lib/pricing";
 import { applyOrActivateReferral } from "@/lib/referrals";
@@ -327,9 +330,13 @@ async function resolveSubscriptionFromCharge(
     }
     const firstInv = ipData.data?.[0]?.invoice;
     if (firstInv && typeof firstInv === "object") {
+      if (typeof (firstInv as { id?: unknown }).id === "string") {
+        chargeObj._resolvedInvoiceId = (firstInv as { id: string }).id;
+      }
       const subId = extractSubIdFromInvoiceObject(firstInv);
       if (subId) return subId;
     } else if (typeof firstInv === "string" && firstInv) {
+      chargeObj._resolvedInvoiceId = firstInv;
       const invRes = await fetch(
         `https://api.stripe.com/v1/invoices/${encodeURIComponent(firstInv)}`,
         {
@@ -467,15 +474,25 @@ export async function POST(req: Request) {
                   activateNow: true,
                   userId,
                 });
-              } else if (amountSubtotalCents > 0) {
-                // One-time payment (`mode=payment`) does not emit `invoice.paid`; credit creator here idempotently on pre-tax subtotal
-                await recordStripeCreatorConversionOnce(
-                  `session:${sessionId}`,
-                  creatorCode,
-                  "paid_annual",
-                  amountSubtotalCents / 100,
-                  resolvedEmail
-                );
+              } else {
+                // Post-checkout Year-2 extension upsell (`oto_gift_year`) is not a subscriber's first billing cycle;
+                // store a zero-commission marker so refunding only the Year-2 pass never claws back cycle #1 commission.
+                const normOtoCreator = normalizeCode(creatorCode);
+                if (normOtoCreator) {
+                  await kvSet<CreatorConversionMeta>(
+                    `heybroc:creator:conv_meta:session:${sessionId}`,
+                    {
+                      code: normOtoCreator,
+                      blockedSelfDeal: false,
+                      commissionCents: 0,
+                      grossUsd: 0,
+                      plan: "annual",
+                      clawedBackCents: 0,
+                      buyerEmail: resolvedEmail || undefined,
+                    },
+                    400 * 24 * 60 * 60
+                  ).catch(() => {});
+                }
               }
             }
           }
@@ -857,20 +874,54 @@ export async function POST(req: Request) {
             .catch(() => {});
         }
 
-        // Credit creators strictly from invoice.paid / invoice.payment_succeeded with amount_paid > 0 on pre-tax net USD
+        // Credit creators strictly on the subscriber's FIRST paid billing cycle (pre-tax net USD, never on $0 trials or renewals #2+)
         if (
           creatorCode &&
           !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) &&
           preTaxPaidCents > 0 &&
-          invoiceId
+          subscriptionId
         ) {
-          await recordStripeCreatorConversionOnce(
-            `invoice:${invoiceId}`,
-            creatorCode,
-            plan === "monthly" ? "paid_monthly" : "paid_annual",
-            preTaxPaidCents / 100,
-            resolvedInvoiceEmail
-          );
+          const prevSubId = (
+            metadata.previous_subscription_id ||
+            metadata.replaces_subscription_id ||
+            ""
+          ).trim();
+          const supersededAlreadyCredited =
+            prevSubId &&
+            prevSubId !== subscriptionId &&
+            (await hasSubscriptionFirstPaidCredit(`stripe_sub:${prevSubId}`));
+
+          if (supersededAlreadyCredited) {
+            const normSwitchedCode = normalizeCode(creatorCode);
+            if (normSwitchedCode) {
+              await kvSet<CreatorConversionMeta>(
+                `heybroc:creator:conv_meta:stripe_sub:${subscriptionId}`,
+                {
+                  code: normSwitchedCode,
+                  blockedSelfDeal: false,
+                  commissionCents: 0,
+                  grossUsd: 0,
+                  plan,
+                  clawedBackCents: 0,
+                  buyerEmail: resolvedInvoiceEmail || undefined,
+                  ...(invoiceId ? { creditedInvoiceId: invoiceId } : {}),
+                },
+                400 * 24 * 60 * 60
+              ).catch(() => {});
+            }
+          } else {
+            await recordStripeCreatorConversionOnce(
+              `stripe_sub:${subscriptionId}`,
+              creatorCode,
+              plan === "monthly" ? "paid_monthly" : "paid_annual",
+              preTaxPaidCents / 100,
+              resolvedInvoiceEmail,
+              {
+                creditedInvoiceId: invoiceId || undefined,
+                subscriptionKey: `stripe_sub:${subscriptionId}`,
+              }
+            );
+          }
         }
         break;
       }
@@ -1087,7 +1138,12 @@ export async function POST(req: Request) {
           );
         }
 
-        if (creatorCode && !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) && amountRefundedCents > 0) {
+        if (
+          creatorCode &&
+          !/^BROC-[A-Z0-9]{4,10}$/.test(creatorCode) &&
+          amountRefundedCents > 0 &&
+          !isOneTimeOtoPassCharge
+        ) {
           const rawInvoice = chargeSource.invoice;
           const invoiceIdForClawback =
             typeof rawInvoice === "string"
@@ -1095,12 +1151,19 @@ export async function POST(req: Request) {
               : rawInvoice &&
                   typeof (rawInvoice as { id?: string }).id === "string"
                 ? (rawInvoice as { id: string }).id
-                : "";
-          const originalConversionKey = invoiceIdForClawback
-            ? `invoice:${invoiceIdForClawback}`
-            : isOneTimeOtoPassCharge && resolvedCheckoutSessionId
-              ? `session:${resolvedCheckoutSessionId}`
-              : undefined;
+                : typeof chargeSource._resolvedInvoiceId === "string"
+                  ? chargeSource._resolvedInvoiceId
+                  : "";
+          const originalConversionKey = subscriptionId
+            ? `stripe_sub:${subscriptionId}`
+            : invoiceIdForClawback
+              ? `invoice:${invoiceIdForClawback}`
+              : resolvedCheckoutSessionId
+                ? `session:${resolvedCheckoutSessionId}`
+                : undefined;
+          const fallbackConversionKeys = invoiceIdForClawback
+            ? [`invoice:${invoiceIdForClawback}`]
+            : undefined;
           const buyerEmail =
             chargeEmail ||
             existing?.customerEmail ||
@@ -1137,6 +1200,8 @@ export async function POST(req: Request) {
                 {
                   buyerEmail,
                   originalConversionKey,
+                  fallbackConversionKeys,
+                  refundedInvoiceId: invoiceIdForClawback || undefined,
                   otoOffer: otoOfferMeta,
                   refundRatio,
                 }
@@ -1166,6 +1231,8 @@ export async function POST(req: Request) {
                 {
                   buyerEmail,
                   originalConversionKey,
+                  fallbackConversionKeys,
+                  refundedInvoiceId: invoiceIdForClawback || undefined,
                   otoOffer: otoOfferMeta,
                   refundRatio,
                 }

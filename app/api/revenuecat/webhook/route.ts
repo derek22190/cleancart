@@ -23,6 +23,8 @@ import {
 } from "@/lib/entitlements";
 import {
   clawbackCreatorCommission,
+  getCreatorConversionMeta,
+  hasSubscriptionFirstPaidCredit,
   recordStripeCreatorConversionOnce,
 } from "@/lib/influencers";
 import type { PlanId } from "@/lib/pricing";
@@ -319,28 +321,55 @@ export async function POST(req: Request) {
     updatedAt: new Date().toISOString(),
   });
 
-  // Credit creator / referral on initial purchase or renewal; claw back proportionally ONLY on real paid refunds
+  const origTxId =
+    (ev.original_transaction_id || "").trim() ||
+    (subscriptionId.startsWith("rc_")
+      ? subscriptionId.slice(3)
+      : subscriptionId);
+  const txId = (ev.transaction_id || "").trim() || origTxId;
+
+  // Credit creator / referral on first paid billing cycle only (rc_orig:<origTxId>), never on $0 trials or renewals #2+
   if (
     eventType === "INITIAL_PURCHASE" ||
     eventType === "RENEWAL" ||
     eventType === "TRIAL_STARTED"
   ) {
-    if (creatorCode) {
+    if (creatorCode && !/^BROC-[A-Z0-9]{4,10}$/i.test(creatorCode)) {
       const amountPaidUsd = preTaxUsdPrice > 0 ? preTaxUsdPrice : 0;
-      const isTrialEvent = status === "trialing" || amountPaidUsd <= 0;
-      if (!isTrialEvent || eventType !== "RENEWAL") {
-        const creatorEvent = isTrialEvent
-          ? "trial"
-          : plan === "annual"
-            ? "paid_annual"
-            : "paid_monthly";
-        await recordStripeCreatorConversionOnce(
-          `rc_${eventId}`,
-          creatorCode,
-          creatorEvent,
-          amountPaidUsd > 0 ? amountPaidUsd : undefined,
-          customerEmail
+      const isTrialEvent =
+        status === "trialing" ||
+        ev.period_type === "TRIAL" ||
+        amountPaidUsd <= 0;
+      if (isTrialEvent) {
+        if (eventType !== "RENEWAL") {
+          await recordStripeCreatorConversionOnce(
+            `rc_trial:${origTxId}`,
+            creatorCode,
+            "trial",
+            undefined,
+            customerEmail
+          );
+        }
+      } else {
+        const alreadyCreditedViaStoreKit = await hasSubscriptionFirstPaidCredit(
+          `apple_orig:${origTxId}`
         );
+        if (!alreadyCreditedViaStoreKit) {
+          const creatorEvent =
+            plan === "annual" ? "paid_annual" : "paid_monthly";
+          await recordStripeCreatorConversionOnce(
+            `rc_orig:${origTxId}`,
+            creatorCode,
+            creatorEvent,
+            amountPaidUsd,
+            customerEmail,
+            {
+              creditedTransactionId: txId,
+              creditedEventId: eventId,
+              subscriptionKey: `rc_orig:${origTxId}`,
+            }
+          );
+        }
       }
     }
     if (deviceId) {
@@ -366,38 +395,62 @@ export async function POST(req: Request) {
         amountUsd: rcAmountUsd,
       },
     });
-  } else if (
-    isImmediateRefundEvent &&
-    creatorCode &&
-    !/^BROC-[A-Z0-9]{4,10}$/i.test(creatorCode)
-  ) {
-    const explicitPrice =
-      typeof ev.price === "number" && Number.isFinite(ev.price)
-        ? ev.price
-        : undefined;
-    const shouldSkipClawback =
-      ev.period_type === "TRIAL" ||
-      explicitPrice === 0 ||
-      ev.price_in_purchased_currency === 0 ||
-      (explicitPrice === undefined && !existing?.lastChargeSucceeded);
+  } else if (isImmediateRefundEvent) {
+    const convMeta =
+      (await getCreatorConversionMeta(`rc_orig:${origTxId}`)) ??
+      (await getCreatorConversionMeta(`apple_orig:${origTxId}`));
+    const effectiveCreatorCode = creatorCode || convMeta?.code;
 
-    if (!shouldSkipClawback) {
-      const preTaxRefundUsd =
-        explicitPrice !== undefined && explicitPrice !== 0
-          ? Math.round(Math.abs(explicitPrice) * (1 - taxPct) * 100) / 100
-          : preTaxUsdPrice !== 0
-            ? Math.abs(preTaxUsdPrice)
-            : undefined;
-      await clawbackCreatorCommission(
-        `rc_refund_${ev.transaction_id || eventId}`,
-        creatorCode,
-        plan,
-        preTaxRefundUsd,
-        preTaxRefundUsd === undefined ? true : undefined,
-        {
-          buyerEmail: customerEmail,
-        }
-      );
+    if (
+      effectiveCreatorCode &&
+      !/^BROC-[A-Z0-9]{4,10}$/i.test(effectiveCreatorCode)
+    ) {
+      const explicitPrice =
+        typeof ev.price === "number" && Number.isFinite(ev.price)
+          ? ev.price
+          : undefined;
+      const shouldSkipClawback =
+        ev.period_type === "TRIAL" ||
+        explicitPrice === 0 ||
+        ev.price_in_purchased_currency === 0 ||
+        (explicitPrice === undefined &&
+          !existing?.lastChargeSucceeded &&
+          !convMeta);
+
+      if (!shouldSkipClawback) {
+        const preTaxRefundUsd =
+          explicitPrice !== undefined && explicitPrice !== 0
+            ? Math.round(Math.abs(explicitPrice) * (1 - taxPct) * 100) / 100
+            : preTaxUsdPrice !== 0
+              ? Math.abs(preTaxUsdPrice)
+              : undefined;
+        const refundRatio =
+          preTaxRefundUsd !== undefined && convMeta && convMeta.grossUsd > 0
+            ? Math.max(0, Math.min(1, preTaxRefundUsd / convMeta.grossUsd))
+            : preTaxRefundUsd === undefined
+              ? 1
+              : undefined;
+        const effectivePlan = convMeta?.plan || plan;
+        await clawbackCreatorCommission(
+          `rc_refund_${ev.transaction_id || origTxId || eventId}`,
+          effectiveCreatorCode,
+          effectivePlan,
+          preTaxRefundUsd,
+          refundRatio !== undefined
+            ? refundRatio >= 0.99
+            : preTaxRefundUsd === undefined
+              ? true
+              : undefined,
+          {
+            buyerEmail: customerEmail || convMeta?.buyerEmail,
+            originalConversionKey: `rc_orig:${origTxId}`,
+            fallbackConversionKeys: [`apple_orig:${origTxId}`],
+            refundedTransactionId: ev.transaction_id?.trim() || undefined,
+            originalPreTaxUsd: convMeta?.grossUsd,
+            refundRatio,
+          }
+        );
+      }
     }
   }
 

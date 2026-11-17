@@ -26,14 +26,19 @@
 
   const DEBOUNCE_MS = 200;
   const MAX_CART_ITEMS = 100;
+  const CART_STALE_MS = 2 * 60 * 60 * 1000;
   const STOCK_CACHE_TTL_MS = 10 * 60 * 1000;
   const PENDING_SWAP_KEY = "heybroc_pending_swap_check";
+  const LAST_INSTACART_SLUG_SESSION_KEY = "heybroc_last_instacart_slug";
 
   const RESERVED_SLUGS = new Set([
     "s", "search", "cart", "checkout", "account", "hub", "referrals", "orders",
     "lists", "store", "stores", "items", "products", "product", "item", "help",
     "login", "signup", "categories", "collections", "shop", "convenience", "grocery",
-    "all", "deals", "promotions", "favorites", "saved",
+    "all", "deals", "promotions", "favorites", "saved", "your-items", "retailers",
+    "recipes", "partner-recipes", "partner_recipes", "gift-cards", "bookmarks",
+    "brands", "loyalty", "family", "instacart-plus", "settings", "savings",
+    "discover", "directory", "http", "https",
   ]);
 
   let clientInfo = { apiBase: DEFAULT_API, deviceId: "", creatorCode: "" };
@@ -63,14 +68,16 @@
       Math.min(window.innerWidth || 9999, window.screen?.width || 9999) <= 920);
 
   function buildWebActionUrl(kind) {
+    const cleanCode = String(clientInfo.creatorCode || "").trim();
     if (isIosMobileBrowser) {
-      return kind === "login" ? "heybroc://login" : "heybroc://upgrade";
+      const schemeBase = kind === "login" ? "heybroc://login" : "heybroc://upgrade";
+      return cleanCode ? `${schemeBase}?code=${encodeURIComponent(cleanCode)}` : schemeBase;
     }
     const base = (clientInfo.apiBase || DEFAULT_API).replace(/\/+$/, "");
     const params = new URLSearchParams();
     params.set(kind === "login" ? "login" : "upgrade", "1");
     if (clientInfo.deviceId) params.set("deviceId", clientInfo.deviceId);
-    if (clientInfo.creatorCode) params.set("code", clientInfo.creatorCode);
+    if (cleanCode) params.set("code", cleanCode);
     return `${base}/?${params.toString()}`;
   }
 
@@ -164,13 +171,27 @@
   /* ---------------- Per-Store & Per-Marketplace-Retailer Bucket Resolution ---------------- */
   function cleanSlug(raw) {
     if (!raw || typeof raw !== "string") return "";
-    const slug = raw
+    let decoded = raw;
+    try {
+      decoded = decodeURIComponent(raw);
+    } catch {
+      decoded = raw;
+    }
+    const slug = decoded
       .trim()
       .toLowerCase()
       .replace(/^\/+|\/+$/g, "")
       .split("/")[0]
       .replace(/[^a-z0-9_-]/g, "");
-    if (!slug || slug.length < 2 || RESERVED_SLUGS.has(slug) || /^\d+$/.test(slug)) return "";
+    if (
+      !slug ||
+      slug.length < 2 ||
+      RESERVED_SLUGS.has(slug) ||
+      /^checkout(?:[-_]|$)/i.test(slug) ||
+      /^\d+$/.test(slug)
+    ) {
+      return "";
+    }
     return slug;
   }
 
@@ -192,10 +213,10 @@
       slug = cleanSlug(sp.get("retailer_slug") || sp.get("store") || "");
     }
     if (!slug) {
-      const headerLinks = document.querySelectorAll(
-        'header a[href*="/store/"], nav a[href*="/store/"], [data-testid*="retailer" i] a[href*="/store/"], [data-testid*="store" i] a[href*="/store/"]'
+      const retailerLinks = document.querySelectorAll(
+        '[data-testid*="retailer" i] a[href*="/store/"], [data-testid*="store-header" i] a[href*="/store/"], a[href*="/store/"][href*="/front"]'
       );
-      for (const a of headerLinks) {
+      for (const a of retailerLinks) {
         const m = (a.getAttribute("href") || "").match(/\/store\/([^/?#]+)/i);
         const cand = cleanSlug(m?.[1] || "");
         if (cand) {
@@ -205,11 +226,16 @@
       }
     }
     if (slug) {
-      try { sessionStorage.setItem("heybroc_last_instacart_slug", slug); } catch { /* ignore */ }
+      try { sessionStorage.setItem(LAST_INSTACART_SLUG_SESSION_KEY, slug); } catch { /* ignore */ }
       return slug;
     }
     try {
-      return cleanSlug(sessionStorage.getItem("heybroc_last_instacart_slug") || "");
+      const rawStored = sessionStorage.getItem(LAST_INSTACART_SLUG_SESSION_KEY) || "";
+      const validStored = cleanSlug(rawStored);
+      if (!validStored && rawStored) {
+        sessionStorage.removeItem(LAST_INSTACART_SLUG_SESSION_KEY);
+      }
+      return validStored;
     } catch {
       return "";
     }
@@ -225,7 +251,12 @@
       }
     }
     try {
-      return cleanSlug(sessionStorage.getItem(sessionKey) || "");
+      const rawStored = sessionStorage.getItem(sessionKey) || "";
+      const validStored = cleanSlug(rawStored);
+      if (!validStored && rawStored) {
+        sessionStorage.removeItem(sessionKey);
+      }
+      return validStored;
     } catch {
       return "";
     }
@@ -449,23 +480,175 @@
     return s >= 75 ? "Excellent" : s >= 50 ? "Mediocre" : "Poor";
   }
 
+  function extractRetailerItemIdFromSingleUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== "string") return "";
+    let candidate = rawUrl.trim();
+    if (!candidate) return "";
+    try {
+      const parsed = new URL(candidate, location.href);
+      const rd = parsed.searchParams.get("rd");
+      if (rd) {
+        candidate = `${parsed.pathname}${parsed.search} ${rd}`;
+      }
+    } catch {
+      /* ignore relative/malformed URL */
+    }
+    const asinMatch = candidate.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+    if (asinMatch) return `asin:${asinMatch[1].toUpperCase()}`;
+    const walmartMatch = candidate.match(/\/ip\/(?:[^/?#]+\/)?(\d{6,16})(?:[/?#]|$)/i);
+    if (walmartMatch) return `walmart:${walmartMatch[1]}`;
+    const targetMatch = candidate.match(/\/-\/A-(\d{6,14})(?:[/?#]|$)/i);
+    if (targetMatch) return `tcin:${targetMatch[1]}`;
+    const icMatch = candidate.match(/\/(?:products|items)\/(?:item_)?(\d{4,18})(?:[/?#_-]|$)/i);
+    if (icMatch) return `ic:${icMatch[1]}`;
+    const krogerMatch = candidate.match(/\/p\/[^/?#]+\/(\d{8,15})(?:[/?#]|$)/i);
+    if (krogerMatch) return `kroger:${krogerMatch[1]}`;
+    return "";
+  }
+
+  function extractRetailerItemIdFromUrlOrNode(url, node) {
+    if (node && typeof node.getAttribute === "function") {
+      const asinAttr = (
+        node.getAttribute("data-asin") ||
+        node.closest?.('[data-asin]:not([data-asin=""])')?.getAttribute?.("data-asin") ||
+        ""
+      ).trim();
+      if (/^[A-Z0-9]{10}$/i.test(asinAttr)) {
+        return `asin:${asinAttr.toUpperCase()}`;
+      }
+      const wmAttr = (
+        node.getAttribute("data-item-id") ||
+        node.closest?.("[data-item-id]")?.getAttribute?.("data-item-id") ||
+        ""
+      ).trim();
+      if (/^\d{6,16}$/.test(wmAttr)) {
+        return `walmart:${wmAttr}`;
+      }
+    }
+    const fromUrl = extractRetailerItemIdFromSingleUrl(url);
+    if (fromUrl) return fromUrl;
+    if (node && typeof node.querySelectorAll === "function") {
+      const foundIds = new Set();
+      const childAsinEls = node.querySelectorAll('[data-asin]:not([data-asin=""])');
+      for (const el of childAsinEls) {
+        const a = (el.getAttribute("data-asin") || "").trim();
+        if (/^[A-Z0-9]{10}$/i.test(a)) foundIds.add(`asin:${a.toUpperCase()}`);
+      }
+      const childWmEls = node.querySelectorAll("[data-item-id]");
+      for (const el of childWmEls) {
+        const w = (el.getAttribute("data-item-id") || "").trim();
+        if (/^\d{6,16}$/.test(w)) foundIds.add(`walmart:${w}`);
+      }
+      const links = node.querySelectorAll("a[href]");
+      for (const a of links) {
+        const lid = extractRetailerItemIdFromSingleUrl(a.getAttribute("href") || "");
+        if (lid) foundIds.add(lid);
+        if (foundIds.size > 1) return "";
+      }
+      if (foundIds.size === 1) {
+        return [...foundIds][0];
+      }
+    }
+    return "";
+  }
+
   function normalizeTitleForMatch(s) {
     return String(s || "")
       .toLowerCase()
+      .replace(/\b(\d+)\s*%/g, "$1%")
       .replace(/\b(\d+(?:\.\d+)?\s*(?:fl\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml|l|gal|gallon|qt|pt))\b/g, " ")
-      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/[^a-z0-9%\s]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  const VARIANT_CONFLICT_PATTERNS = [
+    /\borganic\b/,
+    // Flavors
+    /\b(?:plain|unflavored|original)\b/,
+    /\bvanilla\b/,
+    /\bchocolate\b/,
+    /\bstrawberr(?:y|ies)\b/,
+    /\bblueberr(?:y|ies)\b/,
+    /\braspberr(?:y|ies)\b/,
+    /\bpeach\b/,
+    /\bmango\b/,
+    /\bbanana\b/,
+    /\bcherr(?:y|ies)\b/,
+    /\bhoney\b/,
+    /\bcinnamon\b/,
+    /\bmaple\b/,
+    /\bcool\s+ranch\b/,
+    /\bnacho\s+cheese\b/,
+    // Sweetness / diet
+    /\b(?:zero\s+sugar|sugar\s+free|no\s+sugar|diet)\b/,
+    /\bunsweetened\b/,
+    /\blightly\s+sweetened\b/,
+    // Other key variants
+    /\bdecaf(?:feinated)?\b/,
+    /\blactose\s+free\b/,
+    /\bextra\s+creamy\b/,
+    /\b(?:simply\s+nkd|nkd)\b/,
+    /\bunsalted\b/,
+    /\blightly\s+salted\b/,
+  ];
+
+  const DAIRY_FAT_VARIANT_PATTERNS = [
+    /\bwhole\b/,
+    /(?:^|\s)2%(?:\s|$)|\breduced\s+fat\b/,
+    /(?:^|\s)1%(?:\s|$)|\blow\s*fat\b/,
+    /(?:^|\s)0%(?:\s|$)|\bskim\b|\bfat\s*free\b|\bnon\s*fat\b/,
+    /\bhalf\s*(?:and|&)\s*half\b/,
+    /\bheavy\b/,
+  ];
+
+  function normalizeForVariantCheck(raw) {
+    return String(raw || "")
+      .toLowerCase()
+      .replace(/\b(\d+)\s*%/g, "$1%")
+      .replace(/&/g, " & ")
+      .replace(/[^a-z0-9%&\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function stripNonDairyWholePhrases(s) {
+    return s
+      .replace(
+        /\bwhole\s+(?:foods?|grains?|wheat|oats?|beans?|kernels?|peeled|almonds?|cashews?|berry|berries|cloves?|leaf|seed|seeds)\b/g,
+        " "
+      )
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function hasConflictingCartVariants(a, b) {
+    const sa = normalizeForVariantCheck(a);
+    const sb = normalizeForVariantCheck(b);
+    if (!sa || !sb) return false;
+    for (let i = 0; i < VARIANT_CONFLICT_PATTERNS.length; i++) {
+      const re = VARIANT_CONFLICT_PATTERNS[i];
+      if (re.test(sa) !== re.test(sb)) return true;
+    }
+    const da = stripNonDairyWholePhrases(sa);
+    const db = stripNonDairyWholePhrases(sb);
+    for (let i = 0; i < DAIRY_FAT_VARIANT_PATTERNS.length; i++) {
+      const re = DAIRY_FAT_VARIANT_PATTERNS[i];
+      if (re.test(da) !== re.test(db)) return true;
+    }
+    return false;
   }
 
   function isSameCartTitle(a, b) {
     const na = normalizeTitleForMatch(a);
     const nb = normalizeTitleForMatch(b);
     if (!na || !nb) return false;
+    if (hasConflictingCartVariants(a, b)) return false;
     if (na === nb) return true;
     if (na.length >= 10 && nb.length >= 10 && (na.includes(nb) || nb.includes(na))) return true;
-    const wa = na.split(" ").filter((w) => w.length >= 3);
-    const wb = nb.split(" ").filter((w) => w.length >= 3);
+    const keepWord = (w) => w.length >= 3 || /^\d+%$/.test(w);
+    const wa = na.split(" ").filter(keepWord);
+    const wb = nb.split(" ").filter(keepWord);
     if (wa.length >= 3 && wb.length >= 3) {
       const overlap = wa.filter((w) => wb.includes(w)).length;
       if (overlap >= Math.min(wa.length, wb.length) - 1 && overlap >= 3) return true;
@@ -473,8 +656,25 @@
     return false;
   }
 
+  function isSameCartEntry(entryA, entryB) {
+    if (!entryA || !entryB) return false;
+    const idA = String(entryA.itemId || "").trim();
+    const idB = String(entryB.itemId || "").trim();
+    if (idA && idB) return idA === idB;
+    const titleA = String(entryA.title || entryA.key || "");
+    const titleB = String(entryB.title || entryB.key || "");
+    const keyA = String(entryA.key || entryA.title || "");
+    const keyB = String(entryB.key || entryB.title || "");
+    return (
+      isSameCartTitle(titleA, titleB) ||
+      (keyA !== titleA && isSameCartTitle(keyA, titleB)) ||
+      (keyB !== titleB && isSameCartTitle(titleA, keyB)) ||
+      (keyA !== titleA && keyB !== titleB && isSameCartTitle(keyA, keyB))
+    );
+  }
+
   const DISMISSED_CART_TTL_MS = 12000;
-  const dismissedCartKeys = new Map(); // normalizedKey -> expiresAtMs
+  const dismissedCartKeys = new Map(); // normalizedKey or "id:<itemId>" -> expiresAtMs
 
   function pruneDismissedCartKeys() {
     const now = Date.now();
@@ -483,35 +683,51 @@
     }
   }
 
-  function markCartItemDismissed(titleOrKey) {
-    const norm = normalizeTitleForMatch(titleOrKey);
-    if (!norm) return;
+  function markCartItemDismissed(titleOrKey, itemId = "") {
     pruneDismissedCartKeys();
-    dismissedCartKeys.set(norm, Date.now() + DISMISSED_CART_TTL_MS);
+    const exp = Date.now() + DISMISSED_CART_TTL_MS;
+    const cleanId = String(itemId || "").trim();
+    if (cleanId) {
+      dismissedCartKeys.set(`id:${cleanId}`, exp);
+    }
+    const norm = normalizeTitleForMatch(titleOrKey);
+    if (norm) {
+      dismissedCartKeys.set(norm, exp);
+    }
   }
 
-  function clearCartItemDismissed(titleOrKey) {
+  function clearCartItemDismissed(titleOrKey, itemId = "") {
+    pruneDismissedCartKeys();
+    const cleanId = String(itemId || "").trim();
+    if (cleanId) {
+      dismissedCartKeys.delete(`id:${cleanId}`);
+    }
     const norm = normalizeTitleForMatch(titleOrKey);
     if (!norm) return;
-    pruneDismissedCartKeys();
     dismissedCartKeys.delete(norm);
     for (const k of [...dismissedCartKeys.keys()]) {
+      if (k.startsWith("id:")) continue;
       if (isSameCartTitle(k, norm)) dismissedCartKeys.delete(k);
     }
   }
 
-  function isCartKeyDismissed(normKey) {
-    if (!normKey) return false;
+  function isCartKeyDismissed(normKey, itemId = "") {
     pruneDismissedCartKeys();
+    const cleanId = String(itemId || "").trim();
+    if (cleanId) {
+      return dismissedCartKeys.has(`id:${cleanId}`);
+    }
+    if (!normKey) return false;
     if (dismissedCartKeys.has(normKey)) return true;
     for (const k of dismissedCartKeys.keys()) {
+      if (k.startsWith("id:")) continue;
       if (isSameCartTitle(k, normKey)) return true;
     }
     return false;
   }
 
-  function isCartItemDismissed(titleOrKey) {
-    return isCartKeyDismissed(normalizeTitleForMatch(titleOrKey));
+  function isCartItemDismissed(titleOrKey, itemId = "") {
+    return isCartKeyDismissed(normalizeTitleForMatch(titleOrKey), itemId);
   }
 
   function sanitizeStoredCartItem(raw) {
@@ -524,9 +740,12 @@
         ? raw.image
         : null;
     const domImg = sanitizeDomImageUrl(raw.domImageUrl) || null;
+    const rawUpdatedAt = Number(raw.updatedAt);
     return {
       key: String(raw.key || title).trim(),
       title,
+      itemId: String(raw.itemId || "").trim(),
+      updatedAt: Number.isFinite(rawUpdatedAt) && rawUpdatedAt > 0 ? rawUpdatedAt : Date.now(),
       quantity: clampQty(raw.quantity),
       image: verifiedImg,
       domImageUrl: domImg,
@@ -545,12 +764,37 @@
     };
   }
 
+  function filterFreshCartItems(items, bucketMeta, bucketKey) {
+    if (!Array.isArray(items) || items.length === 0) return [];
+    const now = Date.now();
+    const metaMatches = Boolean(bucketMeta && bucketKey && bucketMeta.bucketKey === bucketKey);
+    const metaTs = metaMatches ? Number(bucketMeta.updatedAt) : 0;
+    if (Number.isFinite(metaTs) && metaTs > 0 && now - metaTs > CART_STALE_MS) {
+      return [];
+    }
+    return items.filter((item) => {
+      if (!item) return false;
+      const ts = Number(item.updatedAt);
+      if (Number.isFinite(ts) && ts > 0 && now - ts > CART_STALE_MS) return false;
+      return true;
+    });
+  }
+
   let savingCartSelf = false;
 
   async function loadBucketCart(forceReload = false) {
     const nextBucket = resolveStoreBucket();
     if (!forceReload && nextBucket.bucketKey === activeBucket.bucketKey && state._cartLoaded) {
       activeBucket = nextBucket;
+      if (state.cartItems.length > 0) {
+        const freshInMem = filterFreshCartItems(state.cartItems, null, activeBucket.bucketKey);
+        if (freshInMem.length !== state.cartItems.length) {
+          state.cartItems = freshInMem;
+          state.displayedAvg = calcCartAvg();
+          saveBucketCart();
+          return;
+        }
+      }
       publishActiveBucketMeta();
       return;
     }
@@ -568,7 +812,7 @@
     }
 
     try {
-      const keysToFetch = [v2Key, ...legacyKeys];
+      const keysToFetch = [v2Key, "heybroc_active_bucket_meta", ...legacyKeys];
       const stored = await chrome.storage.local.get(keysToFetch);
       let rawList = stored?.[v2Key];
       if (!Array.isArray(rawList)) {
@@ -581,12 +825,23 @@
           }
         }
       }
-      state.cartItems = Array.isArray(rawList)
+      const rawHadEntries = Array.isArray(rawList) && rawList.length > 0;
+      const sanitized = Array.isArray(rawList)
         ? rawList.map(sanitizeStoredCartItem).filter(Boolean).slice(0, MAX_CART_ITEMS)
         : [];
+      const freshItems = filterFreshCartItems(
+        sanitized,
+        stored?.heybroc_active_bucket_meta || null,
+        activeBucket.bucketKey
+      );
+      state.cartItems = freshItems;
       state._cartLoaded = true;
       state.displayedAvg = calcCartAvg();
-      publishActiveBucketMeta();
+      if (rawHadEntries && freshItems.length !== sanitized.length) {
+        saveBucketCart();
+      } else {
+        publishActiveBucketMeta();
+      }
     } catch {
       state.cartItems = [];
       state._cartLoaded = true;
@@ -1337,6 +1592,7 @@
       'a[href*="/product/"]',
     ];
     let title = "";
+    let matchedHref = "";
     for (const sel of titleSelectors) {
       const els = cardEl.querySelectorAll(sel);
       for (const el of els) {
@@ -1344,6 +1600,8 @@
         const raw = cleanProductTitleText(el?.getAttribute?.("aria-label") || el?.textContent || "");
         if (raw && raw.length >= 5 && raw.length <= 200 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
           title = raw;
+          const linkEl = el.tagName === "A" ? el : el.closest?.("a[href]") || el.querySelector?.("a[href]");
+          matchedHref = linkEl?.getAttribute?.("href") || "";
           break;
         }
       }
@@ -1376,7 +1634,8 @@
       }
     }
     if (!title) return null;
-    return { title, image: domImageUrl, domImageUrl, imgEl: primaryImgEl };
+    const itemId = extractRetailerItemIdFromUrlOrNode(matchedHref, cardEl);
+    return { title, image: domImageUrl, domImageUrl, imgEl: primaryImgEl, itemId };
   }
 
   /* ---------------- Live Store Cart Scraping & Instant Deletion Sync ---------------- */
@@ -1389,6 +1648,36 @@
       /\/store\/cart/.test(p) ||
       /\/shop\/cart/.test(p)
     );
+  }
+
+  function isOrderConfirmationPage() {
+    const p = location.pathname.toLowerCase();
+    const full = `${p}${location.search.toLowerCase()}`;
+    if (
+      /\/(?:thank-?you|order-?confirmation|orders\/confirmation|checkout\/confirmation|buy\/thankyou|gp\/buy\/thankyou)(?:\/|$|\?)/i.test(
+        full
+      )
+    ) {
+      return true;
+    }
+    // Never treat order-history list pages (/orders, /your-orders, /account/orders) as post-checkout confirmation
+    if (/\/(?:your-?orders|order-?history|my-?orders)(?:\/|$)/i.test(p) || /\/orders\/?$/i.test(p)) {
+      return false;
+    }
+    if (/\/(?:checkout|order|purchase|buy|confirmation|complete)(?:\/|$|-|_)/i.test(p)) {
+      const headings = document.querySelectorAll("h1, h2, [role='heading']");
+      for (let i = 0; i < headings.length && i < 20; i++) {
+        const txt = (headings[i].textContent || "").replace(/\s+/g, " ").trim();
+        if (
+          /\b(?:thank\s+you\s+for\s+your\s+order|your\s+order\s+is\s+confirmed|order\s+placed|we['’]?ve\s+received\s+your\s+order)\b/i.test(
+            txt
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   function detectOpenCartRoot() {
@@ -1500,6 +1789,7 @@
       "a",
     ];
     let title = "";
+    let matchedHref = "";
     for (const sel of titleSelectors) {
       const nodes = rowEl.querySelectorAll(sel);
       for (const n of nodes) {
@@ -1513,6 +1803,8 @@
           !/^\$?\d+(?:\.\d{2})?$/.test(cand)
         ) {
           title = cand;
+          const linkEl = n.tagName === "A" ? n : n.closest?.("a[href]") || n.querySelector?.("a[href]");
+          matchedHref = linkEl?.getAttribute?.("href") || "";
           break;
         }
       }
@@ -1529,7 +1821,8 @@
         break;
       }
     }
-    return { title, image: domImageUrl, domImageUrl };
+    const itemId = extractRetailerItemIdFromUrlOrNode(matchedHref, rowEl);
+    return { title, image: domImageUrl, domImageUrl, itemId };
   }
 
   function readExplicitCartCount(cartRoot) {
@@ -1588,8 +1881,8 @@
     return false;
   }
 
-  function clickNativeCartRemoveButton(targetTitle) {
-    if (!targetTitle) return false;
+  function clickNativeCartRemoveButton(targetTitle, targetItemId = "") {
+    if (!targetTitle && !targetItemId) return false;
     const cartRoot = detectOpenCartRoot();
     if (!cartRoot) return false;
 
@@ -1611,6 +1904,8 @@
       'button[aria-label*="Delete" i]',
     ];
 
+    const targetEntry = { title: targetTitle, key: targetTitle, itemId: targetItemId };
+
     for (const sel of CART_ROW_SELECTORS) {
       const rows = cartRoot.querySelectorAll(sel);
       for (const row of rows) {
@@ -1620,7 +1915,7 @@
         if (distinctHrefs.size > 1) continue;
 
         const info = extractRowTitleAndImage(row);
-        if (!info || !isSameCartTitle(info.title, targetTitle)) continue;
+        if (!info || !isSameCartEntry(info, targetEntry)) continue;
 
         for (const btnSel of nativeRemoveSelectors) {
           const btn = row.querySelector(btnSel);
@@ -1664,6 +1959,7 @@
   }
 
   function scrapeAndSyncLiveCart() {
+    if (isOrderConfirmationPage()) return false;
     const cartRoot = detectOpenCartRoot();
     if (!cartRoot) return false;
 
@@ -1723,13 +2019,17 @@
 
         visitedEls.add(row);
         const norm = normalizeTitleForMatch(info.title);
-        if (!norm || isCartKeyDismissed(norm)) continue;
-        const prev = scrapedMap.get(norm);
+        const rowItemId = String(info.itemId || "").trim();
+        if (!norm || isCartKeyDismissed(norm, rowItemId)) continue;
+        const mapKey = rowItemId ? `id:${rowItemId}` : `title:${norm}`;
+        const prev = scrapedMap.get(mapKey);
         if (prev) {
           if (info.domImageUrl && !prev.domImageUrl) prev.domImageUrl = info.domImageUrl;
+          if (rowItemId && !prev.itemId) prev.itemId = rowItemId;
         } else if (scrapedMap.size < MAX_CART_ITEMS) {
-          scrapedMap.set(norm, {
+          scrapedMap.set(mapKey, {
             title: info.title,
+            itemId: rowItemId,
             quantity: qty,
             domImageUrl: info.domImageUrl || null,
           });
@@ -1745,7 +2045,7 @@
     if (scrapedList.length === 0) {
       // Filter any tombstoned items from state.cartItems even if remaining rows haven't hydrated
       const filteredExisting = state.cartItems.filter(
-        (c) => !isCartItemDismissed(c.title) && !isCartItemDismissed(c.key)
+        (c) => !isCartItemDismissed(c.title, c.itemId) && !isCartItemDismissed(c.key, c.itemId)
       );
       if (filteredExisting.length !== state.cartItems.length) {
         state.cartItems = filteredExisting;
@@ -1756,21 +2056,30 @@
       return false;
     }
 
+    const now = Date.now();
     let changed = false;
     const nextCart = [];
     const toAudit = [];
+    const matchedExistingIndices = new Set();
 
     for (const scraped of scrapedList) {
-      const existing = state.cartItems.find((c) => isSameCartTitle(c.title, scraped.title) || isSameCartTitle(c.key, scraped.title));
-      if (existing) {
+      const existingIdx = state.cartItems.findIndex(
+        (c, idx) => !matchedExistingIndices.has(idx) && isSameCartEntry(c, scraped)
+      );
+      if (existingIdx !== -1) {
+        matchedExistingIndices.add(existingIdx);
+        const existing = state.cartItems[existingIdx];
         if (
           existing.quantity !== scraped.quantity ||
-          (scraped.domImageUrl && existing.domImageUrl !== scraped.domImageUrl)
+          (scraped.domImageUrl && existing.domImageUrl !== scraped.domImageUrl) ||
+          (scraped.itemId && existing.itemId !== scraped.itemId)
         ) {
           changed = true;
         }
         const updated = {
           ...existing,
+          itemId: scraped.itemId || existing.itemId || "",
+          updatedAt: now,
           quantity: scraped.quantity,
           domImageUrl: scraped.domImageUrl || existing.domImageUrl || null,
         };
@@ -1783,6 +2092,8 @@
         const newEntry = {
           key: scraped.title,
           title: scraped.title,
+          itemId: scraped.itemId || "",
+          updatedAt: now,
           quantity: scraped.quantity,
           image: null,
           domImageUrl: scraped.domImageUrl || null,
@@ -1810,12 +2121,12 @@
       let runningUnits = totalCartUnits(nextCart);
       const countCapAllowsPreserve = explicitCount === null || runningUnits < explicitCount;
       if (countCapAllowsPreserve) {
-        for (const prevItem of state.cartItems) {
+        for (let prevIdx = 0; prevIdx < state.cartItems.length; prevIdx++) {
           if (nextCart.length >= MAX_CART_ITEMS) break;
-          if (isCartItemDismissed(prevItem.title) || isCartItemDismissed(prevItem.key)) continue;
-          const alreadyInNext = nextCart.some(
-            (n) => isSameCartTitle(n.title, prevItem.title) || isSameCartTitle(n.key, prevItem.key)
-          );
+          if (matchedExistingIndices.has(prevIdx)) continue;
+          const prevItem = state.cartItems[prevIdx];
+          if (isCartItemDismissed(prevItem.title, prevItem.itemId) || isCartItemDismissed(prevItem.key, prevItem.itemId)) continue;
+          const alreadyInNext = nextCart.some((n) => isSameCartEntry(n, prevItem));
           if (alreadyInNext) continue;
           const itemUnits = clampQty(prevItem.quantity);
           if (explicitCount !== null && runningUnits + itemUnits > explicitCount) continue;
@@ -1832,7 +2143,10 @@
       changed = true;
     } else {
       for (let i = 0; i < nextCart.length; i++) {
-        if (nextCart[i]?.key !== state.cartItems[i]?.key) {
+        if (
+          nextCart[i]?.key !== state.cartItems[i]?.key ||
+          (nextCart[i]?.itemId || "") !== (state.cartItems[i]?.itemId || "")
+        ) {
           changed = true;
           break;
         }
@@ -1859,14 +2173,24 @@
 
   function findCartItemIndexBySnapshot(items, snap) {
     if (!Array.isArray(items) || !snap) return -1;
-    return items.findIndex(
-      (c) =>
-        (snap.normKey &&
-          (normalizeTitleForMatch(c.key) === snap.normKey ||
-            normalizeTitleForMatch(c.title) === snap.normKey)) ||
-        isSameCartTitle(c.title, snap.title) ||
-        isSameCartTitle(c.key, snap.key)
-    );
+    const snapId = String(snap.itemId || "").trim();
+    if (snapId) {
+      const byId = items.findIndex((c) => String(c?.itemId || "").trim() === snapId);
+      if (byId !== -1) return byId;
+    }
+    return items.findIndex((c) => {
+      const cId = String(c?.itemId || "").trim();
+      if (snapId && cId && snapId !== cId) return false;
+      if (
+        snap.normKey &&
+        !hasConflictingCartVariants(c.title || c.key, snap.title || snap.key) &&
+        (normalizeTitleForMatch(c.key) === snap.normKey ||
+          normalizeTitleForMatch(c.title) === snap.normKey)
+      ) {
+        return true;
+      }
+      return isSameCartEntry(c, snap);
+    });
   }
 
   async function auditCartItemsBatch(titlesToAudit = [], forceAll = false) {
@@ -1890,11 +2214,11 @@
     const capturedBucket = capturedBucketObj.bucketKey;
 
     const targetItems = useForceAll
-      ? state.cartItems.filter((c) => !isCartItemDismissed(c.title) && !isCartItemDismissed(c.key))
+      ? state.cartItems.filter((c) => !isCartItemDismissed(c.title, c.itemId) && !isCartItemDismissed(c.key, c.itemId))
       : state.cartItems.filter(
           (c) =>
-            !isCartItemDismissed(c.title) &&
-            !isCartItemDismissed(c.key) &&
+            !isCartItemDismissed(c.title, c.itemId) &&
+            !isCartItemDismissed(c.key, c.itemId) &&
             (queuedTitles.length > 0
               ? queuedTitles.some((t) => isSameCartTitle(c.title, t) || isSameCartTitle(c.key, t))
               : c.pending || (c.score === null && !c.isNonFood))
@@ -1903,6 +2227,7 @@
     const requestSnapshots = targetItems.slice(0, MAX_CART_ITEMS).map((item) => ({
       key: item.key,
       title: item.title,
+      itemId: item.itemId || "",
       normKey: normalizeTitleForMatch(item.key || item.title),
       quantity: clampQty(item.quantity),
     }));
@@ -1945,7 +2270,7 @@
           return;
         }
         const snap = requestSnapshots[i];
-        if (isCartKeyDismissed(snap.normKey) || isCartItemDismissed(snap.title)) continue;
+        if (isCartKeyDismissed(snap.normKey, snap.itemId) || isCartItemDismissed(snap.title, snap.itemId)) continue;
 
         const scanRes = resp.results[i];
         if (!scanRes?.ok) {
@@ -1979,7 +2304,7 @@
           if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) {
             return;
           }
-          if (isCartKeyDismissed(snap.normKey) || isCartItemDismissed(snap.title)) {
+          if (isCartKeyDismissed(snap.normKey, snap.itemId) || isCartItemDismissed(snap.title, snap.itemId)) {
             continue;
           }
           chosenSwap = stockRes.chosen;
@@ -2039,7 +2364,7 @@
     return isSameCartTitle(title, state.pendingSwap.toTitle);
   }
 
-  async function recordProductInCart(resp, fallbackTitle, addQty = 1, productImg = null) {
+  async function recordProductInCart(resp, fallbackTitle, addQty = 1, productImg = null, explicitItemId = "") {
     if (!resp?.ok || !resp.result) return;
     const capturedBucket = resolveStoreBucket().bucketKey;
     const isNonFood =
@@ -2048,16 +2373,24 @@
     const prevAvg = calcCartAvg();
     const itemKey = (fallbackTitle || resp.product?.title || "").trim();
     if (!itemKey) return;
+    const resolvedItemId = String(
+      explicitItemId ||
+        (isProductPage() ? extractRetailerItemIdFromUrlOrNode(location.href, activeDialogScope()) : "") ||
+        ""
+    ).trim();
 
-    clearCartItemDismissed(itemKey);
-    if (resp.product?.title) clearCartItemDismissed(resp.product.title);
+    clearCartItemDismissed(itemKey, resolvedItemId);
+    if (resp.product?.title) clearCartItemDismissed(resp.product.title, resolvedItemId);
 
     let swappedInCart = false;
     if (matchesPendingSwapTitle(itemKey)) {
       const fromKey = state.pendingSwap?.fromKey;
+      const fromItemId = state.pendingSwap?.fromItemId || "";
       if (fromKey) {
-        markCartItemDismissed(fromKey);
-        state.cartItems = state.cartItems.filter((i) => !isSameCartTitle(i.key, fromKey) && !isSameCartTitle(i.title, fromKey));
+        markCartItemDismissed(fromKey, fromItemId);
+        state.cartItems = state.cartItems.filter(
+          (i) => !isSameCartEntry(i, { key: fromKey, title: fromKey, itemId: fromItemId })
+        );
       }
       state.pendingSwap = null;
       swappedInCart = true;
@@ -2074,7 +2407,7 @@
     if (!chosenSwap && !swapOutOfStock && !isNonFood && candidates.length > 0 && (resp.result?.score < 75 || respHasDietAlert)) {
       const stockRes = await resolveFirstInStockSwap(candidates, resp.swap, capturedBucket);
       if (resolveStoreBucket().bucketKey !== capturedBucket || activeBucket.bucketKey !== capturedBucket) return;
-      if (isCartItemDismissed(itemKey)) return;
+      if (isCartItemDismissed(itemKey, resolvedItemId)) return;
       chosenSwap = stockRes.chosen;
       swapOutOfStock = stockRes.allOutOfStock;
     }
@@ -2085,13 +2418,19 @@
         ? resp.product.imageUrl
         : null;
 
-    const existingIdx = state.cartItems.findIndex(
-      (i) => isSameCartTitle(i.key, itemKey) || isSameCartTitle(i.title, itemKey)
-    );
+    const candidateEntry = {
+      key: itemKey,
+      title: resp.product?.title || itemKey,
+      itemId: resolvedItemId,
+    };
+    const existingIdx = state.cartItems.findIndex((i) => isSameCartEntry(i, candidateEntry));
+    const now = Date.now();
     if (existingIdx !== -1) {
       const existing = state.cartItems[existingIdx];
       state.cartItems[existingIdx] = {
         ...existing,
+        itemId: resolvedItemId || existing.itemId || "",
+        updatedAt: now,
         quantity: clampQty((existing.quantity || 1) + addQty),
         score: isNonFood ? null : resp.result.score,
         pending: false,
@@ -2112,6 +2451,8 @@
       state.cartItems.unshift({
         key: itemKey,
         title: resp.product?.title || itemKey,
+        itemId: resolvedItemId,
+        updatedAt: now,
         quantity: clampQty(addQty),
         image: serverImgClean || null,
         domImageUrl: domImgClean,
@@ -2141,13 +2482,12 @@
     }
   }
 
-  function removeCartItemByTitle(targetTitle) {
-    if (!targetTitle) return;
-    markCartItemDismissed(targetTitle);
+  function removeCartItemByTitle(targetTitle, targetItemId = "") {
+    if (!targetTitle && !targetItemId) return;
+    markCartItemDismissed(targetTitle, targetItemId);
+    const targetEntry = { title: targetTitle, key: targetTitle, itemId: targetItemId };
     const before = state.cartItems.length;
-    state.cartItems = state.cartItems.filter(
-      (item) => !isSameCartTitle(item.title, targetTitle) && !isSameCartTitle(item.key, targetTitle)
-    );
+    state.cartItems = state.cartItems.filter((item) => !isSameCartEntry(item, targetEntry));
     if (state.cartItems.length !== before) {
       state.displayedAvg = calcCartAvg();
       saveBucketCart();
@@ -2155,19 +2495,19 @@
     }
   }
 
-  function adjustCartItemQtyByTitle(targetTitle, delta) {
-    if (!targetTitle) return false;
-    const idx = state.cartItems.findIndex(
-      (item) => isSameCartTitle(item.title, targetTitle) || isSameCartTitle(item.key, targetTitle)
-    );
+  function adjustCartItemQtyByTitle(targetTitle, delta, targetItemId = "") {
+    if (!targetTitle && !targetItemId) return false;
+    const targetEntry = { title: targetTitle, key: targetTitle, itemId: targetItemId };
+    const idx = state.cartItems.findIndex((item) => isSameCartEntry(item, targetEntry));
     if (idx === -1) return false;
     const nextQty = (state.cartItems[idx].quantity || 1) + delta;
     if (nextQty <= 0) {
-      markCartItemDismissed(state.cartItems[idx].key);
-      markCartItemDismissed(state.cartItems[idx].title);
+      markCartItemDismissed(state.cartItems[idx].key, state.cartItems[idx].itemId);
+      markCartItemDismissed(state.cartItems[idx].title, state.cartItems[idx].itemId);
       state.cartItems.splice(idx, 1);
     } else {
       state.cartItems[idx].quantity = clampQty(nextQty);
+      state.cartItems[idx].updatedAt = Date.now();
     }
     state.displayedAvg = calcCartAvg();
     saveBucketCart();
@@ -2175,19 +2515,19 @@
     return true;
   }
 
-  function setCartItemQtyByTitle(targetTitle, exactQty) {
-    if (!targetTitle) return false;
-    const idx = state.cartItems.findIndex(
-      (item) => isSameCartTitle(item.title, targetTitle) || isSameCartTitle(item.key, targetTitle)
-    );
+  function setCartItemQtyByTitle(targetTitle, exactQty, targetItemId = "") {
+    if (!targetTitle && !targetItemId) return false;
+    const targetEntry = { title: targetTitle, key: targetTitle, itemId: targetItemId };
+    const idx = state.cartItems.findIndex((item) => isSameCartEntry(item, targetEntry));
     if (idx === -1) return false;
     if (exactQty <= 0) {
-      markCartItemDismissed(state.cartItems[idx].key);
-      markCartItemDismissed(state.cartItems[idx].title);
+      markCartItemDismissed(state.cartItems[idx].key, state.cartItems[idx].itemId);
+      markCartItemDismissed(state.cartItems[idx].title, state.cartItems[idx].itemId);
       state.cartItems.splice(idx, 1);
     } else {
-      clearCartItemDismissed(targetTitle);
+      clearCartItemDismissed(targetTitle, targetItemId || state.cartItems[idx].itemId);
       state.cartItems[idx].quantity = clampQty(exactQty);
+      state.cartItems[idx].updatedAt = Date.now();
     }
     state.displayedAvg = calcCartAvg();
     saveBucketCart();
@@ -2215,11 +2555,11 @@
       const parsedQty = numMatch ? Number(numMatch[1]) : NaN;
       const rowInfo = rowContainer ? extractRowTitleAndImage(rowContainer) : null;
 
-      if (Number.isFinite(parsedQty) && rowInfo?.title) {
+      if (Number.isFinite(parsedQty) && (rowInfo?.title || rowInfo?.itemId)) {
         if (parsedQty <= 0) {
-          removeCartItemByTitle(rowInfo.title);
+          removeCartItemByTitle(rowInfo.title || "", rowInfo.itemId || "");
         } else {
-          setCartItemQtyByTitle(rowInfo.title, parsedQty);
+          setCartItemQtyByTitle(rowInfo.title || "", parsedQty, rowInfo.itemId || "");
         }
       }
       scheduleCartSync(260);
@@ -2243,14 +2583,15 @@
       );
       const rowInfo = rowContainer ? extractRowTitleAndImage(rowContainer) : null;
       const contextTitle = rowInfo?.title || readTitle();
+      const contextItemId = rowInfo?.itemId || "";
 
       // 1. Explicit Remove / Delete / Trash / Save for Later in cart or card
       const isHardRemove =
         !/\bundo\b/i.test(label) &&
         (/\b(remove(?:\s+item|\s+from\s+cart)?|delete(?:\s+item)?|cartitem-deletebtn|save\s+for\s+later|trash)\b/i.test(label) ||
           Boolean(btn.querySelector('svg[data-testid*="trash" i], svg[data-testid*="delete" i], [class*="trash" i]')));
-      if (isHardRemove && contextTitle) {
-        removeCartItemByTitle(contextTitle);
+      if (isHardRemove && (contextTitle || contextItemId)) {
+        removeCartItemByTitle(contextTitle || "", contextItemId);
         scheduleCartSync(650);
         return;
       }
@@ -2261,12 +2602,12 @@
         btnTextTrim === "-" ||
         btnTextTrim === "−" ||
         /\b(decrease|decrement|minus|subtract|reduce\s+quantity|remove\s+one)\b/i.test(label);
-      if (isDecrement && contextTitle) {
+      if (isDecrement && (contextTitle || contextItemId)) {
         const currentDomQty = rowContainer ? extractRowQuantity(rowContainer) : null;
         if (currentDomQty === 1) {
-          removeCartItemByTitle(contextTitle);
+          removeCartItemByTitle(contextTitle || "", contextItemId);
         } else {
-          adjustCartItemQtyByTitle(contextTitle, -1);
+          adjustCartItemQtyByTitle(contextTitle || "", -1, contextItemId);
         }
         scheduleCartSync(650);
         return;
@@ -2278,20 +2619,21 @@
         btnTextTrim === "+" || /\b(increase|increment|plus|add\s+one)\b/i.test(label);
 
       if (isExplicitAdd || isIncrement) {
-        if (contextTitle) clearCartItemDismissed(contextTitle);
+        if (contextTitle || contextItemId) clearCartItemDismissed(contextTitle || "", contextItemId);
         // If on active PDP / modal and current scanned item matches
         if (isProductPage() && state.data?.ok) {
           const modalOrDoc = activeDialogScope();
           const pdpTitle = readTitle(modalOrDoc);
-          if (pdpTitle) clearCartItemDismissed(pdpTitle);
+          const pdpItemId = extractRetailerItemIdFromUrlOrNode(location.href, modalOrDoc);
+          if (pdpTitle || pdpItemId) clearCartItemDismissed(pdpTitle || "", pdpItemId);
           if (!rowContainer || (modalOrDoc && modalOrDoc.contains(btn)) || isSameCartTitle(contextTitle, state.data.product?.title)) {
-            void recordProductInCart(state.data, pdpTitle, 1, readProductImage(modalOrDoc));
+            void recordProductInCart(state.data, pdpTitle, 1, readProductImage(modalOrDoc), pdpItemId);
             return;
           }
         }
         // Increment existing cart item or add from product grid card!
         if (contextTitle) {
-          if (isIncrement && adjustCartItemQtyByTitle(contextTitle, 1)) {
+          if (isIncrement && adjustCartItemQtyByTitle(contextTitle, 1, contextItemId)) {
             scheduleCartSync(500);
             return;
           }
@@ -2308,7 +2650,13 @@
             },
             (resp) => {
               if (resp?.ok && resolveStoreBucket().bucketKey === addBucket.bucketKey) {
-                void recordProductInCart(resp, contextTitle, 1, rowInfo?.domImageUrl || rowInfo?.image || null);
+                void recordProductInCart(
+                  resp,
+                  contextTitle,
+                  1,
+                  rowInfo?.domImageUrl || rowInfo?.image || null,
+                  contextItemId
+                );
               }
             }
           );
@@ -2994,15 +3342,15 @@
       if (Number.isFinite(idx) && idx >= 0 && idx < state.cartItems.length) {
         const removedItem = state.cartItems[idx];
         if (removedItem) {
-          markCartItemDismissed(removedItem.key);
-          markCartItemDismissed(removedItem.title);
+          markCartItemDismissed(removedItem.key, removedItem.itemId);
+          markCartItemDismissed(removedItem.title, removedItem.itemId);
         }
         state.cartItems.splice(idx, 1);
         state.displayedAvg = calcCartAvg();
         saveBucketCart();
         render();
         if (removedItem) {
-          clickNativeCartRemoveButton(removedItem.title || removedItem.key);
+          clickNativeCartRemoveButton(removedItem.title || removedItem.key, removedItem.itemId || "");
           scheduleCartSync(750);
         }
       }
@@ -3033,7 +3381,7 @@
           }
           return;
         }
-        state.pendingSwap = { fromKey: item.key, toTitle: item.swapTitle };
+        state.pendingSwap = { fromKey: item.key, fromItemId: item.itemId || "", toTitle: item.swapTitle };
         const cands = Array.isArray(item.swapCandidates) && item.swapCandidates.length
           ? item.swapCandidates
           : [{ title: item.swapTitle, score: item.swapScore, webUrl: item.swapUrl, isPaidLink: item.swapIsPaidLink }];
@@ -3065,8 +3413,8 @@
     }
     if (act === "clear-cart") {
       for (const item of state.cartItems) {
-        markCartItemDismissed(item.key);
-        markCartItemDismissed(item.title);
+        markCartItemDismissed(item.key, item.itemId);
+        markCartItemDismissed(item.title, item.itemId);
       }
       state.cartItems = [];
       state.displayedAvg = null;
@@ -3131,7 +3479,10 @@
         return;
       }
       const currentKey = state.data?.product?.title || readTitle();
-      state.pendingSwap = { fromKey: currentKey, toTitle: state.activeSwap.title };
+      const currentItemId = isProductPage()
+        ? extractRetailerItemIdFromUrlOrNode(location.href, activeDialogScope())
+        : "";
+      state.pendingSwap = { fromKey: currentKey, fromItemId: currentItemId, toTitle: state.activeSwap.title };
       const cands = state.activeSwapCandidates || [state.activeSwap];
       savePendingSwapNavigation(currentKey, cands, 0);
       try { chrome.runtime.sendMessage({ type: "CLEANCART_RECORD_SWAP", productKey: currentKey }); } catch { /* ignore */ }
@@ -3221,8 +3572,17 @@
     }
     if (!host.isConnected) document.documentElement.appendChild(host);
 
-    // Always sync live store cart if /cart or slide-out cart drawer is currently visible
-    scrapeAndSyncLiveCart();
+    if (isOrderConfirmationPage()) {
+      dismissedCartKeys.clear();
+      if (state.cartItems.length > 0) {
+        state.cartItems = [];
+        state.displayedAvg = null;
+        saveBucketCart();
+      }
+    } else {
+      // Always sync live store cart if /cart or slide-out cart drawer is currently visible
+      scrapeAndSyncLiveCart();
+    }
 
     // Discover & score visible product grid/aisle cards with Automatic On-Photo Score Badges
     scanVisiblePhotoBadges();
@@ -3488,6 +3848,15 @@
     }
   }
 
+  function isolatePhotoBadgeAnchor(anchor) {
+    if (!anchor) return null;
+    anchor.style.isolation = "isolate";
+    if (window.getComputedStyle(anchor).zIndex === "auto") {
+      anchor.style.zIndex = "0";
+    }
+    return anchor;
+  }
+
   function findCardPhotoAnchor(cardEl, preferredImgEl = null) {
     const imgs = preferredImgEl
       ? [preferredImgEl, ...cardEl.querySelectorAll("img")]
@@ -3522,7 +3891,7 @@
       const cr = cur.getBoundingClientRect();
       if (cr.width >= 56 && cr.height >= 56 && cr.height <= maxContainerH) {
         if (cs.position !== "static") {
-          return cur;
+          return isolatePhotoBadgeAnchor(cur);
         }
         if (!fallbackBlock && !/^inline$/i.test(cs.display)) {
           fallbackBlock = cur;
@@ -3539,7 +3908,7 @@
     } else if (window.getComputedStyle(fallbackBlock).position === "static") {
       return null;
     }
-    return fallbackBlock;
+    return isolatePhotoBadgeAnchor(fallbackBlock);
   }
 
   function applyScoredPhotoBadgeState(badgeEl, resp, info, domImg, cardEl, sig) {
@@ -4465,9 +4834,10 @@
         const currentStorageKey = storageKeyForBucket(activeBucket.bucketKey);
         if (areaName === "local" && changes[currentStorageKey] && !savingCartSelf) {
           const nextRaw = changes[currentStorageKey].newValue;
-          state.cartItems = Array.isArray(nextRaw)
+          const sanitized = Array.isArray(nextRaw)
             ? nextRaw.map(sanitizeStoredCartItem).filter(Boolean).slice(0, MAX_CART_ITEMS)
             : [];
+          state.cartItems = filterFreshCartItems(sanitized, null, activeBucket.bucketKey);
           state.displayedAvg = calcCartAvg();
           render();
         }

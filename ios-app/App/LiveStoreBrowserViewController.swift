@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import CryptoKit
 
 struct HeyBrocLiveStoreConfig {
     let key: String
@@ -599,7 +600,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var m = String(location.pathname || '').match(/\\/store\\/([a-z0-9][a-z0-9_-]{1,60})(?:\\/|$)/i);
             if (!m || !m[1]) return '';
             var slug = m[1].toLowerCase();
-            if (/^(?:items?|products?|checkout|cart|account|help|search|recipes|categories|collections|referrals|gift-cards|orders|lists|bookmarks|login|signup)$/.test(slug)) {
+            if (/^\\d+$/.test(slug) || /^(?:checkout(?:[-_][a-z0-9_-]+)?|your-items|retailers|store|stores|hub|deals|promotions|favorites|saved|all|shop|convenience|grocery|brands|loyalty|family|instacart-plus|partner[-_]recipes|settings|savings|discover|directory|s|items?|products?|cart|account|help|search|recipes|categories|collections|referrals|gift-cards|orders|lists|bookmarks|login|signup|http|https)$/i.test(slug)) {
               return '';
             }
             return slug;
@@ -987,6 +988,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 candidate.style.position = '';
                 return null;
               }
+            }
+            candidate.style.isolation = 'isolate';
+            var finalCs = window.getComputedStyle(candidate);
+            if (!finalCs || finalCs.zIndex === 'auto') {
+              candidate.style.zIndex = '0';
             }
             return candidate;
           }
@@ -2037,7 +2043,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         isPassiveCard: Bool = false,
         force: Bool = false
     ) {
-        let dedupeKey = "\(activeStore.apiStoreKey)|\(instacartRetailerSlug.lowercased())|\(title.lowercased())|\(barcode)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))|\(HeyBrocSharedPrefs.familyWatchlist.joined(separator: ","))"
+        let normIng = ingredients
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        let ingDigest = SHA256.hash(data: Data(normIng.utf8)).map { String(format: "%02x", $0) }.joined()
+        let ingSig = normIng.isEmpty ? "0" : "\(normIng.count):\(ingDigest)"
+        let dedupeKey = "\(activeStore.apiStoreKey)|\(instacartRetailerSlug.lowercased())|\(title.lowercased())|\(barcode)|\(ingSig)|\(HeyBrocSharedPrefs.dietaryWatchlist.joined(separator: ","))|\(HeyBrocSharedPrefs.familyWatchlist.joined(separator: ","))"
         if !force && dedupeKey == lastScannedKey {
             return
         }
@@ -2331,12 +2343,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 return
             }
         }
-        // Prevent iOS Universal Links from hijacking link taps out to installed Walmart / Target / Amazon native apps
-        // using WebKit's native non-reentrant app-link suppression policy (avoids cancel+load re-entrancy crashes on iOS 26).
         if navigationAction.navigationType == .linkActivated,
            scheme == "https" {
-            let allowWithoutAppLink = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
-            respond(allowWithoutAppLink)
+            respond(.allow)
             return
         }
         respond(.allow)

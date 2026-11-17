@@ -501,12 +501,23 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     )
   );
 
+  const prevAmzTag1 = process.env.AMAZON_PARTNER_TAG;
+  const prevNextPublicAmzTag1 = process.env.NEXT_PUBLIC_AMAZON_TAG;
+  delete process.env.AMAZON_PARTNER_TAG;
+  delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+  const unconfiguredWebSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "web" });
+  process.env.AMAZON_PARTNER_TAG = "heybroc-20";
   const extSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "extension" });
   const androidSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "android" });
   const webSwap = resolveSwap({ score: 20, productTitle: "Coca-Cola Classic", store: "amazon", surface: "web" });
+  if (prevAmzTag1 === undefined) delete process.env.AMAZON_PARTNER_TAG;
+  else process.env.AMAZON_PARTNER_TAG = prevAmzTag1;
+  if (prevNextPublicAmzTag1 === undefined) delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+  else process.env.NEXT_PUBLIC_AMAZON_TAG = prevNextPublicAmzTag1;
   check(
-    "Step 3: extension and unapproved android never attach Amazon affiliate tag, while web does",
+    "Step 3: extension, unapproved android, and unconfigured web never attach Amazon affiliate tag, while configured web does",
     Boolean(
+      unconfiguredWebSwap && !(unconfiguredWebSwap.deepLink ?? "").includes("tag=") && !unconfiguredWebSwap.isPaidLink &&
       extSwap && !(extSwap.deepLink ?? "").includes("tag=") && !extSwap.isPaidLink &&
       androidSwap && !(androidSwap.deepLink ?? "").includes("tag=") && !androidSwap.isPaidLink &&
       webSwap && (webSwap.deepLink ?? "").includes("tag=heybroc-20") && webSwap.isPaidLink
@@ -1405,9 +1416,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const { verifyStripeWebhookSignature } = await import("../lib/stripe-webhook");
   const crypto = await import("node:crypto");
 
+  const prevAmzTag2 = process.env.AMAZON_PARTNER_TAG;
+  process.env.AMAZON_PARTNER_TAG = "heybroc-20";
   const webAmz = buildLinks(CLEAN_ALTERNATIVES.Snacks, "amazon", "", "web");
   const extAmz = buildLinks(CLEAN_ALTERNATIVES.Snacks, "amazon", "", "extension");
   const androidAmz = buildLinks(CLEAN_ALTERNATIVES.Snacks, "amazon", "", "android");
+  if (prevAmzTag2 === undefined) delete process.env.AMAZON_PARTNER_TAG;
+  else process.env.AMAZON_PARTNER_TAG = prevAmzTag2;
   const rCodePageTsx = fs.readFileSync("app/r/[code]/page.tsx", "utf8");
   const creatorsPageTsx = fs.readFileSync("app/creators/page.tsx", "utf8");
   const infRouteTs = fs.readFileSync("app/api/influencers/route.ts", "utf8");
@@ -1473,8 +1488,12 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
   const reauditCreatorCode = `REAUDIT_${runSuffix}`;
   await createCreator({ code: reauditCreatorCode, name: "Reaudit Creator", commissionPct: 25 });
   await recordStripeCreatorConversionOnce(`inv_reaudit_${runSuffix}`, reauditCreatorCode, "paid_annual", 49.99);
-  const afterRefund1 = await recordStripeCreatorRefundOnce(`ref_reaudit_1_${runSuffix}`, reauditCreatorCode, "annual", 49.99);
-  const afterRefund2 = await recordStripeCreatorRefundOnce(`ref_reaudit_2_${runSuffix}`, reauditCreatorCode, "annual", 49.99);
+  const afterRefund1 = await recordStripeCreatorRefundOnce(`ref_reaudit_1_${runSuffix}`, reauditCreatorCode, "annual", 49.99, {
+    originalConversionKey: `inv_reaudit_${runSuffix}`,
+  });
+  const afterRefund2 = await recordStripeCreatorRefundOnce(`ref_reaudit_2_${runSuffix}`, reauditCreatorCode, "annual", 49.99, {
+    originalConversionKey: `inv_reaudit_${runSuffix}`,
+  });
 
   check(
     "Affiliate Links, Creator Promo Codes, Friend Referrals & Stripe/RevenueCat Audit Verification",
@@ -1501,7 +1520,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         creatorsPageTsx.includes('cleanCode.startsWith("BROC")') &&
         infRouteTs.includes('rawCode.startsWith("BROC")') &&
         rcWebhookTs.includes("amountPaidUsd") &&
-        rcWebhookTs.includes("rc_sess_${subscriptionId}") &&
+        rcWebhookTs.includes("rc_orig:${origTxId}") &&
         rcWebhookTs.includes("isFriendCreatorAttr") &&
         checkoutRouteTs.includes("resolveAllowedOrigin") &&
         simulatorTsx.includes('params.get("upgrade") === "1"') &&
@@ -3935,7 +3954,9 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         vcPostIosFixSrc.includes('"upgrade-pro"') &&
         !vcPostIosFixSrc.includes("Tap ↑ Share") &&
         !shareExtPlistUpdatedSrc.includes("🥦") &&
-        safariManifestSrc.includes('"*://*/*"') &&
+        !safariManifestSrc.includes('"*://*/*"') &&
+        safariManifestSrc.includes("walmart.com") &&
+        safariManifestSrc.includes("instacart.com") &&
         !safariManifestSrc.includes("CleanCart PureOverlay") &&
         !safariManifestSrc.includes("cleancart-teal.vercel.app") &&
         liveBrowserUpdatedSrc.includes("navigationType == .linkActivated") &&
@@ -5691,7 +5712,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             mainKtVisualSrc.includes("EPA and IARC disagree on glyphosate's cancer risk") &&
             !mainKtVisualSrc.includes("showPaywallDialog()") &&
             !/autoVerifyLabel\([^)]*selectedStore/.test(mainKtVisualSrc) &&
-            overlaySvcVisualSrc.includes("ScanApi.autoVerifyLabel(prodTitle, prodIngredients, currentStoreKey)") &&
+            overlaySvcVisualSrc.includes("ScanApi.autoVerifyLabelOutcome(prodTitle, prodIngredients, currentStoreKey)") &&
             !overlaySvcVisualSrc.includes("ScanApi.autoVerifyLabel(prodTitle, ing, currentStore)")
         )
       );
@@ -5843,7 +5864,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     const hostVc120 = fs.readFileSync("ios-app/App/ViewController.swift", "utf8");
 
     check(
-      "Build 120 Suite: Hidden Valley stale OFF revision self-heals via live UPC v2, front-of-pack titles omitting generic category nouns match while cross-brand collisions reject, Safari manifest has 1-switch *://*/* matches, and iOS 26 LiveStoreBrowser eliminates force-unwraps & synchronous WebKit re-entrancy",
+      "Build 120 Suite: Hidden Valley stale OFF revision self-heals via live UPC v2, front-of-pack titles omitting generic category nouns match while cross-brand collisions reject, Safari manifest scopes strictly to 19 grocery stores + heybroc.com, and iOS 26 LiveStoreBrowser eliminates force-unwraps & synchronous WebKit re-entrancy",
       Boolean(
         healedHiddenValleyRes?.status === 200 &&
           (healedHiddenValleyRes?.headers.get("content-type") || "").includes("image/jpeg") &&
@@ -5852,12 +5873,13 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           (frontLabelBrandRes?.headers.get("content-type") || "").includes("image/jpeg") &&
           crossBrandRejectedRes?.status === 200 &&
           (crossBrandRejectedRes?.headers.get("content-type") || "").includes("image/svg+xml") &&
-          !safariManifest120.includes("walmart.com") &&
+          safariManifest120.includes("walmart.com") &&
+          !safariManifest120.includes('"*://*/*"') &&
           liveBrowser120.includes("WeakStoreScriptMessageProxy") &&
           liveBrowser120.includes("didStartInitialLoad") &&
           !liveBrowser120.includes("storeWebView: WKWebView!") &&
           hostVc120.includes("WeakHostScriptMessageProxy") &&
-          hostVc120.includes("Other Websites")
+          !hostVc120.includes("Other Websites")
       ),
     );
     // --- Sam's Club & 5M-Food Systemic Regression Suite ---
@@ -6232,10 +6254,34 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         );
         foreignAzpRejected401 = resForeignAzp.status === 401;
 
-        const validJwtWithNonce = signMockGoogleJwt({
+        const clientInventedJwt = signMockGoogleJwt({
           aud: "heybroc-test-web-client.apps.googleusercontent.com",
           azp: "heybroc-test-web-client.apps.googleusercontent.com",
           nonce: "nonce_valid_abc",
+        });
+        const resClientInventedNonce = await postAuth(
+          {
+            action: "oauth",
+            provider: "google",
+            idToken: clientInventedJwt,
+            nonce: "nonce_valid_abc",
+          },
+          14,
+        );
+        const clientInventedNonceRejected401 = resClientInventedNonce.status === 401;
+
+        const nonceIssueRes = await authRouteMod.GET(
+          new Request("http://localhost:3000/api/auth?oauthNonce=1", {
+            headers: { "x-forwarded-for": "10.188.42.16" },
+          }),
+        );
+        const nonceIssueJson = (await nonceIssueRes.json()) as { oauthNonce?: string };
+        const issuedServerNonce = nonceIssueJson.oauthNonce || "";
+
+        const validJwtWithNonce = signMockGoogleJwt({
+          aud: "heybroc-test-web-client.apps.googleusercontent.com",
+          azp: "heybroc-test-web-client.apps.googleusercontent.com",
+          nonce: issuedServerNonce,
         });
         const resMissingNonce = await postAuth(
           {
@@ -6243,7 +6289,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             provider: "google",
             idToken: validJwtWithNonce,
           },
-          14,
+          15,
         );
         missingNonceRejected401 = resMissingNonce.status === 401;
 
@@ -6252,9 +6298,9 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             action: "oauth",
             provider: "google",
             idToken: validJwtWithNonce,
-            nonce: "nonce_attacker_xyz",
+            nonce: "srvn_attacker_wrong_nonce_99999999",
           },
-          15,
+          16,
         );
         wrongNonceRejected401 = resWrongNonce.status === 401;
 
@@ -6263,12 +6309,17 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             action: "oauth",
             provider: "google",
             idToken: validJwtWithNonce,
-            nonce: "nonce_valid_abc",
+            nonce: issuedServerNonce,
           },
-          16,
+          17,
         );
         const validJson = (await resValid.json()) as { ok?: boolean; token?: string };
-        validIdTokenAccepted200 = resValid.status === 200 && validJson.ok === true && Boolean(validJson.token);
+        validIdTokenAccepted200 =
+          issuedServerNonce.startsWith("srvn_") &&
+          clientInventedNonceRejected401 &&
+          resValid.status === 200 &&
+          validJson.ok === true &&
+          Boolean(validJson.token);
       } finally {
         if (prevGoogleClientId === undefined) delete process.env.GOOGLE_CLIENT_ID;
         else process.env.GOOGLE_CLIENT_ID = prevGoogleClientId;
@@ -6276,7 +6327,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
       }
 
       check(
-        "Behavioural OAuth Security: foreign Google accessToken rejected (400), foreign aud/azp rejected (401), missing/mismatched OIDC nonce rejected (401), and audience+nonce-verified ID token succeeds (200)",
+        "Behavioural OAuth Security: foreign Google accessToken rejected (400), foreign aud/azp rejected (401), client-invented/missing/mismatched OIDC nonce rejected (401), and server-issued srvn_ + audience-verified ID token succeeds (200)",
         accessTokenRejected400 &&
           foreignAudRejected401 &&
           foreignAzpRejected401 &&
@@ -7365,24 +7416,25 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           "utf8",
         );
 
-        const detPartsBlock = liveBrowserKt.match(
-          /private val DETECTOR_JS_PARTS = arrayOf\(([\s\S]*?)\n        \)/,
+        const liveDetectorJsAsset = fsSync.readFileSync(
+          "android-app/app/src/main/assets/live_store_detector.js",
+          "utf8",
         );
-        const detPartStrings = detPartsBlock
-          ? [...detPartsBlock[1].matchAll(/"""\n([\s\S]*?)\n            """/g)].map((m) => m[1])
-          : [];
-        const joinedDetJs = detPartStrings.join("\n");
-        const detMatch = joinedDetJs ? [joinedDetJs, joinedDetJs] : null;
-        const allPartsUnderJvmUtf8Limit =
-          detPartStrings.length >= 2 &&
-          detPartStrings.every((p) => Buffer.byteLength(p, "utf8") < 60000);
+        const detMatch: [string, string] = [liveDetectorJsAsset, liveDetectorJsAsset];
         const earlyCssMatch = liveBrowserKt.match(
           /private const val EARLY_BANNER_CSS_JS = """\n([\s\S]*?)\n        """/,
         );
         let androidDetectorSyntaxValid = false;
-        if (allPartsUnderJvmUtf8Limit && joinedDetJs && earlyCssMatch && earlyCssMatch[1]) {
+        if (
+          liveDetectorJsAsset.length > 10_000 &&
+          liveBrowserKt.includes('"live_store_detector.js"') &&
+          !liveBrowserKt.includes("private const val DETECTOR_JS_TEMPLATE") &&
+          !liveBrowserKt.includes("DETECTOR_JS_PARTS") &&
+          earlyCssMatch &&
+          earlyCssMatch[1]
+        ) {
           try {
-            new vmMod.Script(joinedDetJs);
+            new vmMod.Script(liveDetectorJsAsset);
             new vmMod.Script(earlyCssMatch[1]);
             androidDetectorSyntaxValid = true;
           } catch (e) {
@@ -7726,20 +7778,711 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           productTitle: "International Delight Iced Coffee Mocha",
           store: "walmart",
         });
+        const liveBrowserCombined = `${liveBrowserKt}\n${liveDetectorJsAsset}`;
         check(
           "P2-1 & P2-2: 'Sodium and Potassium Phosphate' is named accurately, disodium/trisodium/hexametaphosphate trigger high_sodium, and Android/iOS/Web/Extension render flaggedAdditives & paid-link disclosures",
           coordPhos.flagged.some((f) => f.id === "naphosphate" && f.name === "Sodium and Potassium Phosphate") &&
             disodiumHighSodium.some((a) => a.id === "high_sodium") &&
             Boolean(coldBrewSwap) &&
-            liveBrowserKt.includes("setBubbleFailureState") &&
-            liveBrowserKt.includes("__heybrocGetVisibleCardIds") &&
+            liveBrowserCombined.includes("setBubbleFailureState") &&
+            liveBrowserCombined.includes("__heybrocGetVisibleCardIds") &&
             liveBrowserKt.includes("skipAnalytics = isCardScan") &&
             liveBrowserKt.includes("routePermittedPopupUrl") &&
             liveBrowserKt.includes("isExternalAuthHost") &&
-            liveBrowserKt.includes("paidDisclosure") &&
-            liveBrowserKt.includes("flaggedAdditives") &&
+            liveBrowserCombined.includes("paidDisclosure") &&
+            liveBrowserCombined.includes("flaggedAdditives") &&
             overlayKt.includes("flaggedAdditives"),
         );
+
+        // ==================== FULL-STACK AUDIT REMEDIATION SUITE (P1-1..P1-10 & P2) ====================
+        // 1. P1-1 & Eggnog: Solid fruit/flavored yogurts & skyr never get beverage liquid-sugar cap/flag; kefir & eggnog score as drinks
+        const gogurtScan = await runScan({
+          productTitle: "Go-GURT Portable Lowfat Yogurt Tubes",
+          surface: "web",
+        });
+        const chobaniStraw = scoreProductYuka(
+          "Cultured nonfat milk, strawberries, cane sugar, water, fruit pectin, natural flavors, locust bean gum, fruit and vegetable juice concentrate (for color), lemon juice concentrate.",
+          {},
+          [],
+          {
+            productTitle: "Chobani Strawberry on the Bottom Non-Fat Greek Yogurt, 5.3 oz",
+            caloriesKcal100g: 80,
+            saturatedFatG100g: 0,
+            sugarsG100g: 9.3,
+            sodiumMg100g: 37,
+            fiberG100g: 0.7,
+            proteinG100g: 8.0,
+          },
+        );
+        const activiaStraw = scoreProductYuka(
+          "Cultured grade A reduced fat milk, cane sugar, strawberries, water, modified food starch, milk protein concentrate, kosher gelatin, natural flavors, agar agar, vegetable juice (for color), sodium citrate, vitamin D3.",
+          {},
+          [],
+          {
+            productTitle: "Activia Probiotic Lowfat Yogurt Strawberry, 4 oz",
+            caloriesKcal100g: 79,
+            saturatedFatG100g: 0.9,
+            sugarsG100g: 10.6,
+            sodiumMg100g: 48,
+            fiberG100g: 0,
+            proteinG100g: 3.5,
+          },
+        );
+        const dannonLightFit = scoreProductYuka(
+          "Cultured grade A non fat milk, water, strawberry puree, modified food starch, fructose, contains less than 1% of modified corn starch, kosher gelatin, natural flavors, vegetable juice (for color), sucralose, acesulfame potassium, sodium citrate, malic acid, vitamin D3.",
+          {},
+          [],
+          {
+            productTitle: "Dannon Light + Fit Nonfat Yogurt Strawberry, 5.3 oz",
+            caloriesKcal100g: 53,
+            saturatedFatG100g: 0,
+            sugarsG100g: 4.7,
+            sodiumMg100g: 53,
+            fiberG100g: 0,
+            proteinG100g: 8.0,
+          },
+        );
+        const siggisStrawSkyr = scoreProductYuka(
+          "Pasteurized skim milk, strawberries, cane sugar, fruit pectin, live active cultures.",
+          {},
+          [],
+          {
+            productTitle: "Siggi's Icelandic Style Strawberry Nonfat Skyr, 5.3 oz",
+            caloriesKcal100g: 73,
+            saturatedFatG100g: 0,
+            sugarsG100g: 7.3,
+            sodiumMg100g: 40,
+            fiberG100g: 0.5,
+            proteinG100g: 10.7,
+          },
+        );
+        const lifewayStrawKefir = scoreProductYuka(
+          "Cultured pasteurized lowfat milk, cane sugar, strawberry puree, pectin, natural strawberry flavor, red beet juice (for color), vitamin A palmitate, vitamin D3.",
+          {},
+          [],
+          {
+            productTitle: "Lifeway Lowfat Strawberry Cultured Milk Kefir, 32 fl oz",
+            caloriesKcal100g: 58,
+            saturatedFatG100g: 0.6,
+            sugarsG100g: 8.3,
+            sodiumMg100g: 52,
+            fiberG100g: 0,
+            proteinG100g: 4.2,
+          },
+        );
+        const eggnogScan = await runScan({
+          productTitle: "Organic Valley Classic Eggnog, 32 fl oz",
+          surface: "web",
+        });
+        check(
+          "P1-1 & P2-Eggnog: Solid yogurts & skyr containing vegetable/lemon juice never get beverage sugar caps (Go-GURT=53, Chobani=53, Activia=53, Dannon>=56, Siggi's=90), while Lifeway Kefir & Organic Valley Eggnog (46 Poor) score as beverages",
+          gogurtScan.ok &&
+            gogurtScan.result.score === 53 &&
+            !gogurtScan.result.flagged.some((f) => f.id === "nutri_beverage_sugar") &&
+            chobaniStraw.score === 53 &&
+            !chobaniStraw.flagged.some((f) => f.id === "nutri_beverage_sugar") &&
+            activiaStraw.score === 53 &&
+            !activiaStraw.flagged.some((f) => f.id === "nutri_beverage_sugar") &&
+            dannonLightFit.score >= 56 &&
+            !dannonLightFit.flagged.some((f) => f.id === "nutri_beverage_sugar") &&
+            siggisStrawSkyr.score === 90 &&
+            !siggisStrawSkyr.flagged.some((f) => f.id === "nutri_beverage_sugar") &&
+            lifewayStrawKefir.yukaBreakdown?.beverageCapApplied === true &&
+            eggnogScan.ok &&
+            eggnogScan.result.score <= 49 &&
+            eggnogScan.result.rating === "Poor",
+        );
+
+        // 2. P1-2: Plain & mineral-added bottled water with page-scraped ingredients scores >= 90 (never 58 Mediocre)
+        const pureLifeScan = await runScan({
+          productTitle: "Pure Life Purified Water, 16.9 fl oz, 24 Count",
+          rawIngredients: "Purified water, magnesium sulfate, potassium bicarbonate, calcium chloride",
+          surface: "extension",
+        });
+        const polandSpringScan = await runScan({
+          productTitle: "Poland Spring 100% Natural Spring Water, 16.9 fl oz",
+          rawIngredients: "Spring water",
+          surface: "extension",
+        });
+        const gvWaterScan = await runScan({
+          productTitle: "Great Value Purified Drinking Water, 16.9 Fl Oz, 40 Count",
+          rawIngredients: "Purified water, minerals for taste (calcium chloride, sodium bicarbonate)",
+          surface: "android",
+        });
+        check(
+          "P1-2: Plain & mineral-added bottled water with page-scraped rawIngredients and no explicit nutrition scores >= 90 Excellent (never 58 Mediocre)",
+          pureLifeScan.ok &&
+            pureLifeScan.result.score === 90 &&
+            polandSpringScan.ok &&
+            polandSpringScan.result.score === 100 &&
+            gvWaterScan.ok &&
+            gvWaterScan.result.score >= 90,
+        );
+
+        // 3. P1-3 & P2 Catalog/Additives: Doritos Simply NKD verified formulations, Applegate deli turkey sodium, Indigo Carmine & Ethoxylated Glycerides non-double-flagging, Harmless Harvest Coconut Water parity
+        const nkdNachoScan = await runScan({
+          productTitle: "Doritos Simply NKD Nacho Cheese Flavored Tortilla Chips, 9.25 oz Bag",
+          surface: "web",
+        });
+        const nkdCoolRanchScan = await runScan({
+          productTitle: "Doritos Simply NKD Cool Ranch Flavored Tortilla Chips, 9.25 oz Bag",
+          surface: "web",
+        });
+        const applegateTurkeyScan = await runScan({
+          productTitle: "Applegate Organics Oven Roasted Turkey Breast, 6 oz",
+          surface: "web",
+        });
+        const harmlessCoconutYuka = scoreProductYuka(
+          "100% Organic Coconut Water.",
+          {},
+          [],
+          {
+            productTitle: "Harmless Harvest Organic Coconut Water, 16 fl oz",
+            caloriesKcal100g: 21,
+            saturatedFatG100g: 0,
+            sugarsG100g: 5.0,
+            sodiumMg100g: 25,
+            fiberG100g: 0,
+            proteinG100g: 0,
+            isOrganic: true,
+          },
+        );
+        const indigoCarmineScore = scoreIngredients("Sugar, corn syrup, indigo carmine");
+        const ethoxGlyceridesScore = scoreIngredients("Enriched wheat flour, water, ethoxylated mono- and diglycerides, salt");
+        check(
+          "P1-3 & P2-Catalog/Additives: Doritos Simply NKD exclude Artificial Flavor/MSG/Inosinate & include Canola/Soybean Oil; Applegate deli turkey reflects 607mg sodium (85); Indigo Carmine & Ethoxylated Glycerides never double-flag; Harmless Harvest has beverageCapApplied=false (54)",
+          nkdNachoScan.ok &&
+            !nkdNachoScan.result.flagged.some((f) => f.id === "artflavor" || f.id === "msg" || f.id === "inosinate") &&
+            nkdNachoScan.result.flagged.some((f) => f.id === "canolaoil" || f.id === "soybeanoil") &&
+            nkdCoolRanchScan.ok &&
+            !nkdCoolRanchScan.result.flagged.some((f) => f.id === "artflavor" || f.id === "msg" || f.id === "inosinate") &&
+            nkdCoolRanchScan.result.flagged.some((f) => f.id === "canolaoil" || f.id === "soybeanoil") &&
+            applegateTurkeyScan.ok &&
+            applegateTurkeyScan.result.score === 85 &&
+            indigoCarmineScore.flagged.some((f) => f.id === "blue2") &&
+            !indigoCarmineScore.flagged.some((f) => f.id === "carmine") &&
+            ethoxGlyceridesScore.flagged.some((f) => f.id === "ethoxylated_glycerides") &&
+            !ethoxGlyceridesScore.flagged.some((f) => f.id === "monodiglycerides") &&
+            harmlessCoconutYuka.score === 54 &&
+            harmlessCoconutYuka.yukaBreakdown?.beverageCapApplied === false &&
+            scanApiKt.includes("beverageCapApplied"),
+        );
+
+        // 4. P1-4: Curated product-image route rejects variant/brand/produce/form mismatches while serving exact matches
+        const productImageRouteMod = await import("../app/api/product-image/route");
+        const prevFetchImg = globalThis.fetch;
+        try {
+          const mockJpegBytes = new Uint8Array(320);
+          mockJpegBytes[0] = 0xff;
+          mockJpegBytes[1] = 0xd8;
+          mockJpegBytes[2] = 0xff;
+          globalThis.fetch = async (input: RequestInfo | URL) => {
+            const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+            if (/images\.openfoodfacts\.(?:org|net)\//i.test(u)) {
+              return new Response(mockJpegBytes, {
+                status: 200,
+                headers: { "content-type": "image/jpeg", "content-length": String(mockJpegBytes.byteLength) },
+              });
+            }
+            return Response.json({ status: 0, hits: [], products: [], foods: [] });
+          };
+
+          const curatedMismatches = [
+            "Mezzetta Hot Banana Peppers, 16 fl oz",
+            "Banana Nut Cheerios Cereal, 10.8 oz",
+            "Gerber 2nd Foods Banana Baby Food, 4 oz",
+            "Chobani Flip Banana Bread Low-Fat Greek Yogurt",
+            "Blue Buffalo Sweet Potato Dog Treats, 16 oz",
+            "Gerber 1st Foods Sweet Potato Puree",
+            "Butterball Everyday Original Turkey Bacon, 12 oz",
+            "Butterball 93% Lean Ground Turkey, 16 oz",
+            "Vital Farms Pasture-Raised Egg Bites Uncured Bacon & Cheddar",
+            "Annie's Organic Cheddar Bunnies Baked Snack Crackers",
+            "Annie's Organic White Cheddar Popcorn, 4.4 oz",
+            "Cinnamon Toast Crunch Churros Cereal, 11.9 oz",
+            "Hidden Valley Original Ranch Seasoning & Salad Dressing Mix Packet",
+            "Hidden Valley Plant Powered Dairy Free Ranch Topping & Dressing",
+            "Gatorade Thirst Quencher Fruit Punch Powder Canister, 76.5 oz",
+            "Campbell's Condensed New England Clam Chowder, 10.5 oz",
+          ];
+          let allMismatchesRejected = true;
+          for (let i = 0; i < curatedMismatches.length; i++) {
+            const title = curatedMismatches[i];
+            const res = await productImageRouteMod.HEAD(
+              new Request(`http://localhost:3000/api/product-image?q=${encodeURIComponent(title)}`, {
+                method: "HEAD",
+                headers: { "x-forwarded-for": `10.144.0.${i + 1}` },
+              }),
+            );
+            if (res.headers.get("content-type") !== "image/svg+xml") {
+              console.error("Curated photo mismatch was NOT rejected:", title, res.headers.get("content-type"), res.headers.get("x-image-source"));
+              allMismatchesRejected = false;
+            }
+          }
+
+          const freshBananaRes = await productImageRouteMod.HEAD(
+            new Request(`http://localhost:3000/api/product-image?q=${encodeURIComponent("Fresh Organic Bananas, 1 Bunch")}`, {
+              method: "HEAD",
+              headers: { "x-forwarded-for": "10.144.1.1" },
+            }),
+          );
+          const nkdNachoImgRes = await productImageRouteMod.HEAD(
+            new Request(`http://localhost:3000/api/product-image?q=${encodeURIComponent("Doritos Simply NKD Nacho Cheese Tortilla Chips")}`, {
+              method: "HEAD",
+              headers: { "x-forwarded-for": "10.144.1.2" },
+            }),
+          );
+          const regularDoritosImgRes = await productImageRouteMod.HEAD(
+            new Request(`http://localhost:3000/api/product-image?q=${encodeURIComponent("Doritos Nacho Cheese Tortilla Chips, 9.25 oz")}`, {
+              method: "HEAD",
+              headers: { "x-forwarded-for": "10.144.1.3" },
+            }),
+          );
+
+          check(
+            "P1-4: /api/product-image rejects all 16 brand/variant/produce/form curated mismatches while serving verified photos for Fresh Bananas and distinct Doritos Simply NKD vs regular Doritos packages",
+            allMismatchesRejected &&
+              freshBananaRes.headers.get("content-type") !== "image/svg+xml" &&
+              nkdNachoImgRes.headers.get("content-type") !== "image/svg+xml" &&
+              regularDoritosImgRes.headers.get("content-type") !== "image/svg+xml" &&
+              Boolean(nkdNachoImgRes.headers.get("x-image-source")) &&
+              nkdNachoImgRes.headers.get("x-image-source") !== regularDoritosImgRes.headers.get("x-image-source"),
+          );
+        } finally {
+          globalThis.fetch = prevFetchImg;
+        }
+
+        // 5. P1-7: Shared Open Food Facts rate limiter enforces <= 9 searches/min & <= 14 product reads/min + 429 circuit breaker
+        const lookupOffMod = await import("../lib/lookup");
+        lookupOffMod.resetLookupRuntimeForTests();
+        let offSearchAllowedCount = 0;
+        let offProductAllowedCount = 0;
+        for (let i = 0; i < 15; i++) {
+          if (await lookupOffMod.consumeSharedOffBudget("https://search.openfoodfacts.org/search?q=oats")) {
+            offSearchAllowedCount++;
+          }
+        }
+        for (let i = 0; i < 20; i++) {
+          if (await lookupOffMod.consumeSharedOffBudget("https://world.openfoodfacts.org/api/v2/product/0012345678905.json")) {
+            offProductAllowedCount++;
+          }
+        }
+        lookupOffMod.resetLookupRuntimeForTests();
+        const allowedBefore429 = await lookupOffMod.consumeSharedOffBudget("https://world.openfoodfacts.org/api/v2/product/0012345678905.json");
+        await lookupOffMod.reportSharedOffRateLimited();
+        const blockedAfter429Search = !(await lookupOffMod.consumeSharedOffBudget("https://search.openfoodfacts.org/search?q=milk"));
+        const blockedAfter429Product = !(await lookupOffMod.consumeSharedOffBudget("https://world.openfoodfacts.org/api/v2/product/0012345678905.json"));
+        lookupOffMod.resetLookupRuntimeForTests();
+        check(
+          "P1-7: Shared Open Food Facts budget strictly caps searches at <= 9/min and product reads at <= 14/min, and reportSharedOffRateLimited trips the 60s circuit breaker",
+          offSearchAllowedCount === 9 &&
+            offProductAllowedCount === 14 &&
+            allowedBefore429 &&
+            blockedAfter429Search &&
+            blockedAfter429Product,
+        );
+
+        // 6. P2 Swaps, Affiliate Attribution & Android/iOS/Extension Structural Parity
+        const swapsAuditMod = await import("../lib/swaps");
+        const swapsTsSrc = fsSync.readFileSync("lib/swaps.ts", "utf8");
+        const prevAmzTagCheck = process.env.AMAZON_PARTNER_TAG;
+        const prevPubAmzTagCheck = process.env.NEXT_PUBLIC_AMAZON_TAG;
+        let aldiDoesNotUseInstacartImpact = false;
+        let unconfiguredAmazonHasNoHardcodedTag = false;
+        try {
+          delete process.env.AMAZON_PARTNER_TAG;
+          delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+          const aldiSwap = resolveSwap({ score: 30, productTitle: "Doritos Nacho Cheese Tortilla Chips", store: "aldi" });
+          const amzSwapNoEnv = resolveSwap({ score: 30, productTitle: "Doritos Nacho Cheese Tortilla Chips", store: "amazon" });
+          aldiDoesNotUseInstacartImpact = Boolean(
+            aldiSwap &&
+              !aldiSwap.webUrl?.includes("instacart.pxf.io") &&
+              swapsTsSrc.includes("IMPACT_ALDI_BASE_URL") &&
+              !swapsTsSrc.includes("IMPACT_DEFAULT_BASE_URL"),
+          );
+          unconfiguredAmazonHasNoHardcodedTag = Boolean(
+            amzSwapNoEnv && !amzSwapNoEnv.webUrl?.includes("heybroc-20") && !amzSwapNoEnv.isPaidLink,
+          );
+        } finally {
+          if (prevAmzTagCheck === undefined) delete process.env.AMAZON_PARTNER_TAG;
+          else process.env.AMAZON_PARTNER_TAG = prevAmzTagCheck;
+          if (prevPubAmzTagCheck === undefined) delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+          else process.env.NEXT_PUBLIC_AMAZON_TAG = prevPubAmzTagCheck;
+        }
+        const scanHistoryKt = fsSync.readFileSync(
+          "android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt",
+          "utf8",
+        );
+        const buildGradleKts = fsSync.readFileSync("android-app/app/build.gradle.kts", "utf8");
+        check(
+          "P1-5, P1-6 & P2-Swaps/Cart/APK: sanitizeInstacartRetailerSlug blocks reserved/numeric slugs, ALDI & Amazon never leak cross-program/hardcoded tags, Android versionCode=44 strips precautionary may-contain clauses & removes roast-beef/ground-meat fabrications",
+          swapsAuditMod.sanitizeInstacartRetailerSlug("checkout_v4") === "" &&
+            swapsAuditMod.sanitizeInstacartRetailerSlug("your-items") === "" &&
+            swapsAuditMod.sanitizeInstacartRetailerSlug("retailers") === "" &&
+            swapsAuditMod.sanitizeInstacartRetailerSlug("123456") === "" &&
+            swapsAuditMod.sanitizeInstacartRetailerSlug("https") === "" &&
+            swapsAuditMod.sanitizeInstacartRetailerSlug("sprouts?utm_source=x#top") === "sprouts" &&
+            aldiDoesNotUseInstacartImpact &&
+            unconfiguredAmazonHasNoHardcodedTag &&
+            buildGradleKts.includes("versionCode = 44") &&
+            scanApiKt.includes("stripPrecautionaryCrossContactClauses") &&
+            !scanHistoryKt.includes("Beef, water, salt, sodium phosphate, caramel color") &&
+            !scanHistoryKt.includes("100% Pure Ground Meat (Beef, Turkey, Pork, or Chicken)") &&
+            chromeContentJs.includes("hasConflictingCartVariants") &&
+            chromeContentJs.includes("CART_STALE_MS"),
+        );
+
+        // 7. P1-8, P1-9, P1-10 & Audit B #8/#12: Creator Connect destination fix, negative carry-forward clawback, rate-change-safe refund, timeout reconciliation lock, first-cycle-only attribution, and Apple IAP + Webhook V2 commission & refund clawback
+        const infAuditMod = await import("../lib/influencers");
+        const appleVerifyAuditMod = await import("../app/api/apple/verify/route");
+        const appleWebhookAuditMod = await import("../app/api/apple/webhook/route");
+        const prevStripeKeyAudit = process.env.STRIPE_SECRET_KEY;
+        const prevStoreKitRootPin = process.env.APPLE_STOREKIT_TEST_ROOT_SHA256;
+        const prevFetchPayout = globalThis.fetch;
+
+        const auditDerLen = (len: number): Buffer => {
+          if (len < 0x80) return Buffer.from([len]);
+          const hex = len.toString(16).padStart(len > 0xff ? 4 : 2, "0");
+          const bytes = Buffer.from(hex, "hex");
+          return Buffer.concat([Buffer.from([0x80 | bytes.length]), bytes]);
+        };
+        const auditDerTlv = (tag: number, content: Buffer): Buffer =>
+          Buffer.concat([Buffer.from([tag]), auditDerLen(content.length), content]);
+        const auditDerSeq = (...items: Buffer[]): Buffer => auditDerTlv(0x30, Buffer.concat(items));
+        const auditDerSet = (...items: Buffer[]): Buffer => auditDerTlv(0x31, Buffer.concat(items));
+        const auditDerOid = (bytes: number[]): Buffer => auditDerTlv(0x06, Buffer.from(bytes));
+        const auditDerUtf8 = (s: string): Buffer => auditDerTlv(0x0c, Buffer.from(s, "utf8"));
+        const auditDerUtcTime = (d: Date): Buffer =>
+          auditDerTlv(
+            0x17,
+            Buffer.from(
+              d.toISOString().slice(2).replace(/[-:T]/g, "").replace(/\.\d{3}Z$/, "Z"),
+              "ascii",
+            ),
+          );
+        const auditDerName = (cn: string): Buffer =>
+          auditDerSeq(auditDerSet(auditDerSeq(auditDerOid([0x55, 0x04, 0x03]), auditDerUtf8(cn))));
+        const buildAuditCertDer = (opts: {
+          serial: number;
+          issuerCn: string;
+          subjectCn: string;
+          subjectPubKey: import("node:crypto").KeyObject;
+          issuerPrivKey: import("node:crypto").KeyObject;
+          isCa: boolean;
+        }): Buffer => {
+          const nowD = new Date();
+          const nb = new Date(nowD.getTime() - 3600_000);
+          const na = new Date(nowD.getTime() + 86_400_000);
+          const sigAlg = auditDerSeq(auditDerOid([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02]));
+          const version = auditDerTlv(0xa0, auditDerTlv(0x02, Buffer.from([0x02])));
+          const serial = auditDerTlv(0x02, Buffer.from([opts.serial]));
+          const validity = auditDerSeq(auditDerUtcTime(nb), auditDerUtcTime(na));
+          const spki = opts.subjectPubKey.export({ type: "spki", format: "der" }) as Buffer;
+          const bcVal = opts.isCa ? auditDerSeq(auditDerTlv(0x01, Buffer.from([0xff]))) : auditDerSeq();
+          const bcExt = auditDerSeq(
+            auditDerOid([0x55, 0x1d, 0x13]),
+            auditDerTlv(0x01, Buffer.from([0xff])),
+            auditDerTlv(0x04, bcVal),
+          );
+          const exts = auditDerTlv(0xa3, auditDerSeq(bcExt));
+          const tbs = auditDerSeq(
+            version,
+            serial,
+            sigAlg,
+            auditDerName(opts.issuerCn),
+            validity,
+            auditDerName(opts.subjectCn),
+            spki,
+            exts,
+          );
+          const sig = cryptoMod.sign("sha256", tbs, opts.issuerPrivKey);
+          return auditDerSeq(tbs, sigAlg, auditDerTlv(0x03, Buffer.concat([Buffer.from([0x00]), sig])));
+        };
+
+        const auditRootKp = cryptoMod.generateKeyPairSync("ec", { namedCurve: "P-256" });
+        const auditIntKp = cryptoMod.generateKeyPairSync("ec", { namedCurve: "P-256" });
+        const auditLeafKp = cryptoMod.generateKeyPairSync("ec", { namedCurve: "P-256" });
+        const auditRootDer = buildAuditCertDer({
+          serial: 41,
+          issuerCn: "Apple Root CA - G3",
+          subjectCn: "Apple Root CA - G3",
+          subjectPubKey: auditRootKp.publicKey,
+          issuerPrivKey: auditRootKp.privateKey,
+          isCa: true,
+        });
+        const auditIntDer = buildAuditCertDer({
+          serial: 42,
+          issuerCn: "Apple Root CA - G3",
+          subjectCn: "Apple WWDR CA",
+          subjectPubKey: auditIntKp.publicKey,
+          issuerPrivKey: auditRootKp.privateKey,
+          isCa: true,
+        });
+        const auditLeafDer = buildAuditCertDer({
+          serial: 43,
+          issuerCn: "Apple WWDR CA",
+          subjectCn: "App Store Signing Leaf",
+          subjectPubKey: auditLeafKp.publicKey,
+          issuerPrivKey: auditIntKp.privateKey,
+          isCa: false,
+        });
+        const auditRootX509 = new cryptoMod.X509Certificate(auditRootDer);
+
+        try {
+          process.env.STRIPE_SECRET_KEY = "sk_test_audit_remediation_mock";
+          process.env.APPLE_STOREKIT_TEST_ROOT_SHA256 = auditRootX509.fingerprint256;
+
+          // (a) P1-8 + B #8: Connect payout ignores non-acct_ email destination, survives network timeout via pending_reconciliation, and replays identical Idempotency-Key on retry
+          const payoutCode = "AUDITPAY43";
+          await infAuditMod.createCreator({
+            code: payoutCode,
+            name: "Audit Connect Creator",
+            commissionPct: 30,
+            payoutEmail: "creator@audit43.test",
+            payoutMethod: "stripe_connect",
+            stripeConnectAccountId: "acct_1AuditConnect43",
+          });
+          await infAuditMod.recordStripeCreatorConversionOnce(
+            "audit43_sale_1",
+            payoutCode,
+            "paid_annual",
+            50,
+            undefined,
+            { subscriptionKey: "stripe_sub:sub_audit43_1", creditedInvoiceId: "in_audit43_1" },
+          );
+          // Renewal #2 on same subscriptionKey MUST NOT credit a second commission
+          const afterRenewal2 = await infAuditMod.recordStripeCreatorConversionOnce(
+            "audit43_sale_1_renewal2",
+            payoutCode,
+            "paid_annual",
+            50,
+            undefined,
+            { subscriptionKey: "stripe_sub:sub_audit43_1", creditedInvoiceId: "in_audit43_2" },
+          );
+
+          const capturedStripeCalls: Array<{ dest: string; idem: string; amount: string }> = [];
+          let simulateTimeoutOnce = true;
+          globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+            const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+            if (u.includes("api.stripe.com/v1/transfers")) {
+              const bodyParams = new URLSearchParams(String(init?.body || ""));
+              const headers = new Headers(init?.headers);
+              capturedStripeCalls.push({
+                dest: bodyParams.get("destination") || "",
+                idem: headers.get("Idempotency-Key") || "",
+                amount: bodyParams.get("amount") || "",
+              });
+              if (simulateTimeoutOnce) {
+                simulateTimeoutOnce = false;
+                throw new Error("Simulated Stripe network socket hang up");
+              }
+              return Response.json({ id: "tr_audit43_ok_1", destination: bodyParams.get("destination") });
+            }
+            return Response.json({ status: 0, hits: [], products: [], foods: [] });
+          };
+
+          let timeoutCaught = false;
+          try {
+            await infAuditMod.executeCreatorPayout({
+              code: payoutCode,
+              method: "stripe_connect",
+              executeStripeTransfer: true,
+              destination: "creator@audit43.test", // Dashboard legacy handle/email must be ignored in favor of acct_...
+            });
+          } catch {
+            timeoutCaught = true;
+          }
+          const creatorDuringPending = await infAuditMod.getCreator(payoutCode);
+          // Retry after timeout reconciles cleanly with identical Idempotency-Key and zero double-deduction
+          const reconciledPayout = await infAuditMod.executeCreatorPayout({
+            code: payoutCode,
+            method: "stripe_connect",
+            executeStripeTransfer: true,
+            destination: "creator@audit43.test",
+          });
+
+          // (b) P1-9 & B #12: Rate changes from 30% -> 10% AFTER sale #1, then sale #1 is refunded AFTER payout -> claws back full original $15 (30% of $50), carrying commissionOwed to -$15.00, and offsets next sale!
+          await infAuditMod.createCreator({
+            code: payoutCode,
+            name: "Audit Connect Creator",
+            commissionPct: 10,
+          });
+          // Refunding renewal #2 invoice (`in_audit43_2`) must NOT claw back cycle #1 (`in_audit43_1`)
+          const afterUncreditedRenewalRefund = await infAuditMod.recordStripeCreatorRefundOnce(
+            "audit43_refund_renewal2",
+            payoutCode,
+            "annual",
+            50,
+            true,
+            { originalConversionKey: "audit43_sale_1", refundedInvoiceId: "in_audit43_2" },
+          );
+          // Refunding credited cycle #1 (`in_audit43_1`) claws back original $15.00 despite rate now being 10%, driving commissionOwed to -$15.00
+          const afterPostPayoutRefund = await infAuditMod.recordStripeCreatorRefundOnce(
+            "audit43_refund_cycle1",
+            payoutCode,
+            "annual",
+            50,
+            true,
+            { originalConversionKey: "audit43_sale_1", refundedInvoiceId: "in_audit43_1" },
+          );
+          // Subsequent $50 sale at 10% (+$5.00) nets against -$15.00 carry-forward -> -$10.00 owed
+          const afterOffsetSale = await infAuditMod.recordStripeCreatorConversionOnce(
+            "audit43_sale_2",
+            payoutCode,
+            "paid_annual",
+            50,
+            undefined,
+            { subscriptionKey: "stripe_sub:sub_audit43_2", creditedInvoiceId: "in_audit43_3" },
+          );
+
+          // (c) P1-10: Apple StoreKit 2 `/api/apple/verify` + App Store Server Notifications V2 `/api/apple/webhook` creator attribution & refund clawback
+          const appleCreatorCode = "APPLEIOS43";
+          await infAuditMod.createCreator({
+            code: appleCreatorCode,
+            name: "Apple iOS Creator",
+            commissionPct: 35,
+            payoutEmail: "ioscreator@audit43.test",
+          });
+          const x5cChain = [
+            auditLeafDer.toString("base64"),
+            auditIntDer.toString("base64"),
+            auditRootDer.toString("base64"),
+          ];
+          const signCompactAppleJws = (payloadObj: Record<string, unknown>) => {
+            const h = Buffer.from(JSON.stringify({ alg: "ES256", x5c: x5cChain })).toString("base64url");
+            const p = Buffer.from(JSON.stringify(payloadObj)).toString("base64url");
+            const s = cryptoMod
+              .sign("sha256", Buffer.from(`${h}.${p}`, "utf8"), {
+                key: auditLeafKp.privateKey,
+                dsaEncoding: "ieee-p1363",
+              })
+              .toString("base64url");
+            return `${h}.${p}.${s}`;
+          };
+
+          const paidIosTxJws = signCompactAppleJws({
+            transactionId: "apple_tx_43001",
+            originalTransactionId: "apple_orig_43001",
+            bundleId: "com.heybroc.app",
+            productId: "com.heybroc.pro.annual",
+            price: 49990, // $49.99 in milliunits
+            currency: "USD",
+            signedDate: Date.now(),
+            purchaseDate: Date.now() - 5_000,
+            expiresDate: Date.now() + 365 * 86_400_000,
+            environment: "Sandbox",
+          });
+          const appleVerifyPaidRes = await appleVerifyAuditMod.POST(
+            new Request("http://localhost:3000/api/apple/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.177.0.1" },
+              body: JSON.stringify({
+                signedTransactionInfo: paidIosTxJws,
+                creatorCode: appleCreatorCode,
+              }),
+            }),
+          );
+          const creatorAfterIosPaid = await infAuditMod.getCreator(appleCreatorCode);
+
+          // Renewal #2 via Apple V2 DID_RENEW must NOT double-credit creator
+          const renewalIosTxJws = signCompactAppleJws({
+            transactionId: "apple_tx_43002",
+            originalTransactionId: "apple_orig_43001",
+            bundleId: "com.heybroc.app",
+            productId: "com.heybroc.pro.annual",
+            price: 49990,
+            currency: "USD",
+            signedDate: Date.now(),
+            purchaseDate: Date.now(),
+            expiresDate: Date.now() + 730 * 86_400_000,
+            environment: "Sandbox",
+          });
+          const didRenewEnvelope = signCompactAppleJws({
+            notificationType: "DID_RENEW",
+            notificationUUID: "uuid_apple_renew_43002",
+            signedDate: Date.now(),
+            data: {
+              bundleId: "com.heybroc.app",
+              environment: "Sandbox",
+              signedTransactionInfo: renewalIosTxJws,
+            },
+          });
+          const appleRenewWebhookRes = await appleWebhookAuditMod.POST(
+            new Request("http://localhost:3000/api/apple/webhook", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.177.0.2" },
+              body: JSON.stringify({ signedPayload: didRenewEnvelope }),
+            }),
+          );
+          const creatorAfterIosRenew = await infAuditMod.getCreator(appleCreatorCode);
+
+          // Apple V2 REFUND on original paid transaction (`apple_tx_43001`) claws back creator commission & revokes entitlement
+          const refundIosTxJws = signCompactAppleJws({
+            transactionId: "apple_tx_43001",
+            originalTransactionId: "apple_orig_43001",
+            bundleId: "com.heybroc.app",
+            productId: "com.heybroc.pro.annual",
+            price: 49990,
+            currency: "USD",
+            revocationDate: Date.now(),
+            signedDate: Date.now(),
+            expiresDate: Date.now() + 365 * 86_400_000,
+            environment: "Sandbox",
+          });
+          const refundEnvelope = signCompactAppleJws({
+            notificationType: "REFUND",
+            notificationUUID: "uuid_apple_refund_43001",
+            signedDate: Date.now(),
+            data: {
+              bundleId: "com.heybroc.app",
+              environment: "Sandbox",
+              signedTransactionInfo: refundIosTxJws,
+            },
+          });
+          const appleRefundWebhookRes = await appleWebhookAuditMod.POST(
+            new Request("http://localhost:3000/api/apple/webhook", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-forwarded-for": "10.177.0.3" },
+              body: JSON.stringify({ signedPayload: refundEnvelope }),
+            }),
+          );
+          const creatorAfterIosRefund = await infAuditMod.getCreator(appleCreatorCode);
+
+          check(
+            "P1-8, P1-9, P1-10 & Audit B #8/#12: Connect payout ignores email destination, reconciles timeout with identical Idempotency-Key, enforces first-cycle-only commissions, claws back exact historical rate into negative carry-forward, and credits/claws back iOS StoreKit 2 + Apple V2 Webhook purchases",
+            afterRenewal2?.paidAnnual === 1 &&
+              afterRenewal2?.commissionEarned === 15 &&
+              timeoutCaught &&
+              creatorDuringPending?.commissionOwed === 0 &&
+              reconciledPayout.payout.stripeTransferId === "tr_audit43_ok_1" &&
+              capturedStripeCalls.length === 2 &&
+              capturedStripeCalls[0].dest === "acct_1AuditConnect43" &&
+              capturedStripeCalls[0].idem.length > 10 &&
+              capturedStripeCalls[0].idem === capturedStripeCalls[1].idem &&
+              reconciledPayout.creator.commissionPaid === 15 &&
+              reconciledPayout.creator.commissionOwed === 0 &&
+              afterUncreditedRenewalRefund?.commissionOwed === 0 &&
+              afterPostPayoutRefund?.commissionEarned === 0 &&
+              afterPostPayoutRefund?.commissionOwed === -15 &&
+              afterOffsetSale?.commissionOwed === -10 &&
+              appleVerifyPaidRes.status === 200 &&
+              creatorAfterIosPaid?.paidAnnual === 1 &&
+              creatorAfterIosPaid?.commissionOwed === 17.5 &&
+              appleRenewWebhookRes.status === 200 &&
+              creatorAfterIosRenew?.paidAnnual === 1 &&
+              creatorAfterIosRenew?.commissionOwed === 17.5 &&
+              appleRefundWebhookRes.status === 200 &&
+              creatorAfterIosRefund?.paidAnnual === 0 &&
+              creatorAfterIosRefund?.commissionEarned === 0 &&
+              creatorAfterIosRefund?.commissionOwed === 0,
+          );
+        } finally {
+          globalThis.fetch = prevFetchPayout;
+          if (prevStripeKeyAudit === undefined) delete process.env.STRIPE_SECRET_KEY;
+          else process.env.STRIPE_SECRET_KEY = prevStripeKeyAudit;
+          if (prevStoreKitRootPin === undefined) delete process.env.APPLE_STOREKIT_TEST_ROOT_SHA256;
+          else process.env.APPLE_STOREKIT_TEST_ROOT_SHA256 = prevStoreKitRootPin;
+        }
       }
     }
   }
