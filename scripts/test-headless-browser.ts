@@ -1493,15 +1493,17 @@ async function main() {
       ),
       "utf8",
     );
-    const androidDetMatch = androidLiveKt.match(
-      /private const val DETECTOR_JS_TEMPLATE = """\n([\s\S]*?)\n        """/,
+    const androidDetPartsBlock = androidLiveKt.match(
+      /private val DETECTOR_JS_PARTS = arrayOf\(([\s\S]*?)\n        \)/,
     );
-    assert(androidDetMatch && androidDetMatch[1], "Could not extract Android DETECTOR_JS_TEMPLATE");
+    const androidDetParts = androidDetPartsBlock
+      ? [...androidDetPartsBlock[1].matchAll(/"""\n([\s\S]*?)\n            """/g)].map((m) => m[1])
+      : [];
+    assert(androidDetParts.length >= 2, "Could not extract Android DETECTOR_JS_PARTS");
     const androidBridgeSecret = "sec_e2e_android_bridge_987654";
-    const androidDetectorJS = androidDetMatch[1].replace(
-      "__HB_BRIDGE_SECRET__",
-      androidBridgeSecret,
-    );
+    const androidDetectorJS = androidDetParts
+      .join("\n")
+      .replace("__HB_BRIDGE_SECRET__", androidBridgeSecret);
     const placeholderSvgDataUrl =
       "data:image/svg+xml;utf8," +
       encodeURIComponent(

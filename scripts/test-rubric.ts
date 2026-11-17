@@ -7365,16 +7365,24 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           "utf8",
         );
 
-        const detMatch = liveBrowserKt.match(
-          /private const val DETECTOR_JS_TEMPLATE = """\n([\s\S]*?)\n        """/,
+        const detPartsBlock = liveBrowserKt.match(
+          /private val DETECTOR_JS_PARTS = arrayOf\(([\s\S]*?)\n        \)/,
         );
+        const detPartStrings = detPartsBlock
+          ? [...detPartsBlock[1].matchAll(/"""\n([\s\S]*?)\n            """/g)].map((m) => m[1])
+          : [];
+        const joinedDetJs = detPartStrings.join("\n");
+        const detMatch = joinedDetJs ? [joinedDetJs, joinedDetJs] : null;
+        const allPartsUnderJvmUtf8Limit =
+          detPartStrings.length >= 2 &&
+          detPartStrings.every((p) => Buffer.byteLength(p, "utf8") < 60000);
         const earlyCssMatch = liveBrowserKt.match(
           /private const val EARLY_BANNER_CSS_JS = """\n([\s\S]*?)\n        """/,
         );
         let androidDetectorSyntaxValid = false;
-        if (detMatch && detMatch[1] && earlyCssMatch && earlyCssMatch[1]) {
+        if (allPartsUnderJvmUtf8Limit && joinedDetJs && earlyCssMatch && earlyCssMatch[1]) {
           try {
-            new vmMod.Script(detMatch[1]);
+            new vmMod.Script(joinedDetJs);
             new vmMod.Script(earlyCssMatch[1]);
             androidDetectorSyntaxValid = true;
           } catch (e) {

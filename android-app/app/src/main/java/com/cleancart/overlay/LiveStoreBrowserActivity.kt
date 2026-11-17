@@ -280,7 +280,10 @@ class LiveStoreBrowserActivity : Activity() {
             })();
         """
 
-        private const val DETECTOR_JS_TEMPLATE = """
+        private val DETECTOR_JS_TEMPLATE: String by lazy { DETECTOR_JS_PARTS.joinToString("\n") }
+
+        private val DETECTOR_JS_PARTS = arrayOf(
+            """
             (function() {
               if (window !== window.top) return;
               var HB_BRIDGE_SECRET = '__HB_BRIDGE_SECRET__';
@@ -796,7 +799,8 @@ class LiveStoreBrowserActivity : Activity() {
                 }
                 return candidate;
               }
-
+            """,
+            """
               function readCardInfo(cardEl) {
                 if (!cardEl || cardEl.closest('header, nav, footer, [role="contentinfo"]')) return null;
                 if (isCartDrawer(cardEl.closest('[role="dialog"], aside, section'))) return null;
@@ -1533,7 +1537,8 @@ class LiveStoreBrowserActivity : Activity() {
               dismissRetailerAppBanners();
               scheduleCheck(true);
             })();
-        """
+            """
+        )
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
