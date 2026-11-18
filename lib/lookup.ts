@@ -1966,8 +1966,14 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
   const fromAnd = await evaluateHits(v3And?.hits);
   if (fromAnd) return cacheSearchResult(fromAnd);
 
-  // 2. Secondary brand-tag query only if primary AND query returned no validated match
-  if (brandQuery !== andQuery && !providerSignal.getStore()?.aborted) {
+  // 2. Secondary brand-tag query only if primary AND query returned zero raw hits for a known brand
+  if (
+    v3And !== null &&
+    (v3And.hits?.length ?? 0) === 0 &&
+    Boolean(detectedBrandRaw) &&
+    brandQuery !== andQuery &&
+    !providerSignal.getStore()?.aborted
+  ) {
     const v3Brand = await getJson<{ hits?: OffSearchHit[] }>(
       `https://search.openfoodfacts.org/search?q=${encodeURIComponent(brandQuery)}&page_size=20&fields=${searchFields}`,
     );
@@ -1975,8 +1981,8 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     if (fromBrand) return cacheSearchResult(fromBrand);
   }
 
-  // 3. Single-hop fallback to Open Food Facts US CGI search only when Search-a-licious yields no validated match
-  if (providerSignal.getStore()?.aborted) return null;
+  // 3. Single-hop fallback to Open Food Facts US CGI search only when Search-a-licious was unreachable or omitted hits
+  if (Array.isArray(v3And?.hits) || providerSignal.getStore()?.aborted) return null;
   const cgiTerms = encodeURIComponent(title.replace(/-/g, " "));
   const cgiRes = await getJson<{ products?: OffProduct[] }>(
     `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${cgiTerms}&search_simple=1&action=process&json=1&page_size=12&tagtype_0=countries&tag_contains_0=contains&tag_0=united-states&fields=${OFF_FIELDS}`,
@@ -2202,7 +2208,17 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     .trim();
   const rawBrandLabel = (best.brandName || best.brandOwner || "").trim();
   const brandLabel = rawBrandLabel ? normalizeOffDisplayTitle(rawBrandLabel) : "USDA FoodData Central";
-  const descTitle = normalizeOffDisplayTitle(rawDesc) || normalizeOffDisplayTitle(query);
+  const isFoundationWholeFoodOrganic =
+    ["Foundation", "SR Legacy"].includes(best.dataType || "") &&
+    classifyWholeFood(best.description || "").isWholeFood === true &&
+    classifyWholeFood(query).isWholeFood === true &&
+    /\borganic\b/i.test(query) &&
+    !/\b(?:non[-\s]*organic|made\s+with\s+organic|less\s+than\s+\d+%\s+organic)\b/i.test(query);
+  const baseDescTitle = normalizeOffDisplayTitle(rawDesc) || normalizeOffDisplayTitle(query);
+  const descTitle =
+    isFoundationWholeFoodOrganic && !/\borganic\b/i.test(baseDescTitle)
+      ? `Organic ${baseDescTitle}`
+      : baseDescTitle;
   const fullTitle = normalizeOffDisplayTitle(
     brandLabel !== "USDA FoodData Central"
       ? mergeBrandAndTitle(brandLabel, descTitle)
@@ -2213,13 +2229,14 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
   const usdaCodeParam = best.gtinUpc ? `&code=${encodeURIComponent(best.gtinUpc)}` : "";
   const imageUrl = `https://www.heybroc.com/api/product-image?q=${encodeURIComponent(fullTitle)}${usdaBrandParam}${usdaCodeParam}&v=6`;
   const cleanUsdaIng = sanitizeIngredientDisplay(best.ingredients!.trim());
+  const extractedUsdaNut = inferNutritionFromText(rawDesc, cleanUsdaIng, extractUsdaNutrition(best));
   return withSingleIngredientWholeFood({
     productTitle: fullTitle,
     brand: brandLabel,
     barcode: best.gtinUpc,
     ingredients: cleanUsdaIng,
     imageUrl,
-    nutrition: inferNutritionFromText(rawDesc, cleanUsdaIng, extractUsdaNutrition(best)),
+    nutrition: isFoundationWholeFoodOrganic ? { ...extractedUsdaNut, isOrganic: true } : extractedUsdaNut,
     sourceUrl: best.fdcId ? `https://fdc.nal.usda.gov/food-details/${best.fdcId}/nutrients` : undefined,
     source: "usda",
     sourceUpdatedAt: best.publishedDate ? best.publishedDate.slice(0, 10) : null,
@@ -3264,6 +3281,93 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     nutrition: { caloriesKcal100g: 74, sugarsG100g: 17.5, saturatedFatG100g: 0, sodiumMg100g: 6, fiberG100g: 1.2, proteinG100g: 0.4, fruitsVegNutsPct: 55, nutriScoreGrade: "b", isWholeFood: false },
     sourceUrl: "https://www.delmonte.com/products/fruits/peaches/sliced-yellow-cling-peaches-heavy-syrup",
     verifiedAt: "2026-11-08",
+  },
+  {
+    match: /^(?!.*\b(beef|turkey|jumbo|bun\s+length|cheese|cheddar|jalapeno|jalapeño|polish|smoked\s+sausage|bologna|bacon|corn\s+dogs?)\b).*\bbar[- ]?s\b.*\b(?:classic\s+)?(?:franks?|hot\s+dogs?|wieners?)\b/i,
+    brand: "Bar-S",
+    title: "Bar-S Classic Franks",
+    keywords: ["bars", "bar", "classic", "franks", "hot", "dogs", "hotdog", "wieners", "chicken", "pork"],
+    ingredients:
+      "Mechanically Separated Chicken, Water, Pork, Dextrose, Modified Corn Starch, Salt, Contains 2% or Less of: Beef, Corn Syrup, Flavorings, Sodium Phosphates, Potassium Lactate, Potassium Acetate, Sodium Diacetate, Sodium Erythorbate, Oleoresin of Paprika, Sodium Nitrite, Smoke Flavoring.",
+    nutrition: { caloriesKcal100g: 262, sugarsG100g: 4.8, saturatedFatG100g: 7.1, sodiumMg100g: 1024, fiberG100g: 0, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Bar-S-Classic-Franks-12-oz/10290749",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /^(?!.*\b(chocolate|brownie|ice\s+cream|coffee\s+creamer)\b).*\blittle\s+debbie\b.*\bchristmas\s+tree\s+(?:snack\s+)?cakes?\b/i,
+    brand: "Little Debbie",
+    title: "Little Debbie Christmas Tree Cakes",
+    keywords: ["little", "debbie", "christmas", "tree", "cakes", "snack", "vanilla", "holiday"],
+    ingredients:
+      "Sugar, Corn Syrup, Enriched Bleached Flour (Wheat Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, Palm and Palm Kernel Oil, Palm and Soybean Oils with TBHQ and Citric Acid to Protect Flavor, Dextrose, Soybean Oil, Corn Starch, Green Sugar Crystals (Sugar, Confectioner's Glaze, Yellow 5 Lake, Blue 1 Lake, Carnauba Wax), Dried Egg Whites, Whey, Baking Soda, Sodium Aluminum Phosphate, Salt, Soy Lecithin, Mono- and Diglycerides, Sorbitan Monostearate, Titanium Dioxide, Sorbic Acid, Red 40 Lake, Polysorbate 60, Natural and Artificial Flavors, Polysorbate 80, Annatto Extract, Turmeric Extract, Soy Flour.",
+    nutrition: { caloriesKcal100g: 435, sugarsG100g: 42.4, saturatedFatG100g: 10.6, sodiumMg100g: 176, fiberG100g: 0, proteinG100g: 1.2, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.littledebbie.com/christmas-tree-cakes",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /^(?!.*\bchocolate\b).*\blittle\s+debbie\b.*\bchristmas\b.*\bold\s+fashioned\s+(?:snack\s+cake\s+)?(?:donuts?|doughnuts?)\b/i,
+    brand: "Little Debbie",
+    title: "Little Debbie Christmas Old Fashioned Donuts",
+    keywords: ["little", "debbie", "christmas", "old", "fashioned", "donuts", "doughnuts", "glazed", "snack", "cake", "holiday"],
+    ingredients:
+      "Palm Oil, Sugar, Enriched Bleached Flour (Wheat Flour, Barley Malt, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, Modified Wheat Starch, Toppers (Sugar, Corn Starch, Palm and Palm Kernel Oil, Natural and Artificial Flavors, Dextrin, Soy Lecithin, Yellow 5 Lake, Confectioner's Glaze, Blue 1 Lake, Salt, Carnauba Wax, Red 40 Lake, Yellow 6 Lake), Soybean Oil, Glycerin, Dextrose, Nonfat Dry Milk, Sodium Acid Pyrophosphate, Baking Soda, Dried Egg Yolks, Corn Starch, Salt, Calcium Carbonate, Calcium Sulfate, Potassium Sorbate, Spices, Agar, Mono- and Diglycerides, Propylene Glycol Monostearate, Guar Gum, Locust Bean Gum, Artificial Flavor, Xanthan Gum, Disodium Phosphate, Sunflower Oil, Soy Lecithin, Soy Flour, Enzymes, Whey, Dried Egg Whites.",
+    nutrition: { caloriesKcal100g: 520, sugarsG100g: 34.2, saturatedFatG100g: 15.1, sodiumMg100g: 315, fiberG100g: 0.7, proteinG100g: 2.7, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.target.com/p/little-debbie-big-pack-christmas-old-fashioned-donuts/-/A-1013641628",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /^(?!.*\b(chocolate|christmas|powdered|cinnamon|apple)\b).*\blittle\s+debbie\b.*\bold\s+fashioned\s+(?:snack\s+cake\s+)?(?:donuts?|doughnuts?)\b/i,
+    brand: "Little Debbie",
+    title: "Little Debbie Old Fashioned Donuts",
+    keywords: ["little", "debbie", "old", "fashioned", "donuts", "doughnuts", "glazed", "snack", "cake"],
+    ingredients:
+      "Palm Oil, Sugar, Enriched Bleached Flour (Wheat Flour, Barley Malt, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, Modified Wheat Starch, Soybean Oil, Dextrose, Nonfat Dry Milk, Sodium Acid Pyrophosphate, Baking Soda, Dried Egg Yolks, Corn Starch, Salt, Calcium Carbonate, Calcium Sulfate, Potassium Sorbate, Spices, Agar, Mono- and Diglycerides, Propylene Glycol Monostearate, Guar Gum, Locust Bean Gum, Artificial Flavor, Xanthan Gum, Disodium Phosphate, Sunflower Oil, Soy Lecithin, Soy Flour, Enzymes, Whey, Dried Egg Whites.",
+    nutrition: { caloriesKcal100g: 493, sugarsG100g: 34.2, saturatedFatG100g: 15.1, sodiumMg100g: 329, fiberG100g: 1.4, proteinG100g: 2.7, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isWholeFood: false },
+    sourceUrl: "https://www.kingsoopers.com/p/snack-cakes-little-debbie-big-pack-old-fashioned-donuts/0002430004336",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /\bjackson'?s\b.*\bsweet\s+potato\b.*\b(jalapeno|jalapeño)\b|\bjackson'?s\b.*\b(jalapeno|jalapeño)\b.*\bsweet\s+potato\b/i,
+    brand: "Jackson's",
+    title: "Jackson's Spicy Jalapeno Sweet Potato Chips in Avocado Oil",
+    keywords: ["jacksons", "sweet", "potato", "spicy", "jalapeno", "kettle", "chips", "avocado", "oil", "gluten", "free", "vegan"],
+    ingredients:
+      "Sweet Potatoes, Avocado Oil, Spicy Jalapeno Seasoning (Maltodextrin, Salt, Onion Powder, Jalapeno Pepper Powder, Spices, Dextrose, Dehydrated Parsley, Garlic Powder, Yeast Extract, Extractives of Paprika, Sea Salt, Natural Flavor).",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 10.7, saturatedFatG100g: 3.6, sodiumMg100g: 786, fiberG100g: 7.1, proteinG100g: 3.6, fruitsVegNutsPct: 65, isWholeFood: false },
+    sourceUrl: "https://snackjacksons.com/products/spicy-jalapeno-sweet-potato-chips-in-avocado-oil-5oz-8-bags",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /^(?!.*\b(jalapeno|jalapeño|spicy|bbq|barbecue|ranch|cheddar|garlic|cinnamon|habanero)\b).*\bjackson'?s\b.*\bsweet\s+potato\s+(?:kettle\s+)?chips\b/i,
+    brand: "Jackson's",
+    title: "Jackson's Sea Salt Sweet Potato Chips in Avocado Oil",
+    keywords: ["jacksons", "sweet", "potato", "sea", "salt", "kettle", "chips", "avocado", "oil", "gluten", "free", "vegan"],
+    ingredients: "Sweet Potatoes, Avocado Oil, Sea Salt.",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 14.3, saturatedFatG100g: 3.6, sodiumMg100g: 393, fiberG100g: 7.1, proteinG100g: 3.6, fruitsVegNutsPct: 70, isWholeFood: false },
+    sourceUrl: "https://snackjacksons.com/products/sea-salt-sweet-potato-chips-in-avocado-oil-5oz-8-bags",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /\bdrizzilicious\b.*\bbirthday\s+cake\b/i,
+    brand: "Drizzilicious",
+    title: "Drizzilicious Birthday Cake Gluten Free Mini Rice Cake Bites",
+    keywords: ["drizzilicious", "birthday", "cake", "mini", "rice", "cakes", "bites", "crisps", "gluten", "free", "vegan", "reimagined"],
+    ingredients:
+      "White Rice Flour, Cane Sugar, Corn Flour, Tapioca Starch, Corn Starch, Palm Kernel Oil, Avocado Oil, Natural Flavors, Whole Quinoa, Chia, Flax, Salt, Acacia Gum, Fruit Juice (Color), Annatto and Turmeric Extracts (Color), Carnauba Wax.",
+    nutrition: { caloriesKcal100g: 429, sugarsG100g: 23.8, saturatedFatG100g: 7.1, sodiumMg100g: 310, fiberG100g: 2.4, proteinG100g: 4.8, fruitsVegNutsPct: 0, isWholeFood: false },
+    sourceUrl: "https://drizzilicious.com/products/birthday-cake",
+    verifiedAt: "2026-11-17",
+  },
+  {
+    match: /^(?!.*\b(no\s+sugar\s+added|sugar[\s-]*free|keto|mini|chocolate|banana|pistachio|lemon|corn|gluten[\s-]*free)\b).*\bmarketside\b.*\bblueberry\b.*\bmuffins?\b/i,
+    brand: "Marketside",
+    title: "Marketside Baked Blueberry Streusel Muffins",
+    keywords: ["marketside", "fresh", "baked", "blueberry", "streusel", "muffins", "bakery"],
+    ingredients:
+      "Enriched Wheat Flour (Wheat Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Sugar, Blueberries, Soybean Oil, Eggs, Water, Cultured Buttermilk (Nonfat Milk, Bacterial Culture), Egg Whites, Margarine (Soybean Oil, Palm Oil, Modified Palm Oil, Water, Canola Oil, Salt, Whey, Monoglycerides, Soy Lecithin, Citric Acid, Natural Flavor, Annatto Extract, Turmeric Color, Vitamin A Palmitate, Vitamin D3), Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate, Cultured Wheat Flour, Salt, Dextrose, Whey, Mono- and Diglycerides, Artificial Flavor, Sodium Stearoyl Lactylate, Cellulose Gum, Xanthan Gum, Citric Acid, Soy Lecithin.",
+    nutrition: { caloriesKcal100g: 354, sugarsG100g: 23.2, saturatedFatG100g: 3.0, sodiumMg100g: 343, fiberG100g: 1.0, proteinG100g: 5.1, fruitsVegNutsPct: 2, nutriScoreGrade: "d", isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Marketside-Baked-Blueberry-Streusel-Muffins-Soft-Moist-14-oz-4-pack/19758064",
+    verifiedAt: "2026-11-17",
   },
   {
     match: /\b(cake\s+roll|pumpkin\s+cake|swiss\s+roll|snack\s+cakes?|little\s+debbie|hostess|twinkies?|ding\s+dongs?|ho\s*hos?|zebra\s+cakes?|entenmann'?s|freshness\s+guaranteed.*(cake|pie|cupcake|brownie|cookie|muffin|roll)|bake\s+shop.*(cake|pie|cupcake|brownie|cookie|muffin))\b/i,
@@ -4372,10 +4476,13 @@ export function passesCatalogIdentityGuard(
   let strippedQuery = query
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, " ")
     .replace(/,\s*(?:now|was)\b.*$/i, " ")
+    .replace(/\bfree\s+of\s+top\s+\d+\s+allergens?\b/gi, " ")
+    .replace(/\btop\s+\d+\s+allergen[\s-]*free\b/gi, " ")
+    .replace(/\bsoft\s*(?:&|and)\s*moist\b/gi, " ")
     .replace(/\b\d+(?:\.\d+)?\s*(?:g|mg|mcg|kcal|cal)\s+(?:of\s+)?[a-z]*\.{2,}/gi, " ")
     .replace(/\b\d+\s+[a-z]{1,3}\.{2,}/gi, " ")
     .replace(/\bserves\s+\d+(?:\s*[-–—]\s*\d+)?\b/gi, " ")
-    .replace(/\b(?:family|party|value|mega|giant|king|share|fun|snack|travel|club|bulk)\s+(?:size|pack)\b/gi, " ")
+    .replace(/\b(?:family|party|value|mega|giant|king|share|fun|snack|travel|club|bulk|big)\s+(?:size|pack)\b/gi, " ")
     .replace(
       /\b\d+(?:\.\d+)?(?:\s*[-–—x×/]\s*\d+(?:\.\d+)?)?\s*(?:fl\.?\s*oz|oz|ounces?|lbs?|pounds?|g|grams?|kg|mg|ml|l|liters?|gal|gallons?|qt|quarts?|pt|pints?|ct|count|pk|packs?|pcs?|pieces?|slices?|cans?|bottles?|jars?|boxes?|bags?|pouches?|tubs?|cartons?|trays?|cups?|rolls?|tubes?|bricks?|dozens?)\b\.?/gi,
       " ",
@@ -4645,8 +4752,6 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       .replace(/,\s*(now|was)$/i, "")
       .replace(/\s*[.,•|\-]+\s*$/, ""),
   );
-  // Never infer USDA Organic certification from query text alone
-  const isOrganic = false;
 
   // Check Just Bare before generic breaded poultry
   if (/\bjust\s+bare\b/i.test(query)) {
@@ -4805,12 +4910,15 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
     return null;
   }
 
-  // Never infer USDA Organic certification from query text alone on generic/store-branded whole foods unless the brand itself is an inherently certified organic house line
+  // Single-ingredient whole produce, meat/eggs, and raw nuts/seeds (already past PROCESSED_FOOD_GUARD and non-store brand guard)
+  // honor explicit whole-item Organic labeling (e.g. "Fresh Organic Carrots - 1lb - Good & Gather™", "Organic Rainbow Chard Bunch")
+  // while never inferring organic status for conventional items or processed foods.
   const storeHouseBrandLabel = detectedBrandForFallback ? normalizeOffDisplayTitle(detectedBrandForFallback) : "";
   const storeHouseCertifiedOrganic = /\b(simple\s+truth\s+organic|o\s+organics)\b/i.test(query) && !/\bnon[-\s]*organic\b/i.test(query);
-  if (/\borganic\b/i.test(query) && !storeHouseCertifiedOrganic && detectedBrandForFallback) {
-    return null;
-  }
+  const wholeFoodExplicitOrganic =
+    /\borganic\b/i.test(query) &&
+    !/\b(?:non[-\s]*organic|made\s+with\s+organic|less\s+than\s+\d+%\s+organic)\b/i.test(query);
+  const resolvedWholeFoodOrganic = storeHouseCertifiedOrganic || wholeFoodExplicitOrganic;
 
   // 1. Fresh Produce, Fruits, Vegetables, Herbs & Salad Greens (strictly single-ingredient)
   const PRODUCE_NOUN_RE =
@@ -4821,9 +4929,11 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/169247/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Fresh Produce",
-      ingredients: "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
+      ingredients: resolvedWholeFoodOrganic
+        ? "100% Organic Fresh Whole Produce (Single-Ingredient Whole Food)."
+        : "100% Fresh Whole Produce (Single-Ingredient Whole Food).",
       imageUrl: produceCurated?.imageUrl?.startsWith("https://") ? produceCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
+      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: resolvedWholeFoodOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -4833,19 +4943,20 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   const MEAT_NOUN_RE =
     /\b(chicken\s+(breasts?|fillets?|cutlets?|thighs?|drumsticks?|wings?|tenderloins?|quarters?|legs?)|whole\s+chicken|young\s+chicken|(?:whole|frozen|young|fresh|antibiotic[- ]?free|organic|pasture[- ]?raised|grade\s+a)\s+turkey|turkey\s+(breasts?|thighs?|drumsticks?|wings?|tenderloins?)|whole\s+turkey|\bturkey\b|ground\s+(beef|chuck|turkey|chicken|pork|bison|lamb)|(?:bottom\s+round|top\s+round|eye\s+of\s+round|rump|chuck|sirloin\s+tip|rib)\s+roast|beef\s+(stew\s+meat|chuck|roast|brisket|sirloin|ribeye|tenderloin|short\s+ribs?|flank|skirt)|stew\s+beef|ribeye|sirloin|filet|new\s+york\s+strip|t-bone|porterhouse|pork\s+(chops?|loin|tenderloin|roast|shoulder|ribs?|belly)|lamb\s+(chops?|leg|shank|rack)|salmon|cod|tilapia|haddock|halibut|trout|mahi|swordfish|catfish|snapper|sea\s+bass|tuna\s+steak|shrimp|scallops?|crab\s+legs?|lobster\s+tails?|large\s+eggs?|white\s+eggs?|brown\s+eggs?|cage[- ]?free\s+eggs?|pasture[- ]?raised\s+eggs?|grade\s+aa?\s+(?:large\s+|extra\s+large\s+|jumbo\s+|medium\s+)?(?:white\s+|brown\s+)?eggs?|\beggs\b)\b/;
   if (MEAT_NOUN_RE.test(s) && hasWholeFoodHeadNoun(query, MEAT_NOUN_RE, { checkBefore: true, allowMeatCuts: true, mode: "meat" })) {
+    const orgPrefix = resolvedWholeFoodOrganic ? "Organic " : "";
     const wholeMeatIng = /\b(beef|angus|wagyu|ribeye|sirloin|tenderloin|brisket|chuck|round\s+roast|rump\s+roast|new\s+york\s+strip|t-bone|porterhouse)\b/i.test(s)
-      ? "100% Beef (Single-Ingredient Unprocessed Whole Food)."
+      ? `100% ${orgPrefix}Beef (Single-Ingredient Unprocessed Whole Food).`
       : /\bchicken\b/i.test(s)
-        ? "100% Chicken (Single-Ingredient Unprocessed Whole Food)."
+        ? `100% ${orgPrefix}Chicken (Single-Ingredient Unprocessed Whole Food).`
         : /\bturkey\b/i.test(s)
-          ? "100% Turkey (Single-Ingredient Unprocessed Whole Food)."
+          ? `100% ${orgPrefix}Turkey (Single-Ingredient Unprocessed Whole Food).`
           : /\bpork\b/i.test(s)
-            ? "100% Pork (Single-Ingredient Unprocessed Whole Food)."
+            ? `100% ${orgPrefix}Pork (Single-Ingredient Unprocessed Whole Food).`
             : /\blamb\b/i.test(s)
-              ? "100% Lamb (Single-Ingredient Unprocessed Whole Food)."
+              ? `100% ${orgPrefix}Lamb (Single-Ingredient Unprocessed Whole Food).`
               : /\beggs?\b/i.test(s)
-                ? "100% Shell Eggs (Single-Ingredient Whole Food)."
-                : "100% Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).";
+                ? `100% ${orgPrefix}Shell Eggs (Single-Ingredient Whole Food).`
+                : `100% ${orgPrefix}Whole Food Protein (Single-Ingredient Unprocessed Meat, Poultry, or Seafood).`;
     const meatCurated = lookupCuratedPhoto({ brand: storeHouseBrandLabel || "Fresh Meat & Eggs", title: cleanTitle });
     return {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/171477/nutrients",
@@ -4853,7 +4964,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       brand: storeHouseBrandLabel || "Fresh Meat & Eggs",
       ingredients: wholeMeatIng,
       imageUrl: meatCurated?.imageUrl?.startsWith("https://") ? meatCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
+      nutrition: { fruitsVegNutsPct: 0, isWholeFood: true, isOrganic: resolvedWholeFoodOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -4868,9 +4979,11 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
       sourceUrl: "https://fdc.nal.usda.gov/food-details/170567/nutrients",
       productTitle: cleanTitle,
       brand: storeHouseBrandLabel || "Whole Nuts, Seeds & Legumes",
-      ingredients: "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
+      ingredients: resolvedWholeFoodOrganic
+        ? "100% Organic Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food)."
+        : "100% Whole Nuts, Seeds, or Legumes (Single-Ingredient Whole Food).",
       imageUrl: nutsCurated?.imageUrl?.startsWith("https://") ? nutsCurated.imageUrl : undefined,
-      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: storeHouseCertifiedOrganic || isOrganic },
+      nutrition: { fruitsVegNutsPct: 100, isWholeFood: true, isOrganic: resolvedWholeFoodOrganic },
       source: "catalog",
       sourceUpdatedAt: "2026-11-08",
     };
@@ -4880,7 +4993,7 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 }
 
 const RETAILER_SEO_COMMA_TAIL_RE =
-  /,\s*(?:high\s+(?:in\s+)?fiber|good\s+source\s+of\s+[^,]+|excellent\s+source\s+of\s+[^,]+|rich\s+in\s+[^,]+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staple|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+food|breakfast\s+food|(?:kids?|school|lunch\s*box|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+[^,]+|great\s+for\s+[^,]+|perfect\s+for\s+[^,]+|ideal\s+for\s+[^,]+|snap\s+ebt(?:\s+eligible)?|small|medium|large|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack)\s*$/i;
+  /,\s*(?:free\s+of\s+top\s+\d+\s+allergens?|top\s+\d+\s+allergen[\s-]*free|allergen[\s-]*free|soft\s*(?:&|and)\s*moist|\d+\s*g\s+(?:whey\s+|plant\s+)?protein(?:\s+per\s+(?:serving|cup))?|big\s+pack|high\s+(?:in\s+)?fiber|good\s+source\s+of\s+[^,]+|excellent\s+source\s+of\s+[^,]+|rich\s+in\s+[^,]+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staple|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+food|breakfast\s+food|(?:kids?|school|lunch\s*box|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+[^,]+|great\s+for\s+[^,]+|perfect\s+for\s+[^,]+|ideal\s+for\s+[^,]+|snap\s+ebt(?:\s+eligible)?|small|medium|large|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack)\s*$/i;
 
 const AMBIGUOUS_SHORT_SEO_TAIL_RE = /^,\s*(?:high\s+(?:in\s+)?fiber|small|medium|large)\s*$/i;
 const PRESERVED_VARIANT_ELLIPSIS_TOKEN_RE =
@@ -4906,11 +5019,13 @@ export function cleanSearchQuery(title: string): string {
     .replace(/\s*[-–—|]\s*pack\s+of\s+\d+.*$/i, "")
     .replace(/\s*\(\d+(\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml)\.?\)\s*[-–—|]?.*$/i, "")
     .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:fl\.?\s*oz|lbs?|oz|ct|count|pk|pack|g|kg)\.?\b.*$/i, "")
-    .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?)\b.*$/i, "")
+    .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|big\s+pack|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?)\b.*$/i, "")
     .replace(/\s+\d+(\.\d+)?\s*(fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?\b.*$/i, "")
     .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|dozen)\.?\b.*$/i, "")
     .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
+    .replace(/\bbig\s+pack\b/gi, " ")
+    .replace(/\s+/g, " ")
     .replace(/\s*[.,•|\-]+\s*$/, "")
     .trim();
 
@@ -4997,7 +5112,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
+    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|marketside\b.*\bblueberry\b.*\bmuffins?|folgers|bar[- ]?s\b|little\s+debbie|jackson'?s|drizzilicious|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&

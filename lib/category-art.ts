@@ -129,7 +129,7 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:maple\s+syrup|pancake\s+syrup|agave\s+nectar|\bhoney\b)\b/i, "/swaps/syrup.png"],
   [/\b(?:popcorn|kettle\s+corn|skinny\s*pop|smartfood|boomchickapop)\b/i, "/swaps/popcorn.png"],
   [/\b(?:tortilla\s+chips?|potato\s+chips?|kettle\s+chips?|corn\s+chips?|veggie\s+straws?|pita\s+chips?|plantain\s+chips?|french\s+fries|crinkle\s+fries|golden\s+crinkles|tater\s+tots|hash\s+browns|doritos|fritos|cheetos|pringles|lay'?s|ruffles|tostitos|takis|siete.*chips?|\bchips\b)\b/i, "/swaps/chips.jpg"],
-  [/\b(?:crackers?|goldfish|cheez[- ]?it|ritz|triscuit|wheat\s+thins|saltines|graham\s+crackers?|pretzels?)\b/i, "/swaps/crackers.jpg"],
+  [/\b(?:crackers?|rice\s+cakes?|goldfish|cheez[- ]?it|ritz|triscuit|wheat\s+thins|saltines|graham\s+crackers?|pretzels?)\b/i, "/swaps/crackers.jpg"],
   [/\b(?:cookies?|oreos?|chips\s+ahoy|shortbread|biscotti|wafers?)\b/i, "/swaps/cookies.png"],
   [/\b(?:chocolate|cocoa|brownie|fudge|nutella|hazelnut\s+spread|reese'?s|hershey'?s|m&m'?s|snickers|twix|kit\s*kat|truffles?)\b/i, "/swaps/chocolate.png"],
   [/\b(?:gummies|gummy|fruit\s+snacks?|candy|candies|skittles|starburst|sour\s+patch|swedish\s+fish|jelly\s+beans?|licorice|lollipops?|mints?|chewing\s+gum|marshmallows?)\b/i, "/swaps/candy.png"],
@@ -141,7 +141,7 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:bagels?)\b/i, "/swaps/bagels.png"],
   [/\b(?:tortillas?|wraps?|taco\s+shells?)\b/i, "/swaps/tortillas.png"],
   [/\b(?:hamburger\s+buns?|hot\s+dog\s+buns?|brioche\s+buns?|dinner\s+rolls?|sandwich\s+rolls?|potato\s+rolls?|hoagie\s+rolls?|sub\s+rolls?|slider\s+buns?|\bbuns\b)\b/i, "/swaps/buns.png"],
-  [/\b(?:croissants?|muffins?|cupcakes?|cake\b|donuts?|doughnuts?|bismarks?|danish|cinnamon\s+rolls?|pastr(?:y|ies)|pie\s+crust|pop[- ]?tarts?|toaster\s+pastr(?:y|ies))\b/i, "/swaps/bakery.png"],
+  [/\b(?:croissants?|muffins?|cupcakes?|cakes?\b|snack\s+cakes?|donuts?|doughnuts?|bismarks?|danish|cinnamon\s+rolls?|pastr(?:y|ies)|pie\s+crust|pop[- ]?tarts?|toaster\s+pastr(?:y|ies))\b/i, "/swaps/bakery.png"],
   [/\b(?:bread|sourdough|english\s+muffins?|baguette|ciabatta|ezekiel)\b/i, "/swaps/bread.jpg"],
   [/\b(?:yogurt|yoghurt|greek\s+yogurt|sour\s+cream|skyr|kefir|chobani|yoplait|fage|siggi'?s|stonyfield)\b/i, "/swaps/yogurt.jpg"],
   [/\b(?:ice\s+cream|gelato|sorbet|sherbet|frozen\s+dessert|popsicles?|ice\s+bars?)\b/i, "/swaps/icecream.png"],
@@ -151,7 +151,7 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:eggs?|pasture[- ]?raised\s+eggs?|egg\s+whites?|liquid\s+egg)\b/i, "/swaps/eggs.png"],
   [/\b(?:pasta|spaghetti|penne|rotini|fusilli|fettuccine|linguine|macaroni|rigatoni|orzo|gnocchi|ramen|noodles?)\b/i, "/swaps/pasta.png"],
   [/\b(?:black\s+beans?|pinto\s+beans?|kidney\s+beans?|garbanzo|chickpeas?|lentils?|refried\s+beans?|baked\s+beans?|quinoa|brown\s+rice|jasmine\s+rice|basmati\s+rice|white\s+rice|couscous|farro|barley|flour|cornmeal)\b/i, "/swaps/beans-grains.png"],
-  [/\b(?:applesauce|fruit\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomatoes?|diced\s+tomatoes|corn\b|vegetables?|salad\s+kit|\bsalad\b|spinach|lettuce|romaine|kale|broccoli|cauliflower|carrots?|potatoes?|sweet\s+potatoes?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\b/i, "/swaps/produce.png"],
+  [/\b(?:applesauce|fruit\s+crisps?|apples?|peaches?|pears?|plums?|pineapples?|mangos?|mangoes|bananas?|strawberries|blueberries|raspberries|blackberries|grapes?|oranges?|lemons?|limes?|avocados?|tomatoes?|diced\s+tomatoes|corn\b|vegetables?|salad\s+kit|\bsalad\b|spinach|lettuce|romaine|kale|chard|arugula|broccoli|cauliflower|carrots?|potatoes?|sweet\s+potatoes?|onions?|garlic|peppers?|cucumbers?|celery|mushrooms?|berries|produce)\b/i, "/swaps/produce.png"],
 ];
 
 const EXPLICIT_CATEGORY_FALLBACK: Readonly<Record<string, string>> = {

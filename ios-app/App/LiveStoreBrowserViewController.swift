@@ -86,6 +86,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private let initialURLString: String?
     private var activeStore: HeyBrocLiveStoreConfig
     private var storeWebView: WKWebView?
+    private var authPopupContainer: UIView?
+    private var authPopupWebView: WKWebView?
     private var progressView: UIProgressView?
     private var storeButtons: [String: UIButton] = [:]
     private var pesticideBtn: UIButton?
@@ -159,7 +161,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private static let allowedSsoDomains: [String] = [
         "accounts.google.com",
+        "accounts.youtube.com",
+        "gstatic.com",
+        "googleusercontent.com",
         "appleid.apple.com",
+        "login.target.com",
+        "identity.walmart.com",
         "paypal.com",
         "stripe.com",
         "auth0.com",
@@ -167,8 +174,48 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         "affirm.com",
         "klarna.com",
         "b2clogin.com",
-        "microsoftonline.com"
+        "login.microsoftonline.com",
+        "microsoftonline.com",
+        "live.com"
     ]
+
+    private static func isSsoAuthHost(_ rawHost: String) -> Bool {
+        let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !h.isEmpty else { return false }
+        return allowedSsoDomains.contains { domain in
+            h == domain || h.hasSuffix(".\(domain)")
+        }
+    }
+
+    private static func isPersistableBrowseURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              let host = url.host,
+              isAllowedRetailerHost(host),
+              !isSsoAuthHost(host) else {
+            return false
+        }
+        let p = url.path.lowercased()
+        if p.contains("/login") || p.contains("/signin") || p.contains("/sign-in") ||
+            p.contains("/auth") || p.contains("/oauth") || p.contains("/cart") ||
+            p.contains("/checkout") {
+            return false
+        }
+        return true
+    }
+
+    private static func saveLastStoreURL(_ url: URL, for storeKey: String) {
+        guard isPersistableBrowseURL(url) else { return }
+        UserDefaults.standard.set(url.absoluteString, forKey: "hb_last_live_url_\(storeKey)")
+    }
+
+    private static func loadLastStoreURL(for storeKey: String) -> URL? {
+        guard let raw = UserDefaults.standard.string(forKey: "hb_last_live_url_\(storeKey)"),
+              let url = validatedHTTPURL(raw),
+              isPersistableBrowseURL(url) else {
+            return nil
+        }
+        return url
+    }
 
     private static func isAllowedRetailerHost(_ rawHost: String) -> Bool {
         let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -180,11 +227,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
     private static func isAllowedNavigationHost(_ rawHost: String) -> Bool {
         if isAllowedRetailerHost(rawHost) { return true }
-        let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !h.isEmpty else { return false }
-        return allowedSsoDomains.contains { domain in
-            h == domain || h.hasSuffix(".\(domain)")
-        }
+        return isSsoAuthHost(rawHost)
     }
 
     private static func isValidBatchItemId(_ id: String) -> Bool {
@@ -315,9 +358,22 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         cleanupWebView()
     }
 
+    @objc private func dismissAuthPopup() {
+        if let pwv = authPopupWebView {
+            pwv.stopLoading()
+            pwv.navigationDelegate = nil
+            pwv.uiDelegate = nil
+        }
+        authPopupWebView = nil
+        authPopupContainer?.removeFromSuperview()
+        authPopupContainer = nil
+        syncBubbleYToWebView(triggerRescan: true)
+    }
+
     private func cleanupWebView() {
         guard !isCleaningUp else { return }
         isCleaningUp = true
+        dismissAuthPopup()
         progressObservation?.invalidate()
         progressObservation = nil
         if let wv = storeWebView {
@@ -343,7 +399,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         updatePesticideButtonStyle()
         setBubbleIdleState()
 
-        pendingInitialURL = Self.validatedHTTPURL(initialURLString) ?? URL(string: activeStore.homeURL)
+        pendingInitialURL =
+            Self.validatedHTTPURL(initialURLString) ??
+            Self.loadLastStoreURL(for: activeStore.key) ??
+            URL(string: activeStore.homeURL)
     }
 
     override func viewDidLayoutSubviews() {
@@ -563,6 +622,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.allowsInlineMediaPlayback = true
+        config.applicationNameForUserAgent = "Version/17.0 Mobile/15E148 Safari/604.1"
         let pagePrefs = WKWebpagePreferences()
         pagePrefs.preferredContentMode = .mobile
         config.defaultWebpagePreferences = pagePrefs
@@ -1196,9 +1256,109 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return { width: r.width, height: Math.max(0, r.height - slotH) };
           }
 
+          var PROMO_SLIDE_ALT_RE = /\\b(?:satisfaction\\s+guaranteed|money\\s+back\\s+guarantee|100%\\s+guaranteed|quality\\s+guaranteed|freshness\\s+guaranteed)\\b/i;
+          var MEDIA_ICON_BTN_RE = /^(?:save|favorite|favourite|wishlist|add\\s+to\\s+(?:list|registry|favorites)|sign\\s+in\\s+to\\s+save|like|heart|next|previous|prev|slide\\s*\\d*|image\\s*\\d*|photo\\s*\\d*|dot\\s*\\d*|close|zoom|expand)$/i;
+
+          function nodeHasDetailsOrCta(el) {
+            if (!el || !el.querySelector) return false;
+            if (el.querySelector('h1, h2, h3, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]')) {
+              return true;
+            }
+            var btns = el.querySelectorAll ? el.querySelectorAll('button') : [];
+            for (var bi = 0; bi < btns.length; bi++) {
+              var b = btns[bi];
+              if (b.closest && b.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
+              var bTxt = clean(b.textContent || '');
+              var bAria = clean(b.getAttribute ? (b.getAttribute('aria-label') || '') : '');
+              var label = bTxt || bAria;
+              if (!label) {
+                var br = b.getBoundingClientRect ? b.getBoundingClientRect() : { width: 0, height: 0 };
+                if (br.width <= 48 && br.height <= 48) continue;
+              } else if (MEDIA_ICON_BTN_RE.test(label) && !bTxt) {
+                continue;
+              } else if (MEDIA_ICON_BTN_RE.test(label) && bTxt.length <= 12 && !/\\b(?:add|cart|buy)\\b/i.test(bTxt)) {
+                continue;
+              }
+              return true;
+            }
+            var txt = clean(el.textContent || '');
+            return /\\$\\s*\\d/.test(txt);
+          }
+
+          function isHorizontalCarouselTrack(el) {
+            if (!el || el === document.body) return false;
+            var sw = Number(el.scrollWidth || 0);
+            var cw = Number(el.clientWidth || 0);
+            if (cw >= 40 && sw > cw + 24) return true;
+            var cs = window.getComputedStyle(el);
+            if (!cs) return false;
+            var ox = String(cs.overflowX || '').toLowerCase();
+            var snap = String(cs.scrollSnapType || '').toLowerCase();
+            if ((ox === 'scroll' || ox === 'auto' || ox === 'hidden') && snap && snap !== 'none' && /x|inline|both/.test(snap)) {
+              return true;
+            }
+            var disp = String(cs.display || '').toLowerCase();
+            var kids = el.children || [];
+            if ((disp === 'flex' || disp === 'inline-flex') && String(cs.flexDirection || 'row').toLowerCase().indexOf('column') !== 0 && kids.length >= 2) {
+              var firstR = null;
+              for (var ki = 0; ki < kids.length && ki < 6; ki++) {
+                var kr = kids[ki].getBoundingClientRect ? kids[ki].getBoundingClientRect() : { width: 0, height: 0, left: 0, top: 0 };
+                if (kr.width < 32 || kr.height < 32) continue;
+                if (!firstR) {
+                  firstR = kr;
+                } else if (kr.left >= firstR.left + firstR.width * 0.45 && Math.abs(kr.top - firstR.top) < firstR.height * 0.6) {
+                  return true;
+                }
+              }
+            }
+            if ((el.tagName === 'UL' || el.tagName === 'OL') && kids.length >= 2) {
+              var mediaLis = 0;
+              for (var li = 0; li < kids.length && li < 6; li++) {
+                if (kids[li].tagName === 'LI' && kids[li].querySelector && kids[li].querySelector('img, picture')) {
+                  mediaLis++;
+                }
+              }
+              if (mediaLis >= 2) return true;
+            }
+            return false;
+          }
+
+          function climbAboveHorizontalCarousel(startEl, cardEl, maxH) {
+            if (!startEl || startEl === document.body || startEl === cardEl) return startEl;
+            var best = startEl;
+            var cur = startEl;
+            var steps = 0;
+            while (cur && cur !== cardEl && cur !== document.body && steps < 6) {
+              if (isHorizontalCarouselTrack(cur)) {
+                var shell = cur.parentElement;
+                if (shell && shell !== document.body) {
+                  if (shell === cardEl) {
+                    if (!nodeHasDetailsOrCta(cur)) best = cur;
+                    break;
+                  }
+                  var sr = measureWithoutBadgeSlot(shell);
+                  if (!nodeHasDetailsOrCta(shell) && sr.width >= 44 && sr.height >= 44 && sr.height <= maxH + 48) {
+                    best = shell;
+                    cur = shell;
+                    steps++;
+                    continue;
+                  }
+                }
+              }
+              var nextP = cur.parentElement;
+              if (!nextP || nextP === cardEl || nextP === document.body) break;
+              if (nodeHasDetailsOrCta(nextP)) break;
+              cur = nextP;
+              steps++;
+            }
+            return best;
+          }
+
           function findSafeCardAnchor(chosenImg, cardEl) {
             var imgR = chosenImg.getBoundingClientRect();
-            var maxAnchorH = Math.min(420, Math.max(120, Math.round((imgR && imgR.height) || 200)) + 84);
+            var pr0 = chosenImg.parentElement ? chosenImg.parentElement.getBoundingClientRect() : imgR;
+            var refH = Math.max(imgR.height || 0, pr0.height || 0);
+            var maxAnchorH = Math.min(420, Math.max(120, Math.round(refH || 200)) + 84);
             var cur = chosenImg.parentElement;
             if (cur && cur.tagName === 'PICTURE') cur = cur.parentElement;
             var candidate = null;
@@ -1214,6 +1374,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (cur === cardEl) break;
               cur = cur.parentElement;
               steps++;
+            }
+            if (candidate && cardEl && cardEl !== document.body) {
+              candidate = climbAboveHorizontalCarousel(candidate, cardEl, maxAnchorH);
             }
             if (!candidate && cardEl && cardEl !== document.body) {
               var cardR = measureWithoutBadgeSlot(cardEl);
@@ -1264,18 +1427,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return true;
           }
 
-          function nodeHasDetailsOrCta(el) {
-            if (!el || !el.querySelector) return false;
-            if (el.querySelector('h1, h2, h3, button, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]')) {
-              return true;
-            }
-            var txt = clean(el.textContent || '');
-            return /\\$\\s*\\d/.test(txt);
-          }
-
           function mountBadgeUnderOrOnPhoto(chosenImg, cardEl, badge, fallbackAnchor) {
             if (chosenImg && cardEl && chosenImg.parentElement) {
               var beforeImgR = chosenImg.getBoundingClientRect();
+              var parentR0 = chosenImg.parentElement.getBoundingClientRect();
+              var refImgH = Math.max(beforeImgR.height || 0, parentR0.height || 0);
+              var maxMediaH = Math.max(260, refImgH + 110);
               var photoUnit = chosenImg.parentElement;
               if (photoUnit && photoUnit.tagName === 'PICTURE' && photoUnit.parentElement) {
                 photoUnit = photoUnit.parentElement;
@@ -1284,6 +1441,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (interactiveAnc && interactiveAnc !== cardEl && nodeContains(cardEl, interactiveAnc) && !nodeHasDetailsOrCta(interactiveAnc)) {
                 photoUnit = interactiveAnc;
               }
+              photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH);
               var cur = photoUnit;
               var steps = 0;
               while (cur && cur !== cardEl && cur !== document.body && steps < 6) {
@@ -1298,7 +1456,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   break;
                 }
                 var nr = nextP.getBoundingClientRect();
-                if (nr.width >= 44 && nr.height <= Math.max(260, beforeImgR.height + 110)) {
+                if (nr.width >= 44 && nr.height <= maxMediaH) {
                   photoUnit = nextP;
                   cur = nextP;
                   steps++;
@@ -1306,6 +1464,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   break;
                 }
               }
+              photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH);
 
               var slot = document.createElement('div');
               slot.className = 'hb-photo-badge-slot';
@@ -1314,6 +1473,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var parentEl = photoUnit ? photoUnit.parentElement : null;
               if (
                 parentEl &&
+                !isHorizontalCarouselTrack(parentEl) &&
                 typeof parentEl.insertBefore === 'function' &&
                 !(parentEl.closest && parentEl.closest('a, button')) &&
                 containerStacksVertically(parentEl)
@@ -1322,6 +1482,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 inserted = true;
               } else if (
                 photoUnit &&
+                !isHorizontalCarouselTrack(photoUnit) &&
                 photoUnit.tagName !== 'IMG' &&
                 photoUnit.tagName !== 'PICTURE' &&
                 photoUnit.tagName !== 'A' &&
@@ -1335,6 +1496,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
               if (inserted) {
                 var afterImgR = chosenImg.getBoundingClientRect();
+                var unitR = photoUnit ? photoUnit.getBoundingClientRect() : afterImgR;
+                var refBottom = afterImgR.height >= 36 ? afterImgR.bottom : unitR.bottom;
                 var badgeR = badge.getBoundingClientRect();
                 var imgOk = beforeImgR.width < 36 || (
                   afterImgR.width >= 44 &&
@@ -1343,7 +1506,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   afterImgR.height >= beforeImgR.height * 0.76
                 );
                 var sizeOk = badgeR.width >= 46 && badgeR.height >= 26;
-                var posOk = badgeR.top >= afterImgR.bottom - 18 && badgeR.top <= afterImgR.bottom + 64;
+                var posOk = badgeR.top >= refBottom - 18 && badgeR.top <= refBottom + 64;
                 var clipped = false;
                 var clipAnc = slot.parentElement;
                 var clipSteps = 0;
@@ -1383,13 +1546,16 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var linkEl = cardEl.querySelector(PRODUCT_LINK_SEL) || cardEl.querySelector('a[href]');
             var rawHref = linkEl ? String(linkEl.getAttribute('href') || '') : '';
             var hrefKey = rawHref ? rawHref.split('#')[0].split('?')[0].slice(0, 140) : String(cardEl.getAttribute('data-item-id') || '').slice(0, 60);
+            var cardRect = cardEl.getBoundingClientRect();
             var imgs = cardEl.querySelectorAll('img');
             var chosenImg = null;
+            var bestImgRank = -999;
             for (var m = 0; m < imgs.length; m++) {
               var img = imgs[m];
               if (img.closest && img.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
-              if (!title) {
-                var altCand = clean(img.getAttribute('alt') || '');
+              var altCand = clean(img.getAttribute('alt') || '');
+              var isPromoAlt = PROMO_SLIDE_ALT_RE.test(altCand);
+              if (!title && !isPromoAlt) {
                 if (altCand && altCand.length >= 6 && altCand.length <= 240 && !NON_TITLE_RE.test(altCand) && !CARD_CTA_NOISE_RE.test(altCand) && !/^(?:product(?:\\s+image)?|thumbnail|photo|image)$/i.test(altCand) && !/^\\$\\d/.test(altCand)) {
                   title = altCand;
                 }
@@ -1400,8 +1566,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
               var ew = Math.max(r.width, pr.width);
               var eh = Math.max(r.height, pr.height);
-              if (!chosenImg && ew >= 44 && eh >= 44 && ew <= 480 && eh <= 480) {
-                chosenImg = img;
+              if (ew >= 44 && eh >= 44 && ew <= 480 && eh <= 480) {
+                var boxR = (r.width >= 32 && r.height >= 32) ? r : pr;
+                var horizVisible = cardRect.width < 40 || (boxR.right > cardRect.left + 12 && boxR.left < cardRect.right - 12);
+                var imgLoaded = (r.width >= 36 && r.height >= 36) ? 1 : 0;
+                var rank = (horizVisible ? 40 : -30) + (isPromoAlt ? -25 : 0) + (imgLoaded ? 8 : 0) - m;
+                if (rank > bestImgRank) {
+                  bestImgRank = rank;
+                  chosenImg = img;
+                }
               }
             }
             if (!title) {
@@ -1800,13 +1973,24 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   st.openOnResolve = false;
                   st.badgeEl = null;
                   st.slotEl = null;
-                  if (entry && entry.transient && (st.retryCount || 0) < 2) {
-                    st.retryCount = (st.retryCount || 0) + 1;
+                  var prevRetries = st.retryCount || 0;
+                  var isTransient = Boolean(entry && entry.transient);
+                  var isConfirmedNonFood = Boolean(entry && entry.isNonFood);
+                  if (isTransient && prevRetries < 2) {
+                    st.retryCount = prevRetries + 1;
                     var delay = st.retryCount === 1 ? 2200 : 5000;
                     st.retryAfter = Date.now() + delay;
                     if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
+                  } else if (!isConfirmedNonFood && prevRetries < 1) {
+                    st.retryCount = prevRetries + 1;
+                    var missDelay = 18000;
+                    st.retryAfter = Date.now() + missDelay;
+                    if (!earliestRetryMs || missDelay < earliestRetryMs) earliestRetryMs = missDelay;
                   } else {
                     st.suppressedEstimate = true;
+                    if (isConfirmedNonFood && st.sig) {
+                      cacheTitleBadgeScore(st.sig, { isCategoryEstimate: true });
+                    }
                   }
                   if (wantOpenFail && st.title) {
                     window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
@@ -2402,6 +2586,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     @objc private func tapStoreChip(_ sender: UIButton) {
         guard let key = sender.accessibilityIdentifier,
               let chosen = Self.stores.first(where: { $0.key == key }) else { return }
+        let wasAlreadyActive = (chosen.key == activeStore.key)
         activeStore = chosen
         HeyBrocSharedPrefs.activeStore = chosen.apiStoreKey
         onPreferencesUpdated?()
@@ -2413,7 +2598,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         cardSummariesById.removeAll()
         cardStoreImageById.removeAll()
         setBubbleIdleState()
-        if let url = URL(string: chosen.homeURL) {
+        dismissAuthPopup()
+        if wasAlreadyActive {
+            UserDefaults.standard.removeObject(forKey: "hb_last_live_url_\(chosen.key)")
+        }
+        let targetURL = wasAlreadyActive
+            ? URL(string: chosen.homeURL)
+            : (Self.loadLastStoreURL(for: chosen.key) ?? URL(string: chosen.homeURL))
+        if let url = targetURL {
             if didStartInitialLoad && view.window != nil {
                 storeWebView?.load(URLRequest(url: url))
             } else {
@@ -2858,6 +3050,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard webView === storeWebView else { return }
         scanGeneration += 1
         badgeBatchGeneration += 1
         cardSummariesById.removeAll()
@@ -2865,8 +3058,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         isScanning = false
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard !isCleaningUp else { return }
+        if webView === storeWebView, let currentURL = webView.url {
+            Self.saveLastStoreURL(currentURL, for: activeStore.key)
+        }
+    }
+
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard !isCleaningUp else { return }
+        if webView === authPopupWebView {
+            dismissAuthPopup()
+            return
+        }
         if let currentURL = webView.url {
             webView.load(URLRequest(url: currentURL))
         } else if let homeURL = URL(string: activeStore.homeURL) {
@@ -2874,20 +3078,110 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
+    func webViewDidClose(_ webView: WKWebView) {
+        if webView === authPopupWebView {
+            dismissAuthPopup()
+        }
+    }
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil,
-           let url = navigationAction.request.url,
+        guard !isCleaningUp, navigationAction.targetFrame == nil else { return nil }
+        if let url = navigationAction.request.url,
            let scheme = url.scheme?.lowercased(),
            scheme == "https" {
             let host = (url.host ?? "").lowercased()
-            if !Self.isBlockedAppRedirectHost(host) && Self.isAllowedNavigationHost(host) {
+            if Self.isBlockedAppRedirectHost(host) {
+                return nil
+            }
+            let p = url.path.lowercased()
+            let isAuthLikePath =
+                p.contains("/login") || p.contains("/signin") || p.contains("/sign-in") ||
+                p.contains("/auth") || p.contains("/oauth") || p.contains("/sso")
+            if Self.isAllowedRetailerHost(host) && !Self.isSsoAuthHost(host) && !isAuthLikePath {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self, !self.isCleaningUp else { return }
                     self.storeWebView?.load(URLRequest(url: url))
                 }
+                return nil
             }
         }
-        return nil
+
+        dismissAuthPopup()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.applicationNameForUserAgent = "Version/17.0 Mobile/15E148 Safari/604.1"
+
+        let backdrop = UIView()
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        backdrop.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+
+        let sheetCard = UIView()
+        sheetCard.translatesAutoresizingMaskIntoConstraints = false
+        sheetCard.backgroundColor = .white
+        sheetCard.layer.cornerRadius = 18
+        sheetCard.layer.masksToBounds = true
+
+        let topBar = UIView()
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+        topBar.backgroundColor = UIColor(red: 0.973, green: 0.980, blue: 0.988, alpha: 1.0)
+
+        let lockLabel = UILabel()
+        lockLabel.translatesAutoresizingMaskIntoConstraints = false
+        lockLabel.text = "🔒 Secure Store Sign-In"
+        lockLabel.font = UIFont.systemFont(ofSize: 13.5, weight: .bold)
+        lockLabel.textColor = UIColor(red: 0.059, green: 0.090, blue: 0.165, alpha: 1.0)
+
+        let closePopupBtn = UIButton(type: .system)
+        closePopupBtn.translatesAutoresizingMaskIntoConstraints = false
+        closePopupBtn.setTitle("✕ Close", for: .normal)
+        closePopupBtn.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .bold)
+        closePopupBtn.setTitleColor(UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0), for: .normal)
+        closePopupBtn.addTarget(self, action: #selector(dismissAuthPopup), for: .touchUpInside)
+
+        topBar.addSubview(lockLabel)
+        topBar.addSubview(closePopupBtn)
+
+        let popupWV = WKWebView(frame: view.bounds, configuration: configuration)
+        popupWV.translatesAutoresizingMaskIntoConstraints = false
+        popupWV.navigationDelegate = self
+        popupWV.uiDelegate = self
+        popupWV.allowsBackForwardNavigationGestures = true
+
+        sheetCard.addSubview(topBar)
+        sheetCard.addSubview(popupWV)
+        backdrop.addSubview(sheetCard)
+        view.addSubview(backdrop)
+
+        NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            sheetCard.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 18),
+            sheetCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
+            sheetCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+            sheetCard.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+
+            topBar.topAnchor.constraint(equalTo: sheetCard.topAnchor),
+            topBar.leadingAnchor.constraint(equalTo: sheetCard.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: sheetCard.trailingAnchor),
+            topBar.heightAnchor.constraint(equalToConstant: 44),
+
+            lockLabel.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 14),
+            lockLabel.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+
+            closePopupBtn.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -14),
+            closePopupBtn.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+
+            popupWV.topAnchor.constraint(equalTo: topBar.bottomAnchor),
+            popupWV.leadingAnchor.constraint(equalTo: sheetCard.leadingAnchor),
+            popupWV.trailingAnchor.constraint(equalTo: sheetCard.trailingAnchor),
+            popupWV.bottomAnchor.constraint(equalTo: sheetCard.bottomAnchor)
+        ])
+
+        self.authPopupContainer = backdrop
+        self.authPopupWebView = popupWV
+        return popupWV
     }
 }
 

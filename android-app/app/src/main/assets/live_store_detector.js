@@ -614,14 +614,90 @@
     return { width: r.width, height: Math.max(0, r.height - slotH) };
   }
 
+  var PROMO_SLIDE_ALT_RE = /\b(satisfaction\s+guaranteed|money\s+back\s+guarantee|quality\s+guaranteed|100%\s+guaranteed)\b/i;
+  var MEDIA_ICON_BTN_RE = /\b(save|favorite|favourite|wishlist|heart|bookmark|slide|carousel|next|prev|previous|dot|page\s+\d|image\s+\d|photo\s+\d|zoom|play|pause|mute)\b/i;
+
+  function nodeHasDetailsOrCta(el) {
+    if (!el || !el.querySelector) return false;
+    if (el.querySelector('h1, h2, h3, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]')) {
+      return true;
+    }
+    var btns = el.querySelectorAll ? el.querySelectorAll('button') : [];
+    for (var b = 0; b < btns.length; b++) {
+      var btn = btns[b];
+      if (btn.closest && btn.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
+      var btnTxt = clean(btn.textContent || '');
+      var btnMeta = clean(
+        btnTxt + ' ' +
+        (btn.getAttribute('aria-label') || '') + ' ' +
+        (btn.getAttribute('data-test') || '') + ' ' +
+        (btn.getAttribute('data-testid') || '')
+      );
+      if (!btnMeta) continue;
+      if (MEDIA_ICON_BTN_RE.test(btnMeta) && (!btnTxt || /^\d+$/.test(btnTxt))) continue;
+      return true;
+    }
+    var txt = clean(el.textContent || '');
+    return /\$\s*\d/.test(txt);
+  }
+
+  function isHorizontalCarouselTrack(el) {
+    if (!el || el === document.body) return false;
+    var sw = Number(el.scrollWidth || 0);
+    var cw = Number(el.clientWidth || 0);
+    var cs = window.getComputedStyle(el);
+    if (cs) {
+      var ox = String(cs.overflowX || '').toLowerCase();
+      if ((ox === 'auto' || ox === 'scroll') && sw > cw + 16) return true;
+      if (String(cs.scrollSnapType || '').toLowerCase().indexOf('x') !== -1 && sw > cw + 12) return true;
+      var disp = String(cs.display || '').toLowerCase();
+      var dir = String(cs.flexDirection || 'row').toLowerCase();
+      if ((disp === 'flex' || disp === 'inline-flex') && dir.indexOf('column') !== 0 && el.children && el.children.length >= 2 && sw > cw + 16) {
+        return true;
+      }
+      if ((el.tagName === 'UL' || el.tagName === 'OL') && el.children && el.children.length >= 2 && (disp.indexOf('flex') !== -1 || disp.indexOf('grid') !== -1) && dir.indexOf('column') !== 0) {
+        return true;
+      }
+    }
+    var attrHint = String(el.className || '') + ' ' +
+      String((el.getAttribute && el.getAttribute('data-test')) || '') + ' ' +
+      String((el.getAttribute && el.getAttribute('data-testid')) || '') + ' ' +
+      String((el.getAttribute && el.getAttribute('aria-roledescription')) || '');
+    if (/(?:carousel[-_ ]?(?:track|list|slides|items|inner|strip)|slider[-_ ]?(?:track|list)|swiper[-_ ]?wrapper)/i.test(attrHint)) {
+      return true;
+    }
+    return false;
+  }
+
+  function climbAboveHorizontalCarousel(startEl, cardEl, maxH) {
+    if (!startEl || startEl === document.body) return startEl;
+    var best = startEl;
+    var anc = startEl;
+    var steps = 0;
+    while (anc && anc !== cardEl && anc !== document.body && steps < 8) {
+      if (isHorizontalCarouselTrack(anc)) {
+        var shell = anc.parentElement;
+        if (shell && shell !== document.body && shell !== cardEl && !nodeHasDetailsOrCta(shell)) {
+          var sr = measureWithoutBadgeSlot(shell);
+          if (sr.width >= 44 && sr.height >= 44 && sr.height <= maxH) {
+            best = shell;
+          }
+        }
+      }
+      anc = anc.parentElement;
+      steps++;
+    }
+    return best;
+  }
+
   function findSafeCardAnchor(chosenImg, cardEl) {
     var imgR = chosenImg.getBoundingClientRect();
-    var maxAnchorH = Math.min(420, Math.max(120, Math.round((imgR && imgR.height) || 200)) + 84);
+    var maxAnchorH = Math.min(440, Math.max(120, Math.round((imgR && imgR.height) || 200)) + 110);
     var cur = chosenImg.parentElement;
     if (cur && cur.tagName === 'PICTURE') cur = cur.parentElement;
     var candidate = null;
     var steps = 0;
-    while (cur && cur !== document.body && steps < 5) {
+    while (cur && cur !== document.body && steps < 6) {
       var cs = window.getComputedStyle(cur);
       var disp = cs ? cs.display : '';
       var cr = measureWithoutBadgeSlot(cur);
@@ -632,6 +708,9 @@
       if (cur === cardEl) break;
       cur = cur.parentElement;
       steps++;
+    }
+    if (candidate && cardEl) {
+      candidate = climbAboveHorizontalCarousel(candidate, cardEl, maxAnchorH + 36) || candidate;
     }
     if (!candidate && cardEl && cardEl !== document.body) {
       var cardR = measureWithoutBadgeSlot(cardEl);
@@ -682,18 +761,13 @@
     return true;
   }
 
-  function nodeHasDetailsOrCta(el) {
-    if (!el || !el.querySelector) return false;
-    if (el.querySelector('h1, h2, h3, button, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]')) {
-      return true;
-    }
-    var txt = clean(el.textContent || '');
-    return /\$\s*\d/.test(txt);
-  }
-
   function mountBadgeUnderOrOnPhoto(chosenImg, cardEl, badge, fallbackAnchor) {
     if (chosenImg && cardEl && chosenImg.parentElement) {
       var beforeImgR = chosenImg.getBoundingClientRect();
+      var baseImgH = beforeImgR.height >= 36
+        ? beforeImgR.height
+        : (chosenImg.parentElement ? chosenImg.parentElement.getBoundingClientRect().height : 200);
+      var maxMediaH = Math.max(290, baseImgH + 124);
       var photoUnit = chosenImg.parentElement;
       if (photoUnit && photoUnit.tagName === 'PICTURE' && photoUnit.parentElement) {
         photoUnit = photoUnit.parentElement;
@@ -702,9 +776,10 @@
       if (interactiveAnc && interactiveAnc !== cardEl && nodeContains(cardEl, interactiveAnc) && !nodeHasDetailsOrCta(interactiveAnc)) {
         photoUnit = interactiveAnc;
       }
+      photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH) || photoUnit;
       var cur = photoUnit;
       var steps = 0;
-      while (cur && cur !== cardEl && cur !== document.body && steps < 6) {
+      while (cur && cur !== cardEl && cur !== document.body && steps < 8) {
         var nextP = cur.parentElement;
         if (!nextP || nextP === document.body) break;
         if (nextP === cardEl) {
@@ -716,7 +791,7 @@
           break;
         }
         var nr = nextP.getBoundingClientRect();
-        if (nr.width >= 44 && nr.height <= Math.max(260, beforeImgR.height + 110)) {
+        if (nr.width >= 44 && nr.height <= maxMediaH) {
           photoUnit = nextP;
           cur = nextP;
           steps++;
@@ -724,6 +799,7 @@
           break;
         }
       }
+      photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH) || photoUnit;
 
       var slot = document.createElement('div');
       slot.className = 'hb-photo-badge-slot';
@@ -733,6 +809,7 @@
       if (
         parentEl &&
         typeof parentEl.insertBefore === 'function' &&
+        !isHorizontalCarouselTrack(parentEl) &&
         !(parentEl.closest && parentEl.closest('a, button')) &&
         containerStacksVertically(parentEl)
       ) {
@@ -744,6 +821,7 @@
         photoUnit.tagName !== 'PICTURE' &&
         photoUnit.tagName !== 'A' &&
         photoUnit.tagName !== 'BUTTON' &&
+        !isHorizontalCarouselTrack(photoUnit) &&
         !(photoUnit.closest && photoUnit.closest('a, button')) &&
         containerStacksVertically(photoUnit)
       ) {
@@ -753,6 +831,8 @@
 
       if (inserted) {
         var afterImgR = chosenImg.getBoundingClientRect();
+        var unitR = photoUnit ? photoUnit.getBoundingClientRect() : afterImgR;
+        var refBottom = (afterImgR.height >= 36) ? Math.max(afterImgR.bottom, unitR.bottom - 36) : unitR.bottom;
         var badgeR = badge.getBoundingClientRect();
         var imgOk = beforeImgR.width < 36 || (
           afterImgR.width >= 44 &&
@@ -761,7 +841,7 @@
           afterImgR.height >= beforeImgR.height * 0.76
         );
         var sizeOk = badgeR.width >= 46 && badgeR.height >= 26;
-        var posOk = badgeR.top >= afterImgR.bottom - 18 && badgeR.top <= afterImgR.bottom + 64;
+        var posOk = badgeR.top >= refBottom - 28 && badgeR.top <= Math.max(afterImgR.bottom, unitR.bottom) + 68;
         var clipped = false;
         var clipAnc = slot.parentElement;
         var clipSteps = 0;
@@ -808,14 +888,17 @@
     var title = extractBestCardTitle(cardEl, sels);
     var linkEl = cardEl.querySelector(PRODUCT_LINK_SEL) || cardEl.querySelector('a[href]');
     var hrefKey = linkEl ? String(linkEl.getAttribute('href') || '').split('#')[0].split('?')[0].slice(0, 140) : '';
+    var cardR = cardEl.getBoundingClientRect();
     var imgs = cardEl.querySelectorAll('img');
     var chosenImg = null;
+    var chosenRank = -1;
     for (var m = 0; m < imgs.length; m++) {
       var img = imgs[m];
       if (img.closest && img.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
-      if (!title) {
-        var altCand = clean(img.getAttribute('alt') || '');
-        if (altCand && altCand.length >= 6 && altCand.length <= 240 && !NON_TITLE_RE.test(altCand) && !CARD_CTA_NOISE_RE.test(altCand) && !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(altCand) && !/^\$\d/.test(altCand)) {
+      var altCand = clean(img.getAttribute('alt') || '');
+      var isPromoSlide = PROMO_SLIDE_ALT_RE.test(altCand);
+      if (!title && altCand && !isPromoSlide) {
+        if (altCand.length >= 6 && altCand.length <= 240 && !NON_TITLE_RE.test(altCand) && !CARD_CTA_NOISE_RE.test(altCand) && !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(altCand) && !/^\$\d/.test(altCand)) {
           title = altCand;
         }
       }
@@ -825,8 +908,17 @@
       var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
       var ew = Math.max(r.width, pr.width);
       var eh = Math.max(r.height, pr.height);
-      if (!chosenImg && ew >= 44 && eh >= 44 && ew <= 480 && eh <= 480) {
+      if (ew < 44 || eh < 44 || ew > 480 || eh > 480) continue;
+      var boxR = (r.width >= 24 && r.height >= 24) ? r : pr;
+      var inCardHoriz =
+        cardR.width < 44 ||
+        boxR.width < 24 ||
+        (boxR.right > cardR.left + 12 && boxR.left < cardR.right - 12);
+      var rank = (inCardHoriz ? 4 : 0) + (isPromoSlide ? 0 : 2) + ((r.width >= 36 && r.height >= 36) ? 1 : 0);
+      if (rank > chosenRank) {
         chosenImg = img;
+        chosenRank = rank;
+        if (rank >= 7) break;
       }
     }
     if (!title) {
@@ -1207,14 +1299,21 @@
           st.slotEl = null;
           var shouldOpenFailed = Boolean(st.openOnResolve);
           st.openOnResolve = false;
-          if (entry && entry.transient && (st.retryCount || 0) < 2) {
+          if (entry && entry.isNonFood) {
+            st.suppressedEstimate = true;
+            if (st.title) cacheTitleBadgeScore(st.title, { suppressedEstimate: true });
+          } else if (entry && entry.transient && (st.retryCount || 0) < 2) {
             st.retryCount = (st.retryCount || 0) + 1;
             var delay = st.retryCount === 1 ? 2200 : 5000;
             st.retryAfter = Date.now() + delay;
             if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
+          } else if ((st.retryCount || 0) < 1) {
+            st.retryCount = 1;
+            var missDelay = 18000;
+            st.retryAfter = Date.now() + missDelay;
+            if (!earliestRetryMs || missDelay < earliestRetryMs) earliestRetryMs = missDelay;
           } else {
             st.suppressedEstimate = true;
-            if (st.title) cacheTitleBadgeScore(st.title, { suppressedEstimate: true });
           }
           if (shouldOpenFailed && st.title) {
             postBridge({

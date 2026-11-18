@@ -132,9 +132,16 @@ class LiveStoreBrowserActivity : Activity() {
             "ubereats.com"
         ) + KROGER_BANNER_HOST_SUFFIXES
 
+        private const val PREFS_LIVE_STORE_STATE = "live_store_state"
+        private const val STATE_ACTIVE_STORE_KEY = "state_active_store_key"
+        private const val STATE_WEBVIEW_BUNDLE = "state_webview_bundle"
+
         private val ALLOWED_SSO_HOST_SUFFIXES = listOf(
             "uber.com",
             "accounts.google.com",
+            "accounts.youtube.com",
+            "gstatic.com",
+            "googleusercontent.com",
             "appleid.apple.com",
             "login.target.com",
             "identity.walmart.com",
@@ -145,22 +152,31 @@ class LiveStoreBrowserActivity : Activity() {
             "auth0.com",
             "okta.com",
             "b2clogin.com",
-            "microsoftonline.com"
+            "login.microsoftonline.com",
+            "microsoftonline.com",
+            "live.com"
         )
 
-        private val EXTERNAL_AUTH_HOST_SUFFIXES = listOf(
-            "accounts.google.com",
-            "appleid.apple.com",
-            "login.microsoftonline.com",
-            "b2clogin.com",
-            "auth0.com",
-            "okta.com"
-        )
+        private val WEBVIEW_WV_TOKEN_RE = Regex(";\\s*wv\\b", RegexOption.IGNORE_CASE)
+        private val WEBVIEW_VERSION_TOKEN_RE = Regex("\\bVersion/\\d+(?:\\.\\d+)*\\s*", RegexOption.IGNORE_CASE)
+        private val MULTI_SPACE_RE = Regex("\\s{2,}")
 
         private val VALID_BATCH_ID_RE = Regex(
             "^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$",
             RegexOption.IGNORE_CASE
         )
+
+        fun buildAuthCompatibleUserAgent(rawUa: String?): String {
+            val base = rawUa?.trim().orEmpty()
+            if (base.isEmpty()) {
+                return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+            }
+            return base
+                .replace(WEBVIEW_WV_TOKEN_RE, "")
+                .replace(WEBVIEW_VERSION_TOKEN_RE, "")
+                .replace(MULTI_SPACE_RE, " ")
+                .trim()
+        }
 
         fun normalizeStoreKey(raw: String?): String {
             return when (raw?.trim()?.lowercase().orEmpty()) {
@@ -182,8 +198,7 @@ class LiveStoreBrowserActivity : Activity() {
             }
         }
 
-        fun isAllowedNavigationHost(rawHost: String?): Boolean {
-            if (isAllowedRetailerHost(rawHost)) return true
+        fun isSsoAuthHost(rawHost: String?): Boolean {
             val host = rawHost?.trim()?.lowercase().orEmpty()
             if (host.isEmpty()) return false
             return ALLOWED_SSO_HOST_SUFFIXES.any { suffix ->
@@ -191,12 +206,30 @@ class LiveStoreBrowserActivity : Activity() {
             }
         }
 
-        fun isExternalAuthHost(rawHost: String?): Boolean {
-            val host = rawHost?.trim()?.lowercase().orEmpty()
-            if (host.isEmpty()) return false
-            return EXTERNAL_AUTH_HOST_SUFFIXES.any { suffix ->
-                host == suffix || host.endsWith(".$suffix")
-            }
+        fun isAuthLikePath(rawPath: String?): Boolean {
+            val p = rawPath?.lowercase().orEmpty()
+            return p.contains("/login") ||
+                p.contains("/signin") ||
+                p.contains("/sign-in") ||
+                p.contains("/auth") ||
+                p.contains("/oauth") ||
+                p.contains("/sso") ||
+                p.contains("/gsi/")
+        }
+
+        fun isPersistableBrowseUrl(rawUrl: String?): Boolean {
+            val safe = validatedRetailerUrl(rawUrl) ?: return false
+            val uri = runCatching { Uri.parse(safe) }.getOrNull() ?: return false
+            val host = uri.host?.lowercase().orEmpty()
+            if (isSsoAuthHost(host)) return false
+            val p = uri.path?.lowercase().orEmpty()
+            if (isAuthLikePath(p) || p.contains("/cart") || p.contains("/checkout")) return false
+            return true
+        }
+
+        fun isAllowedNavigationHost(rawHost: String?): Boolean {
+            if (isAllowedRetailerHost(rawHost)) return true
+            return isSsoAuthHost(rawHost)
         }
 
         fun isBlockedAppRedirectHost(rawHost: String?): Boolean {
@@ -359,10 +392,52 @@ class LiveStoreBrowserActivity : Activity() {
     private var scanGeneration = 0
     private var badgeBatchGeneration = 0
     private var inspectDialog: Dialog? = null
+    private var authPopupDialog: Dialog? = null
+    private var authPopupWebView: WebView? = null
     @Volatile
     private var isCleaningUp = false
     private var backCallbackRegistered = false
     private var backCallbackObj: Any? = null
+
+    private fun saveLastStoreUrl(storeKey: String, rawUrl: String?) {
+        if (!isPersistableBrowseUrl(rawUrl)) return
+        val safe = validatedRetailerUrl(rawUrl) ?: return
+        getSharedPreferences(PREFS_LIVE_STORE_STATE, Context.MODE_PRIVATE)
+            .edit()
+            .putString("last_url_$storeKey", safe)
+            .apply()
+    }
+
+    private fun loadLastStoreUrl(storeKey: String): String? {
+        val raw = getSharedPreferences(PREFS_LIVE_STORE_STATE, Context.MODE_PRIVATE)
+            .getString("last_url_$storeKey", null)
+        return if (isPersistableBrowseUrl(raw)) validatedRetailerUrl(raw) else null
+    }
+
+    private fun clearLastStoreUrl(storeKey: String) {
+        getSharedPreferences(PREFS_LIVE_STORE_STATE, Context.MODE_PRIVATE)
+            .edit()
+            .remove("last_url_$storeKey")
+            .apply()
+    }
+
+    private fun dismissAuthPopupDialog() {
+        val dlg = authPopupDialog
+        val pwv = authPopupWebView
+        authPopupDialog = null
+        authPopupWebView = null
+        runCatching { dlg?.dismiss() }
+        if (pwv != null) {
+            runCatching {
+                pwv.stopLoading()
+                pwv.webChromeClient = null
+                pwv.webViewClient = WebViewClient()
+                (pwv.parent as? ViewGroup)?.removeView(pwv)
+                pwv.destroy()
+            }
+        }
+        runCatching { CookieManager.getInstance().flush() }
+    }
 
     private fun dp(value: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
@@ -543,8 +618,11 @@ class LiveStoreBrowserActivity : Activity() {
         }
 
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val restoredStoreKey = savedInstanceState?.getString(STATE_ACTIVE_STORE_KEY)
         val requestedKey = normalizeStoreKey(
-            intent?.getStringExtra(EXTRA_STORE_KEY) ?: prefs.getString("preferredStore", "walmart")
+            restoredStoreKey
+                ?: intent?.getStringExtra(EXTRA_STORE_KEY)
+                ?: prefs.getString("preferredStore", "walmart")
         )
         activeStore = STORES.firstOrNull { it.key == requestedKey } ?: STORES.first()
 
@@ -625,15 +703,66 @@ class LiveStoreBrowserActivity : Activity() {
         setBubbleIdleState()
 
         val wv = attachFreshWebView()
-        val initialSearchQuery = intent?.getStringExtra(EXTRA_SEARCH_QUERY)?.trim().orEmpty()
-        val startUrl = when {
-            initialSearchQuery.isNotEmpty() ->
-                validatedRetailerUrl(ScanHistoryStore.storeSearchUrl(activeStore.key, initialSearchQuery)) ?: activeStore.homeUrl
-            else ->
-                validatedRetailerUrl(intent?.getStringExtra(EXTRA_INITIAL_URL)) ?: activeStore.homeUrl
+        val savedWvBundle = savedInstanceState?.getBundle(STATE_WEBVIEW_BUNDLE)
+        val restoredHistory = savedWvBundle != null && wv.restoreState(savedWvBundle) != null
+        if (!restoredHistory) {
+            val initialSearchQuery = intent?.getStringExtra(EXTRA_SEARCH_QUERY)?.trim().orEmpty()
+            val explicitInitialUrl = validatedRetailerUrl(intent?.getStringExtra(EXTRA_INITIAL_URL))
+            val startUrl = when {
+                initialSearchQuery.isNotEmpty() ->
+                    validatedRetailerUrl(ScanHistoryStore.storeSearchUrl(activeStore.key, initialSearchQuery)) ?: activeStore.homeUrl
+                explicitInitialUrl != null ->
+                    explicitInitialUrl
+                else ->
+                    loadLastStoreUrl(activeStore.key) ?: activeStore.homeUrl
+            }
+            wv.loadUrl(startUrl)
         }
-        wv.loadUrl(startUrl)
         syncBackCallback()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::activeStore.isInitialized) {
+            outState.putString(STATE_ACTIVE_STORE_KEY, activeStore.key)
+            saveLastStoreUrl(activeStore.key, storeWebView?.url)
+        }
+        storeWebView?.let { wv ->
+            val wvBundle = Bundle()
+            if (wv.saveState(wvBundle) != null) {
+                outState.putBundle(STATE_WEBVIEW_BUNDLE, wvBundle)
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent == null) return
+        setIntent(intent)
+        val newStoreRaw = intent.getStringExtra(EXTRA_STORE_KEY)
+        val newQuery = intent.getStringExtra(EXTRA_SEARCH_QUERY)?.trim().orEmpty()
+        val newExplicitUrl = validatedRetailerUrl(intent.getStringExtra(EXTRA_INITIAL_URL))
+        if (!newStoreRaw.isNullOrBlank()) {
+            val norm = normalizeStoreKey(newStoreRaw)
+            val targetStore = STORES.firstOrNull { it.key == norm }
+            if (targetStore != null && targetStore.key != activeStore.key) {
+                activeStore = targetStore
+                updateStoreChipStyles()
+                if (newQuery.isEmpty() && newExplicitUrl == null) {
+                    storeWebView?.loadUrl(loadLastStoreUrl(activeStore.key) ?: activeStore.homeUrl)
+                    return
+                }
+            }
+        }
+        when {
+            newQuery.isNotEmpty() -> {
+                val qUrl = validatedRetailerUrl(ScanHistoryStore.storeSearchUrl(activeStore.key, newQuery)) ?: activeStore.homeUrl
+                storeWebView?.loadUrl(qUrl)
+            }
+            newExplicitUrl != null -> {
+                storeWebView?.loadUrl(newExplicitUrl)
+            }
+        }
     }
 
     private fun buildHeaderBar(): LinearLayout {
@@ -777,6 +906,11 @@ class LiveStoreBrowserActivity : Activity() {
     }
 
     private fun switchActiveStore(chosen: LiveStoreConfig) {
+        val wasAlreadyActive = chosen.key == activeStore.key
+        dismissAuthPopupDialog()
+        if (!wasAlreadyActive) {
+            saveLastStoreUrl(activeStore.key, storeWebView?.url)
+        }
         activeStore = chosen
         getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             .edit()
@@ -790,7 +924,12 @@ class LiveStoreBrowserActivity : Activity() {
         badgeBatchGeneration++
         cardJsonById.clear()
         setBubbleIdleState()
-        storeWebView?.loadUrl(chosen.homeUrl)
+        if (wasAlreadyActive) {
+            clearLastStoreUrl(chosen.key)
+            storeWebView?.loadUrl(chosen.homeUrl)
+        } else {
+            storeWebView?.loadUrl(loadLastStoreUrl(chosen.key) ?: chosen.homeUrl)
+        }
     }
 
     private fun updateStoreChipStyles() {
@@ -814,6 +953,228 @@ class LiveStoreBrowserActivity : Activity() {
             setStroke(dp(1), if (on) 0xFF22C55E.toInt() else 0xFFD9E2EC.toInt())
             cornerRadius = dp(10).toFloat()
         }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun openInAppAuthPopupDialog(
+        parentWebView: WebView,
+        transport: WebView.WebViewTransport,
+        resultMsg: android.os.Message
+    ): Boolean {
+        if (isCleaningUp || isFinishing || isDestroyed) return false
+        dismissAuthPopupDialog()
+
+        val popupWv = WebView(this)
+        popupWv.layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        )
+        popupWv.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            loadsImagesAutomatically = true
+            allowFileAccess = false
+            allowContentAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            userAgentString = buildAuthCompatibleUserAgent(userAgentString)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                safeBrowsingEnabled = true
+            }
+            setSupportMultipleWindows(true)
+        }
+        runCatching {
+            val cm = CookieManager.getInstance()
+            cm.setAcceptCookie(true)
+            cm.setAcceptThirdPartyCookies(popupWv, true)
+        }
+
+        val hostSubLabel = label("Connecting securely…", 11f, 0xFF64748B.toInt(), bold = false).apply {
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
+        }
+
+        val popupProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 15
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2))
+        }
+
+        val cardRoot = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(18).toFloat()
+            }
+            clipToOutline = true
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setRoundRect(0, 0, view.width, view.height, dp(18).toFloat())
+                }
+            }
+        }
+
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFFF8FAFC.toInt())
+            setPadding(dp(14), dp(10), dp(12), dp(10))
+        }
+        val titleStack = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        titleStack.addView(label("🔒 Secure Store Sign-In", 13.5f, 0xFF0F172A.toInt(), bold = true))
+        titleStack.addView(hostSubLabel)
+        topBar.addView(titleStack)
+
+        val closePopupBtn = label("✕ Close", 12.5f, 0xFF334155.toInt(), bold = true).apply {
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = GradientDrawable().apply {
+                setColor(0xFFE2E8F0.toInt())
+                cornerRadius = dp(9).toFloat()
+            }
+            setOnClickListener {
+                dismissAuthPopupDialog()
+                syncBubbleYToWebView(triggerRescan = true)
+            }
+        }
+        topBar.addView(closePopupBtn)
+
+        cardRoot.addView(topBar)
+        cardRoot.addView(popupProgress)
+        cardRoot.addView(popupWv)
+
+        val dlg = Dialog(this)
+        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dlg.setContentView(cardRoot)
+        dlg.setCanceledOnTouchOutside(false)
+        dlg.setOnDismissListener {
+            if (authPopupDialog === dlg) {
+                dismissAuthPopupDialog()
+                syncBubbleYToWebView(triggerRescan = true)
+            }
+        }
+
+        authPopupDialog = dlg
+        authPopupWebView = popupWv
+
+        var visitedAuthFlow = false
+        var dialogShown = false
+
+        fun ensureDialogVisible() {
+            if (dialogShown || isCleaningUp || isFinishing || isDestroyed) return
+            if (authPopupDialog !== dlg) return
+            dialogShown = true
+            runCatching {
+                dlg.show()
+                val dm = resources.displayMetrics
+                dlg.window?.apply {
+                    setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                    setLayout(
+                        (dm.widthPixels * 0.95f).toInt(),
+                        (dm.heightPixels * 0.88f).toInt()
+                    )
+                    setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                }
+            }
+        }
+
+        popupWv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
+                val uri = req?.url ?: return false
+                val scheme = uri.scheme?.lowercase().orEmpty()
+                if (scheme == "about" || scheme == "blob" || scheme == "data") return false
+                if (scheme != "https") {
+                    return true
+                }
+                val host = uri.host?.lowercase().orEmpty()
+                if (isBlockedAppRedirectHost(host)) return true
+                if (!isAllowedNavigationHost(host) && validatedRetailerUrl(uri.toString()) == null) {
+                    return true
+                }
+                val isAuthUrl = isSsoAuthHost(host) || isAuthLikePath(uri.path)
+                if (isAuthUrl) {
+                    visitedAuthFlow = true
+                    hostSubLabel.text = host
+                    ensureDialogVisible()
+                    return false
+                }
+                // If this popup never entered an auth flow, it's just a target="_blank" product/browse link
+                if (!visitedAuthFlow && req.isForMainFrame) {
+                    val safeNav = validatedNavigationUrl(uri.toString())
+                    dismissAuthPopupDialog()
+                    if (safeNav != null && !isCleaningUp) {
+                        parentWebView.loadUrl(safeNav)
+                    }
+                    return true
+                }
+                hostSubLabel.text = host
+                ensureDialogVisible()
+                return false
+            }
+
+            override fun onPageStarted(v: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(v, url, favicon)
+                val candidate = url.orEmpty()
+                if (candidate.isEmpty() || candidate.equals("about:blank", ignoreCase = true)) return
+                val uri = runCatching { Uri.parse(candidate) }.getOrNull() ?: return
+                val host = uri.host?.lowercase().orEmpty()
+                if (isBlockedAppRedirectHost(host)) {
+                    dismissAuthPopupDialog()
+                    return
+                }
+                val isAuthUrl = isSsoAuthHost(host) || isAuthLikePath(uri.path)
+                if (isAuthUrl) {
+                    visitedAuthFlow = true
+                    hostSubLabel.text = host
+                    ensureDialogVisible()
+                    return
+                }
+                if (!visitedAuthFlow) {
+                    val safeNav = validatedNavigationUrl(candidate)
+                    dismissAuthPopupDialog()
+                    if (safeNav != null && !isCleaningUp) {
+                        parentWebView.loadUrl(safeNav)
+                    }
+                    return
+                }
+                hostSubLabel.text = host
+                ensureDialogVisible()
+            }
+
+            override fun onPageFinished(v: WebView?, url: String?) {
+                super.onPageFinished(v, url)
+                runCatching { CookieManager.getInstance().flush() }
+                val host = runCatching { Uri.parse(url.orEmpty()).host }.getOrNull().orEmpty()
+                if (host.isNotEmpty()) hostSubLabel.text = host
+            }
+        }
+
+        popupWv.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                popupProgress.progress = newProgress.coerceIn(0, 100)
+                popupProgress.alpha = if (newProgress >= 99) 0f else 1f
+            }
+
+            override fun onCloseWindow(window: WebView?) {
+                runCatching { CookieManager.getInstance().flush() }
+                dismissAuthPopupDialog()
+                syncBubbleYToWebView(triggerRescan = true)
+            }
+        }
+
+        // If a popup sits on about:blank while JS writes content or fetches OAuth state, surface it cleanly
+        mainHandler.postDelayed({
+            if (authPopupDialog === dlg && visitedAuthFlow) {
+                ensureDialogVisible()
+            }
+        }, 200L)
+
+        transport.webView = popupWv
+        resultMsg.sendToTarget()
+        return true
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -849,6 +1210,7 @@ class LiveStoreBrowserActivity : Activity() {
         settings.allowFileAccess = false
         settings.allowContentAccess = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        settings.userAgentString = buildAuthCompatibleUserAgent(settings.userAgentString)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.safeBrowsingEnabled = true
         }
@@ -885,12 +1247,6 @@ class LiveStoreBrowserActivity : Activity() {
                         return true
                     }
                     if (scheme == "https") {
-                        if (isExternalAuthHost(host)) {
-                            runCatching {
-                                startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            }
-                            return true
-                        }
                         if (!isAllowedNavigationHost(host) && validatedRetailerUrl(uri.toString()) == null) {
                             return true
                         }
@@ -933,6 +1289,7 @@ class LiveStoreBrowserActivity : Activity() {
                 super.onPageFinished(view, url)
                 if (isCleaningUp) return
                 syncBackCallback()
+                saveLastStoreUrl(activeStore.key, url)
                 runCatching { CookieManager.getInstance().flush() }
                 val host = runCatching { Uri.parse(url.orEmpty()).host }.getOrNull()
                 if (isAllowedRetailerHost(host)) {
@@ -946,6 +1303,7 @@ class LiveStoreBrowserActivity : Activity() {
                 super.doUpdateVisitedHistory(view, url, isReload)
                 if (!isCleaningUp) {
                     val curUrl = url.orEmpty()
+                    saveLastStoreUrl(activeStore.key, curUrl)
                     if (curUrl.isNotEmpty() && curUrl != lastVisitedHistoryUrl) {
                         val prevBase = lastVisitedHistoryUrl.substringBefore('#')
                         val nextBase = curUrl.substringBefore('#')
@@ -972,7 +1330,7 @@ class LiveStoreBrowserActivity : Activity() {
 
             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                 if (isCleaningUp || isFinishing || isDestroyed) return true
-                val fallbackUrl = validatedRetailerUrl(view?.url) ?: activeStore.homeUrl
+                val fallbackUrl = validatedRetailerUrl(view?.url) ?: loadLastStoreUrl(activeStore.key) ?: activeStore.homeUrl
                 mainHandler.post {
                     if (!isCleaningUp && !isFinishing && !isDestroyed) {
                         val fresh = attachFreshWebView()
@@ -1007,80 +1365,22 @@ class LiveStoreBrowserActivity : Activity() {
                 isUserGesture: Boolean,
                 resultMsg: android.os.Message?
             ): Boolean {
-                if (!isUserGesture || view == null) return false
-
-                fun routePermittedPopupUrl(rawUrl: String?): Boolean {
-                    val trimmed = rawUrl?.trim().orEmpty()
-                    if (trimmed.isEmpty() || trimmed.equals("about:blank", ignoreCase = true)) return false
-                    val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return false
-                    if (uri.scheme?.lowercase() != "https") return false
-                    val host = uri.host?.lowercase().orEmpty()
-                    if (isBlockedAppRedirectHost(host)) return false
-                    if (isExternalAuthHost(host)) {
-                        if (!isCleaningUp) {
-                            runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-                        }
-                        return true
-                    }
-                    val navTarget = validatedNavigationUrl(trimmed) ?: return false
-                    if (!isCleaningUp) {
-                        view.loadUrl(navTarget)
-                    }
-                    return true
-                }
-
+                if (view == null) return false
                 val transport = resultMsg?.obj as? WebView.WebViewTransport
                 if (transport != null && resultMsg != null) {
-                    val tempWv = WebView(this@LiveStoreBrowserActivity)
-                    tempWv.settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = false
-                        allowFileAccess = false
-                        allowContentAccess = false
-                        setSupportMultipleWindows(false)
-                    }
-                    var cleanedUp = false
-                    fun cleanupTempWebView() {
-                        if (cleanedUp) return
-                        cleanedUp = true
-                        runCatching {
-                            tempWv.stopLoading()
-                            tempWv.webViewClient = WebViewClient()
-                            tempWv.destroy()
-                        }
-                    }
-                    tempWv.webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
-                            val candidate = req?.url?.toString().orEmpty()
-                            if (candidate.isEmpty() || candidate.equals("about:blank", ignoreCase = true)) {
-                                return false
-                            }
-                            routePermittedPopupUrl(candidate)
-                            cleanupTempWebView()
-                            return true
-                        }
-
-                        override fun onPageStarted(v: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                            val candidate = url.orEmpty()
-                            if (candidate.isEmpty() || candidate.equals("about:blank", ignoreCase = true)) {
-                                return
-                            }
-                            routePermittedPopupUrl(candidate)
-                            cleanupTempWebView()
-                        }
-                    }
-                    mainHandler.postDelayed({ cleanupTempWebView() }, 5000L)
-                    transport.webView = tempWv
-                    resultMsg.sendToTarget()
-                    return true
+                    return openInAppAuthPopupDialog(view, transport, resultMsg)
                 }
-
+                if (!isUserGesture) return false
                 val hit = view.hitTestResult
                 if (
                     hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
                     hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
                 ) {
-                    routePermittedPopupUrl(hit.extra)
+                    val navTarget = validatedNavigationUrl(hit.extra)
+                    if (navTarget != null && !isCleaningUp) {
+                        view.loadUrl(navTarget)
+                        return true
+                    }
                 }
                 return false
             }
@@ -2198,6 +2498,9 @@ class LiveStoreBrowserActivity : Activity() {
     }
 
     override fun onPause() {
+        if (::activeStore.isInitialized) {
+            saveLastStoreUrl(activeStore.key, storeWebView?.url)
+        }
         runCatching { CookieManager.getInstance().flush() }
         storeWebView?.onPause()
         super.onPause()
@@ -2211,6 +2514,7 @@ class LiveStoreBrowserActivity : Activity() {
 
     override fun onDestroy() {
         isCleaningUp = true
+        dismissAuthPopupDialog()
         inspectDialog?.dismiss()
         inspectDialog = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backCallbackRegistered) {

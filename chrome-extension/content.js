@@ -1640,28 +1640,48 @@
     }
     let domImageUrl = null;
     let primaryImgEl = null;
+    let bestImgRank = -999;
+    const cardRect = typeof cardEl.getBoundingClientRect === "function" ? cardEl.getBoundingClientRect() : null;
+    const promoSlideAltRe =
+      /\b(?:satisfaction\s+guaranteed|money\s+back\s+guarantee|100%\s+guaranteed|quality\s+guaranteed|freshness\s+guaranteed)\b/i;
     const imgs = cardEl.querySelectorAll("img");
+    let idx = 0;
     for (const img of imgs) {
+      idx++;
       if (img.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
-      if (!title) {
-        const altCand = cleanProductTitleText(img.getAttribute("alt") || "");
+      const rawAlt = cleanProductTitleText(img.getAttribute("alt") || "");
+      const isPromoAlt = promoSlideAltRe.test(rawAlt);
+      if (!title && !isPromoAlt) {
         if (
-          altCand &&
-          altCand.length >= 6 &&
-          altCand.length <= 200 &&
-          !NON_TITLE_RE.test(altCand) &&
-          !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(altCand) &&
-          !/^\$\d/.test(altCand)
+          rawAlt &&
+          rawAlt.length >= 6 &&
+          rawAlt.length <= 200 &&
+          !NON_TITLE_RE.test(rawAlt) &&
+          !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(rawAlt) &&
+          !/^\$\d/.test(rawAlt)
         ) {
-          title = altCand;
+          title = rawAlt;
         }
       }
       const cand = sanitizeDomImageUrl(img.currentSrc || img.getAttribute("src") || "", img);
-      if (cand && !domImageUrl) {
+      const r = img.getBoundingClientRect();
+      const pr = img.parentElement?.getBoundingClientRect?.() || r;
+      const boxR = r.width >= 24 && r.height >= 24 ? r : pr;
+      const horizVisible =
+        !cardRect ||
+        cardRect.width < 40 ||
+        (boxR.right > cardRect.left + 12 && boxR.left < cardRect.right - 12);
+      const rank =
+        (horizVisible ? 40 : -30) +
+        (isPromoAlt ? -25 : 0) +
+        (cand ? 10 : 0) +
+        (idx === 1 ? 6 : 0);
+      if (rank > bestImgRank) {
+        bestImgRank = rank;
+        primaryImgEl = img;
+        if (cand) domImageUrl = cand;
+      } else if (cand && !domImageUrl && !isPromoAlt) {
         domImageUrl = cand;
-        primaryImgEl = img;
-      } else if (!primaryImgEl) {
-        primaryImgEl = img;
       }
     }
     if (!title) return null;
@@ -4021,22 +4041,128 @@
     }
   }
 
+  const EXT_MEDIA_ICON_BTN_RE =
+    /^(?:save|favorite|favourite|wishlist|add\s+to\s+(?:list|registry|favorites)|sign\s+in\s+to\s+save|like|heart|next|previous|prev|slide\s*\d*|image\s*\d*|photo\s*\d*|dot\s*\d*|close|zoom|expand)$/i;
+  const EXT_PROMO_SLIDE_ALT_RE =
+    /\b(?:satisfaction\s+guaranteed|money\s+back\s+guarantee|100%\s+guaranteed|quality\s+guaranteed|freshness\s+guaranteed)\b/i;
+
+  function extNodeHasDetailsOrCta(el) {
+    if (!el || typeof el.querySelector !== "function") return false;
+    if (
+      el.querySelector(
+        'h1, h2, h3, [data-test="product-title"], [data-automation-id*="product-title" i], [data-testid*="product-title" i], [data-testid*="item-title" i]'
+      )
+    ) {
+      return true;
+    }
+    const btns = el.querySelectorAll("button");
+    for (const b of btns) {
+      if (b.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
+      const bTxt = (b.textContent || "").replace(/\s+/g, " ").trim();
+      const bAria = (b.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+      const label = bTxt || bAria;
+      if (!label) {
+        const br = b.getBoundingClientRect();
+        if (br.width <= 48 && br.height <= 48) continue;
+      } else if (EXT_MEDIA_ICON_BTN_RE.test(label) && !bTxt) {
+        continue;
+      } else if (EXT_MEDIA_ICON_BTN_RE.test(label) && bTxt.length <= 12 && !/\b(?:add|cart|buy)\b/i.test(bTxt)) {
+        continue;
+      }
+      return true;
+    }
+    const txt = (el.textContent || "").replace(/\s+/g, " ").trim();
+    return /\$\s*\d/.test(txt);
+  }
+
+  function isExtHorizontalCarouselTrack(el) {
+    if (!el || el === document.body) return false;
+    const sw = Number(el.scrollWidth || 0);
+    const cw = Number(el.clientWidth || 0);
+    if (cw >= 40 && sw > cw + 24) return true;
+    const cs = window.getComputedStyle(el);
+    if (!cs) return false;
+    const ox = (cs.overflowX || "").toLowerCase();
+    const snap = (cs.scrollSnapType || "").toLowerCase();
+    if ((ox === "scroll" || ox === "auto" || ox === "hidden") && snap && snap !== "none" && /x|inline|both/.test(snap)) {
+      return true;
+    }
+    const disp = (cs.display || "").toLowerCase();
+    const kids = el.children || [];
+    if ((disp === "flex" || disp === "inline-flex") && !/^column/i.test(cs.flexDirection || "") && kids.length >= 2) {
+      let firstR = null;
+      for (let i = 0; i < kids.length && i < 6; i++) {
+        const kr = kids[i].getBoundingClientRect();
+        if (kr.width < 32 || kr.height < 32) continue;
+        if (!firstR) {
+          firstR = kr;
+        } else if (kr.left >= firstR.left + firstR.width * 0.45 && Math.abs(kr.top - firstR.top) < firstR.height * 0.6) {
+          return true;
+        }
+      }
+    }
+    if ((el.tagName === "UL" || el.tagName === "OL") && kids.length >= 2) {
+      let mediaLis = 0;
+      for (let j = 0; j < kids.length && j < 6; j++) {
+        if (kids[j].tagName === "LI" && kids[j].querySelector?.("img, picture")) mediaLis++;
+      }
+      if (mediaLis >= 2) return true;
+    }
+    return false;
+  }
+
+  function climbAboveExtCarousel(startEl, cardEl, maxH) {
+    if (!startEl || startEl === document.body || startEl === cardEl) return startEl;
+    let best = startEl;
+    let cur = startEl;
+    for (let steps = 0; cur && cur !== cardEl && cur !== document.body && steps < 6; steps++) {
+      if (isExtHorizontalCarouselTrack(cur)) {
+        const shell = cur.parentElement;
+        if (shell && shell !== document.body) {
+          if (shell === cardEl) {
+            if (!extNodeHasDetailsOrCta(cur)) best = cur;
+            break;
+          }
+          const sr = shell.getBoundingClientRect();
+          if (!extNodeHasDetailsOrCta(shell) && sr.width >= 56 && sr.height >= 56 && sr.height <= maxH + 48) {
+            best = shell;
+            cur = shell;
+            continue;
+          }
+        }
+      }
+      const nextP = cur.parentElement;
+      if (!nextP || nextP === cardEl || nextP === document.body) break;
+      if (extNodeHasDetailsOrCta(nextP)) break;
+      cur = nextP;
+    }
+    return best;
+  }
+
   function mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl) {
     if (!anchor || !badgeEl) return false;
-    let slotTarget = anchor;
-    let p = anchor.parentElement;
-    const baseAnchorRect = anchor.getBoundingClientRect();
-    while (p && p !== cardEl && cardEl.contains(p)) {
+    const ar = anchor.getBoundingClientRect();
+    let slotTarget = climbAboveExtCarousel(anchor, cardEl, (ar.height || 240) + 80);
+    let p = slotTarget.parentElement;
+    for (let steps = 0; p && p !== cardEl && cardEl.contains(p) && steps < 5; steps++) {
       if (p.tagName === "A" || p.tagName === "BUTTON" || p.tagName === "PICTURE") {
         const pr = p.getBoundingClientRect();
-        if (pr.height <= baseAnchorRect.height + 44) {
+        if (pr.height <= (ar.height || 240) + 44) {
           slotTarget = p;
           p = p.parentElement;
           continue;
         }
       }
+      if (extNodeHasDetailsOrCta(p)) break;
+      const pr = p.getBoundingClientRect();
+      if (pr.width >= 56 && pr.height <= (ar.height || 240) + 64) {
+        slotTarget = p;
+        p = p.parentElement;
+        continue;
+      }
       break;
     }
+    slotTarget = climbAboveExtCarousel(slotTarget, cardEl, (ar.height || 240) + 80);
     const parent = slotTarget.parentElement;
     if (
       parent &&
@@ -4044,7 +4170,8 @@
       parent.tagName !== "A" &&
       parent.tagName !== "BUTTON" &&
       parent.tagName !== "PICTURE" &&
-      !parent.closest?.("a, button")
+      !parent.closest?.("a, button") &&
+      !isExtHorizontalCarouselTrack(parent)
     ) {
       const pcs = window.getComputedStyle(parent);
       const isAnyGrid = pcs.display === "grid" || pcs.display === "inline-grid";
@@ -4170,9 +4297,13 @@
     const imgs = preferredImgEl
       ? [preferredImgEl, ...cardEl.querySelectorAll("img")]
       : Array.from(cardEl.querySelectorAll("img"));
+    const cardRect = typeof cardEl.getBoundingClientRect === "function" ? cardEl.getBoundingClientRect() : null;
     let chosenImg = null;
     let imgRect = null;
+    let bestScore = -999;
+    let idx = 0;
     for (const img of imgs) {
+      idx++;
       if (!img || img.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
       const src = img.currentSrc || img.getAttribute("src") || "";
       if (isPlaceholderCardImage(src, img)) continue;
@@ -4181,15 +4312,26 @@
       const effW = Math.max(r.width, parentR.width);
       const effH = Math.max(r.height, parentR.height);
       if (effW >= 56 && effH >= 56 && effW <= 440 && effH <= 440) {
-        chosenImg = img;
-        imgRect = r.width >= 40 && r.height >= 40 ? r : parentR;
-        break;
+        const boxR = r.width >= 40 && r.height >= 40 ? r : parentR;
+        const horizVisible =
+          !cardRect ||
+          cardRect.width < 40 ||
+          (boxR.right > cardRect.left + 12 && boxR.left < cardRect.right - 12);
+        const isPromoAlt = EXT_PROMO_SLIDE_ALT_RE.test(img.getAttribute("alt") || "");
+        const candScore = (horizVisible ? 50 : -40) + (isPromoAlt ? -25 : 0) + (idx === 1 ? 8 : 0);
+        if (candScore > bestScore) {
+          bestScore = candScore;
+          chosenImg = img;
+          imgRect = boxR;
+          if (horizVisible && !isPromoAlt) break;
+        }
       }
     }
     if (!chosenImg) return null;
 
     const maxContainerH = (imgRect?.height || 240) + 72;
     let cur = chosenImg.parentElement;
+    let positionedCand = null;
     let fallbackBlock = null;
     for (let depth = 0; depth < 4 && cur && cur !== document.body && cardEl.contains(cur); depth++) {
       if (cur.tagName === "PICTURE") {
@@ -4202,8 +4344,9 @@
       const slotH = existingSlot ? existingSlot.getBoundingClientRect().height : 0;
       const effectiveH = Math.max(0, cr.height - slotH);
       if (cr.width >= 56 && effectiveH >= 56 && effectiveH <= maxContainerH) {
-        if (cs.position !== "static") {
-          return isolatePhotoBadgeAnchor(cur, cardEl);
+        if (!positionedCand && cs.position !== "static") {
+          positionedCand = cur;
+          break;
         }
         if (!fallbackBlock && !/^inline$/i.test(cs.display)) {
           fallbackBlock = cur;
@@ -4213,14 +4356,19 @@
       cur = cur.parentElement;
     }
 
-    if (!fallbackBlock) return null;
-    const imgPos = window.getComputedStyle(chosenImg).position;
-    if (imgPos === "static" && window.getComputedStyle(fallbackBlock).position === "static") {
-      fallbackBlock.style.position = "relative";
-    } else if (window.getComputedStyle(fallbackBlock).position === "static") {
-      return null;
+    let resolved = positionedCand || fallbackBlock;
+    if (!resolved) return null;
+    resolved = climbAboveExtCarousel(resolved, cardEl, maxContainerH);
+    const resPos = window.getComputedStyle(resolved).position;
+    if (resPos === "static") {
+      const imgPos = window.getComputedStyle(chosenImg).position;
+      if (imgPos === "static" || resolved !== fallbackBlock) {
+        resolved.style.position = "relative";
+      } else {
+        return null;
+      }
     }
-    return isolatePhotoBadgeAnchor(fallbackBlock, cardEl);
+    return isolatePhotoBadgeAnchor(resolved, cardEl);
   }
 
   function applyScoredPhotoBadgeState(badgeEl, resp, info, domImg, cardEl, sig) {
@@ -4469,13 +4617,30 @@
               }
             } else {
               unmountPhotoBadgeEl(entry.badgeEl);
-              cardStateByEl.set(entry.cardEl, {
-                sig: entry.sig,
-                status: "nonfood",
-                badgeEl: null,
-                retryCount: 0,
-                nextRetryAt: 0,
-              });
+              const prevRetries = entry.retryCount || 0;
+              const confirmedNonFood =
+                itemResp?.isNonFood === true ||
+                itemResp?.status === 422 ||
+                /non-food/i.test(itemResp?.error || "");
+              if (!confirmedNonFood && prevRetries < 1) {
+                const retryDelayMs = 18000;
+                cardStateByEl.set(entry.cardEl, {
+                  sig: entry.sig,
+                  status: "retry",
+                  badgeEl: null,
+                  retryCount: prevRetries + 1,
+                  nextRetryAt: Date.now() + retryDelayMs,
+                });
+                schedulePhotoBadgeRetry(retryDelayMs + 200);
+              } else {
+                cardStateByEl.set(entry.cardEl, {
+                  sig: entry.sig,
+                  status: "nonfood",
+                  badgeEl: null,
+                  retryCount: prevRetries,
+                  nextRetryAt: 0,
+                });
+              }
               if (keepOpen) {
                 modalOpenedAt = Date.now();
                 const seq = ++scanSeq;

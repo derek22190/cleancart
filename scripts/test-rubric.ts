@@ -7514,7 +7514,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           manifestRegistered:
             manifestXml.includes(".LiveStoreBrowserActivity") &&
             manifestXml.includes('android:exported="false"') &&
-            manifestXml.includes('android:launchMode="singleTask"'),
+            (manifestXml.includes('android:launchMode="singleTop"') ||
+              manifestXml.includes('android:launchMode="singleTask"')),
           androidDetectorSyntaxValid,
           iosDetectorSyntaxValid,
           reusedCardWeakMapAndWalmartSponsored:
@@ -7818,8 +7819,10 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             liveBrowserCombined.includes("setBubbleFailureState") &&
             liveBrowserCombined.includes("__heybrocGetVisibleCardIds") &&
             liveBrowserKt.includes("skipAnalytics = isCardScan") &&
-            liveBrowserKt.includes("routePermittedPopupUrl") &&
-            liveBrowserKt.includes("isExternalAuthHost") &&
+            (liveBrowserKt.includes("openInAppAuthPopupDialog") ||
+              liveBrowserKt.includes("routePermittedPopupUrl")) &&
+            (liveBrowserKt.includes("isSsoAuthHost") ||
+              liveBrowserKt.includes("isExternalAuthHost")) &&
             liveBrowserCombined.includes("paidDisclosure") &&
             liveBrowserCombined.includes("flaggedAdditives") &&
             overlayKt.includes("flaggedAdditives"),
@@ -9013,6 +9016,92 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           iosLiveStoreSwift.includes("SafeImageRedirectDelegate") &&
           embeddedScriptsCompileOk,
       ),
+    );
+
+    // 8. Target Horizontal Carousel Badge, Walmart Grid Coverage, Organic Whole-Food 100/100, and Instacart -> ALDI In-App OAuth Popup + Browsing Persistence
+    const walmartReportedTitles = [
+      "Folgers Protein Instant Coffee, 10g Whey Protein, Classic Roast, 7 oz",
+      "Jackson's Sweet Potato Spicy Jalapeno Chips, Avocado Oil, Free of Top 9 Allergens, 5 oz",
+      "Bar-S Classic Franks, 12 oz",
+      "Marketside Baked Blueberry Streusel Muffins, Soft & Moist, 14 oz, 4 pack",
+      "Little Debbie Christmas Tree Cakes",
+      "Little Debbie Big Pack Christmas Old Fashioned Donuts",
+      "Drizzilicious Birthday Cake Mini Rice Cake Gluten Free Bites, 4 oz",
+    ];
+    const walmartReportedScans = await Promise.all(
+      walmartReportedTitles.map((productTitle) =>
+        scanMod.runScan({ productTitle, store: "walmart", skipAnalytics: true }),
+      ),
+    );
+    const allWalmartReportedResolved = walmartReportedScans.every(
+      (res) => res.ok && !res.isCategoryEstimate && res.product.ingredients.length >= 3,
+    );
+
+    const orgCarrotsScan = await scanMod.runScan({
+      productTitle: "Fresh Organic Carrots - 1lb - Good & Gather™",
+      store: "target",
+      skipAnalytics: true,
+    });
+    const orgChardScan = await scanMod.runScan({
+      productTitle: "Organic Rainbow Chard Bunch",
+      store: "target",
+      skipAnalytics: true,
+    });
+    const convStrawberriesScan = await scanMod.runScan({
+      productTitle: "Fresh Strawberries - 1lb",
+      store: "target",
+      skipAnalytics: true,
+    });
+    const purifiedWaterScan = await scanMod.runScan({
+      productTitle: "Great Value Purified Drinking Water, 16.9 fl oz, 40 Count",
+      store: "walmart",
+      skipAnalytics: true,
+    });
+    const unverifiedProcessedOrgMiss = await lookupMod.lookupIngredients({
+      productTitle: "365 organic creamy peanut butter",
+    });
+
+    const manifestAfterSingleTop = fsNode.readFileSync(
+      "android-app/app/src/main/AndroidManifest.xml",
+      "utf8",
+    );
+    const buildGradleAfter47 = fsNode.readFileSync(
+      "android-app/app/build.gradle.kts",
+      "utf8",
+    );
+
+    check(
+      "Target Carousel Stationary Badge, Walmart Grid Coverage, Organic Whole-Food 100/100 & Instacart In-App OAuth Popup: all 7 Walmart cards resolve, organic whole produce scores 100/100 while conventional produce & purified water score 90/100, carousel badges climb above horizontal slide tracks, and in-app OAuth popup + last-URL persistence are active",
+      allWalmartReportedResolved &&
+        orgCarrotsScan.ok &&
+        orgCarrotsScan.result.score === 100 &&
+        orgCarrotsScan.result.yukaBreakdown?.organicScore === 10 &&
+        orgCarrotsScan.product.brand === "Good & Gather" &&
+        orgChardScan.ok &&
+        orgChardScan.result.score === 100 &&
+        orgChardScan.result.yukaBreakdown?.organicScore === 10 &&
+        convStrawberriesScan.ok &&
+        convStrawberriesScan.result.score === 90 &&
+        convStrawberriesScan.result.yukaBreakdown?.organicScore === 0 &&
+        purifiedWaterScan.ok &&
+        purifiedWaterScan.result.score === 90 &&
+        purifiedWaterScan.result.yukaBreakdown?.organicScore === 0 &&
+        unverifiedProcessedOrgMiss === null &&
+        androidDetectorJs.includes("climbAboveHorizontalCarousel") &&
+        androidDetectorJs.includes("PROMO_SLIDE_ALT_RE") &&
+        iosLiveStoreSwift.includes("climbAboveHorizontalCarousel") &&
+        iosLiveStoreSwift.includes("applicationNameForUserAgent") &&
+        iosLiveStoreSwift.includes("webViewDidClose") &&
+        iosLiveStoreSwift.includes("saveLastStoreURL") &&
+        extContentJs.includes("climbAboveExtCarousel") &&
+        androidLiveStoreKt.includes("buildAuthCompatibleUserAgent") &&
+        androidLiveStoreKt.includes("openInAppAuthPopupDialog") &&
+        androidLiveStoreKt.includes("saveLastStoreUrl") &&
+        androidLiveStoreKt.includes("loadLastStoreUrl") &&
+        androidLiveStoreKt.includes("onSaveInstanceState") &&
+        !androidLiveStoreKt.includes("isExternalAuthHost") &&
+        manifestAfterSingleTop.includes('android:launchMode="singleTop"') &&
+        buildGradleAfter47.includes("versionCode = 47"),
     );
   }
 
