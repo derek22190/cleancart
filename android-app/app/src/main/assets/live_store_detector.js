@@ -144,7 +144,7 @@
   }
 
   function isCartUrl() {
-    return /\/(?:cart|bag|basket|checkout|gp\/cart|store\/cart|shop\/cart)(?:\/|$)/i.test(location.pathname);
+    return /\/(?:cart|bag|basket|checkout|gp\/cart|store\/cart|shop\/cart)(?:\/|$)|\/checkoutcart(?:display)?view(?:\/|$|\.)/i.test(location.pathname);
   }
 
   function looksLikeProductUrl(url) {

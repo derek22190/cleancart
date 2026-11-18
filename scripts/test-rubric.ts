@@ -9614,6 +9614,23 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const chromeJs = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariJs = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const androidJs = fsNode.readFileSync("android-app/app/src/main/assets/live_store_detector.js", "utf8");
+    const iosSwift = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    check(
+      "P1-8 Costco /CheckoutCartDisplayView cart URL recognition & cart row scraping across Chrome, Safari, Android, and iOS",
+      chromeJs === safariJs &&
+        chromeJs.includes("/\\/checkoutcart(?:display)?view(?:\\/|$|\\.)/") &&
+        chromeJs.includes('[automation-id*="cart" i]') &&
+        chromeJs.includes('a[href*=".product."]') &&
+        androidJs.includes("checkoutcart(?:display)?view") &&
+        iosSwift.includes("checkoutcart(?:display)?view"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

@@ -1961,6 +1961,98 @@ async function main() {
       `   ✓ P1-3 price/cent/rating title filters verified across Android, iOS & Extension (${p13AndroidTitles.join(" | ")})!`,
     );
 
+    // 4G. P1-8 Costco /CheckoutCartDisplayView Cart Recognition & Persistence Across All 3 Surfaces
+    const costcoCartHtml = `
+      <main>
+        <h1>Cart (2 Items)</h1>
+        <div automation-id="cart-items-container">
+          <div automation-id="cartItemRow" style="display:flex;gap:12px;padding:12px;border-bottom:1px solid #ddd;">
+            <img src=${JSON.stringify(placeholderSvgDataUrl)} width="90" height="90" alt="Kirkland Signature Organic Extra Virgin Olive Oil" />
+            <a automation-id="productTitleLink" href="/kirkland-signature-organic-extra-virgin-olive-oil.product.100334841.html">Kirkland Signature Organic Extra Virgin Olive Oil, 2 L</a>
+            <span>$19.99</span>
+            <input type="number" aria-label="Quantity" value="1" />
+            <button automation-id="removeItemBtn">Remove</button>
+          </div>
+          <div automation-id="cartItemRow" style="display:flex;gap:12px;padding:12px;border-bottom:1px solid #ddd;">
+            <img src=${JSON.stringify(placeholderSvgDataUrl)} width="90" height="90" alt="Simple Mills Almond Flour Crackers" />
+            <a automation-id="productTitleLink" href="/simple-mills-almond-flour-crackers.product.100456789.html">Simple Mills Almond Flour Crackers, 17 oz</a>
+            <span>$10.49</span>
+            <input type="number" aria-label="Quantity" value="2" />
+            <button automation-id="removeItemBtn">Remove</button>
+          </div>
+        </div>
+      </main>
+    `;
+    await storePage.navigate("https://www.costco.com/CheckoutCartDisplayView");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(costcoCartHtml)};
+      window.__heybrocApiBase = "https://www.heybroc.com";
+      window.__heybrocOverlayCssUrl = ${JSON.stringify(extOverlayCssDataUrl)};
+      window.__heybrocExtStorage = { cc_photo_badges_enabled: true };
+      window.chrome = {
+        storage: {
+          local: {
+            get: function(keys, cb) { const out = Object.assign({}, window.__heybrocExtStorage); if (cb) setTimeout(() => cb(out), 1); return Promise.resolve(out); },
+            set: function(items, cb) { Object.assign(window.__heybrocExtStorage, items || {}); if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); },
+            remove: function(_k, cb) { if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); }
+          },
+          onChanged: { addListener: function() {} }
+        },
+        runtime: {
+          id: "cleancart-p18-costco",
+          getURL: function(p) { return p === "overlay.css" ? window.__heybrocOverlayCssUrl : ("https://www.heybroc.com/" + p); },
+          sendMessage: function(msg, cb) {
+            const resp = msg && msg.type === "CLEANCART_AUDIT_CART_BATCH" ? { ok: true, results: {} } : { ok: false };
+            if (cb) setTimeout(() => cb(resp), 2);
+            return Promise.resolve(resp);
+          },
+          onMessage: { addListener: function() {} }
+        }
+      };
+    `);
+    await storePage.eval(extContentJS, false);
+    const p18StoredCart = await storePage.waitFor<{ titles: string[]; quantities: number[] }>(
+      `(() => {
+        const st = window.__heybrocExtStorage || {};
+        const key = Object.keys(st).find((k) => k.includes("costco") && Array.isArray(st[k]) && st[k].length >= 2);
+        if (!key) return null;
+        return {
+          titles: st[key].map((i) => i.title || ""),
+          quantities: st[key].map((i) => i.quantity || 1)
+        };
+      })()`,
+      "P1-8 Costco CheckoutCartDisplayView extension cart scraping & storage persistence",
+      6000,
+    );
+    assert(
+      p18StoredCart.titles.some((t) => /olive oil/i.test(t)) &&
+        p18StoredCart.titles.some((t) => /simple mills/i.test(t)) &&
+        p18StoredCart.quantities.includes(2),
+      `P1-8 Costco cart failed to persist expected items: ${JSON.stringify(p18StoredCart)}`,
+    );
+
+    // Verify Android & iOS detectors recognize /CheckoutCartDisplayView as cart (zero gridBatch emitted)
+    await storePage.navigate("https://www.costco.com/CheckoutCartDisplayView");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(costcoCartHtml)};
+      window.__p18AndroidCartGrid = 0;
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec === ${JSON.stringify(androidBridgeSecret)} && msg.kind === "gridBatch") {
+            window.__p18AndroidCartGrid += (msg.items || []).length;
+          }
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    await new Promise((r) => setTimeout(r, 450));
+    const p18AndroidGridCount = await storePage.eval<number>(`window.__p18AndroidCartGrid`);
+    assert(p18AndroidGridCount === 0, `P1-8 Android emitted ${p18AndroidGridCount} grid scans on Costco CheckoutCartDisplayView`);
+    console.log(
+      `   ✓ P1-8 Costco /CheckoutCartDisplayView cart scraped & persisted (${p18StoredCart.titles.join(" + ")})!`,
+    );
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");

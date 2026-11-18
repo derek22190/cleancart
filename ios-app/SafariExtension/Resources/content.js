@@ -1949,6 +1949,7 @@
       /\/(?:cart|bag|basket)(?:\/|$)/.test(p) ||
       /\/gp\/cart\//.test(p) ||
       /\/checkout\/cart/.test(p) ||
+      /\/checkoutcart(?:display)?view(?:\/|$|\.)/.test(p) ||
       /\/store\/cart/.test(p) ||
       /\/shop\/cart/.test(p)
     );
@@ -2001,7 +2002,7 @@
     if (isCartPageUrl()) {
       return (
         document.querySelector(
-          "#sc-active-cart, [data-testid*='cart-page' i], [data-test*='cart-container' i], [data-qa*='cart' i], main"
+          "#sc-active-cart, [data-testid*='cart-page' i], [data-test*='cart-container' i], [data-qa*='cart' i], [automation-id*='cart' i], [id*='cart-items' i], [id*='order-items' i], main"
         ) || document.body
       );
     }
@@ -2009,7 +2010,7 @@
   }
 
   const EMPTY_CART_RE =
-    /\b(your\s+(?:shopping\s+)?(?:cart|bag|basket|order|amazon\s+cart|instacart\s+cart|walmart\s+cart|target\s+cart)\s+is\s+(?:currently\s+)?empty|0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)|you\s+have\s+no\s+items\s+in\s+your\s+(?:cart|bag)|nothing\s+in\s+your\s+(?:cart|bag)|time\s+to\s+start\s+shopping|ready\s+to\s+fill\s+your\s+cart)\b/i;
+    /\b(your\s+(?:shopping\s+)?(?:cart|bag|basket|order|amazon\s+cart|instacart\s+cart|walmart\s+cart|target\s+cart|costco\s+cart)\s+is\s+(?:currently\s+)?empty|0\s+items?\s+in\s+(?:your\s+)?(?:cart|bag|basket)|you\s+have\s+no\s+items\s+in\s+your\s+(?:cart|bag)|nothing\s+in\s+your\s+(?:cart|bag)|time\s+to\s+start\s+shopping|ready\s+to\s+fill\s+your\s+cart)\b/i;
 
   const CART_ROW_UI_NOISE_RE =
     /^(?:subtotal.*|estimated\s+total.*|order\s+total.*|taxes?.*|delivery(?:\s+fee)?.*|service\s+fee.*|bag\s+fee.*|driver\s+tip.*|tip.*|checkout.*|proceed\s+to\s+checkout.*|continue\s+to\s+checkout.*|go\s+to\s+checkout.*|substitutions?.*|choose\s+substitution.*|remove|delete|save\s+for\s+later|move\s+to\s+cart|clip\s+coupon|free\s+(?:shipping|delivery|pickup).*|snap\s+ebt.*|sold\s+by.*|fulfilled\s+by.*|arrives\s+.*|pickup\s+.*|shipping\s+.*|\$?\d+(?:\.\d{2})?(?:\s*\/\s*\w+)?|qty\s*:?\s*\d+|\d+\s*(?:ct|items?))$/i;
@@ -2022,6 +2023,10 @@
     '[data-testid*="cart-item" i]',
     '[data-testid*="line-item" i]',
     '[data-automation-id*="cart-item" i]',
+    '[automation-id*="cartItem" i]',
+    '[automation-id*="cart-item" i]',
+    '[automation-id*="orderItem" i]',
+    '[automation-id*="cart" i]',
     '[data-item-id]',
     "li",
     "article",
@@ -2078,10 +2083,13 @@
       '[data-qa*="product-name" i]',
       ".sc-product-title",
       '[data-automation-id*="product-title" i]',
+      '[automation-id*="productTitle" i]',
+      '[automation-id*="itemTitle" i]',
       '[data-testid*="item-title" i]',
       '[data-testid*="product-title" i]',
       '[data-testid*="cart-item-title" i]',
       '[data-testid*="line-item-name" i]',
+      'a[href*=".product."]',
       'a[href*="/ip/"]',
       'a[href*="/p/"]',
       'a[href*="/dp/"]',
@@ -2195,6 +2203,8 @@
       'button[data-test*="delete" i]',
       'button[data-test*="remove" i]',
       '[data-automation-id*="remove" i]',
+      '[automation-id*="remove" i]',
+      '[automation-id*="delete" i]',
       '[data-qa*="remove" i]',
       'button[data-qa*="delete" i]',
       '[data-testid*="cart-item-remove" i]',
@@ -2214,7 +2224,7 @@
       const rows = cartRoot.querySelectorAll(sel);
       for (const row of rows) {
         if (!isElementVisible(row) || isInsideCartExcludedArea(row, cartRoot)) continue;
-        const subProductLinks = row.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/products/"]');
+        const subProductLinks = row.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/products/"], a[href*=".product."]');
         const distinctHrefs = new Set([...subProductLinks].map((a) => (a.getAttribute("href") || "").split("?")[0]).filter(Boolean));
         if (distinctHrefs.size > 1) continue;
 
@@ -2301,7 +2311,7 @@
         if (visitedEls.has(row) || !isElementVisible(row)) continue;
         if (isInsideCartExcludedArea(row, cartRoot)) continue;
         // Skip giant wrapper containers that contain multiple items
-        const subProductLinks = row.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/products/"]');
+        const subProductLinks = row.querySelectorAll('a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/products/"], a[href*=".product."]');
         const distinctHrefs = new Set([...subProductLinks].map((a) => (a.getAttribute("href") || "").split("?")[0]).filter(Boolean));
         if (distinctHrefs.size > 1) continue;
 
@@ -2311,7 +2321,7 @@
           /\$\s*\d+/.test(rowText) ||
           Boolean(
             row.querySelector(
-              'input[type="number"], select, [data-test="cartItem-deleteBtn"], [data-qa*="remove" i], [data-automation-id*="remove" i], input[value*="Delete" i], button[aria-label*="remove" i], button[aria-label*="delete" i], button[aria-label*="quantity" i], [data-testid*="remove" i], [data-testid*="quantity" i]'
+              'input[type="number"], select, [data-test="cartItem-deleteBtn"], [data-qa*="remove" i], [data-automation-id*="remove" i], [automation-id*="remove" i], [automation-id*="delete" i], [automation-id*="quantity" i], input[value*="Delete" i], button[aria-label*="remove" i], button[aria-label*="delete" i], button[aria-label*="quantity" i], [data-testid*="remove" i], [data-testid*="quantity" i]'
             )
           );
         if (!hasRowControl) continue;
@@ -2858,7 +2868,7 @@
       );
       if (!ctrl) return;
       const rowContainer = ctrl.closest(
-        '[data-test="cartItem"], [data-qa*="cart-item" i], .sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [data-item-id], li, article'
+        '[data-test="cartItem"], [data-qa*="cart-item" i], .sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [automation-id*="cart" i], [data-item-id], li, article'
       );
       const cartRoot = detectOpenCartRoot();
       if (!rowContainer && (!cartRoot || !cartRoot.contains(ctrl))) return;
@@ -2887,12 +2897,12 @@
       const btn = e.target?.closest?.('button, [role="button"], input[type="submit"], input[type="button"], a[role="button"]');
       if (!btn) return;
 
-      const label = `${btn.textContent || ""} ${btn.getAttribute("aria-label") || ""} ${btn.getAttribute("title") || ""} ${btn.getAttribute("data-testid") || ""} ${btn.getAttribute("data-test") || ""} ${btn.getAttribute("data-qa") || ""} ${btn.getAttribute("data-automation-id") || ""} ${btn.value || ""}`
+      const label = `${btn.textContent || ""} ${btn.getAttribute("aria-label") || ""} ${btn.getAttribute("title") || ""} ${btn.getAttribute("data-testid") || ""} ${btn.getAttribute("data-test") || ""} ${btn.getAttribute("data-qa") || ""} ${btn.getAttribute("data-automation-id") || ""} ${btn.getAttribute("automation-id") || ""} ${btn.value || ""}`
         .replace(/\s+/g, " ")
         .trim();
 
       const rowContainer = btn.closest(
-        '[data-test="cartItem"], [data-qa*="cart-item" i], .sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [data-item-id], [data-testid*="product-card" i], [data-testid*="item-card" i], li, article'
+        '[data-test="cartItem"], [data-qa*="cart-item" i], .sc-list-item-content, div[data-asin], [data-testid*="cart-item" i], [data-testid*="line-item" i], [data-automation-id*="cart-item" i], [automation-id*="cart" i], [data-item-id], [data-testid*="product-card" i], [data-testid*="item-card" i], li, article'
       );
       const rowInfo = rowContainer ? extractRowTitleAndImage(rowContainer) : null;
       const contextTitle = rowInfo?.title || readTitle();
