@@ -25,6 +25,7 @@ interface CreatorSummary {
   commissionPaid?: number;
   commissionOwed?: number;
   payoutEmail?: string;
+  payoutEmailVerified?: boolean;
   payoutMethod?: CreatorPayoutMethod;
   payoutHandle?: string;
   stripeConnectAccountId?: string;
@@ -50,6 +51,20 @@ interface CreatorPayoutRecord {
 
 const STORAGE_KEY = "heybroc_self_creator_code_v1";
 const TOKEN_STORAGE_KEY = "heybroc_self_creator_token_v1";
+const AUTH_TOKEN_STORAGE_KEY = "heybroc_auth_token";
+
+function buildInfluencerHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...(extra || {}) };
+  try {
+    const authToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)?.trim() || "";
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return headers;
+}
 
 export default function SelfServeCreatorsPage() {
   const [handle, setHandle] = useState("");
@@ -59,6 +74,7 @@ export default function SelfServeCreatorsPage() {
     useState<CreatorPayoutMethod>("stripe_connect");
   const [payoutHandle, setPayoutHandle] = useState("");
   const [creatorToken, setCreatorToken] = useState("");
+  const [hasAccountSession, setHasAccountSession] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [payouts, setPayouts] = useState<CreatorPayoutRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -96,11 +112,16 @@ export default function SelfServeCreatorsPage() {
 
       const savedCode = urlCode || localStorage.getItem(STORAGE_KEY) || "";
       const savedToken = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+      const savedAuthToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)?.trim() || "";
+      setHasAccountSession(Boolean(savedAuthToken));
       if (savedToken) setCreatorToken(savedToken);
       if (savedCode) {
         setCodeInput(savedCode);
+        const getHeaders = buildInfluencerHeaders(
+          savedToken ? { "X-Creator-Token": savedToken } : undefined
+        );
         void fetch(`/api/influencers?code=${encodeURIComponent(savedCode)}`, {
-          headers: savedToken ? { "X-Creator-Token": savedToken } : undefined,
+          headers: Object.keys(getHeaders).length > 0 ? getHeaders : undefined,
         })
           .then((r) => r.json())
           .then((d) => {
@@ -146,10 +167,10 @@ export default function SelfServeCreatorsPage() {
     try {
       const res = await fetch("/api/influencers", {
         method: "POST",
-        headers: {
+        headers: buildInfluencerHeaders({
           "Content-Type": "application/json",
           ...(creatorToken ? { "X-Creator-Token": creatorToken } : {}),
-        },
+        }),
         body: JSON.stringify({
           action: "self_register",
           code: cleanCode,
@@ -207,10 +228,10 @@ export default function SelfServeCreatorsPage() {
     try {
       const res = await fetch("/api/influencers", {
         method: "POST",
-        headers: {
+        headers: buildInfluencerHeaders({
           "Content-Type": "application/json",
           "X-Creator-Token": creatorToken,
-        },
+        }),
         body: JSON.stringify({
           action: "update_payout_settings",
           code: creator.code,
@@ -244,10 +265,10 @@ export default function SelfServeCreatorsPage() {
     try {
       const res = await fetch("/api/influencers", {
         method: "POST",
-        headers: {
+        headers: buildInfluencerHeaders({
           "Content-Type": "application/json",
           "X-Creator-Token": creatorToken,
-        },
+        }),
         body: JSON.stringify({
           action: "connect_stripe",
           code: creator.code,
@@ -848,6 +869,43 @@ export default function SelfServeCreatorsPage() {
                     </button>
                   </div>
 
+                  {(creator.payoutEmailVerified === false || (!hasAccountSession && !creator.payoutEmailVerified)) && (
+                    <div
+                      style={{
+                        background: "#fffbeb",
+                        border: "1px solid #fcd34d",
+                        borderRadius: 12,
+                        padding: "10px 12px",
+                        marginBottom: 12,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        fontSize: 12.5,
+                        color: "#78350f",
+                      }}
+                    >
+                      <span>
+                        Verify your account email before linking Stripe Express or editing payout destinations.
+                      </span>
+                      <Link
+                        href="/?login=1"
+                        style={{
+                          background: "#b45309",
+                          color: "#ffffff",
+                          borderRadius: 999,
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          textDecoration: "none",
+                        }}
+                      >
+                        Sign in to verify payout email &amp; connect Stripe
+                      </Link>
+                    </div>
+                  )}
+
                   <div
                     style={{
                       display: "grid",
@@ -1053,13 +1111,13 @@ export default function SelfServeCreatorsPage() {
             <li style={{ marginBottom: 8 }}>
               <b>&ldquo;Yuka for Online Grocery&rdquo;</b> — Screen-record your
               Walmart or Instacart cart while the live HeyBroc bubble flags
-              hidden seed oils / Red 40 and swaps them to a 90+/100 clean brand
-              in 1 tap.
+              hidden seed oils / Red 40 and swaps them to a higher-scoring clean
+              brand in 1 tap.
             </li>
             <li style={{ marginBottom: 8 }}>
               <b>&ldquo;Rating My Kid&apos;s Favorite Snacks&rdquo;</b> — Show a
               Popular vs. Clean Swap side-by-side in HeyBroc (e.g. Hidden Valley
-              Ranch 12/100 → Primal Kitchen Avocado Ranch 90/100).
+              Ranch 6/100 → Primal Kitchen Avocado Ranch 80/100).
             </li>
             <li>
               <b>Call to Action:</b>{" "}

@@ -9764,6 +9764,21 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const creatorsSrc = fsNode.readFileSync("app/creators/page.tsx", "utf8");
+    check(
+      "P1-10 /creators passes Authorization Bearer token on /api/influencers requests, shows Sign in to verify CTA when unverified, and uses realistic 6/100 -> 80/100 ranch example",
+      creatorsSrc.includes('const AUTH_TOKEN_STORAGE_KEY = "heybroc_auth_token"') &&
+        creatorsSrc.includes("headers.Authorization = `Bearer ${authToken}`") &&
+        creatorsSrc.includes("Sign in to verify payout email &amp; connect Stripe") &&
+        creatorsSrc.includes('href="/?login=1"') &&
+        !creatorsSrc.includes("90+/100") &&
+        !creatorsSrc.includes("12/100 → 90/100") &&
+        creatorsSrc.includes("6/100 → Primal Kitchen Avocado Ranch 80/100"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
