@@ -10139,6 +10139,21 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const { passesVariantGuard } = await import("../lib/drinks-catalog");
+    check(
+      "P2-4 passesVariantGuard enforces bidirectional Kids / Children's variant token without breaking Walmart 'Kids Snacks' aisle subtitles",
+      !passesVariantGuard("Chobani Kids Greek Yogurt Strawberry", "Chobani Greek Yogurt Strawberry") &&
+        !passesVariantGuard("Orgain Kids Protein Nutritional Shake Chocolate", "Orgain Organic Protein Shake Chocolate") &&
+        !passesVariantGuard("Liquid I.V. Hydration Multiplier Kids Cotton Candy", "Liquid I.V. Hydration Multiplier") &&
+        !passesVariantGuard("Children's Elderberry Syrup", "Elderberry Syrup") &&
+        !passesVariantGuard("Clif Kid Zbar Chocolate Brownie", "Clif Bar Chocolate Brownie") &&
+        !passesVariantGuard("Honest Organic Apple Juice", "Honest Kids Organic Appley Ever After Juice Drink") &&
+        passesVariantGuard("Honest Kids Apple Juice", "Honest Kids Organic Appley Ever After Juice Drink") &&
+        passesVariantGuard("Coca-Cola Classic Soda, Kids Snacks, Family Size, 12 fl oz", "Coca-Cola Classic"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

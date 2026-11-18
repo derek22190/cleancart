@@ -5841,6 +5841,14 @@ export function passesVariantGuard(query: string, candidateTitle: string, option
   for (const [tRe, qRe] of reverseStrict) {
     if (tRe.test(t) && !qRe.test(q)) return false;
   }
+  const SAFE_NON_VARIANT_KIDS_RE =
+    /\b(?:sour\s+patch\s+kids|kids['’]?\s+(?:snacks?|lunch(?:\s*box)?|treats?|favorites?))\b/g;
+  const qKids = q.replace(SAFE_NON_VARIANT_KIDS_RE, " ");
+  const tKids = t.replace(SAFE_NON_VARIANT_KIDS_RE, " ");
+  const KIDS_VARIANT_RE = /\bkids?['’]?s?\b|\bchildren['’]?s?\b|\byokids\b/;
+  if (KIDS_VARIANT_RE.test(qKids) && !KIDS_VARIANT_RE.test(tKids)) return false;
+  if (!options?.allowCleanerSwap && KIDS_VARIANT_RE.test(tKids) && !KIDS_VARIANT_RE.test(qKids)) return false;
+
   if (!options?.allowCleanerSwap) {
     if (UNSALTED_RE.test(t) && !UNSALTED_RE.test(q)) return false;
     if (LOW_SODIUM_RE.test(t) && !LOW_SODIUM_RE.test(q)) return false;
