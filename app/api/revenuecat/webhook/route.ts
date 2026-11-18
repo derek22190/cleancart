@@ -47,6 +47,7 @@ interface RevenueCatEvent {
   expiration_at_ms?: number | null;
   event_timestamp_ms?: number;
   store?: "APP_STORE" | "PLAY_STORE" | "STRIPE" | "PROMOTIONAL" | string;
+  environment?: "PRODUCTION" | "SANDBOX" | string;
   transaction_id?: string;
   original_transaction_id?: string;
   cancellation_reason?: string;
@@ -327,14 +328,16 @@ export async function POST(req: Request) {
       ? subscriptionId.slice(3)
       : subscriptionId);
   const txId = (ev.transaction_id || "").trim() || origTxId;
+  const rcEnv = String(ev.environment || "").trim().toUpperCase();
+  const isProductionStoreEnv = rcEnv === "PRODUCTION";
 
-  // Credit creator / referral on first paid billing cycle only (rc_orig:<origTxId>), never on $0 trials or renewals #2+
+  // Credit creator / referral on first paid billing cycle only (rc_orig:<origTxId>), strictly for PRODUCTION store events
   if (
     eventType === "INITIAL_PURCHASE" ||
     eventType === "RENEWAL" ||
     eventType === "TRIAL_STARTED"
   ) {
-    if (creatorCode && !/^BROC-[A-Z0-9]{4,10}$/i.test(creatorCode)) {
+    if (isProductionStoreEnv && creatorCode && !/^BROC-[A-Z0-9]{4,10}$/i.test(creatorCode)) {
       const amountPaidUsd = preTaxUsdPrice > 0 ? preTaxUsdPrice : 0;
       const isTrialEvent =
         status === "trialing" ||
@@ -351,10 +354,10 @@ export async function POST(req: Request) {
           );
         }
       } else {
-        const alreadyCreditedViaStoreKit = await hasSubscriptionFirstPaidCredit(
-          `apple_orig:${origTxId}`
-        );
-        if (!alreadyCreditedViaStoreKit) {
+        const alreadyCreditedAcrossPipelines =
+          (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
+          (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
+        if (!alreadyCreditedAcrossPipelines) {
           const creatorEvent =
             plan === "annual" ? "paid_annual" : "paid_monthly";
           await recordStripeCreatorConversionOnce(
@@ -372,7 +375,7 @@ export async function POST(req: Request) {
         }
       }
     }
-    if (deviceId) {
+    if (isProductionStoreEnv && deviceId) {
       await applyOrActivateReferral({
         deviceId,
         referralCode,

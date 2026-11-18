@@ -38,6 +38,7 @@ import {
   clawbackCreatorCommission,
   getCreator,
   getCreatorConversionMeta,
+  hasSubscriptionFirstPaidCredit,
   normalizeCode,
   recordStripeCreatorConversionOnce,
 } from "@/lib/influencers";
@@ -167,12 +168,12 @@ export async function POST(request: Request) {
   if (
     process.env.NODE_ENV === "production" &&
     process.env.APPLE_ALLOW_SANDBOX_IN_PRODUCTION !== "true" &&
-    (notifEnv === "Sandbox" || notifEnv === "Xcode")
+    notifEnv === "Xcode"
   ) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Sandbox App Store notifications are rejected in production.",
+        error: "Local Xcode App Store notifications are rejected in production.",
       },
       { status: 403 }
     );
@@ -235,12 +236,12 @@ export async function POST(request: Request) {
     if (
       process.env.NODE_ENV === "production" &&
       process.env.APPLE_ALLOW_SANDBOX_IN_PRODUCTION !== "true" &&
-      (txEnv === "Sandbox" || txEnv === "Xcode")
+      txEnv === "Xcode"
     ) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Sandbox StoreKit transactions are rejected in production.",
+          error: "Local Xcode StoreKit transactions are rejected in production.",
         },
         { status: 403 }
       );
@@ -291,6 +292,8 @@ export async function POST(request: Request) {
   }
 
   const txId = String(txClaims?.transactionId || origTxId).trim();
+  const effectiveEnv = String(txClaims?.environment || data?.environment || "").trim();
+  const isProductionStoreEnv = effectiveEnv === "Production";
   const appleSubId = `apple_${origTxId}`;
   const existingApple = await getSubscriptionEntitlement(appleSubId).catch(
     () => null
@@ -311,7 +314,9 @@ export async function POST(request: Request) {
       ? txClaims.expiresDate
       : existing?.expiresAtMs;
 
-  const convMeta = await getCreatorConversionMeta(`apple_orig:${origTxId}`);
+  const convMeta =
+    (await getCreatorConversionMeta(`apple_orig:${origTxId}`)) ??
+    (await getCreatorConversionMeta(`rc_orig:${origTxId}`));
   const candidateCreatorCode = normalizeCode(
     existing?.creatorCode || convMeta?.code || ""
   );
@@ -359,7 +364,7 @@ export async function POST(request: Request) {
       updatedAt: new Date(now).toISOString(),
     });
 
-    if (validCreatorCode) {
+    if (isProductionStoreEnv && validCreatorCode) {
       if (isFreeTrial) {
         await recordStripeCreatorConversionOnce(
           `apple_trial:${origTxId}`,
@@ -369,18 +374,23 @@ export async function POST(request: Request) {
           existing?.customerEmail
         );
       } else if (grossUsd > 0) {
-        await recordStripeCreatorConversionOnce(
-          `apple_orig:${origTxId}`,
-          validCreatorCode,
-          plan === "monthly" ? "paid_monthly" : "paid_annual",
-          grossUsd,
-          existing?.customerEmail,
-          {
-            creditedTransactionId: txId,
-            creditedEventId: notificationUUID || undefined,
-            subscriptionKey: `apple_orig:${origTxId}`,
-          }
-        );
+        const alreadyCreditedAcrossPipelines =
+          (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
+          (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
+        if (!alreadyCreditedAcrossPipelines) {
+          await recordStripeCreatorConversionOnce(
+            `apple_orig:${origTxId}`,
+            validCreatorCode,
+            plan === "monthly" ? "paid_monthly" : "paid_annual",
+            grossUsd,
+            existing?.customerEmail,
+            {
+              creditedTransactionId: txId,
+              creditedEventId: notificationUUID || undefined,
+              subscriptionKey: `apple_orig:${origTxId}`,
+            }
+          );
+        }
       }
     }
   } else if (notificationType === "REFUND" || notificationType === "REVOKE") {

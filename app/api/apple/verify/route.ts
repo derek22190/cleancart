@@ -27,6 +27,7 @@ import {
 } from "@/lib/entitlements";
 import {
   getCreator,
+  hasSubscriptionFirstPaidCredit,
   normalizeCode,
   recordStripeCreatorConversionOnce,
 } from "@/lib/influencers";
@@ -141,15 +142,16 @@ export async function POST(request: Request) {
   }
 
   const claimEnv = String(claims.environment || "").trim();
+  const isProductionStoreEnv = claimEnv === "Production";
   if (
     process.env.NODE_ENV === "production" &&
     process.env.APPLE_ALLOW_SANDBOX_IN_PRODUCTION !== "true" &&
-    (claimEnv === "Sandbox" || claimEnv === "Xcode")
+    claimEnv === "Xcode"
   ) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Sandbox StoreKit transactions are not accepted in production.",
+        error: "Local Xcode StoreKit transactions are not accepted in production.",
       },
       { status: 403 }
     );
@@ -244,7 +246,7 @@ export async function POST(request: Request) {
   const rawCreatorInput = (body.creatorCode || "").trim().toUpperCase();
   if (rawCreatorInput) {
     if (rawCreatorInput.startsWith("BROC")) {
-      if (cleanDeviceId && /^BROC-[A-Z0-9]{4,10}$/.test(rawCreatorInput)) {
+      if (isProductionStoreEnv && cleanDeviceId && /^BROC-[A-Z0-9]{4,10}$/.test(rawCreatorInput)) {
         await applyOrActivateReferral({
           deviceId: cleanDeviceId,
           referralCode: rawCreatorInput,
@@ -260,7 +262,7 @@ export async function POST(request: Request) {
         }
       }
     }
-  } else if (cleanDeviceId) {
+  } else if (isProductionStoreEnv && cleanDeviceId) {
     await applyOrActivateReferral({
       deviceId: cleanDeviceId,
       activateNow: true,
@@ -284,7 +286,7 @@ export async function POST(request: Request) {
     updatedAt: new Date(now).toISOString(),
   });
 
-  if (validCreatorCode && !validCreatorCode.startsWith("BROC")) {
+  if (isProductionStoreEnv && validCreatorCode && !validCreatorCode.startsWith("BROC")) {
     if (isFreeTrial) {
       await recordStripeCreatorConversionOnce(
         `apple_trial:${origTxId}`,
@@ -296,17 +298,22 @@ export async function POST(request: Request) {
     } else {
       const grossUsd = resolveAppleGrossUsd(claims, plan, false);
       if (grossUsd > 0) {
-        await recordStripeCreatorConversionOnce(
-          `apple_orig:${origTxId}`,
-          validCreatorCode,
-          plan === "monthly" ? "paid_monthly" : "paid_annual",
-          grossUsd,
-          buyerEmail,
-          {
-            creditedTransactionId: txId,
-            subscriptionKey: `apple_orig:${origTxId}`,
-          }
-        );
+        const alreadyCreditedAcrossPipelines =
+          (await hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)) ||
+          (await hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`));
+        if (!alreadyCreditedAcrossPipelines) {
+          await recordStripeCreatorConversionOnce(
+            `apple_orig:${origTxId}`,
+            validCreatorCode,
+            plan === "monthly" ? "paid_monthly" : "paid_annual",
+            grossUsd,
+            buyerEmail,
+            {
+              creditedTransactionId: txId,
+              subscriptionKey: `apple_orig:${origTxId}`,
+            }
+          );
+        }
       }
     }
   }

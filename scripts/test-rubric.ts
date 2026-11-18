@@ -8404,7 +8404,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             signedDate: Date.now(),
             purchaseDate: Date.now() - 5_000,
             expiresDate: Date.now() + 365 * 86_400_000,
-            environment: "Sandbox",
+            environment: "Production",
           });
           const appleVerifyPaidRes = await appleVerifyAuditMod.POST(
             new Request("http://localhost:3000/api/apple/verify", {
@@ -8429,7 +8429,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             signedDate: Date.now(),
             purchaseDate: Date.now(),
             expiresDate: Date.now() + 730 * 86_400_000,
-            environment: "Sandbox",
+            environment: "Production",
           });
           const didRenewEnvelope = signCompactAppleJws({
             notificationType: "DID_RENEW",
@@ -8437,7 +8437,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             signedDate: Date.now(),
             data: {
               bundleId: "com.heybroc.app",
-              environment: "Sandbox",
+              environment: "Production",
               signedTransactionInfo: renewalIosTxJws,
             },
           });
@@ -8461,7 +8461,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             revocationDate: Date.now(),
             signedDate: Date.now(),
             expiresDate: Date.now() + 365 * 86_400_000,
-            environment: "Sandbox",
+            environment: "Production",
           });
           const refundEnvelope = signCompactAppleJws({
             notificationType: "REFUND",
@@ -8469,7 +8469,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             signedDate: Date.now(),
             data: {
               bundleId: "com.heybroc.app",
-              environment: "Sandbox",
+              environment: "Production",
               signedTransactionInfo: refundIosTxJws,
             },
           });
@@ -9628,6 +9628,139 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         chromeJs.includes('a[href*=".product."]') &&
         androidJs.includes("checkoutcart(?:display)?view") &&
         iosSwift.includes("checkoutcart(?:display)?view"),
+    );
+  }
+
+  {
+    const fsNode = await import("node:fs");
+    const rcWebhookRoute = await import("../app/api/revenuecat/webhook/route");
+    const infModP19 = await import("../lib/influencers");
+    const appleVerifySrc = fsNode.readFileSync("app/api/apple/verify/route.ts", "utf8");
+    const appleWebhookSrc = fsNode.readFileSync("app/api/apple/webhook/route.ts", "utf8");
+    const rcWebhookSrc = fsNode.readFileSync("app/api/revenuecat/webhook/route.ts", "utf8");
+
+    const prevRcSecret = process.env.REVENUECAT_WEBHOOK_SECRET;
+    process.env.REVENUECAT_WEBHOOK_SECRET = "rc_test_secret_p19";
+    const testCode = `ENVSYNC${Date.now().toString().slice(-4)}`;
+    await infModP19.createCreator({
+      code: testCode,
+      name: "Env Sync Creator",
+      commissionPct: 35,
+    });
+    let nonProdStatus = 0;
+    let prodStatus = 0;
+    let dupStatus = 0;
+    let owedAfterNonProd = -1;
+    let owedAfterProd = -1;
+    let owedAfterDup = -1;
+    try {
+      const nonProdRes = await rcWebhookRoute.POST(
+        new Request("http://localhost:3000/api/revenuecat/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer rc_test_secret_p19",
+          },
+          body: JSON.stringify({
+            event: {
+              id: `ev_np_${Date.now()}`,
+              type: "INITIAL_PURCHASE",
+              app_user_id: "rc_user_np_1",
+              product_id: "com.heybroc.pro.annual",
+              period_type: "NORMAL",
+              store: "APP_STORE",
+              environment: "SANDBOX",
+              price: 49.99,
+              currency: "USD",
+              original_transaction_id: `orig_np_${Date.now()}`,
+              transaction_id: `tx_np_${Date.now()}`,
+              expiration_at_ms: Date.now() + 365 * 86_400_000,
+              subscriber_attributes: { creatorCode: { value: testCode } },
+            },
+          }),
+        }),
+      );
+      nonProdStatus = nonProdRes.status;
+      owedAfterNonProd = (await infModP19.getCreator(testCode))?.commissionOwed ?? -1;
+
+      const sharedOrig = `orig_prod_${Date.now()}`;
+      const prodRes = await rcWebhookRoute.POST(
+        new Request("http://localhost:3000/api/revenuecat/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer rc_test_secret_p19",
+          },
+          body: JSON.stringify({
+            event: {
+              id: `ev_pr_${Date.now()}`,
+              type: "INITIAL_PURCHASE",
+              app_user_id: "rc_user_pr_1",
+              product_id: "com.heybroc.pro.annual",
+              period_type: "NORMAL",
+              store: "APP_STORE",
+              environment: "PRODUCTION",
+              price: 49.99,
+              currency: "USD",
+              original_transaction_id: sharedOrig,
+              transaction_id: `tx_pr_${Date.now()}`,
+              expiration_at_ms: Date.now() + 365 * 86_400_000,
+              subscriber_attributes: { creatorCode: { value: testCode } },
+            },
+          }),
+        }),
+      );
+      prodStatus = prodRes.status;
+      owedAfterProd = (await infModP19.getCreator(testCode))?.commissionOwed ?? -1;
+
+      const dupRes = await rcWebhookRoute.POST(
+        new Request("http://localhost:3000/api/revenuecat/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer rc_test_secret_p19",
+          },
+          body: JSON.stringify({
+            event: {
+              id: `ev_dup_${Date.now()}`,
+              type: "RENEWAL",
+              app_user_id: "rc_user_pr_1",
+              product_id: "com.heybroc.pro.annual",
+              period_type: "NORMAL",
+              store: "APP_STORE",
+              environment: "PRODUCTION",
+              price: 49.99,
+              currency: "USD",
+              original_transaction_id: sharedOrig,
+              transaction_id: `tx_pr2_${Date.now()}`,
+              expiration_at_ms: Date.now() + 730 * 86_400_000,
+              subscriber_attributes: { creatorCode: { value: testCode } },
+            },
+          }),
+        }),
+      );
+      dupStatus = dupRes.status;
+      owedAfterDup = (await infModP19.getCreator(testCode))?.commissionOwed ?? -1;
+    } finally {
+      await infModP19.deleteCreator(testCode).catch(() => {});
+      if (prevRcSecret === undefined) delete process.env.REVENUECAT_WEBHOOK_SECRET;
+      else process.env.REVENUECAT_WEBHOOK_SECRET = prevRcSecret;
+    }
+
+    check(
+      "Billing environment metadata & cross-pipeline lock checks across Apple verify, Apple webhook, and RevenueCat webhook",
+      nonProdStatus === 200 &&
+        owedAfterNonProd === 0 &&
+        prodStatus === 200 &&
+        owedAfterProd > 0 &&
+        dupStatus === 200 &&
+        owedAfterDup === owedAfterProd &&
+        appleVerifySrc.includes('const isProductionStoreEnv = claimEnv === "Production"') &&
+        appleVerifySrc.includes('hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`)') &&
+        appleWebhookSrc.includes('const isProductionStoreEnv = effectiveEnv === "Production"') &&
+        appleWebhookSrc.includes('hasSubscriptionFirstPaidCredit(`rc_orig:${origTxId}`)') &&
+        rcWebhookSrc.includes('const isProductionStoreEnv = rcEnv === "PRODUCTION"') &&
+        rcWebhookSrc.includes('hasSubscriptionFirstPaidCredit(`apple_orig:${origTxId}`)'),
     );
   }
 
