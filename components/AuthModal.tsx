@@ -167,7 +167,8 @@ export default function AuthModal({
       idToken: string,
       overrideEmail?: string,
       overrideName?: string,
-      expectedNonce?: string
+      expectedNonce?: string,
+      authorizationCode?: string
     ) => {
       if (provider === "google") setGoogleBusy(true);
       if (provider === "apple") setAppleBusy(true);
@@ -190,6 +191,7 @@ export default function AuthModal({
             action: "oauth",
             provider,
             idToken,
+            ...(authorizationCode ? { authorizationCode } : {}),
             ...(expectedNonce ? { nonce: expectedNonce } : {}),
             email: (overrideEmail || claims.email || "").trim(),
             displayName: (overrideName || claims.name || "").trim() || undefined,
@@ -376,6 +378,7 @@ export default function AuthModal({
       }
 
       const pendingAppleToken = window.sessionStorage.getItem("heybroc_pending_apple_id_token");
+      const pendingAppleAuthCode = window.sessionStorage.getItem("heybroc_pending_apple_auth_code") || undefined;
       const pendingAppleState = window.sessionStorage.getItem("heybroc_pending_apple_state");
       const pendingAppleName = window.sessionStorage.getItem("heybroc_pending_apple_name") || "";
       const pendingAppleEmail = window.sessionStorage.getItem("heybroc_pending_apple_email") || "";
@@ -383,6 +386,7 @@ export default function AuthModal({
       const expectedAppleNonce = window.sessionStorage.getItem("heybroc_apple_oauth_nonce") || undefined;
       if (pendingAppleToken) {
         window.sessionStorage.removeItem("heybroc_pending_apple_id_token");
+        window.sessionStorage.removeItem("heybroc_pending_apple_auth_code");
         window.sessionStorage.removeItem("heybroc_pending_apple_state");
         window.sessionStorage.removeItem("heybroc_pending_apple_name");
         window.sessionStorage.removeItem("heybroc_pending_apple_email");
@@ -394,7 +398,8 @@ export default function AuthModal({
             pendingAppleToken,
             pendingAppleEmail,
             pendingAppleName,
-            expectedAppleNonce
+            expectedAppleNonce,
+            pendingAppleAuthCode
           );
         } else {
           setError("Apple sign-in session expired or state mismatch. Please try again.");
@@ -406,6 +411,7 @@ export default function AuthModal({
         window as unknown as {
           __heybrocNativeAppleAuth?: (res: {
             idToken?: string;
+            authorizationCode?: string;
             nonce?: string;
             email?: string;
             displayName?: string;
@@ -432,7 +438,14 @@ export default function AuthModal({
           return;
         }
         if (res?.idToken) {
-          void exchangeOAuthIdToken("apple", res.idToken, res.email, res.displayName, issuedNativeNonce);
+          void exchangeOAuthIdToken(
+            "apple",
+            res.idToken,
+            res.email,
+            res.displayName,
+            issuedNativeNonce,
+            res.authorizationCode
+          );
         } else {
           setAppleBusy(false);
         }
@@ -445,6 +458,7 @@ export default function AuthModal({
         | {
             type?: string;
             idToken?: string;
+            authorizationCode?: string;
             state?: string;
             displayName?: string;
             email?: string;
@@ -496,7 +510,8 @@ export default function AuthModal({
             payload.idToken,
             payload.email,
             payload.displayName,
-            expectedAppleNonce
+            expectedAppleNonce,
+            payload.authorizationCode
           );
         }
       }

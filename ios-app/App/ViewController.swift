@@ -947,6 +947,11 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         var payload: [String: Any] = ["idToken": idToken]
+        if let codeData = credential.authorizationCode,
+           let authCode = String(data: codeData, encoding: .utf8),
+           !authCode.isEmpty {
+            payload["authorizationCode"] = authCode
+        }
         if let issuedNonce = issuedNonce, !issuedNonce.isEmpty {
             payload["nonce"] = issuedNonce
         }

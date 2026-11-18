@@ -21,6 +21,7 @@ interface AppleUserPayload {
 
 function buildBridgeHtml(payload: {
   idToken: string;
+  authorizationCode: string;
   state: string;
   displayName: string;
   email: string;
@@ -29,6 +30,7 @@ function buildBridgeHtml(payload: {
   const safeJson = JSON.stringify({
     type: "heybroc-apple-oauth",
     idToken: payload.idToken,
+    authorizationCode: payload.authorizationCode,
     state: payload.state,
     displayName: payload.displayName,
     email: payload.email,
@@ -69,9 +71,10 @@ function buildBridgeHtml(payload: {
   <script>
     (function () {
       var data = ${safeJson};
-      if (!data.idToken && window.location.hash) {
+      if ((!data.idToken || !data.authorizationCode) && window.location.hash) {
         var hp = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-        data.idToken = hp.get("id_token") || "";
+        data.idToken = data.idToken || hp.get("id_token") || "";
+        data.authorizationCode = data.authorizationCode || hp.get("code") || "";
         data.state = data.state || hp.get("state") || "";
         data.error = data.error || hp.get("error") || "";
       }
@@ -85,6 +88,7 @@ function buildBridgeHtml(payload: {
       if (data.idToken) {
         try {
           sessionStorage.setItem("heybroc_pending_apple_id_token", data.idToken);
+          if (data.authorizationCode) sessionStorage.setItem("heybroc_pending_apple_auth_code", data.authorizationCode);
           if (data.state) sessionStorage.setItem("heybroc_pending_apple_state", data.state);
           if (data.displayName) sessionStorage.setItem("heybroc_pending_apple_name", data.displayName);
           if (data.email) sessionStorage.setItem("heybroc_pending_apple_email", data.email);
@@ -109,6 +113,7 @@ export async function POST(request: Request) {
   try {
     const form = await request.formData();
     const idToken = String(form.get("id_token") || "").trim();
+    const authorizationCode = String(form.get("code") || "").trim();
     const state = String(form.get("state") || "").trim();
     const error = String(form.get("error") || "").trim();
     const rawUser = String(form.get("user") || "").trim();
@@ -127,10 +132,11 @@ export async function POST(request: Request) {
       }
     }
 
-    return buildBridgeHtml({ idToken, state, displayName, email, error });
+    return buildBridgeHtml({ idToken, authorizationCode, state, displayName, email, error });
   } catch {
     return buildBridgeHtml({
       idToken: "",
+      authorizationCode: "",
       state: "",
       displayName: "",
       email: "",
@@ -143,6 +149,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   return buildBridgeHtml({
     idToken: (searchParams.get("id_token") || "").trim(),
+    authorizationCode: (searchParams.get("code") || "").trim(),
     state: (searchParams.get("state") || "").trim(),
     displayName: "",
     email: "",

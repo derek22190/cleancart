@@ -48,6 +48,9 @@ export interface UserAccount {
   resetCode?: string;
   resetExpiresAt?: number;
   resetAttempts?: number;
+  appleSub?: string;
+  appleClientId?: string;
+  appleRefreshToken?: string;
   deleted?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -735,6 +738,7 @@ interface VerifiedOidcTokenResult {
   ok: boolean;
   email: string;
   sub?: string;
+  aud?: string;
   name?: string;
   tokenDigest?: string;
   replayTtlSeconds?: number;
@@ -888,12 +892,122 @@ async function verifyOidcJwtWithJwks(params: {
       ok: Boolean(tokenEmail),
       email: tokenEmail,
       sub: tokenSub || undefined,
+      aud: typeof audList[0] === "string" ? audList[0] : undefined,
       tokenDigest,
       replayTtlSeconds,
       expectedNonce: cleanExpectedNonce || undefined,
     };
   } catch {
     return { ok: false, email: "" };
+  }
+}
+
+function getDefaultAppleClientId(): string {
+  return (
+    process.env.APPLE_BUNDLE_ID ||
+    process.env.APPLE_SERVICE_ID ||
+    process.env.APPLE_CLIENT_ID ||
+    "com.heybroc.app"
+  ).trim();
+}
+
+export function buildAppleClientSecretJwt(clientId?: string): string | null {
+  const teamId = (process.env.APPLE_TEAM_ID || "").trim();
+  const keyId = (process.env.APPLE_KEY_ID || "").trim();
+  const rawPrivateKey = (process.env.APPLE_PRIVATE_KEY || "").trim();
+  const resolvedClientId = (clientId || getDefaultAppleClientId()).trim();
+  if (!teamId || !keyId || !rawPrivateKey || !resolvedClientId) {
+    return null;
+  }
+  try {
+    const privateKeyPem = rawPrivateKey.includes("\\n")
+      ? rawPrivateKey.replace(/\\n/g, "\n")
+      : rawPrivateKey;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const headerB64 = Buffer.from(
+      JSON.stringify({ alg: "ES256", kid: keyId, typ: "JWT" }),
+      "utf8"
+    ).toString("base64url");
+    const payloadB64 = Buffer.from(
+      JSON.stringify({
+        iss: teamId,
+        iat: nowSec,
+        exp: nowSec + 300,
+        aud: "https://appleid.apple.com",
+        sub: resolvedClientId,
+      }),
+      "utf8"
+    ).toString("base64url");
+    const signingInput = Buffer.from(`${headerB64}.${payloadB64}`, "utf8");
+    const signature = crypto.sign("sha256", signingInput, {
+      key: privateKeyPem,
+      dsaEncoding: "ieee-p1363",
+    });
+    return `${headerB64}.${payloadB64}.${signature.toString("base64url")}`;
+  } catch {
+    return null;
+  }
+}
+
+async function exchangeAppleAuthCodeForRefreshToken(
+  authorizationCode: string,
+  clientId?: string
+): Promise<string | null> {
+  const cleanCode = (authorizationCode || "").trim();
+  if (!cleanCode) return null;
+  const resolvedClientId = (clientId || getDefaultAppleClientId()).trim();
+  const clientSecret = buildAppleClientSecretJwt(resolvedClientId);
+  if (!clientSecret) return null;
+  try {
+    const body = new URLSearchParams({
+      client_id: resolvedClientId,
+      client_secret: clientSecret,
+      code: cleanCode,
+      grant_type: "authorization_code",
+    });
+    const res = await fetch("https://appleid.apple.com/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as {
+      refresh_token?: unknown;
+    } | null;
+    return typeof data?.refresh_token === "string" && data.refresh_token.trim()
+      ? data.refresh_token.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function revokeAppleToken(
+  refreshToken: string,
+  clientId?: string
+): Promise<boolean> {
+  const cleanToken = (refreshToken || "").trim();
+  if (!cleanToken) return false;
+  const resolvedClientId = (clientId || getDefaultAppleClientId()).trim();
+  const clientSecret = buildAppleClientSecretJwt(resolvedClientId);
+  if (!clientSecret) return false;
+  try {
+    const body = new URLSearchParams({
+      client_id: resolvedClientId,
+      client_secret: clientSecret,
+      token: cleanToken,
+      token_type_hint: "refresh_token",
+    });
+    const res = await fetch("https://appleid.apple.com/auth/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -966,6 +1080,7 @@ export async function loginWithOAuth(params: {
   provider: "google" | "apple";
   email: string;
   idToken?: string;
+  authorizationCode?: string;
   nonce?: string;
   password?: string;
   displayName?: string;
@@ -1074,6 +1189,14 @@ export async function loginWithOAuth(params: {
   }
 
   user.emailVerified = true;
+  if (params.provider === "apple") {
+    if (verification.sub) {
+      user.appleSub = verification.sub;
+    }
+    if (verification.aud) {
+      user.appleClientId = verification.aud;
+    }
+  }
   if (existing) {
     if (params.displayName) user.displayName = params.displayName.trim();
     else if (wasPreviouslyUnverified && resolvedDisplayName) {
@@ -1116,6 +1239,16 @@ export async function loginWithOAuth(params: {
           ? "Invalid or unverified Google identity token."
           : "Invalid or unverified Apple identity token.",
     };
+  }
+
+  if (params.provider === "apple" && params.authorizationCode) {
+    const exchangedRefreshToken = await exchangeAppleAuthCodeForRefreshToken(
+      params.authorizationCode,
+      verification.aud
+    );
+    if (exchangedRefreshToken) {
+      user.appleRefreshToken = exchangedRefreshToken;
+    }
   }
 
   try {
@@ -1379,6 +1512,14 @@ export async function deleteUserAccount(rawEmail: string): Promise<boolean> {
       ])
     );
 
+    // Revoke Sign in with Apple refresh token per Apple Guideline 5.1.1(v) (non-fatal if unconfigured/unreachable)
+    if (existing.appleRefreshToken) {
+      await revokeAppleToken(
+        existing.appleRefreshToken,
+        existing.appleClientId
+      ).catch(() => {});
+    }
+
     // Scrub email entitlement/consent lookup keys and raw email/IP PII from linked device/sub/session/consent records
     await redactEntitlementEmail(email, linkedDevices, existing.userId).catch(
       () => {}
@@ -1389,10 +1530,13 @@ export async function deleteUserAccount(rawEmail: string): Promise<boolean> {
       () => {}
     );
 
-    // Clean up reverse account-device index keys and any legacy plaintext email key
+    // Clean up reverse account-device index keys, Apple sub index, and any legacy plaintext email key
     await Promise.all([
       kvDel(`${USER_BY_ID_PREFIX}${existing.userId}`).catch(() => {}),
       kvDel(`${USER_EMAIL_PREFIX}${email}`).catch(() => {}),
+      existing.appleSub
+        ? kvDel(`${USER_APPLE_SUB_PREFIX}${existing.appleSub}`).catch(() => {})
+        : Promise.resolve(),
       ...linkedDevices.map((rawDev) => {
         const normDev = normalizeRealDeviceId(rawDev);
         return normDev

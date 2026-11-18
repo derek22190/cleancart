@@ -148,6 +148,7 @@ export async function POST(request: Request) {
       resetCode?: string;
       verificationCode?: string;
       idToken?: string;
+      authorizationCode?: string;
       nonce?: string;
       displayName?: string;
       provider?: "google" | "apple";
@@ -231,6 +232,10 @@ export async function POST(request: Request) {
         provider,
         email: body.email || "",
         idToken: body.idToken,
+        authorizationCode:
+          typeof body.authorizationCode === "string"
+            ? body.authorizationCode
+            : undefined,
         nonce: typeof body.nonce === "string" ? body.nonce : undefined,
         password: body.password,
         displayName: body.displayName,

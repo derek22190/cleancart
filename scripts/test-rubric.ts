@@ -9779,6 +9779,139 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const cryptoNode = await import("node:crypto");
+    const storageMod = await import("../lib/storage");
+    const authModP11 = await import("../lib/auth");
+
+    const manifests = [
+      "ios-app/App/PrivacyInfo.xcprivacy",
+      "ios-app/SafariExtension/PrivacyInfo.xcprivacy",
+      "ios-app/ShareExtension/PrivacyInfo.xcprivacy",
+    ].map((p) => fsNode.readFileSync(p, "utf8"));
+    const buildIosYml = fsNode.readFileSync(".github/workflows/build-ios.yml", "utf8");
+    const vcSwift = fsNode.readFileSync("ios-app/App/ViewController.swift", "utf8");
+    const appleCbSrc = fsNode.readFileSync("app/api/auth/apple-callback/route.ts", "utf8");
+
+    const allManifestsValid = manifests.every(
+      (xml) =>
+        xml.includes("<string>CA92.1</string>") &&
+        xml.includes("<string>1C8F.1</string>") &&
+        xml.includes("<string>NSPrivacyCollectedDataTypeDeviceID</string>") &&
+        xml.includes("<string>NSPrivacyCollectedDataTypeEmailAddress</string>") &&
+        xml.includes("<string>NSPrivacyCollectedDataTypeName</string>") &&
+        xml.includes("<string>NSPrivacyCollectedDataTypePurchaseHistory</string>") &&
+        xml.includes("<string>NSPrivacyCollectedDataTypeProductInteraction</string>") &&
+        xml.includes("<key>NSPrivacyCollectedDataTypeLinked</key>\n\t\t\t<true/>"),
+    );
+
+    const { privateKey, publicKey } = cryptoNode.generateKeyPairSync("ec", {
+      namedCurve: "prime256v1",
+    });
+    const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const prevTeam = process.env.APPLE_TEAM_ID;
+    const prevKeyId = process.env.APPLE_KEY_ID;
+    const prevPriv = process.env.APPLE_PRIVATE_KEY;
+    const origFetch = globalThis.fetch;
+
+    let revokeUrl = "";
+    let revokeBody = "";
+    let revokeJwtValid = false;
+    let deletedOk = false;
+    let appleSubAfterDelete: unknown = "STILL_PRESENT";
+
+    const testEmail = `siwa_p11_${Date.now()}@privaterelay.appleid.com`;
+    const testSub = `001234.p11_${Date.now()}.9999`;
+    const testEmailHash = cryptoNode.createHash("sha256").update(testEmail, "utf8").digest("hex");
+
+    try {
+      process.env.APPLE_TEAM_ID = "TEAM123456";
+      process.env.APPLE_KEY_ID = "KEY9876543";
+      process.env.APPLE_PRIVATE_KEY = privatePem;
+
+      await storageMod.kvSet(`heybroc:user_apple_sub:${testSub}`, testEmail);
+      await storageMod.kvSet(`heybroc:user:email_sha256:${testEmailHash}`, {
+        userId: `usr_p11_${Date.now()}`,
+        email: testEmail,
+        displayName: "Apple Shopper",
+        provider: "apple",
+        emailVerified: true,
+        tokenVersion: 1,
+        referralCode: "BROCP11X",
+        proUntil: 0,
+        isStripePro: false,
+        linkedDevices: [],
+        appleSub: testSub,
+        appleClientId: "com.heybroc.app",
+        appleRefreshToken: "rft_apple_p11_test_token",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url === "https://appleid.apple.com/auth/revoke") {
+          revokeUrl = url;
+          revokeBody = String(init?.body || "");
+          const params = new URLSearchParams(revokeBody);
+          const secretJwt = params.get("client_secret") || "";
+          const parts = secretJwt.split(".");
+          if (parts.length === 3) {
+            const sigOk = cryptoNode.verify(
+              "sha256",
+              Buffer.from(`${parts[0]}.${parts[1]}`, "utf8"),
+              { key: publicKey, dsaEncoding: "ieee-p1363" },
+              Buffer.from(parts[2], "base64url"),
+            );
+            const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
+              iss?: string;
+              sub?: string;
+              aud?: string;
+            };
+            revokeJwtValid =
+              sigOk &&
+              payload.iss === "TEAM123456" &&
+              payload.sub === "com.heybroc.app" &&
+              payload.aud === "https://appleid.apple.com";
+          }
+          return new Response("", { status: 200 });
+        }
+        return origFetch(input, init);
+      }) as typeof fetch;
+
+      deletedOk = await authModP11.deleteUserAccount(testEmail);
+      appleSubAfterDelete = await storageMod.kvGet(`heybroc:user_apple_sub:${testSub}`);
+    } finally {
+      globalThis.fetch = origFetch;
+      if (prevTeam === undefined) delete process.env.APPLE_TEAM_ID;
+      else process.env.APPLE_TEAM_ID = prevTeam;
+      if (prevKeyId === undefined) delete process.env.APPLE_KEY_ID;
+      else process.env.APPLE_KEY_ID = prevKeyId;
+      if (prevPriv === undefined) delete process.env.APPLE_PRIVATE_KEY;
+      else process.env.APPLE_PRIVATE_KEY = prevPriv;
+      await storageMod.kvDel(`heybroc:user_apple_sub:${testSub}`).catch(() => {});
+      await storageMod.kvDel(`heybroc:user:email_sha256:${testEmailHash}`).catch(() => {});
+    }
+
+    check(
+      "P1-11 iOS PrivacyInfo manifests (1C8F.1 + linked types), Xcode target resource wiring, and SIWA token revocation + apple_sub purge on deleteUserAccount",
+      allManifestsValid &&
+        buildIosYml.includes('shutil.copy2("ios-app/SafariExtension/PrivacyInfo.xcprivacy", hf.parent / "PrivacyInfo.xcprivacy")') &&
+        buildIosYml.includes('shutil.copy2("ios-app/ShareExtension/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")') &&
+        buildIosYml.includes("app_target.resources_build_phase.add_file_reference(app_privacy_ref, true)") &&
+        buildIosYml.includes("safari_ext_target.resources_build_phase.add_file_reference(ext_privacy_ref, true)") &&
+        vcSwift.includes('payload["authorizationCode"] = authCode') &&
+        appleCbSrc.includes('form.get("code")') &&
+        deletedOk &&
+        revokeUrl === "https://appleid.apple.com/auth/revoke" &&
+        revokeBody.includes("token=rft_apple_p11_test_token") &&
+        revokeBody.includes("token_type_hint=refresh_token") &&
+        revokeJwtValid &&
+        appleSubAfterDelete === null,
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

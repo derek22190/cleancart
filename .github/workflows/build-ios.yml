@@ -122,6 +122,8 @@ jobs:
           shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", build_root / "PrivacyInfo.xcprivacy")
           for vc in vc_files:
               shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", vc.parent / "PrivacyInfo.xcprivacy")
+          for hf in handler_files:
+              shutil.copy2("ios-app/SafariExtension/PrivacyInfo.xcprivacy", hf.parent / "PrivacyInfo.xcprivacy")
 
           icon_src = pathlib.Path("store-assets/apple-app-store/icon-1024x1024.png")
           for icon_png in build_root.rglob("Icon.png"):
@@ -150,7 +152,7 @@ jobs:
           share_dir.mkdir(parents=True, exist_ok=True)
           shutil.copy2("ios-app/ShareExtension/ShareViewController.swift", share_dir / "ShareViewController.swift")
           shutil.copy2("ios-app/ShareExtension/Info.plist", share_dir / "Info.plist")
-          shutil.copy2("ios-app/App/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")
+          shutil.copy2("ios-app/ShareExtension/PrivacyInfo.xcprivacy", share_dir / "PrivacyInfo.xcprivacy")
           print(f"Staged HeyBrocShare extension sources -> {share_dir}")
 
           # 5. Patch ALL Info.plist files (camera, photo library, heybroc:// deep link scheme, export compliance, emoji-free CFBundleDisplayName, synced versions)
@@ -233,6 +235,27 @@ jobs:
               app_target.add_file_references([ref])
             end
             puts "Added #{rel_path} to #{app_target.name} Compile Sources"
+          end
+
+          app_privacy_rel = (vc_dir_prefix == '.' || vc_dir_prefix.empty?) ? 'PrivacyInfo.xcprivacy' : "#{vc_dir_prefix}/PrivacyInfo.xcprivacy"
+          app_privacy_ref = app_group.files.find { |f| f.path == app_privacy_rel } || app_group.new_file(app_privacy_rel)
+          unless app_target.resources_build_phase.files_references.include?(app_privacy_ref)
+            app_target.resources_build_phase.add_file_reference(app_privacy_ref, true)
+            puts "Added #{app_privacy_rel} to #{app_target.name} Resources"
+          end
+
+          if safari_ext_target
+            handler_ref = project.files.find { |f| f.path&.end_with?('SafariWebExtensionHandler.swift') }
+            if handler_ref
+              ext_group = handler_ref.parent
+              ext_dir_prefix = File.dirname(handler_ref.path)
+              ext_privacy_rel = (ext_dir_prefix == '.' || ext_dir_prefix.empty?) ? 'PrivacyInfo.xcprivacy' : "#{ext_dir_prefix}/PrivacyInfo.xcprivacy"
+              ext_privacy_ref = ext_group.files.find { |f| f.path == ext_privacy_rel } || ext_group.new_file(ext_privacy_rel)
+              unless safari_ext_target.resources_build_phase.files_references.include?(ext_privacy_ref)
+                safari_ext_target.resources_build_phase.add_file_reference(ext_privacy_ref, true)
+                puts "Added #{ext_privacy_rel} to #{safari_ext_target.name} Resources"
+              end
+            end
           end
 
           project.targets.each do |t|
