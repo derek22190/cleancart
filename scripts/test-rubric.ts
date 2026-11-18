@@ -10052,6 +10052,44 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const robotsMod = await import("../app/robots");
+    const robotsCfg = robotsMod.default();
+    const rules = Array.isArray(robotsCfg.rules) ? robotsCfg.rules : [robotsCfg.rules];
+    const wildcardRule = rules.find((r) => r.userAgent === "*");
+    const aiRule = rules.find((r) => Array.isArray(r.userAgent) && r.userAgent.includes("OAI-SearchBot"));
+    const aiAgents = Array.isArray(aiRule?.userAgent) ? aiRule.userAgent : [];
+    const expectedDisallow = ["/api/", "/admin", "/login", "/r/"];
+    const expectedAllow = ["/", "/llms.txt", "/llms-full.txt", "/api/product-image"];
+    const expectedAiBots = [
+      "OAI-SearchBot",
+      "ChatGPT-User",
+      "GPTBot",
+      "Claude-SearchBot",
+      "Claude-User",
+      "ClaudeBot",
+      "PerplexityBot",
+      "Perplexity-User",
+      "Google-Extended",
+      "Applebot",
+      "Applebot-Extended",
+      "Amazonbot",
+      "DuckAssistBot",
+    ];
+    check(
+      "P1-15 robots.ts locks down /api/, /admin, /login, /r/ for both * and all AI_BOTS while allowing /llms.txt and /api/product-image",
+      Boolean(
+        wildcardRule &&
+          aiRule &&
+          expectedDisallow.every((p) => Array.isArray(wildcardRule.disallow) && wildcardRule.disallow.includes(p)) &&
+          expectedDisallow.every((p) => Array.isArray(aiRule.disallow) && aiRule.disallow.includes(p)) &&
+          expectedAllow.every((p) => Array.isArray(wildcardRule.allow) && wildcardRule.allow.includes(p)) &&
+          expectedAllow.every((p) => Array.isArray(aiRule.allow) && aiRule.allow.includes(p)) &&
+          expectedAiBots.every((b) => aiAgents.includes(b)),
+      ),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
