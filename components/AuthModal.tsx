@@ -30,6 +30,8 @@ interface AuthModalProps {
   onDeleteAccount: () => void;
   initialTab?: "signup" | "signin";
   bannerMessage?: string;
+  readyHeading?: string;
+  readySubheading?: string;
 }
 
 function decodeJwtClaims(token: string): { email?: string; name?: string } {
@@ -56,9 +58,12 @@ export default function AuthModal({
   onDeleteAccount,
   initialTab = "signin",
   bannerMessage = "",
+  readyHeading = "",
+  readySubheading = "",
 }: AuthModalProps) {
   const [mode, setMode] = useState<"login" | "forgot">("login");
   const [authTab, setAuthTab] = useState<"signup" | "signin">(initialTab);
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [resetCode, setResetCode] = useState("");
@@ -82,6 +87,7 @@ export default function AuthModal({
     if (open) {
       setMode("login");
       setAuthTab(initialTab);
+      setShowEmailForm(false);
       setError("");
       setInfoMessage("");
     }
@@ -837,65 +843,113 @@ export default function AuthModal({
     }
   };
 
+  const isEmailExpanded = showEmailForm || mode === "forgot";
+  const hasReadyScrim = Boolean(!user && !isEmailExpanded && readyHeading.trim());
+  const isIosWebView =
+    typeof window !== "undefined" &&
+    (/HeyBrocIOS/i.test(window.navigator?.userAgent || "") ||
+      Boolean(
+        (
+          window as unknown as {
+            webkit?: { messageHandlers?: { controller?: unknown } };
+          }
+        ).webkit?.messageHandlers?.controller,
+      ));
+
   const loggedOutTitle =
     mode === "forgot"
       ? "Reset password"
-      : authTab === "signup"
-        ? "Create Free Account"
-        : "Sign in to HeyBroc";
+      : !isEmailExpanded
+        ? hasReadyScrim
+          ? "Just one last thing"
+          : authTab === "signup"
+            ? "Save your progress"
+            : "Sign in to HeyBroc"
+        : authTab === "signup"
+          ? "Create Free Account"
+          : "Sign in with email";
 
   return (
     <div
-      className="modal-backdrop gococo-auth-backdrop"
+      className={`modal-backdrop gococo-auth-backdrop${!user ? " gococo-auth-backdrop--sheet" : ""}${hasReadyScrim ? " gococo-auth-backdrop--has-ready" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={user ? "Your HeyBroc Account" : loggedOutTitle}
       onClick={onClose}
     >
+      {hasReadyScrim && (
+        <div className="gococo-ready-scrim" aria-live="polite">
+          <div className="gococo-ready-scrim__icon" aria-hidden="true">
+            ✓
+          </div>
+          <div className="gococo-ready-scrim__title">{readyHeading}</div>
+          {readySubheading && (
+            <p className="gococo-ready-scrim__sub">{readySubheading}</p>
+          )}
+        </div>
+      )}
+
       <div
-        className="gococo-auth-card"
+        className={`gococo-auth-card${!user ? " gococo-auth-card--sheet" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Compact Header Row: Mascot + Title on Left, Clear Close Button on Right */}
-        <div className="gococo-top-row">
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            {mode === "forgot" && !user ? (
-              <button
-                type="button"
-                className="gococo-back-btn"
-                onClick={() => {
-                  setMode("login");
-                  setError("");
-                  setInfoMessage("");
-                }}
-                aria-label="Back to sign in"
-              >
-                ←
-              </button>
-            ) : (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src="/broc-mascot.png"
-                alt="HeyBroc"
-                style={{ width: 38, height: 38, objectFit: "contain", flexShrink: 0 }}
-              />
-            )}
-            <div>
-              <h2 className="gococo-title">
-                {user ? "Account" : loggedOutTitle}
-              </h2>
-            </div>
-          </div>
+        {!user && <div className="gococo-sheet-handle" aria-hidden="true" />}
 
+        {user || isEmailExpanded ? (
+          /* Compact Header Row for Logged-In Account or Expanded Email View */
+          <div className="gococo-top-row">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              {!user ? (
+                <button
+                  type="button"
+                  className="gococo-back-btn"
+                  onClick={() => {
+                    if (mode === "forgot") {
+                      setMode("login");
+                    } else {
+                      setShowEmailForm(false);
+                    }
+                    setError("");
+                    setInfoMessage("");
+                  }}
+                  aria-label={mode === "forgot" ? "Back to email sign in" : "Back to 1-tap sign in"}
+                >
+                  ←
+                </button>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src="/broc-mascot.png"
+                  alt="HeyBroc"
+                  style={{ width: 38, height: 38, objectFit: "contain", flexShrink: 0 }}
+                />
+              )}
+              <div>
+                <h2 className="gococo-title">
+                  {user ? "Account" : loggedOutTitle}
+                </h2>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="gococo-back-btn"
+              onClick={onClose}
+              aria-label="Close sign in dialog"
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
-            className="gococo-back-btn"
+            className="gococo-sheet-close-corner"
             onClick={onClose}
             aria-label="Close sign in dialog"
           >
             ✕
           </button>
-        </div>
+        )}
 
         {user ? (
           /* ================= LOGGED IN ACCOUNT & SYNC SHEET ================= */
@@ -1071,26 +1125,147 @@ export default function AuthModal({
               </div>
             )}
           </div>
-        ) : (
-          /* ================= CREATE ACCOUNT / SIGN IN VIEW ================= */
-          <form onSubmit={handleEmailSubmit} className="gococo-form">
-            {bannerMessage && (
-              <div
+        ) : !isEmailExpanded ? (
+          /* ================= COMPACT 1-TAP BOTTOM SHEET (APPLE + GOOGLE FIRST) ================= */
+          <div className="gococo-form" style={{ gap: 11, paddingTop: 4 }}>
+            <div style={{ textAlign: "center", padding: "0 22px 4px" }}>
+              <h2 className="gococo-title" style={{ fontSize: 21, marginBottom: 5 }}>
+                {loggedOutTitle}
+              </h2>
+              <p className="gococo-subtitle" style={{ margin: 0, fontSize: 13.5 }}>
+                {bannerMessage ||
+                  (hasReadyScrim
+                    ? "Choose how to save your progress."
+                    : authTab === "signup"
+                      ? "Choose how to save your Watchlist & swaps."
+                      : "Sign back in to restore your Watchlist & Pro access.")}
+              </p>
+            </div>
+
+            <button
+              id="auth-apple-btn"
+              type="button"
+              disabled={busy || googleBusy || appleBusy}
+              onClick={() => void handleAppleSignInClick()}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                padding: "13px 18px",
+                borderRadius: 999,
+                background: "#000000",
+                border: "1.5px solid #000000",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: 15.5,
+                cursor: busy || googleBusy || appleBusy ? "wait" : "pointer",
+                boxShadow: "0 3px 10px rgba(0, 0, 0, 0.16)",
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+              </svg>
+              <span>{appleBusy ? "Opening Apple ID…" : "Continue with Apple"}</span>
+            </button>
+
+            {!isIosWebView && (
+              <button
+                id="auth-google-btn"
+                type="button"
+                disabled={busy || googleBusy || appleBusy}
+                onClick={() => void handleGoogleSignInClick()}
                 style={{
-                  background: "#ecfdf5",
-                  border: "1.5px solid #6ee7b7",
-                  borderRadius: 12,
-                  padding: "9px 12px",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  color: "#065f46",
-                  lineHeight: 1.38,
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  padding: "13px 18px",
+                  borderRadius: 999,
+                  background: "#ffffff",
+                  border: "1.5px solid #cbd5e1",
+                  color: "#0f172a",
+                  fontWeight: 800,
+                  fontSize: 15.5,
+                  cursor: busy || googleBusy || appleBusy ? "wait" : "pointer",
+                  boxShadow: "0 1px 4px rgba(15, 23, 42, 0.06)",
                 }}
               >
-                {bannerMessage}
-              </div>
+                <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
+                </svg>
+                <span>{googleBusy ? "Opening Google…" : "Continue with Google"}</span>
+              </button>
             )}
 
+            <p className="gococo-auth-microcopy">One tap. No password needed.</p>
+
+            {error && <p className="gococo-error">{error}</p>}
+            {infoMessage && <p className="gococo-info">{infoMessage}</p>}
+
+            <button
+              id="auth-use-email-btn"
+              type="button"
+              className="gococo-email-toggle-btn"
+              onClick={() => {
+                setShowEmailForm(true);
+                setError("");
+                setInfoMessage("");
+              }}
+            >
+              Use email instead
+            </button>
+
+            <div className="gococo-footer-links">
+              <button
+                id="auth-continue-guest"
+                type="button"
+                onClick={onClose}
+                className="gococo-guest-link"
+              >
+                Continue as guest
+              </button>
+
+              <div
+                style={{
+                  marginTop: 2,
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 10,
+                  fontSize: 11,
+                  color: "#6b7280",
+                }}
+              >
+                <a href="/terms" style={{ color: "#64748b", textDecoration: "underline" }}>
+                  Terms
+                </a>
+                <span>·</span>
+                <a href="/privacy" style={{ color: "#64748b", textDecoration: "underline" }}>
+                  Privacy &amp; Health Data
+                </a>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ================= EXPANDED EMAIL / PASSWORD VIEW ================= */
+          <form onSubmit={handleEmailSubmit} className="gococo-form">
             {mode !== "forgot" && (
               <div
                 role="tablist"
@@ -1163,111 +1338,6 @@ export default function AuthModal({
                   ? "Save your Watchlist & Clean Swaps across iPhone and Web (free — no credit card required)."
                   : "Sign back in to restore your saved Family Watchlist, Favorites & Pro membership."}
             </p>
-
-            {mode !== "forgot" && (
-              <>
-                {!(
-                  typeof window !== "undefined" &&
-                  (/HeyBrocIOS/i.test(window.navigator?.userAgent || "") ||
-                    Boolean(
-                      (
-                        window as unknown as {
-                          webkit?: { messageHandlers?: { controller?: unknown } };
-                        }
-                      ).webkit?.messageHandlers?.controller,
-                    ))
-                ) && (
-                <button
-                  id="auth-google-btn"
-                  type="button"
-                  disabled={busy || googleBusy || appleBusy}
-                  onClick={() => void handleGoogleSignInClick()}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    padding: "11px 18px",
-                    borderRadius: 999,
-                    background: "#ffffff",
-                    border: "1.5px solid #cbd5e1",
-                    color: "#0f172a",
-                    fontWeight: 800,
-                    fontSize: 15,
-                    cursor: busy || googleBusy || appleBusy ? "wait" : "pointer",
-                    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
-                  }}
-                >
-                  <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
-                  </svg>
-                  <span>{googleBusy ? "Opening Google…" : "Continue with Google"}</span>
-                </button>
-                )}
-
-                <button
-                  id="auth-apple-btn"
-                  type="button"
-                  disabled={busy || googleBusy || appleBusy}
-                  onClick={() => void handleAppleSignInClick()}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    padding: "11px 18px",
-                    borderRadius: 999,
-                    background: "#000000",
-                    border: "1.5px solid #000000",
-                    color: "#ffffff",
-                    fontWeight: 800,
-                    fontSize: 15,
-                    cursor: busy || googleBusy || appleBusy ? "wait" : "pointer",
-                    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.14)",
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
-                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-                  </svg>
-                  <span>{appleBusy ? "Opening Apple ID…" : "Continue with Apple"}</span>
-                </button>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    width: "100%",
-                    margin: "2px 0",
-                    color: "#94a3b8",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                  aria-hidden="true"
-                >
-                  <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-                  <span>or email</span>
-                  <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-                </div>
-              </>
-            )}
 
             {/* Email Input */}
             <div className="gococo-pill-ring">
@@ -1387,7 +1457,7 @@ export default function AuthModal({
                 onClick={onClose}
                 className="gococo-guest-link"
               >
-                Continue as guest (no account needed)
+                Continue as guest
               </button>
 
               <div

@@ -1383,18 +1383,91 @@ h1, h2, h3, h4, p { margin: 0; }
 .pill--white b { color: var(--tone) !important; filter: none !important; }
 .pill--white .pill-collapse { color: #4a5550 !important; }
 
-/* ---------------- GoCoCo-Style Login / Sign-Up & Account Modal ---------------- */
+/* ---------------- Compact 1-Tap Bottom Sheet Auth & Account Modal ---------------- */
+@keyframes hbAuthSheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .gococo-auth-backdrop {
   z-index: 220;
   padding: 12px;
-  align-items: safe center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
   overscroll-behavior: contain;
+}
+
+.gococo-auth-backdrop--sheet {
+  background: rgba(15, 22, 18, 0.58);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.gococo-auth-backdrop--has-ready {
+  background: linear-gradient(180deg, rgba(11, 20, 16, 0.88) 0%, rgba(11, 20, 16, 0.92) 55%, rgba(11, 20, 16, 0.86) 100%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.gococo-ready-scrim {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px 24px 20px;
+  max-width: 340px;
+  margin: auto auto 0;
+  color: #ffffff;
+  pointer-events: none;
+}
+
+.gococo-ready-scrim__icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 2px solid rgba(134, 239, 172, 0.92);
+  background: rgba(22, 163, 74, 0.28);
+  color: #dcfce7;
+  display: inline-grid;
+  place-items: center;
+  font-size: 21px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+}
+
+.gococo-ready-scrim__title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.22;
+  margin: 0 0 6px;
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.gococo-ready-scrim__sub {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.42;
+  margin: 0;
+  color: rgba(240, 253, 244, 0.9);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.28);
 }
 
 .gococo-auth-card {
   position: relative;
   width: 100%;
-  max-width: 410px;
+  max-width: 404px;
   margin: auto;
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
@@ -1405,6 +1478,86 @@ h1, h2, h3, h4, p { margin: 0; }
   padding: 18px 20px 20px;
   box-shadow: 0 28px 70px -16px rgba(15, 23, 42, 0.35);
   color: #18181b;
+}
+
+.gococo-auth-backdrop--has-ready .gococo-auth-card {
+  margin-top: 0;
+}
+
+.gococo-sheet-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d4d4d8;
+  margin: 0 auto 10px;
+  flex-shrink: 0;
+}
+
+.gococo-sheet-close-corner {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #52525b;
+  border-radius: 50%;
+  background: #f4f4f5;
+  border: none;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.gococo-sheet-close-corner:hover {
+  background: #e4e4e7;
+  color: #18181b;
+}
+
+.gococo-auth-microcopy {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.gococo-email-toggle-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 6px 8px 2px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f7a4a;
+  cursor: pointer;
+  text-align: center;
+}
+.gococo-email-toggle-btn:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .gococo-auth-backdrop--sheet {
+    padding: 0;
+    justify-content: flex-end;
+    align-items: stretch;
+  }
+  .gococo-auth-backdrop--sheet .gococo-ready-scrim {
+    flex: 1 1 auto;
+    margin: 0 auto;
+    padding: 28px 24px 20px;
+  }
+  .gococo-auth-card--sheet {
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    border-radius: 28px 28px 0 0;
+    padding: 12px 20px calc(22px + env(safe-area-inset-bottom, 0px));
+    max-height: min(88dvh, 660px);
+    animation: hbAuthSheetUp 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 .gococo-top-row {

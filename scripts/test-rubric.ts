@@ -9251,6 +9251,31 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidLiveStoreKt.includes("retryAfterMs") &&
         iosShortcutsSwift.includes("retryAfterSec"),
     );
+
+    const authSheetTsx = fsNode.readFileSync("components/AuthModal.tsx", "utf8");
+    const authSheetCss = fsNode.readFileSync("app/globals.css", "utf8");
+    const simAuthFlowTsx = fsNode.readFileSync("components/Simulator.tsx", "utf8");
+    const mainActivityAuthKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt",
+      "utf8",
+    );
+    check(
+      "Conversion-Optimized 1-Tap Bottom Sheet Auth & Frictionless Guest Launch: zero cold-open Android guest login nag, compact 1-tap Apple/Google bottom sheet with progressive email toggle, and post-Pro ready scrim",
+      authSheetTsx.includes("gococo-auth-card--sheet") &&
+        authSheetTsx.includes("gococo-ready-scrim") &&
+        authSheetTsx.includes("One tap. No password needed.") &&
+        authSheetTsx.includes('id="auth-use-email-btn"') &&
+        authSheetTsx.includes("Just one last thing") &&
+        authSheetCss.includes(".gococo-auth-card--sheet") &&
+        authSheetCss.includes(".gococo-ready-scrim") &&
+        simAuthFlowTsx.includes("openPostProSaveSheet") &&
+        simAuthFlowTsx.includes("Your Family Pro is active") &&
+        simAuthFlowTsx.includes("Your Watchlist is ready") &&
+        !mainActivityAuthKt.includes("} else if (savedEmail == null) {") &&
+        mainActivityAuthKt.includes("post_pro_save_prompted_v1") &&
+        mainActivityAuthKt.includes("One tap. No password needed.") &&
+        mainActivityAuthKt.includes("Gravity.BOTTOM"),
+    );
   }
 
   console.log("Checks executed:", checks);

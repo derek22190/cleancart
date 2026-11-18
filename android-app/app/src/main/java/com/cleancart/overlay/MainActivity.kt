@@ -267,21 +267,15 @@ class MainActivity : Activity() {
         val handledShortcut = if (!handledAuth) handleIncomingShortcutIntent(intent) else false
         val handledShare = if (!handledAuth && !handledShortcut) handleIncomingShareIntent(intent) else false
 
-        // Launch the Onboarding Funnel on first open unless returning from OAuth, Share, or Home-Screen Quick Action
+        // Launch the Onboarding Funnel on first open unless returning from OAuth, Share, or Home-Screen Quick Action.
+        // Returning Guests go straight to scanning & Live Shop with zero login-wall friction.
         if (savedInstanceState == null && !handledAuth && !handledShare && !handledShortcut) {
             val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             val onboardingDone = prefs.getBoolean("onboarding_funnel_done_v1", false)
-            val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
             if (!onboardingDone) {
                 mainHandler.postDelayed({
                     if (!isDestroyed && !isFinishing) {
                         showOnboardingFunnelDialog()
-                    }
-                }, 180L)
-            } else if (savedEmail == null) {
-                mainHandler.postDelayed({
-                    if (!isDestroyed && !isFinishing) {
-                        showGoCoCoLoginDialog()
                     }
                 }, 180L)
             }
@@ -3694,7 +3688,10 @@ class MainActivity : Activity() {
                         ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("signin"))
                         saveWatchlistAndMarkDone()
                         funnelDialog?.dismiss()
-                        showGoCoCoLoginDialog()
+                        showGoCoCoLoginDialog(
+                            readyTitle = "Your Watchlist is ready",
+                            readySubtitle = "Save it and you're all set."
+                        )
                     }
                 })
             }
@@ -3747,7 +3744,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showGoCoCoLoginDialog() {
+    private fun showGoCoCoLoginDialog(
+        readyTitle: String? = null,
+        readySubtitle: String? = null
+    ) {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
         val savedName = prefs.getString("auth_name", null)?.takeIf { it.isNotBlank() }
@@ -3755,13 +3755,28 @@ class MainActivity : Activity() {
 
         var authDialog: AlertDialog? = null
 
+        val isBottomSheet = savedEmail == null
+        val topCornerPx = dp(28).toFloat()
         val scroll = ScrollView(this)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(22), dp(24), dp(22))
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(28).toFloat()
+            if (isBottomSheet) {
+                setPadding(dp(22), dp(14), dp(22), dp(24))
+                background = GradientDrawable().apply {
+                    setColor(Color.WHITE)
+                    cornerRadii = floatArrayOf(
+                        topCornerPx, topCornerPx,
+                        topCornerPx, topCornerPx,
+                        0f, 0f,
+                        0f, 0f
+                    )
+                }
+            } else {
+                setPadding(dp(24), dp(22), dp(24), dp(22))
+                background = GradientDrawable().apply {
+                    setColor(Color.WHITE)
+                    cornerRadius = topCornerPx
+                }
             }
         }
         scroll.addView(card)
@@ -4033,23 +4048,59 @@ class MainActivity : Activity() {
             card.removeAllViews()
 
             if (step == "welcome") {
-                card.addView(buildTopHeader({ authDialog?.dismiss() }, showBackArrow = false))
-                card.addView(label("Welcome to HeyBroc", 26f, 0xFF111814.toInt(), bold = true))
-                card.addView(label(
-                    "Sign in or create your free account to save your scans, Family Watchlist & Clean Swaps across all your devices.",
-                    14.5f,
-                    0xFF6B7280.toInt()
-                ).apply { setPadding(0, dp(6), 0, dp(22)) })
+                val hasReady = !readyTitle.isNullOrBlank()
+                // Compact bottom-sheet grabber handle + top-right close button
+                card.addView(FrameLayout(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(6) }
+                    addView(View(this@MainActivity).apply {
+                        background = GradientDrawable().apply {
+                            setColor(0xFFD4D4D8.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        layoutParams = FrameLayout.LayoutParams(dp(38), dp(4), Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply {
+                            topMargin = dp(4)
+                        }
+                    })
+                    addView(label("✕", 14f, 0xFF6B7280.toInt(), bold = true).apply {
+                        gravity = Gravity.CENTER
+                        layoutParams = FrameLayout.LayoutParams(dp(32), dp(32), Gravity.END or Gravity.TOP)
+                        background = GradientDrawable().apply {
+                            setColor(0xFFF3F4F6.toInt())
+                            cornerRadius = dp(999).toFloat()
+                        }
+                        setOnClickListener { authDialog?.dismiss() }
+                    })
+                })
 
-                // 1. Continue with Google Button (opens Google's official accounts.google.com 'Choose an account' OAuth sheet)
+                card.addView(label(
+                    if (hasReady) "Just one last thing" else "Save your progress",
+                    22f,
+                    0xFF111814.toInt(),
+                    bold = true
+                ).apply {
+                    gravity = Gravity.CENTER
+                })
+                card.addView(label(
+                    if (hasReady) "Choose how to save your progress." else "Choose how to save your Watchlist & swaps.",
+                    13.5f,
+                    0xFF6B7280.toInt()
+                ).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(4), dp(8), dp(18))
+                })
+
+                // 1. Primary 1-tap Continue with Google pill
                 card.addView(buildIconPillButton(
                     iconRes = R.drawable.ic_google_logo,
                     iconWidthDp = 20,
                     iconHeightDp = 20,
                     text = "Continue with Google",
                     bgColor = Color.WHITE,
-                    borderColor = 0xFFD1D5DB.toInt(),
-                    textColor = 0xFF1F2937.toInt(),
+                    borderColor = 0xFFCBD5E1.toInt(),
+                    textColor = 0xFF0F172A.toInt(),
                     onClick = {
                         launchGoogleWebOAuthOrFallback(
                             onFallbackToEmail = {
@@ -4061,40 +4112,27 @@ class MainActivity : Activity() {
                     }
                 ))
 
-                // 2. Unified Continue with Email Button (handles both returning & new accounts)
-                card.addView(buildIconPillButton(
-                    iconRes = R.drawable.ic_email_logo,
-                    iconWidthDp = 19,
-                    iconHeightDp = 19,
-                    text = "Continue with Email",
-                    bgColor = 0xFF16A34A.toInt(),
-                    borderColor = null,
-                    textColor = Color.WHITE,
-                    onClick = {
+                card.addView(label("One tap. No password needed.", 12f, 0xFF64748B.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, 0, dp(10))
+                })
+
+                // Progressive disclosure email trigger
+                card.addView(label("Use email instead", 14f, 0xFF0F7A4A.toInt(), bold = true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(8), dp(12), dp(8))
+                    setOnClickListener {
                         selectedProvider = "email"
                         renderStep("email_login")
                     }
-                ))
-
-                // Shipt-style "— or —" divider + full-width outlined "Continue as guest" pill button
-                card.addView(label("— or —", 12.5f, 0xFF9CA3AF.toInt()).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(0, dp(2), 0, dp(10))
                 })
-                card.addView(label("Continue as guest", 15f, 0xFF1F2937.toInt(), bold = true).apply {
+
+                card.addView(label("Continue as guest", 13.5f, 0xFF71717A.toInt(), bold = true).apply {
                     gravity = Gravity.CENTER
-                    setPadding(dp(16), dp(14), dp(16), dp(14))
-                    background = GradientDrawable().apply {
-                        setColor(Color.WHITE)
-                        setStroke(dp(2), 0xFFD1D5DB.toInt())
-                        cornerRadius = dp(999).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(12) }
+                    setPadding(dp(12), dp(4), dp(12), dp(10))
                     setOnClickListener { authDialog?.dismiss() }
                 })
+
                 card.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
@@ -4325,11 +4363,63 @@ class MainActivity : Activity() {
 
         renderStep("welcome")
 
-        authDialog = AlertDialog.Builder(this).setView(scroll).create().also { dlg ->
+        val sheetHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            if (!readyTitle.isNullOrBlank()) {
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(24), dp(12), dp(24), dp(22))
+                    setOnClickListener { authDialog?.dismiss() }
+                    addView(label("✓", 19f, 0xFFDCFCE7.toInt(), bold = true).apply {
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                            bottomMargin = dp(10)
+                        }
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(0x4716A34A)
+                            setStroke(dp(2), 0xEB86EFAC.toInt())
+                        }
+                    })
+                    addView(label(readyTitle, 21f, Color.WHITE, bold = true).apply {
+                        gravity = Gravity.CENTER
+                    })
+                    if (!readySubtitle.isNullOrBlank()) {
+                        addView(label(readySubtitle, 13.5f, 0xE6F0FDF4.toInt(), bold = false).apply {
+                            gravity = Gravity.CENTER
+                            setPadding(dp(12), dp(5), dp(12), 0)
+                        })
+                    }
+                })
+            }
+            addView(scroll, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        authDialog = AlertDialog.Builder(this).setView(sheetHost).create().also { dlg ->
             activeAuthDialog = dlg
             dlg.setOnDismissListener { if (activeAuthDialog === dlg) activeAuthDialog = null }
-            dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            dlg.window?.apply {
+                setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                setGravity(Gravity.BOTTOM)
+                if (!readyTitle.isNullOrBlank()) {
+                    setDimAmount(0.84f)
+                }
+                decorView.setPadding(0, 0, 0, 0)
+            }
             dlg.show()
+            dlg.window?.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
     }
 
@@ -6757,6 +6847,26 @@ class MainActivity : Activity() {
         super.onResume()
         clearScheduledToasts()
         renderScreen()
+        val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
+        val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
+        val alreadyPromptedPostPro = prefs.getBoolean("post_pro_save_prompted_v1", false)
+        if (
+            savedEmail == null &&
+            !alreadyPromptedPostPro &&
+            ScanApi.isProActive(this) &&
+            activeAuthDialog == null &&
+            activeFunnelDialog == null
+        ) {
+            prefs.edit().putBoolean("post_pro_save_prompted_v1", true).apply()
+            mainHandler.postDelayed({
+                if (!isDestroyed && !isFinishing && activeAuthDialog == null && activeFunnelDialog == null) {
+                    showGoCoCoLoginDialog(
+                        readyTitle = "Your Family Pro is active",
+                        readySubtitle = "Sync Pro & your Watchlist across devices."
+                    )
+                }
+            }, 220L)
+        }
     }
 
     override fun onStop() {
