@@ -69,6 +69,56 @@ function sameJsonValue(a, b) {
   }
 }
 
+let syncingFromNative = false;
+
+async function pushPrefsToNativeAppGroup(prefs) {
+  if (!prefs || typeof prefs !== "object") return null;
+  const payload = { action: "setSharedPreferences" };
+  let hasField = false;
+  if (Array.isArray(prefs.dietaryWatchlist)) {
+    payload.dietaryWatchlist = prefs.dietaryWatchlist;
+    hasField = true;
+  }
+  if (Array.isArray(prefs.familyWatchlist)) {
+    payload.familyWatchlist = prefs.familyWatchlist;
+    hasField = true;
+  }
+  if (typeof prefs.preferStoreBrand === "boolean") {
+    payload.preferStoreBrand = prefs.preferStoreBrand;
+    hasField = true;
+  }
+  if (typeof prefs.authToken === "string") {
+    payload.authToken = prefs.authToken;
+    hasField = true;
+  }
+  if (!hasField) return null;
+  return sendNativeAppGroupMessage(payload);
+}
+
+if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (syncingFromNative || (areaName !== "local" && areaName !== "sync")) return;
+    const prefs = {};
+    if (changes.dietaryWatchlist && Array.isArray(changes.dietaryWatchlist.newValue)) {
+      prefs.dietaryWatchlist = changes.dietaryWatchlist.newValue;
+    }
+    if (changes.familyWatchlist && Array.isArray(changes.familyWatchlist.newValue)) {
+      prefs.familyWatchlist = changes.familyWatchlist.newValue;
+    }
+    if (changes.preferStoreBrand && typeof changes.preferStoreBrand.newValue === "boolean") {
+      prefs.preferStoreBrand = changes.preferStoreBrand.newValue;
+    }
+    if (changes.heybroc_auth_token) {
+      prefs.authToken = typeof changes.heybroc_auth_token.newValue === "string"
+        ? changes.heybroc_auth_token.newValue
+        : "";
+    }
+    if (Object.keys(prefs).length > 0) {
+      void pushPrefsToNativeAppGroup(prefs);
+    }
+  });
+}
+
 async function getSettings() {
   const [syncData, localData, { deviceId, deviceSecret }, nativePrefs] = await Promise.all([
     chrome.storage.sync.get(["apiBase", "watchlist", "familyWatchlist", "dietaryWatchlist", "preferStoreBrand"]),
@@ -119,6 +169,7 @@ async function getSettings() {
   }
 
   try {
+    syncingFromNative = true;
     if (Object.keys(updates).length > 0) {
       await chrome.storage.local.set(updates);
     }
@@ -127,6 +178,8 @@ async function getSettings() {
     }
   } catch {
     /* ignore */
+  } finally {
+    syncingFromNative = false;
   }
 
   const rawBase = (syncData.apiBase || DEFAULT_API).replace(/\/+$/, "");
@@ -145,6 +198,31 @@ async function getSettings() {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "CLEANCART_SET_SHARED_PREFS") {
+    (async () => {
+      try {
+        const p = msg.payload || {};
+        const localWrites = {};
+        if (Array.isArray(p.dietaryWatchlist)) localWrites.dietaryWatchlist = p.dietaryWatchlist;
+        if (Array.isArray(p.familyWatchlist)) localWrites.familyWatchlist = p.familyWatchlist;
+        if (typeof p.preferStoreBrand === "boolean") localWrites.preferStoreBrand = p.preferStoreBrand;
+        syncingFromNative = true;
+        try {
+          if (Object.keys(localWrites).length > 0) {
+            await chrome.storage.local.set(localWrites);
+          }
+        } finally {
+          syncingFromNative = false;
+        }
+        const nativeRes = await pushPrefsToNativeAppGroup(p);
+        sendResponse({ ok: true, syncedNative: Boolean(nativeRes?.ok) });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
   if (msg?.type === "CLEANCART_GET_CLIENT_INFO") {
     (async () => {
       try {

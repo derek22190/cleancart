@@ -62,6 +62,8 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
                     defaults.set(tok, forKey: "heybroc_auth_token")
                 }
             }
+            defaults.set(Date().timeIntervalSince1970, forKey: "heybroc_prefs_updated_at")
+            defaults.synchronize()
         }
 
         let dietaryWatchlist = defaults.stringArray(forKey: "heybroc_dietary_watchlist")

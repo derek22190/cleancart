@@ -2157,6 +2157,86 @@ async function main() {
     );
     console.log("   ✓ P2-1 brand-logo badge guard & lazy-photo anchoring verified on Android & iOS!");
 
+    // 4I. P2-2 Extension Lazy-Loaded Photo Retry (awaiting_photo -> badged on img src/load mutation)
+    const p22LazyHtml = `
+      <div style="display:grid;grid-template-columns:1fr;gap:12px;padding:12px;">
+        <div data-item-id="p22-lazy-card" style="width:220px;border:1px solid #e2e8f0;border-radius:10px;padding:8px;position:relative;">
+          <div style="width:160px;height:160px;">
+            <img id="p22-lazy-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" width="160" height="160" style="display:block;width:160px;height:160px;" alt="Siete Sea Salt Tortilla Chips" />
+          </div>
+          <a href="/ip/Siete-Sea-Salt-Tortilla-Chips-5-oz/44390999">
+            <span data-automation-id="product-title">Siete Grain Free Sea Salt Tortilla Chips, 5 oz</span>
+          </a>
+        </div>
+      </div>
+    `;
+    await storePage.navigate("https://www.walmart.com/search?q=p22-lazy-ext");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p22LazyHtml)};
+      window.__p22ExtBatches = 0;
+      window.__heybrocApiBase = "https://www.heybroc.com";
+      window.__heybrocOverlayCssUrl = ${JSON.stringify(extOverlayCssDataUrl)};
+      window.__heybrocExtStorage = { cc_photo_badges_enabled: true };
+      window.chrome = {
+        storage: {
+          local: {
+            get: function(keys, cb) { const out = Object.assign({}, window.__heybrocExtStorage); if (cb) setTimeout(() => cb(out), 1); return Promise.resolve(out); },
+            set: function(items, cb) { Object.assign(window.__heybrocExtStorage, items || {}); if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); },
+            remove: function(_k, cb) { if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); }
+          },
+          onChanged: { addListener: function() {} }
+        },
+        runtime: {
+          id: "cleancart-p22-ext",
+          getURL: function(p) { return p === "overlay.css" ? window.__heybrocOverlayCssUrl : ("https://www.heybroc.com/" + p); },
+          sendMessage: function(msg, cb) {
+            if (msg && msg.type === "CLEANCART_SCAN_BATCH" && Array.isArray(msg.items)) {
+              window.__p22ExtBatches += msg.items.length;
+              const results = {};
+              for (const it of msg.items) {
+                results[it.id] = { ok: true, result: { score: 82, rating: "Excellent", flagged: [] }, dietaryAlerts: [] };
+              }
+              const out = { ok: true, results };
+              if (cb) setTimeout(() => cb(out), 5);
+              return Promise.resolve(out);
+            }
+            const empty = { ok: false };
+            if (cb) setTimeout(() => cb(empty), 2);
+            return Promise.resolve(empty);
+          },
+          onMessage: { addListener: function() {} }
+        }
+      };
+    `);
+    await storePage.eval(extContentJS, false);
+    await new Promise((r) => setTimeout(r, 450));
+    const p22Before = await storePage.eval<{ badges: number; batches: number }>(
+      `({ badges: document.querySelectorAll(".cc-photo-badge").length, batches: window.__p22ExtBatches })`,
+    );
+    assert(
+      p22Before.badges === 0 && p22Before.batches === 0,
+      `P2-2 Extension badged a 1x1 lazy placeholder prematurely: ${JSON.stringify(p22Before)}`,
+    );
+    await storePage.eval(`
+      const lazyImg = document.getElementById("p22-lazy-img");
+      lazyImg.src = ${JSON.stringify(placeholderSvgDataUrl)};
+      lazyImg.dispatchEvent(new Event("load"));
+    `);
+    const p22After = await storePage.waitFor<{ badges: number; text: string }>(
+      `(() => {
+        const b = document.querySelector(".cc-photo-badge:not(.cc-photo-badge--loading)");
+        if (!b) return null;
+        return { badges: document.querySelectorAll(".cc-photo-badge").length, text: (b.textContent || "").trim() };
+      })()`,
+      "P2-2 Extension badges lazy-loaded photo card after src/load mutation",
+      6000,
+    );
+    assert(
+      p22After.badges === 1 && p22After.text.includes("82"),
+      `P2-2 Extension failed to badge card after lazy image loaded: ${JSON.stringify(p22After)}`,
+    );
+    console.log(`   ✓ P2-2 Extension lazy-loaded photo retry verified (${p22After.text})!`);
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");

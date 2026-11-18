@@ -455,12 +455,42 @@ document.getElementById("manage-sub")?.addEventListener("click", async () => {
   }
 });
 
+async function persistSharedPreferences(prefs) {
+  if (!prefs || typeof prefs !== "object") return { ok: false };
+  try {
+    return await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "CLEANCART_SET_SHARED_PREFS", payload: prefs }, (res) => {
+        if (chrome.runtime.lastError || !res) resolve({ ok: false });
+        else resolve(res);
+      });
+    });
+  } catch {
+    return { ok: false };
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.heybrocPersistSharedPreferences = persistSharedPreferences;
+}
+
 if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && currentBucketKey && changes[`heybroc_cart_v2_${currentBucketKey}`]) {
       const incoming = changes[`heybroc_cart_v2_${currentBucketKey}`].newValue || [];
       const freshItems = pruneStalePopupCartItems(currentBucketKey, incoming, null);
       renderPopupCart(currentStoreLabel, freshItems);
+    }
+    if (
+      (area === "local" || area === "sync") &&
+      (changes.dietaryWatchlist || changes.familyWatchlist || changes.preferStoreBrand)
+    ) {
+      const nextPrefs = {};
+      if (Array.isArray(changes.dietaryWatchlist?.newValue)) nextPrefs.dietaryWatchlist = changes.dietaryWatchlist.newValue;
+      if (Array.isArray(changes.familyWatchlist?.newValue)) nextPrefs.familyWatchlist = changes.familyWatchlist.newValue;
+      if (typeof changes.preferStoreBrand?.newValue === "boolean") nextPrefs.preferStoreBrand = changes.preferStoreBrand.newValue;
+      if (Object.keys(nextPrefs).length > 0) {
+        void persistSharedPreferences(nextPrefs);
+      }
     }
   });
 }

@@ -4584,7 +4584,7 @@
     for (const img of imgs) {
       idx++;
       if (!img || img.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
-      const src = img.currentSrc || img.getAttribute("src") || "";
+      const src = img.currentSrc || img.getAttribute("src") || img.getAttribute("srcset") || "";
       if (isPlaceholderCardImage(src, img)) continue;
       const r = img.getBoundingClientRect();
       const parentR = img.parentElement?.getBoundingClientRect?.() || r;
@@ -5034,7 +5034,16 @@
       return;
     }
     const anchor = findCardPhotoAnchor(cardEl, info.imgEl);
-    if (!anchor) return;
+    if (!anchor) {
+      cardStateByEl.set(cardEl, {
+        sig,
+        status: "awaiting_photo",
+        badgeEl: null,
+        retryCount: prevRetryCount,
+        nextRetryAt: 0,
+      });
+      return;
+    }
 
     removeCardPhotoBadges(cardEl);
     ensurePhotoBadgeStyles();
@@ -5206,6 +5215,10 @@
         if (prev.sig !== sig) {
           unmountPhotoBadgeEl(prev.badgeEl);
           removeCardPhotoBadges(card);
+          obs?.unobserve(card);
+          cardStateByEl.delete(card);
+        } else if (prev.status === "awaiting_photo") {
+          if (!findCardPhotoAnchor(card, info.imgEl)) continue;
           obs?.unobserve(card);
           cardStateByEl.delete(card);
         } else if (prev.status === "retry") {
@@ -5652,7 +5665,7 @@
         subtree: true,
         characterData: true,
         attributes: true,
-        attributeFilter: ["src", "srcset", "href"],
+        attributeFilter: ["src", "srcset", "data-src", "href"],
       });
     }
     document.addEventListener(

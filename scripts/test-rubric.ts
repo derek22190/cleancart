@@ -10105,6 +10105,27 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const chromeContent = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariContent = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const safariBg = fsNode.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+    const safariPopup = fsNode.readFileSync("ios-app/SafariExtension/Resources/popup.js", "utf8");
+    const safariHandler = fsNode.readFileSync("ios-app/SafariExtension/SafariWebExtensionHandler.swift", "utf8");
+    check(
+      "P2-2 Extension cards awaiting lazy photos recover via awaiting_photo, Safari content.js stays byte-identical, and Safari popup/background forward watchlist edits to App Group setSharedPreferences",
+      chromeContent === safariContent &&
+        chromeContent.includes('status: "awaiting_photo"') &&
+        chromeContent.includes('prev.status === "awaiting_photo"') &&
+        chromeContent.includes('"data-src"') &&
+        safariBg.includes("function pushPrefsToNativeAppGroup(") &&
+        safariBg.includes('action: "setSharedPreferences"') &&
+        safariBg.includes("CLEANCART_SET_SHARED_PREFS") &&
+        safariPopup.includes("CLEANCART_SET_SHARED_PREFS") &&
+        safariHandler.includes("heybroc_prefs_updated_at"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
