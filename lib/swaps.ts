@@ -76,7 +76,7 @@ export interface CleanAlternative {
   itemIds?: Partial<Record<Store, string>>;
 }
 
-export type ScanSurface = "web" | "android" | "extension";
+export type ScanSurface = "web" | "android" | "ios" | "extension";
 
 export type ClientPlatform =
   | "web"
@@ -2887,7 +2887,7 @@ export function isAffiliateAllowedOnClient(
   surface: ScanSurface = "web",
   clientPlatform?: ClientPlatform
 ): boolean {
-  if (surface === "extension") return false;
+  if (surface === "extension" || surface === "ios") return false;
   if (
     clientPlatform === "chrome-extension" ||
     clientPlatform === "ios-safari" ||

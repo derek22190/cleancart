@@ -2998,13 +2998,41 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         }
     }
 
+    private static func storeSearchURL(for rawQuery: String, storeKey: String) -> URL? {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let q = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return nil
+        }
+        let template: String
+        switch normalizeStoreKey(storeKey) {
+        case "instacart": template = "https://www.instacart.com/store/s?k=\(q)"
+        case "target": template = "https://www.target.com/s?searchTerm=\(q)"
+        case "amazon", "wholefoods": template = "https://www.amazon.com/s?k=\(q)"
+        case "costco": template = "https://www.costco.com/CatalogSearch?keyword=\(q)"
+        case "sams": template = "https://www.samsclub.com/s/\(q)"
+        case "kroger": template = "https://www.kroger.com/search?query=\(q)"
+        case "aldi": template = "https://shop.aldi.us/store/aldi/s?k=\(q)"
+        case "bjs": template = "https://www.bjs.com/search/\(q)"
+        case "shipt": template = "https://www.shipt.com/shop/search?q=\(q)"
+        case "doordash": template = "https://www.doordash.com/search/store/\(q)/"
+        case "ubereats": template = "https://www.ubereats.com/search?q=\(q)"
+        default: template = "https://www.walmart.com/search?q=\(q)"
+        }
+        return validatedHTTPURL(template)
+    }
+
     private func presentInspectSheet(summary: HeyBrocNativeScanSummary) {
         guard view.window != nil, presentedViewController == nil else { return }
         let sheet = LiveStoreInspectSheetViewController(
             summary: summary,
             storeLabel: activeStore.label,
-            onOpenSwapInStore: { [weak self] urlString in
-                guard let self = self, let u = Self.validatedHTTPURL(urlString) else { return }
+            onOpenSwapInStore: { [weak self] urlString, swapTitle in
+                guard let self = self else { return }
+                guard let u = Self.validatedHTTPURL(urlString)
+                    ?? Self.storeSearchURL(for: swapTitle, storeKey: self.activeStore.key) else {
+                    return
+                }
                 HeyBrocNativeScannerAPI.recordSwapUnlock(productKey: summary.title)
                 self.storeWebView?.load(URLRequest(url: u))
             },
@@ -3567,16 +3595,16 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
 
     private let summary: HeyBrocNativeScanSummary
     private let storeLabel: String
-    private let onOpenSwapInStore: (String) -> Void
+    private let onOpenSwapInStore: (String, String) -> Void
     private let onRescanScreenOCR: () -> Void
     private let onTogglePesticide: () -> Void
     private let onReturnToScanner: () -> Void
-    private var alternateSwapURLsByTag: [Int: String] = [:]
+    private var alternateSwapsByTag: [Int: (url: String, title: String)] = [:]
 
     init(
         summary: HeyBrocNativeScanSummary,
         storeLabel: String,
-        onOpenSwapInStore: @escaping (String) -> Void,
+        onOpenSwapInStore: @escaping (String, String) -> Void,
         onRescanScreenOCR: @escaping () -> Void,
         onTogglePesticide: @escaping () -> Void,
         onReturnToScanner: @escaping () -> Void
@@ -3959,7 +3987,8 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 }
 
                 let openSwapBtn = UIButton(type: .system)
-                openSwapBtn.setTitle("🛒 View Clean Swap in \(storeLabel) →", for: .normal)
+                let paidSuffix = swap.isPaidLink ? " · paid link" : ""
+                openSwapBtn.setTitle("🛒 View Clean Swap in \(storeLabel)\(paidSuffix) →", for: .normal)
                 openSwapBtn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .heavy)
                 openSwapBtn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
                 openSwapBtn.setTitleColor(.white, for: .normal)
@@ -3974,10 +4003,11 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 for (idx, alt) in alternates.enumerated() {
                     guard let altUrl = alt.webUrl else { continue }
                     let tag = 900 + idx
-                    alternateSwapURLsByTag[tag] = altUrl
+                    alternateSwapsByTag[tag] = (url: altUrl, title: alt.title)
                     let altBtn = UIButton(type: .system)
                     altBtn.tag = tag
-                    altBtn.setTitle("Option \(idx + 2): \(alt.title) (\(alt.score)/100) →", for: .normal)
+                    let altPaidSuffix = alt.isPaidLink ? " · paid link" : ""
+                    altBtn.setTitle("Option \(idx + 2): \(alt.title) (\(alt.score)/100)\(altPaidSuffix) →", for: .normal)
                     altBtn.titleLabel?.font = UIFont.systemFont(ofSize: 12.5, weight: .bold)
                     altBtn.titleLabel?.lineBreakMode = .byTruncatingTail
                     altBtn.backgroundColor = .white
@@ -4094,16 +4124,18 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
     }
 
     @objc private func tapOpenSwap() {
-        guard let swap = summary.swap, !swap.locked, let url = swap.webUrl else { return }
+        guard let swap = summary.swap, !swap.locked else { return }
+        let url = swap.webUrl ?? ""
+        let title = swap.title
         dismiss(animated: true) { [onOpenSwapInStore] in
-            onOpenSwapInStore(url)
+            onOpenSwapInStore(url, title)
         }
     }
 
     @objc private func tapOpenAlternateSwap(_ sender: UIButton) {
-        guard let url = alternateSwapURLsByTag[sender.tag] else { return }
+        guard let alt = alternateSwapsByTag[sender.tag] else { return }
         dismiss(animated: true) { [onOpenSwapInStore] in
-            onOpenSwapInStore(url)
+            onOpenSwapInStore(alt.url, alt.title)
         }
     }
 

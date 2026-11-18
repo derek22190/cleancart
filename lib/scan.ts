@@ -78,6 +78,7 @@ export function inferClientPlatform(params: {
   }
 
   if (params.surface === "extension") return "chrome-extension";
+  if (params.surface === "ios") return "ios-app";
   if (params.surface === "android") return "android";
   if (dev && dev !== "anon-web" && dev !== "anonymous" && !dev.startsWith("web-")) {
     return "android";

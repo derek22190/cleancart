@@ -677,7 +677,8 @@ final class ShareViewController: UIViewController {
         if let sw = json["swap"] as? [String: Any], let swTitle = sw["title"] as? String {
             let swScore = (sw["score"] as? Int) ?? 90
             let nut = sw["nutrition"] as? [String: Any]
-            let isOrg = (nut?["isOrganic"] as? Bool) ?? swTitle.lowercased().contains("organic")
+            let isOrg = (nut?["isOrganic"] as? Bool) ?? false
+            let isPaidLink = (sw["isPaidLink"] as? Bool) ?? false
             let urlStr = (sw["webUrl"] as? String) ?? (sw["deepLink"] as? String)
             self.currentSwapURL = urlStr.flatMap { Self.sanitizedRetailerURL($0) }
 
@@ -707,7 +708,8 @@ final class ShareViewController: UIViewController {
 
             if self.currentSwapURL != nil {
                 let btn = UIButton(type: .system)
-                btn.setTitle("🛒 View Clean Swap in Store →", for: .normal)
+                let paidSuffix = isPaidLink ? " · paid link" : ""
+                btn.setTitle("🛒 View Clean Swap in Store\(paidSuffix) →", for: .normal)
                 btn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .heavy)
                 btn.backgroundColor = UIColor(red: 0.059, green: 0.478, blue: 0.290, alpha: 1.0)
                 btn.setTitleColor(.white, for: .normal)

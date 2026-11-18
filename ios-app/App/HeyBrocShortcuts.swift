@@ -281,6 +281,7 @@ struct HeyBrocNativeSwap {
     let webUrl: String?
     let isStoreBrand: Bool
     let isOrganic: Bool
+    let isPaidLink: Bool
     let locked: Bool
     let flaggedAdditives: [String]
 }
@@ -478,6 +479,7 @@ enum HeyBrocNativeScannerAPI {
             webUrl: isLocked ? nil : rawUrl.flatMap { sanitizeRetailerURL($0) },
             isStoreBrand: (sw["isStoreBrand"] as? Bool) ?? false,
             isOrganic: isOrg,
+            isPaidLink: (sw["isPaidLink"] as? Bool) ?? false,
             locked: isLocked,
             flaggedAdditives: flaggedAdditives
         )
@@ -668,7 +670,7 @@ enum HeyBrocNativeScannerAPI {
 
         var payload: [String: Any] = [
             "store": store ?? HeyBrocSharedPrefs.activeStore,
-            "surface": "extension",
+            "surface": "ios",
             "clientPlatform": "ios-app",
             "deviceId": HeyBrocSharedPrefs.deviceId,
             "familyWatchlist": HeyBrocSharedPrefs.familyWatchlist,
@@ -752,7 +754,7 @@ enum HeyBrocNativeScannerAPI {
         var payload: [String: Any] = [
             "items": Array(items.prefix(8)),
             "store": store ?? HeyBrocSharedPrefs.activeStore,
-            "surface": "extension",
+            "surface": "ios",
             "clientPlatform": "ios-app",
             "deviceId": HeyBrocSharedPrefs.deviceId,
             "familyWatchlist": HeyBrocSharedPrefs.familyWatchlist,

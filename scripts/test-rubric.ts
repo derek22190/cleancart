@@ -9376,6 +9376,36 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const iosScan = await runScan({
+      productTitle: "Hidden Valley Original Ranch Salad Dressing",
+      store: "walmart",
+      surface: "ios",
+      clientPlatform: "ios-app",
+    });
+    check(
+      "P1-2 iOS Live Shop & Share Extension parse isPaidLink, disclose · paid link, send surface: ios, and fall back to store search URL",
+      (() => {
+        const shortcutsSwift = fsNode.readFileSync("ios-app/App/HeyBrocShortcuts.swift", "utf8");
+        const iosLive = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+        const shareSwift = fsNode.readFileSync("ios-app/ShareExtension/ShareViewController.swift", "utf8");
+        return (
+          iosScan.ok &&
+          iosScan.swap?.isPaidLink === false &&
+          shortcutsSwift.includes("let isPaidLink: Bool") &&
+          shortcutsSwift.includes('sw["isPaidLink"] as? Bool') &&
+          shortcutsSwift.includes('"surface": "ios"') &&
+          !shortcutsSwift.includes('"surface": "extension"') &&
+          iosLive.includes('swap.isPaidLink ? " · paid link" : ""') &&
+          iosLive.includes('alt.isPaidLink ? " · paid link" : ""') &&
+          iosLive.includes("Self.storeSearchURL(for: swapTitle") &&
+          shareSwift.includes('isPaidLink ? " · paid link" : ""')
+        );
+      })(),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
