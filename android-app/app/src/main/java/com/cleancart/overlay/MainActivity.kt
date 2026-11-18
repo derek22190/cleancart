@@ -263,12 +263,21 @@ class MainActivity : Activity() {
         syncDynamicHomeScreenShortcuts()
 
         handleIncomingReferralIntent(intent)
-        val handledAuth = handleIncomingAuthRedirect(intent)
-        val handledShortcut = if (!handledAuth) handleIncomingShortcutIntent(intent) else false
-        val handledShare = if (!handledAuth && !handledShortcut) handleIncomingShareIntent(intent) else false
+        val handledPaywall = intent?.getBooleanExtra(PlayBillingCoordinator.EXTRA_OPEN_PLAY_PAYWALL, false) == true
+        if (handledPaywall) {
+            intent?.removeExtra(PlayBillingCoordinator.EXTRA_OPEN_PLAY_PAYWALL)
+            mainHandler.post {
+                if (!isDestroyed && !isFinishing) {
+                    PlayBillingCoordinator.openUpgradeFlow(this) { renderScreen() }
+                }
+            }
+        }
+        val handledAuth = if (!handledPaywall) handleIncomingAuthRedirect(intent) else false
+        val handledShortcut = if (!handledPaywall && !handledAuth) handleIncomingShortcutIntent(intent) else false
+        val handledShare = if (!handledPaywall && !handledAuth && !handledShortcut) handleIncomingShareIntent(intent) else false
 
-        // Launch the Onboarding Funnel on first open unless returning from OAuth, Share, or Home-Screen Quick Action
-        if (savedInstanceState == null && !handledAuth && !handledShare && !handledShortcut) {
+        // Launch the Onboarding Funnel on first open unless returning from OAuth, Share, Paywall, or Home-Screen Quick Action
+        if (savedInstanceState == null && !handledPaywall && !handledAuth && !handledShare && !handledShortcut) {
             val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
             val onboardingDone = prefs.getBoolean("onboarding_funnel_done_v1", false)
             val savedEmail = prefs.getString("auth_email", null)?.takeIf { it.isNotBlank() }
@@ -293,6 +302,11 @@ class MainActivity : Activity() {
         setIntent(intent)
         syncDynamicHomeScreenShortcuts()
         handleIncomingReferralIntent(intent)
+        if (intent.getBooleanExtra(PlayBillingCoordinator.EXTRA_OPEN_PLAY_PAYWALL, false)) {
+            intent.removeExtra(PlayBillingCoordinator.EXTRA_OPEN_PLAY_PAYWALL)
+            PlayBillingCoordinator.openUpgradeFlow(this) { renderScreen() }
+            return
+        }
         if (handleIncomingAuthRedirect(intent)) return
         if (!handleIncomingShortcutIntent(intent)) {
             handleIncomingShareIntent(intent)
@@ -724,7 +738,7 @@ class MainActivity : Activity() {
                 }
                 setOnClickListener { runGuidedSetupStep() }
             })
-            if (!a11yServiceEnabled && !isInstalledFromPlayStore()) {
+            if (!a11yServiceEnabled && BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
                 addView(label("Switch greyed out? Unlock in App Info (⋮ → Allow restricted settings) ↗", 11.5f, 0xFFA7F3D0.toInt(), bold = true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(6), dp(10), dp(6), dp(2))
@@ -857,6 +871,7 @@ class MainActivity : Activity() {
     }
 
     private fun isPreferInAppShop(): Boolean {
+        if (!BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) return true
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         return prefs.getBoolean("prefer_in_app_live_shop_v2", true)
     }
@@ -878,7 +893,7 @@ class MainActivity : Activity() {
             .putString("preferredStore", normKey)
             .apply()
 
-        val a11yOk = isAccessibilityEnabled() && AccessibilityConsent.granted(this)
+        val a11yOk = BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY && isAccessibilityEnabled() && AccessibilityConsent.granted(this)
         val nativePkg = resolveInstalledStorePackage(normKey)
         if (!forceInApp && a11yOk && !isPreferInAppShop() && nativePkg != null) {
             runCatching {
@@ -909,7 +924,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildLiveShopStoreStripCard(a11yServiceEnabled: Boolean, consentOk: Boolean): View {
-        val a11yOk = a11yServiceEnabled && consentOk
+        val a11yOk = BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY && a11yServiceEnabled && consentOk
         val preferInApp = isPreferInAppShop()
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         val primaryPref = LiveStoreBrowserActivity.normalizeStoreKey(prefs.getString("preferredStore", "walmart"))
@@ -1066,7 +1081,7 @@ class MainActivity : Activity() {
             storeScroll.addView(storeRow)
             addView(storeScroll)
 
-            if (!a11yOk) {
+            if (BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY && !a11yOk) {
                 addView(label(
                     "⚡ Prefer shopping inside the native Walmart / Target app? Enable Floating Pill →",
                     11.5f,
@@ -1088,7 +1103,7 @@ class MainActivity : Activity() {
             tabContentContainer.addView(buildLiveShopStoreStripCard(a11yServiceEnabled, consentOk))
         }
 
-        if (consentOk && !a11yServiceEnabled && !isInstalledFromPlayStore()) {
+        if (BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY && consentOk && !a11yServiceEnabled) {
             tabContentContainer.addView(buildLiveBubbleSetupCard(a11yServiceEnabled, consentOk).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1875,28 +1890,30 @@ class MainActivity : Activity() {
             ).apply { bottomMargin = dp(16) }
         }
 
-        accordionCard.addView(buildYukaAccordionRow(
-            key = "bubble",
-            icon = "MASCOT",
-            title = "Live Store Bubble",
-            subtitle = if (bubbleActive) {
-                "Active · Auto-grades items in grocery apps"
-            } else {
-                "Off · Tap to enable in Walmart, Instacart & more"
-            }
-        ) {
-            val inner = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(16), 0, dp(16), dp(16))
-            }
-            appendBubbleSetupAndWatchlistCards(inner, includeWatchlist = false)
-            inner
-        })
+        if (BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
+            accordionCard.addView(buildYukaAccordionRow(
+                key = "bubble",
+                icon = "MASCOT",
+                title = "Live Store Bubble",
+                subtitle = if (bubbleActive) {
+                    "Active · Auto-grades items in grocery apps"
+                } else {
+                    "Off · Tap to enable in Walmart, Instacart & more"
+                }
+            ) {
+                val inner = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), 0, dp(16), dp(16))
+                }
+                appendBubbleSetupAndWatchlistCards(inner, includeWatchlist = false)
+                inner
+            })
 
-        accordionCard.addView(View(this).apply {
-            setBackgroundColor(0xFFE5E7EB.toInt())
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        })
+            accordionCard.addView(View(this).apply {
+                setBackgroundColor(0xFFE5E7EB.toInt())
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+            })
+        }
 
         val watchlistSub = if (activeDietaryCount > 0) {
             "$activeDietaryCount allergy alert${if (activeDietaryCount == 1) "" else "s"} active · Seed oils, dyes & additives"
@@ -1965,17 +1982,7 @@ class MainActivity : Activity() {
     }
 
     private fun openManageSubscription() {
-        Toast.makeText(this, "Opening subscription management…", Toast.LENGTH_SHORT).show()
-        io.execute {
-            val portalUrl = ScanApi.billingPortalUrl(this@MainActivity)
-            mainHandler.post {
-                if (isDestroyed || isFinishing) return@post
-                val targetUrl = portalUrl ?: "https://www.heybroc.com/?login=1"
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
-                }
-            }
-        }
+        PlayBillingCoordinator.openManageSubscription(this)
     }
 
     private fun buildYukaAccordionRow(
@@ -2041,6 +2048,17 @@ class MainActivity : Activity() {
     }
 
     private fun appendBubbleSetupAndWatchlistCards(target: LinearLayout, includeWatchlist: Boolean = false) {
+        if (!BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
+            val statusBadge = label("✓ BUILT-IN LIVE SHOP READY", 12f, 0xFF16A34A.toInt(), bold = true)
+            target.addView(stepCard(
+                "In-App Live Shop",
+                "0–100 Score Badges Across All 12 Grocery Stores",
+                "Shop Walmart, Instacart, Target, Amazon Fresh, Whole Foods, Costco, Sam's Club, Kroger, ALDI, BJ's, Shipt, DoorDash & Uber Eats directly inside HeyBroc with no special system permissions required.",
+                statusBadge,
+                primaryButton("Open In-App Live Shop →") { launchStoreSmart("walmart", forceInApp = true) }
+            ))
+            return
+        }
         val a11yServiceEnabled = isAccessibilityEnabled()
         val consentOk = AccessibilityConsent.granted(this)
         val a11yOk = a11yServiceEnabled && consentOk
@@ -2079,7 +2097,7 @@ class MainActivity : Activity() {
                 primaryButton(mainActionLabel) { runGuidedSetupStep() }
             )
 
-            if (!a11yServiceEnabled && !isInstalledFromPlayStore()) {
+            if (!a11yServiceEnabled && BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
                 extras.add(
                     label(
                         "Switch greyed out? Unlock in App Info (⋮ → Allow restricted settings) ↗",
@@ -3648,11 +3666,7 @@ class MainActivity : Activity() {
                     ScanApi.trackEvent(this@MainActivity, "onboarding_completed", buildAnalyticsProps("trial"))
                     saveWatchlistAndMarkDone()
                     funnelDialog?.dismiss()
-                    ScanApi.trackEvent(this@MainActivity, "paywall_viewed")
-                    ScanApi.trackEvent(this@MainActivity, "checkout_started")
-                    runCatching {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@MainActivity))))
-                    }
+                    PlayBillingCoordinator.openUpgradeFlow(this@MainActivity) { renderScreen() }
                 }
             })
 
@@ -5777,10 +5791,7 @@ class MainActivity : Activity() {
                         setOnClickListener {
                             if (!ScanApi.unlockSwapForProduct(this@MainActivity, title, sbAltTitle)) {
                                 dialogRef?.dismiss()
-                                ScanApi.trackEvent(this@MainActivity, "checkout_started")
-                                runCatching {
-                                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@MainActivity))))
-                                }
+                                PlayBillingCoordinator.openUpgradeFlow(this@MainActivity) { renderScreen() }
                                 return@setOnClickListener
                             }
                             val promoted = JSONObject(storeBrandSwap.toString()).put("isStoreBrand", true)
@@ -5836,10 +5847,8 @@ class MainActivity : Activity() {
                         cornerRadius = dp(999).toFloat()
                     }
                     setOnClickListener {
-                        ScanApi.trackEvent(this@MainActivity, "checkout_started")
-                        runCatching {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@MainActivity))))
-                        }
+                        dialogRef?.dismiss()
+                        PlayBillingCoordinator.openUpgradeFlow(this@MainActivity) { renderScreen() }
                     }
                 })
             }
@@ -6268,22 +6277,17 @@ class MainActivity : Activity() {
         if (isSwapAction && (serverLocked || (!ScanApi.isSwapUnlocked(this, prodTitle, effectiveQuery) && !ScanApi.canUseSwap(this)))) {
             ScanApi.trackEvent(this, "paywall_viewed")
             val limit = ScanApi.weeklySwapsLimit(this)
-            val builder = AlertDialog.Builder(this)
+            AlertDialog.Builder(this)
                 .setTitle(ScanApi.paywallHeadline(this))
                 .setMessage(
                     "You've used all $limit free single-item Clean Swaps.\n\n" +
                         "Product scores (0–100) and Cart Avg stay 100% free forever. Invite friends for free Pro weeks or sign in to an existing Pro account."
                 )
                 .setNegativeButton("Close", null)
-            if (!isInstalledFromPlayStore()) {
-                builder.setPositiveButton("Upgrade to Pro") { _, _ ->
-                    ScanApi.trackEvent(this, "checkout_started")
-                    runCatching {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this))))
-                    }
+                .setPositiveButton("Upgrade to Pro") { _, _ ->
+                    PlayBillingCoordinator.openUpgradeFlow(this) { renderScreen() }
                 }
-            }
-            builder.show()
+                .show()
             return
         }
 
@@ -6431,6 +6435,10 @@ class MainActivity : Activity() {
     }
 
     private fun runGuidedSetupStep() {
+        if (!BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY) {
+            Toast.makeText(this, "Tap any store tile above to shop with live 0–100 badges inside HeyBroc!", Toast.LENGTH_LONG).show()
+            return
+        }
         val consentOk = AccessibilityConsent.granted(this)
         if (!consentOk) {
             showProminentAccessibilityDisclosure {
@@ -6743,16 +6751,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun isInstalledFromPlayStore(): Boolean {
-        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching { packageManager.getInstallSourceInfo(packageName).installingPackageName }.getOrNull()
-        } else {
-            @Suppress("DEPRECATION")
-            runCatching { packageManager.getInstallerPackageName(packageName) }.getOrNull()
-        }
-        return installer == "com.android.vending"
-    }
-
     override fun onResume() {
         super.onResume()
         clearScheduledToasts()
@@ -6761,7 +6759,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        if (Settings.canDrawOverlays(this) || isAccessibilityEnabled()) {
+        if (BuildConfig.ENABLE_ACCESSIBILITY_OVERLAY && (Settings.canDrawOverlays(this) || isAccessibilityEnabled())) {
             runCatching {
                 startService(Intent(this, OverlayWindowService::class.java).setAction(OverlayWindowService.ACTION_HIDE_IF_TEST))
             }

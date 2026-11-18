@@ -418,6 +418,63 @@ object ScanApi {
         return null
     }
 
+    private val GOOGLE_VERIFY_ENDPOINTS = listOfNotNull(
+        customBase.takeIf { it.isNotBlank() }?.let { "$it/api/google/verify" },
+        "https://www.heybroc.com/api/google/verify",
+        "https://heybroc.com/api/google/verify",
+    ).distinct()
+
+    /** Blocking call — verifies a Google Play subscription purchase token and syncs Pro entitlement. */
+    fun verifyGooglePlayPurchase(
+        ctx: Context,
+        purchaseToken: String,
+        productId: String,
+        orderId: String = ""
+    ): JSONObject? {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val authToken = prefs.getString("auth_token", null)?.trim()
+        val creatorCode = referredByCode(ctx)
+        val body = JSONObject().apply {
+            put("purchaseToken", purchaseToken)
+            put("productId", productId)
+            put("packageName", ctx.packageName)
+            if (orderId.isNotBlank()) put("orderId", orderId)
+            put("deviceId", deviceId(ctx))
+            if (!authToken.isNullOrBlank()) put("token", authToken)
+            if (!creatorCode.isNullOrBlank()) put("creatorCode", creatorCode)
+        }.toString()
+        val headers = mutableMapOf("X-Device-Secret" to deviceSecret(ctx))
+        if (!authToken.isNullOrBlank()) {
+            headers["Authorization"] = "Bearer $authToken"
+        }
+        for (endpoint in GOOGLE_VERIFY_ENDPOINTS) {
+            try {
+                val res = postFollowingRedirects(
+                    endpoint,
+                    body,
+                    maxRedirects = 4,
+                    extraHeaders = headers
+                )
+                if (res.startsWith("{")) {
+                    val json = JSONObject(res)
+                    if (json.optBoolean("active", false)) {
+                        val entObj = JSONObject().apply {
+                            put("isPro", true)
+                            put("plan", json.optString("plan", "annual"))
+                            put("expiresAtMs", json.optLong("expiresAtMs", 0L))
+                        }
+                        saveEntitlementSnapshot(ctx, entObj)
+                        syncEntitlementAsync(ctx)
+                    }
+                    return json
+                }
+            } catch (_: Exception) {
+                // try next endpoint
+            }
+        }
+        return null
+    }
+
     val DIETARY_OPTIONS = listOf(
         DietaryOption(
             id = "sugar_diabetes",

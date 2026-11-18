@@ -64,10 +64,10 @@ jobs:
           API_BASE="${{ vars.CLEANCART_API_BASE }}"
           set +e
           if [ -n "$API_BASE" ]; then
-            ./gradlew assembleRelease bundleRelease --stacktrace -PcleancartApiBase="$API_BASE" 2>&1 | tee gradle-build.log
+            ./gradlew assembleDirectRelease bundlePlayRelease assemblePlayRelease --stacktrace -PcleancartApiBase="$API_BASE" 2>&1 | tee gradle-build.log
             STATUS=${PIPESTATUS[0]}
           else
-            ./gradlew assembleRelease bundleRelease --stacktrace 2>&1 | tee gradle-build.log
+            ./gradlew assembleDirectRelease bundlePlayRelease assemblePlayRelease --stacktrace 2>&1 | tee gradle-build.log
             STATUS=${PIPESTATUS[0]}
           fi
           set -e
@@ -77,7 +77,7 @@ jobs:
             done
             exit "$STATUS"
           fi
-          cp app/build/outputs/apk/release/app-release.apk cleancart-release.apk
+          cp app/build/outputs/apk/direct/release/app-direct-release.apk cleancart-release.apk
 
       - name: Clean up decoded keystore
         if: always()
@@ -104,9 +104,9 @@ jobs:
           path: android-app/cleancart-release.apk
           if-no-files-found: error
 
-      - name: Upload release App Bundle
+      - name: Upload Google Play release App Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: heybroc-release.aab
-          path: android-app/app/build/outputs/bundle/release/app-release.aab
+          name: heybroc-play-release.aab
+          path: android-app/app/build/outputs/bundle/play/release/app-play-release.aab
           if-no-files-found: error

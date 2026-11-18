@@ -577,20 +577,6 @@ class LiveStoreBrowserActivity : Activity() {
         return box
     }
 
-    private fun isInstalledFromPlayStore(): Boolean {
-        val installer = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                packageManager.getInstallSourceInfo(packageName).installingPackageName
-            } else {
-                @Suppress("DEPRECATION")
-                packageManager.getInstallerPackageName(packageName)
-            }
-        } catch (_: Exception) {
-            null
-        }
-        return installer == "com.android.vending"
-    }
-
     private fun isPesticideWatchEnabled(): Boolean {
         val prefs = getSharedPreferences("ingredient_preferences", Context.MODE_PRIVATE)
         return "pesticide_risk" in prefs.getStringSet("dietaryWatchlist", emptySet()).orEmpty()
@@ -2477,22 +2463,17 @@ class LiveStoreBrowserActivity : Activity() {
     private fun showPaywallPrompt() {
         ScanApi.trackEvent(this, "paywall_viewed")
         val limit = ScanApi.weeklySwapsLimit(this)
-        val builder = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle(ScanApi.paywallHeadline(this))
             .setMessage(
                 "You've used all $limit free single-item Clean Swaps.\n\n" +
                     "Product scores (0–100) stay 100% free forever. Invite friends for free Pro weeks or sign in to an existing Pro account."
             )
             .setNegativeButton("Close", null)
-        if (!isInstalledFromPlayStore()) {
-            builder.setPositiveButton("Upgrade to Pro") { _, _ ->
-                ScanApi.trackEvent(this, "checkout_started")
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this))))
-                }
+            .setPositiveButton("Upgrade to Pro") { _, _ ->
+                PlayBillingCoordinator.openUpgradeFlow(this)
             }
-        }
-        builder.show()
+            .show()
     }
 
     private fun syncBackCallback() {

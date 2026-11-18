@@ -9273,6 +9273,85 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         );
       })(),
     );
+
+    const googleVerifyMod = await import("../app/api/google/verify/route");
+    const badPkgRes = await googleVerifyMod.POST(
+      new Request("https://www.heybroc.com/api/google/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.0.0.2" },
+        body: JSON.stringify({
+          purchaseToken: "tok_test_1234567890",
+          productId: "heybroc_pro_annual",
+          packageName: "com.evil.spoof",
+        }),
+      }),
+    );
+    const badProdRes = await googleVerifyMod.POST(
+      new Request("https://www.heybroc.com/api/google/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.0.0.3" },
+        body: JSON.stringify({
+          purchaseToken: "tok_test_1234567890",
+          productId: "not_a_real_sku",
+          packageName: "com.cleancart.overlay",
+        }),
+      }),
+    );
+    const unconfiguredRes = await googleVerifyMod.POST(
+      new Request("https://www.heybroc.com/api/google/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": "10.0.0.4" },
+        body: JSON.stringify({
+          purchaseToken: "tok_test_1234567890",
+          productId: "heybroc_pro_annual",
+          packageName: "com.cleancart.overlay",
+        }),
+      }),
+    );
+
+    check(
+      "P0-2 Android play vs direct flavors, Google Play Billing isolation, zero Play Accessibility/Stripe links, and /api/google/verify guards",
+      (() => {
+        const gradle = fsNode.readFileSync("android-app/app/build.gradle.kts", "utf8");
+        const mainManifest = fsNode.readFileSync("android-app/app/src/main/AndroidManifest.xml", "utf8");
+        const directManifest = fsNode.readFileSync("android-app/app/src/direct/AndroidManifest.xml", "utf8");
+        const playCoord = fsNode.readFileSync("android-app/app/src/play/java/com/cleancart/overlay/PlayBillingCoordinator.kt", "utf8");
+        const directCoord = fsNode.readFileSync("android-app/app/src/direct/java/com/cleancart/overlay/PlayBillingCoordinator.kt", "utf8");
+        const mainAct = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/MainActivity.kt", "utf8");
+        const liveStoreAct = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt", "utf8");
+        const overlaySvc = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/OverlayWindowService.kt", "utf8");
+        const buildApkYml = fsNode.readFileSync(".github/workflows/build-apk.yml", "utf8");
+        return (
+          gradle.includes('create("play")') &&
+          gradle.includes('create("direct")') &&
+          gradle.includes('com.android.billingclient:billing:7.1.1') &&
+          !mainManifest.includes("SYSTEM_ALERT_WINDOW") &&
+          !mainManifest.includes("BIND_ACCESSIBILITY_SERVICE") &&
+          !mainManifest.includes("GroceryScreenReaderService") &&
+          !mainManifest.includes("OverlayWindowService") &&
+          directManifest.includes("SYSTEM_ALERT_WINDOW") &&
+          directManifest.includes("BIND_ACCESSIBILITY_SERVICE") &&
+          playCoord.includes("BillingClient") &&
+          playCoord.includes("launchBillingFlow") &&
+          playCoord.includes("queryPurchasesAsync") &&
+          playCoord.includes("https://play.google.com/store/account/subscriptions") &&
+          !playCoord.includes("upgradeUrl") &&
+          !playCoord.includes("billingPortalUrl") &&
+          !/stripe/i.test(playCoord) &&
+          directCoord.includes("ScanApi.upgradeUrl") &&
+          !mainAct.includes("isInstalledFromPlayStore") &&
+          !mainAct.includes("ScanApi.upgradeUrl") &&
+          !liveStoreAct.includes("isInstalledFromPlayStore") &&
+          !liveStoreAct.includes("ScanApi.upgradeUrl") &&
+          !overlaySvc.includes("ScanApi.upgradeUrl") &&
+          buildApkYml.includes("assembleDirectRelease") &&
+          buildApkYml.includes("bundlePlayRelease") &&
+          badPkgRes.status === 403 &&
+          badProdRes.status === 403 &&
+          unconfiguredRes.status === 503
+        );
+      })(),
+    );
   }
 
   console.log("Checks executed:", checks);

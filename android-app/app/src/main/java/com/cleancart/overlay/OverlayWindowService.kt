@@ -1721,12 +1721,9 @@ class OverlayWindowService : Service() {
                                     )
                                 }
                             } else {
-                                val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
                                 removeCard()
-                                showPill()
-                                runCatching { startActivity(i) }
+showPill()
+PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                             }
                         }
                     })
@@ -1800,12 +1797,9 @@ class OverlayWindowService : Service() {
                         val swapTitle = firstSwap.optString("title", "Clean Alternative")
                         val swapUnlocked = ScanApi.isSwapUnlocked(this@OverlayWindowService, onlyItem.title, swapTitle)
                         if (!swapUnlocked && rem <= 0) {
-                            val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
                             removeCard()
                             showPill()
-                            runCatching { startActivity(i) }
+                            PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                         } else {
                             if (!swapUnlocked) {
                                 ScanApi.unlockSwapForProduct(this@OverlayWindowService, onlyItem.title, swapTitle)
@@ -1820,12 +1814,9 @@ class OverlayWindowService : Service() {
                             )
                         }
                     } else if (!ScanApi.isProActive(this@OverlayWindowService) && rem <= 0 && !anyUnlocked) {
-                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
                         removeCard()
                         showPill()
-                        runCatching { startActivity(i) }
+                        PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                     } else {
                         showSwapAllModal(dirtyWithSwaps, avg, projectedAvg)
                     }
@@ -1958,12 +1949,9 @@ class OverlayWindowService : Service() {
                             candidateIdx = 0
                         )
                     } else {
-                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
                         removeCard()
                         showPill()
-                        runCatching { startActivity(i) }
+                        PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                     }
                 }
 
@@ -2017,12 +2005,9 @@ class OverlayWindowService : Service() {
                                     showSwapAllModal(dirtyWithSwaps, currentAvg, projectedAvg)
                                 }
                             } else {
-                                val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
                                 removeCard()
-                                showPill()
-                                runCatching { startActivity(i) }
+showPill()
+PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                             }
                         }
                     })
@@ -2553,12 +2538,9 @@ class OverlayWindowService : Service() {
                         background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) }
                         setOnClickListener {
-                            val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
                             removeCard()
                             showPill()
-                            runCatching { startActivity(i) }
+                            PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                         }
                     })
                     addView(text("🎁 Invite (+7d Free)", 12f, BRAND, bold = true).apply {
@@ -2895,12 +2877,9 @@ class OverlayWindowService : Service() {
                     background = GradientDrawable().apply { setColor(BRAND); cornerRadius = dp(999).toFloat() }
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(6) }
                     setOnClickListener {
-                        val i = Intent(Intent.ACTION_VIEW, Uri.parse(ScanApi.upgradeUrl(this@OverlayWindowService))).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
                         removeCard()
                         showPill()
-                        runCatching { startActivity(i) }
+                        PlayBillingCoordinator.openUpgradeFromContext(this@OverlayWindowService)
                     }
                 })
                 addView(text("🎁 Invite (+7d Free)", 13f, BRAND, bold = true).apply {

@@ -68,6 +68,20 @@ android {
         }
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "IS_PLAY_BUILD", "true")
+            buildConfigField("boolean", "ENABLE_ACCESSIBILITY_OVERLAY", "false")
+        }
+        create("direct") {
+            dimension = "distribution"
+            buildConfigField("boolean", "IS_PLAY_BUILD", "false")
+            buildConfigField("boolean", "ENABLE_ACCESSIBILITY_OVERLAY", "true")
+        }
+    }
+
     buildFeatures { buildConfig = true }
 
     lint {
@@ -93,5 +107,6 @@ dependencies {
     implementation("androidx.credentials:credentials:1.3.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    add("playImplementation", "com.android.billingclient:billing:7.1.1")
 }
 
