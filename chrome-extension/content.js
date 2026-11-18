@@ -8,11 +8,11 @@
   const DEFAULT_API = "https://www.heybroc.com";
   const HOST = location.hostname.toLowerCase();
   const SUPPORTED_GROCERY_HOST_RE =
-    /(?:^|\.)(?:walmart\.com|instacart\.com|target\.com|kroger\.com|ralphs\.com|fredmeyer\.com|kingsoopers\.com|frysfood\.com|smithsfoodanddrug\.com|harristeeter\.com|qfc\.com|mariano\.com|marianos\.com|picknsave\.com|metro-market\.net|metromarket\.net|dillons\.com|citymarket\.com|bakersplus\.com|gerbes\.com|jaycfoods\.com|pay-less\.com|food4less\.com|foodscompany\.com|aldi\.us|doordash\.com|ubereats\.com|amazon\.com|wholefoodsmarket\.com|samsclub\.com|bjs\.com|costco\.com|shipt\.com)$/;
+    /(?:^|\.)(?:walmart\.com|instacart\.com|target\.com|kroger\.com|ralphs\.com|fredmeyer\.com|kingsoopers\.com|frysfood\.com|smithsfoodanddrug\.com|harristeeter\.com|qfc\.com|marianos\.com|picknsave\.com|metro-market\.net|metromarket\.net|dillons\.com|citymarket\.com|bakersplus\.com|gerbes\.com|jaycfoods\.com|pay-less\.com|food4less\.com|foodsco\.net|foodscomarket\.com|owensmarket\.com|rulerfoods\.com|aldi\.us|doordash\.com|ubereats\.com|amazon\.com|wholefoodsmarket\.com|samsclub\.com|bjs\.com|costco\.com|shipt\.com)$/;
   if (!SUPPORTED_GROCERY_HOST_RE.test(HOST)) return;
 
   const KROGER_BANNER_HOST_RE =
-    /(?:kroger|ralphs|fredmeyer|kingsoopers|frysfood|smithsfoodanddrug|harristeeter|qfc|mariano|picknsave|metro-market|metromarket|dillons|citymarket|bakersplus|gerbes|jaycfoods|pay-less|food4less|foodscompany)/;
+    /(?:^|\.)(?:kroger\.com|ralphs\.com|fredmeyer\.com|kingsoopers\.com|frysfood\.com|smithsfoodanddrug\.com|harristeeter\.com|qfc\.com|marianos\.com|picknsave\.com|metro-market\.net|metromarket\.net|dillons\.com|citymarket\.com|bakersplus\.com|gerbes\.com|jaycfoods\.com|pay-less\.com|food4less\.com|foodsco\.net|foodscomarket\.com|owensmarket\.com|rulerfoods\.com)$/;
 
   const BASE_STORE = HOST.includes("walmart") ? "walmart"
     : HOST.includes("instacart") ? "instacart"

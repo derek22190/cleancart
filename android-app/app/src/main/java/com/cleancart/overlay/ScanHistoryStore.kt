@@ -2009,8 +2009,9 @@ object ScanHistoryStore {
     private val KROGER_BANNER_DOMAINS = listOf(
         "kroger.com", "ralphs.com", "fredmeyer.com", "frysfood.com", "kingsoopers.com",
         "smithsfoodanddrug.com", "qfc.com", "harristeeter.com", "marianos.com", "picknsave.com",
-        "dillons.com", "bakersplus.com", "citymarket.com", "gerbes.com", "jaycfoods.com",
-        "pay-less.com", "food4less.com", "foodscomarket.com"
+        "metromarket.net", "metro-market.net", "dillons.com", "bakersplus.com", "citymarket.com",
+        "gerbes.com", "jaycfoods.com", "pay-less.com", "food4less.com", "foodsco.net",
+        "foodscomarket.com", "owensmarket.com", "rulerfoods.com"
     )
 
     private fun singleUrlMatchesStore(rawUrl: String, storeKey: String): Boolean {

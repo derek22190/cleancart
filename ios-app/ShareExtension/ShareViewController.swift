@@ -334,6 +334,15 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    private static let krogerBannerDomains: [String] = [
+        "kroger.com", "ralphs.com", "fredmeyer.com", "kingsoopers.com", "frysfood.com",
+        "smithsfoodanddrug.com", "harristeeter.com", "qfc.com", "marianos.com",
+        "picknsave.com", "metromarket.net", "metro-market.net", "dillons.com",
+        "bakersplus.com", "citymarket.com", "foodsco.net", "foodscomarket.com",
+        "food4less.com", "jaycfoods.com", "pay-less.com", "gerbes.com",
+        "owensmarket.com", "rulerfoods.com"
+    ]
+
     private func inferStoreContext(from url: URL?, text: String) {
         if let u = url, let h = u.host?.lowercased() {
             let p = u.path.lowercased()
@@ -342,7 +351,7 @@ final class ShareViewController: UIViewController {
             if h.contains("wholefoods") { inferredStore = "amazon"; return }
             if h.contains("amazon") || h == "a.co" || h == "amzn.to" { inferredStore = "amazon"; return }
             if h.contains("costco") { inferredStore = "costco"; return }
-            if h.contains("kroger") || h.contains("ralphs") || h.contains("fredmeyer") || h.contains("kingsoopers") || h.contains("frysfood") || h.contains("smithsfoodanddrug") || h.contains("harristeeter") {
+            if Self.krogerBannerDomains.contains(where: { h == $0 || h.hasSuffix(".\($0)") }) {
                 inferredStore = "kroger"
                 return
             }
@@ -373,7 +382,7 @@ final class ShareViewController: UIViewController {
             else if lower.contains("instacart.com") { inferredStore = "instacart" }
             else if lower.contains("wholefoodsmarket.com") || lower.contains("amazon.com") || lower.contains("a.co/") || lower.contains("amzn.to/") { inferredStore = "amazon" }
             else if lower.contains("costco.com") { inferredStore = "costco" }
-            else if lower.contains("kroger.com") || lower.contains("ralphs.com") || lower.contains("fredmeyer.com") || lower.contains("kingsoopers.com") || lower.contains("frysfood.com") || lower.contains("smithsfoodanddrug.com") || lower.contains("harristeeter.com") { inferredStore = "kroger" }
+            else if Self.krogerBannerDomains.contains(where: { lower.contains($0) }) { inferredStore = "kroger" }
             else if lower.contains("aldi.us") { inferredStore = "aldi" }
             else if lower.contains("samsclub.com") { inferredStore = "sams" }
             else if lower.contains("bjs.com") { inferredStore = "bjs" }

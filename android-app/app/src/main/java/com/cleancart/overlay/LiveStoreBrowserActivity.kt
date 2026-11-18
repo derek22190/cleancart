@@ -107,6 +107,8 @@ class LiveStoreBrowserActivity : Activity() {
             "harristeeter.com",
             "marianos.com",
             "picknsave.com",
+            "metromarket.net",
+            "metro-market.net",
             "dillons.com",
             "bakersplus.com",
             "citymarket.com",
@@ -114,7 +116,10 @@ class LiveStoreBrowserActivity : Activity() {
             "jaycfoods.com",
             "pay-less.com",
             "food4less.com",
-            "foodscomarket.com"
+            "foodsco.net",
+            "foodscomarket.com",
+            "owensmarket.com",
+            "rulerfoods.com"
         )
 
         private val ALLOWED_RETAILER_HOST_SUFFIXES = listOf(

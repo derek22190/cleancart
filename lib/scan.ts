@@ -165,18 +165,63 @@ export function parseStore(s?: unknown): Store {
   if (norm === "samsclub" || norm === "sams_club" || norm === "sam's club") return "sams";
   if (norm === "uber_eats" || norm === "uber-eats") return "ubereats";
   if (norm === "bjs_wholesale" || norm === "bj's") return "bjs";
-  if (
-    norm === "ralphs" ||
-    norm === "fredmeyer" ||
-    norm === "kingsoopers" ||
-    norm === "frysfood" ||
-    norm === "smithsfoodanddrug" ||
-    norm === "harristeeter"
-  ) {
+  if (KROGER_BANNER_STORE_KEYS.has(norm)) {
     return "kroger";
   }
   return "walmart";
 }
+
+const KROGER_BANNER_STORE_KEYS = new Set([
+  "kroger",
+  "ralphs",
+  "fredmeyer",
+  "kingsoopers",
+  "frysfood",
+  "smithsfoodanddrug",
+  "harristeeter",
+  "qfc",
+  "marianos",
+  "picknsave",
+  "metromarket",
+  "metro-market",
+  "dillons",
+  "bakersplus",
+  "citymarket",
+  "foodsco",
+  "foodscomarket",
+  "food4less",
+  "jaycfoods",
+  "pay-less",
+  "gerbes",
+  "owensmarket",
+  "rulerfoods",
+]);
+
+export const KROGER_BANNER_DOMAINS = [
+  "kroger.com",
+  "ralphs.com",
+  "fredmeyer.com",
+  "kingsoopers.com",
+  "frysfood.com",
+  "smithsfoodanddrug.com",
+  "harristeeter.com",
+  "qfc.com",
+  "marianos.com",
+  "picknsave.com",
+  "metromarket.net",
+  "metro-market.net",
+  "dillons.com",
+  "bakersplus.com",
+  "citymarket.com",
+  "foodsco.net",
+  "foodscomarket.com",
+  "food4less.com",
+  "jaycfoods.com",
+  "pay-less.com",
+  "gerbes.com",
+  "owensmarket.com",
+  "rulerfoods.com",
+] as const;
 
 export { checkRateLimit, checkRateLimitAsync, checkRateLimitDetailedAsync } from "./rate-limit";
 
@@ -187,15 +232,7 @@ export function detectStoreFromUrl(text: string): Store | undefined {
   if (host.includes("walmart") || host.includes("walmrt")) return "walmart";
   if (host.includes("instacart")) return "instacart";
   if (host.includes("target")) return "target";
-  if (
-    host.includes("kroger") ||
-    host.includes("ralphs") ||
-    host.includes("fredmeyer") ||
-    host.includes("kingsoopers") ||
-    host.includes("frysfood") ||
-    host.includes("smithsfoodanddrug") ||
-    host.includes("harristeeter")
-  ) {
+  if (KROGER_BANNER_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
     return "kroger";
   }
   if (host.includes("aldi")) return "aldi";

@@ -10154,6 +10154,62 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const { detectStoreFromUrl, parseStore, KROGER_BANNER_DOMAINS } = await import("../lib/scan");
+    const requiredDomains = [
+      "kroger.com",
+      "ralphs.com",
+      "fredmeyer.com",
+      "kingsoopers.com",
+      "frysfood.com",
+      "smithsfoodanddrug.com",
+      "harristeeter.com",
+      "qfc.com",
+      "marianos.com",
+      "picknsave.com",
+      "metromarket.net",
+      "metro-market.net",
+      "dillons.com",
+      "bakersplus.com",
+      "citymarket.com",
+      "foodsco.net",
+      "foodscomarket.com",
+      "food4less.com",
+      "jaycfoods.com",
+      "pay-less.com",
+      "gerbes.com",
+      "owensmarket.com",
+      "rulerfoods.com",
+    ];
+    const chromeManifest = fsNode.readFileSync("chrome-extension/manifest.json", "utf8");
+    const safariManifest = fsNode.readFileSync("ios-app/SafariExtension/Resources/manifest.json", "utf8");
+    const chromeContent = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariContent = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    const iosBrowser = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+    const iosShare = fsNode.readFileSync("ios-app/ShareExtension/ShareViewController.swift", "utf8");
+    const androidBrowser = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt", "utf8");
+    const androidStore = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt", "utf8");
+    const nonRegexFiles = [chromeManifest, safariManifest, iosBrowser, iosShare, androidBrowser, androidStore];
+    const hasEscapedDomain = (src: string, domain: string) => src.includes(domain.replace(/\./g, "\\."));
+    check(
+      "P2-5 All Kroger regional banners map to kroger on server and clients with foodsco.net/metromarket.net/owensmarket.com/rulerfoods.com and zero mariano.com or foodscompany.com",
+      requiredDomains.every((d) => (KROGER_BANNER_DOMAINS as readonly string[]).includes(d) && detectStoreFromUrl(`https://www.${d}/p/milk/001`) === "kroger") &&
+        parseStore("foodsco") === "kroger" &&
+        parseStore("metromarket") === "kroger" &&
+        parseStore("marianos") === "kroger" &&
+        parseStore("owensmarket") === "kroger" &&
+        parseStore("rulerfoods") === "kroger" &&
+        detectStoreFromUrl("https://www.mariano.com/p/milk/001") === undefined &&
+        detectStoreFromUrl("https://www.foodscompany.com/p/milk/001") === undefined &&
+        chromeContent === safariContent &&
+        !chromeContent.includes("mariano\\.com") &&
+        !chromeContent.includes("foodscompany") &&
+        requiredDomains.every((d) => hasEscapedDomain(chromeContent, d)) &&
+        nonRegexFiles.every((src) => !src.includes("mariano.com") && !src.includes("foodscompany.com") && src.includes("foodsco.net") && src.includes("metromarket.net") && src.includes("owensmarket.com") && src.includes("rulerfoods.com")),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
