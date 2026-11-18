@@ -4,9 +4,12 @@ import { PRICING, annualPerMonth } from "@/lib/pricing";
 import { TERMS_VERSION } from "@/lib/terms";
 
 export const metadata: Metadata = {
-  title: "Terms of Service & Subscription Terms — HeyBroc",
+  title: "Terms of Service & Subscription Terms",
   description:
     "Terms of Service for HeyBroc, covering automatic renewal subscriptions, free trials, self-serve cancellation, refunds, limitation of liability, and informational-opinion disclaimers.",
+  alternates: {
+    canonical: "https://www.heybroc.com/terms",
+  },
 };
 
 export default function TermsPage() {

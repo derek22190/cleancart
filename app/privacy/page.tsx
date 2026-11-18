@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy & Accessibility Disclosure — HeyBroc",
+  title: "Privacy Policy & Accessibility Disclosure",
   description:
-    "How HeyBroc processes product titles and ingredient lists across web, Chrome extension, iOS Shortcut, and Android AccessibilityService.",
+    "How HeyBroc processes product titles and ingredient lists across web, Chrome & Safari extensions, iPhone Live Shop, and Android.",
+  alternates: {
+    canonical: "https://www.heybroc.com/privacy",
+  },
 };
 
 export default function PrivacyPage() {

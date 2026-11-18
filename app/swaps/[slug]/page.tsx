@@ -21,6 +21,7 @@ const SEO_RETAILERS: Array<{ id: RetailerId; label: string }> = [
   { id: "instacart", label: "Instacart" },
   { id: "shipt", label: "Shipt" },
   { id: "doordash", label: "DoorDash" },
+  { id: "ubereats", label: "Uber Eats" },
 ];
 
 export function generateStaticParams() {
@@ -37,14 +38,37 @@ export async function generateMetadata({
   const { slug } = await params;
   const entry = SEO_PRODUCTS.find((p) => p.slug === slug && hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt));
   if (!entry) return {};
-  const { result, swap } = evaluateSeoProduct(entry);
+  const { result, swap, imageUrl, imageKind } = evaluateSeoProduct(entry);
   const canonicalRating = result.score >= 75 ? "Excellent" : result.score >= 50 ? "Mediocre" : "Poor";
+  const pageTitle = `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`;
+  const pageDescription = `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${canonicalRating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`;
+  const canonicalUrl = `https://www.heybroc.com/swaps/${entry.slug}`;
+  const ogImage =
+    imageKind === "photo" && imageUrl
+      ? imageUrl.startsWith("http")
+        ? imageUrl
+        : `https://www.heybroc.com${imageUrl}`
+      : "https://www.heybroc.com/icon-512.png";
 
   return {
-    title: `${entry.title} Ingredients, ${result.score}/100 Score & Clean Swap`,
-    description: `Editorial clean-label review of ${entry.title}: HeyBroc scores it ${result.score}/100 (${canonicalRating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and recommends ${swap.title} (${swap.score}/100) as a 1-for-1 Clean Swap` : ""}. Includes Sugar & refined-carb note.`,
+    title: pageTitle,
+    description: pageDescription,
     alternates: {
-      canonical: `https://www.heybroc.com/swaps/${entry.slug}`,
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: pageTitle,
+      description: pageDescription,
+      url: canonicalUrl,
+      siteName: "HeyBroc",
+      type: "article",
+      images: [{ url: ogImage, alt: entry.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: pageTitle,
+      description: pageDescription,
+      images: [ogImage],
     },
   };
 }
@@ -67,20 +91,68 @@ export default async function SwapReportPage({
   const swapImgSrc = swap?.image
     ? swap.image.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "")
     : null;
+  const canonicalUrl = `https://www.heybroc.com/swaps/${entry.slug}`;
 
   const productJsonLd = {
     "@context": "https://schema.org",
-    "@type": "Product",
-    name: entry.title,
-    ...(imageKind === "photo" && productImgSrc
-      ? { image: productImgSrc.startsWith("http") ? productImgSrc : `https://www.heybroc.com${productImgSrc}` }
-      : {}),
-    brand: {
-      "@type": "Brand",
-      name: entry.brand,
-    },
-    category: entry.category,
-    description: `Independent clean-label opinion and 0–100 ingredient analysis for ${entry.title} (representative formulation — verify physical package label). Ingredients: ${entry.ingredients}`,
+    "@graph": [
+      {
+        "@type": "Product",
+        name: entry.title,
+        ...(imageKind === "photo" && productImgSrc
+          ? {
+              image: productImgSrc.startsWith("http")
+                ? productImgSrc
+                : `https://www.heybroc.com${productImgSrc}`,
+            }
+          : {}),
+        brand: {
+          "@type": "Brand",
+          name: entry.brand,
+        },
+        category: entry.category,
+        description: `Independent clean-label opinion and 0–100 ingredient analysis for ${entry.title} (representative formulation — verify physical package label). Ingredients: ${entry.ingredients}`,
+        review: {
+          "@type": "Review",
+          author: {
+            "@type": "Organization",
+            name: "HeyBroc",
+            url: "https://www.heybroc.com/independence",
+          },
+          datePublished: entry.verifiedAt,
+          reviewRating: {
+            "@type": "Rating",
+            ratingValue: result.score,
+            bestRating: 100,
+            worstRating: 0,
+          },
+          reviewBody: `HeyBroc scores ${entry.title} ${result.score}/100 (${canonicalRating}) with ${result.flagged.length} watchlist ingredient flags${swap ? ` and suggests ${swap.title} (${swap.score}/100) as a cleaner 1-for-1 swap` : ""}.`,
+        },
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          {
+            "@type": "ListItem",
+            position: 1,
+            name: "Home",
+            item: "https://www.heybroc.com",
+          },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: "Clean Swaps",
+            item: "https://www.heybroc.com/swaps",
+          },
+          {
+            "@type": "ListItem",
+            position: 3,
+            name: entry.title,
+            item: canonicalUrl,
+          },
+        ],
+      },
+    ],
   };
 
   const primaryRetailers = SEO_RETAILERS.slice(0, 3);

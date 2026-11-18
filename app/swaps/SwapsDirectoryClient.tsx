@@ -52,10 +52,7 @@ export default function SwapsDirectoryClient({
     });
   }, [rows, search, selectedCat]);
 
-  const visible =
-    showAll || search.trim().length > 0 || selectedCat !== "All"
-      ? filtered
-      : filtered.slice(0, 8);
+  const isCollapsed = !showAll && search.trim().length === 0 && selectedCat === "All";
 
   return (
     <div>
@@ -116,9 +113,10 @@ export default function SwapsDirectoryClient({
         </div>
       </div>
 
-      {/* Compact Swap Cards */}
+      {/* Compact Swap Cards (all items stay in SSR HTML for crawlability; collapsed rows hidden via CSS) */}
       <div style={{ display: "grid", gap: 10 }}>
-        {visible.map((item) => {
+        {filtered.map((item, idx) => {
+          const isCollapsedHidden = isCollapsed && idx >= 8;
           const pillBg =
             item.score >= 75 ? "#dcfce7" : item.score >= 50 ? "#fef3c7" : "#fee2e2";
           const pillFg =
@@ -135,7 +133,7 @@ export default function SwapsDirectoryClient({
                 padding: "12px 14px",
                 textDecoration: "none",
                 color: "#0f172a",
-                display: "grid",
+                display: isCollapsedHidden ? "none" : "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(235px, 1fr))",
                 gap: 10,
                 alignItems: "center",

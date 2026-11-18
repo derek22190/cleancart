@@ -6,7 +6,7 @@ import {
 } from "@/components/HealthyScenery";
 
 export const metadata: Metadata = {
-  title: "100% Family Owned & Unbiased Grocery Scoring | HeyBroc",
+  title: "100% Family Owned & Unbiased Grocery Scoring",
   description:
     "HeyBroc is 100% family-owned and fiercely independent. Zero Big Food ties, zero in-app ads, strict family data privacy, and transparent shopper-aligned funding.",
   alternates: {
@@ -14,9 +14,46 @@ export const metadata: Metadata = {
   },
 };
 
+const INDEPENDENCE_FAQS = [
+  {
+    q: "How does HeyBroc calculate its 0 to 100 food and ingredient score?",
+    a: "HeyBroc grades products on a deterministic 0–100 scale across three pillars: Nutritional Quality (60% weight, based on Nutri-Score A–E covering sugar, sodium, saturated fat, calories, fiber, and protein), Additive & Chemical Safety (30% weight, penalizing synthetic dyes, refined seed oils, chemical preservatives, nitrites, artificial sweeteners, and emulsifiers), and a Certified Organic Bonus (10% weight, awarded strictly to products with explicit USDA Certified Organic certification). Any high-risk additive automatically caps a product's maximum score at 49/100.",
+  },
+  {
+    q: "Which grocery stores work with HeyBroc Live Shop?",
+    a: "HeyBroc shows on-photo 0–100 score badges and 1-Tap Clean Swaps across 12 grocery store backends (13 Live Shop tiles): Walmart, Instacart, Target, Amazon Fresh, Whole Foods Market, Costco, Sam's Club, Kroger (plus regional banners like Ralphs, Fred Meyer, King Soopers, Fry's, Harris Teeter, Smith's, QFC, Mariano's, and Pick 'n Save), ALDI, BJ's Wholesale, Shipt, DoorDash Grocery, and Uber Eats Grocery — on iPhone Live Shop & Safari Extension, Android Live Shop, Chrome Extension, and Web.",
+  },
+  {
+    q: "What ingredients and additives does HeyBroc flag?",
+    a: "HeyBroc flags refined seed oils (soybean, canola, corn, cottonseed, sunflower, safflower), artificial food dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3, Titanium Dioxide), preservatives and nitrates (Sodium Nitrite, BHA, BHT, Potassium Bromate, TBHQ, Sodium Benzoate), sweeteners (High Fructose Corn Syrup, Sucralose, Aspartame, Ace-K), emulsifiers (Carrageenan, Polysorbate 80), and custom household allergens (milk, gluten/wheat, peanuts, tree nuts, soy, egg, fish, shellfish, and sesame).",
+  },
+  {
+    q: "Does HeyBroc accept payments from food brands to change product scores?",
+    a: "No. HeyBroc is 100% independent and family-owned. Brands cannot pay to alter a score or buy placement in Clean Swaps. HeyBroc is funded strictly by optional Family Pro memberships and clearly disclosed retail links marked 'paid link' when a cleaner alternative is already chosen on merit.",
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "@id": "https://www.heybroc.com/independence#faq",
+  mainEntity: INDEPENDENCE_FAQS.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.a,
+    },
+  })),
+};
+
 export default function IndependencePage() {
   return (
     <div className="app">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <HealthyFoodBackdrop />
 
       <div className="topbar-shell">
@@ -176,6 +213,30 @@ export default function IndependencePage() {
               </p>
             </div>
           </div>
+
+          <section aria-label="Frequently asked questions" style={{ marginTop: 40, textAlign: "left" }}>
+            <h2 className="yuka-page-h2">Scoring &amp; Independence FAQ</h2>
+            <div style={{ display: "grid", gap: 14, marginTop: 18 }}>
+              {INDEPENDENCE_FAQS.map((item) => (
+                <article
+                  key={item.q}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 16,
+                    padding: "16px 18px",
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+                    {item.q}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#334155" }}>
+                    {item.a}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </section>
 
           <div style={{ marginTop: 32, textAlign: "center" }}>
             <a href="/" className="yuka-green-pill-btn">

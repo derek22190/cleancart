@@ -9987,6 +9987,71 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const layoutSrc = fsNode.readFileSync("app/layout.tsx", "utf8");
+    const homeSrc = fsNode.readFileSync("app/page.tsx", "utf8");
+    const testSrc = fsNode.readFileSync("app/test/page.tsx", "utf8");
+    const indepSrc = fsNode.readFileSync("app/independence/page.tsx", "utf8");
+    const privSrc = fsNode.readFileSync("app/privacy/page.tsx", "utf8");
+    const termsSrc = fsNode.readFileSync("app/terms/page.tsx", "utf8");
+    const creatorsLayoutSrc = fsNode.readFileSync("app/creators/layout.tsx", "utf8");
+    const rCodeLayoutSrc = fsNode.readFileSync("app/r/[code]/layout.tsx", "utf8");
+    const loginSrc = fsNode.readFileSync("app/login/page.tsx", "utf8");
+    const sitemapMod = await import("../app/sitemap");
+    const sitemapEntries = sitemapMod.default();
+    const swapsClientSrc = fsNode.readFileSync("app/swaps/SwapsDirectoryClient.tsx", "utf8");
+    const swapsSlugSrc = fsNode.readFileSync("app/swaps/[slug]/page.tsx", "utf8");
+    const answerBlockSrc = fsNode.readFileSync("components/AnswerBlock.tsx", "utf8");
+    const llmsTxt = fsNode.readFileSync("public/llms.txt", "utf8");
+    const llmsFullTxt = fsNode.readFileSync("public/llms-full.txt", "utf8");
+
+    const indepSitemapEntry = sitemapEntries.find((e) => e.url === "https://www.heybroc.com/independence");
+    const homeSitemapEntry = sitemapEntries.find((e) => e.url === "https://www.heybroc.com");
+    const productSitemapEntries = sitemapEntries.filter((e) => e.url.startsWith("https://www.heybroc.com/swaps/"));
+
+    check(
+      "P1-14 per-route canonicals, de-duplicated titles, deterministic sitemap with /independence, WebSite + FAQPage + Product.review/BreadcrumbList JSON-LD, SSR AnswerBlock & /swaps links, and accurate llms.txt",
+      !layoutSrc.includes("alternates:") &&
+        layoutSrc.includes('"@type": "WebSite"') &&
+        !layoutSrc.includes('"@type": "FAQPage"') &&
+        homeSrc.includes('canonical: "https://www.heybroc.com"') &&
+        homeSrc.includes("<AnswerBlock") &&
+        testSrc.includes('canonical: "https://www.heybroc.com/test"') &&
+        !testSrc.includes("| HeyBroc") &&
+        testSrc.includes("<AnswerBlock") &&
+        indepSrc.includes('"@type": "FAQPage"') &&
+        !indepSrc.includes("| HeyBroc") &&
+        privSrc.includes('canonical: "https://www.heybroc.com/privacy"') &&
+        !privSrc.includes("— HeyBroc") &&
+        termsSrc.includes('canonical: "https://www.heybroc.com/terms"') &&
+        !termsSrc.includes("— HeyBroc") &&
+        creatorsLayoutSrc.includes('canonical: "https://www.heybroc.com/creators"') &&
+        rCodeLayoutSrc.includes("index: false") &&
+        loginSrc.includes("index: false") &&
+        Boolean(indepSitemapEntry) &&
+        homeSitemapEntry?.lastModified instanceof Date &&
+        homeSitemapEntry.lastModified.toISOString().startsWith("2026-11-18") &&
+        productSitemapEntries.length >= 25 &&
+        !swapsClientSrc.includes("filtered.slice(0, 8)") &&
+        swapsClientSrc.includes('isCollapsedHidden ? "none" : "grid"') &&
+        swapsSlugSrc.includes('{ id: "ubereats", label: "Uber Eats" }') &&
+        swapsSlugSrc.includes('"@type": "BreadcrumbList"') &&
+        swapsSlugSrc.includes('"@type": "Review"') &&
+        swapsSlugSrc.includes("openGraph:") &&
+        swapsSlugSrc.includes("twitter:") &&
+        answerBlockSrc.includes("USDA Certified Organic") &&
+        !llmsTxt.includes("single-ingredient whole foods") &&
+        llmsTxt.includes("iPhone Live Shop") &&
+        llmsTxt.includes("paid link") &&
+        llmsTxt.includes("https://www.heybroc.com/independence") &&
+        llmsTxt.includes("## Quick Answers") &&
+        !llmsFullTxt.includes("single-ingredient whole foods") &&
+        llmsFullTxt.includes("iPhone App") &&
+        llmsFullTxt.includes("paid link"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

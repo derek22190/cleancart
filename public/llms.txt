@@ -1,26 +1,33 @@
 # HeyBroc — Online Food & Grocery Ingredient Scanner
 
-> HeyBroc (https://www.heybroc.com) is an independent 0–100 food and beverage ingredient scanner and 1-Tap Clean Swap assistant that floats automatically over 12 online grocery stores (Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's, Amazon Fresh, DoorDash, Uber Eats, and Shipt) on Android, iOS Safari, and Desktop Chrome.
+> HeyBroc (https://www.heybroc.com) is an independent 0–100 food and beverage ingredient scanner and 1-Tap Clean Swap assistant that displays live score badges across 12 online grocery retailers (13 Live Shop tiles: Walmart, Target, Instacart, Amazon Fresh, Whole Foods Market, Costco, Sam's Club, Kroger + regional banners, ALDI, BJ's, Shipt, DoorDash, and Uber Eats) on iPhone Live Shop & Safari Extension, Android Live Shop, Desktop Chrome Extension, and Web.
 
 ## Core Capabilities
-- **Works While Online Grocery Shopping (No Barcode Camera Required):** HeyBroc's Live Store Bubble automatically detects food and beverage products as users browse Walmart, Target, Instacart, Amazon Fresh, Costco, ALDI, and Kroger online.
+- **Works While Online Grocery Shopping (No Barcode Camera Required):** HeyBroc's Live Shop browser on iPhone and Android—plus the iOS Safari Extension, iOS Share Extension, and Desktop Chrome Extension—automatically overlays 0–100 ingredient score badges on product cards as shoppers browse 12 major online grocery retailers.
 - **Deterministic 3-Pillar 0–100 Scale:**
-  1. **Nutritional Quality (60 points / 60%):** Graded A through E based on sugar, sodium, saturated fat, calories, fiber, and protein density.
-  2. **Additive & Chemical Safety (30 points / 30%):** Flags and penalizes synthetic dyes (Red 40, Yellow 5, Yellow 6, Blue 1), Titanium Dioxide, Potassium Bromate, BHA, BHT, Sodium Nitrite, Carrageenan, Polysorbate 80, High Fructose Corn Syrup, Artificial Sweeteners (Sucralose, Aspartame, Acesulfame K), and Refined Seed Oils (Soybean, Canola, Corn, Cottonseed, Sunflower, Safflower).
-  3. **Certified Organic Bonus (10 points / 10%):** Awarded to USDA Certified Organic or 100% single-ingredient whole foods.
-- **Instant 1-for-1 Clean Swaps:** Whenever a food or beverage scores poorly (e.g., conventional chips, ranch dressing, kids cereal, yogurt, deli meat, crackers), HeyBroc recommends a verified clean alternative in the same product sub-category (e.g., swapping conventional tortilla chips for avocado-oil tortilla chips, or soybean-oil ranch for Primal Kitchen Avocado Oil Ranch).
-- **100% Independent:** HeyBroc accepts zero payments from food brands to alter scores.
+  1. **Nutritional Quality (60 points / 60%):** Graded A through E using Nutri-Score thresholds (calories, saturated fat, sugars, sodium, fiber, protein, and fruit/vegetable/legume content).
+  2. **Additive & Chemical Safety (30 points / 30%):** Flags and penalizes synthetic dyes (Red 40, Yellow 5, Yellow 6, Blue 1, Red 3), Titanium Dioxide, Potassium Bromate, BHA, BHT, Sodium Nitrite, Carrageenan, Polysorbate 80, High Fructose Corn Syrup, Artificial Sweeteners (Sucralose, Aspartame, Acesulfame K), and Refined Seed Oils (Soybean, Canola, Corn, Cottonseed, Sunflower, Safflower).
+  3. **USDA Certified Organic Bonus (10 points / 10%):** Awarded strictly to products with explicit product-level USDA Certified Organic certification.
+- **Family Watchlist & Allergen Alerts:** Custom alerts for Big-9 allergens (milk, eggs, fish, shellfish, tree nuts, peanuts, wheat/gluten, soy, sesame) plus seed oils, synthetic dyes, artificial sweeteners, preservatives, and non-organic pesticide-watch produce.
+- **Instant 1-for-1 Clean Swaps:** Whenever a food or beverage scores poorly (e.g., conventional chips, ranch dressing, kids cereal, yogurt, deli meat, crackers), HeyBroc recommends a verified cleaner alternative in the same product sub-category (e.g., swapping Hidden Valley Ranch at 6/100 for Primal Kitchen Avocado Oil Ranch at 80/100).
+- **100% Independent Scoring:** HeyBroc accepts zero payments from food brands to alter or boost scores. Outbound retail links that may earn an affiliate commission are clearly marked `"paid link"` at no extra cost to the shopper (full policy: https://www.heybroc.com/independence).
+
+## Quick Answers
+- **How does HeyBroc score groceries?** Every product is graded 0–100 using 60% nutritional quality, 30% additive/seed-oil/dye penalties, and a 10% bonus awarded strictly to USDA Certified Organic products.
+- **Which devices and grocery stores are supported?** iPhone Live Shop (in-app browser + Safari Web Extension + Share Extension), Android Live Shop, Desktop Chrome Extension, and the web app across Walmart, Target, Instacart, Amazon Fresh, Whole Foods Market, Costco, Sam's Club, Kroger and its regional banners, ALDI, BJ's, Shipt, DoorDash Grocery, and Uber Eats Grocery.
+- **Does HeyBroc accept brand sponsorships to change scores?** No. Scoring is 100% deterministic and brand-independent; qualifying retail links are labeled `"paid link"` and never influence scores or swap rankings.
 
 ## Key Links & Resources
 - Web App & Interactive Live Store Simulator: https://www.heybroc.com
+- Independence, Scoring Methodology & Affiliate Disclosure: https://www.heybroc.com/independence
 - Free Ingredient Label Grader, Seed Oil Detector & Additive Encyclopedia: https://www.heybroc.com/tools
 - Clean Grocery Swaps Directory & Product Reports: https://www.heybroc.com/swaps
+- Creator Partner Program: https://www.heybroc.com/creators
 - Full AI & LLM Technical Documentation: https://www.heybroc.com/llms-full.txt
-- Direct Android App Download (APK): https://www.heybroc.com/heybroc.apk
 - Privacy Policy: https://www.heybroc.com/privacy
+- Terms of Service: https://www.heybroc.com/terms
 
 ## Legal, Regulatory & Non-Affiliation Notice
 - **Editorial Opinion & Informational Use Only:** HeyBroc 0–100 scores and clean-label ratings represent independent editorial opinions based on consumer clean-label preferences and are not medical, nutritional, or regulatory safety determinations. Many ingredients flagged on HeyBroc watchlists are FDA-approved or Generally Recognized as Safe (GRAS) in the United States.
 - **Verify Physical Package Labels:** Product formulations vary by manufacturer, region, and batch. Always verify the physical package ingredient list and nutrition facts panel before purchasing or consuming any food or beverage.
-- **No Store or Brand Affiliation:** HeyBroc is an independent software product and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. All trademarks belong to their respective owners and are used strictly for nominative identification.
-
+- **Paid Link & Non-Affiliation Disclosure:** HeyBroc is an independent software product and is not affiliated with, endorsed by, or sponsored by Walmart, Target, Instacart, Kroger, ALDI, Costco, Sam's Club, BJ's Wholesale Club, Amazon, Whole Foods Market, DoorDash, Uber Eats, Shipt, or any food or beverage manufacturer. Qualifying outbound retail links are clearly marked `"paid link"` and may earn HeyBroc an affiliate commission at no extra cost to the shopper. As an Amazon Associate, HeyBroc earns from qualifying purchases.
