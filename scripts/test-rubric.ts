@@ -10126,6 +10126,19 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const chromeContent = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+    const safariContent = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+    check(
+      "P2-3 Extension excludes plain-div Saved for later / Buy it again wrappers and Move-to-cart rows with byte-identical Safari parity",
+      chromeContent === safariContent &&
+        chromeContent.includes("EXCLUDED_DIV_ATTR_RE") &&
+        chromeContent.includes('if (isLandmark || cur.tagName === "DIV")') &&
+        chromeContent.includes("hasMoveToCart && !hasSaveForLater"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");

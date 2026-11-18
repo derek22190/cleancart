@@ -1222,6 +1222,9 @@
     return rect.width > 4 && rect.height > 4;
   }
 
+  const EXCLUDED_DIV_ATTR_RE =
+    /\b(?:saved[-_ ]?for[-_ ]?later|buy[-_ ]?(?:it[-_ ]?)?again|frequently[-_ ]?bought|recently[-_ ]?viewed|recommended[-_ ]?(?:for[-_ ]?you)?)\b/i;
+
   function isInsideExcludedSection(el, rootBoundary = document.body) {
     if (!el || typeof el.closest !== "function") return false;
     const matchedAttr = el.closest(EXCLUDED_CONTAINER_SEL);
@@ -1229,11 +1232,25 @@
 
     let cur = el.parentElement;
     let depth = 0;
-    while (cur && cur !== rootBoundary && cur !== document.body && depth < 9) {
+    while (cur && cur !== rootBoundary && cur !== document.body && depth < 10) {
       const aria = cur.getAttribute("aria-label") || "";
       if (EXCLUDED_SECTION_HEADING_RE.test(aria)) return true;
-      if (/^(SECTION|ASIDE)$/.test(cur.tagName) || cur.getAttribute("role") === "region") {
-        const heading = cur.querySelector(":scope > h2, :scope > h3, :scope > header h2, :scope > header h3, :scope > div > h2, :scope > div > h3");
+      const meta = `${cur.id || ""} ${cur.getAttribute("data-testid") || ""} ${cur.getAttribute("data-test") || ""} ${cur.getAttribute("data-automation-id") || ""} ${typeof cur.className === "string" ? cur.className : ""}`;
+      if (EXCLUDED_DIV_ATTR_RE.test(meta)) return true;
+
+      const isLandmark = /^(SECTION|ASIDE)$/.test(cur.tagName) || cur.getAttribute("role") === "region";
+      if (isLandmark || cur.tagName === "DIV") {
+        let heading = cur.querySelector(
+          ':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > [role="heading"], :scope > header h2, :scope > header h3, :scope > header [role="heading"]'
+        );
+        if (!heading && isLandmark) {
+          heading = cur.querySelector(':scope > div > h2, :scope > div > h3, :scope > div > [role="heading"]');
+        } else if (!heading && cur.tagName === "DIV") {
+          const firstChild = cur.firstElementChild;
+          if (firstChild && firstChild.tagName === "DIV" && !firstChild.contains(el)) {
+            heading = firstChild.querySelector(':scope > h2, :scope > h3, :scope > h4, :scope > [role="heading"]');
+          }
+        }
         const hText = (heading?.textContent || "").replace(/\s+/g, " ").trim();
         if (hText && EXCLUDED_SECTION_HEADING_RE.test(hText)) return true;
       }
@@ -2036,6 +2053,16 @@
     if (!el || typeof el.closest !== "function") return false;
     if (el.closest('#sc-saved-cart, [data-testid*="saved" i], [data-test*="savedForLater" i], [data-testid*="buy-again" i], [data-testid*="recommend" i], [data-testid*="upsell" i], [data-testid*="addon" i]')) {
       return true;
+    }
+    if (el.querySelectorAll) {
+      let hasMoveToCart = false;
+      let hasSaveForLater = false;
+      for (const btn of el.querySelectorAll("button, a[role='button'], [role='button']")) {
+        const bTxt = (btn.textContent || btn.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+        if (/^move\s+to\s+(?:cart|bag)$/i.test(bTxt)) hasMoveToCart = true;
+        if (/^save\s+for\s+later$/i.test(bTxt)) hasSaveForLater = true;
+      }
+      if (hasMoveToCart && !hasSaveForLater) return true;
     }
     return isInsideExcludedSection(el, cartRoot);
   }

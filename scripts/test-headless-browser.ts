@@ -2237,6 +2237,85 @@ async function main() {
     );
     console.log(`   ✓ P2-2 Extension lazy-loaded photo retry verified (${p22After.text})!`);
 
+    // 4J. P2-3 Exclude "Saved for later" & "Buy it again" inside plain <div> wrappers from Extension Cart
+    const p23CartHtml = `
+      <main>
+        <h1>Cart (1 item)</h1>
+        <div class="active-cart-box">
+          <div data-testid="cart-item" style="display:flex;gap:12px;padding:12px;">
+            <img src=${JSON.stringify(placeholderSvgDataUrl)} width="80" height="80" alt="Organic Honeycrisp Apples" />
+            <a href="/ip/Organic-Honeycrisp-Apples-3-lb/10452110">Organic Honeycrisp Apples, 3 lb</a>
+            <span>$6.99</span>
+            <input type="number" aria-label="Quantity" value="1" />
+            <button>Save for later</button>
+          </div>
+        </div>
+        <div class="plain-saved-wrapper">
+          <div><h2>Saved for later (2)</h2></div>
+          <div data-testid="cart-item" style="display:flex;gap:12px;padding:12px;">
+            <img src=${JSON.stringify(placeholderSvgDataUrl)} width="80" height="80" alt="Doritos Nacho Cheese" />
+            <a href="/ip/Doritos-Nacho-Cheese-Tortilla-Chips/10452111">Doritos Nacho Cheese Tortilla Chips, 9.25 oz</a>
+            <span>$4.98</span>
+            <button>Move to cart</button>
+          </div>
+        </div>
+        <div class="plain-buy-again-wrapper">
+          <h3>Buy it again</h3>
+          <div data-testid="cart-item" style="display:flex;gap:12px;padding:12px;">
+            <img src=${JSON.stringify(placeholderSvgDataUrl)} width="80" height="80" alt="Hidden Valley Ranch" />
+            <a href="/ip/Hidden-Valley-Original-Ranch/10452112">Hidden Valley Original Ranch Dressing, 16 fl oz</a>
+            <span>$4.28</span>
+            <button>Add to cart</button>
+          </div>
+        </div>
+      </main>
+    `;
+    await storePage.navigate("https://www.walmart.com/cart");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p23CartHtml)};
+      window.__heybrocApiBase = "https://www.heybroc.com";
+      window.__heybrocOverlayCssUrl = ${JSON.stringify(extOverlayCssDataUrl)};
+      window.__heybrocExtStorage = { cc_photo_badges_enabled: true };
+      window.chrome = {
+        storage: {
+          local: {
+            get: function(keys, cb) { const out = Object.assign({}, window.__heybrocExtStorage); if (cb) setTimeout(() => cb(out), 1); return Promise.resolve(out); },
+            set: function(items, cb) { Object.assign(window.__heybrocExtStorage, items || {}); if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); },
+            remove: function(_k, cb) { if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); }
+          },
+          onChanged: { addListener: function() {} }
+        },
+        runtime: {
+          id: "cleancart-p23-ext",
+          getURL: function(p) { return p === "overlay.css" ? window.__heybrocOverlayCssUrl : ("https://www.heybroc.com/" + p); },
+          sendMessage: function(msg, cb) {
+            const resp = msg && msg.type === "CLEANCART_AUDIT_CART_BATCH" ? { ok: true, results: {} } : { ok: false };
+            if (cb) setTimeout(() => cb(resp), 2);
+            return Promise.resolve(resp);
+          },
+          onMessage: { addListener: function() {} }
+        }
+      };
+    `);
+    await storePage.eval(extContentJS, false);
+    const p23Cart = await storePage.waitFor<string[]>(
+      `(() => {
+        const st = window.__heybrocExtStorage || {};
+        const key = Object.keys(st).find((k) => k.includes("walmart") && Array.isArray(st[k]) && st[k].length >= 1);
+        if (!key) return null;
+        return st[key].map((i) => i.title || "");
+      })()`,
+      "P2-3 Walmart cart excludes plain-div Saved for later & Buy it again items",
+      6000,
+    );
+    assert(
+      p23Cart.length === 1 &&
+        /apples/i.test(p23Cart[0]) &&
+        !p23Cart.some((t) => /doritos|ranch/i.test(t)),
+      `P2-3 Cart accidentally included Saved for later / Buy it again items: ${JSON.stringify(p23Cart)}`,
+    );
+    console.log(`   ✓ P2-3 plain-div Saved for later & Buy it again excluded from cart (${p23Cart.join(", ")})!`);
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");
