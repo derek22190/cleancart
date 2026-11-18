@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import SafariServices
 import CryptoKit
 import ImageIO
 import Darwin
@@ -184,6 +185,20 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !h.isEmpty else { return false }
         return allowedSsoDomains.contains { domain in
+            h == domain || h.hasSuffix(".\(domain)")
+        }
+    }
+
+    private static let externalOAuthDomains: [String] = [
+        "accounts.google.com",
+        "accounts.youtube.com",
+        "appleid.apple.com"
+    ]
+
+    private static func isExternalOAuthHost(_ rawHost: String) -> Bool {
+        let h = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !h.isEmpty else { return false }
+        return externalOAuthDomains.contains { domain in
             h == domain || h.hasSuffix(".\(domain)")
         }
     }
@@ -623,7 +638,6 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
         config.allowsInlineMediaPlayback = true
-        config.applicationNameForUserAgent = "Version/17.0 Mobile/15E148 Safari/604.1"
         let pagePrefs = WKWebpagePreferences()
         pagePrefs.preferredContentMode = .mobile
         config.defaultWebpagePreferences = pagePrefs
@@ -3278,6 +3292,17 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             respond(.cancel)
             return
         }
+        if scheme == "https",
+           Self.isExternalOAuthHost(host),
+           (navigationAction.targetFrame?.isMainFrame == true || webView === authPopupWebView) {
+            respond(.cancel)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, !self.isCleaningUp else { return }
+                self.dismissAuthPopup()
+                self.presentExternalOAuthPrompt(for: url, host: host)
+            }
+            return
+        }
         if navigationAction.targetFrame?.isMainFrame == true && scheme != "about" {
             guard scheme == "https", Self.isAllowedNavigationHost(host) else {
                 respond(.cancel)
@@ -3290,6 +3315,24 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return
         }
         respond(.allow)
+    }
+
+    private func presentExternalOAuthPrompt(for url: URL, host: String) {
+        guard !isCleaningUp, presentedViewController == nil else { return }
+        let provider = host.contains("apple") ? "Apple" : "Google"
+        let alert = UIAlertController(
+            title: "Sign in with \(provider) in Safari",
+            message: "\(provider) requires your system browser for sign-in security. You can sign in using your store email & password right here in Live Shop, or open \(provider) Sign-In in Safari.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Open in Safari", style: .default) { [weak self] _ in
+            guard let self = self, !self.isCleaningUp else { return }
+            let safariVC = SFSafariViewController(url: url)
+            safariVC.modalPresentationStyle = .pageSheet
+            self.present(safariVC, animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Use Store Email Instead", style: .cancel))
+        present(alert, animated: true)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -3336,6 +3379,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if Self.isBlockedAppRedirectHost(host) {
                 return nil
             }
+            if Self.isExternalOAuthHost(host) {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, !self.isCleaningUp else { return }
+                    self.presentExternalOAuthPrompt(for: url, host: host)
+                }
+                return nil
+            }
             let p = url.path.lowercased()
             let isAuthLikePath =
                 p.contains("/login") || p.contains("/signin") || p.contains("/sign-in") ||
@@ -3351,7 +3401,6 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
         dismissAuthPopup()
         configuration.allowsInlineMediaPlayback = true
-        configuration.applicationNameForUserAgent = "Version/17.0 Mobile/15E148 Safari/604.1"
 
         let backdrop = UIView()
         backdrop.translatesAutoresizingMaskIntoConstraints = false

@@ -9090,11 +9090,11 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidDetectorJs.includes("climbAboveHorizontalCarousel") &&
         androidDetectorJs.includes("PROMO_SLIDE_ALT_RE") &&
         iosLiveStoreSwift.includes("climbAboveHorizontalCarousel") &&
-        iosLiveStoreSwift.includes("applicationNameForUserAgent") &&
+        iosLiveStoreSwift.includes("isExternalOAuthHost") &&
         iosLiveStoreSwift.includes("webViewDidClose") &&
         iosLiveStoreSwift.includes("saveLastStoreURL") &&
         extContentJs.includes("climbAboveExtCarousel") &&
-        androidLiveStoreKt.includes("buildAuthCompatibleUserAgent") &&
+        androidLiveStoreKt.includes("isExternalOAuthHost") &&
         androidLiveStoreKt.includes("openInAppAuthPopupDialog") &&
         androidLiveStoreKt.includes("saveLastStoreUrl") &&
         androidLiveStoreKt.includes("loadLastStoreUrl") &&
@@ -9349,6 +9349,28 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
           badPkgRes.status === 403 &&
           badProdRes.status === 403 &&
           unconfiguredRes.status === 503
+        );
+      })(),
+    );
+  }
+
+  {
+    const fsNode = await import("node:fs");
+    check(
+      "P1-1 iOS & Android Live Shop remove WebView User-Agent disguises and hand off Google/Apple OAuth safely",
+      (() => {
+        const iosLive = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+        const androidLive = fsNode.readFileSync("android-app/app/src/main/java/com/cleancart/overlay/LiveStoreBrowserActivity.kt", "utf8");
+        return (
+          !iosLive.includes('applicationNameForUserAgent = "Version/17.0') &&
+          iosLive.includes("import SafariServices") &&
+          iosLive.includes("isExternalOAuthHost") &&
+          iosLive.includes("SFSafariViewController(url: url)") &&
+          !androidLive.includes("buildAuthCompatibleUserAgent") &&
+          !androidLive.includes("WEBVIEW_WV_TOKEN_RE") &&
+          androidLive.includes("isExternalOAuthHost") &&
+          androidLive.includes("showExternalOAuthPrompt") &&
+          androidLive.includes("Intent.ACTION_VIEW")
         );
       })(),
     );

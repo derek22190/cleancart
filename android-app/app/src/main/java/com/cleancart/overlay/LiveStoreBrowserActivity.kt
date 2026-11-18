@@ -157,25 +157,23 @@ class LiveStoreBrowserActivity : Activity() {
             "live.com"
         )
 
-        private val WEBVIEW_WV_TOKEN_RE = Regex(";\\s*wv\\b", RegexOption.IGNORE_CASE)
-        private val WEBVIEW_VERSION_TOKEN_RE = Regex("\\bVersion/\\d+(?:\\.\\d+)*\\s*", RegexOption.IGNORE_CASE)
-        private val MULTI_SPACE_RE = Regex("\\s{2,}")
+        private val EXTERNAL_OAUTH_HOST_SUFFIXES = setOf(
+            "accounts.google.com",
+            "accounts.youtube.com",
+            "appleid.apple.com"
+        )
 
         private val VALID_BATCH_ID_RE = Regex(
             "^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$",
             RegexOption.IGNORE_CASE
         )
 
-        fun buildAuthCompatibleUserAgent(rawUa: String?): String {
-            val base = rawUa?.trim().orEmpty()
-            if (base.isEmpty()) {
-                return "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+        fun isExternalOAuthHost(rawHost: String?): Boolean {
+            val host = rawHost?.trim()?.lowercase().orEmpty()
+            if (host.isEmpty()) return false
+            return EXTERNAL_OAUTH_HOST_SUFFIXES.any { suffix ->
+                host == suffix || host.endsWith(".$suffix")
             }
-            return base
-                .replace(WEBVIEW_WV_TOKEN_RE, "")
-                .replace(WEBVIEW_VERSION_TOKEN_RE, "")
-                .replace(MULTI_SPACE_RE, " ")
-                .trim()
         }
 
         fun normalizeStoreKey(raw: String?): String {
@@ -965,7 +963,6 @@ class LiveStoreBrowserActivity : Activity() {
             allowFileAccess = false
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            userAgentString = buildAuthCompatibleUserAgent(userAgentString)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 safeBrowsingEnabled = true
             }
@@ -1078,6 +1075,11 @@ class LiveStoreBrowserActivity : Activity() {
                 }
                 val host = uri.host?.lowercase().orEmpty()
                 if (isBlockedAppRedirectHost(host)) return true
+                if (isExternalOAuthHost(host)) {
+                    dismissAuthPopupDialog()
+                    showExternalOAuthPrompt(uri.toString(), host)
+                    return true
+                }
                 if (!isAllowedNavigationHost(host) && validatedRetailerUrl(uri.toString()) == null) {
                     return true
                 }
@@ -1110,6 +1112,11 @@ class LiveStoreBrowserActivity : Activity() {
                 val host = uri.host?.lowercase().orEmpty()
                 if (isBlockedAppRedirectHost(host)) {
                     dismissAuthPopupDialog()
+                    return
+                }
+                if (isExternalOAuthHost(host)) {
+                    dismissAuthPopupDialog()
+                    showExternalOAuthPrompt(candidate, host)
                     return
                 }
                 val isAuthUrl = isSsoAuthHost(host) || isAuthLikePath(uri.path)
@@ -1164,6 +1171,36 @@ class LiveStoreBrowserActivity : Activity() {
         return true
     }
 
+    private fun showExternalOAuthPrompt(url: String, host: String) {
+        if (isCleaningUp || isFinishing || isDestroyed) return
+        val provider = if (host.contains("apple")) "Apple" else "Google"
+        mainHandler.post {
+            if (isCleaningUp || isFinishing || isDestroyed) return@post
+            runCatching {
+                AlertDialog.Builder(this)
+                    .setTitle("Sign in with $provider in Browser")
+                    .setMessage(
+                        "$provider requires your system browser for sign-in security. " +
+                            "You can sign in using your store email & password right here in Live Shop, " +
+                            "or open $provider Sign-In in your browser."
+                    )
+                    .setPositiveButton("Open in Browser") { _, _ ->
+                        runCatching {
+                            startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        }.onFailure {
+                            Toast.makeText(this, "Could not open browser.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .setNegativeButton("Use Store Email Instead", null)
+                    .show()
+            }
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun attachFreshWebView(): WebView {
         storeWebView?.let { old ->
@@ -1197,7 +1234,6 @@ class LiveStoreBrowserActivity : Activity() {
         settings.allowFileAccess = false
         settings.allowContentAccess = false
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        settings.userAgentString = buildAuthCompatibleUserAgent(settings.userAgentString)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.safeBrowsingEnabled = true
         }
@@ -1234,6 +1270,10 @@ class LiveStoreBrowserActivity : Activity() {
                         return true
                     }
                     if (scheme == "https") {
+                        if (isExternalOAuthHost(host)) {
+                            showExternalOAuthPrompt(uri.toString(), host)
+                            return true
+                        }
                         if (!isAllowedNavigationHost(host) && validatedRetailerUrl(uri.toString()) == null) {
                             return true
                         }
