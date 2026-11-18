@@ -1750,7 +1750,7 @@ object ScanApi {
         val uncachedBySig = LinkedHashMap<String, BatchScanRequestItem>()
         val duplicateIdsByPrimaryId = HashMap<String, MutableList<String>>()
 
-        for (item in items.take(8)) {
+        for (item in items.take(12)) {
             val cleanId = item.id.trim()
             if (!VALID_BATCH_ITEM_ID_RE.matches(cleanId)) continue
             val cleanTitle = item.productTitle.trim().take(300)

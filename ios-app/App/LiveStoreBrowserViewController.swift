@@ -1885,7 +1885,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
               hbPendingQueue = onScreen.concat(nearScreen, offScreen);
             }
-            var chunk = hbPendingQueue.splice(0, 8);
+            var chunk = hbPendingQueue.splice(0, 12);
             if (hbPendingQueue.length > 0) {
               hbBatchTimer = setTimeout(flushHbBadgeBatch, 140);
             }
@@ -3210,7 +3210,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 let safeToken = String(pageToken.prefix(64).filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" })
                 var cleanItems: [[String: String]] = []
                 var localImgMap: [String: String] = [:]
-                for item in rawBatchItems.prefix(8) {
+                for item in rawBatchItems.prefix(12) {
                     guard let id = item["id"] as? String,
                           Self.isValidBatchItemId(id) else { continue }
                     let pTitle = ((item["productTitle"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

@@ -7555,7 +7555,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             !readerKt.includes("scheduleVisibleGridBatchScan") &&
             !readerKt.includes("extractVisibleGridFoodCards"),
           scanApiAllergenAndPesticideParity:
-            scanApiKt.includes("items.take(8)") &&
+            scanApiKt.includes("items.take(12)") &&
             scanApiKt.includes("VALID_BATCH_ITEM_ID_RE") &&
             scanApiKt.includes("classifyAlertSeverity") &&
             scanApiKt.includes('"sesame"') &&
@@ -10234,6 +10234,101 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !chromeContent.includes("stockCache.set(") &&
         chromeBg.includes("async function fetchWithTimeout(") &&
         safariBg.includes("async function fetchWithTimeout("),
+    );
+  }
+
+  {
+    const { MAX_BATCH_SCAN_ITEMS, runBatchScan } = await import("../lib/scan");
+    const {
+      OFF_SEARCH_BATCH_MAX_PER_MIN,
+      OFF_SEARCH_INTERACTIVE_RESERVE,
+      OFF_SEARCH_MAX_PER_MIN,
+      consumeSharedOffBudget,
+      resetLookupRuntimeForTests,
+    } = await import("../lib/lookup");
+    resetLookupRuntimeForTests();
+    let batchAllowed = 0;
+    for (let i = 0; i < 12; i++) {
+      if (await consumeSharedOffBudget("off_search", { isBatch: true })) batchAllowed++;
+    }
+    let interactiveAllowed = 0;
+    for (let i = 0; i < 5; i++) {
+      if (await consumeSharedOffBudget("off_search")) interactiveAllowed++;
+    }
+    resetLookupRuntimeForTests();
+    const twelveCatalogTitles = [
+      "Coca-Cola Classic",
+      "Doritos Nacho Cheese",
+      "Hidden Valley Original Ranch",
+      "Kraft Macaroni & Cheese",
+      "Oreo Chocolate Sandwich Cookies",
+      "Cheerios",
+      "Stonyfield Organic Whole Milk Plain Yogurt",
+      "Primal Kitchen Ranch Dressing with Avocado Oil",
+      "Dave's Killer Bread Organic 21 Whole Grains & Seeds Bread",
+      "Cheez-It Original",
+      "Gatorade Fruit Punch",
+      "Sprite Lemon-Lime Soda",
+      "Pepsi Cola",
+    ];
+    const batch12 = await runBatchScan(
+      { store: "walmart", skipAnalytics: true },
+      twelveCatalogTitles.map((productTitle, idx) => ({ id: `c${idx + 1}`, productTitle })),
+    );
+    const scoredIds = Object.keys(batch12.results).filter((id) => batch12.results[id]?.ok);
+
+    // Also verify end-to-end AsyncLocalStorage propagation: a 12-item cold batch scan never burns the 3/min interactive OFF search reserve
+    resetLookupRuntimeForTests();
+    const prevFetchP27 = globalThis.fetch;
+    let coldBatchOffSearchCalls = 0;
+    let interactiveReserveAllowedAfterColdBatch = 0;
+    try {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const u = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (u.includes("search.openfoodfacts.org") || u.includes("/cgi/search.pl") || u.includes("/api/v2/search")) {
+          coldBatchOffSearchCalls++;
+        }
+        return Response.json({ products: [], hits: [], foods: [] });
+      }) as typeof fetch;
+      const coldItems = Array.from({ length: 12 }, (_, idx) => ({
+        id: `cold_${idx + 1}`,
+        productTitle: `Zylphoric Artisan Biscuit BatchProbe ${idx + 1}X`,
+      }));
+      await runBatchScan({ store: "walmart", skipAnalytics: true }, coldItems);
+      for (let i = 0; i < 5; i++) {
+        if (await consumeSharedOffBudget("off_search")) interactiveReserveAllowedAfterColdBatch++;
+      }
+    } finally {
+      globalThis.fetch = prevFetchP27;
+      resetLookupRuntimeForTests();
+    }
+
+    const p27Detail = {
+      MAX_BATCH_SCAN_ITEMS,
+      OFF_SEARCH_INTERACTIVE_RESERVE,
+      OFF_SEARCH_BATCH_MAX_PER_MIN,
+      OFF_SEARCH_MAX_PER_MIN,
+      batchAllowed,
+      interactiveAllowed,
+      scoredCount: scoredIds.length,
+      hasC13: "c13" in batch12.results,
+      coldBatchOffSearchCalls,
+      interactiveReserveAllowedAfterColdBatch,
+    };
+    const p27Ok =
+      MAX_BATCH_SCAN_ITEMS === 12 &&
+      OFF_SEARCH_INTERACTIVE_RESERVE >= 3 &&
+      OFF_SEARCH_BATCH_MAX_PER_MIN === OFF_SEARCH_MAX_PER_MIN - OFF_SEARCH_INTERACTIVE_RESERVE &&
+      batchAllowed === OFF_SEARCH_BATCH_MAX_PER_MIN &&
+      interactiveAllowed === OFF_SEARCH_INTERACTIVE_RESERVE &&
+      scoredIds.length === 12 &&
+      !("c13" in batch12.results) &&
+      coldBatchOffSearchCalls <= OFF_SEARCH_BATCH_MAX_PER_MIN &&
+      interactiveReserveAllowedAfterColdBatch >= OFF_SEARCH_INTERACTIVE_RESERVE;
+    if (!p27Ok) console.error("P2-7 failure detail:", p27Detail);
+    check(
+      "P2-7 Batch scans support 12 items per round-trip and reserve >=3/min OFF search slots exclusively for interactive single scans",
+      p27Ok,
     );
   }
 

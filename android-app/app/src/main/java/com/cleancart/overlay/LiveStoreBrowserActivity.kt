@@ -1874,7 +1874,7 @@ class LiveStoreBrowserActivity : Activity() {
                         }
                         val batchReq = ArrayList<ScanApi.BatchScanRequestItem>()
                         val localStoreImgs = HashMap<String, String>()
-                        for (i in 0 until minOf(arr.length(), 8)) {
+                        for (i in 0 until minOf(arr.length(), 12)) {
                             val it = arr.optJSONObject(i) ?: continue
                             val id = it.optString("id").trim()
                             val pTitle = it.optString("productTitle").trim()

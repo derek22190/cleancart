@@ -4819,7 +4819,7 @@
       return;
     }
 
-    if (pendingPhotoBadgeQueue.size > 8) {
+    if (pendingPhotoBadgeQueue.size > 12) {
       const vhNow = Math.max(400, window.innerHeight || 800);
       const onScreen = [];
       const nearScreen = [];
@@ -4857,7 +4857,7 @@
         nextRetryAt: 0,
       });
       batchEntries.push(entry);
-      if (batchEntries.length >= 8) break;
+      if (batchEntries.length >= 12) break;
     }
     if (pendingPhotoBadgeQueue.size > 0 && !photoBadgeBatchTimer) {
       photoBadgeBatchTimer = setTimeout(flushPhotoBadgeBatch, 180);

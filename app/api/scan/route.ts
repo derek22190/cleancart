@@ -3,6 +3,7 @@ import { getAuthenticatedUser, toPublicProfile } from "@/lib/auth";
 import {
   checkRateLimitDetailedAsync,
   inferClientPlatform,
+  MAX_BATCH_SCAN_ITEMS,
   runBatchScan,
   runScan,
   toIosText,
@@ -183,7 +184,7 @@ export async function POST(request: Request) {
   }
 
   const isBatchRequest = Array.isArray(body.items);
-  const batchItemCount = isBatchRequest ? Math.min(8, Math.max(1, body.items!.length)) : 0;
+  const batchItemCount = isBatchRequest ? Math.min(MAX_BATCH_SCAN_ITEMS, Math.max(1, body.items!.length)) : 0;
   const rateCost = batchItemCount > 0 ? batchItemCount : 1;
   const rl = await checkRateLimitDetailedAsync(`scan:${ip}`, 120, 60_000, rateCost);
   if (!rl.allowed) {

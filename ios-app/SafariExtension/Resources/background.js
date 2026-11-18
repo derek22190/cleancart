@@ -301,7 +301,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({
-            items: Array.isArray(msg.items) ? msg.items.slice(0, 8) : [],
+            items: Array.isArray(msg.items) ? msg.items.slice(0, 12) : [],
             store: msg.store,
             instacartRetailerSlug: msg.instacartRetailerSlug,
             watchlist,

@@ -106,6 +106,7 @@ export interface ScanRequest {
   verifiedAccountPro?: boolean;
   format?: "json" | "ios_text";
   skipAnalytics?: boolean;
+  isBatch?: boolean;
 }
 
 export interface ScanResponse {
@@ -825,6 +826,7 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
       productTitle: cand,
       barcode,
       rawIngredients,
+      isBatch: req.isBatch,
     });
     if (found) {
       productTitle = cand;
@@ -1152,7 +1154,7 @@ export interface BatchScanResponse {
 }
 
 const VALID_BATCH_ITEM_ID_RE = /^(?!^(?:__proto__|constructor|prototype)$)[A-Za-z0-9_-]{1,40}$/i;
-const MAX_BATCH_SCAN_ITEMS = 8;
+export const MAX_BATCH_SCAN_ITEMS = 12;
 const BATCH_ENTITLEMENT_TIMEOUT_MS = 900;
 
 export const NON_FOOD_GRID_ITEM_RE =
@@ -1290,7 +1292,7 @@ export async function runBatchScan(
 
   const resolvedByNorm = new Map<string, ScanResponse | ScanError>();
   const entries = Array.from(uniqueByNorm.entries());
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 5;
   let cursor = 0;
 
   const workers = Array.from({ length: Math.min(CONCURRENCY, entries.length) }, async () => {
@@ -1316,6 +1318,7 @@ export async function runBatchScan(
           clientPlatform,
           format: "json",
           skipAnalytics: true,
+          isBatch: true,
         });
         if (single.ok) {
           const gated: ScanResponse = {

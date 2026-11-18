@@ -51,6 +51,7 @@ export interface LookupInput {
   productTitle?: string;
   barcode?: string;
   rawIngredients?: string;
+  isBatch?: boolean;
 }
 
 export interface LookupResult {
@@ -678,10 +679,12 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
 const NEGATIVE_LOOKUP_TTL_MS = 15 * 60_000;
 const MAX_NEGATIVE_LOOKUP_ENTRIES = 1000;
 export const OFF_SEARCH_MAX_PER_MIN = 9;
+export const OFF_SEARCH_INTERACTIVE_RESERVE = 3;
+export const OFF_SEARCH_BATCH_MAX_PER_MIN = Math.max(1, OFF_SEARCH_MAX_PER_MIN - OFF_SEARCH_INTERACTIVE_RESERVE);
 export const OFF_PRODUCT_MAX_PER_MIN = 14;
 const negativeLookupCache = new Map<string, number>();
 const providerRateWindows = new Map<string, { count: number; resetAt: number }>();
-const lookupAttemptContext = new AsyncLocalStorage<{ hadOperationalFailure: boolean }>();
+const lookupAttemptContext = new AsyncLocalStorage<{ hadOperationalFailure: boolean; isBatch?: boolean }>();
 let trackedLookupFetchRef: unknown = globalThis.fetch;
 let offRateTestEpoch = 0;
 let offUnavailableUntil = 0;
@@ -740,8 +743,13 @@ export async function reportSharedOffRateLimited(): Promise<void> {
 /**
  * Shared Open Food Facts / Open*Facts budget enforced across serverless instances via KV
  * strictly at or below OFF's published IP limits (<= 10 searches/min, <= 15 product reads/min).
+ * Batch grid scans are capped at OFF_SEARCH_BATCH_MAX_PER_MIN so >= OFF_SEARCH_INTERACTIVE_RESERVE
+ * slots/min remain reserved for interactive single scans.
  */
-export async function consumeSharedOffBudget(urlOrKind: string): Promise<boolean> {
+export async function consumeSharedOffBudget(
+  urlOrKind: string,
+  options?: { isBatch?: boolean },
+): Promise<boolean> {
   ensureLookupRuntimeFreshForFetch();
   let bucket: "off_search" | "off_product" | "off_sister_search" | "off_sister_product" | "" = "";
   if (urlOrKind === "off_search") {
@@ -769,10 +777,13 @@ export async function consumeSharedOffBudget(urlOrKind: string): Promise<boolean
   }
   if (!bucket) return true;
   if (Date.now() < offUnavailableUntil) return false;
-  const maxPerMin =
-    bucket === "off_search" || bucket === "off_sister_search"
-      ? OFF_SEARCH_MAX_PER_MIN
-      : OFF_PRODUCT_MAX_PER_MIN;
+  const isBatch = options?.isBatch ?? Boolean(lookupAttemptContext.getStore()?.isBatch);
+  const isSearchBucket = bucket === "off_search" || bucket === "off_sister_search";
+  const maxPerMin = isSearchBucket
+    ? isBatch
+      ? OFF_SEARCH_BATCH_MAX_PER_MIN
+      : OFF_SEARCH_MAX_PER_MIN
+    : OFF_PRODUCT_MAX_PER_MIN;
   if (isPersistentKvConfigured()) {
     try {
       const cbKey =
@@ -788,6 +799,13 @@ export async function consumeSharedOffBudget(urlOrKind: string): Promise<boolean
         process.env.NODE_ENV === "production"
           ? `heybroc:ratelimit:off_global:${bucket}`
           : `heybroc:ratelimit:off_global:${bucket}:${offRateTestEpoch}`;
+      if (isBatch && isSearchBucket) {
+        // Peek before incrementing so batch scans never burn the interactive reserve slots
+        const existing = Number((await kvGet<string | number>(kvKey)) ?? 0);
+        if (Number.isFinite(existing) && existing >= maxPerMin) {
+          return false;
+        }
+      }
       const count = await kvIncrWithPExpire(kvKey, 60_000, 1);
       return count <= maxPerMin;
     } catch {
@@ -5519,7 +5537,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const negExpiresAt = negativeLookupCache.get(key);
   if (!negExpiresAt || Date.now() >= negExpiresAt) {
     if (negExpiresAt) negativeLookupCache.delete(key);
-    const attemptState = { hadOperationalFailure: false };
+    const attemptState = { hadOperationalFailure: false, isBatch: Boolean(input.isBatch) };
     found = await lookupAttemptContext.run(attemptState, () => lookupProviders(normalizedInput));
     if (!found && !providerSignal.getStore()?.aborted && !attemptState.hadOperationalFailure) {
       if (negativeLookupCache.size >= MAX_NEGATIVE_LOOKUP_ENTRIES) {

@@ -752,7 +752,7 @@ enum HeyBrocNativeScannerAPI {
         }
 
         var payload: [String: Any] = [
-            "items": Array(items.prefix(8)),
+            "items": Array(items.prefix(12)),
             "store": store ?? HeyBrocSharedPrefs.activeStore,
             "surface": "ios",
             "clientPlatform": "ios-app",

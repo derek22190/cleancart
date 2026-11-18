@@ -1205,7 +1205,7 @@
       }
       hbPendingQueue = onScreen.concat(nearScreen, offScreen);
     }
-    var chunk = hbPendingQueue.splice(0, 8);
+    var chunk = hbPendingQueue.splice(0, 12);
     if (hbPendingQueue.length > 0) {
       hbBatchTimer = setTimeout(flushHbBadgeBatch, 140);
     }
