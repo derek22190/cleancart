@@ -1316,7 +1316,6 @@ object ScanApi {
         val activeFlagged = JSONArray()
         var strictnessDeduction = 0
         var hasHighOrMod2x = false
-        var remainingBasePenaltySum = 0
         var totalActivePenalty = 0
         var remainingNonNutriCount = 0
         var remainingHighRisk = false
@@ -1347,7 +1346,6 @@ object ScanApi {
             val is2x = cat.isNotEmpty() && cat in familySet
             val effectivePen = if (is2x) basePen * 2 else basePen
             item.put("penalty", effectivePen)
-            remainingBasePenaltySum += basePen
             totalActivePenalty += effectivePen
             remainingNonNutriCount++
             if (risk == "high") remainingHighRisk = true
@@ -1379,7 +1377,7 @@ object ScanApi {
             val orgScore = yukaObj.optInt("organicScore", 0)
             val hasBevSugarCap = yukaObj.optBoolean("beverageCapApplied", false)
             val multiDed = (remainingNonNutriCount - 1).coerceAtLeast(0) * 3
-            val addDed = (Math.round(remainingBasePenaltySum * 0.45f) + multiDed).coerceAtMost(30)
+            val addDed = (Math.round(totalActivePenalty * 0.45f) + multiDed).coerceAtMost(30)
             val newAddScore = if (remainingHighRisk || hasHighOrMod2x) 0 else (30 - addDed).coerceAtLeast(0)
             yukaObj.put("additiveScore", newAddScore)
             yukaObj.put("highRiskCapped", remainingHighRisk)

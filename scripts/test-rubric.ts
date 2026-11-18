@@ -9584,6 +9584,36 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const scanApiKtP17 = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+      "utf8",
+    );
+    // Verify server 2x Family Watchlist on a low-risk additive ("gums" -> xanthan gum) uses 2x totalPenalty in additiveScore
+    const baseGum = scoreProductYuka(
+      "Water, Almonds, Sea Salt, Xanthan Gum",
+      {},
+      [],
+      { caloriesKcal100g: 25, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 70, fiberG100g: 1, proteinG100g: 1, productTitle: "Unsweetened Almond Milk" },
+    );
+    const watchedGum = scoreProductYuka(
+      "Water, Almonds, Sea Salt, Xanthan Gum",
+      {},
+      ["gums"],
+      { caloriesKcal100g: 25, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 70, fiberG100g: 1, proteinG100g: 1, productTitle: "Unsweetened Almond Milk" },
+    );
+    const expectedAddDed = Math.min(30, Math.round(watchedGum.totalPenalty * 0.45));
+    check(
+      "P1-7 Android Family Watchlist 2x re-score uses totalActivePenalty matching server lib/rubric.ts additiveScore formula",
+      scanApiKtP17.includes("val addDed = (Math.round(totalActivePenalty * 0.45f) + multiDed).coerceAtMost(30)") &&
+        !scanApiKtP17.includes("remainingBasePenaltySum") &&
+        watchedGum.totalPenalty === baseGum.totalPenalty * 2 &&
+        watchedGum.yukaBreakdown?.additiveScore === Math.max(0, 30 - expectedAddDed) &&
+        watchedGum.score < baseGum.score,
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
