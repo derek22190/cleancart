@@ -1598,6 +1598,8 @@
 
   const CARD_CTA_NOISE_RE =
     /^(?:(?:\+\s*)?add(?:\s+to\s+(?:cart|bag|list|order))?|choose\s+options?|options?|select(?:\s+options?)?|view(?:\s+details|\s+item|\s+product)?|shop\s+now|quick\s+(?:add|look|shop|view)|sign\s+in(?:\s+to\s+add)?|out\s+of\s+stock|in\s+stock|many\s+in\s+stock|low\s+stock|sold\s+out|unavailable|notify\s+me|subscribe(?:\s*&\s*save)?|clip(?:\s+coupon)?|coupon(?:\s+available)?|sponsored|best\s+seller|overall\s+pick|popular(?:\s+pick)?|rollback|clearance|sale|deal|snap(?:\s+ebt)?(?:\s+eligible)?|ebt(?:\s+eligible)?|pickup|delivery|shipping|free\s+(?:shipping|pickup|delivery).*|save\s+\$?\d.*|\$?\d+(?:\.\d+)?\s+off\b.*|\d+%\s+off\b.*|buy\s+\d+.*get\s+\d+.*|bogo\b.*|\d+%\s*(?:\(\d+\))?|\d+(?:\.\d+)?\s*(?:stars?|out\s+of\s+5).*|\d+\s*(?:cal|kcal|calories?)\b.*|\$?\d+(?:\.\d+)?\s*\/\s*[a-z]+.*|\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|gal|qt|pt|ml|l|g|kg|ct|count|pk|pack)\b)$/i;
+  const PRICE_RATING_NOISE_RE =
+    /\$\s*\d|\b\d+(?:\.\d+)?\s*¢|\b(?:current|was|now|sale|unit|list)\s+price\b|\b\d(?:\.\d)?\s+out\s+of\s+5\b|\b\d[\d,]*\s+reviews?\b|★/i;
 
   function isValidGs1Barcode(code) {
     const digits = String(code || "").replace(/\D/g, "");
@@ -1746,7 +1748,7 @@
           !/(?:\.\.\.|…)\s*$/.test(ariaCand) &&
           !NON_TITLE_RE.test(ariaCand) &&
           !CARD_CTA_NOISE_RE.test(ariaCand) &&
-          !/^\$\d/.test(ariaCand)
+          !PRICE_RATING_NOISE_RE.test(ariaCand)
         ) {
           const normAria = ariaCand.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
           if (!stem || normAria.startsWith(stem)) {
@@ -1756,7 +1758,7 @@
       }
       if (!bestTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(bestTitle)) {
         const slugCand = extractSlugFromPath(cleanPath);
-        if (slugCand) {
+        if (slugCand && !PRICE_RATING_NOISE_RE.test(slugCand)) {
           const normSlug = slugCand.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
           if (!bestTitle) {
             bestTitle = slugCand;
@@ -1775,8 +1777,6 @@
     if (isCartDrawerElement(cardEl.closest('[role="dialog"], aside, section'))) return null;
 
     const titleSelectors = [
-      "span.w_iUH7",
-      '[class*="w_iUH7"]',
       '[data-automation-id="product-title"]',
       '[data-automation-id*="product-title" i]',
       '[data-test="product-title"]',
@@ -1793,6 +1793,9 @@
       '[data-qa*="item-name" i]',
       '[class*="ProductCard-name" i]',
       '[class*="ProductTitle" i]',
+      "a[link-identifier]",
+      "span.w_iUH7",
+      '[class*="w_iUH7"]',
       "h2 a span",
       "h3 a span",
       "h4 a span",
@@ -1800,7 +1803,6 @@
       "h3",
       "h4",
       '[data-testid="rich-text"]',
-      "a[link-identifier]",
       'a[href*="/sp/track"]',
       'a[href*="/ip/"]',
       'a[href*=".product."]',
@@ -1826,7 +1828,7 @@
           raw.length <= 240 &&
           !NON_TITLE_RE.test(raw) &&
           !CARD_CTA_NOISE_RE.test(raw) &&
-          !/^\$\d/.test(raw)
+          !PRICE_RATING_NOISE_RE.test(raw)
         ) {
           title = raw;
           const linkEl = el.tagName === "A" ? el : el.closest?.("a[href]") || el.querySelector?.("a[href]");
@@ -1838,7 +1840,7 @@
     }
     if (title && /(?:\.\.\.|…)\s*$/.test(title)) {
       const stem = title.replace(/(?:\.\.\.|…)\s*$/, "").trim().toLowerCase().slice(0, 24);
-      for (const fullSel of ["span.w_iUH7", '[class*="w_iUH7"]', "a[link-identifier]", "a[aria-label]"]) {
+      for (const fullSel of ['[data-automation-id*="product-title" i]', "a[link-identifier]", "a[aria-label]", "span.w_iUH7", '[class*="w_iUH7"]']) {
         for (const fel of cardEl.querySelectorAll(fullSel)) {
           if (fel.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
           const fullCand = cleanProductTitleText(fel?.getAttribute?.("aria-label") || fel?.textContent || "");
@@ -1849,7 +1851,7 @@
             !/(?:\.\.\.|…)\s*$/.test(fullCand) &&
             !NON_TITLE_RE.test(fullCand) &&
             !CARD_CTA_NOISE_RE.test(fullCand) &&
-            !/^\$\d/.test(fullCand) &&
+            !PRICE_RATING_NOISE_RE.test(fullCand) &&
             (!stem || fullCand.toLowerCase().startsWith(stem))
           ) {
             title = fullCand;
@@ -1880,7 +1882,7 @@
           !NON_TITLE_RE.test(rawAlt) &&
           !CARD_CTA_NOISE_RE.test(rawAlt) &&
           !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(rawAlt) &&
-          !/^\$\d/.test(rawAlt)
+          !PRICE_RATING_NOISE_RE.test(rawAlt)
         ) {
           title = rawAlt;
         }
@@ -1916,7 +1918,7 @@
           aCand.length <= 240 &&
           !NON_TITLE_RE.test(aCand) &&
           !CARD_CTA_NOISE_RE.test(aCand) &&
-          !/^\$\d/.test(aCand)
+          !PRICE_RATING_NOISE_RE.test(aCand)
         ) {
           title = aCand;
           matchedHref = matchedHref || aEl.getAttribute("href") || "";

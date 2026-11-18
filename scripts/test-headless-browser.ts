@@ -1836,6 +1836,131 @@ async function main() {
       `   ✓ Walmart screenshot items + ALDI SPA button-tile + DoorDash RetailItem + Kroger GS1 barcode (${multiStoreBadges.texts.join(" | ")}) verified!`,
     );
 
+    // 4F. P1-3 Price, Cent, Star-Rating & Review Title-Rejection Across All 3 Surfaces (Android, iOS, Extension)
+    const p13GridHtml = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;">
+        <div data-item-id="p13-wm-1" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;position:relative;">
+          <img src=${JSON.stringify(placeholderSvgDataUrl)} width="140" height="140" style="display:block;width:140px;height:140px;" alt="Chobani Greek Yogurt" />
+          <span class="w_iUH7">current price Now $3.48, Was $4.98</span>
+          <span class="w_iUH7">4.5 out of 5 Stars. 1,232 reviews</span>
+          <a href="/ip/Chobani-Greek-Yogurt-Strawberry-5-3-oz/10452099">
+            <span data-automation-id="product-title">Chobani Greek Yogurt, Strawberry, 5.3 oz</span>
+          </a>
+        </div>
+        <div data-item-id="p13-wm-2" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;position:relative;">
+          <img src=${JSON.stringify(placeholderSvgDataUrl)} width="140" height="140" style="display:block;width:140px;height:140px;" alt="" />
+          <h3>Now $3.99</h3>
+          <h4>4.8 out of 5 ★ (842 reviews)</h4>
+          <a href="/ip/Quaker-Old-Fashioned-Oats-42-oz/10312439">Quaker Old Fashioned Oats, 42 oz</a>
+        </div>
+        <div data-item-id="p13-wm-3" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;position:relative;">
+          <img src=${JSON.stringify(placeholderSvgDataUrl)} width="140" height="140" style="display:block;width:140px;height:140px;" alt="" />
+          <span class="w_iUH7">99¢</span>
+          <a link-identifier="banana-1" href="/ip/Fresh-Organic-Bananas-Bunch/44390948">Fresh Organic Bananas, Bunch</a>
+        </div>
+      </div>
+    `;
+    const isCleanP13Titles = (titles: string[]) =>
+      titles.length >= 3 &&
+      titles.every((t) => !/\$\s*\d|\b\d+(?:\.\d+)?\s*¢|\b(?:current|was|now|sale|unit|list)\s+price\b|\b\d(?:\.\d)?\s+out\s+of\s+5\b|\b\d[\d,]*\s+reviews?\b|★/i.test(t)) &&
+      titles.some((t) => /chobani/i.test(t)) &&
+      titles.some((t) => /quaker/i.test(t)) &&
+      titles.some((t) => /banana/i.test(t));
+
+    // Surface 1: Android live_store_detector.js
+    await storePage.navigate("https://www.walmart.com/search?q=p13-android");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p13GridHtml)};
+      window.__p13AndroidTitles = [];
+      window.heybrocAndroidBridge = {
+        postMessage: function(rawJson) {
+          const msg = JSON.parse(rawJson);
+          if (msg._hbSec !== ${JSON.stringify(androidBridgeSecret)}) return;
+          if (msg.kind === "gridBatch" && Array.isArray(msg.items)) {
+            msg.items.forEach((it) => window.__p13AndroidTitles.push(it.productTitle || ""));
+          }
+        }
+      };
+    `);
+    await storePage.eval(androidDetectorJS, false);
+    const p13AndroidTitles = await storePage.waitFor<string[]>(
+      `window.__p13AndroidTitles.length >= 3 ? window.__p13AndroidTitles : null`,
+      "P1-3 Android price/rating title rejection",
+      6000,
+    );
+    assert(isCleanP13Titles(p13AndroidTitles), `P1-3 Android captured noisy titles: ${JSON.stringify(p13AndroidTitles)}`);
+
+    // Surface 2: iOS detectorJS
+    await storePage.navigate("https://www.walmart.com/search?q=p13-ios");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p13GridHtml)};
+      window.__p13IosTitles = [];
+      window.webkit = {
+        messageHandlers: {
+          heybrocStore: {
+            postMessage: function(msg) {
+              if (msg && msg.kind === "gridBatch" && Array.isArray(msg.items)) {
+                msg.items.forEach((it) => window.__p13IosTitles.push(it.productTitle || ""));
+              }
+            }
+          }
+        }
+      };
+    `);
+    await storePage.eval(detectorJS, false);
+    const p13IosTitles = await storePage.waitFor<string[]>(
+      `window.__p13IosTitles.length >= 3 ? window.__p13IosTitles : null`,
+      "P1-3 iOS price/rating title rejection",
+      6000,
+    );
+    assert(isCleanP13Titles(p13IosTitles), `P1-3 iOS captured noisy titles: ${JSON.stringify(p13IosTitles)}`);
+
+    // Surface 3: Chrome/Safari Extension content.js
+    await storePage.navigate("https://www.walmart.com/search?q=p13-ext");
+    await storePage.eval(`
+      document.body.innerHTML = ${JSON.stringify(p13GridHtml)};
+      window.__p13ExtTitles = [];
+      window.__heybrocApiBase = "https://www.heybroc.com";
+      window.__heybrocOverlayCssUrl = ${JSON.stringify(extOverlayCssDataUrl)};
+      window.__heybrocExtStorage = { cc_photo_badges_enabled: true };
+      window.chrome = {
+        storage: {
+          local: {
+            get: function(keys, cb) { const out = Object.assign({}, window.__heybrocExtStorage); if (cb) setTimeout(() => cb(out), 1); return Promise.resolve(out); },
+            set: function(items, cb) { Object.assign(window.__heybrocExtStorage, items || {}); if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); },
+            remove: function(_k, cb) { if (cb) setTimeout(() => cb(), 1); return Promise.resolve(); }
+          },
+          onChanged: { addListener: function() {} }
+        },
+        runtime: {
+          id: "cleancart-p13-ext",
+          getURL: function(p) { return p === "overlay.css" ? window.__heybrocOverlayCssUrl : ("https://www.heybroc.com/" + p); },
+          sendMessage: function(msg, cb) {
+            if (msg && msg.type === "CLEANCART_SCAN_BATCH" && Array.isArray(msg.items)) {
+              msg.items.forEach((it) => window.__p13ExtTitles.push(it.productTitle || ""));
+              const out = { ok: true, results: {} };
+              if (cb) setTimeout(() => cb(out), 2);
+              return Promise.resolve(out);
+            }
+            const empty = { ok: false };
+            if (cb) setTimeout(() => cb(empty), 2);
+            return Promise.resolve(empty);
+          },
+          onMessage: { addListener: function() {} }
+        }
+      };
+    `);
+    await storePage.eval(extContentJS, false);
+    const p13ExtTitles = await storePage.waitFor<string[]>(
+      `window.__p13ExtTitles.length >= 3 ? window.__p13ExtTitles : null`,
+      "P1-3 Extension price/rating title rejection",
+      6000,
+    );
+    assert(isCleanP13Titles(p13ExtTitles), `P1-3 Extension captured noisy titles: ${JSON.stringify(p13ExtTitles)}`);
+    console.log(
+      `   ✓ P1-3 price/cent/rating title filters verified across Android, iOS & Extension (${p13AndroidTitles.join(" | ")})!`,
+    );
+
     storePage.close();
 
     console.log("\n✅ ALL HEADLESS BROWSER E2E SUITES PASSED (iPhone + Android + Safari/Chrome Extension)!");

@@ -9406,6 +9406,33 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    check(
+      "P1-3 Android, iOS, Chrome & Safari Extension reject price/cent/star/review strings and prioritize product-title before w_iUH7",
+      (() => {
+        const androidJs = fsNode.readFileSync("android-app/app/src/main/assets/live_store_detector.js", "utf8");
+        const iosSwift = fsNode.readFileSync("ios-app/App/LiveStoreBrowserViewController.swift", "utf8");
+        const chromeJs = fsNode.readFileSync("chrome-extension/content.js", "utf8");
+        const safariJs = fsNode.readFileSync("ios-app/SafariExtension/Resources/content.js", "utf8");
+        const orderedBefore = (src: string, a: string, b: string) => {
+          const ia = src.indexOf(a);
+          const ib = src.indexOf(b);
+          return ia !== -1 && ib !== -1 && ia < ib;
+        };
+        return (
+          chromeJs === safariJs &&
+          androidJs.includes("PRICE_RATING_NOISE_RE") &&
+          iosSwift.includes("PRICE_RATING_NOISE_RE") &&
+          chromeJs.includes("PRICE_RATING_NOISE_RE") &&
+          orderedBefore(androidJs.slice(androidJs.indexOf("CARD_TITLE_SELS")), '[data-automation-id*="product-title" i]', "span.w_iUH7") &&
+          orderedBefore(iosSwift.slice(iosSwift.indexOf("CARD_TITLE_SELS")), '[data-automation-id*="product-title" i]', "span.w_iUH7") &&
+          orderedBefore(chromeJs.slice(chromeJs.indexOf("const titleSelectors = [")), '[data-automation-id*="product-title" i]', "span.w_iUH7")
+        );
+      })(),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
