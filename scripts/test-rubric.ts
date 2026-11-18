@@ -9546,6 +9546,44 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const cp26 = matchDrinkCatalog("core power")!;
+    const cp42 = matchDrinkCatalog("core power elite")!;
+    const premier = matchDrinkCatalog("premier protein")!;
+    const s26 = scoreProductYuka(cp26.ingredients, {}, [], { ...cp26.nutrition, productTitle: cp26.title });
+    const s42 = scoreProductYuka(cp42.ingredients, {}, [], { ...cp42.nutrition, productTitle: cp42.title });
+    const sPremier = scoreProductYuka(premier.ingredients, {}, [], { ...premier.nutrition, productTitle: premier.title });
+    const sGenericFlOz = scoreProductYuka(
+      "Water, Milk Protein Concentrate, Cocoa, Natural Flavors",
+      {},
+      [],
+      { caloriesKcal100g: 48, sugarsG100g: 2, saturatedFatG100g: 0.5, sodiumMg100g: 60, fiberG100g: 0.5, proteinG100g: 9, productTitle: "Acme Chocolate Shake, 12 fl oz" },
+    );
+    const sDryMix = scoreProductYuka(
+      "Whey Protein Concentrate, Cocoa, Cane Sugar",
+      {},
+      [],
+      { caloriesKcal100g: 380, sugarsG100g: 4, saturatedFatG100g: 2, sodiumMg100g: 200, fiberG100g: 3, proteinG100g: 65, productTitle: "Chocolate Protein Shake Mix" },
+    );
+    const sDryPowder = scoreProductYuka(
+      "Whey Protein Isolate, Cocoa, Sea Salt",
+      {},
+      [],
+      { caloriesKcal100g: 370, sugarsG100g: 2, saturatedFatG100g: 1, sodiumMg100g: 180, fiberG100g: 2, proteinG100g: 75, productTitle: "Orgain Organic Protein Powder" },
+    );
+    check(
+      "P1-6 Ready-to-drink protein/nutrition shakes score on the Nutri-Score beverage scale (Core Power 26g/42g ~42) while dry shake powders and mixes stay on the solid scale",
+      s26.score === 42 &&
+        s26.yukaBreakdown?.nutriScoreGrade === "C" &&
+        s42.score === 42 &&
+        s42.yukaBreakdown?.nutriScoreGrade === "C" &&
+        sPremier.score <= 45 &&
+        sGenericFlOz.yukaBreakdown?.calorieNote?.includes("Liquid Calories") === true &&
+        !sDryMix.yukaBreakdown?.calorieNote?.includes("Liquid Calories") &&
+        !sDryPowder.yukaBreakdown?.calorieNote?.includes("Liquid Calories"),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
