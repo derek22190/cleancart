@@ -1564,7 +1564,7 @@ private final class NativeBarcodeScannerViewController: UIViewController, AVCapt
 
         let hint = UILabel()
         hint.translatesAutoresizingMaskIntoConstraints = false
-        hint.text = "Center food or cosmetic UPC barcode inside frame"
+        hint.text = "Center food or beverage UPC barcode inside frame"
         hint.font = UIFont.systemFont(ofSize: 15, weight: .bold)
         hint.textColor = .white
         hint.textAlignment = .center

@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>HeyBroc uses the camera when you choose to scan a food or cosmetic barcode or ingredient label to calculate its 0–100 health score.</string>
+	<string>HeyBroc uses the camera when you choose to scan a food or beverage barcode or ingredient label to calculate its 0–100 health score.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>HeyBroc lets you choose a barcode or ingredient label photo from your library to calculate its 0–100 health score.</string>
 	<key>UIApplicationSceneManifest</key>

@@ -9912,6 +9912,61 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     );
   }
 
+  {
+    const fsNode = await import("node:fs");
+    const cryptoNode = await import("node:crypto");
+    const sha = (p: string) => cryptoNode.createHash("sha256").update(fsNode.readFileSync(p)).digest("hex");
+    const jpegDims = (p: string): [number, number] => {
+      const buf = fsNode.readFileSync(p);
+      let i = 2;
+      while (i < buf.length) {
+        while (buf[i] === 0xff) i++;
+        const marker = buf[i++];
+        if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+          const h = buf.readUInt16BE(i + 3);
+          const w = buf.readUInt16BE(i + 5);
+          return [w, h];
+        }
+        i += buf.readUInt16BE(i);
+      }
+      return [0, 0];
+    };
+    const slide1SafeMatch =
+      sha("store-assets/apple-app-store/screenshots-1290x2796/slide-1-hook-poster.jpg") ===
+        sha("store-assets/apple-app-store/screenshots-1290x2796/slide-1-hook-poster-store-safe.jpg") &&
+      sha("store-assets/google-play/screenshots-1080x1920/slide-1-hook-poster.jpg") ===
+        sha("store-assets/google-play/screenshots-1080x1920/slide-1-hook-poster-store-safe.jpg") &&
+      sha("store-assets/aso-screenshots/slide-1-hook-poster.jpg") ===
+        sha("store-assets/aso-screenshots/slide-1-hook-poster-store-safe.jpg");
+    const [aW, aH] = jpegDims("store-assets/apple-app-store/screenshots-1290x2796/slide-6-awards-quote.jpg");
+    const [pW, pH] = jpegDims("store-assets/google-play/screenshots-1080x1920/slide-6-awards-quote.jpg");
+    const [gW, gH] = jpegDims("store-assets/aso-screenshots/slide-6-awards-quote.jpg");
+    const kitMd = fsNode.readFileSync("store-assets/STORE_SUBMISSION_KIT.md", "utf8");
+    const asoHtml = fsNode.readFileSync("store-assets/aso-screenshots/index.html", "utf8");
+    const infoPlist = fsNode.readFileSync("ios-app/App/Info.plist", "utf8");
+    const vcSwiftP12 = fsNode.readFileSync("ios-app/App/ViewController.swift", "utf8");
+    const buildIosP12 = fsNode.readFileSync(".github/workflows/build-ios.yml", "utf8");
+
+    check(
+      "P1-12 store-safe Slide 1 & Slide 6 screenshots at exact dimensions, clean store kit copy, and food-or-beverage Info.plist wording",
+      slide1SafeMatch &&
+        aW === 1290 && aH === 2796 &&
+        pW === 1080 && pH === 1920 &&
+        gW === 1080 && gH === 1920 &&
+        !/\bYuka\b/i.test(kitMd) &&
+        !kitMd.includes("USDA & Open Food Facts Verified") &&
+        !kitMd.includes("4.9★") &&
+        !asoHtml.includes("Award-worthy") &&
+        !asoHtml.includes("4.9★") &&
+        infoPlist.includes("food or beverage barcode") &&
+        !/cosmetic/i.test(infoPlist) &&
+        vcSwiftP12.includes("Center food or beverage UPC barcode inside frame") &&
+        !/cosmetic/i.test(vcSwiftP12) &&
+        buildIosP12.includes("food or beverage barcode") &&
+        !/cosmetic/i.test(buildIosP12),
+    );
+  }
+
   console.log("Checks executed:", checks);
   console.log(normalizeIngredients("Vegetable Oil (Soybean, Canola and/or Sunflower), corn, safflower or sunflower oil"));
   console.log(fail ? `${fail} FAILED` : "ALL CHECKS PASSED");
