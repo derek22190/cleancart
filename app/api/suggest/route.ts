@@ -517,10 +517,10 @@ export async function GET(request: Request) {
       title: entry.title,
       brand: entry.brand,
       explicitCategory: entry.category,
+      ingredients: entry.ingredients,
+      assetOrigin: "https://www.heybroc.com",
     });
-    const resolvedImageUrl =
-      media.imageUrl ||
-      (media.categoryArtUrl ? `https://www.heybroc.com${media.categoryArtUrl}` : "");
+    const resolvedImageUrl = media.imageUrl || media.categoryArtUrl || "";
     return {
       title: entry.title,
       brand: entry.brand,

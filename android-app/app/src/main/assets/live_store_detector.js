@@ -501,7 +501,18 @@
     }
     if (bestSrc) return bestSrc;
     if (!modalScope && looksLikeProductUrl(location.href)) {
-      var ogImg = document.querySelector('meta[property="og:image"]');
+      var ogUrlMeta = document.querySelector('meta[property="og:url"]') || document.querySelector('link[rel="canonical"]');
+      var ogMatchesLoc = true;
+      if (ogUrlMeta) {
+        var rawCanon = ogUrlMeta.getAttribute('content') || ogUrlMeta.getAttribute('href') || '';
+        if (rawCanon) {
+          try {
+            var canonParsed = new URL(rawCanon, location.href);
+            ogMatchesLoc = canonParsed.pathname === location.pathname;
+          } catch (e) {}
+        }
+      }
+      var ogImg = ogMatchesLoc ? document.querySelector('meta[property="og:image"]') : null;
       if (ogImg && ogImg.content) {
         try {
           var ogUrl = new URL(ogImg.content, location.href);
@@ -535,6 +546,8 @@
   var hbInFlightBatches = 0;
   var MAX_IN_FLIGHT_BATCHES = 2;
   var hbIntersectionObs = null;
+  var hbCachedNextDataRaw = '';
+  var hbCachedNextDataObj = null;
 
   function makeTitleScoreKey(title) {
     return String(title || '').toLowerCase().trim() + '|' + detectInstacartSlug() + '|' + hbPrefRev;
@@ -574,7 +587,7 @@
     if (document.getElementById('hb-photo-badge-styles')) return;
     var st = document.createElement('style');
     st.id = 'hb-photo-badge-styles';
-    st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:7px 0 4px 0!important;padding:0!important;position:relative!important;z-index:20!important;pointer-events:auto!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:20!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 Roboto,-apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}';
+    st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:7px 0 4px 0!important;padding:0!important;position:relative!important;z-index:20!important;pointer-events:none!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:20!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 Roboto,-apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}';
     (document.head || document.documentElement).appendChild(st);
   }
 
@@ -589,6 +602,18 @@
     badge.appendChild(tx);
   }
 
+  function measureWithoutBadgeSlot(el) {
+    var r = el.getBoundingClientRect();
+    var slotH = 0;
+    if (el.querySelector) {
+      var ownSlot = el.querySelector('.hb-photo-badge-slot');
+      if (ownSlot && typeof ownSlot.getBoundingClientRect === 'function') {
+        slotH = Math.max(0, ownSlot.getBoundingClientRect().height || 0);
+      }
+    }
+    return { width: r.width, height: Math.max(0, r.height - slotH) };
+  }
+
   function findSafeCardAnchor(chosenImg, cardEl) {
     var imgR = chosenImg.getBoundingClientRect();
     var maxAnchorH = Math.min(420, Math.max(120, Math.round((imgR && imgR.height) || 200)) + 84);
@@ -599,7 +624,7 @@
     while (cur && cur !== document.body && steps < 5) {
       var cs = window.getComputedStyle(cur);
       var disp = cs ? cs.display : '';
-      var cr = cur.getBoundingClientRect();
+      var cr = measureWithoutBadgeSlot(cur);
       if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 44 && cr.height >= 44 && cr.height <= maxAnchorH) {
         candidate = cur;
         break;
@@ -609,7 +634,7 @@
       steps++;
     }
     if (!candidate && cardEl && cardEl !== document.body) {
-      var cardR = cardEl.getBoundingClientRect();
+      var cardR = measureWithoutBadgeSlot(cardEl);
       if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= maxAnchorH) {
         candidate = cardEl;
       }
@@ -618,29 +643,21 @@
     var candCs = window.getComputedStyle(candidate);
     var prevPos = candidate.style.position;
     var prevIso = candidate.style.isolation;
-    var prevZ = candidate.style.zIndex;
     if (candCs && candCs.position === 'static') {
       var beforeR = chosenImg.getBoundingClientRect();
       candidate.style.position = 'relative';
       candidate.style.isolation = 'isolate';
-      if (window.getComputedStyle(candidate).zIndex === 'auto') {
-        candidate.style.zIndex = '0';
-      }
       var afterR = chosenImg.getBoundingClientRect();
       if (beforeR.width >= 40 && (afterR.width < 24 || afterR.height < 24)) {
         candidate.style.position = prevPos;
         candidate.style.isolation = prevIso;
-        candidate.style.zIndex = prevZ;
         if (cardEl && cardEl !== candidate) {
-          var fbR = cardEl.getBoundingClientRect();
+          var fbR = measureWithoutBadgeSlot(cardEl);
           if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= maxAnchorH) {
             if (window.getComputedStyle(cardEl).position === 'static') {
               cardEl.style.position = 'relative';
             }
             cardEl.style.isolation = 'isolate';
-            if (window.getComputedStyle(cardEl).zIndex === 'auto') {
-              cardEl.style.zIndex = '0';
-            }
             return cardEl;
           }
         }
@@ -649,9 +666,6 @@
       return candidate;
     }
     candidate.style.isolation = 'isolate';
-    if (!candCs || candCs.zIndex === 'auto') {
-      candidate.style.zIndex = '0';
-    }
     return candidate;
   }
 
@@ -660,14 +674,10 @@
     var cs = window.getComputedStyle(el);
     if (!cs) return false;
     var disp = cs.display || '';
-    if (disp === 'inline' || disp === 'contents' || disp === 'none') return false;
+    if (disp === 'inline' || disp === 'contents' || disp === 'none' || disp === 'grid' || disp === 'inline-grid') return false;
     if (disp === 'flex' || disp === 'inline-flex') {
       var dir = String(cs.flexDirection || 'row').toLowerCase();
       return dir.indexOf('column') === 0;
-    }
-    if (disp === 'grid' || disp === 'inline-grid') {
-      var cols = String(cs.gridTemplateColumns || '').trim();
-      if (cols && cols !== 'none' && cols.split(/\s+/).length > 1) return false;
     }
     return true;
   }
@@ -687,6 +697,10 @@
       var photoUnit = chosenImg.parentElement;
       if (photoUnit && photoUnit.tagName === 'PICTURE' && photoUnit.parentElement) {
         photoUnit = photoUnit.parentElement;
+      }
+      var interactiveAnc = photoUnit && photoUnit.closest ? photoUnit.closest('a, button') : null;
+      if (interactiveAnc && interactiveAnc !== cardEl && nodeContains(cardEl, interactiveAnc) && !nodeHasDetailsOrCta(interactiveAnc)) {
+        photoUnit = interactiveAnc;
       }
       var cur = photoUnit;
       var steps = 0;
@@ -716,7 +730,12 @@
       slot.appendChild(badge);
       var inserted = false;
       var parentEl = photoUnit ? photoUnit.parentElement : null;
-      if (parentEl && typeof parentEl.insertBefore === 'function' && containerStacksVertically(parentEl)) {
+      if (
+        parentEl &&
+        typeof parentEl.insertBefore === 'function' &&
+        !(parentEl.closest && parentEl.closest('a, button')) &&
+        containerStacksVertically(parentEl)
+      ) {
         parentEl.insertBefore(slot, photoUnit.nextSibling || null);
         inserted = true;
       } else if (
@@ -724,6 +743,8 @@
         photoUnit.tagName !== 'IMG' &&
         photoUnit.tagName !== 'PICTURE' &&
         photoUnit.tagName !== 'A' &&
+        photoUnit.tagName !== 'BUTTON' &&
+        !(photoUnit.closest && photoUnit.closest('a, button')) &&
         containerStacksVertically(photoUnit)
       ) {
         photoUnit.appendChild(slot);
@@ -733,7 +754,12 @@
       if (inserted) {
         var afterImgR = chosenImg.getBoundingClientRect();
         var badgeR = badge.getBoundingClientRect();
-        var imgOk = beforeImgR.width < 36 || (afterImgR.width >= beforeImgR.width * 0.76 && afterImgR.height >= beforeImgR.height * 0.76);
+        var imgOk = beforeImgR.width < 36 || (
+          afterImgR.width >= 44 &&
+          afterImgR.height >= 44 &&
+          afterImgR.width >= beforeImgR.width * 0.76 &&
+          afterImgR.height >= beforeImgR.height * 0.76
+        );
         var sizeOk = badgeR.width >= 46 && badgeR.height >= 26;
         var posOk = badgeR.top >= afterImgR.bottom - 18 && badgeR.top <= afterImgR.bottom + 64;
         var clipped = false;
@@ -1326,22 +1352,46 @@
     });
   }
 
-  document.addEventListener('pointerdown', function(e) {
-    if (e.target && e.target.closest && e.target.closest('.hb-photo-badge')) {
+  function eventTargetEl(e) {
+    var t = e && e.target;
+    if (!t) return null;
+    if (typeof t.closest === 'function') return t;
+    return t.parentElement || null;
+  }
+
+  function badgeFromEvent(e) {
+    var el = eventTargetEl(e);
+    return (el && el.closest) ? el.closest('.hb-photo-badge') : null;
+  }
+
+  function stopBadgePointerEvent(e) {
+    if (badgeFromEvent(e)) {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+  }
+
+  document.addEventListener('pointerdown', stopBadgePointerEvent, true);
+  document.addEventListener('mousedown', stopBadgePointerEvent, true);
+  document.addEventListener('mouseup', stopBadgePointerEvent, true);
+  document.addEventListener('touchend', stopBadgePointerEvent, true);
+  document.addEventListener('auxclick', function(e) {
+    if (badgeFromEvent(e)) {
+      e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
     }
   }, true);
 
   document.addEventListener('click', function(e) {
-    var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
+    var badge = badgeFromEvent(e);
     if (!badge) return;
     activateHbPhotoBadge(badge, e);
   }, true);
 
   document.addEventListener('keydown', function(e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
+    var badge = badgeFromEvent(e);
     if (!badge) return;
     activateHbPhotoBadge(badge, e);
   }, true);
@@ -1429,13 +1479,25 @@
       }
       if (String(location.hostname || '').toLowerCase().indexOf('walmart.') !== -1) {
         try {
+          var wmUrlM = String(location.pathname || '').match(/\/ip\/(?:[^/]+\/)?(\d{5,20})(?:\/|$)/i);
+          var urlItemId = wmUrlM ? wmUrlM[1] : '';
           var ndEl = document.getElementById('__NEXT_DATA__');
-          if (ndEl && ndEl.textContent) {
-            var nd = JSON.parse(ndEl.textContent);
+          var ndRaw = (ndEl && ndEl.textContent) ? ndEl.textContent : '';
+          if (ndRaw && ndRaw.length <= 2500000) {
+            if (ndRaw !== hbCachedNextDataRaw) {
+              hbCachedNextDataRaw = ndRaw;
+              hbCachedNextDataObj = JSON.parse(ndRaw);
+            }
+            var nd = hbCachedNextDataObj;
             var wmData = nd && nd.props && nd.props.pageProps && nd.props.pageProps.initialData && nd.props.pageProps.initialData.data;
             var wmProd = wmData && wmData.product;
-            var wmName = wmProd && wmProd.name ? clean(String(wmProd.name)) : '';
-            var wmMatches = (!title && wmName && !NON_TITLE_RE.test(wmName)) || (title && wmName && titlesShareTokens(title, wmName));
+            var wmItemId = String((wmProd && (wmProd.usItemId || wmProd.itemId)) || '').trim();
+            var wmCanon = String((wmProd && wmProd.canonicalUrl) || '').trim();
+            var itemIdMatches = !urlItemId ||
+              (wmItemId && wmItemId === urlItemId) ||
+              (wmCanon && (wmCanon === '/ip/' + urlItemId || wmCanon.slice(-(urlItemId.length + 1)) === '/' + urlItemId));
+            var wmName = itemIdMatches && wmProd && wmProd.name ? clean(String(wmProd.name)) : '';
+            var wmMatches = itemIdMatches && ((!title && wmName && !NON_TITLE_RE.test(wmName)) || (title && wmName && titlesShareTokens(title, wmName)));
             if (wmMatches) {
               if (!title && wmName) title = wmName;
               if (!barcode && wmProd) {

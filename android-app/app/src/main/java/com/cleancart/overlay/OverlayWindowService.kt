@@ -220,7 +220,7 @@ class OverlayWindowService : Service() {
     private var pendingSwapExplicitItem: TripCartItem? = null
     private val mainUiHandler = Handler(Looper.getMainLooper())
     private val imageExecutor = Executors.newFixedThreadPool(2)
-    private val swapBitmapCache = LruCache<String, Bitmap>(24)
+    private val swapBitmapCache = SafeBitmapLoader.createBitmapLruCache(6 * 1024)
     private val pillScreenLoc = IntArray(2)
 
     private fun syncPillCenterY() {
@@ -2205,6 +2205,7 @@ class OverlayWindowService : Service() {
                 put("brand", prodBrand)
                 put("barcode", prodBarcode)
                 put("imageUrl", prodObj?.optString("imageUrl").orEmpty())
+                put("categoryArtUrl", prodObj?.optString("categoryArtUrl").orEmpty())
                 put("isProductHeader", true)
             }
             sheet.addView(LinearLayout(this).apply {
@@ -2993,9 +2994,10 @@ class OverlayWindowService : Service() {
             setPadding(dp(2), dp(2), dp(2), dp(2))
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
-        val illustrationBadge = text("Illustration", 7f, 0xFF475569.toInt(), bold = true).apply {
+        val compactBadge = sizePx < dp(50)
+        val illustrationBadge = text(if (compactBadge) "Art" else "Illustration", if (compactBadge) 6f else 7f, 0xFF475569.toInt(), bold = true).apply {
             setSingleLine(true)
-            setPadding(dp(3), dp(1), dp(3), dp(1))
+            setPadding(dp(if (compactBadge) 2 else 3), dp(1), dp(if (compactBadge) 2 else 3), dp(1))
             background = GradientDrawable().apply {
                 setColor(0xEBFFFFFF.toInt())
                 cornerRadius = dp(999).toFloat()
@@ -3022,32 +3024,12 @@ class OverlayWindowService : Service() {
             }
         }
 
+        val targetMaxPx = (sizePx * 2).coerceIn(96, 320)
         imageExecutor.execute {
-            fun fetchSwapBitmap(targetUrl: String): Bitmap? = runCatching {
-                val parsed = URL(targetUrl)
-                if (!parsed.protocol.equals("https", ignoreCase = true)) return@runCatching null
-                val conn = (parsed.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 5000
-                    readTimeout = 7500
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "HeyBroc-Android/2.0")
-                }
-                try {
-                    if (conn.responseCode in 200..299) {
-                        conn.inputStream.use { stream ->
-                            val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
-                            Bitmap.createScaledBitmap(decoded, sizePx, sizePx, true)
-                        }
-                    } else null
-                } finally {
-                    conn.disconnect()
-                }
-            }.getOrNull()
-
             var bmp: Bitmap? = null
             var cacheKey = ""
             for (cand in candidates) {
-                bmp = fetchSwapBitmap(cand)
+                bmp = SafeBitmapLoader.fetchScaledBitmap(cand, targetMaxPx)
                 if (bmp != null) {
                     cacheKey = cand
                     break
@@ -3058,7 +3040,7 @@ class OverlayWindowService : Service() {
                 val isIllustration = ScanHistoryStore.isCategoryArtUrl(cacheKey)
                 mainUiHandler.post {
                     placeholderTv.visibility = View.GONE
-                    iv.setPadding(0, 0, 0, 0)
+                    iv.setPadding(dp(2), dp(2), dp(2), dp(2))
                     iv.setImageBitmap(bmp)
                     illustrationBadge.visibility = if (isIllustration) View.VISIBLE else View.GONE
                 }

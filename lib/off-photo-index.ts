@@ -106,6 +106,12 @@ const INDEX_FORM_AND_SUBLINE_WORDS = [
 const WHOLE_PRODUCE_DISQUALIFIER_RE =
   /\b(?:peppers?|cheerios|cereals?|oatmeal|granola|yogh?urts?|skyr|kefir|puddings?|baby|infant|toddler|gerber|pouch(?:es)?|purees?|mashed|dogs?|cats?|pets?|treats?|jerky|blue\s+buffalo|mezzetta|bars?|bites?|muffins?|breads?|rolls?|buns?|bagels?|pancakes?|waffles?|cakes?|pies?|cookies?|crackers?|wafers?|pretzels?|popcorn|puffs?|chips?|crisps?|fries|tots|gnocchi|pasta|noodles?|soups?|broths?|stews?|chowders?|salads?|slaws?|dips?|salsas?|sauces?|ketchup|mustard|mayo|dressings?|pickled|pickles?|nut|nuts|protein|shakes?|smoothies?|juices?|sodas?|waters?|teas?|coffees?|creamers?|milks?|ice\s+cream|cand(?:y|ies)|gumm(?:y|ies)|snacks?|seasonings?|powders?|flours?|syrups?|jams?|jell(?:y|ies)|spreads?|butters?|cheeses?|bacon|sausages?|hot\s*dogs?)\b/i;
 
+const GENERIC_BRAND_FILLER_TOKENS = new Set([
+  "the", "organic", "organics", "foods", "food", "farms", "farm",
+  "market", "markets", "brand", "brands", "company", "co", "inc",
+  "family", "natural", "naturals", "homemade",
+]);
+
 function passesIndexCandidateGuard(query: string, rawBrand: string, candBrand: string, candTitle: string): boolean {
   const fullCand = `${candBrand} ${candTitle}`.trim();
   if (!fullCand) return false;
@@ -121,9 +127,13 @@ function passesIndexCandidateGuard(query: string, rawBrand: string, candBrand: s
   } else {
     const normCandBrand = normalizeBrandPhrase(candBrand);
     const normQueryAll = normalizeBrandPhrase(`${rawBrand} ${query}`);
-    const candBrandFirst = normCandBrand.split(" ").find((t) => t.length >= 2);
-    if (candBrandFirst && !new RegExp(`\\b${candBrandFirst}\\b`, "i").test(normQueryAll)) {
-      return false;
+    const candTokens = normCandBrand.split(" ").filter((t) => t.length >= 2);
+    const distinctiveBrandTokens = candTokens.filter((t) => !GENERIC_BRAND_FILLER_TOKENS.has(t));
+    const requiredTokens = distinctiveBrandTokens.length > 0 ? distinctiveBrandTokens : candTokens.slice(0, 1);
+    for (const tok of requiredTokens) {
+      if (!new RegExp(`\\b${tok}\\b`, "i").test(normQueryAll)) {
+        return false;
+      }
     }
   }
 
@@ -150,16 +160,19 @@ export function lookupOffPhotoIndexSync(params: {
   title?: string | null;
   brand?: string | null;
 }): { imageUrl: string; barcode?: string } | null {
+  const rawTitle = (params.title || "").trim();
+  const rawBrand = (params.brand || "").trim();
   const cleanCode = (params.barcode || "").replace(/\D/g, "");
   if (cleanCode.length >= 8) {
     const hit = byBarcode.get(cleanCode);
     if (hit) {
-      return { imageUrl: hit.imageUrl, barcode: hit.barcode };
+      const fullHitTitle = `${hit.brand} ${hit.title}`.trim();
+      if (!rawTitle || passesVariantGuard(rawTitle, fullHitTitle)) {
+        return { imageUrl: hit.imageUrl, barcode: hit.barcode };
+      }
     }
   }
 
-  const rawTitle = (params.title || "").trim();
-  const rawBrand = (params.brand || "").trim();
   const combinedQuery =
     rawBrand && !rawTitle.toLowerCase().includes(rawBrand.toLowerCase())
       ? `${rawBrand} ${rawTitle}`.trim()
@@ -168,9 +181,17 @@ export function lookupOffPhotoIndexSync(params: {
 
   const queryNormBrand = normalizeBrandPhrase(rawBrand || combinedQuery);
   const firstTok = queryNormBrand.split(" ").find((t) => t.length >= 2);
-  const candidates = (firstTok && byBrandToken.get(firstTok)) || allRecords;
+  const bucket = firstTok ? byBrandToken.get(firstTok) : undefined;
 
-  for (const cand of candidates) {
+  if (bucket) {
+    for (const cand of bucket) {
+      if (!passesIndexCandidateGuard(combinedQuery, rawBrand, cand.brand, cand.title)) continue;
+      return { imageUrl: cand.imageUrl, barcode: cand.barcode || undefined };
+    }
+  }
+
+  for (const cand of allRecords) {
+    if (bucket && bucket.includes(cand)) continue;
     if (!passesIndexCandidateGuard(combinedQuery, rawBrand, cand.brand, cand.title)) continue;
     return { imageUrl: cand.imageUrl, barcode: cand.barcode || undefined };
   }
@@ -189,15 +210,18 @@ export async function lookupOffPhotoIndex(params: {
   if (!isPersistentKvConfigured()) return null;
 
   try {
+    const rawTitle = (params.title || "").trim();
+    const rawBrand = (params.brand || "").trim();
     const cleanCode = (params.barcode || "").replace(/\D/g, "");
     if (cleanCode.length >= 8) {
       const kvCodeHit = await kvGet<{ u: string; b?: string; t?: string }>(`heybroc:offidx:bc:${cleanCode}`);
       if (kvCodeHit?.u && kvCodeHit.u.startsWith("https://")) {
-        return { imageUrl: kvCodeHit.u, barcode: cleanCode };
+        const kvFullTitle = `${kvCodeHit.b || ""} ${kvCodeHit.t || ""}`.trim();
+        if (!rawTitle || !kvFullTitle || passesVariantGuard(rawTitle, kvFullTitle)) {
+          return { imageUrl: kvCodeHit.u, barcode: cleanCode };
+        }
       }
     }
-    const rawTitle = (params.title || "").trim();
-    const rawBrand = (params.brand || "").trim();
     const combinedQuery =
       rawBrand && !rawTitle.toLowerCase().includes(rawBrand.toLowerCase())
         ? `${rawBrand} ${rawTitle}`.trim()

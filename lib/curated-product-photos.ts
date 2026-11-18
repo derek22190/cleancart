@@ -21,16 +21,22 @@ export interface CuratedPhotoRecord {
 
 const curatedManifest = curatedManifestRaw as Record<string, CuratedPhotoRecord>;
 
-const barcodeIndex = new Map<string, CuratedPhotoRecord>();
-for (const rec of Object.values(curatedManifest)) {
+interface IndexedCuratedRecord {
+  record: CuratedPhotoRecord;
+  keyTitle: string;
+}
+
+const barcodeIndex = new Map<string, IndexedCuratedRecord>();
+for (const [manifestKey, rec] of Object.entries(curatedManifest)) {
   if (rec?.barcode && rec.imageUrl?.startsWith("https://")) {
     const cleanCode = rec.barcode.replace(/\D/g, "");
+    const keyTitle = manifestKey.includes("::") ? manifestKey.split("::")[1] || manifestKey : manifestKey;
     if (cleanCode.length >= 8) {
-      barcodeIndex.set(cleanCode, rec);
+      barcodeIndex.set(cleanCode, { record: rec, keyTitle });
       if (cleanCode.length === 13 && cleanCode.startsWith("0")) {
-        barcodeIndex.set(cleanCode.slice(1), rec);
+        barcodeIndex.set(cleanCode.slice(1), { record: rec, keyTitle });
       } else if (cleanCode.length === 12) {
-        barcodeIndex.set(`0${cleanCode}`, rec);
+        barcodeIndex.set(`0${cleanCode}`, { record: rec, keyTitle });
       }
     }
   }
@@ -72,36 +78,40 @@ export function extractBarcodeFromOffImageUrl(url?: string | null): string | und
   return digits.length >= 8 && digits.length <= 14 ? digits : undefined;
 }
 
+const STRICT_OFF_PRODUCT_PHOTO_RE =
+  /^https:\/\/images\.openfoodfacts\.(?:org|net)\/images\/products\/[0-9/]+\/[A-Za-z0-9_.-]+\.(?:jpg|jpeg|png|webp)$/i;
+const OFF_PANEL_FILENAME_RE = /\/(?:ingredients|nutrition|packaging)(?:_|\.)/i;
+const FOREIGN_NON_NA_FRONT_RE =
+  /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
+
 /**
- * Checks whether a URL is a direct verified product photo URL (excluding API proxy URLs,
+ * Checks whether a URL is a direct verified Open Food Facts product photo URL
+ * (excluding nutrition/ingredients/packaging back panels, API proxy URLs,
  * local `/swaps/` or `/products/` category illustrations, and placeholder SVGs).
  */
 export function isDirectVerifiedPhotoUrl(url?: string | null): url is string {
   if (!url || typeof url !== "string") return false;
   const trimmed = url.trim();
-  if (!trimmed.startsWith("https://")) return false;
-  const lower = trimmed.toLowerCase();
-  if (
-    lower.includes("/api/product-image") ||
-    lower.includes("product-photo-unavailable") ||
-    lower.includes("placeholder")
-  ) {
-    return false;
+  if (!STRICT_OFF_PRODUCT_PHOTO_RE.test(trimmed)) return false;
+  if (OFF_PANEL_FILENAME_RE.test(trimmed) || FOREIGN_NON_NA_FRONT_RE.test(trimmed)) return false;
+  return true;
+}
+
+function isCuratedBarcodeTitleCompatible(queryTitle?: string | null, manifestKeyTitle?: string): boolean {
+  const q = normalizeCuratedKeyText(queryTitle);
+  const m = normalizeCuratedKeyText(manifestKeyTitle);
+  if (!q || !m) return true;
+  const qOrg = /\borganics?\b/.test(q);
+  const mOrg = /\borganics?\b/.test(m);
+  if (qOrg !== mOrg) return false;
+  const qZero = /\b(?:zero(?:\s+sugar|\s+calorie)?|sugar\s*free|no\s+sugar|diet)\b/.test(q);
+  const mZero = /\b(?:zero(?:\s+sugar|\s+calorie)?|sugar\s*free|no\s+sugar|diet)\b/.test(m);
+  if (qZero !== mZero) return false;
+  for (const mod of ["simply nkd", "unflavored", "extra creamy", "healthy request", "doubleshot", "pro elite"]) {
+    const re = new RegExp(`\\b${mod}\\b`);
+    if (re.test(q) !== re.test(m)) return false;
   }
-  try {
-    const parsed = new URL(trimmed);
-    const host = parsed.hostname.toLowerCase();
-    // Local heybroc.com `/swaps/` or `/products/` assets are category studio illustrations, not brand photos
-    if (
-      (host === "heybroc.com" || host === "www.heybroc.com") &&
-      (parsed.pathname.startsWith("/swaps/") || parsed.pathname.startsWith("/products/"))
-    ) {
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 export function lookupCuratedPhoto(params: {
@@ -112,21 +122,18 @@ export function lookupCuratedPhoto(params: {
   const cleanCode = (params.barcode || "").replace(/\D/g, "");
   if (cleanCode.length >= 8) {
     const byCode = barcodeIndex.get(cleanCode);
-    if (byCode?.imageUrl && isDirectVerifiedPhotoUrl(byCode.imageUrl)) {
-      return byCode;
+    if (
+      byCode?.record.imageUrl &&
+      isDirectVerifiedPhotoUrl(byCode.record.imageUrl) &&
+      isCuratedBarcodeTitleCompatible(params.title, byCode.keyTitle)
+    ) {
+      return byCode.record;
     }
   }
   const key = curatedPhotoKey(params.brand, params.title);
   const direct = curatedManifest[key];
   if (direct?.imageUrl && isDirectVerifiedPhotoUrl(direct.imageUrl)) {
     return direct;
-  }
-  if (params.brand) {
-    const titleOnlyKey = curatedPhotoKey("", params.title);
-    const fallback = curatedManifest[titleOnlyKey];
-    if (fallback?.imageUrl && isDirectVerifiedPhotoUrl(fallback.imageUrl)) {
-      return fallback;
-    }
   }
   return direct || null;
 }
@@ -136,11 +143,12 @@ export interface ResolvedProductMedia {
   imageKind: ImageKind;
   categoryArtUrl: string | null;
   barcode?: string;
+  knownMissingPhoto?: boolean;
 }
 
 /**
  * Deterministic media resolver for curated items and client/server product payloads.
- * Returns `{ imageUrl, imageKind, categoryArtUrl, barcode }`.
+ * Returns `{ imageUrl, imageKind, categoryArtUrl, barcode, knownMissingPhoto }`.
  */
 export function resolveProductMediaFields(params: {
   brand?: string | null;
@@ -169,7 +177,7 @@ export function resolveProductMediaFields(params: {
   const categoryArtUrl = relStudio ? (origin ? `${origin}${relStudio}` : relStudio) : null;
 
   const storeImg = (params.storeImageUrl || "").trim();
-  if (storeImg.startsWith("https://") || storeImg.startsWith("http://")) {
+  if (storeImg.startsWith("https://")) {
     return {
       imageUrl: storeImg,
       imageKind: "store-photo",
@@ -200,6 +208,7 @@ export function resolveProductMediaFields(params: {
       barcode: params.barcode || curated.barcode || extractBarcodeFromOffImageUrl(curated.imageUrl),
     };
   }
+  const knownMissingPhoto = Boolean(curated && curated.verifiedAt && !curated.imageUrl);
 
   if (categoryArtUrl) {
     return {
@@ -207,6 +216,7 @@ export function resolveProductMediaFields(params: {
       imageKind: "category-art",
       categoryArtUrl,
       barcode: params.barcode || curated?.barcode || undefined,
+      ...(knownMissingPhoto ? { knownMissingPhoto: true } : {}),
     };
   }
 
@@ -215,5 +225,6 @@ export function resolveProductMediaFields(params: {
     imageKind: "none",
     categoryArtUrl: null,
     barcode: params.barcode || curated?.barcode || undefined,
+    ...(knownMissingPhoto ? { knownMissingPhoto: true } : {}),
   };
 }

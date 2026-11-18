@@ -243,7 +243,7 @@
     "verifiedAt": "2026-11-17"
   },
   "red bull::red bull energy drink original 8 4 fl oz": {
-    "imageUrl": "https://images.openfoodfacts.org/images/products/900/249/020/5973/front.24.400.jpg",
+    "imageUrl": "https://images.openfoodfacts.org/images/products/900/249/020/5973/front_en.104.400.jpg",
     "barcode": "9002490205973",
     "verifiedAt": "2026-11-17"
   },
@@ -293,7 +293,7 @@
     "verifiedAt": "2026-11-17"
   },
   "great value::great value grade a pasteurized whole vitamin d milk 1 gallon": {
-    "imageUrl": "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.4.400.jpg",
+    "imageUrl": "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.25.400.jpg",
     "barcode": "0078742159034",
     "verifiedAt": "2026-11-17"
   },
@@ -500,13 +500,9 @@
     "verifiedAt": "2026-11-17"
   },
   "applegate organics::applegate organics organic no sugar uncured sunday bacon": {
-    "imageUrl": "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg",
-    "barcode": "0025317331005",
     "verifiedAt": "2026-11-17"
   },
   "applegate organics::applegate organics organic uncured grass fed beef hot dog": {
-    "imageUrl": "https://images.openfoodfacts.org/images/products/002/531/753/2006/front_en.3.400.jpg",
-    "barcode": "0025317532006",
     "verifiedAt": "2026-11-17"
   },
   "applegate organics::applegate organics organic gluten free chicken nuggets": {
@@ -525,8 +521,6 @@
     "verifiedAt": "2026-11-17"
   },
   "applegate organics::applegate organics organic uncured roast beef": {
-    "imageUrl": "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg",
-    "barcode": "0025317156745",
     "verifiedAt": "2026-11-17"
   },
   "simple mills::simple mills crunchy almond flour chocolate chip cookies": {

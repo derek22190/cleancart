@@ -927,7 +927,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
   let resolvedImageKind: ImageKind = curatedMedia.imageKind;
   const resolvedCategoryArtUrl: string | null = curatedMedia.categoryArtUrl;
 
-  if (resolvedImageKind !== "photo") {
+  const effectiveSource = found.source === "cache" ? (found.origin ?? "cache") : found.source;
+  if (resolvedImageKind !== "photo" && !curatedMedia.knownMissingPhoto) {
     const offIndexHit = await lookupOffPhotoIndex({
       barcode: effectiveBarcode,
       title,
@@ -940,8 +941,8 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
         effectiveBarcode = offIndexHit.barcode;
       }
     } else if (
-      found.source !== "catalog" &&
-      found.source !== "openfoodfacts" &&
+      effectiveSource !== "catalog" &&
+      effectiveSource !== "openfoodfacts" &&
       !isCategoryEstimate &&
       resolvedCategoryArtUrl !== null
     ) {
@@ -969,9 +970,9 @@ export async function runScan(req: ScanRequest): Promise<ScanResponse | ScanErro
           });
     return {
       ...s,
-      image: swapMedia.imageUrl || swapMedia.categoryArtUrl || "https://www.heybroc.com/swaps/snacks.jpg",
-      imageKind: swapMedia.imageKind === "none" ? "category-art" : swapMedia.imageKind,
-      categoryArtUrl: swapMedia.categoryArtUrl || "https://www.heybroc.com/swaps/snacks.jpg",
+      image: swapMedia.imageUrl || swapMedia.categoryArtUrl || "",
+      imageKind: swapMedia.imageKind,
+      categoryArtUrl: swapMedia.categoryArtUrl,
       ...(canAccessSwapLinks
         ? {}
         : {

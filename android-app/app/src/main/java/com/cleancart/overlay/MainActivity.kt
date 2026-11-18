@@ -86,7 +86,8 @@ class MainActivity : Activity() {
     private var activeAuthDialog: AlertDialog? = null
     private var activeFunnelDialog: AlertDialog? = null
     private val imgExecutor = Executors.newFixedThreadPool(4)
-    private val bmpCache = LruCache<String, Bitmap>(64)
+    private val suggestExecutor = Executors.newSingleThreadExecutor()
+    private val bmpCache = SafeBitmapLoader.createBitmapLruCache(8 * 1024)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var activeTab = 0 // 0 = Scans, 1 = Top Picks, 2 = Swaps, 3 = Search
@@ -1405,8 +1406,8 @@ class MainActivity : Activity() {
             }
             setOnClickListener {
                 if (swapUnlocked) {
-                    val isOrg = swapTitle.contains("organic", ignoreCase = true) ||
-                        swapObj.optString("ingredients").contains("organic", ignoreCase = true)
+                    val isOrg = swapObj.optBoolean("isOrganic", false) ||
+                        swapObj.optJSONObject("nutrition")?.optBoolean("isOrganic", false) == true
                     val orgScore = if (isOrg) 10 else 0
                     val addScore = 30
                     val nutScore = (swapScore - addScore - orgScore).coerceIn(0, 60)
@@ -5976,8 +5977,10 @@ class MainActivity : Activity() {
                     val summary = JSONObject().apply {
                         put("title", t)
                         put("brand", prod?.optString("brand").orEmpty().ifBlank { item.optString("brand") })
+                        put("barcode", prod?.optString("barcode").orEmpty().ifBlank { item.optString("barcode") })
                         put("score", res?.optInt("score") ?: item.optInt("score", 50))
                         put("imageUrl", prod?.optString("imageUrl").orEmpty().ifBlank { ScanHistoryStore.productImageUrl(t) })
+                        put("categoryArtUrl", prod?.optString("categoryArtUrl").orEmpty().ifBlank { item.optString("categoryArtUrl") })
                     }
                     merged.add(summary to item)
                 }
@@ -5997,6 +6000,8 @@ class MainActivity : Activity() {
                 val sugBarcode = sug.optString("barcode")
                 val sugScore = sug.optInt("score", 50)
                 val sugImg = sug.optString("imageUrl").ifBlank { ScanHistoryStore.productImageUrl(sugTitle, sugBrand, sugBarcode) }
+                val sugCatArt = sug.optString("categoryArtUrl")
+                    .ifBlank { fullItem?.optJSONObject("product")?.optString("categoryArtUrl").orEmpty() }
 
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -6008,7 +6013,7 @@ class MainActivity : Activity() {
                         onPicked(sugTitle, fullItem)
                     }
                 }
-                row.addView(buildProductImageBox(sugImg, sugTitle, dp(38), dp(46), sugBrand, sugBarcode).apply {
+                row.addView(buildProductImageBox(sugImg, sugTitle, dp(38), dp(46), sugBrand, sugBarcode, categoryArtUrl = sugCatArt).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(38), dp(46)).apply { marginEnd = dp(12) }
                 })
                 row.addView(LinearLayout(this).apply {
@@ -6079,7 +6084,7 @@ class MainActivity : Activity() {
                 renderSuggestionRows(q, localHits, emptyList())
 
                 val runnable = Runnable {
-                    imgExecutor.execute {
+                    suggestExecutor.execute {
                         val remoteHits = runCatching { ScanApi.suggest(q) }.getOrDefault(emptyList())
                         if (remoteHits.isNotEmpty()) {
                             mainHandler.post {
@@ -6149,13 +6154,14 @@ class MainActivity : Activity() {
         }
         box.addView(iv)
 
+        val compactBadge = wPx < dp(46)
         val illustrationBadge = TextView(this).apply {
-            text = "Illustration"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 7.5f)
+            text = if (compactBadge) "Art" else "Illustration"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (compactBadge) 6.5f else 7.5f)
             setTextColor(0xFF475569.toInt())
             setTypeface(typeface, Typeface.BOLD)
             setSingleLine(true)
-            setPadding(dp(4), dp(1), dp(4), dp(1))
+            setPadding(dp(if (compactBadge) 2 else 4), dp(1), dp(if (compactBadge) 2 else 4), dp(1))
             background = GradientDrawable().apply {
                 setColor(0xEBFFFFFF.toInt())
                 cornerRadius = dp(999).toFloat()
@@ -6172,7 +6178,7 @@ class MainActivity : Activity() {
 
         val fallbackApiUrl = ScanHistoryStore.productImageApiFallbackUrl(title, brand, code)
         val primaryUrl = ScanHistoryStore.resolveBestImageUrl(title, imgUrl, brand, code)
-        val safeStoreImg = storeImageUrl.trim().takeIf { it.startsWith("https://") && !it.contains("heybroc.com") }.orEmpty()
+        val safeStoreImg = SafeBitmapLoader.sanitizeExternalImageUrl(storeImageUrl, rejectHeyBroc = true)
         val normalizedCatArt = ScanHistoryStore.normalizeCategoryArtUrl(categoryArtUrl)
         val candidates = buildList {
             if (safeStoreImg.isNotEmpty()) add(safeStoreImg)
@@ -6180,7 +6186,8 @@ class MainActivity : Activity() {
             if (fallbackApiUrl.isNotEmpty()) add(fallbackApiUrl)
             if (normalizedCatArt.isNotEmpty()) add(normalizedCatArt)
         }.distinct()
-        loadThumbnailCandidatesAsync(candidates, iv, fallback, illustrationBadge)
+        val maxTargetPx = (maxOf(wPx, hPx) * 2).coerceIn(96, 360)
+        loadThumbnailCandidatesAsync(candidates, iv, fallback, illustrationBadge, maxTargetPx)
         return box
     }
 
@@ -6359,27 +6366,12 @@ class MainActivity : Activity() {
         openStoreSwap(query, "walmart", null)
     }
 
-    private fun fetchBitmapFromUrl(urlStr: String): Bitmap? = runCatching {
-        val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 5000
-            readTimeout = 7500
-            setRequestProperty("User-Agent", "HeyBroc-Android/2.0")
-        }
-        try {
-            if (conn.responseCode in 200..299) {
-                conn.inputStream.use { BitmapFactory.decodeStream(it) }
-            } else null
-        } finally {
-            conn.disconnect()
-        }
-    }.getOrNull()
-
     private fun loadThumbnailCandidatesAsync(
         candidates: List<String>,
         target: ImageView,
         fallback: View,
-        illustrationBadge: View? = null
+        illustrationBadge: View? = null,
+        maxTargetPx: Int = 240
     ) {
         if (candidates.isEmpty()) return
         for (url in candidates) {
@@ -6395,7 +6387,7 @@ class MainActivity : Activity() {
             var bmp: Bitmap? = null
             var resolvedKey = ""
             for (url in candidates) {
-                bmp = fetchBitmapFromUrl(url)
+                bmp = SafeBitmapLoader.fetchScaledBitmap(url, maxTargetPx)
                 if (bmp != null) {
                     resolvedKey = url
                     break
@@ -6785,6 +6777,7 @@ class MainActivity : Activity() {
         pendingSuggestRunnable?.let { mainHandler.removeCallbacks(it) }
         io.shutdownNow()
         imgExecutor.shutdownNow()
+        suggestExecutor.shutdownNow()
         super.onDestroy()
     }
 

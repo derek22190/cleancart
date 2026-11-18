@@ -383,6 +383,13 @@ enum HeyBrocNativeScannerAPI {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
             return nil
         }
+        let lower = trimmed.lowercased()
+        if lower.hasPrefix("/products/")
+            || lower.contains("heybroc.com/products/")
+            || lower.contains("cleancart-teal.vercel.app/products/")
+            || lower.contains("product-photo-unavailable") {
+            return nil
+        }
         if trimmed.hasPrefix("/") && !trimmed.hasPrefix("//") {
             return "https://www.heybroc.com\(trimmed)"
         }
@@ -424,17 +431,25 @@ enum HeyBrocNativeScannerAPI {
     }
 
     static func brandInitial(brand: String, title: String) -> String {
-        let skip: Set<String> = ["the", "a", "an", "organic", "fresh", "natural", "100%"]
-        for source in [brand, title] {
-            let tokens = source
+        let skip: Set<String> = ["the", "a", "an", "organic", "fresh", "natural", "whole", "raw", "usda", "pure"]
+        let placeholderBrands: Set<String> = ["generic", "unknown", "grocery", "fresh produce", "n/a", "none"]
+        let trimmedBrand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let usableBrand = (placeholderBrands.contains(trimmedBrand.lowercased()) || trimmedBrand.lowercased().contains("category estimate"))
+            ? ""
+            : trimmedBrand
+        for source in [usableBrand, title] {
+            let withoutPct = source.replacingOccurrences(of: "\\b100\\s*%", with: " ", options: .regularExpression)
+            let tokens = withoutPct
                 .components(separatedBy: CharacterSet.alphanumerics.inverted)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            for tok in tokens {
-                if skip.contains(tok.lowercased()) { continue }
-                if let first = tok.first(where: { $0.isLetter || $0.isNumber }) {
-                    return String(first).uppercased()
-                }
+                .filter { !$0.isEmpty && !skip.contains($0.lowercased()) }
+            if let alphaTok = tokens.first(where: { tok in tok.contains(where: { $0.isLetter }) }),
+               let firstLetter = alphaTok.first(where: { $0.isLetter }) {
+                return String(firstLetter).uppercased()
+            }
+            if let anyTok = tokens.first,
+               let firstAlnum = anyTok.first(where: { $0.isLetter || $0.isNumber }) {
+                return String(firstAlnum).uppercased()
             }
         }
         return "B"

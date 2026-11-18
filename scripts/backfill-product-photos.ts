@@ -18,11 +18,18 @@
  * Saves verified `{ barcode, imageUrl, verifiedAt }` records into `data/curated-product-photos.json`.
  */
 
+import dns from "node:dns";
 import fs from "node:fs";
 import Module from "node:module";
+import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 import zlib from "node:zlib";
+
+dns.setDefaultResultOrder("ipv4first");
+if (typeof net.setDefaultAutoSelectFamily === "function") {
+  net.setDefaultAutoSelectFamily(false);
+}
 
 // Allow importing server-only modules (`lib/lookup.ts`) from standalone CLI scripts
 const origLoad = (
@@ -46,6 +53,7 @@ interface CuratedTarget {
 }
 
 interface OffImageMeta {
+  imgid?: string | number;
   rev?: string | number;
   sizes?: Record<string, unknown>;
 }
@@ -69,6 +77,11 @@ interface OffRawProduct {
 
 const OFF_MIN_SPACING_MS = 6200; // <= 1 request every 6.2s (< 10/min)
 const USER_AGENT = "HeyBroc/2.5 (https://www.heybroc.com; support@heybroc.com)";
+const STRICT_OFF_PRODUCT_PHOTO_RE =
+  /^https:\/\/images\.openfoodfacts\.(?:org|net)\/images\/products\/[0-9/]+\/[A-Za-z0-9_.-]+\.(?:jpg|jpeg|png|webp)$/i;
+const OFF_PANEL_PATH_RE = /\/(?:ingredients|nutrition|packaging)(?:_|\.)/i;
+const FOREIGN_NON_NA_FRONT_RE =
+  /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,39 +97,58 @@ function offFolderForBarcode(rawBarcode: string): string | null {
 
 function normalizeOffUrl(url?: string | null): string | null {
   if (!url || typeof url !== "string") return null;
-  const trimmed = url.trim().replace(/^http:\/\//i, "https://");
-  if (!/^https:\/\/images\.openfoodfacts\.(?:org|net)\/images\/products\//i.test(trimmed)) {
-    return null;
-  }
-  return trimmed.replace(/images\.openfoodfacts\.net/i, "images.openfoodfacts.org");
+  const trimmed = url
+    .trim()
+    .replace(/^http:\/\//i, "https://")
+    .replace(/images\.openfoodfacts\.net/i, "images.openfoodfacts.org");
+  if (!STRICT_OFF_PRODUCT_PHOTO_RE.test(trimmed)) return null;
+  if (OFF_PANEL_PATH_RE.test(trimmed) || FOREIGN_NON_NA_FRONT_RE.test(trimmed)) return null;
+  return trimmed;
 }
 
 function isUsOrCanadaOffProduct(p: OffRawProduct): boolean {
-  const tags = Array.isArray(p.countries_tags) ? p.countries_tags : [];
-  if (tags.length === 0) return true;
-  return tags.some((t) => /united-states|canada|world/i.test(String(t)));
+  const tags = Array.isArray(p.countries_tags)
+    ? p.countries_tags.map((t) => String(t).trim().toLowerCase())
+    : [];
+  if (tags.length === 0) return false;
+  return tags.includes("en:united-states") || tags.includes("en:canada");
 }
 
 function pickBestOffFrontUrl(p: OffRawProduct): string | null {
   const display = p.selected_images?.front?.display || {};
   const small = p.selected_images?.front?.small || {};
+  const imgs = p.images && typeof p.images === "object" ? p.images : null;
+  const panelImgIds = new Set<string>();
+  if (imgs) {
+    for (const [k, meta] of Object.entries(imgs)) {
+      if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
+        panelImgIds.add(String(meta.imgid));
+      }
+    }
+  }
+  const isNotPanel = (u: string | null): u is string => {
+    if (!u) return false;
+    const m = u.match(/\/(\d+)(?:\.\d+)?\.(?:jpg|jpeg|png|webp)$/i);
+    if (m && panelImgIds.has(m[1])) return false;
+    return true;
+  };
 
   // 1. Prefer English front photo
   const enFront = normalizeOffUrl(display.en || small.en);
-  if (enFront) return enFront;
+  if (isNotPanel(enFront)) return enFront;
 
-  // 2. Accept Spanish / French front when sold in US/CA and no English front exists (Step 7)
-  if (isUsOrCanadaOffProduct(p)) {
+  // 2. Accept Spanish / French front ONLY when explicitly sold in US/CA and no English front exists (Step 7)
+  const allowNaRegional = isUsOrCanadaOffProduct(p);
+  if (allowNaRegional) {
     const regionalFront = normalizeOffUrl(display.es || display.fr || small.es || small.fr);
-    if (regionalFront) return regionalFront;
+    if (isNotPanel(regionalFront)) return regionalFront;
   }
 
-  // 3. Reconstruct from `images` map (`front_en` -> `front_es` -> `front_fr` -> raw numeric `"1"`)
+  // 3. Reconstruct from `images` map (`front_en` -> `front_es` -> `front_fr` -> raw numeric `"1"` excluding panelImgIds)
   const code = String(p.code || "").replace(/\D/g, "");
   const folder = offFolderForBarcode(code);
-  const imgs = p.images && typeof p.images === "object" ? p.images : null;
   if (folder && imgs) {
-    const candidateKeys = isUsOrCanadaOffProduct(p)
+    const candidateKeys = allowNaRegional
       ? ["front_en", "front_es", "front_fr", "front"]
       : ["front_en", "front"];
     for (const k of candidateKeys) {
@@ -127,7 +159,7 @@ function pickBestOffFrontUrl(p: OffRawProduct): string | null {
       }
     }
     const numericKeys = Object.keys(imgs)
-      .filter((k) => /^\d+$/.test(k))
+      .filter((k) => /^\d+$/.test(k) && !panelImgIds.has(k))
       .sort((a, b) => Number(a) - Number(b));
     if (numericKeys.length > 0) {
       const rawKey = numericKeys[0];
@@ -135,10 +167,11 @@ function pickBestOffFrontUrl(p: OffRawProduct): string | null {
     }
   }
 
-  // 4. Generic `image_front_url` / `image_url` if English or numeric raw file
+  // 4. Generic `image_front_url` / `image_url` if English (or NA regional) or non-panel numeric raw file
   for (const raw of [p.image_front_url, p.image_url]) {
     const norm = normalizeOffUrl(raw);
-    if (!norm) continue;
+    if (!isNotPanel(norm)) continue;
+    if (/\/front_(?:es|fr)\./i.test(norm) && !allowNaRegional) continue;
     if (/\/(?:front_en|front_es|front_fr|\d+)\.(?:\d+\.)?\d+\.jpg$/i.test(norm)) {
       return norm;
     }
@@ -323,7 +356,7 @@ async function main(): Promise<void> {
             (code === targetCode ||
               `0${code}` === targetCode ||
               code === `0${targetCode}`);
-          if (isBarcodeExact || matchesTargetCandidate(target, prod)) {
+          if ((isBarcodeExact && matchesTargetCandidate(target, prod)) || (!isBarcodeExact && matchesTargetCandidate(target, prod))) {
             manifest[key] = {
               imageUrl: bestUrl,
               barcode: code || targetCode || undefined,
@@ -338,16 +371,32 @@ async function main(): Promise<void> {
   }
 
   // Live rate-limited OFF API pass (`<= 1` request every 6.2 seconds)
+  const retryMissing = args.includes("--retry-missing");
   if (!offlineReportOnly && !jsonlArg && maxQueries > 0) {
     const uniqueMissing = new Map<string, CuratedTarget>();
     for (const t of targets) {
-      if (!isDirectVerifiedPhotoUrl(manifest[t.key]?.imageUrl) && !uniqueMissing.has(t.key)) {
+      const existingRec = manifest[t.key];
+      const alreadyCheckedMissing = Boolean(existingRec?.verifiedAt && !existingRec?.imageUrl && !retryMissing);
+      if (
+        !isDirectVerifiedPhotoUrl(existingRec?.imageUrl) &&
+        !alreadyCheckedMissing &&
+        !uniqueMissing.has(t.key)
+      ) {
         uniqueMissing.set(t.key, t);
       }
     }
 
     let queriesUsed = 0;
     let lastReqAt = 0;
+    const waitForSpacing = async () => {
+      const elapsed = Date.now() - lastReqAt;
+      if (lastReqAt > 0 && elapsed < OFF_MIN_SPACING_MS) {
+        await sleep(OFF_MIN_SPACING_MS - elapsed);
+      }
+      lastReqAt = Date.now();
+      queriesUsed++;
+    };
+
     for (const [key, target] of uniqueMissing.entries()) {
       if (queriesUsed >= maxQueries) break;
       // Skip generic unbranded USDA whole-produce entries that intentionally use studio art
@@ -355,22 +404,16 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const elapsed = Date.now() - lastReqAt;
-      if (lastReqAt > 0 && elapsed < OFF_MIN_SPACING_MS) {
-        await sleep(OFF_MIN_SPACING_MS - elapsed);
-      }
-
       const knownCode = (manifest[key]?.barcode || target.existingBarcode || "").replace(/\D/g, "");
-      lastReqAt = Date.now();
-      queriesUsed++;
 
       try {
         if (knownCode.length >= 8) {
+          await waitForSpacing();
           const byCodeRes = await fetch(
             `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(knownCode)}.json?fields=code,product_name,product_name_en,brands,countries_tags,image_front_url,image_url,selected_images,images`,
             {
               headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-              signal: AbortSignal.timeout(8000),
+              signal: AbortSignal.timeout(10000),
             }
           );
           if (byCodeRes.ok) {
@@ -378,7 +421,7 @@ async function main(): Promise<void> {
               status?: number;
               product?: OffRawProduct;
             };
-            if (payload.status === 1 && payload.product) {
+            if (payload.status === 1 && payload.product && matchesTargetCandidate(target, payload.product)) {
               const bestUrl = pickBestOffFrontUrl({ ...payload.product, code: knownCode });
               if (bestUrl) {
                 manifest[key] = {
@@ -392,8 +435,10 @@ async function main(): Promise<void> {
               }
             }
           }
+          if (queriesUsed >= maxQueries) break;
         }
 
+        await waitForSpacing();
         const queryText =
           target.brand && !target.title.toLowerCase().includes(target.brand.toLowerCase())
             ? `${target.brand} ${target.title}`.trim()
@@ -403,11 +448,12 @@ async function main(): Promise<void> {
         )}&search_simple=1&action=process&json=1&page_size=10&fields=code,product_name,product_name_en,brands,countries_tags,image_front_url,image_url,selected_images,images`;
         const searchRes = await fetch(searchUrl, {
           headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-          signal: AbortSignal.timeout(9000),
+          signal: AbortSignal.timeout(10000),
         });
         if (!searchRes.ok) continue;
         const searchJson = (await searchRes.json()) as { products?: OffRawProduct[] };
         const products = Array.isArray(searchJson.products) ? searchJson.products : [];
+        let matchedAny = false;
         for (const cand of products) {
           if (!isUsOrCanadaOffProduct(cand)) continue;
           if (!matchesTargetCandidate(target, cand)) continue;
@@ -422,8 +468,16 @@ async function main(): Promise<void> {
             verifiedAt: todayIso,
           };
           updatedCount++;
+          matchedAny = true;
           console.log(`  [hit:search] ${target.title} -> ${bestUrl}`);
           break;
+        }
+        if (!matchedAny && !manifest[key]?.verifiedAt) {
+          manifest[key] = {
+            ...(knownCode ? { barcode: knownCode } : {}),
+            verifiedAt: todayIso,
+          };
+          updatedCount++;
         }
       } catch (err) {
         console.warn(

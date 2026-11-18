@@ -1,6 +1,8 @@
 import UIKit
 import WebKit
 import CryptoKit
+import ImageIO
+import Darwin
 
 struct HeyBrocLiveStoreConfig {
     let key: String
@@ -207,25 +209,88 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         return url
     }
 
-    fileprivate static func sanitizeDeviceStoreImageURL(_ raw: String?) -> String? {
+    private static func isPrivateIPv4Octets(_ b0: UInt8, _ b1: UInt8) -> Bool {
+        if b0 == 0 || b0 == 10 || b0 == 127 { return true }
+        if b0 == 169 && b1 == 254 { return true }
+        if b0 == 172 && (16...31).contains(b1) { return true }
+        if b0 == 192 && b1 == 168 { return true }
+        // Carrier-Grade NAT 100.64.0.0/10
+        if b0 == 100 && (64...127).contains(b1) { return true }
+        // Benchmarking 198.18.0.0/15 and multicast/reserved 224.0.0.0/3
+        if b0 == 198 && (b1 == 18 || b1 == 19) { return true }
+        if b0 >= 224 { return true }
+        return false
+    }
+
+    private static func isPrivateOrReservedIPLiteral(_ cleanHost: String) -> Bool {
+        var addr4 = in_addr()
+        if cleanHost.withCString({ inet_pton(AF_INET, $0, &addr4) }) == 1 {
+            let be = addr4.s_addr.bigEndian
+            let b0 = UInt8((be >> 24) & 0xFF)
+            let b1 = UInt8((be >> 16) & 0xFF)
+            return isPrivateIPv4Octets(b0, b1)
+        }
+        var addr6 = in6_addr()
+        if cleanHost.withCString({ inet_pton(AF_INET6, $0, &addr6) }) == 1 {
+            let bytes: [UInt8] = withUnsafeBytes(of: &addr6) { Array($0) }
+            guard bytes.count == 16 else { return true }
+            if bytes.allSatisfy({ $0 == 0 }) { return true }
+            if bytes.dropLast().allSatisfy({ $0 == 0 }) && bytes.last == 1 { return true }
+            // ULA fc00::/7, link-local fe80::/10, multicast ff00::/8
+            if (bytes[0] & 0xFE) == 0xFC { return true }
+            if bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80 { return true }
+            if bytes[0] == 0xFF { return true }
+            // IPv4-mapped (::ffff:a.b.c.d) or IPv4-compatible (::a.b.c.d)
+            let prefixZero = bytes[0..<10].allSatisfy({ $0 == 0 })
+            let isV4Mapped = prefixZero && bytes[10] == 0xFF && bytes[11] == 0xFF
+            let isV4Compat = prefixZero && bytes[10] == 0 && bytes[11] == 0
+            if isV4Mapped || isV4Compat {
+                return isPrivateIPv4Octets(bytes[12], bytes[13])
+            }
+        }
+        return false
+    }
+
+    fileprivate static func sanitizeExternalImageURL(_ raw: String?, rejectHeyBroc: Bool) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty,
+              trimmed.count >= 8,
               trimmed.count <= 900,
               let comps = URLComponents(string: trimmed),
               comps.scheme?.lowercased() == "https",
               comps.user == nil,
               comps.password == nil,
-              let host = comps.host?.lowercased(),
-              !host.isEmpty,
-              host != "localhost",
-              !host.hasSuffix(".local"),
-              !host.hasPrefix("127."),
-              !host.hasPrefix("10."),
-              !host.hasPrefix("192.168."),
+              (comps.port == nil || comps.port == 443),
+              let rawHost = comps.host else {
+            return nil
+        }
+        var cleanHost = rawHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if cleanHost.hasPrefix("[") && cleanHost.hasSuffix("]") {
+            cleanHost = String(cleanHost.dropFirst().dropLast())
+        }
+        while cleanHost.hasSuffix(".") {
+            cleanHost.removeLast()
+        }
+        guard !cleanHost.isEmpty,
+              cleanHost != "localhost",
+              !cleanHost.hasSuffix(".localhost"),
+              !cleanHost.hasSuffix(".local"),
+              !cleanHost.hasSuffix(".internal"),
+              !cleanHost.hasSuffix(".lan"),
+              !cleanHost.hasSuffix(".home"),
+              !cleanHost.hasSuffix(".arpa"),
+              !isBlockedAppRedirectHost(cleanHost),
+              !isPrivateOrReservedIPLiteral(cleanHost),
               let url = comps.url else {
             return nil
         }
+        if rejectHeyBroc && (cleanHost.contains("heybroc.com") || cleanHost.contains("cleancart")) {
+            return nil
+        }
         return url.absoluteString
+    }
+
+    fileprivate static func sanitizeDeviceStoreImageURL(_ raw: String?) -> String? {
+        return sanitizeExternalImageURL(raw, rejectHeyBroc: true)
     }
 
     init(
@@ -1023,7 +1088,18 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             }
             if (bestSrc) return bestSrc;
             if (!modalScope && looksLikeProductUrl(location.href)) {
-              var ogImg = document.querySelector('meta[property="og:image"]');
+              var ogUrlMeta = document.querySelector('meta[property="og:url"]') || document.querySelector('link[rel="canonical"]');
+              var ogMatchesLoc = true;
+              if (ogUrlMeta) {
+                var rawCanon = ogUrlMeta.getAttribute('content') || ogUrlMeta.getAttribute('href') || '';
+                if (rawCanon) {
+                  try {
+                    var canonParsed = new URL(rawCanon, location.href);
+                    ogMatchesLoc = canonParsed.pathname === location.pathname;
+                  } catch (e) {}
+                }
+              }
+              var ogImg = ogMatchesLoc ? document.querySelector('meta[property="og:image"]') : null;
               if (ogImg && ogImg.content) {
                 try {
                   var ogUrl = new URL(ogImg.content, location.href);
@@ -1057,6 +1133,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           var hbInFlightBatches = 0;
           var MAX_IN_FLIGHT_BATCHES = 2;
           var hbIntersectionObs = null;
+          var hbCachedNextDataRaw = '';
+          var hbCachedNextDataObj = null;
 
           function cacheTitleBadgeScore(sig, entry) {
             if (!sig || !entry) return;
@@ -1091,7 +1169,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if (document.getElementById('hb-photo-badge-styles')) return;
             var st = document.createElement('style');
             st.id = 'hb-photo-badge-styles';
-            st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:7px 0 4px 0!important;padding:0!important;position:relative!important;z-index:20!important;pointer-events:auto!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:20!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}';
+            st.textContent = '.hb-photo-badge-slot{display:flex!important;justify-content:center!important;align-items:center!important;width:100%!important;margin:7px 0 4px 0!important;padding:0!important;position:relative!important;z-index:20!important;pointer-events:none!important;flex:0 0 auto!important;}.hb-photo-badge{position:relative!important;z-index:20!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:34px!important;gap:6px!important;padding:6px 15px!important;border-radius:999px!important;font:900 17px/1.1 -apple-system,BlinkMacSystemFont,sans-serif!important;font-variant-numeric:tabular-nums!important;letter-spacing:-0.015em!important;color:#fff!important;border:2px solid rgba(255,255,255,0.96)!important;box-shadow:0 4px 12px rgba(15,23,42,0.28)!important;cursor:pointer!important;user-select:none!important;-webkit-user-select:none!important;pointer-events:auto!important;text-decoration:none!important;white-space:nowrap!important;}.hb-photo-badge--overlay{position:absolute!important;bottom:6px!important;left:50%!important;transform:translateX(-50%)!important;}.hb-photo-badge__ic{font-size:20px!important;line-height:1!important;display:inline-block!important;}.hb-photo-badge--green{background:rgba(22,163,74,0.97)!important;}.hb-photo-badge--yellow{background:rgba(217,119,6,0.97)!important;}.hb-photo-badge--red{background:rgba(220,38,38,0.97)!important;}.hb-photo-badge--advisory{box-shadow:0 0 0 2.5px #fbbf24,0 4px 12px rgba(15,23,42,0.3)!important;}.hb-photo-badge--loading{background:rgba(15,23,42,0.82)!important;opacity:0.92!important;}';
             (document.head || document.documentElement).appendChild(st);
           }
 
@@ -1106,9 +1184,21 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             badge.appendChild(tx);
           }
 
+          function measureWithoutBadgeSlot(el) {
+            var r = el.getBoundingClientRect();
+            var slotH = 0;
+            if (el.querySelector) {
+              var ownSlot = el.querySelector('.hb-photo-badge-slot');
+              if (ownSlot && typeof ownSlot.getBoundingClientRect === 'function') {
+                slotH = Math.max(0, ownSlot.getBoundingClientRect().height || 0);
+              }
+            }
+            return { width: r.width, height: Math.max(0, r.height - slotH) };
+          }
+
           function findSafeCardAnchor(chosenImg, cardEl) {
             var imgR = chosenImg.getBoundingClientRect();
-            var maxAnchorH = Math.min(420, Math.max(120, Math.round(imgR.height || 200)) + 84);
+            var maxAnchorH = Math.min(420, Math.max(120, Math.round((imgR && imgR.height) || 200)) + 84);
             var cur = chosenImg.parentElement;
             if (cur && cur.tagName === 'PICTURE') cur = cur.parentElement;
             var candidate = null;
@@ -1116,7 +1206,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             while (cur && cur !== document.body && steps < 5) {
               var cs = window.getComputedStyle(cur);
               var disp = cs ? cs.display : '';
-              var cr = cur.getBoundingClientRect();
+              var cr = measureWithoutBadgeSlot(cur);
               if (disp && disp !== 'inline' && disp !== 'contents' && cr.width >= 44 && cr.height >= 44 && cr.height <= maxAnchorH) {
                 candidate = cur;
                 break;
@@ -1126,27 +1216,38 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               steps++;
             }
             if (!candidate && cardEl && cardEl !== document.body) {
-              var cardR = cardEl.getBoundingClientRect();
+              var cardR = measureWithoutBadgeSlot(cardEl);
               if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= maxAnchorH) {
                 candidate = cardEl;
               }
             }
             if (!candidate || candidate === document.body) return null;
             var candCs = window.getComputedStyle(candidate);
+            var prevPos = candidate.style.position;
+            var prevIso = candidate.style.isolation;
             if (candCs && candCs.position === 'static') {
               var beforeR = chosenImg.getBoundingClientRect();
               candidate.style.position = 'relative';
+              candidate.style.isolation = 'isolate';
               var afterR = chosenImg.getBoundingClientRect();
               if (beforeR.width >= 40 && (afterR.width < 24 || afterR.height < 24)) {
-                candidate.style.position = '';
+                candidate.style.position = prevPos;
+                candidate.style.isolation = prevIso;
+                if (cardEl && cardEl !== candidate) {
+                  var fbR = measureWithoutBadgeSlot(cardEl);
+                  if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= maxAnchorH) {
+                    if (window.getComputedStyle(cardEl).position === 'static') {
+                      cardEl.style.position = 'relative';
+                    }
+                    cardEl.style.isolation = 'isolate';
+                    return cardEl;
+                  }
+                }
                 return null;
               }
+              return candidate;
             }
             candidate.style.isolation = 'isolate';
-            var finalCs = window.getComputedStyle(candidate);
-            if (!finalCs || finalCs.zIndex === 'auto') {
-              candidate.style.zIndex = '0';
-            }
             return candidate;
           }
 
@@ -1155,14 +1256,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var cs = window.getComputedStyle(el);
             if (!cs) return false;
             var disp = cs.display || '';
-            if (disp === 'inline' || disp === 'contents' || disp === 'none') return false;
+            if (disp === 'inline' || disp === 'contents' || disp === 'none' || disp === 'grid' || disp === 'inline-grid') return false;
             if (disp === 'flex' || disp === 'inline-flex') {
               var dir = String(cs.flexDirection || 'row').toLowerCase();
               return dir.indexOf('column') === 0;
-            }
-            if (disp === 'grid' || disp === 'inline-grid') {
-              var cols = String(cs.gridTemplateColumns || '').trim();
-              if (cols && cols !== 'none' && cols.split(/\\s+/).length > 1) return false;
             }
             return true;
           }
@@ -1182,6 +1279,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var photoUnit = chosenImg.parentElement;
               if (photoUnit && photoUnit.tagName === 'PICTURE' && photoUnit.parentElement) {
                 photoUnit = photoUnit.parentElement;
+              }
+              var interactiveAnc = photoUnit && photoUnit.closest ? photoUnit.closest('a, button') : null;
+              if (interactiveAnc && interactiveAnc !== cardEl && nodeContains(cardEl, interactiveAnc) && !nodeHasDetailsOrCta(interactiveAnc)) {
+                photoUnit = interactiveAnc;
               }
               var cur = photoUnit;
               var steps = 0;
@@ -1211,7 +1312,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               slot.appendChild(badge);
               var inserted = false;
               var parentEl = photoUnit ? photoUnit.parentElement : null;
-              if (parentEl && typeof parentEl.insertBefore === 'function' && containerStacksVertically(parentEl)) {
+              if (
+                parentEl &&
+                typeof parentEl.insertBefore === 'function' &&
+                !(parentEl.closest && parentEl.closest('a, button')) &&
+                containerStacksVertically(parentEl)
+              ) {
                 parentEl.insertBefore(slot, photoUnit.nextSibling || null);
                 inserted = true;
               } else if (
@@ -1219,6 +1325,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 photoUnit.tagName !== 'IMG' &&
                 photoUnit.tagName !== 'PICTURE' &&
                 photoUnit.tagName !== 'A' &&
+                photoUnit.tagName !== 'BUTTON' &&
+                !(photoUnit.closest && photoUnit.closest('a, button')) &&
                 containerStacksVertically(photoUnit)
               ) {
                 photoUnit.appendChild(slot);
@@ -1228,7 +1336,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (inserted) {
                 var afterImgR = chosenImg.getBoundingClientRect();
                 var badgeR = badge.getBoundingClientRect();
-                var imgOk = beforeImgR.width < 36 || (afterImgR.width >= beforeImgR.width * 0.76 && afterImgR.height >= beforeImgR.height * 0.76);
+                var imgOk = beforeImgR.width < 36 || (
+                  afterImgR.width >= 44 &&
+                  afterImgR.height >= 44 &&
+                  afterImgR.width >= beforeImgR.width * 0.76 &&
+                  afterImgR.height >= beforeImgR.height * 0.76
+                );
                 var sizeOk = badgeR.width >= 46 && badgeR.height >= 26;
                 var posOk = badgeR.top >= afterImgR.bottom - 18 && badgeR.top <= afterImgR.bottom + 64;
                 var clipped = false;
@@ -1813,22 +1926,46 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             });
           }
 
-          document.addEventListener('pointerdown', function(e) {
-            if (e.target && e.target.closest && e.target.closest('.hb-photo-badge')) {
+          function eventTargetEl(e) {
+            var t = e && e.target;
+            if (!t) return null;
+            if (typeof t.closest === 'function') return t;
+            return t.parentElement || null;
+          }
+
+          function badgeFromEvent(e) {
+            var el = eventTargetEl(e);
+            return (el && el.closest) ? el.closest('.hb-photo-badge') : null;
+          }
+
+          function stopBadgePointerEvent(e) {
+            if (badgeFromEvent(e)) {
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+            }
+          }
+
+          document.addEventListener('pointerdown', stopBadgePointerEvent, true);
+          document.addEventListener('mousedown', stopBadgePointerEvent, true);
+          document.addEventListener('mouseup', stopBadgePointerEvent, true);
+          document.addEventListener('touchend', stopBadgePointerEvent, true);
+          document.addEventListener('auxclick', function(e) {
+            if (badgeFromEvent(e)) {
+              e.preventDefault();
               e.stopPropagation();
               e.stopImmediatePropagation();
             }
           }, true);
 
           document.addEventListener('click', function(e) {
-            var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
+            var badge = badgeFromEvent(e);
             if (!badge) return;
             activateHbPhotoBadge(badge, e);
           }, true);
 
           document.addEventListener('keydown', function(e) {
             if (e.key !== 'Enter' && e.key !== ' ') return;
-            var badge = e.target && e.target.closest ? e.target.closest('.hb-photo-badge') : null;
+            var badge = badgeFromEvent(e);
             if (!badge) return;
             activateHbPhotoBadge(badge, e);
           }, true);
@@ -1916,13 +2053,25 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
               if (String(location.hostname || '').toLowerCase().indexOf('walmart.') !== -1) {
                 try {
+                  var wmUrlM = String(location.pathname || '').match(/\\/ip\\/(?:[^/]+\\/)?(\\d{5,20})(?:\\/|$)/i);
+                  var urlItemId = wmUrlM ? wmUrlM[1] : '';
                   var ndEl = document.getElementById('__NEXT_DATA__');
-                  if (ndEl && ndEl.textContent) {
-                    var nd = JSON.parse(ndEl.textContent);
+                  var ndRaw = (ndEl && ndEl.textContent) ? ndEl.textContent : '';
+                  if (ndRaw && ndRaw.length <= 2500000) {
+                    if (ndRaw !== hbCachedNextDataRaw) {
+                      hbCachedNextDataRaw = ndRaw;
+                      hbCachedNextDataObj = JSON.parse(ndRaw);
+                    }
+                    var nd = hbCachedNextDataObj;
                     var wmData = nd && nd.props && nd.props.pageProps && nd.props.pageProps.initialData && nd.props.pageProps.initialData.data;
                     var wmProd = wmData && wmData.product;
-                    var wmName = wmProd && wmProd.name ? clean(String(wmProd.name)) : '';
-                    var wmMatches = (!title && wmName && !NON_TITLE_RE.test(wmName)) || (title && wmName && titlesShareTokens(title, wmName));
+                    var wmItemId = String((wmProd && (wmProd.usItemId || wmProd.itemId)) || '').trim();
+                    var wmCanon = String((wmProd && wmProd.canonicalUrl) || '').trim();
+                    var itemIdMatches = !urlItemId ||
+                      (wmItemId && wmItemId === urlItemId) ||
+                      (wmCanon && (wmCanon === '/ip/' + urlItemId || wmCanon.slice(-(urlItemId.length + 1)) === '/' + urlItemId));
+                    var wmName = itemIdMatches && wmProd && wmProd.name ? clean(String(wmProd.name)) : '';
+                    var wmMatches = itemIdMatches && ((!title && wmName && !NON_TITLE_RE.test(wmName)) || (title && wmName && titlesShareTokens(title, wmName)));
                     if (wmMatches) {
                       if (!title && wmName) title = wmName;
                       if (!barcode && wmProd) {
@@ -1989,7 +2138,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           document.addEventListener('scroll', function() {
             if (scrollTimer) clearTimeout(scrollTimer);
             scrollTimer = setTimeout(extractProductData, 200);
-          }, true);
+          }, { capture: true, passive: true });
           document.addEventListener('load', function(e) {
             var t = e && e.target;
             if (t && t.tagName === 'IMG') {
@@ -2032,7 +2181,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               subtree: true,
               characterData: true,
               attributes: true,
-              attributeFilter: ['src', 'srcset', 'href']
+              attributeFilter: ['src', 'srcset', 'data-src', 'href']
             });
           }
           dismissRetailerAppBanners();
@@ -2407,7 +2556,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             self.isScanning = false
             switch result {
             case .success(let rawSummary):
-                let summary = rawSummary.withDeviceStoreImage(cleanDeviceImg)
+                let latestCleanImg: String? = (self.lastDetectedTitle.caseInsensitiveCompare(title) == .orderedSame)
+                    ? Self.sanitizeDeviceStoreImageURL(self.lastDetectedStoreImageUrl)
+                    : nil
+                let summary = rawSummary.withDeviceStoreImage(cleanDeviceImg ?? latestCleanImg)
                 if isPassiveCard && summary.isCategoryEstimate {
                     if let prev = self.latestSummary {
                         self.applySummaryToBubble(prev)
@@ -2741,12 +2893,59 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
 
 // MARK: - Slide-Up Native Score & 1-Tap Clean Swap Sheet
 
+private final class SafeImageRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    private let lock = NSLock()
+    private var redirectCountByTask: [Int: Int] = [:]
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        lock.lock()
+        if redirectCountByTask.count > 256 {
+            redirectCountByTask.removeAll()
+        }
+        let hops = (redirectCountByTask[task.taskIdentifier] ?? 0) + 1
+        redirectCountByTask[task.taskIdentifier] = hops
+        lock.unlock()
+
+        guard hops <= 3,
+              let safeURLString = LiveStoreBrowserViewController.sanitizeExternalImageURL(
+                  request.url?.absoluteString,
+                  rejectHeyBroc: false
+              ),
+              let safeURL = URL(string: safeURLString) else {
+            completionHandler(nil)
+            return
+        }
+        var sanitized = request
+        sanitized.url = safeURL
+        completionHandler(sanitized)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        lock.lock()
+        redirectCountByTask.removeValue(forKey: task.taskIdentifier)
+        lock.unlock()
+    }
+}
+
 private final class LiveStoreInspectSheetViewController: UIViewController {
     private static let thumbnailCache: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
         cache.countLimit = 90
+        cache.totalCostLimit = 12 * 1024 * 1024
         return cache
     }()
+
+    private static let imageRedirectDelegate = SafeImageRedirectDelegate()
 
     private static let imageSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
@@ -2754,8 +2953,31 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         config.httpCookieAcceptPolicy = .never
         config.timeoutIntervalForRequest = 6.5
         config.timeoutIntervalForResource = 8.0
-        return URLSession(configuration: config)
+        return URLSession(configuration: config, delegate: imageRedirectDelegate, delegateQueue: nil)
     }()
+
+    private static func decodeDownsampledThumbnail(from data: Data, maxPixelSize: CGFloat) -> UIImage? {
+        let sourceOpts: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOpts as CFDictionary) else {
+            return nil
+        }
+        if let uti = CGImageSourceGetType(source) as String?, uti.lowercased().contains("svg") {
+            return nil
+        }
+        let targetMax = max(64, min(600, Int(ceil(maxPixelSize))))
+        let thumbOpts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: targetMax
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOpts as CFDictionary),
+              cgImage.width >= 16,
+              cgImage.height >= 16 else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
+    }
 
     private let summary: HeyBrocNativeScanSummary
     private let storeLabel: String
@@ -2827,8 +3049,10 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
 
         let illusBadge = UILabel()
         illusBadge.translatesAutoresizingMaskIntoConstraints = false
-        illusBadge.text = "Illustration"
+        illusBadge.text = width < 50 ? "Art" : "Illustration"
         illusBadge.font = UIFont.systemFont(ofSize: 7.5, weight: .bold)
+        illusBadge.adjustsFontSizeToFitWidth = true
+        illusBadge.minimumScaleFactor = 0.75
         illusBadge.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
         illusBadge.backgroundColor = UIColor(white: 1.0, alpha: 0.92)
         illusBadge.textAlignment = .center
@@ -2856,8 +3080,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
 
         var candidates: [(url: String, isIllustration: Bool)] = []
         func appendCandidate(_ raw: String?, isIllustration: Bool) {
-            guard let clean = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !clean.isEmpty,
+            guard let clean = LiveStoreBrowserViewController.sanitizeExternalImageURL(raw, rejectHeyBroc: false),
                   !candidates.contains(where: { $0.url == clean }) else { return }
             candidates.append((clean, isIllustration))
         }
@@ -2881,12 +3104,15 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             appendCandidate(directImg, isIllustration: true)
         }
 
+        let targetMaxPx = max(width, height) * 3.0
+
         func tryCandidate(at index: Int) {
             guard index < candidates.count else { return }
             let entry = candidates[index]
             if let cached = Self.thumbnailCache.object(forKey: entry.url as NSString) {
                 imgView.image = cached
                 imgView.isHidden = false
+                letterLabel.isHidden = true
                 illusBadge.isHidden = !entry.isIllustration
                 return
             }
@@ -2896,25 +3122,36 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             }
             var req = URLRequest(url: u, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 6.5)
             req.setValue("image/webp,image/png,image/jpeg,image/*;q=0.8", forHTTPHeaderField: "Accept")
-            Self.imageSession.dataTask(with: req) { [weak imgView, weak illusBadge] data, resp, err in
-                let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                if err == nil,
-                   (200...299).contains(status),
-                   let data = data,
-                   data.count >= 120,
-                   let decoded = UIImage(data: data),
-                   decoded.size.width >= 16,
-                   decoded.size.height >= 16 {
-                    Self.thumbnailCache.setObject(decoded, forKey: entry.url as NSString)
-                    DispatchQueue.main.async {
-                        imgView?.image = decoded
-                        imgView?.isHidden = false
-                        illusBadge?.isHidden = !entry.isIllustration
-                    }
-                } else {
+            Self.imageSession.dataTask(with: req) { [weak imgView, weak illusBadge, weak letterLabel] data, resp, err in
+                guard err == nil,
+                      let httpResp = resp as? HTTPURLResponse,
+                      (200...299).contains(httpResp.statusCode),
+                      let data = data,
+                      data.count >= 120,
+                      data.count <= 4_500_000 else {
                     DispatchQueue.main.async {
                         tryCandidate(at: index + 1)
                     }
+                    return
+                }
+                let mime = (httpResp.mimeType ?? "").lowercased()
+                let mimeOk = mime.isEmpty || (mime.hasPrefix("image/") && !mime.contains("svg"))
+                guard mimeOk,
+                      let decoded = Self.decodeDownsampledThumbnail(from: data, maxPixelSize: targetMaxPx) else {
+                    DispatchQueue.main.async {
+                        tryCandidate(at: index + 1)
+                    }
+                    return
+                }
+                let headerKind = (httpResp.value(forHTTPHeaderField: "X-Image-Kind") ?? "").lowercased()
+                let showIllus = entry.isIllustration || headerKind == "category-art"
+                let byteCost = max(1024, Int(decoded.size.width * decoded.size.height * decoded.scale * decoded.scale * 4))
+                Self.thumbnailCache.setObject(decoded, forKey: entry.url as NSString, cost: byteCost)
+                DispatchQueue.main.async {
+                    imgView?.image = decoded
+                    imgView?.isHidden = false
+                    letterLabel?.isHidden = true
+                    illusBadge?.isHidden = !showIllus
                 }
             }.resume()
         }
@@ -2925,6 +3162,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        overrideUserInterfaceStyle = .light
         view.backgroundColor = UIColor(red: 0.973, green: 0.980, blue: 0.988, alpha: 1.0)
 
         let scroll = UIScrollView()
@@ -2975,6 +3213,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         let titleStack = UIStackView()
         titleStack.axis = .vertical
         titleStack.spacing = 3
+        titleStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let prodTitle = UILabel()
         prodTitle.text = summary.title
@@ -2987,6 +3226,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
         ratingLbl.text = "\(ratingPrefix)\(summary.rating) (\(summary.score)/100)"
         ratingLbl.font = UIFont.systemFont(ofSize: 13, weight: .bold)
         ratingLbl.textColor = UIColor(red: 0.278, green: 0.333, blue: 0.412, alpha: 1.0)
+        ratingLbl.numberOfLines = 2
 
         titleStack.addArrangedSubview(prodTitle)
         titleStack.addArrangedSubview(ratingLbl)
@@ -3008,6 +3248,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             provLbl.text = "Source: \(srcLabel)"
             provLbl.font = UIFont.systemFont(ofSize: 11, weight: .medium)
             provLbl.textColor = UIColor(red: 0.455, green: 0.518, blue: 0.608, alpha: 1.0)
+            provLbl.numberOfLines = 2
             titleStack.addArrangedSubview(provLbl)
         }
 
@@ -3079,6 +3320,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
             swapHead.text = tagText
             swapHead.font = UIFont.systemFont(ofSize: 11.5, weight: .heavy)
             swapHead.textColor = UIColor(red: 0.047, green: 0.396, blue: 0.251, alpha: 1.0)
+            swapHead.numberOfLines = 2
 
             let isSwapLocked = swap.locked || swap.webUrl == nil
             let swapTitle = UILabel()
@@ -3108,6 +3350,7 @@ private final class LiveStoreInspectSheetViewController: UIViewController {
                 let swapTextStack = UIStackView()
                 swapTextStack.axis = .vertical
                 swapTextStack.spacing = 4
+                swapTextStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                 swapTextStack.addArrangedSubview(swapHead)
                 swapTextStack.addArrangedSubview(swapTitle)
 

@@ -585,8 +585,16 @@ export function relevance(query: string, candidate: string, categoryTags?: strin
       const brandTokSet = new Set(tokens(detectQueryBrand(cleanQuery)));
       const nonBrandCandMatches = c.filter((ct) => !GENERIC.has(ct) && !brandTokSet.has(ct) && hasIn(all, ct));
       const distinctCandMatches = c.filter((ct) => !GENERIC.has(ct) && hasIn(all, ct));
+      const CONFLICTING_CAND_FORMS = [
+        "dips", "dip", "salsa", "salsas", "sauces", "sauce",
+        "powders", "powder", "seasonings", "seasoning", "ice-creams",
+      ];
+      const hasConflictingCandForm = CONFLICTING_CAND_FORMS.some(
+        (ft) => hasIn(cWithCats, ft) && !hasIn(all, ft),
+      );
       const fullSubBrandMatch =
         tailIsGenericAisle &&
+        !hasConflictingCandForm &&
         distinctCandMatches.length >= 3 &&
         c.every((ct) => GENERIC.has(ct) || hasIn(all, ct)) &&
         nonBrandCandMatches.length >= 1;
@@ -1064,6 +1072,8 @@ const FOREIGN_NON_US_FRONT_RE =
   /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
 const ES_OR_FR_FRONT_RE = /\/front_(?:es|fr)\./i;
 
+const OFF_PANEL_IMAGE_PATH_RE = /\/(?:ingredients|nutrition|packaging)(?:_|\.)/i;
+
 export function bestOffImage(p?: OffProduct): string | undefined {
   if (!p) return undefined;
   const tags = Array.isArray(p.countries_tags)
@@ -1072,9 +1082,30 @@ export function bestOffImage(p?: OffProduct): string | undefined {
   const isNorthAmerica =
     isUsMarketOffProduct(p) || tags.includes("en:united-states") || tags.includes("en:canada");
 
+  const panelImgIds = new Set<string>();
+  if (p.images) {
+    for (const [k, meta] of Object.entries(p.images)) {
+      if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
+        panelImgIds.add(String(meta.imgid));
+      }
+    }
+  }
+  const isPanelDirectUrl = (u: string): boolean => {
+    if (OFF_PANEL_IMAGE_PATH_RE.test(u)) return true;
+    const rawNumMatch = u.match(/\/(\d+)(?:\.\d+)?\.(?:jpg|jpeg|png|webp)$/i);
+    if (rawNumMatch && panelImgIds.has(rawNumMatch[1])) return true;
+    return false;
+  };
+
   const enFront =
     p.selected_images?.front?.display?.en || p.selected_images?.front?.small?.en;
-  if (enFront && enFront.startsWith("https://") && !FOREIGN_NON_US_FRONT_RE.test(enFront) && !ES_OR_FR_FRONT_RE.test(enFront)) {
+  if (
+    enFront &&
+    enFront.startsWith("https://") &&
+    !FOREIGN_NON_US_FRONT_RE.test(enFront) &&
+    !ES_OR_FR_FRONT_RE.test(enFront) &&
+    !isPanelDirectUrl(enFront)
+  ) {
     return enFront;
   }
 
@@ -1084,6 +1115,7 @@ export function bestOffImage(p?: OffProduct): string | undefined {
   for (const u of directCandidates) {
     if (FOREIGN_NON_US_FRONT_RE.test(u)) continue;
     if (ES_OR_FR_FRONT_RE.test(u) && !isNorthAmerica) continue;
+    if (isPanelDirectUrl(u)) continue;
     return u;
   }
 
@@ -1093,7 +1125,7 @@ export function bestOffImage(p?: OffProduct): string | undefined {
       p.selected_images?.front?.small?.es ||
       p.selected_images?.front?.display?.fr ||
       p.selected_images?.front?.small?.fr;
-    if (naSecondaryFront && naSecondaryFront.startsWith("https://")) {
+    if (naSecondaryFront && naSecondaryFront.startsWith("https://") && !isPanelDirectUrl(naSecondaryFront)) {
       return naSecondaryFront;
     }
   }
@@ -1102,12 +1134,6 @@ export function bestOffImage(p?: OffProduct): string | undefined {
   if (p.images && p.code) {
     const folder = offBarcodeFolderPath(p.code);
     if (folder) {
-      const panelImgIds = new Set<string>();
-      for (const [k, meta] of Object.entries(p.images)) {
-        if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
-          panelImgIds.add(String(meta.imgid));
-        }
-      }
       const rawNumericKeys = Object.keys(p.images)
         .filter((k) => /^\d+$/.test(k) && !panelImgIds.has(k))
         .sort((a, b) => Number(a) - Number(b));
@@ -1695,13 +1721,17 @@ async function lookupProviders(input: LookupInput): Promise<ProviderResult | nul
     }
     if (!rawTitle) return null;
     const cleaned = cleanSearchQuery(rawTitle) || rawTitle;
+    const passesRawTitleGuard = (r: ProviderResult): boolean =>
+      !rawTitle ||
+      (passesVariantGuard(rawTitle, r.productTitle) &&
+        !isDietaryOrVariantMismatch(rawTitle, r.productTitle, r.ingredients, r.nutrition));
     const pOff = offSearch(cleaned);
     const pUsda = usdaSearch(cleaned);
     const pDsld = lookupDsld({ ...input, barcode: undefined, productTitle: cleaned }, getJson);
     const all = [pOff, pUsda, pDsld];
     const first = await firstAvailable(all);
     if (!first) return null;
-    if (first.source === "dsld" && SUPPLEMENT_FORM.test(cleaned)) return first;
+    if (first.source === "dsld" && SUPPLEMENT_FORM.test(cleaned) && passesRawTitleGuard(first)) return first;
     // Give peer provider a brief grace window so OFF vs USDA never depends on a 5ms network race
     let graceTimer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
@@ -1712,9 +1742,9 @@ async function lookupProviders(input: LookupInput): Promise<ProviderResult | nul
     const resolved: ProviderResult[] = [];
     for (const p of all) {
       const val = await Promise.race([p.catch(() => null), Promise.resolve(undefined)]);
-      if (val) resolved.push(val);
+      if (val && passesRawTitleGuard(val)) resolved.push(val);
     }
-    if (!resolved.length) return first;
+    if (!resolved.length) return passesRawTitleGuard(first) ? first : null;
     resolved.sort((a, b) => scoreProviderCandidate(cleaned, b) - scoreProviderCandidate(cleaned, a));
     return resolved[0];
   });
@@ -4852,12 +4882,23 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
 const RETAILER_SEO_COMMA_TAIL_RE =
   /,\s*(?:high\s+(?:in\s+)?fiber|good\s+source\s+of\s+[^,]+|excellent\s+source\s+of\s+[^,]+|rich\s+in\s+[^,]+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staple|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+food|breakfast\s+food|(?:kids?|school|lunch\s*box|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+[^,]+|great\s+for\s+[^,]+|perfect\s+for\s+[^,]+|ideal\s+for\s+[^,]+|snap\s+ebt(?:\s+eligible)?|small|medium|large|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack)\s*$/i;
 
+const AMBIGUOUS_SHORT_SEO_TAIL_RE = /^,\s*(?:high\s+(?:in\s+)?fiber|small|medium|large)\s*$/i;
+const PRESERVED_VARIANT_ELLIPSIS_TOKEN_RE =
+  /\b(?:zero|diet|free|sugar|sweet|unsweet\w*|fat|light|lite|low|less|reduced|no|added|sodium|salt|organic|simply|nkd|healthy|request|protein|pro|elite|plus|ultra|max|keto|gluten|dairy|lactose|vegan|plant|soy|oat|almond|decaf|caffeine|spicy|hot|flamin|jalapeno|habanero|buffalo|chipotle|extra|creamy|crunchy|chunky|raw|sharp|mild|unflavored|plain)\b/i;
+
 /** Strips club-store pack counts, decimal weights, and Walmart/Amazon/Whole Foods promo suffixes for cleaner external API queries. */
 export function cleanSearchQuery(title: string): string {
   let out = title
     .replace(/[®™©]/g, "")
     .replace(/\s*[.,•|\-]?\s*\bbased\s+on(?:\s+[\d,]+\s+ratings?|\s+customer\s+ratings?|\s+star\s+ratings?)?\s*[.,•|\-]*$/i, "")
-    .replace(/,\s*[^,]{1,28}(?:\.\.\.+|…)+\s*$/g, "")
+    .replace(/,\s*([^,]{0,28}?)(?:\.\.\.+|…)+\s*$/g, (_m, seg: string) => {
+      const trimmedSeg = (seg || "").trim();
+      if (!trimmedSeg) return "";
+      if (PRESERVED_VARIANT_ELLIPSIS_TOKEN_RE.test(trimmedSeg)) {
+        return `, ${trimmedSeg}`;
+      }
+      return "";
+    })
     .replace(/(?:\.\.\.+|…)+\s*$/g, "")
     .replace(/,?\s*\b(?:priced|price)\s+per\s+(?:pound|lb)\b.*$/i, "")
     .replace(/,?\s*\b(?:final\s+cost\s+by\s+weight|avg\.?\s+price|average\s+price)\b.*$/i, "")
@@ -4878,6 +4919,7 @@ export function cleanSearchQuery(title: string): string {
     if (commaIdx <= 0) break;
     const beforeWords = out.slice(0, commaIdx).trim().split(/\s+/).filter(Boolean);
     if (beforeWords.length < 2) break;
+    if (beforeWords.length < 4 && AMBIGUOUS_SHORT_SEO_TAIL_RE.test(out.slice(commaIdx))) break;
     const next = out.replace(RETAILER_SEO_COMMA_TAIL_RE, "").replace(/\s*[.,•|\-]+\s*$/, "").trim();
     if (next === out || !next) break;
     out = next;
@@ -4934,6 +4976,18 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   const normBarcode = normalizeBarcode(input.barcode);
   const title = rawTitle ? canonicalizeGroceryQuery(rawTitle) : "";
   const cleanedCatalogTitle = title ? cleanSearchQuery(title) : "";
+  const safeCleanedCatalogFallback = (): Omit<LookupResult, "ms"> | null => {
+    if (!cleanedCatalogTitle || cleanedCatalogTitle === title) return null;
+    const cand = catalogFallback(cleanedCatalogTitle);
+    if (!cand) return null;
+    if (
+      !passesVariantGuard(title, cand.productTitle) ||
+      isDietaryOrVariantMismatch(title, cand.productTitle, cand.ingredients, cand.nutrition)
+    ) {
+      return null;
+    }
+    return cand;
+  };
   const normalizedInput: LookupInput = {
     ...input,
     barcode: normBarcode || undefined,
@@ -4955,7 +5009,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     const directCat =
       catalogFallback(title) ??
       (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null) ??
-      (cleanedCatalogTitle && cleanedCatalogTitle !== title ? catalogFallback(cleanedCatalogTitle) : null);
+      safeCleanedCatalogFallback();
     if (
       directCat &&
       !directCat.productTitle.startsWith("Conventional Grocery") &&
@@ -5006,7 +5060,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
     found =
       catalogFallback(title) ??
       (rawTitle && rawTitle !== title ? catalogFallback(rawTitle) : null) ??
-      (cleanedCatalogTitle && cleanedCatalogTitle !== title ? catalogFallback(cleanedCatalogTitle) : null);
+      safeCleanedCatalogFallback();
   }
   if (!found) return null;
 

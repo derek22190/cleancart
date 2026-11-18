@@ -263,5 +263,85 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "CLEANCART_FETCH_IMAGE_DATA_URL") {
+    (async () => {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 6000);
+      try {
+        const rawUrl = typeof msg.url === "string" ? msg.url.trim() : "";
+        if (!rawUrl) {
+          sendResponse({ ok: false });
+          return;
+        }
+        const { apiBase } = await getSettings();
+        const parsed = new URL(rawUrl);
+        let allowed =
+          parsed.protocol === "https:" &&
+          parsed.hostname === "images.openfoodfacts.org" &&
+          parsed.pathname.startsWith("/images/products/");
+        if (!allowed) {
+          let apiOrigin = "https://www.heybroc.com";
+          try {
+            apiOrigin = new URL(apiBase).origin;
+          } catch {
+            /* ignore */
+          }
+          const isHeyBrocOrigin =
+            parsed.origin === apiOrigin ||
+            parsed.origin === "https://www.heybroc.com" ||
+            parsed.origin === "https://heybroc.com";
+          if (
+            isHeyBrocOrigin &&
+            (parsed.pathname.startsWith("/swaps/") ||
+              parsed.pathname.startsWith("/products/") ||
+              parsed.pathname.startsWith("/api/product-image"))
+          ) {
+            allowed = true;
+          }
+        }
+        if (!allowed) {
+          sendResponse({ ok: false });
+          return;
+        }
+        const res = await fetch(parsed.toString(), {
+          method: "GET",
+          signal: ctrl.signal,
+          credentials: "omit",
+        });
+        if (!res.ok) {
+          sendResponse({ ok: false, status: res.status });
+          return;
+        }
+        const ct = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+        if (!ct.startsWith("image/") || ct.includes("svg")) {
+          sendResponse({ ok: false });
+          return;
+        }
+        const contentLen = Number(res.headers.get("content-length") || "0");
+        if (contentLen > 2 * 1024 * 1024) {
+          sendResponse({ ok: false });
+          return;
+        }
+        const buf = await res.arrayBuffer();
+        if (!buf || buf.byteLength === 0 || buf.byteLength > 2 * 1024 * 1024) {
+          sendResponse({ ok: false });
+          return;
+        }
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+        }
+        sendResponse({ ok: true, dataUrl: `data:${ct};base64,${btoa(binary)}` });
+      } catch {
+        sendResponse({ ok: false });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })();
+    return true;
+  }
+
   return false;
 });

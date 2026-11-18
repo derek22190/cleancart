@@ -11,7 +11,10 @@ import {
   type NutritionInput,
   type ScoreResult,
 } from "@/lib/rubric";
+import { type ImageKind } from "@/lib/category-art";
+import { resolveProductMediaFields } from "@/lib/curated-product-photos";
 import CleanArcScoreCard from "@/components/CleanArcScoreCard";
+import SeoProductThumb from "@/components/SeoProductThumb";
 
 const FAMILY_WATCH_CATS: Category[] = [
   "seedOils",
@@ -39,6 +42,8 @@ interface LookupScanProduct {
   title: string;
   brand?: string;
   imageUrl?: string;
+  imageKind?: ImageKind;
+  categoryArtUrl?: string | null;
   ingredients: string;
   nutrition?: NutritionInput;
 }
@@ -49,6 +54,12 @@ interface LookupScanPayload {
   product?: LookupScanProduct;
 }
 
+const INITIAL_LACTAID_MEDIA = resolveProductMediaFields({
+  brand: "Lactaid",
+  title: "Lactaid Whole Milk (100% Lactose-Free), 64 fl oz",
+  ingredients: "Whole Milk, Lactase Enzyme, Vitamin D3.",
+});
+
 export default function ToolsClient() {
   const [activeTab, setActiveTab] = useState<ToolTab>("grader");
   const [titleInput, setTitleInput] = useState("Lactaid Whole Milk");
@@ -57,6 +68,9 @@ export default function ToolsClient() {
   const [lookupProduct, setLookupProduct] = useState<LookupScanProduct | null>({
     title: "Lactaid Whole Milk (100% Lactose-Free), 64 fl oz",
     brand: "Lactaid",
+    imageUrl: INITIAL_LACTAID_MEDIA.imageUrl ?? undefined,
+    imageKind: INITIAL_LACTAID_MEDIA.imageKind,
+    categoryArtUrl: INITIAL_LACTAID_MEDIA.categoryArtUrl,
     ingredients: "Whole Milk, Lactase Enzyme, Vitamin D3.",
     nutrition: {
       caloriesKcal100g: 62,
@@ -253,12 +267,34 @@ export default function ToolsClient() {
     ? titleInput.trim() || "Custom Ingredient Label"
     : lookupProduct?.title || titleInput.trim() || "Food Score";
 
-  const displayImageUrl = hasCustomIngredients
-    ? titleInput.trim()
-      ? `/api/product-image?q=${encodeURIComponent(titleInput.trim())}&v=4`
-      : ""
-    : lookupProduct?.imageUrl ||
-      (titleInput.trim() ? `/api/product-image?q=${encodeURIComponent(titleInput.trim())}&v=4` : "");
+  const displayBrand = hasCustomIngredients ? undefined : lookupProduct?.brand;
+
+  const displayMedia = useMemo(() => {
+    if (hasCustomIngredients) {
+      return resolveProductMediaFields({
+        title: displayTitle,
+        ingredients: ingInput,
+      });
+    }
+    if (lookupProduct) {
+      if (lookupProduct.imageKind) {
+        return {
+          imageUrl: lookupProduct.imageUrl ?? null,
+          imageKind: lookupProduct.imageKind,
+          categoryArtUrl: lookupProduct.categoryArtUrl ?? null,
+        };
+      }
+      return resolveProductMediaFields({
+        brand: lookupProduct.brand,
+        title: lookupProduct.title,
+        rawImageUrl: lookupProduct.imageUrl,
+        ingredients: lookupProduct.ingredients,
+      });
+    }
+    return resolveProductMediaFields({
+      title: displayTitle,
+    });
+  }, [hasCustomIngredients, displayTitle, ingInput, lookupProduct]);
 
   return (
     <div
@@ -577,23 +613,16 @@ export default function ToolsClient() {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                  {displayImageUrl && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={displayImageUrl}
-                      alt={displayTitle}
-                      style={{
-                        width: 44,
-                        height: 44,
-                        objectFit: "contain",
-                        borderRadius: 10,
-                        background: "#ffffff",
-                        border: "1px solid #e2e8f0",
-                        padding: 3,
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
+                  <SeoProductThumb
+                    title={displayTitle}
+                    brand={displayBrand}
+                    imageUrl={displayMedia.imageUrl}
+                    imageKind={displayMedia.imageKind}
+                    categoryArtUrl={displayMedia.categoryArtUrl}
+                    size={44}
+                    radius={10}
+                    bgColor="#ffffff"
+                  />
                   <div style={{ minWidth: 0 }}>
                     <span
                       style={{

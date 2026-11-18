@@ -321,7 +321,7 @@ class LiveStoreBrowserActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor = Executors.newFixedThreadPool(2)
     private val imageExecutor = Executors.newFixedThreadPool(2)
-    private val sheetBitmapCache = LruCache<String, Bitmap>(72)
+    private val sheetBitmapCache = SafeBitmapLoader.createBitmapLruCache(6 * 1024)
     private lateinit var activeStore: LiveStoreConfig
 
     private lateinit var headerBarView: LinearLayout
@@ -359,6 +359,7 @@ class LiveStoreBrowserActivity : Activity() {
     private var scanGeneration = 0
     private var badgeBatchGeneration = 0
     private var inspectDialog: Dialog? = null
+    @Volatile
     private var isCleaningUp = false
     private var backCallbackRegistered = false
     private var backCallbackObj: Any? = null
@@ -379,20 +380,11 @@ class LiveStoreBrowserActivity : Activity() {
     }
 
     private fun sanitizeDeviceStoreImageUrl(rawUrl: String?): String {
-        val trimmed = rawUrl?.trim().orEmpty()
-        if (trimmed.isEmpty() || trimmed.length > 900) return ""
-        val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return ""
-        if (uri.scheme?.lowercase() != "https") return ""
-        val host = uri.host?.lowercase().orEmpty()
-        if (
-            host.isEmpty() ||
-            host.contains("heybroc.com") ||
-            host.contains("cleancart") ||
-            isBlockedAppRedirectHost(host)
-        ) {
-            return ""
-        }
-        return trimmed
+        val safe = SafeBitmapLoader.sanitizeExternalImageUrl(rawUrl, rejectHeyBroc = true)
+        if (safe.isEmpty()) return ""
+        val host = runCatching { Uri.parse(safe).host?.lowercase().orEmpty() }.getOrDefault("")
+        if (host.isEmpty() || isBlockedAppRedirectHost(host)) return ""
+        return safe
     }
 
     private fun attachDeviceStoreImage(scanJson: JSONObject?, storeImgUrl: String) {
@@ -452,9 +444,10 @@ class LiveStoreBrowserActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        val illustrationBadge = label("Illustration", 7f, 0xFF475569.toInt(), bold = true).apply {
+        val compactBadge = widthDp < 48
+        val illustrationBadge = label(if (compactBadge) "Art" else "Illustration", if (compactBadge) 6.5f else 7f, 0xFF475569.toInt(), bold = true).apply {
             setSingleLine(true)
-            setPadding(dp(3), dp(1), dp(3), dp(1))
+            setPadding(dp(if (compactBadge) 2 else 3), dp(1), dp(if (compactBadge) 2 else 3), dp(1))
             background = GradientDrawable().apply {
                 setColor(0xEBFFFFFF.toInt())
                 cornerRadius = dp(999).toFloat()
@@ -483,45 +476,11 @@ class LiveStoreBrowserActivity : Activity() {
 
         val targetPx = dp(maxOf(widthDp, heightDp) * 2).coerceIn(96, 320)
         imageExecutor.execute {
-            fun fetchBitmap(urlStr: String): Bitmap? = runCatching {
-                val parsed = URL(urlStr)
-                if (!parsed.protocol.equals("https", ignoreCase = true)) return@runCatching null
-                val conn = (parsed.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 4500
-                    readTimeout = 6500
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "HeyBroc-Android/2.5")
-                }
-                try {
-                    if (conn.responseCode in 200..299) {
-                        conn.inputStream.use { stream ->
-                            val decoded = BitmapFactory.decodeStream(stream) ?: return@use null
-                            if (decoded.width > targetPx || decoded.height > targetPx) {
-                                val ratio = minOf(
-                                    targetPx.toFloat() / decoded.width.coerceAtLeast(1),
-                                    targetPx.toFloat() / decoded.height.coerceAtLeast(1)
-                                )
-                                Bitmap.createScaledBitmap(
-                                    decoded,
-                                    (decoded.width * ratio).toInt().coerceAtLeast(1),
-                                    (decoded.height * ratio).toInt().coerceAtLeast(1),
-                                    true
-                                )
-                            } else {
-                                decoded
-                            }
-                        }
-                    } else null
-                } finally {
-                    conn.disconnect()
-                }
-            }.getOrNull()
-
             var resolvedBmp: Bitmap? = null
             var resolvedUrl = ""
             for (cand in candidates) {
                 if (isCleaningUp) return@execute
-                val bmp = fetchBitmap(cand)
+                val bmp = SafeBitmapLoader.fetchScaledBitmap(cand, targetPx)
                 if (bmp != null) {
                     resolvedBmp = bmp
                     resolvedUrl = cand
@@ -1433,11 +1392,16 @@ class LiveStoreBrowserActivity : Activity() {
                         setBubbleIdleState()
                         return@post
                     }
-                    attachDeviceStoreImage(parsed, safeStoreImg)
                     ScanApi.applyLocalWatchlistToData(this, parsed)
                     if (!isCardScan) {
                         runCatching { ScanHistoryStore.recordScan(this, parsed, apiStore) }
                     }
+                    val finalStoreImg = safeStoreImg.ifEmpty {
+                        if (lastDetectedTitle.equals(title, ignoreCase = true)) {
+                            sanitizeDeviceStoreImageUrl(lastDetectedStoreImageUrl)
+                        } else ""
+                    }
+                    attachDeviceStoreImage(parsed, finalStoreImg)
                     applyJsonToBubble(parsed)
                 } else {
                     if (lastScannedKey == dedupeKey) {

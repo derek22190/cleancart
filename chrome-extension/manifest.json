@@ -13,6 +13,7 @@
   "host_permissions": [
     "https://heybroc.com/*",
     "https://www.heybroc.com/*",
+    "https://images.openfoodfacts.org/*",
     "https://cleancart-teal.vercel.app/*",
     "http://localhost:3000/*"
   ],

@@ -59,16 +59,16 @@ jobs:
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
         run: npx tsx scripts/build-off-photo-index.ts --max-entries=50000 --sync-kv
 
-      - name: Run Rubric & Curated Photo Coverage Gate
-        run: npm run test:rubric
+      - name: Run Full Local Compliance, Typecheck, Rubric & Build Gate
+        run: npm run audit:ai
 
       - name: Commit & push updated photo manifests to main
         if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "derek22190"
           git config user.email "53961265+derek22190@users.noreply.github.com"
-          if ! git diff --quiet data/ lib/lookup.ts lib/drinks-catalog.ts lib/seo-catalog.ts lib/swaps.ts; then
-            git add data/curated-product-photos.json data/off-us-photo-index.json lib/lookup.ts lib/drinks-catalog.ts lib/seo-catalog.ts lib/swaps.ts
+          if ! git diff --quiet data/ lib/lookup.ts lib/drinks-catalog.ts lib/seo-catalog.ts lib/swaps.ts app/api/product-image/route.ts; then
+            git add data/curated-product-photos.json data/off-us-photo-index.json lib/lookup.ts lib/drinks-catalog.ts lib/seo-catalog.ts lib/swaps.ts app/api/product-image/route.ts
             git commit -m "Auto-sync verified Open Food Facts product photos & US/CA index"
             git pull --rebase origin main
             git push origin HEAD:main

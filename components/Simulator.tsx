@@ -277,7 +277,7 @@ const cleanToProduct = (
     image:
       media.imageUrl ||
       media.categoryArtUrl ||
-      `/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}`,
+      (media.imageKind === "none" ? "" : `/api/product-image?q=${encodeURIComponent(`${alt.brand} ${alt.name}`)}&fallback=404`),
     imageKind: media.imageKind,
     categoryArtUrl: media.categoryArtUrl,
     ingredients: alt.ingredients,
@@ -302,6 +302,7 @@ const swapResultToProduct = (sw: SwapResult, replacedItem?: Product, store: Stor
     ingredients: sw.ingredients,
     explicitCategory: sw.category,
   });
+  const effectiveKind = sw.imageKind || media.imageKind;
   return {
     key: `swap-${sw.brand}-${cleanTitle}-${replacedItem?.key ?? "direct"}-${store}`
       .toLowerCase()
@@ -310,8 +311,12 @@ const swapResultToProduct = (sw: SwapResult, replacedItem?: Product, store: Stor
     brand: sw.brand,
     size: sw.size,
     barcode: sw.barcode || media.barcode,
-    image: sw.image || media.imageUrl || media.categoryArtUrl || `/api/product-image?q=${encodeURIComponent(`${sw.brand} ${cleanTitle}`)}`,
-    imageKind: sw.imageKind || media.imageKind,
+    image:
+      sw.image ||
+      media.imageUrl ||
+      media.categoryArtUrl ||
+      (effectiveKind === "none" ? "" : `/api/product-image?q=${encodeURIComponent(`${sw.brand} ${cleanTitle}`)}&fallback=404`),
+    imageKind: effectiveKind,
     categoryArtUrl: sw.categoryArtUrl ?? media.categoryArtUrl,
     ingredients: sw.ingredients,
     nutrition: sw.nutrition,

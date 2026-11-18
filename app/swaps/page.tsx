@@ -17,7 +17,7 @@ export default function SwapsDirectoryPage() {
   const rows: SwapDirectoryRow[] = SEO_PRODUCTS.filter((p) =>
     hasValidCatalogProvenance(p.sourceUrl, p.verifiedAt)
   ).map((p) => {
-    const { entry, result, swap, imageUrl, imageKind } = evaluateSeoProduct(p);
+    const { entry, result, swap, imageUrl, imageKind, categoryArtUrl } = evaluateSeoProduct(p);
     return {
       slug: entry.slug,
       title: entry.title,
@@ -27,10 +27,13 @@ export default function SwapsDirectoryPage() {
       flaggedNames: result.flagged.map((f) => f.name),
       imageUrl: imageUrl ? imageUrl.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "") : null,
       imageKind,
+      categoryArtUrl: categoryArtUrl ? categoryArtUrl.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "") : null,
       swapTitle: swap?.title ?? null,
+      swapBrand: swap?.brand ?? null,
       swapScore: swap?.score ?? null,
       swapImageUrl: swap?.image ? swap.image.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "") : null,
       swapImageKind: swap?.imageKind ?? null,
+      swapCategoryArtUrl: swap?.categoryArtUrl ? swap.categoryArtUrl.replace(/^https?:\/\/(www\.)?heybroc\.com(?=\/)/i, "") : null,
     };
   });
 

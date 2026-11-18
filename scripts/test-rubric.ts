@@ -3321,7 +3321,8 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !exposeModalLatestSrc.includes("expose-copy-link-btn") &&
         applegateImgRes.status === 200 &&
         applegateContentType.includes("image/jpeg") &&
-        applegateImgSource === "HeyBroc Verified Product Photo" &&
+        applegateImgSource === "HeyBroc Category Studio Illustration" &&
+        applegateImgRes.headers.get("x-image-kind") === "category-art" &&
         authModalLatestSrc.includes("accounts.google.com/o/oauth2/v2/auth") &&
         authModalLatestSrc.includes("select_account") &&
         authModalLatestSrc.includes("document.body.style.overflow")
@@ -8154,7 +8155,7 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
             swapsAuditMod.sanitizeInstacartRetailerSlug("sprouts?utm_source=x#top") === "sprouts" &&
             aldiDoesNotUseInstacartImpact &&
             unconfiguredAmazonHasNoHardcodedTag &&
-            buildGradleKts.includes("versionCode = 45") &&
+            Number(buildGradleKts.match(/versionCode\s*=\s*(\d+)/)?.[1] || 0) >= 46 &&
             scanApiKt.includes("stripPrecautionaryCrossContactClauses") &&
             !scanHistoryKt.includes("Beef, water, salt, sodium phosphate, caramel color") &&
             !scanHistoryKt.includes("100% Pure Ground Meat (Beef, Turkey, Pork, or Chicken)") &&
@@ -8675,9 +8676,17 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
 
     // Step 3, Step 4 & Step 7: Prebuilt US/CA OFF index variant guard, transient no-store + X-Image-Retry header on OFF timeout, and US front_es / raw numeric photo acceptance
     const idxExactHit = offIndexMod.lookupOffPhotoIndexSync({ barcode: "0044000047009" });
-    const idxNkdExactHit = offIndexMod.lookupOffPhotoIndexSync({
+    const idxThreeWishesTitleHit = offIndexMod.lookupOffPhotoIndexSync({
+      title: "Three Wishes Frosted Grain Free Cereal",
+      brand: "Three Wishes",
+    });
+    const idxPrunedDeadNkdMiss = offIndexMod.lookupOffPhotoIndexSync({
       title: "Doritos Simply NKD Nacho Cheese Tortilla Chips",
       brand: "Doritos",
+    });
+    const scanNkdMedia = await scanMod.runScan({
+      productTitle: "Doritos Simply NKD Nacho Cheese Tortilla Chips",
+      store: "target",
     });
     const idxVariantGuardBlocksZeroSugar = offIndexMod.lookupOffPhotoIndexSync({
       title: "Oreo Zero Sugar Chocolate Sandwich Cookies",
@@ -8785,10 +8794,14 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
     }
 
     check(
-      "Step 3, Step 4 & Step 7: OFF photo index resolves barcodes with strict variant guard, transient OFF failures emit no-store + X-Image-Retry: 1, and US front_es + raw images['1'] photos resolve with CC BY-SA attribution",
+      "Step 3, Step 4 & Step 7: OFF photo index resolves barcodes with strict variant guard, pruned 404 Simply NKD falls back to studio chips art instead of regular Doritos, transient OFF failures emit no-store + X-Image-Retry: 1, and US front_es + raw images['1'] photos resolve with CC BY-SA attribution",
       Boolean(
         idxExactHit?.imageUrl.includes("004/400/004/7009") &&
-          idxNkdExactHit?.barcode === "0028400794756" &&
+          idxThreeWishesTitleHit?.barcode === "0860002152493" &&
+          idxPrunedDeadNkdMiss === null &&
+          scanNkdMedia.ok &&
+          scanNkdMedia.product?.imageKind === "category-art" &&
+          scanNkdMedia.product?.imageUrl?.endsWith("/swaps/chips.jpg") &&
           idxVariantGuardBlocksZeroSugar === null &&
           transientRetryHeadersOk &&
           spanishFrontAndRawNumericOk,
@@ -8890,6 +8903,116 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         !iosShortcutsSwift.includes('"storeImageUrl":') &&
         extContentJs.includes("cc-photo-badge-slot") &&
         extContentJs.includes("mountPhotoBadgeUnderOrOnPhoto"),
+    );
+
+    // Adversarial Audit Regressions: Walmart SEO dietary-clause preservation, Applegate Organics vs Natural variant guard, healed OFF revisions, SSRF/privacy parity & JS syntax compilation
+    const cokeZeroWalmartScan = await scanMod.runScan({
+      productTitle: "Coca-Cola Soda, Zero Sugar, 12 fl oz, 12 Pack",
+      store: "walmart",
+    });
+    const cokeClassicWalmartScan = await scanMod.runScan({
+      productTitle: "Coca-Cola Classic Soda, Kids Snacks, Family Size, 12 fl oz",
+      store: "walmart",
+    });
+    const preservedUnsweetened = lookupMod.cleanSearchQuery(
+      "Simple Truth Unsweetened Almond Milk, Dairy Free, 64 fl oz",
+    );
+    const preservedReducedFat = lookupMod.cleanSearchQuery(
+      "Jif Creamy Reduced Fat Peanut Butter, Kids Snacks, 16 oz",
+    );
+
+    const applegateOrgTurkeyMedia = curatedPhotosMod.resolveProductMediaFields({
+      brand: "Applegate Organics",
+      title: "Applegate Organics Organic Smoked Turkey Breast",
+    });
+    const applegateOrgSalamiMedia = curatedPhotosMod.resolveProductMediaFields({
+      brand: "Applegate Organics",
+      title: "Applegate Organics Organic Uncured Genoa Salami",
+    });
+    const redBullOrigMedia = curatedPhotosMod.resolveProductMediaFields({
+      brand: "Red Bull",
+      title: "Red Bull Energy Drink Original",
+      barcode: "9002490205973",
+    });
+    const redBullCrossBarcodeGuard = curatedPhotosMod.resolveProductMediaFields({
+      brand: "Red Bull",
+      title: "Red Bull Sugarfree Energy Drink",
+      barcode: "9002490205973",
+    });
+    const curatedJsonRaw = fsNode.readFileSync("data/curated-product-photos.json", "utf8");
+    const offIndexJsonRaw = fsNode.readFileSync("data/off-us-photo-index.json", "utf8");
+    const extBgJs = fsNode.readFileSync("chrome-extension/background.js", "utf8");
+    const safariBgJs = fsNode.readFileSync("ios-app/SafariExtension/Resources/background.js", "utf8");
+    const safeBitmapLoaderKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/SafeBitmapLoader.kt",
+      "utf8",
+    );
+    const scanHistoryStoreKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanHistoryStore.kt",
+      "utf8",
+    );
+
+    const vmMod = await import("node:vm");
+    let embeddedScriptsCompileOk = false;
+    try {
+      new vmMod.Script(androidDetectorJs, { filename: "live_store_detector.js" });
+      new vmMod.Script(extContentJs, { filename: "chrome-content.js" });
+      new vmMod.Script(extBgJs, { filename: "chrome-background.js" });
+      const swiftDetectorMatch = iosLiveStoreSwift.match(/let detectorJS = """\n([\s\S]*?)\n\s*"""/);
+      const swiftBannerMatch = iosLiveStoreSwift.match(/let earlyBannerCSSJS = """\n([\s\S]*?)\n\s*"""/);
+      if (swiftDetectorMatch && swiftBannerMatch) {
+        const badEsc1 = swiftDetectorMatch[1].match(/(?<!\\)\\(?![\\tnr"'0(])/g);
+        const badEsc2 = swiftBannerMatch[1].match(/(?<!\\)\\(?![\\tnr"'0(])/g);
+        if (!badEsc1 && !badEsc2) {
+          new vmMod.Script(swiftDetectorMatch[1].replace(/\\\\/g, "\\").replace(/\\"/g, '"'), {
+            filename: "ios-detectorJS.js",
+          });
+          new vmMod.Script(swiftBannerMatch[1].replace(/\\\\/g, "\\").replace(/\\"/g, '"'), {
+            filename: "ios-earlyBannerCSSJS.js",
+          });
+          embeddedScriptsCompileOk = true;
+        }
+      }
+    } catch {
+      embeddedScriptsCompileOk = false;
+    }
+
+    const cokeZeroIngLower = cokeZeroWalmartScan.ok
+      ? String(cokeZeroWalmartScan.product.ingredients || "").toLowerCase()
+      : "";
+    const cokeClassicIngLower = cokeClassicWalmartScan.ok
+      ? String(cokeClassicWalmartScan.product.ingredients || "").toLowerCase()
+      : "";
+
+    check(
+      "Adversarial Audit Gate: Walmart comma-separated Zero Sugar/dietary modifiers are preserved while marketing tails strip cleanly, Applegate Organics & Red Bull barcode-title guards block wrong-variant packshots, manifests contain zero panel/dead URLs, Chrome/Safari extensions stay byte-identical, and Android/iOS embedded JS + SSRF/privacy guards hold",
+      Boolean(
+        cokeZeroWalmartScan.ok &&
+          cokeZeroIngLower.includes("aspartame") &&
+          !cokeZeroIngLower.includes("high fructose corn syrup") &&
+          cokeClassicWalmartScan.ok &&
+          cokeClassicIngLower.includes("high fructose corn syrup") &&
+          !cokeClassicIngLower.includes("aspartame") &&
+          preservedUnsweetened.includes("Unsweetened") &&
+          preservedReducedFat.includes("Reduced Fat") &&
+          applegateOrgTurkeyMedia.imageKind === "category-art" &&
+          !String(applegateOrgTurkeyMedia.imageUrl || "").includes("002/531/755/2509") &&
+          applegateOrgSalamiMedia.imageKind === "photo" &&
+          String(applegateOrgSalamiMedia.imageUrl || "").includes("002/531/765/6009/front_en.25.400.jpg") &&
+          redBullOrigMedia.imageKind === "photo" &&
+          String(redBullOrigMedia.imageUrl || "").includes("900/249/020/5973/front_en.104.400.jpg") &&
+          redBullCrossBarcodeGuard.imageKind === "category-art" &&
+          !/\/(?:nutrition|ingredients|packaging)_/i.test(curatedJsonRaw) &&
+          !/\/(?:nutrition|ingredients|packaging)_/i.test(offIndexJsonRaw) &&
+          extContentJs === safariContentJs &&
+          extBgJs.includes("retryAfterMs") &&
+          safariBgJs.includes("retryAfterMs") &&
+          safariBgJs.includes("sendNativeAppGroupMessage") &&
+          safeBitmapLoaderKt.includes("isPublicRoutableAddress") &&
+          scanHistoryStoreKt.includes('remove("storeImageUrl")') &&
+          iosLiveStoreSwift.includes("SafeImageRedirectDelegate") &&
+          embeddedScriptsCompileOk,
+      ),
     );
   }
 

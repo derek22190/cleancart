@@ -148,6 +148,8 @@ object ScanHistoryStore {
 
         val now = System.currentTimeMillis()
         val copy = JSONObject(rawScanJson.toString()).apply {
+            remove("storeImageUrl")
+            optJSONObject("product")?.remove("storeImageUrl")
             put("scannedAtMs", now)
             put("storeKey", storeKey)
         }
@@ -208,6 +210,8 @@ object ScanHistoryStore {
             current.filterNot { normKey(extractTitle(it)) == key }
         } else {
             listOf(JSONObject(itemJson.toString()).apply {
+                remove("storeImageUrl")
+                optJSONObject("product")?.remove("storeImageUrl")
                 put("favoritedAtMs", System.currentTimeMillis())
             }) + current
         }
@@ -448,16 +452,16 @@ object ScanHistoryStore {
         Regex("\\bprivate\\s+selection\\b.*\\bangus\\b.*\\b(?:hot\\s*dogs?|franks?)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/001/111/022/0691/front_en.3.400.jpg",
         Regex("\\bfavorite\\s+day\\b.*\\bnon[- ]?dairy\\b.*\\bvanilla\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg",
         Regex("^(?!.*\\b(?:bacon|ground|burgers?|patt(?:y|ies)|sausage|deli|sliced|meatballs?|franks?|hot\\s*dogs?|jerky|breast)\\b).*\\bbutterball\\b.*\\bturkey\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg",
-        Regex("\\bapplegate\\b.*\\broast\\s+beef\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg",
-        Regex("\\bapplegate\\b.*\\b(?:hot\\s*dog|frank)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg",
-        Regex("\\bapplegate\\b.*\\bbacon\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg",
-        Regex("\\bapplegate\\b.*\\bturkey\\s+breast\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/022/517/201/1436/front_en.3.400.jpg",
-        Regex("\\bapplegate\\b.*\\bblack\\s+forest\\s+ham\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/700/5906/front_en.5.400.jpg",
-        Regex("\\bapplegate\\b.*\\borganic.*\\bsalami\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/765/6009/front.7.400.jpg",
-        Regex("\\bapplegate\\b.*\\bsalami\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg",
-        Regex("\\bapplegate\\b.*\\bbreakfast\\s+sausage\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\broast\\s+beef\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\b(?:hot\\s*dog|frank)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\bbacon\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\bturkey\\s+breast\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/022/517/201/1436/front_en.3.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\bblack\\s+forest\\s+ham\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/700/5906/front_en.5.400.jpg",
+        Regex("\\bapplegate\\b.*\\borganic.*\\bsalami\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/765/6009/front_en.25.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\bsalami\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\bbreakfast\\s+sausage\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg",
         Regex("\\bapplegate\\b.*\\borganic.*\\bnuggets?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/760/5519/front_en.6.400.jpg",
-        Regex("\\bapplegate\\b.*\\bnuggets?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/705/5192/front_en.22.400.jpg",
+        Regex("^(?!.*\\borganics?\\b).*\\bapplegate\\b.*\\bnuggets?\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/002/531/705/5192/front_en.22.400.jpg",
         Regex("^(?!.*\\b(?:bunnies|popcorn|crackers?|puffs?|grahams?|gummies|fruit|bars?|soup)\\b).*\\bannie'?s\\b.*\\b(?:shells|white\\s+cheddar|mac(?:aroni)?)\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/26565859/front_en.3.400.jpg",
         Regex("\\blotus\\s+foods\\b.*\\bramen\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/070/895/362/8172/front_en.3.400.jpg",
         Regex("\\bmarketside\\s+butcher\\b.*\\bground\\s+beef\\b", RegexOption.IGNORE_CASE) to "https://images.openfoodfacts.org/images/products/068/113/137/7416/front_en.3.400.jpg",
@@ -514,15 +518,27 @@ object ScanHistoryStore {
                     it.equals("Unknown", ignoreCase = true) ||
                     it.equals("Grocery", ignoreCase = true) ||
                     it.equals("Fresh Produce", ignoreCase = true) ||
+                    it.equals("N/A", ignoreCase = true) ||
+                    it.equals("None", ignoreCase = true) ||
                     it.contains("Category Estimate", ignoreCase = true)
             }.orEmpty()
-        val source = cleanBrand.ifBlank { title.trim() }
-        val word = source
-            .replace(Regex("^(?:the|a|an|fresh|whole|raw|usda|organic|natural|pure)\\s+", RegexOption.IGNORE_CASE), "")
-            .trim()
-        return word.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString()
-            ?: source.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString()
-            ?: "B"
+        val skipWords = setOf("the", "a", "an", "fresh", "whole", "raw", "usda", "organic", "natural", "pure")
+        for (rawSource in listOf(cleanBrand, title.trim())) {
+            if (rawSource.isEmpty()) continue
+            val stripped = rawSource.replace(Regex("\\b100\\s*%"), " ")
+            val tokens = stripped.split(Regex("[^A-Za-z0-9]+"))
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && it.lowercase() !in skipWords }
+            val alphaToken = tokens.firstOrNull { tok -> tok.any { it.isLetter() } }
+            if (alphaToken != null) {
+                alphaToken.firstOrNull { it.isLetter() }?.uppercaseChar()?.let { return it.toString() }
+            }
+            val anyToken = tokens.firstOrNull()
+            if (anyToken != null) {
+                anyToken.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.let { return it.toString() }
+            }
+        }
+        return "B"
     }
 
     fun verifiedDirectImageUrl(title: String): String? {
@@ -588,14 +604,16 @@ object ScanHistoryStore {
             !hasDisallowedForeignFront &&
             !REVOKED_OFF_IMAGE_RE.containsMatchIn(normalized)
         ) {
-            // If rawImageUrl is category art (/swaps/), still prefer a verified direct OFF photo if we know one for this title
+            // Never short-circuit primary photo resolution on category studio art (/swaps/*);
+            // try a verified direct OFF photo or /api/product-image?...&fallback=404 first so
+            // categoryArtUrl remains the post-404 fallback with its "Illustration" badge.
             if (isCategoryArtUrl(normalized)) {
                 val lookupForArt = if (brand.isNotBlank() && !title.contains(brand, ignoreCase = true)) {
                     "${brand.trim()} ${title.trim()}"
                 } else {
                     title
                 }
-                verifiedDirectImageUrl(lookupForArt)?.let { return it }
+                return verifiedDirectImageUrl(lookupForArt) ?: productImageApiFallbackUrl(title, brand, code)
             }
             return normalized
         }
@@ -615,6 +633,7 @@ object ScanHistoryStore {
         val now = System.currentTimeMillis()
         for (i in 0 until arr.length()) {
             val item = arr.optJSONObject(i) ?: continue
+            item.remove("storeImageUrl")
             val ts = item.optLong("scannedAtMs", 0L).takeIf { it > 0L } ?: item.optLong("favoritedAtMs", 0L)
             if (!isEntryFresh(ts, now)) continue
             val lookupObj = item.optJSONObject("lookup")
@@ -626,14 +645,16 @@ object ScanHistoryStore {
             val key = canonicalKey(rawTitle)
             if (key.isBlank() || !seenKeys.add(key)) continue
             item.optJSONObject("product")?.let { prod ->
+                prod.remove("storeImageUrl")
                 val curImg = prod.optString("imageUrl")
                 val prodBrand = prod.optString("brand")
                 val prodBarcode = prod.optString("barcode").ifBlank { lookupObj?.optString("barcode").orEmpty() }
                 val catArt = normalizeCategoryArtUrl(prod.optString("categoryArtUrl"))
+                    .ifBlank { if (isCategoryArtUrl(curImg)) normalizeCategoryArtUrl(curImg) else "" }
                 if (catArt.isNotEmpty()) {
                     prod.put("categoryArtUrl", catArt)
                 }
-                prod.put("imageUrl", resolveBestImageUrl(rawTitle, curImg.ifBlank { catArt }, prodBrand, prodBarcode))
+                prod.put("imageUrl", resolveBestImageUrl(rawTitle, curImg, prodBrand, prodBarcode))
             }
             val itemStore = item.optString("storeKey", "walmart").ifBlank { "walmart" }
             item.optJSONObject("swap")?.let { sw ->
@@ -642,12 +663,13 @@ object ScanHistoryStore {
                 val swBrand = sw.optString("brand")
                 val swBarcode = sw.optString("barcode")
                 if (swTitle.isNotBlank()) {
+                    val rawSwImg = sw.optString("imageUrl").ifBlank { sw.optString("image") }
                     val swCatArt = normalizeCategoryArtUrl(sw.optString("categoryArtUrl"))
+                        .ifBlank { if (isCategoryArtUrl(rawSwImg)) normalizeCategoryArtUrl(rawSwImg) else "" }
                     if (swCatArt.isNotEmpty()) {
                         sw.put("categoryArtUrl", swCatArt)
                     }
-                    val curSwImg = sw.optString("imageUrl").ifBlank { sw.optString("image") }.ifBlank { swCatArt }
-                    sw.put("imageUrl", resolveBestImageUrl(swTitle, curSwImg, swBrand, swBarcode))
+                    sw.put("imageUrl", resolveBestImageUrl(swTitle, rawSwImg, swBrand, swBarcode))
                 }
             }
             item.optJSONObject("storeSwapLink")?.let { sw ->

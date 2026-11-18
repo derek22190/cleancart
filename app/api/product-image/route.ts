@@ -30,12 +30,14 @@ const PLACEHOLDER_SVG_REL_PATH = "public/product-photo-unavailable.svg";
 const FOREIGN_NON_NA_OFF_FRONT_IMAGE_RE =
   /\/front_(?:de|it|nl|pl|pt|ru|ja|zh|ar|ro|hu|cs|sv|da|fi|el|tr|he|ko|th|vi)\./i;
 const ES_OR_FR_OFF_FRONT_IMAGE_RE = /\/front_(?:es|fr)\./i;
+const OFF_PANEL_IMAGE_PATH_RE = /\/(?:ingredients|nutrition|packaging)(?:_|\.)/i;
 
 function isAllowedImageUrl(rawUrl: string, allowNorthAmericaEsFr = true): boolean {
   try {
     const parsed = new URL(rawUrl);
     if (parsed.protocol !== "https:") return false;
     if (FOREIGN_NON_NA_OFF_FRONT_IMAGE_RE.test(parsed.pathname)) return false;
+    if (OFF_PANEL_IMAGE_PATH_RE.test(parsed.pathname)) return false;
     if (!allowNorthAmericaEsFr && ES_OR_FR_OFF_FRONT_IMAGE_RE.test(parsed.pathname)) return false;
     const host = parsed.hostname.toLowerCase();
     return (
@@ -83,8 +85,8 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\bcampbell'?s\b.*\bchunky\b.*\bnew\s+england\s+clam\s+chowder\b/i, url: "https://images.openfoodfacts.org/images/products/75395322/front_en.3.400.jpg", canonicalBrand: "Campbell's", canonicalTitle: "Chunky New England Clam Chowder Soup" },
   { pattern: /\bmarketside\b.*\bclam\s+chowder\b/i, url: "https://images.openfoodfacts.org/images/products/084/013/430/8029/front_en.3.400.jpg", canonicalBrand: "Marketside", canonicalTitle: "New England Clam Chowder Soup" },
   { pattern: /\bamy'?s\b(?!.*\b(?:vegetable|low\s+sodium|light\s+in\s+sodium)\b).*\blentil\b.*\bsoup\b/i, url: "https://images.openfoodfacts.org/images/products/004/223/400/5833/front_en.3.400.jpg", canonicalBrand: "Amy's", canonicalTitle: "Organic Lentil Soup" },
-  { pattern: /\bdoritos\b.*\b(?:simply\s+nkd|nkd)\b.*\bnacho\s+cheese\b/i, url: "https://images.openfoodfacts.org/images/products/002/840/079/4756/front_en.3.400.jpg", canonicalBrand: "Doritos", canonicalTitle: "Simply NKD Nacho Cheese Tortilla Chips" },
-  { pattern: /\bdoritos\b.*\b(?:simply\s+nkd|nkd)\b.*\bcool\s+ranch\b/i, url: "https://images.openfoodfacts.org/images/products/002/840/079/4732/front_en.3.400.jpg", canonicalBrand: "Doritos", canonicalTitle: "Simply NKD Cool Ranch Tortilla Chips" },
+  { pattern: /\bdoritos\b.*\b(?:simply\s+nkd|nkd)\b.*\bnacho\s+cheese\b/i, url: "local:public/swaps/chips.jpg", canonicalBrand: "Doritos", canonicalTitle: "Simply NKD Nacho Cheese Tortilla Chips" },
+  { pattern: /\bdoritos\b.*\b(?:simply\s+nkd|nkd)\b.*\bcool\s+ranch\b/i, url: "local:public/swaps/chips.jpg", canonicalBrand: "Doritos", canonicalTitle: "Simply NKD Cool Ranch Tortilla Chips" },
   { pattern: /\bdoritos\b(?!.*\b(?:simply|nkd|dinamita|3d|minis?|dip|flamin|spicy|taco|tapatio|organic|twisted|collisions|popcorn|jerky|nuts?|almonds?)\b).*\bnacho\s+cheese\b/i, url: "https://images.openfoodfacts.org/images/products/120/010/800/0721/front_en.3.400.jpg", canonicalBrand: "Doritos", canonicalTitle: "Nacho Cheese Flavored Tortilla Chips" },
   { pattern: /\bdoritos\b(?!.*\b(?:simply|nkd|dinamita|3d|minis?|dip|flamin|spicy|taco|tapatio|organic|twisted|collisions|popcorn|jerky|nuts?|almonds?)\b).*\bcool\s+ranch\b/i, url: "https://images.openfoodfacts.org/images/products/000/284/000/9151/front_en.7.400.jpg", canonicalBrand: "Doritos", canonicalTitle: "Cool Ranch Flavored Tortilla Chips" },
   { pattern: /\blay'?s\b.*\bwavy\b.*\boriginal\b/i, url: "https://images.openfoodfacts.org/images/products/002/840/031/0468/front_en.13.400.jpg", canonicalBrand: "Lay's", canonicalTitle: "Wavy Original Potato Chips" },
@@ -127,7 +129,7 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\bmonster\b.*\b(?:zero\s+ultra|ultra\s+white)\b/i, url: "https://images.openfoodfacts.org/images/products/007/084/789/2519/front_en.3.400.jpg", canonicalBrand: "Monster Energy", canonicalTitle: "Zero Ultra Energy Drink" },
   { pattern: /\bmonster\s+energy\b(?!.*\b(?:zero|ultra|lo[- ]?carb|rehab|java|juice|mango)\b).*\b(?:original|green)\b/i, url: "https://images.openfoodfacts.org/images/products/007/084/703/7712/front_en.8.400.jpg", canonicalBrand: "Monster Energy", canonicalTitle: "Original Green Energy Drink" },
   { pattern: /\bred\s*bull\b.*\bsugar\s*free\b/i, url: "https://images.openfoodfacts.org/images/products/900/249/025/7064/front_en.4.400.jpg", canonicalBrand: "Red Bull", canonicalTitle: "Sugarfree Energy Drink" },
-  { pattern: /\bred\s*bull\b(?!.*\b(?:sugar\s*free|zero|edition|peach|watermelon|amber|juneberry|tropical|coconut|dragon|apricot|curuba)\b).*\benergy\s+drink\b/i, url: "https://images.openfoodfacts.org/images/products/900/249/020/5973/front.24.400.jpg", canonicalBrand: "Red Bull", canonicalTitle: "Energy Drink" },
+  { pattern: /\bred\s*bull\b(?!.*\b(?:sugar\s*free|zero|edition|peach|watermelon|amber|juneberry|tropical|coconut|dragon|apricot|curuba)\b).*\benergy\s+drink\b/i, url: "https://images.openfoodfacts.org/images/products/900/249/020/5973/front_en.104.400.jpg", canonicalBrand: "Red Bull", canonicalTitle: "Energy Drink" },
   { pattern: /\bcelsius\b(?!.*\b(?:powder|packets?|sticks?|vibe|essentials)\b).*\borange\b/i, url: "https://images.openfoodfacts.org/images/products/088/939/200/0412/front_en.3.400.jpg", canonicalBrand: "Celsius", canonicalTitle: "Sparkling Orange Fitness Drink" },
   { pattern: /\bcelsius\b(?!.*\b(?:powder|packets?|sticks?|vibe|essentials)\b).*\bwild\s+berry\b/i, url: "https://images.openfoodfacts.org/images/products/088/939/201/0145/front_en.10.400.jpg", canonicalBrand: "Celsius", canonicalTitle: "Sparkling Wild Berry Fitness Drink" },
   { pattern: /\bc4\b(?!.*\b(?:powder|tub|canister|smart|ultimate)\b).*\bicy\s+blue\b/i, url: "https://images.openfoodfacts.org/images/products/084/259/510/5575/front_en.3.400.jpg", canonicalBrand: "C4", canonicalTitle: "Performance Energy Icy Blue Razz" },
@@ -163,13 +165,13 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\bprivate\s+selection\b(?!.*\b(?:roast\s+beef|deli|sliced|jerky|steaks?|hot\s*dogs?|franks?|meatballs?|chili|soup|seasoning)\b).*\bangus\b.*\b(?:patt(?:y|ies)|burgers?)\b/i, url: "https://images.openfoodfacts.org/images/products/001/111/022/0691/front_en.3.400.jpg", canonicalBrand: "Private Selection", canonicalTitle: "Angus Beef Patties" },
   { pattern: /\bfavorite\s+day\b.*\bnon[- ]?dairy\b.*\bvanilla\b/i, url: "https://images.openfoodfacts.org/images/products/008/523/914/1694/front_en.8.400.jpg", canonicalBrand: "Favorite Day", canonicalTitle: "Non-Dairy Vanilla Bean Frozen Dessert" },
   { pattern: /\bbutterball\b(?!.*\b(?:bacon|ground|burgers?|patt(?:y|ies)|sausages?|meatballs?|deli|sliced|lunch\s*meat|franks?|hot\s*dogs?|jerky|sticks?|strips?|tenderloins?|cutlets?|roast\s+breast|boneless\s+breast|smoked\s+sausage|kielbasa|chorizo)\b).*\b(?:whole|young|frozen\s+whole|all\s+natural\s+whole)\b.*\bturkey\b/i, url: "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg", canonicalBrand: "Butterball", canonicalTitle: "Whole Young Turkey" },
-  { pattern: /\bapplegate\b.*\broast\s+beef\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Medium Rare Roast Beef" },
-  { pattern: /\bapplegate\b.*\b(?:hot\s*dogs?|franks?)\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Uncured Beef Hot Dog" },
-  { pattern: /\bapplegate\b(?!.*\bturkey\b).*\bbacon\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Sunday Bacon" },
-  { pattern: /\bapplegate\b.*\bblack\s+forest\s+ham\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/700/5906/front_en.5.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Uncured Black Forest Ham" },
-  { pattern: /\bapplegate\b.*\borganic.*\bsalami\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/765/6009/front.7.400.jpg", canonicalBrand: "Applegate Organics", canonicalTitle: "Organic Genoa Salami" },
+  { pattern: /\bapplegate\b(?!.*\borganics?\b).*\broast\s+beef\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/715/6745/front_en.12.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Medium Rare Roast Beef" },
+  { pattern: /\bapplegate\b(?!.*\borganics?\b).*\b(?:hot\s*dogs?|franks?)\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/753/2006/front.3.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Uncured Beef Hot Dog" },
+  { pattern: /\bapplegate\b(?!.*\b(?:turkey|organics?)\b).*\bbacon\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/733/1005/front_en.3.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Sunday Bacon" },
+  { pattern: /\bapplegate\b(?!.*\borganics?\b).*\bblack\s+forest\s+ham\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/700/5906/front_en.5.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Uncured Black Forest Ham" },
+  { pattern: /\bapplegate\b.*\borganic.*\bsalami\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/765/6009/front_en.25.400.jpg", canonicalBrand: "Applegate Organics", canonicalTitle: "Organic Genoa Salami" },
   { pattern: /\bapplegate\b(?!.*\borganic\b).*\bsalami\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/766/8569/front_en.4.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Genoa Salami" },
-  { pattern: /\bapplegate\b(?!.*\bturkey\b).*\bbreakfast\s+sausage\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Classic Pork Breakfast Sausage" },
+  { pattern: /\bapplegate\b(?!.*\b(?:turkey|organics?)\b).*\bbreakfast\s+sausage\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/700/5890/front_en.5.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Classic Pork Breakfast Sausage" },
   { pattern: /\bapplegate\b.*\borganic.*\bnuggets?\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/760/5519/front_en.6.400.jpg", canonicalBrand: "Applegate Organics", canonicalTitle: "Organic Chicken Nuggets" },
   { pattern: /\bapplegate\b(?!.*\borganic\b).*\bnuggets?\b/i, url: "https://images.openfoodfacts.org/images/products/002/531/705/5192/front_en.22.400.jpg", canonicalBrand: "Applegate", canonicalTitle: "Natural Chicken Nuggets" },
   { pattern: /\bannie'?s\b(?!.*\b(?:bunnies|bunny|crackers?|popcorn|puffs?|grahams?|gummies|fruit|bars?|cookies?|bites?|pretzels?|soups?|pizza|bagels?|rolls?|biscuits?|waffles?|pancakes?)\b).*\b(?:shells|mac|macaroni)\b.*\bcheddar\b/i, url: "https://images.openfoodfacts.org/images/products/26565859/front_en.3.400.jpg", canonicalBrand: "Annie's", canonicalTitle: "Shells & White Cheddar Macaroni & Cheese" },
@@ -179,7 +181,7 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\bsmithfield\b(?!.*\b(?:bacon|sausage|spiral|sliced\s+deli|lunch\s*meat|deli|tenderloin|loin|chops?|ribs?|diced|cubed|shank|butt)\b).*\bham\s+steak\b/i, url: "https://images.openfoodfacts.org/images/products/020/634/010/5485/front_en.3.400.jpg", canonicalBrand: "Smithfield", canonicalTitle: "Boneless Ham Steak" },
   { pattern: /\bvital\s+farms\b(?!.*\b(?:bites?|butter|ghee|liquid|hard[- ]?boiled|peeled)\b).*\beggs?\b/i, url: "https://images.openfoodfacts.org/images/products/086/174/500/0010/front_en.27.400.jpg", canonicalBrand: "Vital Farms", canonicalTitle: "Pasture-Raised Large Eggs" },
   { pattern: /\borganic\s+valley\b(?!.*\b(?:chocolate|2%|1%|skim|fat\s*free|lowfat|eggnog|creamer|half\s*&?\s*half)\b).*\b(?:grassmilk|whole\s+milk)\b/i, url: "https://images.openfoodfacts.org/images/products/64715087/front_en.3.400.jpg", canonicalBrand: "Organic Valley", canonicalTitle: "Organic Whole Milk" },
-  { pattern: /\bgreat\s+value\b(?!.*\b(?:chocolate|2%|1%|skim|fat\s*free|lowfat|almond|oat|organic|evaporated|condensed|powdered)\b).*\bwhole\b.*\bmilk\b/i, url: "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.4.400.jpg", canonicalBrand: "Great Value", canonicalTitle: "Whole Vitamin D Milk" },
+  { pattern: /\bgreat\s+value\b(?!.*\b(?:chocolate|2%|1%|skim|fat\s*free|lowfat|almond|oat|organic|evaporated|condensed|powdered)\b).*\bwhole\b.*\bmilk\b/i, url: "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.25.400.jpg", canonicalBrand: "Great Value", canonicalTitle: "Whole Vitamin D Milk" },
   { pattern: /\bgreat\s+value\b(?!.*\b(?:organic|unsalted)\b).*\bsweet\s+cream\b.*\bbutter\b/i, url: "https://images.openfoodfacts.org/images/products/007/874/202/5933/front_en.16.400.jpg", canonicalBrand: "Great Value", canonicalTitle: "Salted Sweet Cream Butter" },
   { pattern: /\bgreat\s+value\b(?!.*\borganic\b).*\blarge\s+white\s+eggs?\b/i, url: "https://images.openfoodfacts.org/images/products/007/874/233/0624/front_en.3.400.jpg", canonicalBrand: "Great Value", canonicalTitle: "Large White Eggs" },
   { pattern: /\bgreat\s+value\b(?!.*\b(?:deluxe|white\s+cheddar|three\s+cheese|thick|cups?|artisan)\b).*\b(?:macaroni|mac\s*(?:&|and)\s*cheese)\b/i, url: "https://images.openfoodfacts.org/images/products/007/874/235/8857/front_en.4.400.jpg", canonicalBrand: "Great Value", canonicalTitle: "Original Macaroni & Cheese" },
@@ -195,7 +197,7 @@ const VERIFIED_PRODUCT_IMAGES: CuratedPhotoEntry[] = [
   { pattern: /\btrue\s+story\b.*\borganics?\b.*\bturkey\s+breast\b/i, url: "local:public/swaps/turkey.jpg", canonicalBrand: "True Story", canonicalTitle: "Organic Oven Roasted Turkey Breast" },
   { pattern: /\bchosen\s+foods\b(?!.*\b(?:spray|oil|dressing|chipotle|garlic|vegan)\b).*\b(?:mayo|mayonnaise)\b/i, url: "local:public/swaps/mayo.png", canonicalBrand: "Chosen Foods", canonicalTitle: "Classic Mayo Made With 100% Pure Avocado Oil" },
   { pattern: /^(?!.*\b(?:cake|juice|soup|puree|pouch|baby|gerber|dog|pet|treats?|pickled|sticks?|chips?|shredded|slaw)\b).*\b(?:baby\s+cut\s+carrots?|whole\s+carrots?|fresh\s+carrots?)\b/i, url: "https://images.openfoodfacts.org/images/products/003/582/608/6372/front_en.3.400.jpg", canonicalBrand: "", canonicalTitle: "Fresh Whole Baby Carrots", wholeProduceOnly: true },
-  { pattern: /^(?!.*\b(?:breast|salad|wings?|pulled|shredded|soup|broth|nuggets?|bites?|seasoning|dog|cat|pet|treats?)\b).*\brotisserie\s+chicken\b/i, url: "https://images.openfoodfacts.org/images/products/071/928/314/5598/front_en.10.400.jpg", canonicalBrand: "", canonicalTitle: "Whole Rotisserie Chicken", wholeProduceOnly: true },
+  { pattern: /^(?!.*\b(?:breast|salad|wings?|pulled|shredded|soup|broth|nuggets?|bites?|seasoning|dog|cat|pet|treats?)\b).*\brotisserie\s+chicken\b/i, url: "local:public/swaps/turkey.jpg", canonicalBrand: "", canonicalTitle: "Whole Rotisserie Chicken", wholeProduceOnly: true },
   { pattern: /\bmember'?s\s+mark\b.*\b(?:breaded|southern\s+style|homestyle)\b.*\bchicken\b.*\bbites?\b/i, url: "local:public/swaps/nuggets.png", canonicalBrand: "Member's Mark", canonicalTitle: "Southern Style Chicken Bites" },
   { pattern: /\bmember'?s\s+mark\b(?!.*\b(?:turkey|bits|crumbled|wrapped|dip|macaroni)\b).*\bbacon\b/i, url: "local:public/swaps/bacon.png", canonicalBrand: "Member's Mark", canonicalTitle: "Hardwood Smoked Sliced Bacon" },
   { pattern: /^(?!.*\b(?:roast\s+beef|deli|sliced|jerky|broth|soup|stew|seasoning|gravy|dog|cat|pet|treats?)\b).*\b(?:bottom\s+round|top\s+round|eye\s+of\s+round|chuck|rump|sirloin\s+tip)\s+roast\b/i, url: "local:public/swaps/beef.png", canonicalBrand: "", canonicalTitle: "Fresh Beef Chuck Roast", wholeProduceOnly: true },
@@ -253,6 +255,7 @@ function headersForLocalAsset(
   options?: { transientRetry?: boolean },
 ): Record<string, string> {
   const isPlaceholder = relPath === PLACEHOLDER_SVG_REL_PATH;
+  const isCategoryArt = relPath.startsWith("public/swaps/");
   const isRetryable = Boolean(isPlaceholder && options?.transientRetry);
   const headers: Record<string, string> = {
     "Content-Type": contentType,
@@ -263,9 +266,11 @@ function headersForLocalAsset(
     "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Kind, X-Image-Retry",
     "X-Image-Source": isPlaceholder
       ? "HeyBroc Placeholder (No Verified Package Photo)"
-      : "HeyBroc Verified Product Photo",
+      : isCategoryArt
+        ? "HeyBroc Category Studio Illustration"
+        : "HeyBroc Verified Product Photo",
     "X-Image-License": "Proprietary",
-    "X-Image-Kind": isPlaceholder ? "none" : "photo",
+    "X-Image-Kind": isPlaceholder ? "none" : isCategoryArt ? "category-art" : "photo",
   };
   if (isRetryable) {
     headers["X-Image-Retry"] = "1";
@@ -291,6 +296,9 @@ async function serveLocalAsset(
       headers: headersForLocalAsset(relPath, contentType, options),
     });
   } catch {
+    if (relPath === PLACEHOLDER_SVG_REL_PATH) {
+      return missingStatusResponse(Boolean(options?.transientRetry));
+    }
     const publicPath = relPath.replace(/^public/, "");
     return NextResponse.redirect(new URL(publicPath, request.url), 302);
   }
@@ -547,13 +555,27 @@ function pickCandidateImageUrls(p: OffImageProductRecord): string[] {
   const isNorthAmerica =
     isUsMarketOffProduct(p) || tags.includes("en:united-states") || tags.includes("en:canada");
 
+  const panelImgIds = new Set<string>();
+  if (p.images) {
+    for (const [k, meta] of Object.entries(p.images)) {
+      if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
+        panelImgIds.add(String(meta.imgid));
+      }
+    }
+  }
+  const isPanelNumericUrl = (u?: string): boolean => {
+    if (!u) return false;
+    const m = u.match(/\/(\d+)(?:\.\d+)?\.(?:jpg|jpeg|png|webp)$/i);
+    return Boolean(m && panelImgIds.has(m[1]));
+  };
+
   const rawList: Array<string | undefined> = [
     p.selected_images?.front?.display?.en,
     p.selected_images?.front?.small?.en,
     p.image_front_small_url,
     p.image_front_url,
     p.image_url,
-  ];
+  ].filter((u) => !isPanelNumericUrl(u));
 
   if (isNorthAmerica) {
     rawList.push(
@@ -568,12 +590,6 @@ function pickCandidateImageUrls(p: OffImageProductRecord): string[] {
   if (p.images && p.code) {
     const folder = offBarcodeFolderPath(p.code);
     if (folder) {
-      const panelImgIds = new Set<string>();
-      for (const [k, meta] of Object.entries(p.images)) {
-        if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
-          panelImgIds.add(String(meta.imgid));
-        }
-      }
       const rawNumericKeys = Object.keys(p.images)
         .filter((k) => /^\d+$/.test(k) && !panelImgIds.has(k))
         .sort((a, b) => Number(a) - Number(b));
@@ -836,21 +852,21 @@ async function resolveVerifiedProductMedia(
             storeInBytesCache(directBytes);
             return { kind: "remote", ...directBytes };
           }
-          // Self-heal if Open Food Facts incremented the image revision (.7.400.jpg -> .29.400.jpg)
-          const recoveryCodes: string[] = [];
-          const embeddedCode = extractOffCodeFromImageUrl(verifiedUrl);
-          if (embeddedCode) recoveryCodes.push(embeddedCode);
-          for (const upcEntry of KNOWN_CURATED_FALLBACK_UPCS) {
-            if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, upcEntry)) {
-              recoveryCodes.push(...upcEntry.upcs);
-            }
+        }
+        // Self-heal if Open Food Facts incremented the image revision (.7.400.jpg -> .29.400.jpg)
+        const recoveryCodes: string[] = [];
+        const embeddedCode = extractOffCodeFromImageUrl(verifiedUrl);
+        if (embeddedCode) recoveryCodes.push(embeddedCode);
+        for (const upcEntry of KNOWN_CURATED_FALLBACK_UPCS) {
+          if (upcEntry.pattern.test(rawQuery) && passesCuratedPhotoGuard(rawQuery, rawBrand, upcEntry)) {
+            recoveryCodes.push(...upcEntry.upcs);
           }
-          if (recoveryCodes.length > 0) {
-            const healed = await fetchVerifiedImageByBarcodes(recoveryCodes, rawQuery, false, markFailure);
-            if (healed) {
-              storeInBytesCache(healed);
-              return { kind: "remote", ...healed };
-            }
+        }
+        if (recoveryCodes.length > 0) {
+          const healed = await fetchVerifiedImageByBarcodes(recoveryCodes, rawQuery, false, markFailure);
+          if (healed) {
+            storeInBytesCache(healed);
+            return { kind: "remote", ...healed };
           }
         }
         break;
@@ -1079,7 +1095,6 @@ async function resolveVerifiedProductMedia(
           signal: AbortSignal.timeout(3800),
         });
         if (res.ok) {
-          hadOperationalFailure = false;
           const data = (await res.json()) as { products?: OffImageProductRecord[] };
           const matched = await verifyMatchingHits(data.products || []);
           if (matched) {
@@ -1115,14 +1130,17 @@ function offAttributionHeaders(contentType: string, sourceUrl: string): Record<s
   };
 }
 
-function missingStatusResponse(transientRetry: boolean): NextResponse {
+function missingStatusResponse(transientRetry: boolean, imageKind: "none" | "category-art" = "none"): NextResponse {
   const headers: Record<string, string> = {
     "Cache-Control": transientRetry ? "no-store, no-cache, must-revalidate" : "public, max-age=86400",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Expose-Headers": "X-Image-Source, X-Image-License, X-Image-Kind, X-Image-Retry",
-    "X-Image-Source": "HeyBroc Placeholder (No Verified Package Photo)",
+    "X-Image-Source":
+      imageKind === "category-art"
+        ? "HeyBroc Category Studio Illustration"
+        : "HeyBroc Placeholder (No Verified Package Photo)",
     "X-Image-License": "Proprietary",
-    "X-Image-Kind": "none",
+    "X-Image-Kind": imageKind,
   };
   if (transientRetry) {
     headers["X-Image-Retry"] = "1";
@@ -1157,6 +1175,9 @@ export async function GET(request: Request) {
 
   const resolved = await resolveVerifiedProductMedia(q, rawCode, rawBrand);
   if (resolved.kind === "local") {
+    if (wants404OnMiss && resolved.relPath.startsWith("public/swaps/")) {
+      return missingStatusResponse(false, "category-art");
+    }
     return serveLocalAsset(resolved.relPath, request);
   }
   if (resolved.kind === "remote") {
@@ -1201,6 +1222,9 @@ export async function HEAD(request: Request) {
   const resolved = await resolveVerifiedProductMedia(q, rawCode, rawBrand);
   if (resolved.kind === "local") {
     const relPath = resolved.relPath;
+    if (wants404OnMiss && relPath.startsWith("public/swaps/")) {
+      return missingStatusResponse(false, "category-art");
+    }
     return new NextResponse(null, {
       status: 200,
       headers: headersForLocalAsset(relPath, relPath.endsWith(".png") ? "image/png" : "image/jpeg"),

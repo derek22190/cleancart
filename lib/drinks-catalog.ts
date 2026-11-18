@@ -1492,7 +1492,8 @@ export const DRINKS_CATALOG: DrinkCatalogEntry[] = [
     },
     sourceUrl: "https://www.coca-cola.com/us/en/brands/coca-cola/products/coca-cola-zero-sugar",
     verifiedAt: "2026-11-08",
-    match: /\b(coke\s+zero|coca[- ]?cola\s+zero(?:\s+sugar)?)\b/i,
+    match:
+      /^(?!.*\b(?:cherry|vanilla|spiced|orange|lime|lemon|raspberry|peach|caffeine[- ]?free|oreo|starlight|dreamworld)\b).*\b(?:coke\s+zero|coca[- ]?cola(?:\s*,?\s*(?:cola|soda|pop|soft\s+drink))*\s*,?\s*zero(?:\s+sugar)?|zero\s+sugar\s+(?:coca[- ]?cola|coke))\b/i,
   },
   {
     id: "mexican-coca-cola",

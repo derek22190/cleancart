@@ -9,7 +9,9 @@
  *   2. Optional Upstash KV index (`heybroc:offidx:bc:<barcode>` and `heybroc:offidx:q:<slug>`) when `--sync-kv` is passed.
  */
 
+import dns from "node:dns";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import readline from "node:readline";
 import { Readable } from "node:stream";
@@ -18,9 +20,16 @@ import zlib from "node:zlib";
 import { normalizeBrandPhrase } from "../lib/brands";
 import type { OffPhotoIndexTuple } from "../lib/off-photo-index";
 
+dns.setDefaultResultOrder("ipv4first");
+if (typeof net.setDefaultAutoSelectFamily === "function") {
+  net.setDefaultAutoSelectFamily(false);
+}
+
 const DEFAULT_OFF_EXPORT_URL =
   "https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz";
 const USER_AGENT = "HeyBroc/2.5 (https://www.heybroc.com; support@heybroc.com)";
+const SAFE_REL_IMAGE_FILE_RE = /^[A-Za-z0-9_.-]+\.(?:jpg|jpeg|png|webp)$/i;
+const PANEL_FILE_PREFIX_RE = /^(?:ingredients|nutrition|packaging)(?:_|\.)/i;
 
 interface OffExportLine {
   code?: string;
@@ -35,7 +44,7 @@ interface OffExportLine {
       small?: Record<string, string>;
     };
   };
-  images?: Record<string, { rev?: string | number }>;
+  images?: Record<string, { imgid?: string | number; rev?: string | number }>;
 }
 
 interface CandidateRow {
@@ -44,6 +53,7 @@ interface CandidateRow {
   title: string;
   relFile: string;
   scans: number;
+  pinned?: boolean;
 }
 
 function isUsOrCanada(tags?: string[]): boolean {
@@ -56,7 +66,13 @@ function isUsOrCanada(tags?: string[]): boolean {
 
 function extractRelativeImageFile(prod: OffExportLine): string | null {
   const imgs = prod.images && typeof prod.images === "object" ? prod.images : null;
+  const panelImgIds = new Set<string>();
   if (imgs) {
+    for (const [k, meta] of Object.entries(imgs)) {
+      if (/^(?:ingredients|nutrition|packaging)(?:_|$)/i.test(k) && meta?.imgid !== undefined) {
+        panelImgIds.add(String(meta.imgid));
+      }
+    }
     for (const key of ["front_en", "front_es", "front_fr", "front"]) {
       const rev = imgs[key]?.rev !== undefined ? String(imgs[key].rev) : "";
       if (rev && /^\d+$/.test(rev)) {
@@ -64,7 +80,7 @@ function extractRelativeImageFile(prod: OffExportLine): string | null {
       }
     }
     const rawNumeric = Object.keys(imgs)
-      .filter((k) => /^\d+$/.test(k))
+      .filter((k) => /^\d+$/.test(k) && !panelImgIds.has(k))
       .sort((a, b) => Number(a) - Number(b));
     if (rawNumeric.length > 0) {
       return `${rawNumeric[0]}.400.jpg`;
@@ -83,7 +99,9 @@ function extractRelativeImageFile(prod: OffExportLine): string | null {
   ]) {
     if (typeof candidate === "string" && candidate.includes("/images/products/")) {
       const filePart = candidate.split("/").pop()?.trim() || "";
-      if (filePart.endsWith(".jpg")) return filePart;
+      if (SAFE_REL_IMAGE_FILE_RE.test(filePart) && !PANEL_FILE_PREFIX_RE.test(filePart)) {
+        return filePart;
+      }
     }
   }
   return null;
@@ -192,18 +210,20 @@ async function main(): Promise<void> {
   const rl = readline.createInterface({ input: lineSource, crlfDelay: Infinity });
   const candidatesByBarcode = new Map<string, CandidateRow>();
 
-  // Preserve existing baseline tuples so curated seed barcodes never drop out
+  // Preserve existing baseline tuples so curated seed barcodes never drop out, while allowing live export rows to refresh `relFile`
   for (const tuple of existingData.entries || []) {
     if (!Array.isArray(tuple) || tuple.length < 4) continue;
     const [bc, brand, title, file] = tuple;
     const digits = String(bc || "").replace(/\D/g, "");
-    if (digits.length >= 8 && file) {
+    const cleanFile = String(file || "").trim();
+    if (digits.length >= 8 && SAFE_REL_IMAGE_FILE_RE.test(cleanFile) && !PANEL_FILE_PREFIX_RE.test(cleanFile)) {
       candidatesByBarcode.set(digits, {
         barcode: digits,
         brand: String(brand || ""),
         title: String(title || ""),
-        relFile: String(file),
+        relFile: cleanFile,
         scans: 1_000_000, // Keep verified baseline entries pinned at top priority
+        pinned: true,
       });
     }
   }
@@ -229,7 +249,10 @@ async function main(): Promise<void> {
     const brand = String(parsed.brands || "").split(",")[0]?.trim() || "";
     const scans = Math.max(0, Number(parsed.unique_scans_n) || 0);
     const existing = candidatesByBarcode.get(code);
-    if (!existing || scans > existing.scans) {
+    if (existing?.pinned) {
+      // Refresh image revision while keeping curated brand/title and pinned priority
+      existing.relFile = relFile;
+    } else if (!existing || scans > existing.scans) {
       candidatesByBarcode.set(code, {
         barcode: code,
         brand,

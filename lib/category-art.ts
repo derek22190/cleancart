@@ -135,7 +135,7 @@ const TITLE_TO_STUDIO_ART: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:gummies|gummy|fruit\s+snacks?|candy|candies|skittles|starburst|sour\s+patch|swedish\s+fish|jelly\s+beans?|licorice|lollipops?|mints?|chewing\s+gum|marshmallows?)\b/i, "/swaps/candy.png"],
   [/\b(?:fruit\s+bars?|granola\s+bars?|protein\s+bars?|snack\s+bars?|energy\s+bars?|nut\s+bars?|larabar|lärabar|rxbar|clif\s+bar|kind\s+bar|nature\s+valley|that'?s\s+it)\b/i, "/swaps/fruitbar.png"],
   [/\b(?:almonds?|cashews?|walnuts?|pecans?|pistachios?|macadamia|mixed\s+nuts|peanuts?|pumpkin\s+seeds?|sunflower\s+seeds?|chia\s+seeds?|flax\s*seeds?|hemp\s+hearts?|trail\s+mix)\b/i, "/swaps/nuts-seeds.png"],
-  [/\b(?:sprouted\s+oat\s+o'?s|oat\s+o'?s|cereal|cheerios|frosted\s+flakes|cinnamon\s+toast\s+crunch|froot\s+loops|lucky\s+charms|granola|muesli|three\s+wishes)\b/i, "/swaps/cereal.jpg"],
+  [/\b(?:sprouted\s+oat\s+o'?s|oat\s+o'?s|heritage\s+flakes|bran\s+flakes|corn\s+flakes|oat\s+flakes|cereal|cheerios|frosted\s+flakes|cinnamon\s+toast\s+crunch|froot\s+loops|lucky\s+charms|granola|muesli|three\s+wishes)\b/i, "/swaps/cereal.jpg"],
   [/\b(?:rolled\s+oats|steel\s+cut\s+oats|instant\s+oatmeal|\boatmeal\b|\boats\b)\b/i, "/swaps/oats.png"],
   [/\b(?:waffles?|pancakes?|eggo|french\s+toast|pancake\s+mix)\b/i, "/swaps/waffles.png"],
   [/\b(?:bagels?)\b/i, "/swaps/bagels.png"],
