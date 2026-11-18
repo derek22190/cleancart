@@ -37,6 +37,14 @@
   "applegate organics::applegate organics organic uncured roast beef": {
     "verifiedAt": "2026-11-17"
   },
+  "ball park::ball park classic hot dogs": {
+    "barcode": "0054500193528",
+    "verifiedAt": "2026-11-18"
+  },
+  "barilla::barilla spaghetti pasta": {
+    "barcode": "0076808280081",
+    "verifiedAt": "2026-11-18"
+  },
   "beaver brand::beaver brand extra hot wasabi horseradish sauce": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/007/182/800/3009/front_en.14.400.jpg",
     "barcode": "0071828003009",
@@ -46,6 +54,14 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/001/111/049/1053/front_en.3.400.jpg",
     "barcode": "0011110491053",
     "verifiedAt": "2026-11-17"
+  },
+  "bobs red mill::bobs red mill organic old fashioned rolled oats": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/003/997/803/9521/front_en.14.400.jpg",
+    "barcode": "0039978039521",
+    "verifiedAt": "2026-11-18"
+  },
+  "breaded poultry::breaded poultry breaded crispy chicken breast patties": {
+    "verifiedAt": "2026-11-18"
   },
   "butterball::butterball all natural whole turkey with salt solution": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/023/007/223/1082/front_en.3.400.jpg",
@@ -90,6 +106,15 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/002/410/012/2615/front_en.44.400.jpg",
     "barcode": "0024100122615",
     "verifiedAt": "2026-11-17"
+  },
+  "chobani::chobani flip almond coco loco low fat greek yogurt": {
+    "barcode": "0818290012999",
+    "verifiedAt": "2026-11-18"
+  },
+  "chobani::chobani non fat greek yogurt plain": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/000/004/484/3113/front_en.3.400.jpg",
+    "barcode": "44843113",
+    "verifiedAt": "2026-11-18"
   },
   "claussen::claussen refrigerated kosher dill pickles": {
     "barcode": "044700019559",
@@ -148,6 +173,9 @@
     "barcode": "0038000402609",
     "verifiedAt": "2026-11-17"
   },
+  "favorite day::favorite day classic vanilla ice cream": {
+    "verifiedAt": "2026-11-18"
+  },
   "favorite day::favorite day cookies and cream ice cream": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/008/523/915/7756/front_en.3.400.jpg",
     "barcode": "0085239157756",
@@ -158,10 +186,23 @@
     "barcode": "0009800895007",
     "verifiedAt": "2026-11-17"
   },
+  "ferrero::ferrero rocher fine hazelnut milk chocolates": {
+    "verifiedAt": "2026-11-18"
+  },
   "fiji::fiji natural artesian water": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/941/757/400/1424/front_en.3.400.jpg",
     "barcode": "9417574001424",
     "verifiedAt": "2026-11-17"
+  },
+  "franks redhot::franks redhot original cayenne pepper hot sauce": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/004/150/080/5023/front_en.93.400.jpg",
+    "barcode": "0041500805023",
+    "verifiedAt": "2026-11-18"
+  },
+  "franks redhot::franks redhot wings buffalo sauce": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/004/150/078/5707/front_en.35.400.jpg",
+    "barcode": "0041500785707",
+    "verifiedAt": "2026-11-18"
   },
   "fresh produce::fresh produce fresh whole potatoes": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/007/078/401/2964/front_en.3.400.jpg",
@@ -193,6 +234,9 @@
     "barcode": "10167730",
     "verifiedAt": "2026-11-17"
   },
+  "general mills::general mills honey nut cheerios oats cereal": {
+    "verifiedAt": "2026-11-18"
+  },
   "general mills::general mills original cheerios toasted whole grain oat cereal": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/001/600/027/5287/front_en.8.400.jpg",
     "barcode": "0016000275287",
@@ -203,6 +247,11 @@
     "barcode": "0085239340400",
     "verifiedAt": "2026-11-17"
   },
+  "good and gather::good and gather organic whole milk": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/008/523/944/8717/front_en.3.400.jpg",
+    "barcode": "0085239448717",
+    "verifiedAt": "2026-11-18"
+  },
   "great value::great value grade a pasteurized whole vitamin d milk 1 gallon": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/007/874/215/9034/front_en.25.400.jpg",
     "barcode": "0078742159034",
@@ -212,6 +261,13 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/84464033/front_en.3.400.jpg",
     "barcode": "84464033",
     "verifiedAt": "2026-11-17"
+  },
+  "great value::great value seasoned potato hash brown patties": {
+    "barcode": "0078742226859",
+    "verifiedAt": "2026-11-18"
+  },
+  "grilled poultry::grilled poultry fully cooked grilled chicken breast strips": {
+    "verifiedAt": "2026-11-18"
   },
   "harmless harvest::harmless harvest organic coconut water": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/85902800/front_en.3.400.jpg",
@@ -237,6 +293,11 @@
     "barcode": "0048001213487",
     "verifiedAt": "2026-11-17"
   },
+  "hersheys::hersheys milk chocolate candy bar": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/003/400/000/2405/front_en.13.400.jpg",
+    "barcode": "0034000002405",
+    "verifiedAt": "2026-11-18"
+  },
   "hidden valley::hidden valley original ranch salad dressing": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/007/110/000/3116/front_en.7.400.jpg",
     "barcode": "0071100003116",
@@ -252,15 +313,43 @@
     "barcode": "0051500255162",
     "verifiedAt": "2026-11-17"
   },
+  "jimmy dean::jimmy dean pork breakfast sausage representative formulation": {
+    "verifiedAt": "2026-11-18"
+  },
+  "jimmy dean::jimmy dean premium pork regular breakfast sausage roll": {
+    "barcode": "0077900115739",
+    "verifiedAt": "2026-11-18"
+  },
+  "jimmy dean::jimmy dean sausage egg and cheese biscuit sandwiches": {
+    "barcode": "0077900471224",
+    "verifiedAt": "2026-11-18"
+  },
+  "kelloggs eggo::kelloggs eggo eggo buttermilk waffles": {
+    "barcode": "0038000401206",
+    "verifiedAt": "2026-11-18"
+  },
   "kelloggs eggo::kelloggs eggo eggo homestyle waffles": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/003/800/040/2609/front_en.21.400.jpg",
     "barcode": "0038000402609",
     "verifiedAt": "2026-11-17"
   },
+  "kelloggs::kelloggs froot loops sweetened multigrain cereal": {
+    "verifiedAt": "2026-11-18"
+  },
   "kikkoman::kikkoman wasabi sauce": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/004/139/000/7002/front_en.11.400.jpg",
     "barcode": "0041390007002",
     "verifiedAt": "2026-11-17"
+  },
+  "kirkland signature::kirkland signature lightly breaded chicken breast chunks": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/019/663/395/1779/front_en.54.400.jpg",
+    "barcode": "0196633951779",
+    "verifiedAt": "2026-11-18"
+  },
+  "kirkland signature::kirkland signature seasoned rotisserie chicken": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/009/661/987/7454/front_en.20.400.jpg",
+    "barcode": "0096619877454",
+    "verifiedAt": "2026-11-18"
   },
   "kool aid::kool aid jammers tropical punch flavored drink pouches 10 ct": {
     "barcode": "043000040973",
@@ -287,6 +376,11 @@
     "imageUrl": "https://images.openfoodfacts.org/images/products/002/190/840/9528/front_en.11.400.jpg",
     "barcode": "0021908409528",
     "verifiedAt": "2026-11-17"
+  },
+  "lays::lays classic potato chips": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/002/840/009/0858/front_en.132.400.jpg",
+    "barcode": "0028400090858",
+    "verifiedAt": "2026-11-18"
   },
   "lotus foods::lotus foods organic millet and brown rice ramen": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/070/895/362/8172/front_en.3.400.jpg",
@@ -439,13 +533,53 @@
     "barcode": "0093966005431",
     "verifiedAt": "2026-11-17"
   },
+  "oscar mayer::oscar mayer classic uncured wieners": {
+    "barcode": "0044700000632",
+    "verifiedAt": "2026-11-18"
+  },
   "oscar mayer::oscar mayer deli fresh oven roasted turkey breast": {
     "barcode": "044700075036",
     "verifiedAt": "2026-11-17"
   },
+  "oscar mayer::oscar mayer deli fresh smoked turkey breast": {
+    "barcode": "0044700030813",
+    "verifiedAt": "2026-11-18"
+  },
   "philadelphia::philadelphia original cream cheese": {
     "barcode": "021000612239",
     "verifiedAt": "2026-11-17"
+  },
+  "pop tarts::pop tarts frosted blueberry toaster pastries": {
+    "barcode": "0038000222559",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts frosted brown sugar cinnamon toaster pastries": {
+    "barcode": "0038000222535",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts frosted cherry toaster pastries": {
+    "barcode": "0038000222573",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts frosted cookies and creme toaster pastries": {
+    "barcode": "0038000222672",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts frosted smores toaster pastries": {
+    "barcode": "0038000222634",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts frosted strawberry toaster pastries": {
+    "barcode": "0038000222511",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts frosted wild berry toaster pastries": {
+    "barcode": "0038000222719",
+    "verifiedAt": "2026-11-18"
+  },
+  "pop tarts::pop tarts unfrosted strawberry toaster pastries": {
+    "barcode": "0038000317101",
+    "verifiedAt": "2026-11-18"
   },
   "poppi::poppi strawberry lemon prebiotic soda 12 fl oz": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/081/006/371/0668/front_en.3.400.jpg",
@@ -467,10 +601,27 @@
     "barcode": "0850040005226",
     "verifiedAt": "2026-11-17"
   },
+  "pringles::pringles original potato crisps": {
+    "barcode": "0038000138416",
+    "verifiedAt": "2026-11-18"
+  },
   "private selection::private selection angus beef patties": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/001/111/022/0691/front_en.3.400.jpg",
     "barcode": "0011110220691",
     "verifiedAt": "2026-11-17"
+  },
+  "quaker::quaker chewy chocolate chip granola bars": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/000/000/307/7601/front_en.81.400.jpg",
+    "barcode": "03077601",
+    "verifiedAt": "2026-11-18"
+  },
+  "quaker::quaker instant oatmeal maple and brown sugar": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/003/000/056/7289/front_en.78.400.jpg",
+    "barcode": "0030000567289",
+    "verifiedAt": "2026-11-18"
+  },
+  "quaker::quaker quick 1 minute 100 whole grain oats": {
+    "verifiedAt": "2026-11-18"
   },
   "red bull::red bull energy drink original 8 4 fl oz": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/900/249/020/5973/front_en.104.400.jpg",
@@ -483,6 +634,24 @@
     "verifiedAt": "2026-11-17"
   },
   "representative bakery formulation::representative bakery formulation bakery donuts and filled pastries representative formulation": {
+    "verifiedAt": "2026-11-18"
+  },
+  "representative category formulation::representative category formulation creamy ranch salad dressing category estimate": {
+    "verifiedAt": "2026-11-18"
+  },
+  "representative category formulation::representative category formulation sweetened breakfast cereal representative formulation": {
+    "verifiedAt": "2026-11-18"
+  },
+  "representative category formulation::representative category formulation white enriched sandwich bread representative formulation": {
+    "verifiedAt": "2026-11-18"
+  },
+  "representative process cheese formulation::representative process cheese formulation pasteurized process cheese and queso dip representative formulation": {
+    "verifiedAt": "2026-11-18"
+  },
+  "representative smoked sausage formulation::representative smoked sausage formulation smoked sausage and kielbasa representative formulation": {
+    "verifiedAt": "2026-11-18"
+  },
+  "ritz::ritz original baked crackers": {
     "verifiedAt": "2026-11-18"
   },
   "santa cruz organic::santa cruz organic creamy dark roasted peanut butter": {
@@ -560,6 +729,9 @@
     "barcode": "0052159000011",
     "verifiedAt": "2026-11-17"
   },
+  "storck::storck knoppers milk chocolate and hazelnut wafers": {
+    "verifiedAt": "2026-11-18"
+  },
   "sunnyd::sunnyd tangy original citrus punch 64 fl oz": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/005/020/012/1005/front_en.3.400.jpg",
     "barcode": "0050200121005",
@@ -570,6 +742,18 @@
     "barcode": "6388597004996",
     "verifiedAt": "2026-11-17"
   },
+  "tonys chocolonely::tonys chocolonely milk chocolate caramel sea salt bar": {
+    "imageUrl": "https://images.openfoodfacts.org/images/products/085/001/182/8427/front_en.32.400.jpg",
+    "barcode": "0850011828427",
+    "verifiedAt": "2026-11-18"
+  },
+  "tyson::tyson fully cooked chicken nuggets": {
+    "barcode": "0023700014191",
+    "verifiedAt": "2026-11-18"
+  },
+  "tyson::tyson grilled and ready fully cooked chicken breast strips": {
+    "verifiedAt": "2026-11-18"
+  },
   "uncle matts organic::uncle matts organic 100 pulp free orange juice 52 fl oz": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/069/706/852/0139/front_en.12.400.jpg",
     "barcode": "0697068520139",
@@ -578,6 +762,9 @@
   "velveeta::velveeta original pasteurized recipe cheese product": {
     "barcode": "021000611614",
     "verifiedAt": "2026-11-17"
+  },
+  "yoplait go gurt::yoplait go gurt go gurt portable lowfat yogurt tubes": {
+    "verifiedAt": "2026-11-18"
   },
   "yoplait::yoplait original strawberry lowfat yogurt": {
     "imageUrl": "https://images.openfoodfacts.org/images/products/007/047/000/4303/front_en.24.400.jpg",
