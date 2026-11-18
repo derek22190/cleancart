@@ -325,6 +325,7 @@ struct HeyBrocNativeScanSummary {
 struct HeyBrocBatchScanOutcome {
     let summaries: [String: HeyBrocNativeScanSummary]
     let isTransientError: Bool
+    var retryAfterSec: Int? = nil
 }
 
 enum HeyBrocVisionOCR {
@@ -771,10 +772,21 @@ enum HeyBrocNativeScannerAPI {
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
         URLSession.shared.dataTask(with: req) { data, response, error in
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let httpResp = response as? HTTPURLResponse
+            let statusCode = httpResp?.statusCode ?? 0
             if error != nil || statusCode == 429 || statusCode >= 500 {
+                let waitSec: Int? = {
+                    if statusCode == 429 {
+                        if let raw = httpResp?.value(forHTTPHeaderField: "Retry-After")?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           let parsed = Int(raw), parsed > 0 {
+                            return min(60, parsed)
+                        }
+                        return 15
+                    }
+                    return nil
+                }()
                 DispatchQueue.main.async {
-                    completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: true))
+                    completion(HeyBrocBatchScanOutcome(summaries: [:], isTransientError: true, retryAfterSec: waitSec))
                 }
                 return
             }

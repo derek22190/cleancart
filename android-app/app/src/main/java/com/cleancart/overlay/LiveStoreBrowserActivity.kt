@@ -384,6 +384,7 @@ class LiveStoreBrowserActivity : Activity() {
     private var lastDetectedStoreImageUrl = ""
     private var lastDetectedInstacartSlug = ""
     private var lastDetectedIsCard = false
+    private var lastDetectedCardId = ""
     private var lastScannedKey = ""
     private var latestScanJson: JSONObject? = null
     private val cardJsonById = object : LinkedHashMap<String, JSONObject>(64, 0.75f, true) {
@@ -1261,6 +1262,7 @@ class LiveStoreBrowserActivity : Activity() {
                 scanGeneration++
                 badgeBatchGeneration++
                 cardJsonById.clear()
+                lastDetectedCardId = ""
                 lastDetectedStoreImageUrl = ""
                 lastScannedKey = ""
                 latestScanJson = null
@@ -1311,6 +1313,7 @@ class LiveStoreBrowserActivity : Activity() {
                         lastInjectedProgressUrl = ""
                         badgeBatchGeneration++
                         cardJsonById.clear()
+                        lastDetectedCardId = ""
                         if (nextBase != prevBase) {
                             scanGeneration++
                             lastDetectedStoreImageUrl = ""
@@ -1593,14 +1596,14 @@ class LiveStoreBrowserActivity : Activity() {
             presentInspectSheet(current)
             return
         }
-        if (lastDetectedTitle.isNotEmpty() && !lastDetectedIsCard) {
+        if (lastDetectedTitle.isNotEmpty() && (!lastDetectedIsCard || cardJsonById.isEmpty())) {
             runLiveScan(
                 title = lastDetectedTitle,
                 ingredients = lastDetectedIngredients,
                 barcode = lastDetectedBarcode,
                 storeImageUrl = lastDetectedStoreImageUrl,
                 instacartSlug = lastDetectedInstacartSlug,
-                isCardScan = false,
+                isCardScan = lastDetectedIsCard,
                 force = true
             )
             return
@@ -1762,17 +1765,35 @@ class LiveStoreBrowserActivity : Activity() {
                             else -> ""
                         }
                         val isCard = (kind == "card")
+                        val cardId = if (isCard) obj.optString("cardId").trim() else ""
+                        val batchPending = isCard && obj.optBoolean("batchPending", false)
                         val identityChanged = !title.equals(lastDetectedTitle, ignoreCase = true) || barcode != lastDetectedBarcode
                         if (identityChanged) {
                             latestScanJson = null
                             lastScannedKey = ""
                         }
                         lastDetectedIsCard = isCard
+                        lastDetectedCardId = cardId
                         lastDetectedTitle = title
                         lastDetectedIngredients = ingredients
                         lastDetectedBarcode = barcode
                         lastDetectedStoreImageUrl = storeImg
                         lastDetectedInstacartSlug = effectiveSlug
+                        if (isCard && VALID_BATCH_ID_RE.matches(cardId)) {
+                            val cached = cardJsonById[cardId]
+                            if (cached != null) {
+                                attachDeviceStoreImage(cached, storeImg)
+                                ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, cached)
+                                applyJsonToBubble(cached)
+                                return@post
+                            }
+                        }
+                        if (isCard && batchPending) {
+                            if (latestScanJson == null) {
+                                setBubbleIdleState()
+                            }
+                            return@post
+                        }
                         runLiveScan(
                             title,
                             ingredients,
@@ -1785,6 +1806,7 @@ class LiveStoreBrowserActivity : Activity() {
                     "browse" -> {
                         scanGeneration++
                         lastDetectedIsCard = false
+                        lastDetectedCardId = ""
                         lastDetectedTitle = ""
                         lastDetectedIngredients = ""
                         lastDetectedBarcode = ""
@@ -1825,9 +1847,10 @@ class LiveStoreBrowserActivity : Activity() {
                             val it = arr.optJSONObject(i) ?: continue
                             val id = it.optString("id").trim()
                             val pTitle = it.optString("productTitle").trim()
+                            val bCode = it.optString("barcode").trim().ifEmpty { null }
                             val sImg = sanitizeDeviceStoreImageUrl(it.optString("storeImageUrl"))
-                            if (VALID_BATCH_ID_RE.matches(id) && pTitle.isNotEmpty()) {
-                                batchReq.add(ScanApi.BatchScanRequestItem(id, pTitle))
+                            if (VALID_BATCH_ID_RE.matches(id) && (pTitle.isNotEmpty() || bCode != null)) {
+                                batchReq.add(ScanApi.BatchScanRequestItem(id, pTitle, bCode))
                                 if (sImg.isNotEmpty()) localStoreImgs[id] = sImg
                             }
                         }
@@ -1869,6 +1892,15 @@ class LiveStoreBrowserActivity : Activity() {
                                         if (!hit.isCategoryEstimate && !hit.isTransientLockedSwap) {
                                             cardJsonById[reqItem.id] = hit.fullJson
                                         }
+                                        if (
+                                            !hit.isCategoryEstimate &&
+                                            lastDetectedIsCard &&
+                                            latestScanJson == null &&
+                                            (reqItem.id == lastDetectedCardId || reqItem.productTitle.equals(lastDetectedTitle, ignoreCase = true))
+                                        ) {
+                                            ScanApi.applyLocalWatchlistToData(this@LiveStoreBrowserActivity, hit.fullJson)
+                                            applyJsonToBubble(hit.fullJson)
+                                        }
                                         jsMap.put(reqItem.id, JSONObject().apply {
                                             put("ok", true)
                                             put("score", hit.score)
@@ -1880,6 +1912,7 @@ class LiveStoreBrowserActivity : Activity() {
                                         jsMap.put(reqItem.id, JSONObject().apply {
                                             put("ok", false)
                                             if (outcome.transientFailure) put("transient", true)
+                                            outcome.retryAfterSec?.let { put("retryAfterMs", it * 1000L) }
                                         })
                                     }
                                 }
@@ -1902,6 +1935,7 @@ class LiveStoreBrowserActivity : Activity() {
                         }
                         if (title.isNotEmpty()) {
                             lastDetectedIsCard = true
+                            lastDetectedCardId = cardId
                             lastDetectedTitle = title
                             lastDetectedIngredients = ""
                             lastDetectedBarcode = ""

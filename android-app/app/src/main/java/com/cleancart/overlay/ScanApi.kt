@@ -1677,14 +1677,21 @@ object ScanApi {
         val out = LinkedHashMap<String, BatchBadgeResult>()
         val uncached = ArrayList<BatchScanRequestItem>()
 
+        val uncachedBySig = LinkedHashMap<String, BatchScanRequestItem>()
+        val duplicateIdsByPrimaryId = HashMap<String, MutableList<String>>()
+
         for (item in items.take(8)) {
             val cleanId = item.id.trim()
             if (!VALID_BATCH_ITEM_ID_RE.matches(cleanId)) continue
             val cleanTitle = item.productTitle.trim().take(300)
             val cleanBarcode = item.barcode?.filter { it.isDigit() }?.takeIf { it.length in 8..14 }.orEmpty()
             if (cleanTitle.isEmpty() && cleanBarcode.isEmpty()) continue
-            if (cleanBarcode.isEmpty() && cleanTitle.isNotEmpty()) {
-                val cachedStr = peekCachedScan(ctx, cleanTitle, null, store, storeBucket, instacartRetailerSlug)
+            val cacheLookupTitle = if (cleanBarcode.isNotEmpty()) "$cleanTitle|upc:$cleanBarcode" else cleanTitle
+            if (cacheLookupTitle.isNotEmpty()) {
+                val cachedStr = peekCachedScan(ctx, cacheLookupTitle, null, store, storeBucket, instacartRetailerSlug)
+                    ?: if (cleanBarcode.isNotEmpty() && cleanTitle.isNotEmpty()) {
+                        peekCachedScan(ctx, cleanTitle, null, store, storeBucket, instacartRetailerSlug)
+                    } else null
                 if (cachedStr != null && cachedStr.contains("\"ok\":true")) {
                     val parsed = runCatching {
                         parseBatchBadgeResult(ctx, cleanId, cleanTitle, JSONObject(cachedStr))
@@ -1695,7 +1702,15 @@ object ScanApi {
                     }
                 }
             }
-            uncached.add(BatchScanRequestItem(cleanId, cleanTitle, cleanBarcode.ifEmpty { null }))
+            val batchDedupeSig = "${cleanTitle.lowercase()}|$cleanBarcode"
+            val existingPrimary = uncachedBySig[batchDedupeSig]
+            if (existingPrimary != null) {
+                duplicateIdsByPrimaryId.getOrPut(existingPrimary.id) { ArrayList() }.add(cleanId)
+            } else {
+                val reqItem = BatchScanRequestItem(cleanId, cleanTitle, cleanBarcode.ifEmpty { null })
+                uncachedBySig[batchDedupeSig] = reqItem
+                uncached.add(reqItem)
+            }
         }
 
         if (uncached.isEmpty()) return BatchScanOutcome(out, transientFailure = false)
@@ -1703,7 +1718,7 @@ object ScanApi {
         val nowMs = System.currentTimeMillis()
         if (nowMs < batchRateLimitUntilMs) {
             val remSec = ((batchRateLimitUntilMs - nowMs + 999L) / 1000L).toInt().coerceAtLeast(1)
-            return BatchScanOutcome(out, transientFailure = false, retryAfterSec = remSec)
+            return BatchScanOutcome(out, transientFailure = true, retryAfterSec = remSec)
         }
 
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -1760,6 +1775,7 @@ object ScanApi {
         }.toString()
 
         var reachedServer = false
+        var hadTransientStatus = false
         var lastRetryAfterSec: Int? = null
         for (endpoint in ENDPOINTS) {
             try {
@@ -1769,17 +1785,26 @@ object ScanApi {
                     lastRetryAfterSec = waitSec
                     batchRateLimitUntilMs = System.currentTimeMillis() + waitSec * 1000L
                     reachedServer = true
+                    hadTransientStatus = true
                     break
+                }
+                if (http.statusCode >= 500) {
+                    hadTransientStatus = true
+                    continue
                 }
                 val res = http.body
                 if (!res.startsWith("{")) continue
                 val root = JSONObject(res)
                 if (root.has("ok") && !root.optBoolean("ok", true)) {
                     reachedServer = true
+                    if (http.statusCode == 408 || http.statusCode == 425) {
+                        hadTransientStatus = true
+                    }
                     break
                 }
                 val resultsObj = root.optJSONObject("results") ?: root.optJSONObject("batch") ?: continue
                 reachedServer = true
+                hadTransientStatus = false
                 var savedEntitlement = false
                 for (u in uncached) {
                     val itemJson = resultsObj.optJSONObject(u.id) ?: continue
@@ -1796,8 +1821,14 @@ object ScanApi {
                         if (!isEstimate && !swapLockedWithoutEntitlement && cacheTitle.isNotBlank()) {
                             val rawItemStr = itemJson.toString()
                             val normKey = normalizedCacheKey(ctx, cacheTitle, null, store, storeBucket, instacartRetailerSlug)
+                            val plainTitleKey = if (!u.barcode.isNullOrBlank() && u.productTitle.isNotBlank()) {
+                                normalizedCacheKey(ctx, u.productTitle, null, store, storeBucket, instacartRetailerSlug)
+                            } else null
                             synchronized(responseCache) {
                                 responseCache[normKey] = rawItemStr
+                                if (plainTitleKey != null) {
+                                    responseCache[plainTitleKey] = rawItemStr
+                                }
                             }
                         }
                         val parsed = runCatching {
@@ -1805,6 +1836,9 @@ object ScanApi {
                         }.getOrNull()
                         if (parsed != null) {
                             out[u.id] = parsed
+                            duplicateIdsByPrimaryId[u.id]?.forEach { dupId ->
+                                out[dupId] = parsed.copy(id = dupId, fullJson = JSONObject(parsed.rawJsonStr))
+                            }
                         }
                     }
                 }
@@ -1814,7 +1848,7 @@ object ScanApi {
             }
         }
 
-        return BatchScanOutcome(out, transientFailure = !reachedServer, retryAfterSec = lastRetryAfterSec)
+        return BatchScanOutcome(out, transientFailure = !reachedServer || hadTransientStatus, retryAfterSec = lastRetryAfterSec)
     }
 
     fun scanBatch(

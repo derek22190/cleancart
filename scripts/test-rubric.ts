@@ -9101,7 +9101,155 @@ const origLoad = (Module as unknown as { _load: (request: string, parent: unknow
         androidLiveStoreKt.includes("onSaveInstanceState") &&
         !androidLiveStoreKt.includes("isExternalAuthHost") &&
         manifestAfterSingleTop.includes('android:launchMode="singleTop"') &&
-        buildGradleAfter47.includes("versionCode = 47"),
+        Number(buildGradleAfter47.match(/versionCode\s*=\s*(\d+)/)?.[1] || 0) >= 48,
+    );
+
+    // 9. Walmart Screenshot Regressions (Pop-Tarts SEO/Slug Variants, Little Debbie Vanilla Christmas Tree Cakes, Bar-S Franks) & All-13-Store Live Score Parity
+    const multiStoreRegressionCases: Array<{ productTitle: string; store: string }> = [
+      {
+        productTitle: "Pop-Tarts Toaster Pastries, Breakfast Foods, Kids Snacks, Value Pack, Frosted Strawberry, 27 oz (16 Pastries)",
+        store: "walmart",
+      },
+      {
+        productTitle: "Pop Tarts Toaster Pastries Breakfast Foods Kids Snacks Value Pack Frosted Strawberry 27 oz 16 Pastries",
+        store: "walmart",
+      },
+      {
+        productTitle: "Pop-Tarts Frosted S'mores Toaster Pastries, Breakfast Foods, Shelf-Stable, 27 oz (16",
+        store: "walmart",
+      },
+      {
+        productTitle: "Pop Tarts Frosted S'mores Toaster Pastries Breakfast Foods Shelf Stable 27 oz",
+        store: "walmart",
+      },
+      {
+        productTitle: "Pop-Tarts Toaster Pastries, Breakfast Foods, Kids Snacks, Value Pack, Frosted Brown Sugar Cinnamon, 27 oz",
+        store: "walmart",
+      },
+      {
+        productTitle: "Little Debbie Vanilla Christmas Tree Cakes, 8.52 oz, 5 Count",
+        store: "walmart",
+      },
+      {
+        productTitle: "Bar-S Classic Franks, 12 oz",
+        store: "walmart",
+      },
+      {
+        productTitle: "Cinnamon Toast Crunch Breakfast Cereal, Crispy Cinnamon Cereal Squares, Family Size, 18.8 oz",
+        store: "walmart",
+      },
+      {
+        productTitle: "Great Value Seasoned Potato Hash Brown Patties, 22.5 oz, 10 Count (Frozen)",
+        store: "walmart",
+      },
+      {
+        productTitle: "Amazon Fresh Boneless Skinless Chicken Breasts, 1.5 lb",
+        store: "amazon",
+      },
+      {
+        productTitle: "Happy Belly Cage-Free Large White Eggs, 12 Count",
+        store: "amazon",
+      },
+      {
+        productTitle: "365 by Whole Foods Market Organic Baby Spinach, 5 oz",
+        store: "wholefoods",
+      },
+      {
+        productTitle: "Good & Gather Organic Whole Milk - 0.5gal",
+        store: "target",
+      },
+      {
+        productTitle: "Tropicana Pure Premium Original No Pulp 100% Orange Juice, 52 fl oz",
+        store: "target",
+      },
+      {
+        productTitle: "Kirkland Signature Seasoned Rotisserie Chicken",
+        store: "costco",
+      },
+      {
+        productTitle: "Berkley Jensen Purified Water, 16.9 fl oz, 40 pk",
+        store: "bjs",
+      },
+      {
+        productTitle: "Clancy's Classic Potato Chips, 10 oz",
+        store: "aldi",
+      },
+      {
+        productTitle: "Friendly Farms Whole Milk, 1 gal",
+        store: "aldi",
+      },
+      {
+        productTitle: "Kroger Purified Drinking Water, 16.9 fl oz, 32 pk",
+        store: "kroger",
+      },
+      {
+        productTitle: "Jimmy Dean Regular Pork Sausage Roll, 16 oz",
+        store: "sams",
+      },
+      {
+        productTitle: "Oscar Mayer Classic Uncured Wieners, 16 oz",
+        store: "instacart",
+      },
+      {
+        productTitle: "Eggo Buttermilk Waffles, 10 ct",
+        store: "doordash",
+      },
+      {
+        productTitle: "Chobani Flip Almond Coco Loco Low-Fat Greek Yogurt, 4.5 oz",
+        store: "ubereats",
+      },
+      {
+        productTitle: "Barilla Spaghetti Pasta, 16 oz",
+        store: "shipt",
+      },
+    ];
+    const multiStoreScans = await Promise.all(
+      multiStoreRegressionCases.map(({ productTitle, store }) =>
+        scanMod.runScan({ productTitle, store, skipAnalytics: true }),
+      ),
+    );
+    const failedMultiStoreCases = multiStoreRegressionCases.filter((_, idx) => {
+      const r = multiStoreScans[idx];
+      return !r.ok || r.isCategoryEstimate || !Number.isFinite(r.result.score) || r.product.ingredients.length < 1;
+    });
+    if (failedMultiStoreCases.length > 0) {
+      console.error("Failed multiStoreRegressionCases:", failedMultiStoreCases);
+    }
+
+    const scanApiKt = fsNode.readFileSync(
+      "android-app/app/src/main/java/com/cleancart/overlay/ScanApi.kt",
+      "utf8",
+    );
+    const extManifestJson = fsNode.readFileSync("chrome-extension/manifest.json", "utf8");
+    const safariManifestJson = fsNode.readFileSync("ios-app/SafariExtension/Resources/manifest.json", "utf8");
+
+    check(
+      "All 13 Grocery Stores & Walmart Screenshot Score Reliability: Pop-Tarts SEO/slug variants, Little Debbie Vanilla Christmas Tree Cakes, Bar-S Franks, and representative items across all 13 stores resolve with verified ingredients; link-slug/GS1 recovery, batchPending deduplication, and 429 retryAfterMs hold across Android, iOS, Chrome, and Safari",
+      failedMultiStoreCases.length === 0 &&
+        androidDetectorJs.includes("recoverFromCardLinks") &&
+        androidDetectorJs.includes("unwrapProductHref") &&
+        androidDetectorJs.includes("isValidGs1Barcode") &&
+        androidDetectorJs.includes(".product.") &&
+        androidDetectorJs.includes("RetailItem") &&
+        androidDetectorJs.includes("batchPending") &&
+        androidDetectorJs.includes("retryAfterMs") &&
+        iosLiveStoreSwift.includes("recoverFromCardLinks") &&
+        iosLiveStoreSwift.includes("unwrapProductHref") &&
+        iosLiveStoreSwift.includes("isValidGs1Barcode") &&
+        iosLiveStoreSwift.includes("batchPending") &&
+        iosLiveStoreSwift.includes("retryAfterMs") &&
+        extContentJs.includes("recoverFromCardLinks") &&
+        extContentJs.includes("unwrapProductHref") &&
+        extContentJs.includes("isValidGs1Barcode") &&
+        /\bqfc\b/.test(extContentJs) &&
+        /\bmarianos\b/.test(extContentJs) &&
+        extManifestJson.includes("*://*.qfc.com/*") &&
+        safariManifestJson.includes("*://*.qfc.com/*") &&
+        scanApiKt.includes("transientFailure = true") &&
+        scanApiKt.includes("retryAfterSec") &&
+        androidLiveStoreKt.includes("batchPending") &&
+        androidLiveStoreKt.includes("retryAfterMs") &&
+        iosShortcutsSwift.includes("retryAfterSec"),
     );
   }
 

@@ -8,13 +8,16 @@
   const DEFAULT_API = "https://www.heybroc.com";
   const HOST = location.hostname.toLowerCase();
   const SUPPORTED_GROCERY_HOST_RE =
-    /(?:^|\.)(?:walmart\.com|instacart\.com|target\.com|kroger\.com|ralphs\.com|fredmeyer\.com|kingsoopers\.com|frysfood\.com|smithsfoodanddrug\.com|harristeeter\.com|aldi\.us|doordash\.com|ubereats\.com|amazon\.com|wholefoodsmarket\.com|samsclub\.com|bjs\.com|costco\.com|shipt\.com)$/;
+    /(?:^|\.)(?:walmart\.com|instacart\.com|target\.com|kroger\.com|ralphs\.com|fredmeyer\.com|kingsoopers\.com|frysfood\.com|smithsfoodanddrug\.com|harristeeter\.com|qfc\.com|mariano\.com|marianos\.com|picknsave\.com|metro-market\.net|metromarket\.net|dillons\.com|citymarket\.com|bakersplus\.com|gerbes\.com|jaycfoods\.com|pay-less\.com|food4less\.com|foodscompany\.com|aldi\.us|doordash\.com|ubereats\.com|amazon\.com|wholefoodsmarket\.com|samsclub\.com|bjs\.com|costco\.com|shipt\.com)$/;
   if (!SUPPORTED_GROCERY_HOST_RE.test(HOST)) return;
+
+  const KROGER_BANNER_HOST_RE =
+    /(?:kroger|ralphs|fredmeyer|kingsoopers|frysfood|smithsfoodanddrug|harristeeter|qfc|mariano|picknsave|metro-market|metromarket|dillons|citymarket|bakersplus|gerbes|jaycfoods|pay-less|food4less|foodscompany)/;
 
   const BASE_STORE = HOST.includes("walmart") ? "walmart"
     : HOST.includes("instacart") ? "instacart"
     : HOST.includes("target") ? "target"
-    : (HOST.includes("kroger") || HOST.includes("ralphs") || HOST.includes("fredmeyer") || HOST.includes("kingsoopers") || HOST.includes("frysfood") || HOST.includes("smithsfoodanddrug") || HOST.includes("harristeeter")) ? "kroger"
+    : KROGER_BANNER_HOST_RE.test(HOST) ? "kroger"
     : HOST.includes("aldi") ? "aldi"
     : HOST.includes("doordash") ? "doordash"
     : HOST.includes("ubereats") ? "ubereats"
@@ -1183,7 +1186,7 @@
 
   /* ---------------- Multi-Food DOM Scoping & Carousel Exclusion ---------------- */
   const NON_TITLE_RE =
-    /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|savings|deals|weekly\s+ad|dairy\s*&\s*eggs|fresh\s+produce|fruits?\s*&\s*vegetables?|meat\s*&\s*seafood|bakery(?:\s*&\s*bread)?|deli|frozen(?:\s+foods?)?|pantry|snacks|beverages|household|personal\s+care|all\s+products|shop\s+all|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
+    /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|product|item|ad|advertisement|walmart|target|costco(?:\s+wholesale)?|sam'?s\s+club|aldi|kroger|instacart|whole\s+foods(?:\s+market)?|amazon(?:\s+fresh)?|bj'?s(?:\s+wholesale\s+club)?|doordash|dashmart|uber\s*eats|shipt|boost\s+by\s+kroger|continue\s+as\s+guest|log\s*in|sign\s*in|sign\s*up|same-day\s+delivery|choose\s+a\s+store|departments|grocery|savings|deals|weekly\s+ad|dairy\s*&\s*eggs|fresh\s+produce|fruits?\s*&\s*vegetables?|meat\s*&\s*seafood|bakery(?:\s*&\s*bread)?|deli|frozen(?:\s+foods?)?|pantry|snacks|beverages|household|personal\s+care|all\s+products|shop\s+all|subtotal.*|estimated\s+total.*|substitutions?.*)$/i;
 
   const NON_INGREDIENT_RE =
     /\b(items to add next|product information|similar items|customers also|you might also|related items|frequently bought together|compare with similar|sold by|fulfilled by|see packaging|refer to packaging|nutrition facts|serving size)\b/i;
@@ -1545,58 +1548,268 @@
   }
 
   const PRODUCT_CARD_SEL = [
-    '[data-item-id]',
+    "[data-item-id]",
     '[data-testid="item-stack"] > div',
     '[data-testid*="list-view" i]',
     '[data-testid*="product-card" i]',
+    '[data-testid*="product_card" i]',
     '[data-testid*="item-card" i]',
     '[data-testid*="product-tile" i]',
+    '[data-testid*="RetailItem" i]',
+    '[data-testid*="StoreItem" i]',
+    '[data-testid*="MenuItem" i]',
+    '[data-testid*="store-item" i]',
+    '[data-testid*="grid-item" i]',
+    '[data-testid*="shelf-item" i]',
     '[data-test*="product-card" i]',
+    '[data-test*="product-tile" i]',
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-qa*="product-card" i]',
+    '[data-qa*="item-card" i]',
+    '[data-qa*="product-tile" i]',
     '[data-automation-id="product-tile"]',
+    '[data-automation-id*="product-tile" i]',
+    '[data-automation-id*="product-card" i]',
     '[data-component-type="s-search-result"]',
+    'div[class*="s-result-item"][data-asin]:not([data-asin=""])',
     '[data-asin]:not([data-asin=""])',
+    '[class*="ProductCard" i]',
+    '[class*="ItemCard" i]',
+    '[class*="product-tile" i]',
     'article[class*="product" i]',
     'li[class*="product" i]',
   ].join(", ");
 
   const MULTI_CARD_UNIT_SEL = [
-    '[data-item-id]',
+    "[data-item-id]",
     '[data-asin]:not([data-asin=""])',
     '[data-component-type="s-search-result"]',
     '[data-test*="@web/site-top-of-funnel/ProductCardWrapper"]',
     '[data-testid*="product-card" i]',
+    '[data-testid*="product_card" i]',
     '[data-testid*="item-card" i]',
+    '[data-testid*="product-tile" i]',
+    '[data-testid*="RetailItem" i]',
+    '[data-testid*="StoreItem" i]',
+    '[data-testid*="MenuItem" i]',
     '[data-qa*="product-card" i]',
+    '[data-automation-id="product-tile"]',
   ].join(", ");
+
+  const CARD_CTA_NOISE_RE =
+    /^(?:(?:\+\s*)?add(?:\s+to\s+(?:cart|bag|list|order))?|choose\s+options?|options?|select(?:\s+options?)?|view(?:\s+details|\s+item|\s+product)?|shop\s+now|quick\s+(?:add|look|shop|view)|sign\s+in(?:\s+to\s+add)?|out\s+of\s+stock|in\s+stock|many\s+in\s+stock|low\s+stock|sold\s+out|unavailable|notify\s+me|subscribe(?:\s*&\s*save)?|clip(?:\s+coupon)?|coupon(?:\s+available)?|sponsored|best\s+seller|overall\s+pick|popular(?:\s+pick)?|rollback|clearance|sale|deal|snap(?:\s+ebt)?(?:\s+eligible)?|ebt(?:\s+eligible)?|pickup|delivery|shipping|free\s+(?:shipping|pickup|delivery).*|save\s+\$?\d.*|\$?\d+(?:\.\d+)?\s+off\b.*|\d+%\s+off\b.*|buy\s+\d+.*get\s+\d+.*|bogo\b.*|\d+%\s*(?:\(\d+\))?|\d+(?:\.\d+)?\s*(?:stars?|out\s+of\s+5).*|\d+\s*(?:cal|kcal|calories?)\b.*|\$?\d+(?:\.\d+)?\s*\/\s*[a-z]+.*|\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|gal|qt|pt|ml|l|g|kg|ct|count|pk|pack)\b)$/i;
+
+  function isValidGs1Barcode(code) {
+    const digits = String(code || "").replace(/\D/g, "");
+    if (!/^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(digits)) return false;
+    if (/^0+$/.test(digits)) return false;
+    let sum = 0;
+    const len = digits.length;
+    for (let i = 0; i < len - 1; i++) {
+      const d = digits.charCodeAt(len - 2 - i) - 48;
+      sum += i % 2 === 0 ? d * 3 : d;
+    }
+    const check = (10 - (sum % 10)) % 10;
+    return check === digits.charCodeAt(len - 1) - 48;
+  }
+
+  function unwrapProductHref(rawHref) {
+    let h = String(rawHref || "").trim();
+    if (!h) return "";
+    for (let pass = 0; pass < 2; pass++) {
+      const m = h.match(/[?&](?:rd|url|redirect|dest|destination|target|u)=([^&#]+)/i);
+      if (!m || !m[1]) break;
+      try {
+        const dec = decodeURIComponent(m[1]);
+        if (dec && dec !== h) {
+          h = dec;
+          continue;
+        }
+      } catch {
+        /* ignore */
+      }
+      break;
+    }
+    try {
+      if (/%2F/i.test(h) && !/\//.test(h.replace(/^https?:\/\/[^/]+/i, ""))) {
+        h = decodeURIComponent(h);
+      }
+    } catch {
+      /* ignore */
+    }
+    return h;
+  }
+
+  function humanizeProductSlug(slug) {
+    let s = String(slug || "");
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      /* ignore */
+    }
+    s = s
+      .replace(/\.(?:html?|aspx?)$/i, "")
+      .replace(/[-_+]+/g, " ")
+      .replace(/\b([sS])\s+mores\b/g, "$1'mores")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (
+      s.length < 6 ||
+      s.length > 240 ||
+      !/[a-zA-Z]{3}/.test(s) ||
+      /^\d+$/.test(s) ||
+      NON_TITLE_RE.test(s) ||
+      CARD_CTA_NOISE_RE.test(s)
+    ) {
+      return "";
+    }
+    return s;
+  }
+
+  function extractSlugFromPath(unwrappedHref) {
+    let pathOnly = String(unwrappedHref || "").split("#")[0].split("?")[0];
+    pathOnly = pathOnly.replace(/^https?:\/\/[^/]+/i, "");
+    if (!pathOnly) return "";
+    let m = pathOnly.match(/\/ip\/([^/]+)\/\d{4,20}(?:\/|$)/i);
+    if (m && m[1] && !/^(?:seort|track)$/i.test(m[1])) return humanizeProductSlug(m[1]);
+    m = pathOnly.match(/\/p\/([^/]+)\/(?:-\/A-\d+|\d{5,20})(?:\/|$)/i);
+    if (m && m[1]) return humanizeProductSlug(m[1]);
+    m = pathOnly.match(/\/([^/]+)\.product\.\d+/i);
+    if (m && m[1]) return humanizeProductSlug(m[1]);
+    m = pathOnly.match(/\/sams\/shop\/product\/([^/]+)\/[A-Za-z0-9_-]+/i);
+    if (m && m[1]) return humanizeProductSlug(m[1]);
+    m = pathOnly.match(/\/([^/]+)\/dp\/[A-Z0-9]{10}(?:\/|$)/i);
+    if (m && m[1] && !/^(?:gp|product)$/i.test(m[1])) return humanizeProductSlug(m[1]);
+    m = pathOnly.match(/\/(?:products?|items?)\/(?:\d+-)?([a-zA-Z][^/]{5,200})(?:\/|$)/i);
+    if (m && m[1] && !/^\d+$/.test(m[1])) return humanizeProductSlug(m[1]);
+    return "";
+  }
+
+  function recoverFromCardLinks(cardEl, visibleTitle) {
+    let bestTitle = String(visibleTitle || "");
+    const isTruncated = !bestTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(bestTitle);
+    const stem = bestTitle
+      ? bestTitle
+          .replace(/(?:\.\.\.|…|[,(\/-])\s*$/, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .trim()
+          .slice(0, 18)
+      : "";
+    let barcode = "";
+    const attrNames = ["data-upc", "data-gtin", "data-ean", "data-barcode"];
+    for (const an of attrNames) {
+      let rawCode = cardEl.getAttribute ? cardEl.getAttribute(an) || "" : "";
+      if (!rawCode && cardEl.querySelector) {
+        const sub = cardEl.querySelector(`[${an}]`);
+        if (sub) rawCode = sub.getAttribute(an) || "";
+      }
+      const digits = String(rawCode).replace(/\D/g, "");
+      if (isValidGs1Barcode(digits)) {
+        barcode =
+          digits.length === 14 && digits.startsWith("00")
+            ? digits.slice(2)
+            : digits.length === 14 && digits.startsWith("0")
+              ? digits.slice(1)
+              : digits;
+        break;
+      }
+    }
+    let bestHrefKey = "";
+    const links = cardEl.querySelectorAll ? cardEl.querySelectorAll("a[href]") : [];
+    for (const a of links) {
+      if (a.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
+      const rawHref = String(a.getAttribute("href") || "");
+      const unwrapped = unwrapProductHref(rawHref);
+      const cleanPath = unwrapped.split("#")[0].split("?")[0];
+      if (!bestHrefKey && cleanPath) {
+        bestHrefKey = cleanPath.slice(0, 160);
+      }
+      if (!barcode && cleanPath) {
+        const bm = cleanPath.match(/(?:^|\/)(\d{12,14})(?:[/?#.]|$)/);
+        if (bm && bm[1] && isValidGs1Barcode(bm[1])) {
+          const bc = bm[1];
+          barcode =
+            bc.length === 14 && bc.startsWith("00")
+              ? bc.slice(2)
+              : bc.length === 14 && bc.startsWith("0")
+                ? bc.slice(1)
+                : bc;
+        }
+      }
+      if (isTruncated) {
+        const ariaCand = cleanProductTitleText(a.getAttribute("aria-label") || a.getAttribute("title") || "");
+        if (
+          ariaCand &&
+          ariaCand.length > bestTitle.length &&
+          ariaCand.length <= 240 &&
+          !/(?:\.\.\.|…)\s*$/.test(ariaCand) &&
+          !NON_TITLE_RE.test(ariaCand) &&
+          !CARD_CTA_NOISE_RE.test(ariaCand) &&
+          !/^\$\d/.test(ariaCand)
+        ) {
+          const normAria = ariaCand.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          if (!stem || normAria.startsWith(stem)) {
+            bestTitle = ariaCand;
+          }
+        }
+      }
+      if (!bestTitle || /(?:\.\.\.|…|[,(\/-])\s*$|\([^)]*$/.test(bestTitle)) {
+        const slugCand = extractSlugFromPath(cleanPath);
+        if (slugCand) {
+          const normSlug = slugCand.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          if (!bestTitle) {
+            bestTitle = slugCand;
+          } else if (slugCand.length > bestTitle.length - 2 && (!stem || normSlug.startsWith(stem.slice(0, 12)))) {
+            bestTitle = slugCand;
+          }
+        }
+      }
+    }
+    return { title: bestTitle, barcode, hrefKey: bestHrefKey };
+  }
 
   function readProductCardInfo(cardEl) {
     if (!cardEl || host?.contains(cardEl)) return null;
-    if (cardEl.closest("header, nav, footer")) return null;
+    if (cardEl.closest('header, nav, footer, [role="contentinfo"]')) return null;
     if (isCartDrawerElement(cardEl.closest('[role="dialog"], aside, section'))) return null;
 
     const titleSelectors = [
       "span.w_iUH7",
       '[class*="w_iUH7"]',
       '[data-automation-id="product-title"]',
+      '[data-automation-id*="product-title" i]',
       '[data-test="product-title"]',
+      '[data-test*="product-title" i]',
+      '[data-test*="item-title" i]',
       '[data-testid*="product-title" i]',
       '[data-testid*="item-title" i]',
+      '[data-testid*="item-name" i]',
+      '[data-testid*="product-name" i]',
       '[data-testid*="product-card-name" i]',
+      '[data-testid*="product-card-description" i]',
+      '[data-testid*="store-item-title" i]',
       '[data-qa*="product-name" i]',
+      '[data-qa*="item-name" i]',
+      '[class*="ProductCard-name" i]',
+      '[class*="ProductTitle" i]',
       "h2 a span",
       "h3 a span",
+      "h4 a span",
       "h2",
       "h3",
+      "h4",
+      '[data-testid="rich-text"]',
       "a[link-identifier]",
       'a[href*="/sp/track"]',
       'a[href*="/ip/"]',
+      'a[href*=".product."]',
       'a[href*="/sams/shop/product/"]',
       'a[href*="/p/"]',
       'a[href*="/dp/"]',
       'a[href*="/gp/aw/d/"]',
       'a[href*="/products/"]',
+      'a[href*="/items/"]',
       'a[href*="/detail/ps/p/"]',
       'a[href*="/product/"]',
     ];
@@ -1607,7 +1820,14 @@
       for (const el of els) {
         if (el.classList?.contains?.("cc-photo-badge") || el.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
         const raw = cleanProductTitleText(el?.getAttribute?.("aria-label") || el?.textContent || "");
-        if (raw && raw.length >= 5 && raw.length <= 240 && !NON_TITLE_RE.test(raw) && !/^\$\d/.test(raw)) {
+        if (
+          raw &&
+          raw.length >= 5 &&
+          raw.length <= 240 &&
+          !NON_TITLE_RE.test(raw) &&
+          !CARD_CTA_NOISE_RE.test(raw) &&
+          !/^\$\d/.test(raw)
+        ) {
           title = raw;
           const linkEl = el.tagName === "A" ? el : el.closest?.("a[href]") || el.querySelector?.("a[href]");
           matchedHref = linkEl?.getAttribute?.("href") || "";
@@ -1628,6 +1848,7 @@
             fullCand.length <= 240 &&
             !/(?:\.\.\.|…)\s*$/.test(fullCand) &&
             !NON_TITLE_RE.test(fullCand) &&
+            !CARD_CTA_NOISE_RE.test(fullCand) &&
             !/^\$\d/.test(fullCand) &&
             (!stem || fullCand.toLowerCase().startsWith(stem))
           ) {
@@ -1655,8 +1876,9 @@
         if (
           rawAlt &&
           rawAlt.length >= 6 &&
-          rawAlt.length <= 200 &&
+          rawAlt.length <= 240 &&
           !NON_TITLE_RE.test(rawAlt) &&
+          !CARD_CTA_NOISE_RE.test(rawAlt) &&
           !/^(?:product(?:\s+image)?|thumbnail|photo|image)$/i.test(rawAlt) &&
           !/^\$\d/.test(rawAlt)
         ) {
@@ -1684,9 +1906,38 @@
         domImageUrl = cand;
       }
     }
+    if (!title) {
+      for (const aEl of cardEl.querySelectorAll("a[href]")) {
+        if (aEl.closest?.(".cc-photo-badge, .cc-photo-badge-slot")) continue;
+        const aCand = cleanProductTitleText(aEl.getAttribute("aria-label") || aEl.textContent || "");
+        if (
+          aCand &&
+          aCand.length >= 6 &&
+          aCand.length <= 240 &&
+          !NON_TITLE_RE.test(aCand) &&
+          !CARD_CTA_NOISE_RE.test(aCand) &&
+          !/^\$\d/.test(aCand)
+        ) {
+          title = aCand;
+          matchedHref = matchedHref || aEl.getAttribute("href") || "";
+          break;
+        }
+      }
+    }
+    const rec = recoverFromCardLinks(cardEl, title);
+    title = rec.title;
     if (!title) return null;
-    const itemId = extractRetailerItemIdFromUrlOrNode(matchedHref, cardEl);
-    return { title, image: domImageUrl, domImageUrl, imgEl: primaryImgEl, itemId };
+    const effectiveHref = rec.hrefKey || unwrapProductHref(matchedHref) || matchedHref;
+    const itemId = extractRetailerItemIdFromUrlOrNode(effectiveHref, cardEl);
+    return {
+      title,
+      barcode: rec.barcode || "",
+      hrefKey: rec.hrefKey || "",
+      image: domImageUrl,
+      domImageUrl,
+      imgEl: primaryImgEl,
+      itemId,
+    };
   }
 
   /* ---------------- Live Store Cart Scraping & Instant Deletion Sync ---------------- */
@@ -3956,7 +4207,7 @@
   /* ---------------- Automatic On-Photo Score Badges (Search / Aisle Grids) ---------------- */
   const PHOTO_BADGE_STYLE_ID = "cleancart-photo-badge-styles";
   const PRODUCT_LINK_FALLBACK_SEL =
-    'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
+    'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*=".product."], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*="item_id="], a[href*="product_id="], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
   const MAX_IN_FLIGHT_PHOTO_BATCHES = 2;
 
   const gridScanCache = new Map();
@@ -4139,7 +4390,7 @@
     return best;
   }
 
-  function mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl) {
+  function mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl, chosenImg = null) {
     if (!anchor || !badgeEl) return false;
     const ar = anchor.getBoundingClientRect();
     let slotTarget = climbAboveExtCarousel(anchor, cardEl, (ar.height || 240) + 80);
@@ -4205,6 +4456,17 @@
       }
     }
     badgeEl.classList.remove("cc-photo-badge--under");
+    if (chosenImg && anchor) {
+      const ancRect = anchor.getBoundingClientRect();
+      const liveImgRect = chosenImg.getBoundingClientRect();
+      if (liveImgRect.height >= 40 && ancRect.height > liveImgRect.height + 90) {
+        const relTop = Math.max(6, Math.round(liveImgRect.bottom - ancRect.top - 40));
+        if (relTop < ancRect.height - 36) {
+          badgeEl.style.setProperty("top", `${relTop}px`, "important");
+          badgeEl.style.setProperty("bottom", "auto", "important");
+        }
+      }
+    }
     anchor.appendChild(badgeEl);
     return true;
   }
@@ -4221,7 +4483,12 @@
 
   function computeCardSignature(cardEl, info) {
     const linkEl = cardEl?.querySelector?.(PRODUCT_LINK_FALLBACK_SEL) || cardEl?.querySelector?.("a[href]");
-    const rawHref = (linkEl?.getAttribute("href") || "").split("#")[0].split("?")[0];
+    const rawHref =
+      info?.hrefKey ||
+      unwrapProductHref(linkEl?.getAttribute("href") || "")
+        .split("#")[0]
+        .split("?")[0]
+        .slice(0, 160);
     const normTitle = (info?.title || "").toLowerCase().trim();
     if (normTitle) {
       return `${normTitle}|${rawHref}|${activeBucket.bucketKey}|${photoBadgePrefRev}`;
@@ -4311,8 +4578,8 @@
       const parentR = img.parentElement?.getBoundingClientRect?.() || r;
       const effW = Math.max(r.width, parentR.width);
       const effH = Math.max(r.height, parentR.height);
-      if (effW >= 56 && effH >= 56 && effW <= 440 && effH <= 440) {
-        const boxR = r.width >= 40 && r.height >= 40 ? r : parentR;
+      if (effW >= 44 && effH >= 44 && effW <= 640 && effH <= 640) {
+        const boxR = r.width >= 32 && r.height >= 32 ? r : parentR;
         const horizVisible =
           !cardRect ||
           cardRect.width < 40 ||
@@ -4329,11 +4596,11 @@
     }
     if (!chosenImg) return null;
 
-    const maxContainerH = (imgRect?.height || 240) + 72;
+    const maxContainerH = Math.min(460, Math.max(120, Math.round(imgRect?.height || 220)) + 120);
     let cur = chosenImg.parentElement;
     let positionedCand = null;
     let fallbackBlock = null;
-    for (let depth = 0; depth < 4 && cur && cur !== document.body && cardEl.contains(cur); depth++) {
+    for (let depth = 0; depth < 6 && cur && cur !== document.body && cardEl.contains(cur); depth++) {
       if (cur.tagName === "PICTURE") {
         cur = cur.parentElement;
         continue;
@@ -4343,12 +4610,12 @@
       const existingSlot = cur.querySelector?.(":scope > .cc-photo-badge-slot");
       const slotH = existingSlot ? existingSlot.getBoundingClientRect().height : 0;
       const effectiveH = Math.max(0, cr.height - slotH);
-      if (cr.width >= 56 && effectiveH >= 56 && effectiveH <= maxContainerH) {
-        if (!positionedCand && cs.position !== "static") {
+      if (cr.width >= 44 && effectiveH >= 44 && effectiveH <= maxContainerH) {
+        if (!positionedCand && cs.position !== "static" && !/^(?:inline|contents)$/i.test(cs.display)) {
           positionedCand = cur;
           break;
         }
-        if (!fallbackBlock && !/^inline$/i.test(cs.display)) {
+        if (!fallbackBlock && !/^(?:inline|contents)$/i.test(cs.display)) {
           fallbackBlock = cur;
         }
       }
@@ -4357,14 +4624,31 @@
     }
 
     let resolved = positionedCand || fallbackBlock;
+    if (!resolved && cardEl && cardEl !== document.body) {
+      const cr = cardEl.getBoundingClientRect();
+      if (cr.width >= 44 && cr.height >= 44 && cr.height <= 780) {
+        resolved = cardEl;
+      }
+    }
     if (!resolved) return null;
     resolved = climbAboveExtCarousel(resolved, cardEl, maxContainerH);
     const resPos = window.getComputedStyle(resolved).position;
     if (resPos === "static") {
-      const imgPos = window.getComputedStyle(chosenImg).position;
-      if (imgPos === "static" || resolved !== fallbackBlock) {
-        resolved.style.position = "relative";
-      } else {
+      const prevPos = resolved.style.position;
+      const beforeR = chosenImg.getBoundingClientRect();
+      resolved.style.position = "relative";
+      const afterR = chosenImg.getBoundingClientRect();
+      if (beforeR.width >= 40 && (afterR.width < 24 || afterR.height < 24)) {
+        resolved.style.position = prevPos;
+        if (cardEl && cardEl !== resolved) {
+          const fbR = cardEl.getBoundingClientRect();
+          if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= 780) {
+            if (window.getComputedStyle(cardEl).position === "static") {
+              cardEl.style.position = "relative";
+            }
+            return isolatePhotoBadgeAnchor(cardEl, cardEl);
+          }
+        }
         return null;
       }
     }
@@ -4474,6 +4758,25 @@
       return;
     }
 
+    if (pendingPhotoBadgeQueue.size > 8) {
+      const vhNow = Math.max(400, window.innerHeight || 800);
+      const onScreen = [];
+      const nearScreen = [];
+      const offScreen = [];
+      for (const pair of pendingPhotoBadgeQueue.entries()) {
+        const qe = pair[1];
+        if (!qe.cardEl?.isConnected) continue;
+        const qr = qe.cardEl.getBoundingClientRect();
+        if (qr.bottom > 40 && qr.top < vhNow - 20) onScreen.push(pair);
+        else if (qr.bottom > -220 && qr.top < vhNow + 260) nearScreen.push(pair);
+        else offScreen.push(pair);
+      }
+      pendingPhotoBadgeQueue.clear();
+      for (const [k, v] of [...onScreen, ...nearScreen, ...offScreen]) {
+        pendingPhotoBadgeQueue.set(k, v);
+      }
+    }
+
     const batchEntries = [];
     for (const [id, entry] of pendingPhotoBadgeQueue.entries()) {
       pendingPhotoBadgeQueue.delete(id);
@@ -4502,7 +4805,11 @@
 
     const gen = photoBadgeGeneration;
     const reqBucket = activeBucket;
-    const items = batchEntries.map((e) => ({ id: e.id, productTitle: e.info.title }));
+    const items = batchEntries.map((e) =>
+      e.info.barcode
+        ? { id: e.id, productTitle: e.info.title, barcode: e.info.barcode }
+        : { id: e.id, productTitle: e.info.title }
+    );
     inFlightPhotoBatches++;
 
     const markBatchRetry = (backoffMs, allowRetry = true) => {
@@ -4512,7 +4819,7 @@
         const curState = cardStateByEl.get(entry.cardEl);
         if (curState && curState.badgeEl && curState.badgeEl !== entry.badgeEl) continue;
         const prevRetries = entry.retryCount || 0;
-        if (allowRetry && prevRetries < 2) {
+        if (allowRetry && prevRetries < 4) {
           cardStateByEl.set(entry.cardEl, {
             sig: entry.sig,
             status: "retry",
@@ -4560,7 +4867,7 @@
           const map = batchResp?.results || batchResp?.batch || null;
           if (!batchResp?.ok || !map || typeof map !== "object") {
             const shouldRetry = batchResp?.transient !== false;
-            const retryMs = Math.max(1500, Number(batchResp?.retryAfterMs) || 2200);
+            const retryMs = Math.min(62000, Math.max(1500, Number(batchResp?.retryAfterMs) || 2200));
             markBatchRetry(retryMs, shouldRetry);
             return;
           }
@@ -4608,6 +4915,17 @@
                 retryCount: 0,
                 nextRetryAt: 0,
               });
+              if (
+                shown &&
+                !keepOpen &&
+                isTouchPrimary() &&
+                !isProductPage() &&
+                !state.expanded &&
+                !state.auditorOpen &&
+                state.hoveredCardData?.title === entry.info.title
+              ) {
+                void applyScanResult(itemResp, entry.domImg, ++scanSeq);
+              }
               if (keepOpen) {
                 if (shown) {
                   handlePhotoBadgeActivate(entry.badgeEl);
@@ -4653,6 +4971,7 @@
                     type: "CLEANCART_SCAN",
                     payload: {
                       productTitle: entry.info.title,
+                      barcode: entry.info.barcode || undefined,
                       store: reqBucket.store,
                       instacartRetailerSlug: reqBucket.instacartRetailerSlug,
                     },
@@ -4720,7 +5039,7 @@
       badgeEl.className = "cc-photo-badge";
       badgeEl.setAttribute("role", "button");
       badgeEl.setAttribute("tabindex", "0");
-      mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl);
+      mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl, info.imgEl);
       const shown = applyScoredPhotoBadgeState(badgeEl, cached, info, domImg, cardEl, sig);
       cardStateByEl.set(cardEl, {
         sig,
@@ -4739,7 +5058,7 @@
     badgeEl.setAttribute("aria-label", `Scoring ${info.title} with HeyBroc`);
     badgeEl.dataset.ccSig = sig;
     badgeEl.textContent = "🥦 …";
-    mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl);
+    mountPhotoBadgeUnderOrOnPhoto(cardEl, anchor, badgeEl, info.imgEl);
     badgeDataByElement.set(badgeEl, {
       resp: null,
       info,
@@ -4783,13 +5102,14 @@
     const found = [];
     const seen = new Set();
     const onPdp = isProductPage();
+    const maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 412) + 32);
 
     const addCandidate = (el) => {
       if (!el || seen.has(el) || host?.contains(el)) return;
-      if (el.closest("header, nav, footer")) return;
+      if (el.closest('header, nav, footer, [role="contentinfo"]')) return;
       if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && (r.width < 90 || r.width > (onPdp ? 340 : 540) || r.height < 84 || r.height > 760)) return;
+      if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 780)) return;
       for (let i = 0; i < found.length; i++) {
         const ex = found[i];
         if (ex.contains(el)) return;
@@ -4807,18 +5127,18 @@
     const directCards = document.querySelectorAll(PRODUCT_CARD_SEL);
     for (const c of directCards) addCandidate(c);
 
-    // Link-based tile fallback for mobile storefronts (Instacart, Sam's Club, ALDI, Walmart mobile)
+    // Link-based tile fallback for mobile storefronts (Instacart, Sam's Club, ALDI, Costco, Walmart mobile)
     if (!onPdp) {
       const links = document.querySelectorAll(PRODUCT_LINK_FALLBACK_SEL);
       for (const a of links) {
-        if (a.closest(PRODUCT_CARD_SEL) || a.closest("header, nav, footer")) continue;
+        if (a.closest(PRODUCT_CARD_SEL) || a.closest('header, nav, footer, [role="contentinfo"]')) continue;
         let cur = a;
         let tile = null;
         for (let depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
           if (cur.querySelector("img")) {
             if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
             const r = cur.getBoundingClientRect();
-            if (r.width >= 96 && r.width <= 540 && r.height >= 92 && r.height <= 720) {
+            if (r.width >= 90 && r.width <= maxCardW && r.height >= 90 && r.height <= 760) {
               tile = cur;
               if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
             }
@@ -4826,6 +5146,20 @@
           cur = cur.parentElement;
         }
         if (tile) addCandidate(tile);
+      }
+
+      if (/(?:doordash|ubereats|instacart|shipt|aldi)\./i.test(HOST)) {
+        const btnTiles = document.querySelectorAll('div[role="button"], li[role="button"], button');
+        for (let bt = 0; bt < btnTiles.length && bt < 220; bt++) {
+          const bel = btnTiles[bt];
+          if (bel.closest(PRODUCT_CARD_SEL) || bel.closest('header, nav, footer, [role="contentinfo"]')) continue;
+          if (!bel.querySelector?.("img")) continue;
+          if (bel.querySelectorAll("img").length > 3) continue;
+          const br = bel.getBoundingClientRect();
+          if (br.width < 96 || br.width > maxCardW || br.height < 110 || br.height > 640) continue;
+          if (!/\$\s*\d/.test(bel.textContent || "")) continue;
+          addCandidate(bel);
+        }
       }
     }
     return found;
@@ -4978,10 +5312,8 @@
     for (const el of document.querySelectorAll(PRODUCT_CARD_SEL)) {
       addMobileCandidate(el);
     }
-    const prodLinks = document.querySelectorAll(
-      'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"]'
-    );
-    for (let i = 0; i < prodLinks.length && i < 140; i++) {
+    const prodLinks = document.querySelectorAll(PRODUCT_LINK_FALLBACK_SEL);
+    for (let i = 0; i < prodLinks.length && i < 160; i++) {
       const a = prodLinks[i];
       if (!a || host?.contains(a)) continue;
       let card = a.closest(PRODUCT_CARD_SEL);
@@ -4991,7 +5323,7 @@
         while (cur && cur !== document.body && !/^(MAIN|UL|OL|SECTION)$/i.test(cur.tagName) && depth < 6) {
           if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
           const r = cur.getBoundingClientRect();
-          if (r.height >= 64 && r.height <= 640 && r.width >= 110) {
+          if (r.height >= 64 && r.height <= 760 && r.width >= 100) {
             card = cur;
             break;
           }
@@ -5018,7 +5350,7 @@
       if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
       if (isCartDrawerElement(card.closest('[role="dialog"], aside, section'))) continue;
       const cr = card.getBoundingClientRect();
-      if (cr.height < 54 || cr.height > 680 || cr.width < 100) continue;
+      if (cr.height < 54 || cr.height > 780 || cr.width < 90) continue;
       if (cr.bottom < 105 || cr.top > vh - 55) continue;
 
       const overlapDist =
@@ -5109,12 +5441,19 @@
       void applyScanResult(cached, domImg, seq);
       return;
     }
+    if (isTouchPrimary()) {
+      const cardSt = cardStateByEl.get(cardEl);
+      if (cardSt && (cardSt.status === "queued" || cardSt.status === "inflight")) {
+        return;
+      }
+    }
     const reqBucket = activeBucket;
     chrome.runtime.sendMessage(
       {
         type: "CLEANCART_SCAN",
         payload: {
           productTitle: info.title,
+          barcode: info.barcode || undefined,
           store: reqBucket.store,
           instacartRetailerSlug: reqBucket.instacartRetailerSlug,
           skipAnalytics: true,

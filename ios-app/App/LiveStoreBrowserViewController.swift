@@ -110,6 +110,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
     private var lastDetectedStoreImageUrl: String = ""
     private var lastDetectedInstacartSlug: String = ""
     private var lastDetectedIsCard: Bool = false
+    private var lastDetectedCardId: String = ""
     private var lastScannedKey: String = ""
     private var latestSummary: HeyBrocNativeScanSummary?
     private var cardSummariesById: [String: HeyBrocNativeScanSummary] = [:]
@@ -632,7 +633,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           if (window.__heybrocLiveObserverInstalled) return;
           window.__heybrocLiveObserverInstalled = true;
 
-          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|deals|weekly\\s+ad|dairy\\s*&\\s*eggs|fresh\\s+produce|fruits?\\s*&\\s*vegetables?|meat\\s*&\\s*seafood|bakery(?:\\s*&\\s*bread)?|deli|frozen(?:\\s+foods?)?|pantry|snacks|beverages|household|personal\\s+care|all\\s+products|shop\\s+all)$/i;
+          var NON_TITLE_RE = /^(search|your cart|shopping cart|cart|bag|basket|checkout|review order|order summary|items to add next|product information|similar items|customers also.*|sponsored.*|product|item|ad|advertisement|buy (?:it )?again|frequently bought together|saved for later|walmart|target|costco(?:\\s+wholesale)?|sam'?s\\s+club|aldi|kroger|instacart|whole\\s+foods(?:\\s+market)?|amazon(?:\\s+fresh)?|bj'?s(?:\\s+wholesale\\s+club)?|doordash|dashmart|uber\\s*eats|shipt|sign\\s*in|log\\s*in|continue\\s+as\\s+guest|departments|grocery|deals|weekly\\s+ad|dairy\\s*&\\s*eggs|fresh\\s+produce|fruits?\\s*&\\s*vegetables?|meat\\s*&\\s*seafood|bakery(?:\\s*&\\s*bread)?|deli|frozen(?:\\s+foods?)?|pantry|snacks|beverages|household|personal\\s+care|all\\s+products|shop\\s+all)$/i;
           var EXCLUDED_CONTAINER_SEL = '[data-testid*="carousel" i], [class*="carousel" i], [aria-label*="Sponsored" i], [data-testid*="sponsored" i], [data-testid*="similar" i], [data-testid*="related" i], [data-testid*="upsell" i], [data-testid*="recommend" i], #sc-saved-cart';
           var EXCLUDED_HEADING_RE = /\\b(customers\\s+also\\s+(?:viewed|bought|shopped|considered)|similar\\s+items?|sponsored(?:\\s+products?|\\s+items?)?|buy\\s+(?:it\\s+)?again|frequently\\s+bought\\s+together|items?\\s+to\\s+add\\s+next|recommended(?:\\s+for\\s+you)?|you\\s+may\\s+also\\s+like|related\\s+(?:products?|items?)|more\\s+to\\s+consider|saved\\s+for\\s+later)\\b/i;
 
@@ -938,7 +939,143 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return '';
           }
 
-          var CARD_CTA_NOISE_RE = /^(?:add(?:\\s+to\\s+(?:cart|bag|basket|order))?|options|choose\\s+options|select\\s+options|quick\\s+add|view\\s+details|sponsored|shop\\s+now|\\+|-|\\d+\\s*ct)$/i;
+          var CARD_CTA_NOISE_RE = /^(?:add(?:\\s+to\\s+(?:cart|bag|basket|order))?|options|choose\\s+options|select\\s+options|quick\\s+add|view\\s+details|sponsored(?:\\s+(?:ad|product|item))?|product|item|ad|advertisement|shop\\s+now|best\\s+seller|overall\\s+pick|popular(?:\\s+pick)?|rollback|clearance|new|sale|deal|promo|coupon|clip\\s+coupon|save\\s+\\$?\\d.*|buy\\s+\\d+.*|get\\s+\\d+.*|\\$?\\d+(?:\\.\\d+)?\\s*\\/\\s*[a-z]+.*|\\d+(?:\\.\\d+)?%\\s*(?:off|\\(\\d+\\)).*|(?:many|low|out|back)\\s+(?:in|of)\\s+stock|in\\s+stock|out\\s+of\\s+stock|snap(?:\\s+ebt)?|ebt(?:\\s+eligible)?|free\\s+(?:pickup|delivery|shipping).*|(?:pickup|delivery|shipping)\\s+(?:today|tomorrow|available).*|\\+|-|\\d+(?:\\.\\d+)?\\s*(?:cal|kcal|oz|lb|lbs|g|kg|ml|l|fl\\s*oz|ct|count|pk|pack|each|ea))$/i;
+
+          function isValidGs1Barcode(code) {
+            var c = String(code || '').replace(/\\D/g, '');
+            if (!/^(?:\\d{8}|\\d{12}|\\d{13}|\\d{14})$/.test(c) || /^0+$/.test(c)) return false;
+            var sum = 0;
+            for (var i = 0; i < c.length - 1; i++) {
+              var digit = c.charCodeAt(c.length - 2 - i) - 48;
+              sum += (i % 2 === 0) ? digit * 3 : digit;
+            }
+            var check = (10 - (sum % 10)) % 10;
+            return check === (c.charCodeAt(c.length - 1) - 48);
+          }
+
+          function unwrapProductHref(rawHref) {
+            var h = String(rawHref || '').trim();
+            if (!h || h.charAt(0) === '#' || /^javascript:/i.test(h)) return '';
+            try {
+              var u = new URL(h, location.href);
+              var path = u.pathname || '';
+              if (/\\/sp\\/track\\b|\\/gp\\/slredirect\\b|\\/clicks?\\b|\\/redirect\\b/i.test(path) || u.searchParams.has('rd') || u.searchParams.has('url')) {
+                var inner = u.searchParams.get('rd') || u.searchParams.get('url') || u.searchParams.get('redirect') || '';
+                if (inner) {
+                  if (/%[0-9a-f]{2}/i.test(inner)) {
+                    try { inner = decodeURIComponent(inner); } catch (e) {}
+                  }
+                  var iu = new URL(inner, location.href);
+                  return (iu.pathname || '') + (iu.search || '');
+                }
+              }
+              return path + (u.search || '');
+            } catch (e) {
+              return h;
+            }
+          }
+
+          function humanizeProductSlug(rawSlug) {
+            var s = String(rawSlug || '');
+            try { s = decodeURIComponent(s); } catch (e) {}
+            s = s
+              .replace(/\\.(?:html?|htm)$/i, '')
+              .replace(/-(?:b0[a-z0-9]{8}|\\d{5,20})$/i, '')
+              .replace(/^\\d{4,18}-/, '')
+              .replace(/[_+]+/g, ' ')
+              .replace(/-/g, ' ')
+              .replace(/\\s+/g, ' ')
+              .trim();
+            if (!s || s.length < 6 || s.length > 240) return '';
+            if (/^(?:seort|ip|dp|gp|product|products|items?|shop|store|browse|search|category|categories|aisle|deals|all)$/i.test(s)) return '';
+            if (/^[0-9a-f]{8}(?:\\s+[0-9a-f]{4}){3}\\s+[0-9a-f]{12}$/i.test(s)) return '';
+            var alphaWords = s.split(' ').filter(function(w) { return /[a-zA-Z]{2,}/.test(w); });
+            if (alphaWords.length < 2) return '';
+            s = s
+              .replace(/\\bs\\s+mores\\b/gi, 'S\\'mores')
+              .replace(/\\bm\\s+m\\s*s\\b/gi, 'M&M\\'s')
+              .replace(/\\b(reese|welch|kellogg|campbell|hershey|annie|clancy|member|bj|sam|nature|dave|amy|ben|snyder|lay)\\s+s\\b/gi, '$1\\'s');
+            return clean(s);
+          }
+
+          function extractSlugFromPath(pathOnly) {
+            var p = String(pathOnly || '');
+            if (!p) return '';
+            var m =
+              p.match(/\\/ip\\/([^/?#]+)\\/\\d{5,20}(?:[/?#]|$)/i) ||
+              p.match(/\\/sams\\/shop\\/product\\/([^/?#]+)(?:\\/|$)/i) ||
+              p.match(/\\/([^/?#]+)\\.product\\.\\d+(?:\\.html)?(?:[/?#]|$)/i) ||
+              p.match(/\\/p\\/-\\/([^/?#]+)(?:\\/|$)/i) ||
+              p.match(/\\/p\\/([^/?#]+)\\/-\\/A-\\d+/i) ||
+              (p.indexOf('/p/-') !== 0 && p.match(/\\/p\\/([^/?#]+)\\/[A-Za-z0-9_-]{4,24}(?:[/?#]|$)/i)) ||
+              (!/^\\/(?:gp|product)\\//i.test(p) && p.match(/\\/([^/?#]{6,})\\/dp\\/[A-Z0-9]{10}(?:[/?#]|$)/i)) ||
+              p.match(/\\/(?:products?|items?)\\/(?:item_)?(?:\\d{3,18}-)?([A-Za-z][^/?#]{5,})(?:[/?#]|$)/i) ||
+              p.match(/\\/(?:detail\\/ps\\/p|product)\\/([^/?#]{6,})(?:[/?#]|$)/i);
+            return (m && m[1]) ? humanizeProductSlug(m[1]) : '';
+          }
+
+          function recoverFromCardLinks(cardEl, visibleTitle) {
+            var outTitle = visibleTitle || '';
+            var hrefKey = '';
+            var barcode = '';
+            if (!cardEl || !cardEl.querySelectorAll) return { title: outTitle, hrefKey: hrefKey, barcode: barcode };
+            var attrNames = ['data-upc', 'data-gtin', 'data-ean', 'data-barcode'];
+            for (var ai = 0; ai < attrNames.length && !barcode; ai++) {
+              var an = attrNames[ai];
+              var rawAttr = (cardEl.getAttribute && cardEl.getAttribute(an)) || '';
+              if (!rawAttr) {
+                var subEl = cardEl.querySelector('[' + an + ']');
+                if (subEl) rawAttr = subEl.getAttribute(an) || '';
+              }
+              var rawCode = String(rawAttr || '').replace(/\\D/g, '');
+              if (isValidGs1Barcode(rawCode)) {
+                if (rawCode.length === 14 && rawCode.indexOf('00') === 0) rawCode = rawCode.slice(2);
+                else if (rawCode.length === 14 && rawCode.indexOf('0') === 0) rawCode = rawCode.slice(1);
+                barcode = rawCode;
+              }
+            }
+            var needFullTitle = !outTitle || /(?:\\.\\.\\.|…|[,(\\/-])\\s*$|\\([^)]*$/.test(outTitle);
+            var links = cardEl.querySelectorAll('a[href]');
+            for (var i = 0; i < links.length; i++) {
+              var a = links[i];
+              if (a.closest && a.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
+              var rawHref = String(a.getAttribute('href') || '').trim();
+              if (!rawHref) continue;
+              var unwrapped = unwrapProductHref(rawHref);
+              var cleanPath = unwrapped.split('#')[0].split('?')[0];
+              if (!hrefKey && cleanPath && cleanPath !== '/' && !/^\\/sp\\/track\\b/i.test(cleanPath)) {
+                hrefKey = cleanPath.slice(0, 140);
+              }
+              if (!barcode && cleanPath) {
+                var bm = cleanPath.match(/(?:^|\\/)(\\d{12,14})(?:[/?#.]|$)/);
+                if (bm && bm[1] && isValidGs1Barcode(bm[1])) {
+                  var bc = bm[1];
+                  if (bc.length === 14 && bc.indexOf('00') === 0) bc = bc.slice(2);
+                  else if (bc.length === 14 && bc.indexOf('0') === 0) bc = bc.slice(1);
+                  barcode = bc;
+                }
+              }
+              if (needFullTitle && cleanPath) {
+                var slugCand = extractSlugFromPath(cleanPath);
+                if (slugCand && !NON_TITLE_RE.test(slugCand) && !CARD_CTA_NOISE_RE.test(slugCand)) {
+                  if (!outTitle) {
+                    outTitle = slugCand;
+                    needFullTitle = false;
+                  } else {
+                    var trimmedStem = outTitle.replace(/(?:\\.\\.\\.|…|[,(\\/-])\\s*$/, '').trim();
+                    if (slugCand.length > trimmedStem.length + 2 && titlesShareTokens(trimmedStem, slugCand)) {
+                      outTitle = slugCand;
+                      needFullTitle = false;
+                    }
+                  }
+                }
+              }
+            }
+            if (!hrefKey && links.length > 0) {
+              hrefKey = String(links[0].getAttribute('href') || '').split('#')[0].split('?')[0].slice(0, 140);
+            }
+            return { title: outTitle, hrefKey: hrefKey, barcode: barcode };
+          }
 
           function extractBestCardTitle(cardEl, sels) {
             var best = '';
@@ -956,14 +1093,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (best) break;
             }
             if (best && /(?:\\.\\.\\.|…)\\s*$/.test(best)) {
-              var fullSels = ['span.w_iUH7', '[class*="w_iUH7"]', 'a[link-identifier]', 'a[aria-label]'];
+              var fullSels = ['span.w_iUH7', '[class*="w_iUH7"]', 'a[link-identifier]', 'a[aria-label]', '[title]'];
               var stem = best.replace(/(?:\\.\\.\\.|…)\\s*$/, '').trim().toLowerCase().slice(0, 24);
               for (var fs = 0; fs < fullSels.length; fs++) {
                 var fullEls = cardEl.querySelectorAll(fullSels[fs]);
                 for (var fk = 0; fk < fullEls.length; fk++) {
                   var fel = fullEls[fk];
                   if (fel.closest && fel.closest('.hb-photo-badge, .hb-photo-badge-slot')) continue;
-                  var fullCand = clean(fel.getAttribute('aria-label') || fel.textContent || '');
+                  var fullCand = clean(fel.getAttribute('aria-label') || fel.getAttribute('title') || fel.textContent || '');
                   if (
                     fullCand &&
                     fullCand.length > best.length &&
@@ -982,86 +1119,24 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return best;
           }
 
-          function findAlignedSearchCard() {
-            if (isCartUrl()) return { title: '', storeImageUrl: '' };
-            var cardSel = '[data-item-id], [data-testid*="list-view" i], [data-testid*="item-stack" i] > div, div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-qa*="product-card" i], [data-automation-id="product-tile"], [data-component-type="s-search-result"], article[class*="product" i], li[class*="product" i]';
-            var rawCards = Array.prototype.slice.call(document.querySelectorAll(cardSel));
-            if (!rawCards.length) {
-              var links = document.querySelectorAll('a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="/products/"], a[href*="/product/"]');
-              for (var k = 0; k < links.length && rawCards.length < 40; k++) {
-                var anc = links[k].closest('article, li, [role="group"], div');
-                if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
-              }
-            }
-            var vh = Math.max(320, window.innerHeight || 680);
-            var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
-              ? window.__heybrocBubbleCenterY
-              : (vh * 0.38);
-            var bestTitle = '';
-            var bestCard = null;
-            var bestDist = 999999;
-            var titleSels = [
-              'span.w_iUH7',
-              '[class*="w_iUH7"]',
-              '[data-automation-id*="product-title" i]',
-              '[data-test="product-title"]',
-              '[data-testid*="product-title" i]',
-              '[data-testid*="item-title" i]',
-              '[data-testid*="product-card-name" i]',
-              '[data-qa*="product-name" i]',
-              'h2 a span',
-              'h3 a span',
-              'h2',
-              'h3',
-              'a[link-identifier]',
-              'a[href*="/sp/track"]',
-              'a[href*="/ip/"]',
-              'a[href*="/p/"]',
-              'a[href*="/dp/"]',
-              'a[href*="/gp/aw/d/"]',
-              'a[href*="/products/"]',
-              'a[href*="/product/"]'
-            ];
+          var CARD_SEL = '[data-item-id], [data-testid*="item-stack" i] > div, [data-testid*="list-view" i], div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-qa*="product-tile" i], [data-automation-id="product-tile"], [automation-id*="productTile" i], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), [data-anchor-id*="RetailItem" i], [data-anchor-id*="MenuItem" i], [data-testid*="RetailItem" i], [data-testid*="MenuItem" i], [data-testid*="store-item" i], li[data-testid*="store-item" i], .product-tile-set, .product-tile, .base-product-tile, .ProductCard, .sc-pc-medium-desktop-card, [class*="sc-pc-" i][class*="card" i], app-product-card, [data-auto-data*="product" i], [data-cy*="product-card" i], article[class*="product" i], li[class*="product" i]';
+          var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-qa*="product-card" i], [data-anchor-id*="RetailItem" i], [data-testid*="store-item" i], .product-tile-set, .ProductCard, app-product-card';
+          var PRODUCT_LINK_SEL = 'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/product/"], a[href*="/items/"], a[href*=".product."], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"], a[href*="item_id="], a[href*="product_id="]';
+          var PLACEHOLDER_IMG_RE = /(?:^|[\\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank|placeholder|skeleton|shimmer|blur|lazy|grey-pixel)(?:[\\/_.-]|$)|^data:image\\/gif|^data:image\\/svg\\+xml.*(?:feGaussianBlur|blur|shimmer|skeleton|spinner|spacer|1x1)/i;
+          var NON_PRODUCT_IMG_RE = /(?:^|[\\/_.-])(?:logo|sprite|icon|avatar|badge|stars?|rating|banner|promo|favicon)(?:[\\/_.-]|$)/i;
 
-            for (var i = 0; i < rawCards.length; i++) {
-              var card = rawCards[i];
-              if (!isVisible(card)) continue;
-              if (card.querySelectorAll('[data-item-id], [data-asin]:not([data-asin=""]), [data-testid*="product-card" i]').length > 1) continue;
-              if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
-              if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
-              var cr = card.getBoundingClientRect();
-              if (cr.height < 64 || cr.height > vh * 0.92 || cr.width < 110) continue;
-              if (cr.bottom < 105 || cr.top > vh - 55) continue;
-
-              var candTitle = extractBestCardTitle(card, titleSels);
-              if (!candTitle) continue;
-
-              var dist = 0;
-              if (targetY < cr.top) {
-                dist = cr.top - targetY;
-              } else if (targetY > cr.bottom) {
-                dist = targetY - cr.bottom;
-              } else {
-                dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
-              }
-              if (cr.top < 72) dist += 180;
-              if (dist < bestDist) {
-                bestDist = dist;
-                bestTitle = candTitle;
-                bestCard = card;
-              }
-            }
-            if (bestDist > 260 || !bestTitle) return { title: '', storeImageUrl: '' };
-            var cardImgUrl = '';
-            if (bestCard) {
-              var cImgs = bestCard.querySelectorAll('img');
-              for (var ci = 0; ci < cImgs.length; ci++) {
-                var u = sanitizeStoreImgSrc(cImgs[ci]);
-                if (u) { cardImgUrl = u; break; }
-              }
-            }
-            return { title: bestTitle, storeImageUrl: cardImgUrl };
-          }
+          var CARD_TITLE_SELS = [
+            'span.w_iUH7', '[class*="w_iUH7"]',
+            '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-testid*="product-title" i]',
+            '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-testid*="item-name" i]',
+            '[data-qa*="product-name" i]', '[automation-id*="productDescriptionLink" i]', '[auto-data*="product_name" i]',
+            '[data-auto-data*="product_name" i]', '.product-tile__name', '.base-product-tile__name', '.sc-pc-title-medium',
+            '[class*="sc-pc-title" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'h4',
+            '[data-testid="rich-text"]',
+            'a[link-identifier]', 'a[href*="/sp/track"]', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]',
+            'a[href*=".product."]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]',
+            'a[href*="/products/"]', 'a[href*="/items/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'
+          ];
 
           var NON_FOOD_GRID_RE = /\\b(?:paper\\s+towels?|toilet\\s+(?:paper|tissue)|bath\\s+tissue|facial\\s+tissues?|trash\\s+bags?|garbage\\s+bags?|aluminum\\s+foil|parchment\\s+paper|plastic\\s+wrap|paper\\s+plates?|laundry\\s+(?:detergent|pods?|sanitizer)|fabric\\s+softener|dryer\\s+sheets?|dish\\s+(?:soap|detergent)|dishwasher\\s+(?:pods?|pac?ks?|detergent)|disinfecting\\s+wipes?|bleach|all[- ]purpose\\s+cleaner|glass\\s+cleaner|toilet\\s+bowl\\s+cleaner|air\\s+freshener|diapers?|pull[- ]ups?|baby\\s+wipes?|cat\\s+litter|dog\\s+(?:food|treats?|pads?)|cat\\s+(?:food|treats?)|pet\\s+food|alkaline\\s+batteries|aa\\s+batteries|aaa\\s+batteries|motor\\s+oil|windshield\\s+washer|light\\s+bulbs?|toothpaste|toothbrush|mouthwash|shampoo|body\\s+wash|deodorant|antiperspirant|razor\\s+blades?|shaving\\s+cream|sunscreen|tampons?|maxi\\s+pads?|pantiliners?)\\b/i;
           var BAG_FOOD_CONTEXT_RE = /\\b(?:chicken|turkey|beef|pork|steak|salmon|shrimp|fish|meatballs?|nuggets?|tenders?|strips?|wings?|patties|sausage|bacon|berries|strawberr|blueberr|raspberr|mango|peach|pineapple|broccoli|spinach|peas|corn|vegetables?|fries|tots|waffles?|pancakes?|dumplings?|potstickers?|burritos?|pizza|fruit|cheese|ravioli|tortellini)\\b/i;
@@ -1076,11 +1151,86 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             return false;
           }
 
-          var CARD_SEL = '[data-item-id], [data-testid*="item-stack" i] > div, [data-testid*="list-view" i], div[class*="mb0"][class*="ph1"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-testid*="product-tile" i], [data-test*="product-card" i], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-qa*="product-card" i], [data-automation-id="product-tile"], [data-component-type="s-search-result"], [data-asin]:not([data-asin=""]), article[class*="product" i], li[class*="product" i]';
-          var MULTI_CARD_UNIT_SEL = '[data-item-id], [data-asin]:not([data-asin=""]), [data-component-type="s-search-result"], [data-test*="@web/site-top-of-funnel/ProductCardWrapper"], [data-testid*="product-card" i], [data-testid*="item-card" i], [data-qa*="product-card" i]';
-          var PRODUCT_LINK_SEL = 'a[link-identifier], a[href*="/sp/track"], a[href*="/ip/"], a[href*="/products/"], a[href*="/product/"], a[href*="/p/"], a[href*="/sams/shop/product/"], a[href*="/detail/ps/p/"], a[href*="/dp/"], a[href*="/gp/aw/d/"]';
-          var PLACEHOLDER_IMG_RE = /(?:^|[\\/_.-])(?:1x1|pixel|spacer|spinner|transparent|blank|placeholder|skeleton|shimmer|blur|lazy|grey-pixel)(?:[\\/_.-]|$)|^data:image\\/gif|^data:image\\/svg\\+xml.*(?:feGaussianBlur|blur|shimmer|skeleton|spinner|spacer|1x1)/i;
-          var NON_PRODUCT_IMG_RE = /(?:^|[\\/_.-])(?:logo|sprite|icon|avatar|badge|stars?|rating|banner|promo|favicon)(?:[\\/_.-]|$)/i;
+          function findAlignedSearchCard() {
+            if (isCartUrl()) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+            var rawCards = Array.prototype.slice.call(document.querySelectorAll(CARD_SEL));
+            if (!rawCards.length) {
+              var links = document.querySelectorAll(PRODUCT_LINK_SEL);
+              for (var k = 0; k < links.length && rawCards.length < 40; k++) {
+                var anc = links[k].closest('article, li, [role="group"], div');
+                if (anc && rawCards.indexOf(anc) === -1) rawCards.push(anc);
+              }
+            }
+            var vh = Math.max(320, window.innerHeight || 680);
+            var targetY = (typeof window.__heybrocBubbleCenterY === 'number' && window.__heybrocBubbleCenterY > 40)
+              ? window.__heybrocBubbleCenterY
+              : (vh * 0.38);
+            var bestTitle = '';
+            var bestBarcode = '';
+            var bestCard = null;
+            var bestDist = 999999;
+
+            for (var i = 0; i < rawCards.length; i++) {
+              var card = rawCards[i];
+              if (!isVisible(card)) continue;
+              if (card.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) continue;
+              if (card.closest('#sc-saved-cart, [data-testid*="saved-for-later" i], [data-test*="savedForLater" i]')) continue;
+              if (isCartDrawer(card.closest('[role="dialog"], aside, section'))) continue;
+              var cr = card.getBoundingClientRect();
+              if (cr.height < 64 || cr.height > vh * 0.94 || cr.width < 100) continue;
+              if (cr.bottom < 105 || cr.top > vh - 55) continue;
+
+              var visTitle = extractBestCardTitle(card, CARD_TITLE_SELS);
+              var rec = recoverFromCardLinks(card, visTitle);
+              var candTitle = rec.title;
+              if (!candTitle || isNonFoodGridTitle(candTitle)) continue;
+
+              var dist = 0;
+              if (targetY < cr.top) {
+                dist = cr.top - targetY;
+              } else if (targetY > cr.bottom) {
+                dist = targetY - cr.bottom;
+              } else {
+                dist = Math.abs(((cr.top + cr.bottom) * 0.5) - targetY) * 0.25;
+              }
+              if (cr.top < 72) dist += 180;
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestTitle = candTitle;
+                bestBarcode = rec.barcode || '';
+                bestCard = card;
+              }
+            }
+            if (bestDist > 260 || !bestTitle) return { title: '', storeImageUrl: '', barcode: '', cardId: '', batchPending: false };
+            var cardImgUrl = '';
+            var cardId = '';
+            var batchPending = false;
+            if (bestCard) {
+              var cImgs = bestCard.querySelectorAll('img');
+              for (var ci = 0; ci < cImgs.length; ci++) {
+                var u = sanitizeStoreImgSrc(cImgs[ci]);
+                if (u) { cardImgUrl = u; break; }
+              }
+              var st = hbCardState ? hbCardState.get(bestCard) : null;
+              if (!st && bestCard.querySelector) {
+                var innerB = bestCard.querySelector('.hb-photo-badge[data-hb-card-id]');
+                if (innerB) {
+                  var bid = innerB.getAttribute('data-hb-card-id') || '';
+                  var owner = bid ? hbOwnerCardById[bid] : null;
+                  if (owner && hbCardState) st = hbCardState.get(owner);
+                }
+              }
+              if (!st && bestCard.closest) {
+                var ancCard = bestCard.closest(CARD_SEL);
+                if (ancCard && hbCardState) st = hbCardState.get(ancCard);
+              }
+              if (st) {
+                cardId = st.id || '';
+                batchPending = Boolean(!st.resolved && !st.suppressedEstimate && st.badgeEl && st.badgeEl.isConnected);
+              }
+            }
+            return { title: bestTitle, storeImageUrl: cardImgUrl, barcode: bestBarcode, cardId: cardId, batchPending: batchPending };
+          }
 
           function isPlaceholderCardImg(img, src) {
             var s = String(src || '').trim();
@@ -1196,20 +1346,27 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
           var hbCachedNextDataRaw = '';
           var hbCachedNextDataObj = null;
 
-          function cacheTitleBadgeScore(sig, entry) {
-            if (!sig || !entry) return;
-            if (!Object.prototype.hasOwnProperty.call(hbTitleScoreCache, sig)) {
+          function makeTitleScoreKey(title) {
+            return String(title || '').toLowerCase().trim() + '|' + detectInstacartSlug() + '|' + hbPrefRev;
+          }
+
+          function cacheTitleBadgeScore(title, entry) {
+            if (!title || !entry) return;
+            var key = makeTitleScoreKey(title);
+            if (!Object.prototype.hasOwnProperty.call(hbTitleScoreCache, key)) {
               if (hbTitleScoreKeys.length >= 300) {
                 var oldest = hbTitleScoreKeys.shift();
                 if (oldest) delete hbTitleScoreCache[oldest];
               }
-              hbTitleScoreKeys.push(sig);
+              hbTitleScoreKeys.push(key);
             }
-            hbTitleScoreCache[sig] = entry;
+            hbTitleScoreCache[key] = entry;
           }
 
-          function readTitleBadgeScore(sig) {
-            return (sig && Object.prototype.hasOwnProperty.call(hbTitleScoreCache, sig)) ? hbTitleScoreCache[sig] : null;
+          function readTitleBadgeScore(title) {
+            if (!title) return null;
+            var key = makeTitleScoreKey(title);
+            return Object.prototype.hasOwnProperty.call(hbTitleScoreCache, key) ? hbTitleScoreCache[key] : null;
           }
 
           function scheduleHbRetry(delayMs) {
@@ -1358,12 +1515,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var imgR = chosenImg.getBoundingClientRect();
             var pr0 = chosenImg.parentElement ? chosenImg.parentElement.getBoundingClientRect() : imgR;
             var refH = Math.max(imgR.height || 0, pr0.height || 0);
-            var maxAnchorH = Math.min(420, Math.max(120, Math.round(refH || 200)) + 84);
+            var maxAnchorH = Math.min(460, Math.max(120, Math.round(refH || 200)) + 120);
             var cur = chosenImg.parentElement;
             if (cur && cur.tagName === 'PICTURE') cur = cur.parentElement;
             var candidate = null;
             var steps = 0;
-            while (cur && cur !== document.body && steps < 5) {
+            while (cur && cur !== document.body && steps < 6) {
               var cs = window.getComputedStyle(cur);
               var disp = cs ? cs.display : '';
               var cr = measureWithoutBadgeSlot(cur);
@@ -1376,11 +1533,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               steps++;
             }
             if (candidate && cardEl && cardEl !== document.body) {
-              candidate = climbAboveHorizontalCarousel(candidate, cardEl, maxAnchorH);
+              candidate = climbAboveHorizontalCarousel(candidate, cardEl, maxAnchorH + 36) || candidate;
             }
             if (!candidate && cardEl && cardEl !== document.body) {
               var cardR = measureWithoutBadgeSlot(cardEl);
-              if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= maxAnchorH) {
+              if (cardR.width >= 44 && cardR.height >= 44 && cardR.height <= 780) {
                 candidate = cardEl;
               }
             }
@@ -1398,7 +1555,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 candidate.style.isolation = prevIso;
                 if (cardEl && cardEl !== candidate) {
                   var fbR = measureWithoutBadgeSlot(cardEl);
-                  if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= maxAnchorH) {
+                  if (fbR.width >= 44 && fbR.height >= 44 && fbR.height <= 780) {
                     if (window.getComputedStyle(cardEl).position === 'static') {
                       cardEl.style.position = 'relative';
                     }
@@ -1432,7 +1589,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var beforeImgR = chosenImg.getBoundingClientRect();
               var parentR0 = chosenImg.parentElement.getBoundingClientRect();
               var refImgH = Math.max(beforeImgR.height || 0, parentR0.height || 0);
-              var maxMediaH = Math.max(260, refImgH + 110);
+              var maxMediaH = Math.max(290, refImgH + 124);
               var photoUnit = chosenImg.parentElement;
               if (photoUnit && photoUnit.tagName === 'PICTURE' && photoUnit.parentElement) {
                 photoUnit = photoUnit.parentElement;
@@ -1441,10 +1598,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (interactiveAnc && interactiveAnc !== cardEl && nodeContains(cardEl, interactiveAnc) && !nodeHasDetailsOrCta(interactiveAnc)) {
                 photoUnit = interactiveAnc;
               }
-              photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH);
+              photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH) || photoUnit;
               var cur = photoUnit;
               var steps = 0;
-              while (cur && cur !== cardEl && cur !== document.body && steps < 6) {
+              while (cur && cur !== cardEl && cur !== document.body && steps < 8) {
                 var nextP = cur.parentElement;
                 if (!nextP || nextP === document.body) break;
                 if (nextP === cardEl) {
@@ -1464,7 +1621,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   break;
                 }
               }
-              photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH);
+              photoUnit = climbAboveHorizontalCarousel(photoUnit, cardEl, maxMediaH) || photoUnit;
 
               var slot = document.createElement('div');
               slot.className = 'hb-photo-badge-slot';
@@ -1497,7 +1654,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (inserted) {
                 var afterImgR = chosenImg.getBoundingClientRect();
                 var unitR = photoUnit ? photoUnit.getBoundingClientRect() : afterImgR;
-                var refBottom = afterImgR.height >= 36 ? afterImgR.bottom : unitR.bottom;
+                var refBottom = afterImgR.height >= 36 ? Math.max(afterImgR.bottom, unitR.bottom - 36) : unitR.bottom;
                 var badgeR = badge.getBoundingClientRect();
                 var imgOk = beforeImgR.width < 36 || (
                   afterImgR.width >= 44 &&
@@ -1506,7 +1663,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   afterImgR.height >= beforeImgR.height * 0.76
                 );
                 var sizeOk = badgeR.width >= 46 && badgeR.height >= 26;
-                var posOk = badgeR.top >= refBottom - 18 && badgeR.top <= refBottom + 64;
+                var posOk = badgeR.top >= refBottom - 28 && badgeR.top <= Math.max(afterImgR.bottom, unitR.bottom) + 68;
                 var clipped = false;
                 var clipAnc = slot.parentElement;
                 var clipSteps = 0;
@@ -1534,18 +1691,25 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             } else if (String(badge.className || '').indexOf('hb-photo-badge--overlay') === -1) {
               badge.className = (badge.className ? badge.className + ' ' : '') + 'hb-photo-badge--overlay';
             }
+            if (chosenImg && fallbackAnchor) {
+              var ancRect = fallbackAnchor.getBoundingClientRect();
+              var liveImgRect = chosenImg.getBoundingClientRect();
+              if (liveImgRect.height >= 40 && ancRect.height > liveImgRect.height + 90) {
+                var relTop = Math.max(6, Math.round((liveImgRect.bottom - ancRect.top) - 40));
+                if (relTop < ancRect.height - 36) {
+                  badge.style.setProperty('top', relTop + 'px', 'important');
+                  badge.style.setProperty('bottom', 'auto', 'important');
+                }
+              }
+            }
             fallbackAnchor.appendChild(badge);
             return null;
           }
 
           function readCardInfo(cardEl) {
-            if (!cardEl || cardEl.closest('header, nav, footer')) return null;
+            if (!cardEl || cardEl.closest('header, nav, footer, [role="contentinfo"]')) return null;
             if (isCartDrawer(cardEl.closest('[role="dialog"], aside, section'))) return null;
-            var sels = ['span.w_iUH7', '[class*="w_iUH7"]', '[data-automation-id*="product-title" i]', '[data-test="product-title"]', '[data-testid*="product-title" i]', '[data-testid*="item-title" i]', '[data-testid*="product-card-name" i]', '[data-qa*="product-name" i]', 'h2 a span', 'h3 a span', 'h2', 'h3', 'a[link-identifier]', 'a[href*="/sp/track"]', 'a[href*="/ip/"]', 'a[href*="/sams/shop/product/"]', 'a[href*="/p/"]', 'a[href*="/dp/"]', 'a[href*="/gp/aw/d/"]', 'a[href*="/products/"]', 'a[href*="/detail/ps/p/"]', 'a[href*="/product/"]'];
-            var title = extractBestCardTitle(cardEl, sels);
-            var linkEl = cardEl.querySelector(PRODUCT_LINK_SEL) || cardEl.querySelector('a[href]');
-            var rawHref = linkEl ? String(linkEl.getAttribute('href') || '') : '';
-            var hrefKey = rawHref ? rawHref.split('#')[0].split('?')[0].slice(0, 140) : String(cardEl.getAttribute('data-item-id') || '').slice(0, 60);
+            var title = extractBestCardTitle(cardEl, CARD_TITLE_SELS);
             var cardRect = cardEl.getBoundingClientRect();
             var imgs = cardEl.querySelectorAll('img');
             var chosenImg = null;
@@ -1566,7 +1730,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var pr = img.parentElement ? img.parentElement.getBoundingClientRect() : r;
               var ew = Math.max(r.width, pr.width);
               var eh = Math.max(r.height, pr.height);
-              if (ew >= 44 && eh >= 44 && ew <= 480 && eh <= 480) {
+              if (ew >= 44 && eh >= 44 && ew <= 640 && eh <= 640) {
                 var boxR = (r.width >= 32 && r.height >= 32) ? r : pr;
                 var horizVisible = cardRect.width < 40 || (boxR.right > cardRect.left + 12 && boxR.left < cardRect.right - 12);
                 var imgLoaded = (r.width >= 36 && r.height >= 36) ? 1 : 0;
@@ -1589,6 +1753,9 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 }
               }
             }
+            var rec = recoverFromCardLinks(cardEl, title);
+            title = rec.title;
+            var hrefKey = rec.hrefKey || String((cardEl.getAttribute && cardEl.getAttribute('data-item-id')) || '').slice(0, 60);
             if (!title || !chosenImg || isNonFoodGridTitle(title)) return null;
             if (hbOwnerCardByImg) {
               var existingImgOwner = hbOwnerCardByImg.get(chosenImg);
@@ -1602,7 +1769,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             var anchor = findSafeCardAnchor(chosenImg, cardEl);
             if (!anchor) return null;
             var sig = title.toLowerCase().trim() + '|' + hrefKey + '|' + detectInstacartSlug() + '|' + hbPrefRev;
-            return { title: title, anchor: anchor, chosenImg: chosenImg, storeImageUrl: sanitizeStoreImgSrc(chosenImg), sig: sig };
+            return { title: title, barcode: rec.barcode || '', anchor: anchor, chosenImg: chosenImg, storeImageUrl: sanitizeStoreImgSrc(chosenImg), sig: sig };
           }
 
           function removeBadgeDom(badgeEl, slotEl) {
@@ -1654,6 +1821,21 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               hbBatchTimer = setTimeout(flushHbBadgeBatch, 180);
               return;
             }
+            if (hbPendingQueue.length > 8) {
+              var vhNow = Math.max(400, window.innerHeight || 720);
+              var onScreen = [];
+              var nearScreen = [];
+              var offScreen = [];
+              for (var q = 0; q < hbPendingQueue.length; q++) {
+                var qe = hbPendingQueue[q];
+                if (!qe.cardEl || !qe.cardEl.isConnected) continue;
+                var qr = qe.cardEl.getBoundingClientRect();
+                if (qr.bottom > 40 && qr.top < vhNow - 20) onScreen.push(qe);
+                else if (qr.bottom > -220 && qr.top < vhNow + 260) nearScreen.push(qe);
+                else offScreen.push(qe);
+              }
+              hbPendingQueue = onScreen.concat(nearScreen, offScreen);
+            }
             var chunk = hbPendingQueue.splice(0, 8);
             if (hbPendingQueue.length > 0) {
               hbBatchTimer = setTimeout(flushHbBadgeBatch, 140);
@@ -1664,14 +1846,21 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (entry.badgeEl && entry.badgeEl.isConnected && entry.cardEl && entry.cardEl.isConnected) {
                 var liveInfo = readCardInfo(entry.cardEl);
                 if (liveInfo && liveInfo.sig === entry.sig) {
-                  payloadItems.push({ id: entry.id, productTitle: liveInfo.title, storeImageUrl: liveInfo.storeImageUrl || '' });
+                  var itemObj = { id: entry.id, productTitle: liveInfo.title, storeImageUrl: liveInfo.storeImageUrl || '' };
+                  if (liveInfo.barcode) itemObj.barcode = liveInfo.barcode;
+                  payloadItems.push(itemObj);
                 } else {
                   removeCardBadgeState(entry.cardEl, hbCardState ? hbCardState.get(entry.cardEl) : null);
                   if (hbCardState) hbCardState.delete(entry.cardEl);
                 }
               }
             }
-            if (!payloadItems.length) return;
+            if (!payloadItems.length) {
+              if (hbPendingQueue.length > 0 && !hbBatchTimer) {
+                hbBatchTimer = setTimeout(flushHbBadgeBatch, 80);
+              }
+              return;
+            }
             hbInFlightBatches++;
             hbLastBatchSentAt = Date.now();
             armBatchWatchdog();
@@ -1716,7 +1905,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             for (var sb = 0; sb < staleBadges.length; sb++) {
               if (staleBadges[sb].parentNode) staleBadges[sb].parentNode.removeChild(staleBadges[sb]);
             }
-            var cachedScore = readTitleBadgeScore(info.sig);
+            var cachedScore = readTitleBadgeScore(info.title);
             if (cachedScore) {
               if (cachedScore.isCategoryEstimate) {
                 if (hbCardState) {
@@ -1859,12 +2048,13 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }, { rootMargin: '220px 0px' });
             }
             var onPdp = Boolean(findOpenProductModal()) || looksLikeProductUrl(location.href);
+            var maxCardW = onPdp ? 360 : Math.max(580, (window.innerWidth || 390) + 32);
             var seen = [];
             function addCand(el) {
-              if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer')) return;
+              if (!el || seen.indexOf(el) !== -1 || el.closest('header, nav, footer, [role="contentinfo"]')) return;
               if (el.querySelectorAll && el.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) return;
               var r = el.getBoundingClientRect();
-              if (r.width > 0 && (r.width < 88 || r.width > (onPdp ? 360 : 560) || r.height < 84 || r.height > 760)) return;
+              if (r.width > 0 && (r.width < 84 || r.width > maxCardW || r.height < 84 || r.height > 780)) return;
               for (var s = 0; s < seen.length; s++) {
                 var ex = seen[s];
                 if (nodeContains(ex, el) || nodeContains(el, ex)) return;
@@ -1877,14 +2067,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               var links = document.querySelectorAll(PRODUCT_LINK_SEL);
               for (var l = 0; l < links.length; l++) {
                 var a = links[l];
-                if (a.closest(CARD_SEL) || a.closest('header, nav, footer')) continue;
+                if (a.closest(CARD_SEL) || a.closest('header, nav, footer, [role="contentinfo"]')) continue;
                 var cur = a;
                 var tile = null;
                 for (var depth = 0; depth < 5 && cur && cur !== document.body; depth++) {
                   if (cur.querySelector('img')) {
                     if (cur.querySelectorAll && cur.querySelectorAll(MULTI_CARD_UNIT_SEL).length > 1) break;
                     var cr = cur.getBoundingClientRect();
-                    if (cr.width >= 92 && cr.width <= 540 && cr.height >= 92 && cr.height <= 720) {
+                    if (cr.width >= 90 && cr.width <= maxCardW && cr.height >= 90 && cr.height <= 760) {
                       tile = cur;
                       if (/^(ARTICLE|LI)$/i.test(cur.tagName)) break;
                     }
@@ -1892,6 +2082,19 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   cur = cur.parentElement;
                 }
                 if (tile) addCand(tile);
+              }
+              if (/(?:doordash|ubereats|uber|instacart|shipt|aldi)\\./i.test(String(location.hostname || ''))) {
+                var btnTiles = document.querySelectorAll('div[role="button"], li[role="button"], button');
+                for (var bt = 0; bt < btnTiles.length && bt < 220; bt++) {
+                  var bel = btnTiles[bt];
+                  if (bel.closest(CARD_SEL) || bel.closest('header, nav, footer, [role="contentinfo"]')) continue;
+                  if (!bel.querySelector || !bel.querySelector('img')) continue;
+                  if (bel.querySelectorAll('img').length > 3) continue;
+                  var br = bel.getBoundingClientRect();
+                  if (br.width < 96 || br.width > maxCardW || br.height < 110 || br.height > 640) continue;
+                  if (!/\\$\\s*\\d/.test(bel.textContent || '')) continue;
+                  addCand(bel);
+                }
               }
             }
             var now = Date.now();
@@ -1976,9 +2179,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                   var prevRetries = st.retryCount || 0;
                   var isTransient = Boolean(entry && entry.transient);
                   var isConfirmedNonFood = Boolean(entry && entry.isNonFood);
-                  if (isTransient && prevRetries < 2) {
+                  if (isTransient && prevRetries < 4) {
                     st.retryCount = prevRetries + 1;
-                    var delay = st.retryCount === 1 ? 2200 : 5000;
+                    var serverRetryMs = Number(entry && entry.retryAfterMs) || 0;
+                    var fallbackDelay = st.retryCount === 1 ? 2200 : (st.retryCount === 2 ? 4800 : 8500);
+                    var delay = serverRetryMs > 0 ? Math.min(62000, Math.max(2200, serverRetryMs)) : fallbackDelay;
                     st.retryAfter = Date.now() + delay;
                     if (!earliestRetryMs || delay < earliestRetryMs) earliestRetryMs = delay;
                   } else if (!isConfirmedNonFood && prevRetries < 1) {
@@ -1988,8 +2193,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                     if (!earliestRetryMs || missDelay < earliestRetryMs) earliestRetryMs = missDelay;
                   } else {
                     st.suppressedEstimate = true;
-                    if (isConfirmedNonFood && st.sig) {
-                      cacheTitleBadgeScore(st.sig, { isCategoryEstimate: true });
+                    if (isConfirmedNonFood && st.title) {
+                      cacheTitleBadgeScore(st.title, { isCategoryEstimate: true });
                     }
                   }
                   if (wantOpenFail && st.title) {
@@ -2006,8 +2211,8 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               }
 
               if (entry.isCategoryEstimate) {
-                if (st && st.sig) {
-                  cacheTitleBadgeScore(st.sig, { isCategoryEstimate: true });
+                if (st && st.title) {
+                  cacheTitleBadgeScore(st.title, { isCategoryEstimate: true });
                 }
                 removeBadgeDom(badge, st ? st.slotEl : null);
                 if (st) {
@@ -2033,13 +2238,15 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               applyScoredBadgeAppearance(badge, entry, labelTitle);
               if (st) {
                 st.resolved = true;
-                cacheTitleBadgeScore(st.sig, {
-                  cardId: id,
-                  score: entry.score,
-                  hasAlert: Boolean(entry.hasAlert),
-                  alertSeverity: entry.alertSeverity,
-                  isCategoryEstimate: false
-                });
+                if (st.title) {
+                  cacheTitleBadgeScore(st.title, {
+                    cardId: id,
+                    score: entry.score,
+                    hasAlert: Boolean(entry.hasAlert),
+                    alertSeverity: entry.alertSeverity,
+                    isCategoryEstimate: false
+                  });
+                }
                 if (st.openOnResolve) {
                   st.openOnResolve = false;
                   window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
@@ -2186,10 +2393,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
               if (aligned && aligned.title) {
                 window.webkit.messageHandlers.heybrocStoreBridge.postMessage({
                   kind: 'card',
+                  cardId: aligned.cardId || '',
+                  batchPending: Boolean(aligned.batchPending),
                   title: aligned.title.slice(0, 260),
                   storeImageUrl: aligned.storeImageUrl || '',
                   ingredients: '',
-                  barcode: '',
+                  barcode: aligned.barcode || '',
                   instacartSlug: instacartSlug,
                   url: url
                 });
@@ -2832,6 +3041,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
         let deviceStoreImage = Self.sanitizeDeviceStoreImageURL(body["storeImageUrl"] as? String) ?? ""
         let instacartSlug = (body["instacartSlug"] as? String) ?? ""
         let cardId = (body["cardId"] as? String) ?? ""
+        let batchPending = (body["batchPending"] as? Bool) ?? false
         let pageToken = (body["pageToken"] as? String) ?? ""
         let rawBatchItems = (body["items"] as? [[String: Any]]) ?? []
 
@@ -2843,11 +3053,27 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
             if kind == "product" || kind == "card" {
                 guard !title.isEmpty else { return }
                 let isPassiveCard = (kind == "card")
+                if title.caseInsensitiveCompare(self.lastDetectedTitle) != .orderedSame || barcode != self.lastDetectedBarcode {
+                    self.latestSummary = nil
+                    self.lastScannedKey = ""
+                }
                 self.lastDetectedIsCard = isPassiveCard
+                self.lastDetectedCardId = isPassiveCard ? cardId : ""
                 self.lastDetectedTitle = title
                 self.lastDetectedIngredients = ingredients
                 self.lastDetectedBarcode = barcode
                 self.lastDetectedStoreImageUrl = deviceStoreImage
+                if isPassiveCard, !cardId.isEmpty, Self.isValidBatchItemId(cardId), let cached = self.cardSummariesById[cardId] {
+                    let sum = cached.withDeviceStoreImage(deviceStoreImage.isEmpty ? self.cardStoreImageById[cardId] : deviceStoreImage)
+                    self.applySummaryToBubble(sum)
+                    return
+                }
+                if isPassiveCard && batchPending {
+                    if self.latestSummary == nil {
+                        self.setBubbleIdleState()
+                    }
+                    return
+                }
                 self.runLiveScan(
                     title: title,
                     ingredients: ingredients,
@@ -2861,6 +3087,7 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 self.scanGeneration += 1
                 self.isScanning = false
                 self.lastDetectedIsCard = false
+                self.lastDetectedCardId = ""
                 self.lastDetectedTitle = ""
                 self.lastDetectedIngredients = ""
                 self.lastDetectedBarcode = ""
@@ -2874,8 +3101,11 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                 var localImgMap: [String: String] = [:]
                 for item in rawBatchItems.prefix(8) {
                     guard let id = item["id"] as? String,
-                          Self.isValidBatchItemId(id),
-                          let pTitle = item["productTitle"] as? String, !pTitle.isEmpty else { continue }
+                          Self.isValidBatchItemId(id) else { continue }
+                    let pTitle = ((item["productTitle"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let rawCode = ((item["barcode"] as? String) ?? "").filter { $0.isNumber }
+                    let bCode = (rawCode.count >= 8 && rawCode.count <= 14) ? rawCode : ""
+                    guard !pTitle.isEmpty || !bCode.isEmpty else { continue }
                     if let itemStoreImg = Self.sanitizeDeviceStoreImageURL(item["storeImageUrl"] as? String) {
                         localImgMap[id] = itemStoreImg
                         if self.cardStoreImageById.count > 300 {
@@ -2883,7 +3113,10 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                         }
                         self.cardStoreImageById[id] = itemStoreImg
                     }
-                    cleanItems.append(["id": id, "productTitle": pTitle])
+                    var reqDict: [String: String] = ["id": id]
+                    if !pTitle.isEmpty { reqDict["productTitle"] = pTitle }
+                    if !bCode.isEmpty { reqDict["barcode"] = bCode }
+                    cleanItems.append(reqDict)
                 }
                 guard !cleanItems.isEmpty else {
                     self.storeWebView?.evaluateJavaScript(
@@ -2918,6 +3151,12 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                             if !sum.isCategoryEstimate && !sum.isTransientLockedSwap {
                                 self.cardSummariesById[id] = sum
                             }
+                            if !sum.isCategoryEstimate,
+                               self.lastDetectedIsCard,
+                               self.latestSummary == nil,
+                               (id == self.lastDetectedCardId || (reqItem["productTitle"] ?? "").caseInsensitiveCompare(self.lastDetectedTitle) == .orderedSame) {
+                                self.applySummaryToBubble(sum)
+                            }
                             jsMap[id] = [
                                 "ok": true,
                                 "score": sum.score,
@@ -2926,10 +3165,14 @@ final class LiveStoreBrowserViewController: UIViewController, WKNavigationDelega
                                 "isCategoryEstimate": sum.isCategoryEstimate
                             ]
                         } else {
-                            jsMap[id] = [
+                            var failEntry: [String: Any] = [
                                 "ok": false,
                                 "transient": outcome.isTransientError
                             ]
+                            if let retrySec = outcome.retryAfterSec, retrySec > 0 {
+                                failEntry["retryAfterMs"] = retrySec * 1000
+                            }
+                            jsMap[id] = failEntry
                         }
                     }
                     if let jsonData = try? JSONSerialization.data(withJSONObject: jsMap),

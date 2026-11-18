@@ -1828,10 +1828,16 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .split(/\s+/)
-    .filter((w) => (w.length >= 2 || SHORT_BRAND_TOKENS.has(w)) && !STOP.has(w) && !/^\d+$/.test(w) && !/^(?:naturally|fully|cooked|lightly|priced|per|pound|pounds)$/.test(w));
+    .filter(
+      (w) =>
+        (w.length >= 2 || SHORT_BRAND_TOKENS.has(w)) &&
+        !STOP.has(w) &&
+        !/^\d+$/.test(w) &&
+        !/^(?:naturally|fully|cooked|lightly|priced|per|pound|pounds|food|foods|kids|kid|shelf|stable|pantry|staple|staples|seasonal|snap|ebt|eligible|lunchbox)$/.test(w),
+    );
   const compactSearchWords =
     allSearchWords.length > 5
-      ? allSearchWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|delicious|toasted)$/.test(w))
+      ? allSearchWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|lunch|delicious|toasted|frozen|refrigerated)$/.test(w))
       : allSearchWords;
   const effectiveSearchWords = compactSearchWords.length >= 2 ? compactSearchWords : allSearchWords;
   const searchWords =
@@ -1845,7 +1851,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
     : `${title} ${usCompletedFilter}`;
   const compactBrandMods =
     brandModifiers.length > 4
-      ? brandModifiers.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|delicious|toasted)$/.test(w))
+      ? brandModifiers.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|lunch|delicious|toasted|frozen|refrigerated|food|foods|kids|kid|shelf|stable|pantry|staple|staples)$/.test(w))
       : brandModifiers;
   const effectiveBrandMods = compactBrandMods.length >= 1 ? compactBrandMods : brandModifiers;
   const trimmedBrandMods =
@@ -1996,7 +2002,7 @@ async function offSearch(title: string): Promise<Omit<LookupResult, "ms"> | null
 /* ------------------------------------------------------------------ */
 
 const STORE_HOUSE_WHOLE_FOOD_BRAND_RE =
-  /\b(member'?s\s+mark|kirkland(?:\s+signature)?|marketside(?:\s+butcher)?|freshness\s+guaranteed|great\s+value|sam'?s\s+choice|good\s*(?:&|and)\s*gather|favorite\s+day|market\s+pantry|simple\s+truth(?:\s+organic)?|private\s+selection|heritage\s+farm|wellsley\s+farms|berkley\s+jensen|simply\s+nature|specially\s+selected|nature'?s\s+promise|signature\s+select|o\s+organics|open\s+nature|365(?:\s+by\s+whole\s+foods(?:\s+market)?)?|whole\s+foods(?:\s+market)?|trader\s+joe'?s?)\b/gi;
+  /\b(member'?s\s+mark|kirkland(?:\s+signature)?|marketside(?:\s+butcher)?|freshness\s+guaranteed|great\s+value|sam'?s\s+choice|good\s*(?:&|and)\s*gather|favorite\s+day|market\s+pantry|simple\s+truth(?:\s+organic)?|private\s+selection|heritage\s+farm|wellsley\s+farms|berkley\s+jensen|simply\s+nature|specially\s+selected|friendly\s+farms|kirkwood|amazon\s+fresh|amazon\s+grocery|happy\s+belly|aplenty|nature'?s\s+promise|signature\s+select|o\s+organics|open\s+nature|lucerne|365(?:\s+by\s+whole\s+foods(?:\s+market)?)?|whole\s+foods(?:\s+market)?|trader\s+joe'?s?|sprouts(?:\s+farmers\s+market)?|publix|greenwise|wegmans|h[- ]?e[- ]?b)\b/gi;
 
 export function genericWholeFoodQuery(query: string): string | null {
   if (classifyWholeFood(query).isWholeFood !== true) return null;
@@ -2054,6 +2060,7 @@ const USDA_LUCENE_SKIP_WORDS = new Set([
   "count", "ct", "oz", "fl", "lb", "lbs", "gal", "gallon", "half", "quart", "pint", "pkg",
   "assorted", "variety", "homemade", "fresh", "pure",
   "naturally", "fully", "cooked", "lightly", "priced", "per", "pound", "pounds", "avg", "average", "price",
+  "food", "foods", "kids", "kid", "shelf", "stable", "pantry", "staple", "staples", "seasonal", "snap", "ebt", "eligible", "lunchbox",
 ]);
 
 function buildUsdaLuceneQuery(query: string): string {
@@ -2066,7 +2073,7 @@ function buildUsdaLuceneQuery(query: string): string {
     .filter((w) => w.length >= 2 && !USDA_LUCENE_SKIP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w));
   const compactWords =
     allWords.length > 5
-      ? allWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|delicious|toasted)$/i.test(w))
+      ? allWords.filter((w) => !/^(?:original|classic|traditional|homestyle|breakfast|lunch|delicious|toasted|frozen|refrigerated)$/i.test(w))
       : allWords;
   const effectiveWords = compactWords.length >= 2 ? compactWords : allWords;
   const words =
@@ -2198,6 +2205,31 @@ async function usdaSearch(query: string): Promise<Omit<LookupResult, "ms"> | nul
     for (const response of responses) evaluateFoods(response?.foods);
   }
 
+  // Secondary relaxed query when strict +word Lucene missed due to an extra retailer adjective (still strictly gated by brand + variant + relevance >= 0.55)
+  if (
+    (!best || bestScore < 0.55) &&
+    !isBarcodeQuery &&
+    luceneQuery &&
+    luceneQuery.split(/\s+/).length >= 4 &&
+    !providerSignal.getStore()?.aborted
+  ) {
+    const relaxedInput = luceneQuery.replace(/\+/g, "");
+    if (Date.now() >= usdaUnavailableUntil) {
+      const relRes = await getJson<{ foods?: UsdaFood[] }>(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(relaxedInput)}&dataType=Branded&pageSize=18&api_key=${key}`,
+      );
+      if (relRes) {
+        evaluateFoods(relRes.foods);
+      } else if (!providerSignal.getStore()?.aborted) {
+        const portalRel = await postUsdaPortalSearch(relaxedInput, { Branded: true }, 18);
+        evaluateFoods(portalRel?.foods);
+      }
+    } else {
+      const portalRel = await postUsdaPortalSearch(relaxedInput, { Branded: true }, 18);
+      evaluateFoods(portalRel?.foods);
+    }
+  }
+
   if (!best || bestScore < 0.55) return null;
   const rawDesc = (best.description || "")
     .replace(/^(.+?),\s*([^,]+)$/, (full: string, prefix: string, suffix: string) => {
@@ -2262,6 +2294,293 @@ export interface CatalogEntry {
 }
 
 export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
+  {
+    match: /^(?!.*\b(?:unfrosted|bites?|cereal|protein|pretzel|chilled|banana|blueberry|cherry|wild\s+berry|s'?mores|brown\s+sugar|cinnamon|cookies|chocolate|fudge|raspberry|apple|lemon|peach|snickerdoodle|confetti|hot\s+fudge|sundae)\b).*\bpop[- ]?tarts?\b.*\bfrosted\b.*\bstrawberr(?:y|ies)\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted Strawberry Toaster Pastries",
+    barcode: "0038000222511",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "strawberry", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Corn Syrup, High Fructose Corn Syrup, Dextrose, Soybean and Palm Oil (with TBHQ for Freshness), Sugar, Bleached Wheat Flour, Contains 2% or Less of Wheat Starch, Salt, Dried Strawberries, Dried Pears, Dried Apples, Leavening (Baking Soda, Sodium Acid Pyrophosphate, Monocalcium Phosphate), Citric Acid, Gelatin, Modified Wheat Starch, Yellow Corn Flour, Caramel Color, Xanthan Gum, Cornstarch, Turmeric Extract Color, Soy Lecithin, Red 40, Yellow 6, Blue 1, Color Added.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 31.3, saturatedFatG100g: 3.1, sodiumMg100g: 333, fiberG100g: 1.0, proteinG100g: 4.2, fruitsVegNutsPct: 2, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-strawberry.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:frosted|bites?|cereal|protein|blueberry|brown\s+sugar|cinnamon)\b).*\bpop[- ]?tarts?\b.*\bunfrosted\b.*\bstrawberr(?:y|ies)\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Unfrosted Strawberry Toaster Pastries",
+    barcode: "0038000317101",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "unfrosted", "strawberry", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Corn Syrup, High Fructose Corn Syrup, Soybean and Palm Oil (with TBHQ for Freshness), Dextrose, Bleached Wheat Flour, Sugar, Contains 2% or Less of Wheat Starch, Salt, Dried Strawberries, Dried Pears, Dried Apples, Leavening (Baking Soda, Sodium Acid Pyrophosphate, Monocalcium Phosphate), Citric Acid, Modified Wheat Starch, Yellow Corn Flour, Caramel Color, Xanthan Gum, Soy Lecithin, Red 40, Yellow 6, Blue 1.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 25.0, saturatedFatG100g: 3.6, sodiumMg100g: 365, fiberG100g: 1.5, proteinG100g: 5.2, fruitsVegNutsPct: 2, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-unfrosted-strawberry.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:unfrosted|bites?|cereal|protein|pretzel|roll|apple|strawberry|s'?mores|chocolate)\b).*\bpop[- ]?tarts?\b.*\bbrown\s+sugar\s+cinnamon\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted Brown Sugar Cinnamon Toaster Pastries",
+    barcode: "0038000222535",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "brown", "sugar", "cinnamon", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Sugar, Soybean and Palm Oil (with TBHQ for Freshness), Brown Sugar (Sugar, Molasses), Dextrose, High Fructose Corn Syrup, Corn Syrup, Bleached Wheat Flour, Contains 2% or Less of Molasses, Salt, Cinnamon, Wheat Starch, Leavening (Baking Soda, Sodium Acid Pyrophosphate, Monocalcium Phosphate), Gelatin, Soy Lecithin.",
+    nutrition: { caloriesKcal100g: 400, sugarsG100g: 31.0, saturatedFatG100g: 4.5, sodiumMg100g: 340, fiberG100g: 1.5, proteinG100g: 5.0, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-brown-sugar-cinnamon.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:bites?|cereal|protein)\b).*\bpop[- ]?tarts?\b.*\bs'?mores\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted S'mores Toaster Pastries",
+    barcode: "0038000222634",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "smores", "s'mores", "marshmallow", "chocolate", "graham", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Sugar, High Fructose Corn Syrup, Dextrose, Soybean and Palm Oil (with TBHQ for Freshness), Corn Syrup, Whole Wheat Flour, Bleached Wheat Flour, Whey, Contains 2% or Less of Molasses, Cocoa Processed with Alkali, Cornstarch, Leavening (Baking Soda, Sodium Aluminum Phosphate), Milk Chocolate (Sugar, Milk, Chocolate, Cocoa Butter), Salt, Modified Corn Starch, Natural and Artificial Flavor, Soy Lecithin, Gelatin, Egg Whites, Color Added, Xanthan Gum.",
+    nutrition: { caloriesKcal100g: 385, sugarsG100g: 35.4, saturatedFatG100g: 3.6, sodiumMg100g: 354, fiberG100g: 1.5, proteinG100g: 5.2, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-s-mores.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:unfrosted|bites?|cereal|protein)\b).*\bpop[- ]?tarts?\b.*\bfrosted\b.*\bcherr(?:y|ies)\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted Cherry Toaster Pastries",
+    barcode: "0038000222573",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "cherry", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Corn Syrup, High Fructose Corn Syrup, Dextrose, Soybean and Palm Oil (with TBHQ for Freshness), Sugar, Bleached Wheat Flour, Contains 2% or Less of Wheat Starch, Salt, Dried Cherries, Dried Apples, Leavening (Baking Soda, Sodium Acid Pyrophosphate, Monocalcium Phosphate), Citric Acid, Modified Wheat Starch, Gelatin, Caramel Color, Yellow Corn Flour, Xanthan Gum, Red 40, Red 40 Lake, Soy Lecithin, Natural Flavor, Carnauba Wax, Confectioner's Glaze, Yellow 6.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 31.3, saturatedFatG100g: 3.1, sodiumMg100g: 333, fiberG100g: 1.0, proteinG100g: 4.2, fruitsVegNutsPct: 2, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-cherry.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:unfrosted|bites?|cereal|protein|lemon)\b).*\bpop[- ]?tarts?\b.*\bfrosted\b.*\bblueberr(?:y|ies)\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted Blueberry Toaster Pastries",
+    barcode: "0038000222559",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "blueberry", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Corn Syrup, High Fructose Corn Syrup, Dextrose, Sugar, Soybean and Palm Oil (with TBHQ for Freshness), Bleached Wheat Flour, Contains 2% or Less of Wheat Starch, Salt, Dried Blueberries, Dried Grapes, Dried Apples, Leavening (Baking Soda, Sodium Acid Pyrophosphate, Monocalcium Phosphate), Citric Acid, Modified Wheat Starch, Gelatin, Yellow Corn Flour, Natural and Artificial Flavor, Xanthan Gum, Soy Lecithin, Caramel Color, Red 40, Blue 2, Blue 1, Color Added.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 32.3, saturatedFatG100g: 3.1, sodiumMg100g: 344, fiberG100g: 1.5, proteinG100g: 4.2, fruitsVegNutsPct: 2, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-blueberry.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:unfrosted|bites?|cereal|protein)\b).*\bpop[- ]?tarts?\b.*\bwild\s+berry\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted Wild Berry Toaster Pastries",
+    barcode: "0038000222719",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "wild", "berry", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Corn Syrup, High Fructose Corn Syrup, Dextrose, Soybean and Palm Oil (with TBHQ for Freshness), Sugar, Bleached Wheat Flour, Contains 2% or Less of Wheat Starch, Salt, Dried Pears, Dried Apples, Dried Strawberries, Citric Acid, Leavening (Baking Soda, Sodium Acid Pyrophosphate, Monocalcium Phosphate), Gelatin, Modified Wheat Starch, Natural Mixed Berry Flavor, Xanthan Gum, Caramel Color, Soy Lecithin, Red 40 Lake, Blue 1 Lake, Red 40, Yellow 6, Blue 2 Lake, Carnauba Wax, Blue 1.",
+    nutrition: { caloriesKcal100g: 385, sugarsG100g: 33.3, saturatedFatG100g: 3.1, sodiumMg100g: 333, fiberG100g: 1.0, proteinG100g: 4.2, fruitsVegNutsPct: 2, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-wild-berry.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:bites?|cereal|protein)\b).*\bpop[- ]?tarts?\b.*\bcookies\s*(?:&|and|\x27n)?\s*cr[eè]me\b|\bpop[- ]?tarts?\b.*\bcookies\s*(?:&|and|\x27n)?\s*cream\b/i,
+    brand: "Pop-Tarts",
+    title: "Pop-Tarts Frosted Cookies & Crème Toaster Pastries",
+    barcode: "0038000222672",
+    keywords: ["kelloggs", "kellogg's", "pop tarts", "poptarts", "toaster", "pastries", "pastry", "frosted", "cookies", "creme", "cream", "chocolate", "breakfast", "snack"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Sugar, Dextrose, High Fructose Corn Syrup, Soybean and Palm Oil (with TBHQ for Freshness), Corn Syrup, Whey, Bleached Wheat Flour, Cocoa Processed with Alkali, Contains 2% or Less of Cornstarch, Leavening (Baking Soda, Sodium Aluminum Phosphate), Salt, Modified Corn Starch, Natural and Artificial Flavor, Soy Lecithin, Gelatin, Egg Whites, Color Added, Xanthan Gum.",
+    nutrition: { caloriesKcal100g: 385, sugarsG100g: 33.3, saturatedFatG100g: 3.6, sodiumMg100g: 396, fiberG100g: 1.5, proteinG100g: 5.2, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.poptarts.com/en_US/products/all-flavors/pop-tarts-frosted-cookies-and-creme.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /\blittle\s+debbie\b.*\bchocolate\b.*\bchristmas\s+tree\s+(?:snack\s+)?cakes?\b/i,
+    brand: "Little Debbie",
+    title: "Little Debbie Chocolate Christmas Tree Cakes",
+    keywords: ["little", "debbie", "chocolate", "christmas", "tree", "cakes", "snack", "holiday"],
+    ingredients:
+      "Sugar, Corn Syrup, Water, Enriched Bleached Flour (Wheat Flour, Barley Malt, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Palm and Palm Kernel Oil, Palm and Soybean Oils with TBHQ and Citric Acid to Protect Flavor, Soybean Oil, Cocoa, Dextrose, Toppers (Sugar, Confectioner's Glaze, Yellow 5 Lake, Blue 1 Lake, Carnauba Wax), Contains 2% or Less of: Soy Flour, Cocoa Processed with Alkali, Egg Whites, Whey, Corn Starch, Baking Soda, Salt, Mono- and Diglycerides, Soy Lecithin, Sorbitan Monostearate, Sodium Aluminum Phosphate, Sorbic Acid, Red 40 Lake, Titanium Dioxide, Polysorbate 60, Natural and Artificial Flavors, Polysorbate 80, Propylene Glycol Monostearate, Sodium Stearoyl Lactylate, Citric Acid.",
+    nutrition: { caloriesKcal100g: 435, sugarsG100g: 41.2, saturatedFatG100g: 11.8, sodiumMg100g: 212, fiberG100g: 1.2, proteinG100g: 2.4, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.littledebbie.com/chocolate-christmas-tree-cakes",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:ice\s+cream|creamer|cereal)\b).*\blittle\s+debbie\b.*\b(?:nutty\s+buddy|nutty\s+bars?)\b/i,
+    brand: "Little Debbie",
+    title: "Little Debbie Nutty Buddy Wafer Bars",
+    keywords: ["little", "debbie", "nutty", "buddy", "bars", "wafer", "peanut", "butter", "chocolate", "fudge", "snack"],
+    ingredients:
+      "Dextrose, Peanut Butter, Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Sugar, Palm and Soybean Oils with TBHQ and Citric Acid to Protect Flavor, Palm and Palm Kernel Oil, Cocoa, Contains 2% or Less of: Soy Flour, Soybean Oil, Salt, Soy Lecithin, Baking Soda, Natural and Artificial Flavors, Whey, Egg Whites.",
+    nutrition: { caloriesKcal100g: 544, sugarsG100g: 36.8, saturatedFatG100g: 14.0, sodiumMg100g: 228, fiberG100g: 3.5, proteinG100g: 7.0, fruitsVegNutsPct: 18, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.littledebbie.com/nutty-buddy",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:breast|shredded|pulled|salad|wings?|bites?|nuggets?|chunks?|soup|broth)\b).*\bkirkland(?:\s+signature)?\b.*\brotisserie\s+chicken\b/i,
+    brand: "Kirkland Signature",
+    title: "Kirkland Signature Seasoned Rotisserie Chicken",
+    keywords: ["kirkland", "signature", "costco", "rotisserie", "chicken", "seasoned", "whole", "cooked"],
+    ingredients:
+      "Whole Chicken, Water, Salt, Sodium Phosphate, Hydrolyzed Casein, Modified Corn Starch, Sugar, Dextrose, Chicken Broth, Isolated Soy Protein Lecithin, Monoglycerides, Diglycerides.",
+    nutrition: { caloriesKcal100g: 167, sugarsG100g: 0, saturatedFatG100g: 3.0, sodiumMg100g: 548, fiberG100g: 0, proteinG100g: 22.6, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://sameday.costco.com/store/costco/products/21128593-kirkland-signature-rotisserie-chicken-3-lb",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /\bkirkland(?:\s+signature)?\b.*\blightly\s+breaded\s+chicken\s+breast\s+(?:chunks?|bites?|fillets?)\b/i,
+    brand: "Kirkland Signature",
+    title: "Kirkland Signature Lightly Breaded Chicken Breast Chunks",
+    keywords: ["kirkland", "signature", "costco", "lightly", "breaded", "chicken", "breast", "chunks", "bites", "boneless", "skinless", "frozen", "cooked"],
+    ingredients:
+      "Boneless Skinless Chicken Breast with Rib Meat, Water, Wheat Flour, Modified Corn Starch, Yellow Corn Flour, Contains 2% or Less of Salt, Sugar, Rice Starch, Spices, Dextrose, Garlic Powder, Onion Powder, Leavening (Cream of Tartar, Sodium Bicarbonate), Yeast Extract, Natural Flavor, Yeast, Paprika Extract. Breading Set in Vegetable Oil (Soybean and/or Canola Oil).",
+    nutrition: { caloriesKcal100g: 179, sugarsG100g: 2.4, saturatedFatG100g: 1.2, sodiumMg100g: 643, fiberG100g: 0, proteinG100g: 19.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.costco.com/kirkland-signature-lightly-breaded-chicken-breast-chunks%2C-boneless-skinless%2C-4-lbs.product.4000181596.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:2%|1%|skim|fat[\s-]*free|reduced[\s-]*fat|low[\s-]*fat|chocolate|strawberry|vanilla|almond|oat|soy|coconut|lactose[\s-]*free)\b).*\bgood\s*(?:&|and)\s*gather\b.*\borganic\b.*\bwhole\s+milk\b/i,
+    brand: "Good & Gather",
+    title: "Good & Gather Organic Whole Milk",
+    keywords: ["good", "gather", "target", "organic", "whole", "milk", "vitamin", "grade", "dairy", "gallon", "half"],
+    ingredients: "Organic Grade A Milk, Vitamin D3.",
+    nutrition: { caloriesKcal100g: 63, sugarsG100g: 5.0, saturatedFatG100g: 2.1, sodiumMg100g: 52, fiberG100g: 0, proteinG100g: 3.3, fruitsVegNutsPct: 0, nutriScoreGrade: "b", isOrganic: true, isWholeFood: false },
+    sourceUrl: "https://www.target.com/p/organic-whole-milk-0-5gal-good-38-gather-8482/-/A-54444621",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:wavy|rippled|kettle|bbq|barbecue|sour\s+cream|onion|cheddar|salt\s*(?:&|and)\s*vinegar|jalapeno|jalapeño|lightly\s+salted|no\s+salt|baked|tortilla|corn)\b).*\bgreat\s+value\b.*\bclassic\s+potato\s+chips\b/i,
+    brand: "Great Value",
+    title: "Great Value Classic Potato Chips",
+    keywords: ["great", "value", "walmart", "classic", "regular", "potato", "chips", "salty", "snack"],
+    ingredients: "Potatoes, Vegetable Oil (Canola, Corn, Soybean, and/or Sunflower Oil), Salt.",
+    nutrition: { caloriesKcal100g: 571, sugarsG100g: 0, saturatedFatG100g: 5.4, sodiumMg100g: 607, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Great-Value-Classic-Potato-Chips-Party-Size-13-oz/197580949",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:wavy|rippled|kettle|bbq|barbecue|sour\s+cream|onion|cheddar|salt\s*(?:&|and)\s*vinegar|jalapeno|jalapeño|lightly\s+salted|no\s+salt|baked|tortilla|corn)\b).*\bclancy'?s\b.*\b(?:classic|original)\s+potato\s+chips\b/i,
+    brand: "Clancy's",
+    title: "Clancy's Classic Potato Chips",
+    keywords: ["clancys", "clancy's", "aldi", "classic", "original", "potato", "chips", "snack"],
+    ingredients: "Potatoes, Vegetable Oil (Corn, Cottonseed, Canola, and/or Sunflower Oil), Salt.",
+    nutrition: { caloriesKcal100g: 571, sugarsG100g: 0, saturatedFatG100g: 5.4, sodiumMg100g: 607, fiberG100g: 3.6, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.aldi.us/products/snacks/chips-crackers-popcorn/detail/ps/p/clancys-original-potato-chips/",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:sour\s+cream|onion|cheddar|bbq|barbecue|pizza|ranch|salt\s*(?:&|and)\s*vinegar|jalapeno|jalapeño|scorchin|spicy|hot|lightly\s+salted|reduced\s+fat|wavy)\b).*\bpringles\b.*\boriginal\b.*\b(?:potato\s+)?(?:crisps?|chips?)\b/i,
+    brand: "Pringles",
+    title: "Pringles Original Potato Crisps",
+    barcode: "0038000138416",
+    keywords: ["pringles", "kelloggs", "kellanova", "original", "potato", "crisps", "chips", "stackable", "snack"],
+    ingredients: "Dried Potatoes, Vegetable Oil (Corn, Cottonseed, High Oleic Soybean, and/or Sunflower Oil), Degerminated Yellow Corn Flour, Cornstarch, Rice Flour, Maltodextrin, Mono- and Diglycerides, Salt, Wheat Starch.",
+    nutrition: { caloriesKcal100g: 536, sugarsG100g: 0, saturatedFatG100g: 8.9, sodiumMg100g: 536, fiberG100g: 3.6, proteinG100g: 3.6, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.pringles.com/us/en/products/favorites/pringles-original-product.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:gluten[\s-]*free|protein\+?|chickpea|red\s+lentil|whole\s+grain|ready\s+pasta|sauce|pesto|marinara)\b).*\bbarilla\b.*\bspaghetti\b/i,
+    brand: "Barilla",
+    title: "Barilla Spaghetti Pasta",
+    barcode: "0076808280081",
+    keywords: ["barilla", "classic", "blue", "box", "spaghetti", "pasta", "semolina", "noodles"],
+    ingredients: "Semolina (Wheat), Durum Wheat Flour, Vitamin B3 (Niacin), Iron (Ferrous Sulfate), Vitamin B1 (Thiamine Mononitrate), Vitamin B2 (Riboflavin), Folic Acid.",
+    nutrition: { caloriesKcal100g: 357, sugarsG100g: 3.6, saturatedFatG100g: 0, sodiumMg100g: 0, fiberG100g: 5.4, proteinG100g: 12.5, fruitsVegNutsPct: 0, nutriScoreGrade: "a", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.barilla.com/en-us/products/pasta/classic-blue-box/spaghetti",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:beef|cheese|cheddar|jalapeno|jalapeño|bacon|smokies|bologna|turkey\s+breast|deli\s+fresh|lunchables)\b).*\boscar\s+mayer\b.*\b(?:uncured\s+)?wieners?\b/i,
+    brand: "Oscar Mayer",
+    title: "Oscar Mayer Classic Uncured Wieners",
+    barcode: "0044700000632",
+    keywords: ["oscar", "mayer", "classic", "uncured", "wieners", "hot", "dogs", "hotdogs", "franks", "turkey", "chicken", "pork"],
+    ingredients:
+      "Mechanically Separated Turkey, Mechanically Separated Chicken, Pork, Water, Cultured Dextrose, Contains Less than 2% of Dextrose, Salt, Corn Syrup, Distilled White Vinegar, Cultured Celery Juice, Cherry Powder, Sodium Phosphate, Flavor.",
+    nutrition: { caloriesKcal100g: 267, sugarsG100g: 2.2, saturatedFatG100g: 6.7, sodiumMg100g: 933, fiberG100g: 0, proteinG100g: 11.1, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.kraftheinz.com/oscar-mayer/products/00044700000632-classic-uncured-wieners-hot-dogs",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:shredded|diced|southern\s+style|o'brien|obrien|tater|crowns?|fries|french\s+fried|sweet\s+potato|cheddar|bacon|organic)\b).*\bgreat\s+value\b.*\bhash\s*brown\b.*\bpatt(?:y|ies)\b/i,
+    brand: "Great Value",
+    title: "Great Value Seasoned Potato Hash Brown Patties",
+    barcode: "0078742226859",
+    keywords: ["great", "value", "seasoned", "potato", "hash", "brown", "hashbrown", "patties", "frozen", "breakfast"],
+    ingredients:
+      "Potatoes, Vegetable Oil (Contains One or More of the Following Oils: Canola, Soybean, Cottonseed, Sunflower, Corn), Dehydrated Potato, Salt, Enriched Wheat Flour (Flour, Niacin, Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Potassium Chloride, Natural Flavoring, Dextrose, Disodium Dihydrogen Pyrophosphate (to Maintain Natural Color).",
+    nutrition: { caloriesKcal100g: 219, sugarsG100g: 0, saturatedFatG100g: 2.3, sodiumMg100g: 484, fiberG100g: 3.1, proteinG100g: 3.1, fruitsVegNutsPct: 65, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.walmart.com/ip/Great-Value-Seasoned-Potato-Hash-Brown-Patties-22-5-oz-10-Count-Frozen/10534292",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:beef|turkey|cheese|cheddar|jalapeno|jalapeño|bun\s+size|prime|patties|buns?)\b).*\bball\s+park\b.*\b(?:classic\s+)?(?:hot\s+dogs?|franks?)\b/i,
+    brand: "Ball Park",
+    title: "Ball Park Classic Hot Dogs",
+    barcode: "0054500193528",
+    keywords: ["ball", "park", "classic", "franks", "hot", "dogs", "hotdogs", "wieners", "turkey", "pork"],
+    ingredients:
+      "Mechanically Separated Turkey, Pork, Water, Corn Syrup, Contains 2% or Less of: Salt, Beef, Potassium Lactate, Natural Flavor, Sodium Phosphate, Sodium Diacetate, Ascorbic Acid (Vitamin C), Sodium Nitrite, Extractives of Paprika.",
+    nutrition: { caloriesKcal100g: 283, sugarsG100g: 5.7, saturatedFatG100g: 8.5, sodiumMg100g: 906, fiberG100g: 0, proteinG100g: 11.3, fruitsVegNutsPct: 0, nutriScoreGrade: "e", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.ballparkbrand.com/hot-dogs/classic-franks",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:spicy|buffalo|honey|dino|fun|air\s+fried|gluten[\s-]*free|lightly\s+breaded|panko|unbreaded|grilled)\b).*\btyson\b.*\bchicken\s+nuggets\b/i,
+    brand: "Tyson",
+    title: "Tyson Fully Cooked Chicken Nuggets",
+    barcode: "0023700014191",
+    keywords: ["tyson", "chicken", "nuggets", "frozen", "breaded", "white", "meat", "natural", "ingredients"],
+    ingredients:
+      "Chicken Breast with Rib Meat, Wheat Flour, Water, Chicken Rib Meat, Contains 2% or Less of Salt, Corn Starch, Dextrose, Natural Flavors, Extractives of Paprika and Annatto, Spice, Yeast Extract, Torula Yeast, Leavening (Cream of Tartar, Sodium Bicarbonate). Breading Set in Vegetable Oil.",
+    nutrition: { caloriesKcal100g: 289, sugarsG100g: 1.1, saturatedFatG100g: 4.4, sodiumMg100g: 522, fiberG100g: 1.1, proteinG100g: 14.4, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.tyson.com/products/breaded-chicken-nuggets/",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:hot|spicy|maple|sage|turkey|italian|links?|patties|biscuit|croissant|muffin|griddle|bowl)\b).*\bjimmy\s+dean\b.*\bpork\b.*\bsausage\s+roll\b/i,
+    brand: "Jimmy Dean",
+    title: "Jimmy Dean Premium Pork Regular Breakfast Sausage Roll",
+    barcode: "0077900115739",
+    keywords: ["jimmy", "dean", "premium", "pork", "regular", "breakfast", "sausage", "roll", "refrigerated", "fresh"],
+    ingredients: "Pork, Water, Contains 2% or Less of: Salt, Spices, Sugar, Monosodium Glutamate.",
+    nutrition: { caloriesKcal100g: 375, sugarsG100g: 1.8, saturatedFatG100g: 11.6, sodiumMg100g: 696, fiberG100g: 0, proteinG100g: 14.3, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.jimmydean.com/products/fresh-sausage/roll-sausage/premium-pork-regular-sausage/",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:turkey|bacon|croissant|muffin|griddle|delights)\b).*\bjimmy\s+dean\b.*\bsausage,?\s*egg\s*(?:&|and)\s*cheese\b.*\bbiscuit/i,
+    brand: "Jimmy Dean",
+    title: "Jimmy Dean Sausage, Egg & Cheese Biscuit Sandwiches",
+    barcode: "0077900471224",
+    keywords: ["jimmy", "dean", "sausage", "egg", "cheese", "biscuit", "sandwiches", "sandwich", "frozen", "breakfast"],
+    ingredients:
+      "Biscuit: Enriched Bleached Flour (Wheat Flour, Malted Barley Flour, Niacin, Reduced Iron, Thiamine Mononitrate, Riboflavin, Folic Acid), Water, Palm Oil, Cultured Buttermilk, Sugar, Contains 2% or Less of: Leavening (Sodium Acid Pyrophosphate, Baking Soda, Aluminum Sulfate, Monocalcium Phosphate), Salt, Modified Wheat Starch, Soy Lecithin. Cooked Pork Sausage Patty: Pork, Water, Contains 2% or Less of: Salt, Spices, Sugar, Caramel Color, Natural Flavor, BHA, BHT, Citric Acid. Egg Patty: Whole Eggs, Water, Soybean Oil, Modified Corn Starch, Whey Solids, Nonfat Dry Milk, Salt, Xanthan Gum, Citric Acid. Pasteurized Process American Cheese: Milk, Water, Cream, Sodium Citrate, Salt, Cheese Culture, Tetrasodium Pyrophosphate, Sorbic Acid, Enzymes, Soy Lecithin, Apo-Carotenal and Beta Carotene (Color).",
+    nutrition: { caloriesKcal100g: 308, sugarsG100g: 3.0, saturatedFatG100g: 8.3, sodiumMg100g: 624, fiberG100g: 1.5, proteinG100g: 9.8, fruitsVegNutsPct: 0, nutriScoreGrade: "d", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.jimmydean.com/products/sandwiches/biscuits/sausage-egg-and-cheese-biscuit/",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /^(?!.*\b(?:thick\s*(?:&|and)\s*fluffy|blueberry|strawberry|chocolate|protein|gluten[\s-]*free|pancakes?)\b).*\b(?:eggo|kellogg'?s\s+eggo)\b.*\bbuttermilk\b.*\bwaffles?\b/i,
+    brand: "Kellogg's Eggo",
+    title: "Eggo Buttermilk Waffles",
+    barcode: "0038000401206",
+    keywords: ["kelloggs", "kellogg's", "eggo", "buttermilk", "frozen", "waffles", "breakfast"],
+    ingredients:
+      "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola, and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Contains 2% or Less of Salt, Dextrose, Buttermilk, Whey, Eggs, Soy Lecithin, Beta-Carotene for Color, Calcium Carbonate, Iron, Vitamin A Palmitate, Vitamin B6, Vitamin B12.",
+    nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 529, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.eggo.com/en_US/products/waffles/kellogg-s-eggo-buttermilk-waffles-product.html",
+    verifiedAt: "2026-11-18",
+  },
+  {
+    match: /\bchobani\b.*\bflip\b.*\balmond\s+coco\s+loco\b/i,
+    brand: "Chobani",
+    title: "Chobani Flip Almond Coco Loco Low-Fat Greek Yogurt",
+    barcode: "0818290012999",
+    keywords: ["chobani", "flip", "almond", "coco", "loco", "coconut", "dark", "chocolate", "low", "fat", "low-fat", "greek", "yogurt"],
+    ingredients:
+      "Lowfat Yogurt (Cultured Pasteurized Nonfat Milk, Cream), Evaporated Cane Sugar, Honey Roasted Salted Almonds (Almonds, Sugar, Honey, Sea Salt), Dark Chocolate (Sugar, Unsweetened Chocolate, Cocoa Butter, Soy Lecithin, Natural Vanilla Extract), Water, Natural Flavors, Fruit Pectin, Guar Gum, Locust Bean Gum, Lemon Juice Concentrate.",
+    nutrition: { caloriesKcal100g: 148, sugarsG100g: 14.1, saturatedFatG100g: 2.3, sodiumMg100g: 63, fiberG100g: 1.6, proteinG100g: 7.0, fruitsVegNutsPct: 12, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.chobani.com/products/yogurt/flip/almond-coco-loco",
+    verifiedAt: "2026-11-18",
+  },
   {
     match: /^(?!.*\b(?:breast|shredded|pulled|salad|wings?|bites?|nuggets?|soup|broth)\b).*\bmember'?s\s+mark\b.*\brotisserie\s+chicken\b/i,
     brand: "Member's Mark",
@@ -2881,13 +3200,24 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-08",
   },
   {
-    match: /\b(oscar\s+mayer)\b.*\b(deli\s+fresh|turkey|oven\s+roasted)\b/i,
+    match: /^(?!.*\bsmoked\b).*\b(oscar\s+mayer)\b.*\b(deli\s+fresh|turkey|oven\s+roasted)\b/i,
     brand: "Oscar Mayer",
     title: "Oscar Mayer Deli Fresh Oven Roasted Turkey Breast",
     ingredients: "Turkey Breast, Water, Modified Cornstarch, Contains Less than 2% of Vinegar, Salt, Cultured Dextrose, Sugar, Sodium Phosphates, Carrageenan, Caramel Color.",
     nutrition: { caloriesKcal100g: 89, sugarsG100g: 1.8, saturatedFatG100g: 0.4, sodiumMg100g: 890, fiberG100g: 0, proteinG100g: 16.0, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.oscarmayer.com/products/00044700030806-deli-fresh-oven-roasted-turkey-breast-sliced-lunch-meat",
     verifiedAt: "2026-11-08",
+  },
+  {
+    match: /^(?!.*\b(?:oven\s+roasted|honey|cracked\s+black\s+pepper|mesquite|rotisserie|cajun|herb|ham|chicken|beef)\b).*\boscar\s+mayer\b.*\bdeli\s+fresh\b.*\bsmoked\s+turkey\s+breast\b/i,
+    brand: "Oscar Mayer",
+    title: "Oscar Mayer Deli Fresh Smoked Turkey Breast",
+    barcode: "0044700030813",
+    keywords: ["oscar", "mayer", "deli", "fresh", "smoked", "turkey", "breast", "sliced", "lunch", "meat"],
+    ingredients: "Turkey Breast, Water, Cultured Dextrose, Modified Cornstarch, Contains Less than 2% of Salt, Vinegar, Cultured Celery Juice, Sodium Phosphates, Cherry Powder, Smoke Flavor, Carrageenan.",
+    nutrition: { caloriesKcal100g: 89, sugarsG100g: 0, saturatedFatG100g: 0, sodiumMg100g: 893, fiberG100g: 0, proteinG100g: 17.9, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isOrganic: false, isWholeFood: false },
+    sourceUrl: "https://www.kraftheinz.com/oscar-mayer/products/00044700030813-deli-fresh-smoked-turkey-breast-sliced-lunch-meat",
+    verifiedAt: "2026-11-18",
   },
   {
     match: /\b(tyson)\b.*\b(grilled\s*(&|and)?\s*ready|grilled.*chicken|roasted.*chicken|unbreaded.*chicken)\b/i,
@@ -3294,9 +3624,9 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     verifiedAt: "2026-11-17",
   },
   {
-    match: /^(?!.*\b(chocolate|brownie|ice\s+cream|coffee\s+creamer)\b).*\blittle\s+debbie\b.*\bchristmas\s+tree\s+(?:snack\s+)?cakes?\b/i,
+    match: /^(?!.*\b(chocolate|brownie|ice\s+cream|coffee\s+creamer)\b).*\blittle\s+debbie\b.*\b(?:vanilla\s+)?christmas\s+tree\s+(?:snack\s+)?cakes?\b/i,
     brand: "Little Debbie",
-    title: "Little Debbie Christmas Tree Cakes",
+    title: "Little Debbie Vanilla Christmas Tree Cakes",
     keywords: ["little", "debbie", "christmas", "tree", "cakes", "snack", "vanilla", "holiday"],
     ingredients:
       "Sugar, Corn Syrup, Enriched Bleached Flour (Wheat Flour, Niacin, Reduced Iron, Thiamin Mononitrate, Riboflavin, Folic Acid), Water, Palm and Palm Kernel Oil, Palm and Soybean Oils with TBHQ and Citric Acid to Protect Flavor, Dextrose, Soybean Oil, Corn Starch, Green Sugar Crystals (Sugar, Confectioner's Glaze, Yellow 5 Lake, Blue 1 Lake, Carnauba Wax), Dried Egg Whites, Whey, Baking Soda, Sodium Aluminum Phosphate, Salt, Soy Lecithin, Mono- and Diglycerides, Sorbitan Monostearate, Titanium Dioxide, Sorbic Acid, Red 40 Lake, Polysorbate 60, Natural and Artificial Flavors, Polysorbate 80, Annatto Extract, Turmeric Extract, Soy Flour.",
@@ -3692,6 +4022,7 @@ export const INSTANT_GROCERY_CATALOG: CatalogEntry[] = [
     match: /^(?!.*\b(blueberry|strawberry|chocolate|cinnamon|apple|banana|buttermilk|thick\s*(?:&|and)\s*fluffy|whole\s+wheat|nutri[- ]?grain|protein|gluten[\s-]*free|pancakes?|french\s+toast)\b).*\b(eggo|kellogg'?s\s+eggo)\b/i,
     brand: "Kellogg's Eggo",
     title: "Eggo Homestyle Waffles",
+    keywords: ["kelloggs", "kellogg's", "eggo", "homestyle", "frozen", "waffles", "breakfast"],
     ingredients: "Enriched Flour (Wheat Flour, Niacin, Reduced Iron, Vitamin B1 [Thiamin Mononitrate], Vitamin B2 [Riboflavin], Folic Acid), Water, Vegetable Oil (Soybean, Palm, Canola, and/or Cottonseed), Sugar, Leavening (Baking Soda, Sodium Aluminum Phosphate, Monocalcium Phosphate), Contains 2% or Less of Salt, Dextrose, Spice, Whey, Eggs, Soy Lecithin, Beta-Carotene for Color, Calcium Carbonate, Iron, Vitamin A Palmitate, Vitamin B6, Vitamin B12.",
     nutrition: { caloriesKcal100g: 271, sugarsG100g: 5.7, saturatedFatG100g: 2.1, sodiumMg100g: 514, fiberG100g: 1.4, proteinG100g: 7.1, fruitsVegNutsPct: 0, nutriScoreGrade: "c", isWholeFood: false },
     sourceUrl: "https://www.eggo.com/en_US/products/waffles/kellogg-s-eggo-homestyle-waffles-product.html",
@@ -4478,6 +4809,11 @@ export function passesCatalogIdentityGuard(
     .replace(/,\s*(?:now|was)\b.*$/i, " ")
     .replace(/\bfree\s+of\s+top\s+\d+\s+allergens?\b/gi, " ")
     .replace(/\btop\s+\d+\s+allergen[\s-]*free\b/gi, " ")
+    .replace(/\b100%\s+(?:all\s+)?natural\s+ingredients?\b/gi, " ")
+    .replace(/\b(?:breakfast|comfort|frozen)\s+foods?\b/gi, " ")
+    .replace(/\b(?:kids'?|school|lunch(?:\s*box)?)\s+(?:snacks?|lunch|drinks?|breakfast|treats?)\b/gi, " ")
+    .replace(/\bshelf[\s-]*stable\b/gi, " ")
+    .replace(/\bpantry\s+staples?\b/gi, " ")
     .replace(/\bsoft\s*(?:&|and)\s*moist\b/gi, " ")
     .replace(/\b\d+(?:\.\d+)?\s*(?:g|mg|mcg|kcal|cal)\s+(?:of\s+)?[a-z]*\.{2,}/gi, " ")
     .replace(/\b\d+\s+[a-z]{1,3}\.{2,}/gi, " ")
@@ -4992,10 +5328,10 @@ function catalogFallback(query: string): Omit<LookupResult, "ms"> | null {
   return null;
 }
 
-const RETAILER_SEO_COMMA_TAIL_RE =
-  /,\s*(?:free\s+of\s+top\s+\d+\s+allergens?|top\s+\d+\s+allergen[\s-]*free|allergen[\s-]*free|soft\s*(?:&|and)\s*moist|\d+\s*g\s+(?:whey\s+|plant\s+)?protein(?:\s+per\s+(?:serving|cup))?|big\s+pack|high\s+(?:in\s+)?fiber|good\s+source\s+of\s+[^,]+|excellent\s+source\s+of\s+[^,]+|rich\s+in\s+[^,]+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staple|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+food|breakfast\s+food|(?:kids?|school|lunch\s*box|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+[^,]+|great\s+for\s+[^,]+|perfect\s+for\s+[^,]+|ideal\s+for\s+[^,]+|snap\s+ebt(?:\s+eligible)?|small|medium|large|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack)\s*$/i;
+const RETAILER_SEO_COMMA_SEGMENT_RE =
+  /^(?:free\s+of\s+top\s+\d+\s+allergens?|top\s+\d+\s+allergen[\s-]*free|allergen[\s-]*free|100%\s+(?:all\s+)?natural\s+ingredients?|soft\s*(?:&|and)\s*moist|\d+\s*g\s+(?:whey\s+|plant\s+)?protein(?:\s+per\s+(?:serving|cup))?|big\s+pack|good\s+source\s+of\s+.+|excellent\s+source\s+of\s+.+|rich\s+in\s+.+|heart\s+healthy|shelf[\s-]*stable|pantry\s+staples?|ready[\s-]*to[\s-]*(?:eat|drink|serve|bake|cook)|easy\s+(?:dinner|meal|lunch|prep)|quick\s+(?:meal|lunch|dinner|breakfast)|comfort\s+foods?|breakfast\s+foods?|breakfast\s+spread|frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli(?:\s+soup)?|deli\s+soup|refrigerated|frozen|previously\s+frozen|(?:kids'?|school|lunch(?:\s*box)?|office|party|holiday|game\s+day|after[\s-]*school|on[\s-]*the[\s-]*go|bedtime|afternoon|everyday|family)\s+(?:snacks?|breakfast|treats?|drinks?|favorites?|lunch)|snacks?\s+for\s+.+|great\s+for\s+.+|perfect\s+for\s+.+|ideal\s+for\s+.+|snap\s+ebt(?:\s+eligible)?|seasonal(?:\s*[-–—]\s*\w+)?|mini\s+size|regular\s+size|king\s+size|share\s+size|family(?:\s+size|\s+pack)?|mega(?:\s+size|\s+pack)?|giant(?:\s+size)?|party(?:\s+size|\s+pack)?|value(?:\s+size|\s+pack)?|single[\s-]*serve|multi[\s-]*pack|about\s+\d+\s+[a-z]+\s+per\s+pack|serves\s+\d+(?:\s*[-–—]\s*\d+)?)$/i;
 
-const AMBIGUOUS_SHORT_SEO_TAIL_RE = /^,\s*(?:high\s+(?:in\s+)?fiber|small|medium|large)\s*$/i;
+const AMBIGUOUS_SHORT_SEO_SEGMENT_RE = /^(?:high\s+(?:in\s+)?fiber|small|medium|large)$/i;
 const PRESERVED_VARIANT_ELLIPSIS_TOKEN_RE =
   /\b(?:zero|diet|free|sugar|sweet|unsweet\w*|fat|light|lite|low|less|reduced|no|added|sodium|salt|organic|simply|nkd|healthy|request|protein|pro|elite|plus|ultra|max|keto|gluten|dairy|lactose|vegan|plant|soy|oat|almond|decaf|caffeine|spicy|hot|flamin|jalapeno|habanero|buffalo|chipotle|extra|creamy|crunchy|chunky|raw|sharp|mild|unflavored|plain)\b/i;
 
@@ -5017,11 +5353,12 @@ export function cleanSearchQuery(title: string): string {
     .replace(/,?\s*\b(?:final\s+cost\s+by\s+weight|avg\.?\s+price|average\s+price)\b.*$/i, "")
     .replace(/\s+for\s+(?:sandwiches|sushi|sashimi|dipping|prime\s+rib|steak|salads?|marinades?)\b.*$/i, "")
     .replace(/\s*[-–—|]\s*pack\s+of\s+\d+.*$/i, "")
-    .replace(/\s*\(\d+(\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml)\.?\)\s*[-–—|]?.*$/i, "")
-    .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:fl\.?\s*oz|lbs?|oz|ct|count|pk|pack|g|kg)\.?\b.*$/i, "")
-    .replace(/,\s*(frozen\s+(?:breakfast|food|meal|snack|entree|dessert)s?|fresh\s+deli\s+soup|deli\s+soup|refrigerated|fresh\s+deli|family\s+size|mega\s+size|giant\s+size|value\s+size|value\s+pack|party\s+size|big\s+pack|about\s+\d+\s+[a-z]+\s+per\s+pack|previously\s+frozen|serves\s+\d+|\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?)\b.*$/i, "")
-    .replace(/\s+\d+(\.\d+)?\s*(fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?\b.*$/i, "")
-    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|dozen)\.?\b.*$/i, "")
+    .replace(/\s*\(\d+(\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|lbs|ct|count|pk|pack|g|kg|ml|pop[- ]?tarts?|bars?|pouches?|packs?|packets?|cups?|bottles?|cans?|cookies?|pies?|cakes?|waffles?|rolls?|slices?)\.?\)\s*[-–—|]?.*$/i, "")
+    .replace(/\s*\(\d*[^)]*$/g, "")
+    .replace(/:\s*\d+(?:\s*[-–—]\s*\d+)?\s*(?:fl\.?\s*oz|lbs?|oz|ct|count|pk|pack|g|kg|gal|gallon)\.?\b.*$/i, "")
+    .replace(/,\s*(about\s+\d+\s+[a-z]+\s+per\s+pack|serves\s+\d+|\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|gal|gallon|qt|pt|g|kg|ml|l|box|bag|tub|can|jar|bottle|carton|cup|bowl|tray|pouch|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?)\b.*$/i, "")
+    .replace(/\s+\d+(\.\d+)?\s*(fl\.?\s*oz|oz|lb|lbs|gal|gallon|qt|pt|ct|count|pk|pack|dozen)\.?(?:\s*(?:can|cans|box|boxes|bag|bags|bottle|bottles|jar|jars|tub|tubs|carton|cartons|pouch|pouches|pack|packs|kit))?\b.*$/i, "")
+    .replace(/\s*[-–—]\s*\d+(\.\d+)?\s*(fl\.?\s*oz|pk|pack|ct|count|oz|lb|lbs|gal|gallon|qt|pt|g|kg|ml|l|dozen)\.?\b.*$/i, "")
     .replace(/\s*\((fresh|refrigerated|frozen)\)\s*$/i, "")
     .replace(/,\s*(now|was)\b.*$/i, "")
     .replace(/\bbig\s+pack\b/gi, " ")
@@ -5029,15 +5366,36 @@ export function cleanSearchQuery(title: string): string {
     .replace(/\s*[.,•|\-]+\s*$/, "")
     .trim();
 
-  for (let pass = 0; pass < 4; pass++) {
-    const commaIdx = out.lastIndexOf(",");
-    if (commaIdx <= 0) break;
-    const beforeWords = out.slice(0, commaIdx).trim().split(/\s+/).filter(Boolean);
-    if (beforeWords.length < 2) break;
-    if (beforeWords.length < 4 && AMBIGUOUS_SHORT_SEO_TAIL_RE.test(out.slice(commaIdx))) break;
-    const next = out.replace(RETAILER_SEO_COMMA_TAIL_RE, "").replace(/\s*[.,•|\-]+\s*$/, "").trim();
-    if (next === out || !next) break;
-    out = next;
+  if (out.includes(",")) {
+    const rawParts = out.split(",").map((s) => s.trim()).filter(Boolean);
+    if (rawParts.length >= 2) {
+      const headWords = rawParts[0].split(/\s+/).filter(Boolean);
+      if (headWords.length >= 2) {
+        const kept = [rawParts[0]];
+        let wordAccum = headWords.length;
+        for (let i = 1; i < rawParts.length; i++) {
+          const seg = rawParts[i];
+          if (RETAILER_SEO_COMMA_SEGMENT_RE.test(seg)) {
+            continue;
+          }
+          if (wordAccum >= 4 && AMBIGUOUS_SHORT_SEO_SEGMENT_RE.test(seg)) {
+            continue;
+          }
+          kept.push(seg);
+          wordAccum += seg.split(/\s+/).filter(Boolean).length;
+        }
+        out = kept.join(", ").replace(/\s*[.,•|\-]+\s*$/, "").trim();
+      }
+    }
+  } else {
+    out = out
+      .replace(
+        /\b(?:breakfast\s+foods?|kids['’]?\s+snacks?|lunch(?:\s*box)?\s+snacks?|pantry\s+staples?|shelf[\s-]*stable|value\s+pack|family\s+(?:size|pack)|party\s+(?:size|pack)|mega\s+(?:size|pack)|snap\s+ebt(?:\s+eligible)?|\d+\s+pop[\s-]*tarts?)\b/gi,
+        " ",
+      )
+      .replace(/\s+/g, " ")
+      .replace(/\s*[.,•|\-]+\s*$/, "")
+      .trim();
   }
   return out;
 }
@@ -5112,7 +5470,7 @@ export async function lookupIngredients(input: LookupInput): Promise<LookupResul
   if (!key) return null;
 
   const DIRECT_CATALOG_PRIORITY =
-    /\b(simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water)|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|marketside\b.*\bblueberry\b.*\bmuffins?|folgers|bar[- ]?s\b|little\s+debbie|jackson'?s|drizzilicious|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
+    /\b(pop[- ]?tarts?|simple\s+truth|private\s+selection|good\s*(?:&|and)\s*gather|favorite\s+day|big\s+k|velveeta|lactaid|fairlife|martin'?s|white\s+sandwich\s+bread|great\s+value.*(?:milk|eggs?|bread|water|potato\s+chips)|clancy'?s.*potato\s+chips|kirkland(?:\s+signature)?.*(?:rotisserie\s+chicken|lightly\s+breaded\s+chicken|purified.*water)|berkley\s+jensen.*water|kroger.*purified.*water|member'?s\s+mark.*(?:rotisserie\s+chicken|breaded\s+chicken\s+breast\s+bites|hickory\s+smoked\s+bacon)|cinnamon\s+toast\s+crunch|cinnamon\s+chex|lucky\s+charms|froot\s+loops|cheerios|quaker\b.*\b(?:oats?|oatmeal)|bob'?s\s+red\s+mill\b.*\b(?:oats?|oatmeal)|doritos|cheetos|cheez[- ]?its?|oreo|triscuit|lay'?s|pringles|barilla|nutella|hidden\s+valley|campbell'?s|kraft\b.*\b(?:mac|macaroni)|pedialyte|planet\s+oat|doubleshot|owyn|liquid\s+death|silk\s+soy(?:milk)?|soy\s*milk|ito\s+en|oi\s+ocha|ritz\s+original|maruchan|top\s+ramen|nissin|cup\s+noodles?|shin\s+ramyun|buldak|samyang|indomie|nongshim|sapporo\s+ichiban|instant\s+ramen|ramen\s+noodle\s+soup|ramen\s+noodles?|knoppers|tony'?s\s+chocolonely|ferrero|lindt|lindor|hershey'?s|reese'?s|frank'?s\s+redhot|butterball|potatoes,?\s+butter|butter\s+potatoes?|baby\s+cut\s+carrots?|yams?\s*\(sweet\s+potatoes?\)|honeycrisp\s+apples?|bismark|freshness\s+guaranteed|smithfield|my\s+cookie\s+dealer|protein\s+toaster\s+pastr(?:y|ies)|ground\s+(?:beef|chuck|turkey|chicken|pork|bison|lamb)|\d{2}%\s*lean|marketside\s+butcher|marketside\b.*\bblueberry\b.*\bmuffins?|folgers|bar[- ]?s\b|ball\s+park|jimmy\s+dean|chobani|tropicana|little\s+debbie|jackson'?s|drizzilicious|stonyfield|organic\s+valley|applegate|lotus\s+foods|rao'?s|french'?s|mccormick|idahoan|carvel|panera|blount|fresh\s+banana|bananas?|rotisserie|steamfresh|oscar\s+mayer|tyson|ezekiel|dave'?s\s+killer|kind\s+(?:nut\s+)?bars?|inglehoffer|beaver\s+brand|kikkoman.*wasabi|wasabi[- ]?o|wicked\s+cutz|hellmann'?s|best\s+foods|kraft\s+mayo|primal\s+kitchen|chosen\s+foods|boulder\s+canyon|mission\b.*\btortillas?|tortillas?\b.*\bmission|eggo|goldfish|\bjif\b|philadelphia\b.*\bcream\s+cheese|coca[- ]?cola|\bcoke\b|gatorade)\b/i;
 
   const isPlainProduceDirectPriority =
     !PROCESSED_FOOD_GUARD.test(title) &&
